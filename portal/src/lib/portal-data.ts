@@ -43,7 +43,7 @@ const MOCK_CLIENT_USER: ChatbotClientUser = {
   clientId: MOCK_CLIENT.id,
 };
 
-const MOCK_TIMELINE: OnboardingTimelineRow[] = [
+const MOCK_TIMELINE_INTERNAL: OnboardingTimelineRow[] = [
   {
     id: 'evt-t0',
     step: 't_plus_0',
@@ -88,6 +88,9 @@ const MOCK_CHATBOT: ChatbotStatusSummary = {
     escalationRate: 0.12,
   },
 };
+
+export const MOCK_CHATBOT_FROM_DATA = MOCK_CHATBOT;
+export { MOCK_CHATBOT };
 
 const MOCK_CONVERSATIONS: ConversationSummary[] = Array.from({ length: 12 }).map((_, i) => {
   const date = new Date(Date.UTC(2026, 5, 8, 9, 0, 0) - i * 1000 * 60 * 60 * 6);
@@ -149,7 +152,7 @@ export async function getOnboarding(accessToken: string): Promise<OnboardingTime
     '/portal/onboarding-status',
     accessToken,
   );
-  return fromApi?.timeline ?? MOCK_TIMELINE;
+  return fromApi?.timeline ?? MOCK_TIMELINE_INTERNAL;
 }
 
 export async function getOnboardingFor(
@@ -260,3 +263,8 @@ export async function listAdminClients(): Promise<ChatbotClient[]> {
 
 export const formatPriceEUR = (cents: number): string =>
   new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(cents / 100);
+
+// Re-exports for KAIA-755 dev-mock API routes (no DB / no backend configured).
+export const MOCK_TIMELINE = MOCK_TIMELINE_INTERNAL;
+export const MOCK_BILLING_EXPORT = MOCK_BILLING;
+export { MOCK_CONVERSATIONS };

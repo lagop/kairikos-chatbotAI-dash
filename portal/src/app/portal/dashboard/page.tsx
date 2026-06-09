@@ -1,0 +1,157 @@
+import type { Metadata } from 'next';
+import Link from 'next/link';
+import { PageHeading } from '@/components/portal/PageHeading';
+import { ChatbotStatusCard } from '@/components/portal/ChatbotStatusCard';
+import { OnboardingTimeline } from '@/components/portal/OnboardingTimeline';
+import { getSession } from '@/lib/session';
+import { resolveClientFromSession } from '@/lib/portal-session';
+import { prisma, isDatabaseConfigured } from '@/lib/prisma';
+import { MOCK_CLIENT, MOCK_CHATBOT, MOCK_TIMELINE } from '@/lib/portal-data';
+
+export const metadata: Metadata = {
+  title: 'Dashboard',
+  description: 'Resumen del estado de tu chatbot y del onboarding en Kairikos.',
+  alternates: { canonical: '/portal/dashboard' },
+  robots: { index: false, follow: false },
+};
+
+const DATE_FMT = new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
+
+export default async function PortalDashboardPage() {
+  const session = await getSession();
+  if (!session.hasClientAccess) {
+    return (
+      <div className="space-y-6">
+        <PageHeading
+          eyebrow="Sin acceso"
+          title="Necesitas iniciar sesión"
+          description="Inicia sesión para ver el dashboard de tu chatbot."
+        />
+        <Link href="/portal/login" className="btn-primary">Iniciar sesión</Link>
+      </div>
+    );
+  }
+  const resolved = await resolveClientFromSession();
+  if (!resolved) {
+    return (
+      <div className="space-y-6">
+        <PageHeading
+          eyebrow="Sin acceso"
+          title="No hemos podido identificar tu cliente"
+          description="Contacta con soporte si crees que es un error."
+        />
+      </div>
+    );
+  }
+  let clientName = MOCK_CLIENT.companyName;
+  let goLiveAt: string | null = null;
+  let conversationCount = 0;
+  let timeline = MOCK_TIMELINE;
+  if (resolved.source !== 'mock_dev' || isDatabaseConfigured) {
+    try {
+      const [client, count, activities] = await Promise.all([
+        prisma.chatbotClient.findUnique({
+          where: { id: resolved.clientId },
+          select: { companyName: true, name: true, goLiveAt: true },
+        }),
+        prisma.chatbotConversation.count({ where: { clientId: resolved.clientId } }),
+        prisma.chatbotActivity.findMany({
+          where: { clientId: resolved.clientId },
+          orderBy: { completedAt: 'asc' },
+        }),
+      ]);
+      if (client) {
+        clientName = client.companyName ?? client.name;
+        goLiveAt = client.goLiveAt?.toISOString() ?? null;
+      }
+      conversationCount = count;
+      if (activities.length > 0) {
+        const MILESTONE_LABEL: Record<string, string> = {
+          'T+0': 'Bienvenida y acceso al portal',
+          'T+3': 'Configuración inicial',
+          'T+7': 'Puesta en producción',
+          'T+14': 'Revisión y optimización',
+        };
+        const MILESTONE_STEP: Record<string, 't_plus_0' | 't_plus_3' | 't_plus_7' | 't_plus_14'> = {
+          'T+0': 't_plus_0',
+          'T+3': 't_plus_3',
+          'T+7': 't_plus_7',
+          'T+14': 't_plus_14',
+        };
+        timeline = activities.map((a, i) => ({
+          id: a.id,
+          step: MILESTONE_STEP[a.milestone] ?? 't_plus_0',
+          label: MILESTONE_LABEL[a.milestone] ?? a.milestone,
+          description: a.notes ?? '',
+          occurredAt: a.completedAt?.toISOString() ?? null,
+          status: a.completedAt ? 'done' : i === activities.findIndex((x) => !x.completedAt) ? 'current' : 'pending',
+        }));
+      }
+    } catch {
+      // fall through to mocks
+    }
+  }
+
+  const currentStep = timeline.find((s) => s.status === 'current');
+  const completedSteps = timeline.filter((s) => s.status === 'done').length;
+  const totalSteps = timeline.length;
+  const progressPct = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
+  const status = goLiveAt ? 'live' : 'in_progress';
+
+  return (
+    <div className="space-y-6">
+      <PageHeading
+        eyebrow="Dashboard"
+        title={clientName}
+        description="Aquí verás el estado de tu chatbot y los próximos pasos del onboarding."
+        actions={
+          <Link href="/portal/support" className="btn-ghost">Contactar soporte</Link>
+        }
+      />
+
+      <section className="card" aria-label="Estado del chatbot">
+        <header className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Estado del chatbot</h2>
+          <span className={status === 'live' ? 'pill-success' : 'pill-warning'}>
+            {status === 'live' ? 'En producción' : 'En curso'}
+          </span>
+        </header>
+        <ChatbotStatusCard
+          summary={{
+            spaceId: MOCK_CHATBOT.spaceId,
+            status: status,
+            goLiveDate: goLiveAt ?? MOCK_CHATBOT.goLiveDate,
+            last7Days: {
+              conversations: conversationCount || MOCK_CHATBOT.last7Days.conversations,
+              fallbackRate: MOCK_CHATBOT.last7Days.fallbackRate,
+              escalationRate: MOCK_CHATBOT.last7Days.escalationRate,
+            },
+          }}
+        />
+        <p className="mt-3 text-xs text-kairikos-muted">
+          {goLiveAt
+            ? `En producción desde el ${DATE_FMT.format(new Date(goLiveAt))}.`
+            : 'Tu chatbot aún no está en producción. Te avisaremos por email cuando se active.'}
+        </p>
+      </section>
+
+      <section className="card" aria-label="Progreso del onboarding">
+        <header className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Onboarding</h2>
+          <span className="text-sm text-kairikos-muted" data-testid="onboarding-progress">
+            {progressPct}% · paso {Math.min(completedSteps + 1, totalSteps)} de {totalSteps}
+          </span>
+        </header>
+        <OnboardingTimeline rows={timeline} />
+        {currentStep ? (
+          <p className="mt-3 text-sm text-kairikos-muted">
+            Siguiente: <span className="text-kairikos-text">{currentStep.label}</span>
+          </p>
+        ) : null}
+        <p className="mt-2 text-xs text-kairikos-muted">
+          <Link className="underline" href="/portal/onboarding">Ver timeline completo →</Link>
+        </p>
+      </section>
+    </div>
+  );
+}
