@@ -10,6 +10,11 @@ build/
 # Local-only Supabase auth shim used in development. Do NOT apply to prod.
 supabase/tests/_local_auth_shim.sql
 
+# Staging-apply artifacts (real schema dumps + run logs from the staging
+# Supabase project). Never committed — they reference the real project
+# structure and may contain operator-handleable metadata.
+supabase/tests/artifacts/
+
 # Editor / OS
 .DS_Store
 *.swp
