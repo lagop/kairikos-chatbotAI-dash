@@ -112,32 +112,33 @@ select set_config('chatbot.smoke.jwt_staff', :'jwt_staff', false);
 --     Catches the "operator pre-created users in Studio with different
 --     UUIDs than the runner script" failure mode early, with a clear
 --     remediation message.
+--
+--     NOTE: the staff identity is only a JWT-level claim (app_metadata.staff
+--     on the JWT), it does not need to be a real auth.users row. We probe
+--     only the three client-mapped test users (A, B, unmapped C).
 -- ===========================================================================
 \echo
 \echo '-- 0a. auth.users rows match the configured test UUIDs'
 do $$
 declare
-  cfg_user_a     constant text := current_setting('chatbot.smoke.user_a');
-  cfg_user_b     constant text := current_setting('chatbot.smoke.user_b');
-  cfg_user_c     constant text := current_setting('chatbot.smoke.user_c');
-  cfg_user_staff constant text := current_setting('chatbot.smoke.user_staff');
+  cfg_user_a constant text := current_setting('chatbot.smoke.user_a');
+  cfg_user_b constant text := current_setting('chatbot.smoke.user_b');
+  cfg_user_c constant text := current_setting('chatbot.smoke.user_c');
   missing_auth text;
-  missing_map  text;
 begin
   select string_agg(u.id::text, ', ')
     into missing_auth
   from unnest(array[
       cfg_user_a::uuid,
       cfg_user_b::uuid,
-      cfg_user_c::uuid,
-      cfg_user_staff::uuid
+      cfg_user_c::uuid
     ]) as want(id)
   left join auth.users u on u.id = want.id
   where u.id is null;
   if missing_auth is not null then
-    raise exception 'auth.users rows missing for: %. Create them in Supabase Studio -> Authentication -> Users, or override the psql -v vars (user_a/user_b/user_c/user_staff) to match the existing rows.', missing_auth;
+    raise exception 'auth.users rows missing for: %. Create them in Supabase Studio -> Authentication -> Users, or override the psql -v vars (user_a/user_b/user_c) to match the existing rows.', missing_auth;
   end if;
-  raise notice 'OK: auth.users rows present for all 4 test users';
+  raise notice 'OK: auth.users rows present for the 3 client-mapped test users';
 end$$;
 
 -- Same probe for chatbot_client_users mapping. The seed is supposed to
