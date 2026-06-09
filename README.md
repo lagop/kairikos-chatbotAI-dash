@@ -16,7 +16,9 @@ supabase/
   seeds/
     chatbot_clients_seed.sql
   scripts/
-    apply-to-staging.sh                    # KAIA-743 staging-apply runbook
+    apply-to-staging.sh                    # KAIA-743 data-plane runner
+    run-staging-e2e.sh                     # KAIA-743 orchestrator (calls apply + Playwright)
+    README.md                              # operator runbook
   tests/
     chatbot_clients_rls_smoke.sql          # local-dev (needs _local_auth_shim.sql)
     chatbot_clients_rls_smoke.staging.sql  # Supabase-port (no shim, used by apply-to-staging.sh)
@@ -24,6 +26,12 @@ supabase/
     _local_auth_shim.sql                   # local-only, not for production
 docs/
   chatbot-portal-schema.md
+portal/
+  tests/
+    helpers/
+      staging-magic-link.ts                # Supabase admin generateLink bridge
+    specs/
+      cross-tenant.staging.spec.ts         # @staging per-tenant magic-link e2e
 ```
 
 Application code (NestJS, Stripe webhooks, /portal/* endpoints) lands under
@@ -79,36 +87,65 @@ Latest passing run is in
 
 ## Staging apply (KAIA-740 + KAIA-743)
 
-The end-to-end migration + seed + RLS smoke against the **staging** Supabase
-project is automated by `supabase/scripts/apply-to-staging.sh` (pre-staged by
-[KAIA-743](/KAIA/issues/KAIA-743)). It exists so the Backend Developer can
-run the whole chain — sanity checks, `auth.users` provisioning via the
-Supabase Auth admin API, migrations, seed, smoke, additive-only schema diff,
-and a one-screen summary — in a single heartbeat the moment the operator
-drops the staging connection strings into `.env`.
+The end-to-end migration + seed + RLS smoke + per-tenant magic-link e2e
+against the **staging** Supabase project is automated by two cooperating
+scripts (pre-staged by [KAIA-743](/KAIA/issues/KAIA-743)):
+
+- `supabase/scripts/apply-to-staging.sh` — the **data-plane** runner.
+  `psql` + `pg_dump` + `curl`. Applies the schema, seeds the data, ensures
+  the two `auth.users` rows exist via the Supabase Auth admin API, runs the
+  8-check RLS smoke, captures a `pg_dump --schema-only` before/after diff,
+  and fails loudly if anything other than the four `chatbot_*` tables
+  changed. Idempotent. No `node` dependency.
+- `supabase/scripts/run-staging-e2e.sh` — the **orchestrator**. Sits one
+  level up. Calls `apply-to-staging.sh`, then runs the per-tenant
+  Playwright magic-link spec at `portal/tests/specs/cross-tenant.staging.spec.ts`,
+  then merges both logs into
+  `supabase/tests/chatbot_clients_rls_smoke.staging.log` (the file the
+  Backend Developer pastes into [KAIA-731](/KAIA/issues/KAIA-731) to close
+  the chain). Has `--skip-apply` for re-running just the e2e against a
+  known-good data plane.
+
+Together they exist so the Backend Developer can run the whole chain —
+**including the real magic-link e2e against the staging portal** — in a
+single heartbeat the moment the operator drops the staging connection
+strings into `.env`.
 
 ```bash
-# 1. Operator drops the staging Supabase values into .env (gitignored).
-#    Required keys (staging only — never production):
+# 1. Operator drops the staging Supabase + portal values into .env
+#    (gitignored). The full set of vars is documented in .env.example under
+#    the "KAIA-740 staging-apply runbook" block. The 6 hard-required keys:
 #      SUPABASE_URL
 #      SUPABASE_ANON_KEY
 #      SUPABASE_SERVICE_ROLE_KEY
 #      SUPABASE_DB_URL
 #      SUPABASE_SERVICE_ROLE_DB_URL
 #      STAGING_PROJECT_REF            # hard guard against prod-by-mistake
+#      PORTAL_URL                     # staging frontend URL, NOT localhost
 
-# 2. Backend Developer runs the runner:
-./supabase/scripts/apply-to-staging.sh            # full apply
-./supabase/scripts/apply-to-staging.sh --dry-run  # sanity only
+# 2. (One-time, per staging project) Promote the staff test user in
+#    Supabase Studio: Authentication -> Users -> staff-test@kairikos.dev
+#    -> raw app_metadata = {"staff": true}. Required for the third e2e
+#    case. The orchestrator fails fast with an actionable 403 if missing.
 
-# 3. To roll back, run the .down.sql migrations in reverse order:
+# 3. Backend Developer runs the full chain:
+./supabase/scripts/run-staging-e2e.sh
+
+# Or, if the data plane is already known-good, re-run only the e2e:
+./supabase/scripts/run-staging-e2e.sh --skip-apply
+
+# Or, for SQL-only pre-flight (no writes, no Playwright):
+./supabase/scripts/apply-to-staging.sh --dry-run
+
+# 4. To roll back, run the .down.sql migrations in reverse order:
 psql "$SUPABASE_SERVICE_ROLE_DB_URL" -v ON_ERROR_STOP=1 \
   -f supabase/migrations/20260609_1200_002_enable_rls_chatbot_portal.down.sql
 psql "$SUPABASE_SERVICE_ROLE_DB_URL" -v ON_ERROR_STOP=1 \
   -f supabase/migrations/20260609_1200_001_create_chatbot_portal_tables.down.sql
 ```
 
-The runner:
+The data-plane runner:
+
 - Verifies `psql` / `pg_dump` / `curl` / `jq` are on `PATH` and that `.env`
   is present and contains the required `SUPABASE_*` keys plus
   `STAGING_PROJECT_REF`.
@@ -130,6 +167,19 @@ The runner:
 - Emits a one-screen summary with the project ref, DB, file paths, smoke
   log path, per-tenant e2e results, and the rollback recipe.
 
+The orchestrator wraps all of the above, then runs the Playwright e2e
+spec against the staging portal. The e2e spec has three `@staging` cases:
+
+1. Client A (Acme Clay Ovens) magic-link → `/portal` shows Acme, not Brisa.
+2. Client B (Brisa Beach Houses) magic-link → `/portal` shows Brisa, not Acme.
+3. Staff operator → `/admin/portal/clients` lists both.
+
+The spec uses a real Supabase admin `auth.admin.generateLink` call (the
+same path the production email would take) to skip the inbox click, then
+follows the resulting `action_link` into the real `/api/auth/callback` and
+asserts on the rendered portal. It auto-skips when `PORTAL_URL` is unset or
+points at localhost, so it cannot accidentally run in dev.
+
 The staging-port smoke (`supabase/tests/chatbot_clients_rls_smoke.staging.sql`)
 is a Supabase-friendly rewrite of the local smoke. Key differences vs. the
 local smoke:
@@ -148,3 +198,7 @@ local smoke:
   configured `auth.users` rows exist, and the `chatbot_client_users`
   mapping matches. The smoke fails fast with a clear remediation message
   if any of those preconditions is not met.
+
+For the operator-facing runbook (one-time setup, the staff user promotion
+step, rollback recipe, lens notes from the CTO review) see
+[`supabase/scripts/README.md`](supabase/scripts/README.md).
