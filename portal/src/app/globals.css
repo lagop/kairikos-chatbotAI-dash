@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: #0b1020;
+  color: #e6ebff;
+  min-height: 100%;
+}
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-kairikos-accent focus-visible:ring-offset-2 focus-visible:ring-offset-kairikos-bg disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-kairikos-accent text-white hover:bg-kairikos-accent/90;
+  }
+  .btn-ghost {
+    @apply btn border border-kairikos-border text-kairikos-text hover:bg-kairikos-surface2;
+  }
+  .card {
+    @apply rounded-2xl border border-kairikos-border bg-kairikos-surface p-5 shadow-sm;
+  }
+  .label {
+    @apply mb-1 block text-sm font-medium text-kairikos-muted;
+  }
+  .input {
+    @apply w-full rounded-xl border border-kairikos-border bg-kairikos-surface2 px-3.5 py-2.5 text-kairikos-text placeholder:text-kairikos-muted/70 focus:border-kairikos-accent focus:outline-none focus:ring-1 focus:ring-kairikos-accent;
+  }
+  .pill {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium;
+  }
+  .pill-success {
+    @apply pill bg-kairikos-success/10 text-kairikos-success;
+  }
+  .pill-warning {
+    @apply pill bg-kairikos-warning/10 text-kairikos-warning;
+  }
+  .pill-muted {
+    @apply pill bg-kairikos-border/40 text-kairikos-muted;
+  }
+  .pill-danger {
+    @apply pill bg-kairikos-danger/10 text-kairikos-danger;
+  }
+  .skeleton {
+    @apply animate-pulse rounded-lg bg-kairikos-border/30;
+  }
+}

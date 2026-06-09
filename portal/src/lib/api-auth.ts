@@ -1,0 +1,56 @@
+import { NextResponse, type NextRequest } from 'next/server';
+import { isBackendConfigured, PORTAL_API_BASE_URL } from './supabase';
+import { MOCK_CLIENT, MOCK_SECONDARY_CLIENT } from './portal-data';
+
+export interface AuthResult {
+  ok: boolean;
+  clientId?: string;
+  slug?: string;
+  isOperator?: boolean;
+  reason?: 'unauthorized' | 'forbidden';
+}
+
+const KNOWN_DEV_CLIENT_IDS = new Set<string>([
+  MOCK_CLIENT.id,
+  MOCK_SECONDARY_CLIENT.id,
+]);
+
+export function isKnownClientId(id: string | null | undefined) {
+  return Boolean(id && KNOWN_DEV_CLIENT_IDS.has(id));
+}
+
+export async function authenticateRequest(req: NextRequest): Promise<AuthResult> {
+  const auth = req.headers.get('authorization') ?? '';
+  const token = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';
+  if (!token) return { ok: false, reason: 'unauthorized' };
+  const operatorHeader = req.headers.get('x-kairikos-operator');
+  if (isBackendConfigured) {
+    try {
+      const res = await fetch(`${PORTAL_API_BASE_URL}/portal/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
+      });
+      if (!res.ok) return { ok: false, reason: 'unauthorized' };
+      const data = (await res.json()) as { id: string; slug: string };
+      return { ok: true, clientId: data.id, slug: data.slug, isOperator: operatorHeader === '1' };
+    } catch {
+      return { ok: false, reason: 'unauthorized' };
+    }
+  }
+  if (token === MOCK_CLIENT.id || token === 'mock-user-001' || token === 'anon' || token.length >= 8) {
+    const isMock = token === MOCK_CLIENT.id || token === 'mock-user-001' || token === 'anon';
+    return {
+      ok: true,
+      clientId: isMock ? MOCK_CLIENT.id : token,
+      slug: isMock ? MOCK_CLIENT.slug : 'unknown',
+      isOperator: operatorHeader === '1' || token === 'operator-dev',
+    };
+  }
+  return { ok: false, reason: 'unauthorized' };
+}
+
+export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isUuid(value: string | null) {
+  return Boolean(value && UUID_RE.test(value));
+}
