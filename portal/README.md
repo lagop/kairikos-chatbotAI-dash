@@ -80,5 +80,11 @@ Types live in `src/types/portal.ts`.
 
 ## Deploy
 
-Vercel project `portal-kairikos`. Set the env vars above. DNS for
-`portal.kairikos.com` is owned by [KAIA-735](/KAIA/issues/KAIA-735).
+Vercel project **`kairikos`** (the same project that serves
+`kairikos.com` — `portal.kairikos.com` is added as an additional
+domain per the CTO architecture decision in
+[KAIA-735](/KAIA/issues/KAIA-735)). Set the env vars above, namespaced
+with a `PORTAL_` prefix in Vercel (e.g. `PORTAL_SUPABASE_URL`,
+`PORTAL_API_BASE_URL`). DNS for `portal.kairikos.com` is owned by
+[KAIA-735](/KAIA/issues/KAIA-735); the runbook lives at
+[`docs/runbook-KAIA-735.md`](/KAIA/issues/KAIA-735#document-runbook).
