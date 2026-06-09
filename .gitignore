@@ -1,0 +1,22 @@
+node_modules/
+dist/
+build/
+
+# Local env files — never commit
+.env
+.env.local
+.env.*.local
+
+# Local-only Supabase auth shim used in development. Do NOT apply to prod.
+supabase/tests/_local_auth_shim.sql
+
+# Editor / OS
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Backup / scratch
+*.bak
+*.log
+!supabase/tests/chatbot_clients_rls_smoke.run.log
