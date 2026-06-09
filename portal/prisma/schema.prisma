@@ -1,0 +1,95 @@
+// =============================================================================
+// Kairikos — Chatbot AI end-client portal (KAIA-752)
+// Prisma schema for the Prisma + PostgreSQL 16 + Docker on VPS stack
+// (plan rev 3, KAIA-719).
+//
+// Per-row isolation: every portal API route resolves clientId from
+//   ChatbotClientUser.nextAuthEmail = session.user.email
+// before any other query. No raw SQL — all reads go through Prisma
+// `where: { clientId }` clauses. See prisma/README.md for the rule.
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// One row per paying client. Source of truth for billing + onboarding state.
+// Stripe remains the billing source of truth (stripeCustomerId is the link).
+model ChatbotClient {
+  id               String    @id @default(cuid())
+  // NextAuth magic-link recipient. Unique — v1 has no shared inboxes.
+  email            String    @unique
+  name             String
+  // Company name (free-form, may differ from the legal entity on Stripe).
+  companyName      String?
+  // Active subscription tier. Mirrors the value Stripe reports back via webhook.
+  tier             String    @default("starter")
+  // Stripe customer id (populated by the Stripe webhook handler in
+  // kira-studio-billing-backend). NULL during the trial window.
+  stripeCustomerId String?
+  // Set when the CTO marks the chatbot live in the operator flow.
+  goLiveAt         DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  activities    ChatbotActivity[]
+  conversations ChatbotConversation[]
+  users         ChatbotClientUser[]
+
+  @@index([stripeCustomerId])
+  @@index([tier])
+}
+
+// Maps a NextAuth session email to a ChatbotClient row. v1 is 1:1 — one
+// nextAuthEmail per client. (Multi-tenant org switching is a v2 backlog item.)
+model ChatbotClientUser {
+  id            String        @id @default(cuid())
+  clientId      String
+  // NextAuth session email (the JWT subject). Unique — magic-link recipient.
+  nextAuthEmail String        @unique
+  client        ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+}
+
+// One row per T+N event the n8n flow emits (T+0, T+3, T+7, T+14, …).
+// Drives the portal onboarding timeline.
+model ChatbotActivity {
+  id          String        @id @default(cuid())
+  clientId    String
+  // T+N milestone label — "T+0", "T+3", "T+7", "T+14" by convention; free-form
+  // string so n8n can extend without a schema migration.
+  milestone   String
+  // NULL when the row is created up-front (e.g. the schedule); set when the
+  // event actually fires.
+  completedAt DateTime?
+  notes       String?
+  client      ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, completedAt])
+}
+
+// One row per chatbot conversation. Read-only on the portal in v1
+// (writes come from the chatbot platform via n8n).
+model ChatbotConversation {
+  id         String        @id @default(cuid())
+  clientId   String
+  startedAt  DateTime
+  // Duration in seconds. NULL while the conversation is still open.
+  duration   Int?
+  // Outcome / resolution status. Free-form string so the chatbot platform
+  // can extend without a schema migration. Conventional values:
+  //   resolved | escalated | abandoned | fallback | unknown
+  outcome    String?
+  // Full transcript as JSON — message list, metadata, tool calls, etc.
+  transcript Json?
+  client     ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, startedAt])
+  @@index([clientId, outcome])
+}

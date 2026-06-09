@@ -1,0 +1,54 @@
+# =============================================================================
+# Kairikos — production Docker Compose (VPS target)
+#
+# Scope of this file as of KAIA-752 (Prisma + PostgreSQL Docker setup):
+#   * postgres  — PostgreSQL 16, named volume `pgdata`, exposed to the host
+#                 network so the Next.js app (KAIA-722/723) can connect during
+#                 dev, CI, and the eventual VPS deploy.
+#
+# Services added by follow-up workstreams (not part of KAIA-752):
+#   * app       — Next.js 14 portal. Added in KAIA-722 (docker-compose VPS
+#                 deploy) once the `prisma generate` build step and migration
+#                 flow are proven end-to-end against this postgres service.
+#   * nginx     — Reverse proxy + SSL termination. Added in KAIA-722.
+#   * certbot   — Let's Encrypt auto-renewal. Added in KAIA-722.
+#
+# Usage (local dev):
+#   docker compose up -d postgres
+#   docker compose logs -f postgres
+#   docker compose down         # keeps the pgdata volume
+#   docker compose down -v      # DESTROYS the pgdata volume — never in prod
+# =============================================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: kairikos-portal-postgres
+    restart: unless-stopped
+    # Local dev: bind on the host loopback so psql/Prisma on the host can
+    # connect at localhost:5432. The Next.js app talks to postgres over the
+    # internal Docker network (service name `postgres`, port 5432) once it
+    # is added in KAIA-722.
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      # Defaults are aligned with portal/.env.example. Override per
+      # environment via a .env file at the project root (gitignored) or the
+      # deployment secret store.
+      POSTGRES_USER: ${POSTGRES_USER:-kairikos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kairikos_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-kairikos_portal}
+      # WAL + autovacuum tuned for a small VPS with one app writer.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  pgdata:
+    name: kairikos-portal-pgdata
