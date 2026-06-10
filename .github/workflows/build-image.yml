@@ -49,5 +49,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # No `cache-to` — the default `docker` driver on the GHA runner
+          # doesn't support cache export, only cache import. Drop the
+          # export line; the build still works, just slower on cold
+          # caches. If we need cache export later, switch the runner to
+          # the `docker-container` driver via setup-buildx-action.
           cache-from: type=gha
-          cache-to: type=gha,mode=max
