@@ -1,0 +1,3 @@
+# DEPRECATED — see `automations/portal-internal-activity/` for the current flows (KAIA-756)
+
+> **DEPRECATED — see `automations/portal-internal-activity/` for the current flows (KAIA-756).** Do not import these files into n8n. The Supabase `chatbot_activity` table is no longer the data source for the portal; the portal now reads from Prisma `ChatbotActivity` (plan rev 3, KAIA-752). The four workflow JSONs in `archive/` are kept only so QA can diff the old Supabase PostgREST shape against the new `/api/internal/activity` shape. Retired in [KAIA-761](/KAIA/issues/KAIA-761); original issue [KAIA-734](/KAIA/issues/KAIA-734) is now `cancelled`. Replacement: `automations/portal-internal-activity/t-0-portal.json`, `t-3-portal.json`, `t-7-portal.json`, `t-14-portal.json`.

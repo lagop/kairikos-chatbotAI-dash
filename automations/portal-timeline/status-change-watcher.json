@@ -1,0 +1,211 @@
+{
+  "name": "Portal Timeline — Status Change Watcher (KAIA-762 UUID→cuid resolution)",
+  "nodes": [
+    {
+      "id": "sc-trigger",
+      "name": "Status Change Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "chatbot-clients-status-change",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "chatbot-clients-status-change",
+        "responseMode": "lastNode",
+        "responseData": {
+          "responseCode": 200,
+          "responseBody": "{\"status\":\"ok\"}",
+          "responseHeaders": {
+            "values": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        },
+        "options": {
+          "rawBody": true
+        }
+      }
+    },
+    {
+      "id": "sc-verify",
+      "name": "Verify Webhook Signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Supabase Database Webhook signature verification (HMAC-SHA256).\nconst crypto = require('crypto');\nconst secret = $env.N8N_WEBHOOK_SHARED_SECRET;\nif (!secret) { throw new Error('N8N_WEBHOOK_SHARED_SECRET not configured'); }\nconst sig = $input.first().headers['x-webhook-signature'] || '';\nconst raw = $input.first().binary?.data?.data\n  ? Buffer.from($input.first().binary.data.data, 'base64').toString('utf8')\n  : JSON.stringify($input.first().json);\nconst expected = crypto.createHmac('sha256', secret).update(raw).digest('hex');\nif (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {\n  throw new Error('Invalid webhook signature');\n}\nreturn [{ json: $input.first().json }];"
+      }
+    },
+    {
+      "id": "sc-classify",
+      "name": "Classify Status Transition",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        690,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Diff old vs new onboarding_status, build the payload for the portal.\n// KAIA-762: We now emit supabaseClientId (the Supabase UUID) and let\n// sc-lookup resolve it to the portal cuid before the write node runs.\n// The sc-lookup node is the single place that knows about the ID scheme\n// translation; this node is purely about business-logic classification.\nconst payload = $input.first().json;\nconst rec = payload.record || payload.body?.record || {};\nconst old = payload.old_record || payload.body?.old_record || {};\n\nif (!rec.id) { throw new Error('Webhook payload missing record.id'); }\nif (rec.onboarding_status === old.onboarding_status) {\n  return [];\n}\n\nconst newStatus = rec.onboarding_status;\nif (newStatus !== 'live' && newStatus !== 'paused' && newStatus !== 'cancelled') {\n  return [];\n}\n\nconst previousStatus = old.onboarding_status || null;\nconst actor = $env.KAIROPERATOR_ACTOR || 'system';\nconst reason = $env.KAIROPERATOR_REASON || null;\n\nconst notes = JSON.stringify({\n  previous_status: previousStatus,\n  new_status: newStatus,\n  actor,\n  reason,\n});\n\n// supabaseClientId is the Supabase UUID from chatbot_clients.id.\n// sc-lookup will translate this to the portal cuid via\n// POST /api/internal/lookup-client-id-from-supabase.\nreturn [{\n  json: {\n    supabaseClientId: rec.id,\n    milestone: 'status_change',\n    completedAt: new Date().toISOString(),\n    notes,\n    previous_status: previousStatus,\n    new_status: newStatus,\n  }\n}];"
+      }
+    },
+    {
+      "id": "sc-resolve",
+      "name": "Resolve Client ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// KAIA-762: resolve Supabase UUID (supabaseClientId) to portal cuid (clientId)\n// by calling the internal lookup route. Throws (triggers error branch → Slack)\n// when the UUID is not found in the portal — the watcher cannot write a\n// ChatbotActivity row without a resolved clientId.\nconst supabaseClientId = $input.first().json.supabaseClientId;\nif (!supabaseClientId) { throw new Error(\"Webhook payload missing supabaseClientId\"); }\n\nconst portalUrl = $env.PORTAL_API_URL;\nconst portalKey = $env.PORTAL_API_KEY;\nif (!portalUrl || !portalKey) { throw new Error(\"PORTAL_API_URL or PORTAL_API_KEY not configured\"); }\n\nconst response = await fetch(portalUrl + \"/api/internal/lookup-client-id-from-supabase\", {\n  method: \"POST\",\n  headers: {\n    \"Content-Type\": \"application/json\",\n    \"X-Kairikos-Internal-Key\": portalKey,\n  },\n  body: JSON.stringify({ supabaseClientId }),\n});\n\nif (response.status === 404) {\n  // Unknown Supabase UUID — alert via Slack and do not write.\n  // Throwing here routes to the error branch (sc-slack-err).\n  const detail = await response.text();\n  throw new Error(\"Lookup returned 404 for supabaseClientId=\" + supabaseClientId + \": \" + detail);\n}\n\nif (!response.ok) {\n  throw new Error(\"Lookup failed (\" + response.status + \"): \" + await response.text());\n}\n\nconst { clientId } = await response.json();\n\n// Pass through all original fields from classify node + resolved clientId\nreturn [{ json: { ...$input.first().json, clientId } }];"
+      }
+    },
+    {
+      "id": "sc-write",
+      "name": "Write Activity to Portal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1130,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/activity",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "body": "={{ JSON.stringify({ clientId: $json.clientId, milestone: $json.milestone, completedAt: $json.completedAt, notes: $json.notes }) }}",
+        "options": {
+          "timeout": 15000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetween": 5000
+          }
+        }
+      }
+    },
+    {
+      "id": "sc-slack-err",
+      "name": "Notify Slack on Error",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [
+        1130,
+        520
+      ],
+      "parameters": {
+        "channel": "#automation-alerts",
+        "text": "=:rotating_light: Status-change watcher [KAIA-762] failed. Supabase UUID: `{{ $json.supabaseClientId }}`. Transition: `{{ $json.previous_status }} → {{ $json.new_status }}`. Last error: {{ $json.error }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": true
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Status Change Webhook": {
+      "main": [
+        [
+          {
+            "node": "Verify Webhook Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Webhook Signature": {
+      "main": [
+        [
+          {
+            "node": "Classify Status Transition",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Status Transition": {
+      "main": [
+        [
+          {
+            "node": "Resolve Client ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Activity to Portal": {
+      "error": [
+        [
+          {
+            "node": "Notify Slack on Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Client ID": {
+      "main": [
+        [
+          {
+            "node": "Write Activity to Portal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "Notify Slack on Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "timezone": "Europe/Madrid"
+  },
+  "staticData": null,
+  "meta": {
+    "template": "kairikos-portal-timeline",
+    "templateVersion": "1.2",
+    "purpose": "Write ChatbotActivity row (milestone='status_change') on chatbot_clients.onboarding_status transitions (live/paused/cancelled) via portal /api/internal/activity. KAIA-762: resolves Supabase UUID to portal cuid via /api/internal/lookup-client-id-from-supabase before writing.",
+    "author": "CTO",
+    "linkedIssue": "KAIA-760",
+    "kaia762": "sc-lookup node calls POST /api/internal/lookup-client-id-from-supabase to resolve Supabase UUID → portal cuid before writing. Error branch alerts Slack on lookup failure.",
+    "supabaseToPortal": "KAIA-762: record.id (UUID) resolved to portal cuid via /api/internal/lookup-client-id-from-supabase. Unknown UUID → 404 → Slack alert."
+  },
+  "pinData": {}
+}

@@ -1,0 +1,270 @@
+{
+  "name": "[DEPRECATED — use portal-internal-activity] T+7 — Follow-up (writes chatbot_activity)",
+  "nodes": [
+    {
+      "id": "t7-trigger",
+      "name": "T+7 Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        250,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "cronExpression": "0 9 * * *",
+          "timezone": "Europe/Madrid"
+        }
+      }
+    },
+    {
+      "id": "t7-resolve-clients",
+      "name": "Resolve Client",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        690,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Scheduled flow — fetch clients due for T+7 follow-up.\n// A client is 'due' when onboarding_status='in_progress' AND\n//  (now - go_live_at) is at least 7 days AND\n//  no row exists in chatbot_activity for that client with event_type='t_plus_7_followup'.\nconst N_DAY = 7;\nconst resp = await this.helpers.httpRequest({\n  method: 'GET',\n  url: `${$env.SUPABASE_URL}/rest/v1/chatbot_clients?onboarding_status=eq.in_progress&go_live_at=lt.${new Date(Date.now() - N_DAY*86400e3).toISOString()}&select=id,company_name,primary_contact_email,slug`,\n  headers: {\n    apikey: $env.SUPABASE_SERVICE_ROLE_KEY,\n    Authorization: `Bearer ${$env.SUPABASE_SERVICE_ROLE_KEY}`\n  },\n  json: true\n});\nif (!Array.isArray(resp) || resp.length === 0) { return []; }\nreturn resp.map((c) => ({ json: { client_id: c.id, company_name: c.company_name, contact_email: c.primary_contact_email, slug: c.slug } }));"
+      }
+    },
+    {
+      "id": "t7-build-id",
+      "name": "Build Activity Id (idempotent)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Deterministic UUIDv5 — see automations/t-plus-onboarding/README.md §3.\nconst { v5: uuidv5 } = require('uuid');\nconst NAMESPACE = 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d';\nconst ctx = $input.first().json;\nconst eventType = 't_plus_7_followup';\nconst dayOffset = 7;\nconst key = `${eventType}:${ctx.client_id}:${dayOffset}`;\nconst id = uuidv5(key, NAMESPACE);\nreturn [{ json: { ...ctx, activity_id: id, event_type: eventType, day_offset: dayOffset } }];"
+      }
+    },
+    {
+      "id": "t7-send-email",
+      "name": "Send T+7 Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1130,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "resendApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "from",
+              "value": "Kairikos <hola@kairikos.com>"
+            },
+            {
+              "name": "to",
+              "value": "={{ $json.contact_email }}"
+            },
+            {
+              "name": "subject",
+              "value": "Your chatbot is one week in — here is what we recommend"
+            },
+            {
+              "name": "template",
+              "value": "t-plus-7-followup-v1"
+            },
+            {
+              "name": "data.company_name",
+              "value": "={{ $json.company_name }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "retry": {
+            "maxTries": 3
+          }
+        }
+      }
+    },
+    {
+      "id": "t7-build-row",
+      "name": "Build Activity Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1350,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Assemble the final chatbot_activity row.\nconst emailResp = $input.first().json;\nconst ctx = $('Build Activity Id (idempotent)').first().json;\nconst row = {\n  id: ctx.activity_id,\n  client_id: ctx.client_id,\n  day_offset: ctx.day_offset,\n  event_type: ctx.event_type,\n  title: \"T+7 follow-up sent\",\n  body: null,\n  metadata: {\n    email_subject: \"Your chatbot is one week in — here is what we recommend\",\n    send_status: emailResp.id ? 'sent' : 'failed',\n    provider: 'resend',\n    email_message_id: emailResp.id || null,\n    template: \"t-plus-7-followup-v1\",\n    locale: 'es-ES'\n  },\n  occurred_at: new Date().toISOString()\n};\nreturn [{ json: row }];"
+      }
+    },
+    {
+      "id": "t7-upsert",
+      "name": "Upsert chatbot_activity",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1570,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/chatbot_activity?on_conflict=id",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicate,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "body": "={{ JSON.stringify([$json]) }}",
+        "options": {
+          "timeout": 15000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetween": 5000
+          }
+        }
+      }
+    },
+    {
+      "id": "t7-slack-err",
+      "name": "Notify Slack on Error",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [
+        1570,
+        520
+      ],
+      "parameters": {
+        "channel": "#automation-alerts",
+        "text": ":rotating_light: T+7 flow failed for client `{{ $json.client_id }}` after 3 retries. Last error: {{ $json.error }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": true
+        }
+      }
+    }
+  ],
+  "connections": {
+    "T+7 Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Resolve Client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Client": {
+      "main": [
+        [
+          {
+            "node": "Build Activity Id (idempotent)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Activity Id (idempotent)": {
+      "main": [
+        [
+          {
+            "node": "Send T+7 Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send T+7 Email": {
+      "main": [
+        [
+          {
+            "node": "Build Activity Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "Notify Slack on Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Activity Row": {
+      "main": [
+        [
+          {
+            "node": "Upsert chatbot_activity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert chatbot_activity": {
+      "error": [
+        [
+          {
+            "node": "Notify Slack on Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "timezone": "Europe/Madrid"
+  },
+  "staticData": null,
+  "meta": {
+    "template": "kairikos-t-plus-onboarding",
+    "templateVersion": "1.0",
+    "dayOffset": 7,
+    "eventType": "t_plus_7_followup",
+    "author": "Automation Engineer",
+    "linkedIssue": "KAIA-734"
+  },
+  "pinData": {}
+}

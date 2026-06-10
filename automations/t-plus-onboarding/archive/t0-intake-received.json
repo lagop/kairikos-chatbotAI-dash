@@ -1,0 +1,309 @@
+{
+  "name": "[DEPRECATED — use portal-internal-activity] T+0 — Onboarding Intake Received (writes chatbot_activity)",
+  "nodes": [
+    {
+      "id": "t0-trigger",
+      "name": "T+0 Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "t0-intake-received",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "t0-intake-received",
+        "responseMode": "lastNode",
+        "responseData": {
+          "responseCode": 200,
+          "responseBody": "{\"status\":\"ok\"}",
+          "responseHeaders": {
+            "values": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        },
+        "options": {
+          "rawBody": false
+        }
+      }
+    },
+    {
+      "id": "t0-verify",
+      "name": "Verify Webhook Signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Verify HMAC-SHA256 of the raw body against N8N_WEBHOOK_SHARED_SECRET.\n// Supabase Database Webhooks sends the signature in X-Webhook-Signature.\nconst crypto = require('crypto');\nconst secret = $env.N8N_WEBHOOK_SHARED_SECRET;\nif (!secret) { throw new Error('N8N_WEBHOOK_SHARED_SECRET not configured'); }\nconst sig = $input.first().headers['x-webhook-signature'] || '';\nconst raw = $input.first().binary?.data?.data\n  ? Buffer.from($input.first().binary.data.data, 'base64').toString('utf8')\n  : JSON.stringify($input.first().json);\nconst expected = crypto.createHmac('sha256', secret).update(raw).digest('hex');\nif (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {\n  throw new Error('Invalid webhook signature');\n}\nreturn [{ json: $input.first().json }];"
+      }
+    },
+    {
+      "id": "t0-resolve-client",
+      "name": "Resolve Client",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        690,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Tally intake payload → chatbot_clients.id lookup.\n// Supabase REST: GET /rest/v1/chatbot_clients?slug=eq.<slug>&select=id\nconst tally = $input.first().json;\nconst slug = tally.slug || tally.body?.slug || tally.client_slug;\nif (!slug) { throw new Error('Missing client slug in T+0 payload'); }\n\nconst resp = await this.helpers.httpRequest({\n  method: 'GET',\n  url: `${$env.SUPABASE_URL}/rest/v1/chatbot_clients?slug=eq.${encodeURIComponent(slug)}&select=id,company_name,primary_contact_email`,\n  headers: {\n    apikey: $env.SUPABASE_SERVICE_ROLE_KEY,\n    Authorization: `Bearer ${$env.SUPABASE_SERVICE_ROLE_KEY}`\n  },\n  json: true\n});\nif (!Array.isArray(resp) || resp.length === 0) {\n  throw new Error(`chatbot_clients row not found for slug=${slug}`);\n}\nconst client = resp[0];\nreturn [{\n  json: {\n    client_id: client.id,\n    company_name: client.company_name,\n    contact_email: client.primary_contact_email,\n    slug\n  }\n}];"
+      }
+    },
+    {
+      "id": "t0-build-id",
+      "name": "Build Activity Id (idempotent)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Deterministic UUIDv5 — see automations/t-plus-onboarding/README.md §3.\n// Fixed Kairikos namespace; safe across re-runs.\nconst { v5: uuidv5 } = require('uuid');\nconst NAMESPACE = 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d';\nconst ctx = $input.first().json;\nconst eventType = 'intake_received';\nconst dayOffset = 0;\nconst key = `${eventType}:${ctx.client_id}:${dayOffset}`;\nconst id = uuidv5(key, NAMESPACE);\nreturn [{\n  json: {\n    ...ctx,\n    activity_id: id,\n    event_type: eventType,\n    day_offset: dayOffset\n  }\n}];"
+      }
+    },
+    {
+      "id": "t0-send-email",
+      "name": "Send T+0 Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1130,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "resendApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "from",
+              "value": "Kairikos <hola@kairikos.com>"
+            },
+            {
+              "name": "to",
+              "value": "={{ $json.contact_email }}"
+            },
+            {
+              "name": "subject",
+              "value": "Welcome to Kairikos — let's get your chatbot live"
+            },
+            {
+              "name": "template",
+              "value": "t-plus-0-intake-v1"
+            },
+            {
+              "name": "data.company_name",
+              "value": "={{ $json.company_name }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "retry": {
+            "maxTries": 3
+          }
+        }
+      }
+    },
+    {
+      "id": "t0-build-row",
+      "name": "Build Activity Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1350,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Assemble the final chatbot_activity row.\nconst emailResp = $input.first().json;\nconst ctx = $('Build Activity Id (idempotent)').first().json;\nconst row = {\n  id: ctx.activity_id,\n  client_id: ctx.client_id,\n  day_offset: ctx.day_offset,\n  event_type: ctx.event_type,\n  title: 'T+0 intake email sent',\n  body: null,\n  metadata: {\n    email_subject: 'Welcome to Kairikos — let\\'s get your chatbot live',\n    send_status: emailResp.id ? 'sent' : 'failed',\n    provider: 'resend',\n    email_message_id: emailResp.id || null,\n    template: 't-plus-0-intake-v1',\n    locale: 'es-ES'\n  },\n  occurred_at: new Date().toISOString()\n};\nreturn [{ json: row }];"
+      }
+    },
+    {
+      "id": "t0-upsert",
+      "name": "Upsert chatbot_activity",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1570,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/chatbot_activity?on_conflict=id",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicate,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "body": "={{ JSON.stringify([$json]) }}",
+        "options": {
+          "timeout": 15000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetween": 5000
+          }
+        }
+      }
+    },
+    {
+      "id": "t0-slack-err",
+      "name": "Notify Slack on Error",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [
+        1570,
+        520
+      ],
+      "parameters": {
+        "channel": "#automation-alerts",
+        "text": "=:rotating_light: T+0 flow failed for client `{{ $json.client_id }}` after 3 retries. Last error: {{ $json.error }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": true
+        }
+      }
+    }
+  ],
+  "connections": {
+    "T+0 Trigger": {
+      "main": [
+        [
+          {
+            "node": "Verify Webhook Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Webhook Signature": {
+      "main": [
+        [
+          {
+            "node": "Resolve Client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Client": {
+      "main": [
+        [
+          {
+            "node": "Build Activity Id (idempotent)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Activity Id (idempotent)": {
+      "main": [
+        [
+          {
+            "node": "Send T+0 Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send T+0 Email": {
+      "main": [
+        [
+          {
+            "node": "Build Activity Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "Notify Slack on Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Activity Row": {
+      "main": [
+        [
+          {
+            "node": "Upsert chatbot_activity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert chatbot_activity": {
+      "error": [
+        [
+          {
+            "node": "Notify Slack on Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "timezone": "Europe/Madrid"
+  },
+  "staticData": null,
+  "meta": {
+    "template": "kairikos-t-plus-onboarding",
+    "templateVersion": "1.0",
+    "dayOffset": 0,
+    "eventType": "intake_received",
+    "author": "Automation Engineer",
+    "linkedIssue": "KAIA-734"
+  },
+  "pinData": {}
+}

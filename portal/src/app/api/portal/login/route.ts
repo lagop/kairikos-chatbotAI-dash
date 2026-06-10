@@ -1,48 +1,35 @@
+// KAIA-753 — legacy magic-link POST endpoint.
+//
+// The end-client portal moved from Supabase Auth magic-link to
+// NextAuth.js v5 + Resend. The actual signin flow now lives at
+// /api/auth/signin/nodemailer (exposed by the NextAuth catch-all route).
+//
+// This handler is kept only as a backward-compatible shim: any caller that
+// still POSTs `email=...` to /api/portal/login is redirected to the
+// NextAuth signin endpoint. The old Supabase-magic-link behavior (signInWithOtp
+// via @supabase/ssr) is intentionally NOT reproduced — the trust boundary
+// moved to NextAuth and the Prisma `nextAuthEmail` mapping (plan rev 3).
+
 import { NextResponse } from 'next/server';
-import { createSupabaseServerClient, isSupabaseConfigured } from '@/lib/supabase';
+
+const NEXT_AUTH_SIGNIN_PATH = '/api/auth/signin/nodemailer';
 
 export async function POST(req: Request) {
   const form = await req.formData();
   const email = String(form.get('email') ?? '').trim().toLowerCase();
   const next = String(form.get('next') ?? '/portal') || '/portal';
+  const callbackUrl = next.startsWith('/') ? next : '/portal';
+
   if (!email || !email.includes('@')) {
     return NextResponse.redirect(new URL('/portal/login?error=email', req.url), 303);
   }
-  if (!isSupabaseConfigured) {
-    const url = new URL('/portal/login', req.url);
-    url.searchParams.set('sent', '1');
-    url.searchParams.set('dev', '1');
-    url.searchParams.set('email', email);
-    const res = NextResponse.redirect(url, 303);
-    res.cookies.set('kairikos-portal-dev-session', '1', {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-      path: '/',
-      maxAge: 60 * 60 * 12,
-    });
-    return res;
-  }
-  const supabase = await createSupabaseServerClient();
-  const redirectTo = new URL('/api/auth/callback', req.url);
-  redirectTo.searchParams.set('next', next);
-  const { error } = await supabase.auth.signInWithOtp({
-    email,
-    options: {
-      emailRedirectTo: redirectTo.toString(),
-      shouldCreateUser: false,
-    },
-  });
-  if (error) {
-    const url = new URL('/portal/login', req.url);
-    url.searchParams.set('error', 'otp');
-    url.searchParams.set('email', email);
-    return NextResponse.redirect(url, 303);
-  }
-  const url = new URL('/portal/login', req.url);
-  url.searchParams.set('sent', '1');
-  url.searchParams.set('email', email);
-  return NextResponse.redirect(url, 303);
+
+  // Two-step redirect: 303 to /api/auth/signin/nodemailer?email=...&callbackUrl=...
+  // The NextAuth signin page POSTs the email and dispatches the magic link.
+  const signinUrl = new URL(NEXT_AUTH_SIGNIN_PATH, req.url);
+  signinUrl.searchParams.set('email', email);
+  signinUrl.searchParams.set('callbackUrl', callbackUrl);
+  return NextResponse.redirect(signinUrl, 303);
 }
 
 export const dynamic = 'force-dynamic';

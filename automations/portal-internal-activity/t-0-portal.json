@@ -1,0 +1,287 @@
+{
+  "name": "T+0 — Onboarding Email + Portal Activity (KAIA-756)",
+  "nodes": [
+    {
+      "id": "kairikos-tp0-trigger",
+      "name": "T+0 Trigger (Tally webhook)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "kairikos-chatbot-t0-intake",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "kairikos-chatbot-t0-intake",
+        "responseMode": "lastNode",
+        "responseData": {
+          "responseCode": 200,
+          "responseBody": "{\"status\":\"ok\"}",
+          "responseHeaders": {
+            "values": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        },
+        "options": {
+          "rawBody": false
+        }
+      }
+    },
+    {
+      "id": "kairikos-tp0-verify",
+      "name": "Verify Webhook Signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// HMAC-SHA256 verification against N8N_WEBHOOK_SHARED_SECRET.\n// Tally signs its webhooks with a shared secret configured per-form.\nconst crypto = require('crypto');\nconst secret = $env.N8N_WEBHOOK_SHARED_SECRET;\nif (!secret) { throw new Error('N8N_WEBHOOK_SHARED_SECRET not configured'); }\nconst sig = $input.first().headers['x-tally-signature'] || $input.first().headers['x-webhook-signature'] || '';\nconst raw = $input.first().binary?.data?.data\n  ? Buffer.from($input.first().binary.data.data, 'base64').toString('utf8')\n  : JSON.stringify($input.first().json);\nconst expected = crypto.createHmac('sha256', secret).update(raw).digest('hex');\ntry {\n  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {\n    throw new Error('Invalid webhook signature');\n  }\n} catch (e) {\n  // Length mismatch also throws — treat as invalid.\n  if (!(e instanceof Error && e.message.startsWith('Invalid'))) {\n    throw new Error('Invalid webhook signature');\n  }\n  throw e;\n}\nreturn [{ json: $input.first().json }];"
+      }
+    },
+    {
+      "id": "kairikos-tp0-resolve",
+      "name": "Resolve Client (Prisma)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        690,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/lookup-client",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "body": "={{ JSON.stringify({ email: $json.fields?.email || $json.email || $json.body?.fields?.email }) }}",
+        "options": {
+          "timeout": 15000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetween": 5000
+          }
+        }
+      }
+    },
+    {
+      "id": "kairikos-tp0-send-email",
+      "name": "Send T+0 Email (Resend)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        910,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "resendApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "from",
+              "value": "Kairikos <hola@kairikos.com>"
+            },
+            {
+              "name": "to",
+              "value": "={{ $json.contactEmail }}"
+            },
+            {
+              "name": "subject",
+              "value": "Welcome to Kairikos — let’s get your chatbot live"
+            },
+            {
+              "name": "template",
+              "value": "t-plus-0-intake-v1"
+            },
+            {
+              "name": "data.company_name",
+              "value": "={{ $json.companyName }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetween": 5000
+          }
+        }
+      }
+    },
+    {
+      "id": "kairikos-tp0-write-activity",
+      "name": "Write Activity to Portal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1130,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/activity",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "body": "={{ JSON.stringify({ clientId: $('Resolve Client (Prisma)').item.json.clientId, milestone: 'T+0', completedAt: new Date().toISOString(), notes: {\\\"email_subject\\\":\\\"Welcome to Kairikos — let’s get your chatbot live\\\",\\\"send_status\\\":\\\"sent\\\",\\\"provider\\\":\\\"resend\\\",\\\"email_message_id\\\":\\\"${{ $json.id }}\\\",\\\"template\\\":\\\"t-plus-0-intake-v1\\\",\\\"locale\\\":\\\"es-ES\\\"} }) }}",
+        "options": {
+          "timeout": 15000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetween": 5000
+          }
+        }
+      }
+    },
+    {
+      "id": "kairikos-tp0-slack-err",
+      "name": "Notify Slack on Error",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [
+        910,
+        520
+      ],
+      "parameters": {
+        "channel": "#automation-alerts",
+        "text": ":rotating_light: T+0 flow failed for client `{{ $json.clientId || 'unknown' }}` after 3 retries. Last error: {{ $json.error }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": true
+        }
+      }
+    }
+  ],
+  "connections": {
+    "T+0 Trigger (Tally webhook)": {
+      "main": [
+        [
+          {
+            "node": "Verify Webhook Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Webhook Signature": {
+      "main": [
+        [
+          {
+            "node": "Resolve Client (Prisma)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Client (Prisma)": {
+      "main": [
+        [
+          {
+            "node": "Send T+0 Email (Resend)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "Notify Slack on Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send T+0 Email (Resend)": {
+      "main": [
+        [
+          {
+            "node": "Write Activity to Portal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "Notify Slack on Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Activity to Portal": {
+      "error": [
+        [
+          {
+            "node": "Notify Slack on Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "timezone": "Europe/Madrid"
+  },
+  "staticData": null,
+  "meta": {
+    "template": "kairikos-portal-internal-activity",
+    "templateVersion": "1.0",
+    "dayOffset": 0,
+    "milestone": "T+0",
+    "author": "Automation Engineer",
+    "linkedIssue": "KAIA-756",
+    "triggerDescription": "Tally intake webhook — fires when a new client submits the Chatbot IA intake form."
+  },
+  "pinData": {}
+}

@@ -34,6 +34,10 @@ model ChatbotClient {
   stripeCustomerId String?
   // Set when the CTO marks the chatbot live in the operator flow.
   goLiveAt         DateTime?
+  // Supabase chatbot_clients.id (UUID). Populated by the backfill in KAIA-762
+  // so the status-change watcher can resolve the Supabase UUID to the
+  // portal's cuid without going through the email join path.
+  supabaseClientId String?   @unique
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -59,11 +63,18 @@ model ChatbotClientUser {
 
 // One row per T+N event the n8n flow emits (T+0, T+3, T+7, T+14, …).
 // Drives the portal onboarding timeline.
+//
+// Idempotency: the unique constraint on (clientId, milestone) makes the
+// portal's POST /api/internal/activity endpoint a true upsert. n8n flows
+// can re-run freely; the second write collapses to a no-op. The
+// (clientId, milestone) pair is the natural business key — there is at
+// most one row per T+N milestone per client.
 model ChatbotActivity {
   id          String        @id @default(cuid())
   clientId    String
   // T+N milestone label — "T+0", "T+3", "T+7", "T+14" by convention; free-form
-  // string so n8n can extend without a schema migration.
+  // string so n8n can extend without a schema migration. Enforced allowlist
+  // lives in the route handler at src/app/api/internal/activity/route.ts.
   milestone   String
   // NULL when the row is created up-front (e.g. the schedule); set when the
   // event actually fires.
@@ -71,6 +82,7 @@ model ChatbotActivity {
   notes       String?
   client      ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
+  @@unique([clientId, milestone])
   @@index([clientId, completedAt])
 }
 
@@ -92,4 +104,47 @@ model ChatbotConversation {
 
   @@index([clientId, startedAt])
   @@index([clientId, outcome])
+}
+
+// =============================================================================
+// NextAuth.js v5 (KAIA-753) — required by @auth/prisma-adapter.
+// We run with JWT session strategy (no DB-backed sessions), so the Session
+// model is unused at runtime, but the adapter still requires the model to
+// exist in the schema. The VerificationToken model is the hot path for the
+// Resend magic-link provider: one row per email send, deleted on click.
+// =============================================================================
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
 }

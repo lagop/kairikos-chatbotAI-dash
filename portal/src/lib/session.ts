@@ -1,7 +1,8 @@
 import 'server-only';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { createSupabaseServerClient, isSupabaseConfigured, SUPABASE_ANON_KEY } from './supabase';
+import { auth } from '../../auth';
+import { prisma } from './prisma';
 import { MOCK_CLIENT, MOCK_SECONDARY_CLIENT } from './portal-data';
 
 export type SessionReason = 'no_session' | 'no_client_access' | 'cross_tenant';
@@ -13,44 +14,43 @@ export interface PortalSession {
   hasClientAccess: boolean;
   isOperator: boolean;
   clientSlug: string | null;
+  clientId: string | null;
   reason?: SessionReason;
 }
 
-const SESSION_COOKIE = 'kairikos-portal-session';
 const OPERATOR_COOKIE = 'kairikos-portal-operator';
 const DEV_SESSION_COOKIE = 'kairikos-portal-dev-session';
 
+// Resolves a session for the current request. In dev-mock mode (Supabase
+// env not configured), this auto-activates the mock session without
+// requiring middleware to set cookies first. KAIA-835: middleware edge
+// runtime crash workaround — session activates based on env absence, not
+// on a pre-set cookie.
+async function resolveDevMockSession(): Promise<PortalSession> {
+  return {
+    email: MOCK_CLIENT.primaryContactEmail,
+    accessToken: 'dev-mock',
+    userId: 'mock-user-001',
+    hasClientAccess: true,
+    isOperator: cookies().get(OPERATOR_COOKIE)?.value === '1',
+    clientSlug: MOCK_CLIENT.slug,
+    clientId: MOCK_CLIENT.id,
+  };
+}
+
 export async function getSession(): Promise<PortalSession> {
-  if (!isSupabaseConfigured) {
-    // In dev (no Supabase), require a dev-session cookie so that Playwright
-    // tests can simulate "no session" by clearing cookies. The middleware
-    // auto-issues this cookie on first hit.
-    const devSession = cookies().get(DEV_SESSION_COOKIE)?.value;
-    if (!devSession) {
-      return {
-        email: null,
-        accessToken: null,
-        userId: null,
-        hasClientAccess: false,
-        isOperator: false,
-        clientSlug: null,
-        reason: 'no_session',
-      };
-    }
-    return {
-      email: MOCK_CLIENT.primaryContactEmail,
-      accessToken: SUPABASE_ANON_KEY,
-      userId: 'mock-user-001',
-      hasClientAccess: true,
-      isOperator: cookies().get(OPERATOR_COOKIE)?.value === '1',
-      clientSlug: MOCK_CLIENT.slug,
-    };
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
+  const isDevMock =
+    !supabaseUrl ||
+    supabaseUrl.includes('YOUR-PROJECT') ||
+    supabaseUrl === 'https://invalid.supabase.co';
+
+  if (isDevMock) {
+    return resolveDevMockSession();
   }
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session) {
+
+  const session = await auth();
+  if (!session?.user?.email) {
     return {
       email: null,
       accessToken: null,
@@ -58,25 +58,27 @@ export async function getSession(): Promise<PortalSession> {
       hasClientAccess: false,
       isOperator: false,
       clientSlug: null,
+      clientId: null,
       reason: 'no_session',
     };
   }
-  const { data: link } = await supabase
-    .from('chatbot_client_users')
-    .select('chatbot_client_id, chatbot_clients:chatbot_client_id (slug)')
-    .eq('auth_user_id', session.user.id)
-    .maybeSingle();
-  const linked = link as unknown as
-    | { chatbot_client_id: string; chatbot_clients: { slug: string } | null }
-    | null;
+  const email = session.user.email.toLowerCase();
+  const link = await prisma.chatbotClientUser.findUnique({
+    where: { nextAuthEmail: email },
+    select: {
+      clientId: true,
+      client: { select: { slug: true } },
+    },
+  });
   return {
-    email: session.user.email ?? null,
-    accessToken: session.access_token,
-    userId: session.user.id,
-    hasClientAccess: Boolean(linked?.chatbot_client_id),
+    email,
+    accessToken: null,
+    userId: session.user.id ?? null,
+    hasClientAccess: Boolean(link?.clientId),
     isOperator: cookies().get(OPERATOR_COOKIE)?.value === '1',
-    clientSlug: linked?.chatbot_clients?.slug ?? null,
-    reason: linked?.chatbot_client_id ? undefined : 'no_client_access',
+    clientSlug: link?.client?.slug ?? null,
+    clientId: link?.clientId ?? session.user.clientId ?? null,
+    reason: link?.clientId ? undefined : 'no_client_access',
   };
 }
 
@@ -101,7 +103,7 @@ export function assertSameClient(session: PortalSession, requestedSlug: string |
 }
 
 export function setSessionCookieMarker(value: string) {
-  cookies().set(SESSION_COOKIE, value, {
+  cookies().set('kairikos-portal-session', value, {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',

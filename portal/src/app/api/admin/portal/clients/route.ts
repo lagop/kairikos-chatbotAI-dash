@@ -15,28 +15,26 @@ export async function GET(req: NextRequest) {
     });
     return new NextResponse(upstream.body, { status: upstream.status, headers: { 'content-type': 'application/json' } });
   }
-  return NextResponse.json({
-    clients: [
-      {
-        id: '00000000-0000-0000-0000-000000000001',
-        slug: 'acme-corp',
-        companyName: 'Acme Corp',
-        primaryContactEmail: 'qa-test-client-a@kairikos.com',
-        stripeCustomerId: 'cus_test_client_a',
-        tier: 'pro',
-        onboardingStatus: 'live',
-      },
-      {
-        id: '00000000-0000-0000-0000-000000000002',
-        slug: 'globex-inc',
-        companyName: 'Globex Inc',
-        primaryContactEmail: 'qa-test-client-b@kairikos.com',
-        stripeCustomerId: 'cus_test_client_b',
-        tier: 'premium',
-        onboardingStatus: 'in_progress',
-      },
-    ],
-  });
+  return NextResponse.json([
+    {
+      id: '00000000-0000-0000-0000-000000000001',
+      slug: 'acme-corp',
+      companyName: 'Acme Corp',
+      primaryContactEmail: 'qa-test-client-a@kairikos.com',
+      stripeCustomerId: 'cus_test_client_a',
+      tier: 'pro',
+      onboardingStatus: 'live',
+    },
+    {
+      id: '00000000-0000-0000-0000-000000000002',
+      slug: 'globex-inc',
+      companyName: 'Globex Inc',
+      primaryContactEmail: 'qa-test-client-b@kairikos.com',
+      stripeCustomerId: 'cus_test_client_b',
+      tier: 'premium',
+      onboardingStatus: 'in_progress',
+    },
+  ]);
 }
 
 export const dynamic = 'force-dynamic';

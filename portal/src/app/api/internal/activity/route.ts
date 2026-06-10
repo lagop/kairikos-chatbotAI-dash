@@ -1,7 +1,10 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
-import { authenticateInternalRequest } from '@/lib/internal-auth';
+import {
+  authenticateInternalRequest,
+  internalAuthFailureResponse,
+} from '@/lib/internal-auth';
 
 // =============================================================================
 // POST /api/internal/activity
@@ -49,18 +52,8 @@ interface ParsedActivityRequest {
 
 export async function POST(req: NextRequest) {
   const auth = authenticateInternalRequest(req);
-  if (!auth.ok) {
-    if (auth.reason === 'server_misconfigured') {
-      return NextResponse.json(
-        { error: 'server_misconfigured', detail: 'PORTAL_API_KEY is not set' },
-        { status: 500 },
-      );
-    }
-    return NextResponse.json(
-      { error: 'unauthorized', detail: auth.reason ?? 'invalid_key' },
-      { status: 401 },
-    );
-  }
+  const authError = internalAuthFailureResponse(auth);
+  if (authError) return authError;
 
   if (!isDatabaseConfigured) {
     return NextResponse.json(

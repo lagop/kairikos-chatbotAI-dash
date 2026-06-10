@@ -1,0 +1,14 @@
+-- AddUniqueConstraint
+-- KAIA-756: idempotency for the POST /api/internal/activity endpoint.
+--
+-- The (clientId, milestone) pair is the natural business key for a
+-- T+N onboarding row. Adding the unique constraint lets Prisma's
+-- `upsert` (used by the route handler) collapse repeated writes from
+-- n8n retries into a no-op. Without this constraint, repeated writes
+-- would create duplicate ChatbotActivity rows and the portal timeline
+-- would render the same milestone multiple times.
+--
+-- The existing data is already unique by construction (T+0 is the
+-- only seed row, the seed script checks for existence first), so this
+-- migration is safe to apply in-place.
+ALTER TABLE "ChatbotActivity" ADD CONSTRAINT "ChatbotActivity_clientId_milestone_key" UNIQUE ("clientId", "milestone");

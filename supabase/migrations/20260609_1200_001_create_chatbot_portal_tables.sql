@@ -1,6 +1,16 @@
 -- 20260609_1200_001_create_chatbot_portal_tables.sql
 -- Kairikos — Chatbot AI end-client portal (KAIA-731)
 --
+-- paperclip-canonical-hash: ee363e747fc64b0aec0a7bb276f2d9e1ec3c42dd9a50cc1858a0eb64db7c7006
+-- (SHA-256 of the portal mirror at
+--  supabase/migrations/20260609120000_chatbot_portal_schema.up.sql
+--  in /paperclip/projects/kira-studio-chatbot-portal-backend/ .
+--  The portal lint check (KAIA-739) fails the build if the two diverge.
+--  Resynced by KAIA-742 on 2026-06-09: the portal mirror is now a literal
+--  copy of this canonical plus the _002 RLS migration (concatenated), so
+--  the two share a single semantic source of truth. The mirror file is
+--  generated, not hand-edited — see its KAIA-742 header.)
+--
 -- Creates the four core portal tables. Designed to coexist with the existing
 -- Kairikos Supabase schema (no destructive changes to anything pre-existing).
 --
