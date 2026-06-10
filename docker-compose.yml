@@ -1,7 +1,15 @@
 # =============================================================================
 # Kairikos — Docker Compose for the end-client portal
 #
-# Supports two deploy modes selected by the DEPLOY_MODE env var:
+# This compose references a PRE-BUILT image at ghcr.io, so the Hostinger
+# Docker Manager (which only fetches a single file) can deploy it without
+# needing access to the Dockerfile, package.json, or Prisma schema.
+#
+# The image is built and pushed by .github/workflows/build-image.yml on
+# every push to main that touches portal/**. Latest tag is always:
+#   ghcr.io/lagop/kairikos-chatbotai-dash/portal-app:latest
+#
+# Deploy modes (selected by DEPLOY_MODE env var):
 #
 #   DEPLOY_MODE=dev-ip-port   (default for now)
 #     - App exposed directly on a host port (default 3001, override with APP_PORT)
@@ -15,25 +23,11 @@
 #     - Requires portal.kairikos.com DNS pointing at the VPS
 #     - Use this for production. Run certbot once after first deploy to
 #       bootstrap the TLS cert.
-#
-# Why two modes? kairikos.com is on Hostinger shared hosting (WordPress),
-# not the VPS. Moving DNS to a provider the CEO controls is a separate
-# decision; for the dev-point milestone, IP+port is the right move
-# (incremental delivery, small blast radius, fully reversible).
-#
-# Domain lenses:
-#   - Reversibility: flipping DEPLOY_MODE just restarts containers; no
-#     data loss, no migration needed.
-#   - Blast radius: dev mode skips TLS, so it's only appropriate for a
-#     trusted-network dev point, not for real client traffic.
-#   - Separation of concerns: one knob, one compose file, one env file.
 # =============================================================================
 
 services:
   app:
-    build:
-      context: .
-      dockerfile: portal/Dockerfile
+    image: ghcr.io/lagop/kairikos-chatbotai-dash/portal-app:latest
     container_name: kairikos-portal-app
     restart: unless-stopped
     # dev-ip-port mode: expose the app directly on APP_PORT (default 3001).
