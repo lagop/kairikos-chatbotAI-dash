@@ -18,7 +18,11 @@ jobs:
           api-key: ${{ secrets.HOSTINGER_API_KEY }}
           virtual-machine: ${{ vars.HOSTINGER_VM_ID }}
           project-name: kairikos-portal
-          docker-compose-path: ./docker-compose.yml
+          # Path is repo-relative, no leading "./" — the action builds
+          # the URL as `$server/$repo/blob/$sha/$path` and a "./" prefix
+          # produces a malformed URL that the Hostinger API may reject
+          # with "content field is required".
+          docker-compose-path: docker-compose.yml
           # All secrets that docker-compose.yml references must be passed
           # here. The hostinger action exposes these as env vars to the
           # `docker compose` invocation on the VPS. The CEO is responsible
