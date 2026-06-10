@@ -49,9 +49,14 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # No `cache-to` — the default `docker` driver on the GHA runner
-          # doesn't support cache export, only cache import. Drop the
-          # export line; the build still works, just slower on cold
-          # caches. If we need cache export later, switch the runner to
-          # the `docker-container` driver via setup-buildx-action.
-          cache-from: type=gha
+          # No cache-from or cache-to — the GHA runner's default `docker`
+          # driver doesn't support the `gha` cache backend (unknown cache
+          # importer) AND doesn't support cache export. The first attempt
+          # had cache-from: type=gha which failed with:
+          #   ERROR: unknown cache importer: gha
+          # So we drop both. Docker's default layer cache still works
+          # (it just won't survive between runs). For production builds
+          # with persistent caching, switch the runner to the
+          # `docker-container` driver via docker/setup-buildx-action.
+          # For this one-off dev-point build, the build is fast enough
+          # without cross-run cache (~2-3 min cold).
