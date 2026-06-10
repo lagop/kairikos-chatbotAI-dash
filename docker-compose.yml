@@ -1,54 +1,107 @@
 # =============================================================================
-# Kairikos — production Docker Compose (VPS target)
+# Kairikos — production Docker Compose (Hostinger VPS)
 #
-# Scope of this file as of KAIA-752 (Prisma + PostgreSQL Docker setup):
-#   * postgres  — PostgreSQL 16, named volume `pgdata`, exposed to the host
-#                 network so the Next.js app (KAIA-722/723) can connect during
-#                 dev, CI, and the eventual VPS deploy.
+# KAIA-754 follow-up (CTO). The previous root docker-compose.yml was the
+# postgres-only dev compose from KAIA-752. This file is the production stack
+# for `portal.kairikos.com`:
 #
-# Services added by follow-up workstreams (not part of KAIA-752):
-#   * app       — Next.js 14 portal. Added in KAIA-722 (docker-compose VPS
-#                 deploy) once the `prisma generate` build step and migration
-#                 flow are proven end-to-end against this postgres service.
-#   * nginx     — Reverse proxy + SSL termination. Added in KAIA-722.
-#   * certbot   — Let's Encrypt auto-renewal. Added in KAIA-722.
+#   * app       — Next.js 14 portal (builds from ./portal/Dockerfile)
+#   * postgres  — PostgreSQL 16, named volume pgdata
+#   * nginx     — reverse proxy + SSL termination (ports 80/443)
+#   * certbot   — Let's Encrypt auto-renewal
 #
-# Usage (local dev):
-#   docker compose up -d postgres
-#   docker compose logs -f postgres
-#   docker compose down         # keeps the pgdata volume
-#   docker compose down -v      # DESTROYS the pgdata volume — never in prod
+# The Hostinger Docker Manager consumes this file directly from the raw
+# GitHub URL. GitHub Actions (hostinger/deploy-on-vps@v2) uses the same
+# file with the full repo context.
+#
+# Env vars come from .env.production at the project root, gitignored.
 # =============================================================================
 
 services:
+  app:
+    build:
+      context: .
+      dockerfile: portal/Dockerfile
+    container_name: kairikos-portal-app
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      DATABASE_URL: ${DATABASE_URL}
+      AUTH_SECRET: ${AUTH_SECRET}
+      AUTH_EMAIL_FROM: ${AUTH_EMAIL_FROM:-Kairikos Portal <hola@kairikos.com>}
+      AUTH_SUPPORT_EMAIL: ${AUTH_SUPPORT_EMAIL:-hola@kairikos.com}
+      AUTH_SUPPORT_WHATSAPP: ${AUTH_SUPPORT_WHATSAPP:-https://wa.me/34600000000}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-https://portal.kairikos.com}
+      PORTAL_API_KEY: ${PORTAL_API_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - portal-net
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
   postgres:
     image: postgres:16-alpine
     container_name: kairikos-portal-postgres
     restart: unless-stopped
-    # Local dev: bind on the host loopback so psql/Prisma on the host can
-    # connect at localhost:5432. The Next.js app talks to postgres over the
-    # internal Docker network (service name `postgres`, port 5432) once it
-    # is added in KAIA-722.
-    ports:
-      - "127.0.0.1:5432:5432"
     environment:
-      # Defaults are aligned with portal/.env.example. Override per
-      # environment via a .env file at the project root (gitignored) or the
-      # deployment secret store.
       POSTGRES_USER: ${POSTGRES_USER:-kairikos}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kairikos_dev_password}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-kairikos_portal}
-      # WAL + autovacuum tuned for a small VPS with one app writer.
-      POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - portal-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
+    # No host port exposure — only the app container can reach postgres,
+    # via the internal Docker network. This is the production posture.
+
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: kairikos-portal-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - certs:/etc/letsencrypt:ro
+      - certbot-www:/var/www/certbot:ro
+    depends_on:
+      - app
+    networks:
+      - portal-net
+
+  certbot:
+    image: certbot/certbot
+    container_name: kairikos-portal-certbot
+    volumes:
+      - certs:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h; done'"
 
 volumes:
   pgdata:
     name: kairikos-portal-pgdata
+  certs:
+  certbot-www:
+
+networks:
+  portal-net:
+    driver: bridge

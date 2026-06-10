@@ -1,0 +1,41 @@
+# Build context exclusions for the Next.js portal image.
+# Mirrors .gitignore plus build-time-only files.
+
+**/node_modules
+**/.next
+**/out
+**/build
+**/dist
+
+# Tests + test artifacts
+**/test-results
+**/playwright-report
+**/tests
+**/__tests__
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+
+# Local env files
+**/.env
+**/.env.local
+**/.env.*.local
+**/.env.production
+**/.scratch
+
+# Git
+**/.git
+**/.gitignore
+
+# Editor / OS
+.DS_Store
+*.swp
+*.swo
+*.bak
+*.log
+*.tsbuildinfo
+
+# Docs (not needed in the image)
+**/README.md
+**/docs
