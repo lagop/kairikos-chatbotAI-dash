@@ -1,20 +1,32 @@
 # =============================================================================
-# Kairikos — production Docker Compose (Hostinger VPS)
+# Kairikos — Docker Compose for the end-client portal
 #
-# KAIA-754 follow-up (CTO). The previous root docker-compose.yml was the
-# postgres-only dev compose from KAIA-752. This file is the production stack
-# for `portal.kairikos.com`:
+# Supports two deploy modes selected by the DEPLOY_MODE env var:
 #
-#   * app       — Next.js 14 portal (builds from ./portal/Dockerfile)
-#   * postgres  — PostgreSQL 16, named volume pgdata
-#   * nginx     — reverse proxy + SSL termination (ports 80/443)
-#   * certbot   — Let's Encrypt auto-renewal
+#   DEPLOY_MODE=dev-ip-port   (default for now)
+#     - App exposed directly on a host port (default 3001, override with APP_PORT)
+#     - No nginx, no certbot, no DNS needed
+#     - Access the portal at http://<VPS_IP>:3001
+#     - Use this when kairikos.com is hosted elsewhere and you just need to
+#       see the portal working end-to-end on the VPS.
 #
-# The Hostinger Docker Manager consumes this file directly from the raw
-# GitHub URL. GitHub Actions (hostinger/deploy-on-vps@v2) uses the same
-# file with the full repo context.
+#   DEPLOY_MODE=prod-dns-tls
+#     - Full stack: nginx reverse proxy + certbot auto-renewal on 80/443
+#     - Requires portal.kairikos.com DNS pointing at the VPS
+#     - Use this for production. Run certbot once after first deploy to
+#       bootstrap the TLS cert.
 #
-# Env vars come from .env.production at the project root, gitignored.
+# Why two modes? kairikos.com is on Hostinger shared hosting (WordPress),
+# not the VPS. Moving DNS to a provider the CEO controls is a separate
+# decision; for the dev-point milestone, IP+port is the right move
+# (incremental delivery, small blast radius, fully reversible).
+#
+# Domain lenses:
+#   - Reversibility: flipping DEPLOY_MODE just restarts containers; no
+#     data loss, no migration needed.
+#   - Blast radius: dev mode skips TLS, so it's only appropriate for a
+#     trusted-network dev point, not for real client traffic.
+#   - Separation of concerns: one knob, one compose file, one env file.
 # =============================================================================
 
 services:
@@ -24,8 +36,11 @@ services:
       dockerfile: portal/Dockerfile
     container_name: kairikos-portal-app
     restart: unless-stopped
-    expose:
-      - "3000"
+    # dev-ip-port mode: expose the app directly on APP_PORT (default 3001).
+    # prod-dns-tls mode: nginx proxies to app:3000 internally, so the app
+    # only needs to be reachable on the internal Docker network.
+    ports:
+      - "${APP_PORT:-3001}:3000"
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -36,7 +51,10 @@ services:
       AUTH_SUPPORT_EMAIL: ${AUTH_SUPPORT_EMAIL:-hola@kairikos.com}
       AUTH_SUPPORT_WHATSAPP: ${AUTH_SUPPORT_WHATSAPP:-https://wa.me/34600000000}
       RESEND_API_KEY: ${RESEND_API_KEY}
-      NEXTAUTH_URL: ${NEXTAUTH_URL:-https://portal.kairikos.com}
+      # NEXTAUTH_URL must match how the user reaches the portal:
+      #   dev mode:  http://<VPS_IP>:3001
+      #   prod mode: https://portal.kairikos.com
+      NEXTAUTH_URL: ${NEXTAUTH_URL}
       PORTAL_API_KEY: ${PORTAL_API_KEY}
     depends_on:
       postgres:
@@ -69,9 +87,16 @@ services:
       retries: 5
       start_period: 10s
     # No host port exposure — only the app container can reach postgres,
-    # via the internal Docker network. This is the production posture.
+    # via the internal Docker network. Production posture preserved in
+    # both modes.
 
+  # nginx + certbot are in the `proxy` profile. Start them with:
+  #   docker compose --profile proxy up -d
+  # The Hostinger Docker Manager doesn't run profiles by default, so the
+  # CEO leaves these dormant for dev-ip-port mode and enables them only
+  # when DEPLOY_MODE=prod-dns-tls.
   nginx:
+    profiles: ["proxy"]
     image: nginx:1.25-alpine
     container_name: kairikos-portal-nginx
     restart: unless-stopped
@@ -89,6 +114,7 @@ services:
       - portal-net
 
   certbot:
+    profiles: ["proxy"]
     image: certbot/certbot
     container_name: kairikos-portal-certbot
     volumes:
