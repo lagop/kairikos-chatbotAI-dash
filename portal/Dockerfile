@@ -28,6 +28,11 @@ COPY portal/ ./
 # the schema doesn't introspect the database — it just generates the client.
 ENV DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder
 ENV NEXT_TELEMETRY_DISABLED=1
+# Ensure /app/public exists in the builder stage. The Next.js app
+# doesn't ship a public/ dir today, but the runner stage's COPY of
+# /app/public requires the source to exist. An empty dir is fine —
+# Next.js handles the empty-public case.
+RUN mkdir -p /app/public
 RUN npx prisma generate
 RUN npm run build
 
@@ -41,11 +46,21 @@ ENV HOSTNAME=0.0.0.0
 
 RUN apk add --no-cache openssl curl \
     && addgroup --system --gid 1001 nodejs \
-    && adduser  --system --uid 1001 nextjs
+    && adduser  --system --uid 1001 nextjs \
+    # Ensure ./public exists in the runner stage before the COPY below.
+    # If the builder didn't produce /app/public (no public/ dir in the
+    # Next.js app), the destination is still there as an empty dir, and
+    # Next.js handles the empty-public case fine.
+    && mkdir -p ./public
 
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static    ./.next/static
-COPY --from=builder --chown=nextjs:nodejs /app/public          ./public 2>/dev/null || true
+# NOTE: no `2>/dev/null || true` on COPY — Docker interprets shell
+# redirects in COPY source paths as literal filenames ("/2>/dev/null:
+# not found"). If the source doesn't exist, COPY errors and the build
+# fails. The mkdir above guarantees the destination exists; if the
+# Next.js app adds a public/ dir later, the COPY will pick it up.
+COPY --from=builder --chown=nextjs:nodejs /app/public          ./public
 COPY --from=deps    --chown=nextjs:nodejs /app/node_modules    ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/prisma         ./prisma
 # NOTE: the runtime image does NOT include the prisma CLI. The prisma
