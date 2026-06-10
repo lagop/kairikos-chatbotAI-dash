@@ -11,6 +11,9 @@ on:
 
 env:
   IMAGE_NAME: portal-app
+  # Silence the Node 20 deprecation warning for the docker/* actions.
+  # Once docker/* releases Node 24-native versions, this can go.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
   build:
