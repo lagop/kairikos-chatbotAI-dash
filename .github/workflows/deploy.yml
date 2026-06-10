@@ -19,6 +19,40 @@ jobs:
           virtual-machine: ${{ vars.HOSTINGER_VM_ID }}
           project-name: kairikos-portal
           docker-compose-path: ./docker-compose.yml
+          # All secrets that docker-compose.yml references must be passed
+          # here. The hostinger action exposes these as env vars to the
+          # `docker compose` invocation on the VPS. The CEO is responsible
+          # for adding them as GitHub repo secrets (Settings → Secrets and
+          # variables → Actions → New repository secret):
+          #
+          #   Required GitHub secrets:
+          #     HOSTINGER_API_KEY   (Hostinger hPanel API key)
+          #     POSTGRES_PASSWORD   (DB password — openssl rand -hex 24)
+          #     AUTH_SECRET         (NextAuth JWT HMAC — openssl rand -base64 32)
+          #     RESEND_API_KEY      (from https://resend.com/api-keys)
+          #     PORTAL_API_KEY      (n8n → portal shared secret — openssl rand -hex 32)
+          #
+          #   Required GitHub variables:
+          #     HOSTINGER_VM_ID     (from the VPS URL)
+          #     POSTGRES_USER       (default: kairikos)
+          #     POSTGRES_DB         (default: kairikos_portal)
+          #     NEXTAUTH_URL        (dev mode: http://<VPS_IP>:3001;
+          #                          prod mode: https://portal.kairikos.com)
+          #
+          # Generate secrets on the CEO's workstation with the noted command
+          # and paste the output. Never commit secrets to the repo.
           environment-variables: |
             NODE_ENV=production
-            DATABASE_URL=postgresql://${{ vars.POSTGRES_USER }}:${{ vars.POSTGRES_PASSWORD }}@postgres:5432/${{ vars.POSTGRES_DB }}
+            DATABASE_URL=postgresql://${{ vars.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@postgres:5432/${{ vars.POSTGRES_DB }}
+            POSTGRES_USER=${{ vars.POSTGRES_USER }}
+            POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+            POSTGRES_DB=${{ vars.POSTGRES_DB }}
+            AUTH_SECRET=${{ secrets.AUTH_SECRET }}
+            AUTH_EMAIL_FROM=Kairikos Portal <hola@kairikos.com>
+            AUTH_SUPPORT_EMAIL=hola@kairikos.com
+            AUTH_SUPPORT_WHATSAPP=https://wa.me/34600000000
+            RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+            NEXTAUTH_URL=${{ vars.NEXTAUTH_URL }}
+            PORTAL_API_KEY=${{ secrets.PORTAL_API_KEY }}
+            DEPLOY_MODE=dev-ip-port
+            APP_PORT=3001
