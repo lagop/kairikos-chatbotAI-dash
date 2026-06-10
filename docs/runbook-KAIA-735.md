@@ -1,10 +1,25 @@
 # Runbook — KAIA-735: portal.kairikos.com DNS + Supabase magic-link sender
 
-> **Audience:** the operator who holds the domain registrar and the
-> Supabase owner login, plus any agent that needs to rotate DNS or the
-> email sender later. Read top-to-bottom, then follow step by step.
+> **⚠ SUPERSEDED — DO NOT FOLLOW.** This runbook was written for plan
+> rev 2 (Supabase Auth + Vercel deploy of the marketing project). The
+> CTO cancelled [KAIA-735](/KAIA/issues/KAIA-735) on 2026-06-10 and
+> replaced the architecture with plan rev 3 (Prisma + PostgreSQL on a
+> Docker VPS + NextAuth.js v5 magic-link + Resend). The replacement
+> children — [KAIA-752](/KAIA/issues/KAIA-752) (Prisma schema),
+> [KAIA-753](/KAIA/issues/KAIA-753) (NextAuth + Resend),
+> [KAIA-754](/KAIA/issues/KAIA-754) (Docker VPS deploy),
+> [KAIA-755](/KAIA/issues/KAIA-755) (Portal Next.js API + UI) — are
+> all `done`. The portal frontend now lives in `portal/` (Next.js on
+> the VPS), not on Vercel. This file is kept as a historical record of
+> the rev 2 architecture decision only.
+>
+> For the current portal deploy, see `docker-compose.yml` (KAIA-754)
+> and `portal/README.md` § Deploy.
 
-**Issue:** [KAIA-735](/KAIA/issues/KAIA-735)
+> **Audience (historical):** the operator who held the domain registrar
+> and the Supabase owner login under plan rev 2.
+
+**Issue:** [KAIA-735](/KAIA/issues/KAIA-735) (cancelled 2026-06-10)
 **Architecture decision (CTO):** `portal.kairikos.com` is added as a
 **new domain on the existing kairikos.com Vercel project** — not a new
 dedicated Vercel project. Recorded on the issue in the

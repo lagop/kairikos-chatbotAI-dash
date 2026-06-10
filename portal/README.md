@@ -80,11 +80,21 @@ Types live in `src/types/portal.ts`.
 
 ## Deploy
 
-Vercel project **`kairikos`** (the same project that serves
-`kairikos.com` — `portal.kairikos.com` is added as an additional
-domain per the CTO architecture decision in
-[KAIA-735](/KAIA/issues/KAIA-735)). Set the env vars above, namespaced
-with a `PORTAL_` prefix in Vercel (e.g. `PORTAL_SUPABASE_URL`,
-`PORTAL_API_BASE_URL`). DNS for `portal.kairikos.com` is owned by
-[KAIA-735](/KAIA/issues/KAIA-735); the runbook lives at
-[`docs/runbook-KAIA-735.md`](/KAIA/issues/KAIA-735#document-runbook).
+The portal runs on the **Kairikos VPS** as part of the Docker Compose
+stack in `../docker-compose.yml` (PostgreSQL 16 + Next.js 14 app +
+nginx + certbot). Set-up, CI/CD, and TLS are owned by
+[KAIA-754](/KAIA/issues/KAIA-754) (status: `done`). Domain
+`portal.kairikos.com` resolves to the VPS front; the cert is managed
+by certbot inside the compose stack.
+
+> **Historical note:** an earlier rev 2 of this README pointed at a
+> Vercel project per the (since-cancelled) [KAIA-735](/KAIA/issues/KAIA-735).
+> The rev 3 architecture is Prisma + PostgreSQL on the VPS + NextAuth +
+> Resend, owned by [KAIA-752](/KAIA/issues/KAIA-752),
+> [KAIA-753](/KAIA/issues/KAIA-753), [KAIA-754](/KAIA/issues/KAIA-754),
+> [KAIA-755](/KAIA/issues/KAIA-755). All four are `done`.
+
+Env vars for the VPS deploy come from the deployment secret store, not
+Vercel. See `../.env.example` and `portal/.env.example` for the full
+list (DATABASE_URL, AUTH_SECRET, RESEND_API_KEY, NEXTAUTH_URL,
+PORTAL_API_KEY, etc.).
