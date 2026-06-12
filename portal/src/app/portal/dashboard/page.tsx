@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { ChatbotStatusCard } from '@/components/portal/ChatbotStatusCard';
 import { OnboardingTimeline } from '@/components/portal/OnboardingTimeline';
+import { SelfServiceActions } from '@/components/portal/SelfServiceActions';
 import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
@@ -152,6 +153,25 @@ export default async function PortalDashboardPage() {
           <Link className="underline" href="/portal/onboarding">Ver timeline completo →</Link>
         </p>
       </section>
+
+      <SelfServiceActions
+        activeMilestoneId={
+          currentStep
+            ? (currentStep.step === 't_plus_0'
+                ? 'T+0'
+                : currentStep.step === 't_plus_3'
+                  ? 'T+3'
+                  : currentStep.step === 't_plus_7'
+                    ? 'T+7'
+                    : 'T+14')
+            : null
+        }
+        canGoLiveReady={false}
+        canMarkAssetsUploaded={false}
+        variant="dashboard"
+        clientId={session.clientId ?? ''}
+        revalidatePath="/portal/dashboard"
+      />
     </div>
   );
 }

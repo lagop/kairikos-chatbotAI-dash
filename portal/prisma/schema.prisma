@@ -32,6 +32,15 @@ model ChatbotClient {
   // Stripe customer id (populated by the Stripe webhook handler in
   // kira-studio-billing-backend). NULL during the trial window.
   stripeCustomerId String?
+  // Explicit onboarding-state column. KAIA-1062 self-service UI sets
+  // this to 'go-live-pending' when the client clicks "I'm ready for
+  // go-live" on the portal. The CTO flips it to 'live' and sets
+  // `goLiveAt` in the same transaction. Allowed values (server-enforced
+  // in the route handler):
+  //   * 'in-progress'    — default; default applied at column add
+  //   * 'go-live-pending'— client requested go-live approval
+  //   * 'live'           — operator approved go-live (goLiveAt also set)
+  state            String    @default("in-progress")
   // Set when the CTO marks the chatbot live in the operator flow.
   goLiveAt         DateTime?
   // Supabase chatbot_clients.id (UUID). Populated by the backfill in KAIA-762
@@ -41,12 +50,45 @@ model ChatbotClient {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  activities    ChatbotActivity[]
-  conversations ChatbotConversation[]
-  users         ChatbotClientUser[]
+  activities            ChatbotActivity[]
+  conversations         ChatbotConversation[]
+  users                 ChatbotClientUser[]
+  operatorNotifications OperatorNotification[]
 
   @@index([stripeCustomerId])
   @@index([tier])
+  @@index([state])
+}
+
+// One row per operator notification fired (KAIA-1061). Drives the
+// dedup logic in POST /api/internal/notify-operator and the future
+// operator inbox view.
+//
+// Idempotency: the unique constraint on (clientId, kind, day) — where
+// `day` is a YYYY-MM-DD UTC date — makes the route a true upsert.
+// Repeated calls within the same UTC day collapse to a no-op. `clientId`
+// is nullable so non-client-scoped events (e.g. a global n8n failure)
+// can still be logged without violating the constraint.
+model OperatorNotification {
+  id              String         @id @default(cuid())
+  clientId        String?
+  // 'stuck' | 'execution-failed' | 'escalation'. Enforced server-side.
+  kind            String
+  // UTC date the notification fired (YYYY-MM-DD).
+  day             String
+  subject         String
+  // JSON-as-string with the request body that fired the notification.
+  context         String?
+  // Resend message id, populated after a successful send.
+  resendMessageId String?
+  sentAt          DateTime       @default(now())
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  client          ChatbotClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@unique([clientId, kind, day])
+  @@index([day])
+  @@index([resendMessageId])
 }
 
 // Maps a NextAuth session email to a ChatbotClient row. v1 is 1:1 — one

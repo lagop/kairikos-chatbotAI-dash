@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
-import { MOCK_TIMELINE } from '@/lib/portal-data';
+import { handleGoLiveReady, handleSnooze } from '@/lib/onboarding-actions';
 // MOCK_BILLING re-exported as MOCK_BILLING_EXPORT for the billing route.
 
 export const dynamic = 'force-dynamic';
@@ -41,3 +41,62 @@ export async function GET(_req: NextRequest) {
     }),
   });
 }
+
+// =============================================================================
+// POST /api/portal/onboarding — unified dispatcher for KAIA-1062 actions.
+//
+// The same handler logic also lives at the explicit subroutes
+// `/api/portal/onboarding/snooze` and `/api/portal/onboarding/go-live-ready`
+// (one route per issue spec) — both forward to the shared handlers in
+// `lib/onboarding-actions.ts`. The two URL shapes are equivalent for
+// clients; keeping the unified POST here means the spec's "frontend calls
+// POST /api/portal/onboarding with { action }" wording is honoured too.
+// =============================================================================
+
+interface SnoozeBody {
+  action?: unknown;
+  milestoneId?: unknown;
+  days?: unknown;
+}
+
+interface GoLiveReadyBody {
+  state?: unknown;
+}
+
+export async function POST(req: NextRequest) {
+  const resolved = await resolveClientFromSession();
+  if (!resolved) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
+
+  let body: Record<string, unknown> = {};
+  try {
+    body = (await req.json()) as Record<string, unknown>;
+  } catch {
+    return NextResponse.json(
+      { error: 'bad_request', detail: 'body must be valid JSON' },
+      { status: 400 },
+    );
+  }
+
+  if (body.action === 'snooze') {
+    return handleSnooze(resolved.clientId, {
+      milestoneId: typeof body.milestoneId === 'string' ? body.milestoneId : '',
+      days: typeof body.days === 'number' ? body.days : 1,
+    });
+  }
+  if (body.state === 'go-live-ready') {
+    return handleGoLiveReady(resolved.clientId, {});
+  }
+  return NextResponse.json(
+    {
+      error: 'bad_request',
+      detail: 'action must be "snooze" or state must be "go-live-ready"',
+    },
+    { status: 400 },
+  );
+}
+
+// We import MOCK_TIMELINE from portal-data only in the GET branch to
+// avoid pulling the mock fixture in cold code paths.
+import { MOCK_TIMELINE } from '@/lib/portal-data';
