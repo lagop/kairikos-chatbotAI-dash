@@ -54,6 +54,7 @@ model ChatbotClient {
   conversations         ChatbotConversation[]
   users                 ChatbotClientUser[]
   operatorNotifications OperatorNotification[]
+  n8nExecutions         N8nExecution[]
 
   @@index([stripeCustomerId])
   @@index([tier])
@@ -89,6 +90,35 @@ model OperatorNotification {
   @@unique([clientId, kind, day])
   @@index([day])
   @@index([resendMessageId])
+}
+
+// =============================================================================
+// KAIA-1073 — n8n execution capture for the operator flow-health dashboard.
+// Every T+N workflow run (success or failure) is upserted here by the
+// POST /api/internal/n8n-execution endpoint so the dashboard can surface
+// the last n8n status per client without querying n8n directly.
+//
+// Upsert key: `id` (n8n's own execution id — stable across retried calls).
+// Indexes: (clientId, startedAt desc) for per-client history; (status,
+// startedAt desc) for the failure-listing dashboard panel.
+// =============================================================================
+model N8nExecution {
+  id           String    @id
+  clientId     String?
+  clientName   String?
+  workflow     String
+  milestone    String?
+  status       String
+  startedAt    DateTime
+  finishedAt   DateTime?
+  errorCode    String?
+  errorMessage String?
+  createdAt    DateTime  @default(now())
+
+  client       ChatbotClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, startedAt(sort: Desc)])
+  @@index([status, startedAt(sort: Desc)])
 }
 
 // Maps a NextAuth session email to a ChatbotClient row. v1 is 1:1 — one
