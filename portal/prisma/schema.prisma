@@ -35,11 +35,20 @@ model ChatbotClient {
   // Explicit onboarding-state column. KAIA-1062 self-service UI sets
   // this to 'go-live-pending' when the client clicks "I'm ready for
   // go-live" on the portal. The CTO flips it to 'live' and sets
-  // `goLiveAt` in the same transaction. Allowed values (server-enforced
-  // in the route handler):
+  // `goLiveAt` in the same transaction. KAIA-1261 (BE-1 v1) extends
+  // the allowlist with 'ready' and 'updating' for the wizard state
+  // machine. Allowed values (server-enforced in the route handler):
   //   * 'in-progress'    — default; default applied at column add
   //   * 'go-live-pending'— client requested go-live approval
   //   * 'live'           — operator approved go-live (goLiveAt also set)
+  //   * 'ready'          — wizard v1: every mandatory step reached
+  //                        'approved' for the first time. n8n listens
+  //                        for the config_complete trigger at this edge.
+  //   * 'updating'       — wizard v1: a step moved to needs_revision
+  //                        (or a new draft was created) while the client
+  //                        was 'live'. The bot keeps running on the last
+  //                        approved version per step until the operator
+  //                        approves the new one.
   state            String    @default("in-progress")
   // Set when the CTO marks the chatbot live in the operator flow.
   goLiveAt         DateTime?
@@ -55,6 +64,7 @@ model ChatbotClient {
   users                 ChatbotClientUser[]
   operatorNotifications OperatorNotification[]
   n8nExecutions         N8nExecution[]
+  configSteps           ChatbotConfigStep[]
 
   @@index([stripeCustomerId])
   @@index([tier])
@@ -73,10 +83,20 @@ model ChatbotClient {
 model OperatorNotification {
   id              String         @id @default(cuid())
   clientId        String?
-  // 'stuck' | 'execution-failed' | 'escalation'. Enforced server-side.
+  // 'stuck' | 'execution-failed' | 'escalation'
+  // | 'review-overdue-warning' | 'review-overdue-escalation'. Enforced
+  // server-side in the route handlers — Postgres does not need a CHECK
+  // constraint because no production code writes an unknown value.
   kind            String
-  // UTC date the notification fired (YYYY-MM-DD).
+  // Date the notification fired (YYYY-MM-DD). For stuck / execution-failed
+  // / escalation this is the UTC date (stable across timezones); for
+  // review-overdue-* the route computes it in the operator's timezone
+  // (see `operator_day_in_tz` SQL function) so a Friday-evening review
+  // in Madrid and a Monday-morning re-fire land on distinct days.
   day             String
+  // Wizard step id (KAIA-1163 cuid) for review-overdue kinds. NULL for
+  // the other three kinds. Carries the per-step dedup key.
+  stepId          String?
   subject         String
   // JSON-as-string with the request body that fired the notification.
   context         String?
@@ -90,6 +110,85 @@ model OperatorNotification {
   @@unique([clientId, kind, day])
   @@index([day])
   @@index([resendMessageId])
+  // KAIA-1177: per-step dedup lookup for review-overdue kinds. The
+  // partial UNIQUE on (stepId, kind, day) lives in
+  // 20260613124100_operator_notification_step_dedup/migration.sql
+  // because Prisma does not natively model partial indexes; the @@index
+  // here gives the route a fast lookup so the dedup check is one round
+  // trip.
+  @@index([stepId, kind, day])
+  @@index([stepId])
+}
+
+// =============================================================================
+// KAIA-1107 — Per-operator identity (email + password + TOTP MFA).
+// One row per operator who can access the admin portal. The password hash
+// is argon2id (OWASP 2026 recommendation). The TOTP secret is encrypted at
+// rest with a server-side key so a DB dump alone does not compromise MFA
+// enrollment. Soft-deletion via isActive preserves the audit trail.
+// =============================================================================
+
+model Operator {
+  id             String    @id @default(uuid()) @db.Uuid
+  email          String    @unique
+  passwordHash   String
+  // Encrypted TOTP secret (AES-256-GCM with OPERATOR_TOTP_ENCRYPTION_KEY).
+  // NULL until the operator initiates TOTP enrollment.
+  totpSecret     String?
+  // NULL until the operator completes TOTP enrollment (verified a valid code).
+  totpEnrolledAt DateTime?
+  isActive       Boolean   @default(true)
+  lastLoginAt    DateTime?
+  lastTotpAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  sessions            OperatorSession[]
+  recoveryCodes       OperatorRecoveryCode[]
+  auditLogs           OperatorSettingsAudit[]
+  approvedConfigSteps ChatbotConfigStep[]
+
+  @@index([email])
+  @@index([isActive])
+}
+
+// Server-side session store. The session `id` IS the opaque session token,
+// returned to the operator as an httpOnly secure cookie. Sessions have a
+// 7-day absolute lifetime. Revoked sessions cannot be reused.
+model OperatorSession {
+  id             String    @id @default(uuid()) @db.Uuid
+  operatorId     String    @db.Uuid
+  // Set when the operator passes TOTP step-up. Mutations check this.
+  totpVerifiedAt DateTime?
+  createdAt      DateTime  @default(now())
+  lastUsedAt     DateTime  @default(now())
+  expiresAt      DateTime
+  ip             String?
+  userAgent      String?
+  // Soft-revoke. When non-null the session is dead even if not yet expired.
+  revokedAt      DateTime?
+
+  operator Operator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+
+  @@index([operatorId])
+  @@index([expiresAt])
+}
+
+// One-time recovery codes generated at TOTP enrollment. Stored as argon2id
+// hashes. Shown to the operator exactly once at enrollment time; never
+// retrievable afterwards. Each code can be consumed at most once.
+model OperatorRecoveryCode {
+  id         String    @id @default(uuid()) @db.Uuid
+  operatorId String    @db.Uuid
+  // argon2id hash of the recovery code — never stored in plaintext.
+  codeHash   String
+  // NULL until consumed; set to the timestamp of use.
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  operator Operator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+
+  @@index([operatorId])
 }
 
 // =============================================================================
@@ -176,6 +275,180 @@ model ChatbotConversation {
 
   @@index([clientId, startedAt])
   @@index([clientId, outcome])
+}
+
+// =============================================================================
+// KAIA-1163 — Wizard configuration step. One row per (client, stepKey, version).
+// The wizard creates version=1 on first save; subsequent edits increment version.
+// The bot always reads the row where activeForBot=true for a given (clientId,
+// stepKey). The operator approves a version, which sets activeForBot=true on the
+// new version and false on the previous one.
+//
+// Status lifecycle (enforced server-side):
+//   draft → submitted → approved  (forward)
+//         → needs_revision ←       (operator can flip back)
+//
+// KAIA-1261 (BE-1 v1) extends this with:
+//   * `revisionComment` — denormalized latest operator reason when the step
+//     was sent to needs_revision. The audit table remains the source of
+//     truth for history; this column makes the portal GET a single round
+//     trip. Added in
+//     20260615010000_chatbot_config_step_v1_addendum/migration.sql.
+//   * A DB-level partial UNIQUE constraint on (clientId, stepKey) WHERE
+//     activeForBot = true. Prisma cannot model partial uniques natively,
+//     so the @@index below is a planning hint and the actual constraint
+//     lives in raw SQL. The bot config loader relies on this invariant;
+//     duplicate actives are a 23505 unique_violation in the API layer.
+// =============================================================================
+
+model ChatbotConfigStep {
+  id                   String    @id @default(cuid())
+  clientId             String
+  // Step identifier: "1" through "12" (Steps 1-10 + 11 Pruebas + 12 Integraciones).
+  // Enforced server-side via a per-step Zod schema registry.
+  stepKey              String
+  // Monotonically increasing per (clientId, stepKey). Starts at 1.
+  version              Int       @default(1)
+  // 'draft' | 'submitted' | 'approved' | 'needs_revision'. Enforced server-side.
+  status               String    @default("draft")
+  // Opaque JSON blob — the wizard stores the step's form fields here as a flat
+  // JSON object. v1: plaintext values. v1.1: ciphertext + envelope metadata.
+  // Prisma maps Json to PostgreSQL JSONB.
+  payload              Json?
+  // Set when the client clicks "Submit for review" on this step.
+  submittedAt          DateTime?
+  // Set when the operator approves this version.
+  approvedAt           DateTime?
+  // Operator who approved this version (FK to Operator, nullable until approved).
+  approvedByOperatorId String?   @db.Uuid
+  // Exactly one row per (clientId, stepKey) has activeForBot=true at any time.
+  // The bot's config-loader reads the active version when constructing prompts.
+  // The DB-level invariant is enforced by a partial UNIQUE index — see
+  // 20260615010000_chatbot_config_step_v1_addendum/migration.sql. Prisma
+  // cannot model partial uniques natively, so the @@index below is a query
+  // planning hint and the actual constraint lives in raw SQL.
+  activeForBot         Boolean   @default(false)
+  // Latest operator reason when the step was sent to needs_revision
+  // (KAIA-1261 / BE-1 v1). Denormalized from the most recent
+  // ChatbotConfigStepAudit row with action=request_revision so the
+  // portal GET can render the operator's note in a single round trip.
+  // The audit table remains the source of truth for history.
+  revisionComment      String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  client     ChatbotClient            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  approvedBy Operator?                @relation(fields: [approvedByOperatorId], references: [id], onDelete: SetNull)
+  auditLogs  ChatbotConfigStepAudit[]
+
+  @@unique([clientId, stepKey, version])
+  @@index([clientId, stepKey])
+  @@index([clientId, stepKey, activeForBot])
+  @@index([clientId, status])
+}
+
+// Immutable (append-only) audit log for ChatbotConfigStep changes.
+// Enforced at the application layer: the wizard API only exposes create
+// (insert-only via the PATCH route handler). One row per discrete event:
+// edit, submit, approve, request_revision, activate, deactivate.
+model ChatbotConfigStepAudit {
+  id        String   @id @default(cuid())
+  stepId    String
+  // Denormalized version at the time of the event so the audit trail is
+  // meaningful even if versions are later cleaned up.
+  version   Int
+  // 'client' | 'operator' | 'system'. Enforced server-side.
+  actor     String
+  // Email or operator UUID — whichever identifies the actor. Null for 'system' events.
+  actorId   String?
+  // 'edit' | 'submit' | 'approve' | 'request_revision' | 'activate' | 'deactivate'.
+  // Enforced server-side.
+  action    String
+  // Optional free-text reason (operator's review note, system trigger name, etc.).
+  comment   String?
+  createdAt DateTime @default(now())
+
+  step ChatbotConfigStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+
+  @@index([stepId])
+  @@index([stepId, createdAt])
+  @@index([actor])
+  @@index([action])
+}
+
+// =============================================================================
+// KAIA-1106 — Tool-integration settings. One row per external tool/service
+// that the Kairikos operator portal integrates with (Resend, n8n, Supabase,
+// Stripe, etc.). Stores the *reference* to where the secret lives (1Password)
+// and operational metadata (last rotation, health status) but NEVER the
+// secret value itself — those live in 1Password (CEO decision, KAIA-1058).
+//
+// API read/write: KAIA-1084  |  Rotate worker: KAIA-1083
+// Health probes:  KAIA-1085  |  Frontend:      KAIA-1086
+// =============================================================================
+model OperatorSettings {
+  id                   String    @id @default(uuid()) @db.Uuid
+  // Stable identifier used in code and API routes. Never changes after creation.
+  // Known values: 'resend', 'n8n', 'supabase', 'portal_api_key', 'postgres_password'
+  toolKey              String    @unique
+  // Human label shown in the settings UI (e.g. "Resend", "n8n", "Supabase").
+  displayName          String
+  // Category for dashboard grouping: 'email' | 'workflow' | 'database' | 'auth' | 'billing' | 'other'
+  category             String
+  // The env var that holds the secret value (nullable — some tools don't use one).
+  envVarName           String?
+  // 1Password reference path: op://Vault/Item/Field. Never the actual secret value.
+  secretManagerRef     String
+  // Last successful rotation timestamp (set by the rotate worker, KAIA-1083).
+  lastRotatedAt        DateTime?
+  // Last health-check timestamp (set by the health probe worker, KAIA-1085).
+  lastHealthCheckAt    DateTime?
+  // Most recent health status: 'healthy' | 'degraded' | 'failed' | 'unknown'
+  lastHealthStatus     String    @default("unknown")
+  // Days after which a rotation reminder badge appears (default 90).
+  rotationReminderDays Int       @default(90)
+  // Free-text notes from the operator.
+  notes                String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  auditLogs OperatorSettingsAudit[]
+
+  @@index([category])
+  @@index([lastHealthStatus, lastHealthCheckAt])
+}
+
+// Immutable (append-only) audit log for OperatorSettings changes.
+// Enforced at the application layer: the helper module in
+// src/lib/operator-settings.ts only exposes create — never update or delete.
+// One row per discrete event: creation, field update, rotation request,
+// rotation result, health status change, or deletion.
+model OperatorSettingsAudit {
+  id              String   @id @default(uuid()) @db.Uuid
+  settingsId      String   @db.Uuid
+  // FK to the future Operator identity model (KAIA-1082).
+  // Nullable until KAIA-1082 lands; after that, this becomes required.
+  actorOperatorId String?  @db.Uuid
+  // Denormalized at write-time so the audit trail is meaningful even if
+  // the operator is later removed from the DB.
+  actorEmail      String?
+  // Event type: 'created' | 'updated' | 'rotation_requested' | 'rotation_succeeded'
+  // | 'rotation_failed' | 'health_status_changed' | 'deleted'
+  action          String
+  // Row snapshot before the change (omit secret values — only schema refs).
+  before          Json?
+  // Row snapshot after the change.
+  after           Json?
+  // Free-form metadata: request_id, user_agent, IP, TOTP-verified flag, etc.
+  metadata        Json?
+  createdAt       DateTime @default(now())
+
+  operatorSettings OperatorSettings @relation(fields: [settingsId], references: [id], onDelete: Cascade)
+  operator         Operator?        @relation(fields: [actorOperatorId], references: [id], onDelete: SetNull)
+
+  @@index([settingsId])
+  @@index([action])
+  @@index([createdAt])
 }
 
 // =============================================================================
