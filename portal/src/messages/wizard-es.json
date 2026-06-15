@@ -1,0 +1,494 @@
+{
+  "wizard": {
+    "progress": {
+      "blockIdentity": "Tu negocio",
+      "blockBehavior": "Cómo habla el bot",
+      "blockActivation": "Últimos pasos",
+      "step": "Paso",
+      "of": "de",
+      "completed": "listo",
+      "autoConfigured": "ya configurado"
+    },
+    "navigation": {
+      "saveDraft": "Guardar y sigo luego",
+      "saveDraftSuccess": "¡Guardado! Cuando quieras.",
+      "continue": "Seguir",
+      "back": "Atrás",
+      "next": "Siguiente",
+      "submit": "Enviar",
+      "submitConfirm": "¿Todo listo? Revisamos tu configuración y te avisamos.",
+      "submitSuccess": "¡Enviado! Te avisamos en 24h."
+    },
+    "common": {
+      "loading": "Un momento...",
+      "error": "Algo no fue. Inténtalo de nuevo o escríbenos.",
+      "required": "Este campo es obligatorio",
+      "optional": "Opcional",
+      "yes": "Sí",
+      "no": "No",
+      "selectOption": "Elige una opción",
+      "selectOptions": "Elige las opciones que necesites",
+      "add": "Añadir",
+      "remove": "Quitar",
+      "edit": "Editar",
+      "cancel": "Cancelar",
+      "confirm": "Confirmar",
+      "close": "Cerrar",
+      "seeMore": "Ver más",
+      "seeLess": "Ver menos"
+    },
+    "sla": {
+      "banner": "Revisamos en 24h",
+      "bannerTooltip": "Nuestro equipo revisa tu configuración en un plazo máximo de 24 horas."
+    },
+    "errors": {
+      "required": "Complétalo, por favor",
+      "email": "Introduce un correo válido",
+      "url": "La URL tiene que empezar por https://",
+      "minLength": "Mínimo {min} caracteres",
+      "maxLength": "Máximo {max} caracteres",
+      "minItems": "Añade al menos {min}",
+      "maxItems": "Máximo {max}",
+      "invalidFormat": "El formato no es válido",
+      "fileTooLarge": "Archivo muy grande. Máximo 10 MB.",
+      "invalidFileType": "Tipo no válido. Usa PDF, DOCX, TXT o CSV.",
+      "numberMin": "El valor mínimo es {min}",
+      "numberMax": "El valor máximo es {max}",
+      "invalidTime": "Hora no válida",
+      "invalidDate": "Fecha no válida",
+      "pastDate": "La fecha no puede ser anterior a hoy",
+      "selectRequired": "Elige una opción",
+      "checkboxRequired": "Elige al menos una",
+      "invalidPhone": "Introduce un teléfono válido",
+      "invalidUrl": "La URL tiene que empezar por https://",
+      "valueMismatch": "Los valores no coinciden"
+    }
+  },
+
+  "steps": {
+    "1": {
+      "title": "Tu negocio",
+      "subtitle": "¿A qué te dedicas? Cuéntanos",
+      "fields": {
+        "vertical": {
+          "label": "Sector",
+          "helper": "Elige el sector de tu negocio",
+          "placeholder": "Selecciona un sector"
+        },
+        "nombre_comercial": {
+          "label": "Nombre",
+          "helper": "El nombre que ven tus clientes",
+          "placeholder": "Ej.: Peluquería María"
+        },
+        "razon_social": {
+          "label": "Razón social",
+          "helper": "Solo si tienes empresa (opcional)",
+          "placeholder": "Ej.: María García S.L."
+        },
+        "web": {
+          "label": "Tu web",
+          "helper": "Tu página web (opcional)",
+          "placeholder": "https://tupeluqueria.com"
+        },
+        "idiomas": {
+          "label": "Idiomas del bot",
+          "helper": "En qué idiomas responde el bot",
+          "placeholder": "Selecciona idiomas"
+        },
+        "idioma_por_defecto": {
+          "label": "Idioma principal",
+          "helper": "El idioma principal"
+        }
+      }
+    },
+    "2": {
+      "title": "Cómo habla el bot",
+      "subtitle": "Elige el tono y cómo se dirige",
+      "fields": {
+        "tono": {
+          "label": "Tono",
+          "helper": "Cómo se expresa el bot",
+          "options": {
+            "formal": "Formal",
+            "cercano": "Cercano"
+          }
+        },
+        "tratamiento": {
+          "label": "Tratamiento",
+          "helper": "Cómo se dirige al cliente",
+          "options": {
+            "tu": "Tú",
+            "usted": "Usted"
+          }
+        },
+        "ejemplos_respuesta": {
+          "label": "Ejemplos",
+          "helper": "Añade ejemplos de respuestas (opcional)",
+          "placeholder": "Ej.: 'Claro, te confirmo tu cita para el martes'",
+          "addExample": "Añadir ejemplo"
+        },
+        "temas_prohibidos": {
+          "label": "Temas fuera",
+          "helper": "Elige los temas que el bot deriva a una persona",
+          "helperText": "El bot no puede abordar estos temas"
+        },
+        "disclaimer": {
+          "label": "Aviso",
+          "helper": "Lo que dice el bot cuando no puede ayudar",
+          "placeholder": "Ej.: 'Soy un asistente. Consulta con una persona.'"
+        }
+      }
+    },
+    "3": {
+      "title": "Tus servicios",
+      "subtitle": "Qué ofreces y cuánto cuesta",
+      "fields": {
+        "servicios": {
+          "label": "Servicios",
+          "helper": "Tus servicios y precios",
+          "addService": "Añadir servicio",
+          "subfields": {
+            "nombre": {
+              "label": "Servicio",
+              "placeholder": "Ej.: Corte de pelo"
+            },
+            "descripcion": {
+              "label": "Qué incluye",
+              "placeholder": "Ej.: Lavado y peinado"
+            },
+            "precio_tipo": {
+              "label": "Precio",
+              "options": {
+                "fijo": "Fijo",
+                "desde": "Desde",
+                "consultar": "Consultar"
+              }
+            },
+            "precio_valor": {
+              "label": "€",
+              "placeholder": "25"
+            },
+            "duracion_min": {
+              "label": "Minutos",
+              "placeholder": "30"
+            }
+          }
+        },
+        "portal_propiedades_url": {
+          "label": "Web de propiedades",
+          "helper": "Tu web (si eres inmobiliaria)",
+          "placeholder": "https://tuspropiedades.com"
+        },
+        "autoConfigured": {
+          "text": "Se configura solo para tu plan Starter",
+          "description": "El precio dirá 'Consultar'."
+        }
+      }
+    },
+    "4": {
+      "title": "Preguntas frecuentes",
+      "subtitle": "Qué preguntan tus clientes",
+      "fields": {
+        "faq_items": {
+          "label": "Preguntas",
+          "helper": "Lo que preguntan tus clientes",
+          "addQuestion": "Añadir pregunta",
+          "subfields": {
+            "pregunta": {
+              "label": "Pregunta",
+              "placeholder": "¿Abrís los sábados?"
+            },
+            "respuesta": {
+              "label": "Respuesta",
+              "placeholder": "Sí, de 10:00 a 14:00."
+            }
+          }
+        },
+        "faq_file": {
+          "label": "Subir archivo",
+          "helper": "Sube un archivo con tus preguntas",
+          "upload": "Subir",
+          "uploaded": "Subido"
+        },
+        "faq_paste": {
+          "label": "Pegar",
+          "helper": "Pega tus preguntas y respuestas",
+          "placeholder": "Pega aquí..."
+        }
+      }
+    },
+    "5": {
+      "title": "Tu horario",
+      "subtitle": "Cuándo atiende el bot",
+      "fields": {
+        "timezone": {
+          "label": "Zona horaria",
+          "helper": "Tu zona"
+        },
+        "horario": {
+          "label": "Horario",
+          "helper": "Cuándo atiende el bot",
+          "addSchedule": "Añadir",
+          "subfields": {
+            "dias": {
+              "label": "Días",
+              "options": {
+                "lunes": "Lunes",
+                "martes": "Martes",
+                "miercoles": "Miércoles",
+                "jueves": "Jueves",
+                "viernes": "Viernes",
+                "sabado": "Sábado",
+                "domingo": "Domingo"
+              }
+            },
+            "hora_inicio": {
+              "label": "Desde",
+              "placeholder": "09:00"
+            },
+            "hora_fin": {
+              "label": "Hasta",
+              "placeholder": "18:00"
+            }
+          }
+        },
+        "comportamiento_fuera_horario": {
+          "label": "Fuera de horario",
+          "helper": "Qué hace el bot si está cerrado",
+          "options": {
+            "solo_informa": "Solo informa",
+            "captura_lead": "Captura datos",
+            "mensaje_personalizado": "Mensaje personalizado"
+          }
+        },
+        "mensaje_fuera_horario": {
+          "label": "Mensaje",
+          "helper": "Lo que ve el cliente si está cerrado",
+          "placeholder": "Gracias. Nuestro horario es lun-vie de 9:00 a 18:00."
+        }
+      }
+    },
+    "6": {
+      "title": "Tus clientes",
+      "subtitle": "Qué datos pides",
+      "fields": {
+        "datos_solicitados": {
+          "label": "Datos",
+          "helper": "Qué datos pide el bot",
+          "options": {
+            "nombre": "Nombre",
+            "telefono": "Teléfono",
+            "email": "Email",
+            "motivo": "Motivo"
+          }
+        },
+        "campos_extra": {
+          "label": "Campos extra",
+          "helper": "Añade campos si los necesitas (opcional)",
+          "addField": "Añadir",
+          "placeholder": "Ej.: ¿Zona?"
+        },
+        "momento_captura": {
+          "label": "Cuándo",
+          "helper": "Cuándo pide los datos",
+          "options": {
+            "al_inicio": "Al inicio",
+            "antes_de_derivar": "Antes de derivar",
+            "a_peticion": "Cuando lo pida"
+          }
+        },
+        "destino_lead": {
+          "label": "A dónde",
+          "helper": "Cómo recibes los datos"
+        },
+        "email_notificacion": {
+          "label": "Tu email",
+          "helper": "A dónde enviamos los leads",
+          "placeholder": "tuemail@tuempresa.com"
+        },
+        "texto_consentimiento": {
+          "label": "Consentimiento",
+          "helper": "El texto que acepta el cliente",
+          "override": "Cambiar texto del Paso 10"
+        }
+      }
+    },
+    "7": {
+      "title": "Derivación",
+      "subtitle": "Cuándo deriva a una persona",
+      "fields": {
+        "reglas": {
+          "label": "Reglas",
+          "helper": "Cuándo deriva a una persona",
+          "addRule": "Añadir",
+          "subfields": {
+            "condicion_tipo": {
+              "label": "Tipo",
+              "options": {
+                "tema_prohibido": "Tema prohibido",
+                "palabra_clave": "Palabra clave",
+                "fuera_horario": "Fuera de horario",
+                "peticion_explicita": "Petición explícita"
+              }
+            },
+            "valor": {
+              "label": "Valor",
+              "placeholder": "Ej.: urgencia"
+            },
+            "accion": {
+              "label": "Acción",
+              "options": {
+                "derivar_humano": "Derivar a persona",
+                "capturar_lead": "Capturar datos",
+                "mensaje_fijo": "Mensaje fijo"
+              }
+            },
+            "destino": {
+              "label": "A dónde",
+              "placeholder": "Tu WhatsApp"
+            }
+          }
+        },
+        "fallback_sin_respuesta": {
+          "label": "Si no sabe responder",
+          "helper": "Qué hace si no encuentra respuesta",
+          "options": {
+            "derivar": "Derivar",
+            "pedir_reformular": "Pedir que reformule",
+            "capturar_lead": "Capturar datos"
+          }
+        },
+        "autoConfigured": {
+          "text": "Se configura solo para tu plan Starter",
+          "description": "El bot derivará si no sabe responder."
+        }
+      }
+    },
+    "8": {
+      "title": "Canales",
+      "subtitle": "Dónde funciona el bot",
+      "fields": {
+        "canal_web": {
+          "label": "Web",
+          "helper": "Widget en tu web"
+        },
+        "canal_whatsapp": {
+          "label": "WhatsApp",
+          "helper": "Bot por WhatsApp (lo configuramos nosotros)",
+          "note": "Te pediremos datos en el siguiente paso"
+        },
+        "canal_instagram": {
+          "label": "Instagram",
+          "helper": "Próximamente",
+          "disabled": "V2"
+        }
+      },
+      "minOneChannel": "Activa al menos uno"
+    },
+    "9": {
+      "title": "Mensajes",
+      "subtitle": "Bienvenida y despedida",
+      "fields": {
+        "mensaje_bienvenida": {
+          "label": "Bienvenida",
+          "helper": "El primer mensaje del bot",
+          "placeholder": "Ej.: ¡Hola! Soy el asistente de [Tu Empresa]. ¿En qué te ayudo?"
+        },
+        "prompts_sugeridos": {
+          "label": "Sugerencias",
+          "helper": "Botones de ejemplo (opcional)",
+          "addPrompt": "Añadir",
+          "placeholder": "Ej.: Pedir cita"
+        },
+        "mensaje_despedida": {
+          "label": "Despedida",
+          "helper": "Mensaje final (opcional)",
+          "placeholder": "¡Gracias! Hasta pronto."
+        }
+      }
+    },
+    "10": {
+      "title": "Privacidad",
+      "subtitle": "Datos legales",
+      "fields": {
+        "responsable_tratamiento": {
+          "label": "Responsable",
+          "helper": "Quién trata los datos",
+          "placeholder": "Tu Empresa S.L."
+        },
+        "email_dpo": {
+          "label": "DPO",
+          "helper": "Email del delegado (opcional)",
+          "placeholder": "dpo@tuempresa.com"
+        },
+        "url_politica_privacidad": {
+          "label": "Privacidad",
+          "helper": "Enlace a tu política",
+          "placeholder": "https://tuempresa.com/privacidad"
+        },
+        "retencion_leads_dias": {
+          "label": "Retención",
+          "helper": "Días que guardamos los datos (opcional)",
+          "placeholder": "365"
+        }
+      }
+    },
+    "11": {
+      "title": "Pruebas",
+      "subtitle": "Revisa que todo funcione",
+      "fields": {
+        "test_qa": {
+          "label": "Pruebas",
+          "helper": "Añade preguntas de prueba",
+          "addTest": "Añadir",
+          "subfields": {
+            "pregunta": {
+              "label": "Pregunta",
+              "placeholder": "¿A qué hora abren?"
+            },
+            "respuesta_esperada": {
+              "label": "Respuesta",
+              "placeholder": "Abrimos lun-vie de 9:00 a 18:00"
+            }
+          }
+        }
+      },
+      "runTests": "Probar",
+      "testResults": "Resultados",
+      "testPassed": "OK",
+      "testFailed": "Fallo"
+    }
+  },
+
+"emails": {
+    "abandonment": {
+      "recoveryEarly": {
+        "subject": "Tu bot te espera",
+        "body": "Hola {nombre},\n\nVi que empezaste a configurar tu asistente pero no terminaste. No pasa nada — lo guardamos todo para que continúes cuando quieras.\n\nSon solo unos minutos para tener tu bot funcionando. ¿Continuamos?\n\n[{boton_cta}]({url_wizard})\n\nSi tienes dudas, escríbenos y te ayudo.\n¡Un saludo!\nKira"
+      },
+      "recoveryLate": {
+        "subject": "Tu bot de {nombre_comercial} te espera",
+        "body": "Hola {nombre},\n\nHace unos días empezaste a configurar tu bot pero no pudiste terminar. Lo tenemos todo guardado.\n\nSon 11 pasos y puedes hacerlo en ratos sueltos. ¿Le das un empujón hoy?\n\n[{boton_cta}]({url_wizard})\n\nSi prefieres que te ayudemos por teléfono, escríbenos y te llamamos.\n¡Un saludo!\nKira"
+      }
+    }
+  },
+
+  "notifications": {
+    "submitted": {
+      "subject": "Nueva configuración pendiente",
+      "body": "Nueva configuración de {nombre_cliente} ({vertical}).\n\nCliente: {nombre_comercial}\nPasos: {pasos_completados}\n\nRevisar: {url_admin}"
+    },
+    "approved": {
+      "subject": "¡Tu bot está aprobado!",
+      "body": "Hola {nombre},\n\n¡Buenas noticias! Tu configuración ha sido aprobada.\n\nQueda un último paso: cablear el bot. Te avisamos en cuanto esté listo (24-48h).\n\nSi tienes dudas, escríbenos.\n\n¡Un saludo!\nKira"
+    },
+    "needsRevision": {
+      "subject": "Tu configuración necesita ajustes",
+      "body": "Hola {nombre},\n\nTu configuración necesita algunos ajustes:\n\n{comentario}\n\nAccede aquí: {url_wizard}\n\nSi tienes dudas, escríbenos y te ayudo.\n\n¡Un saludo!\nKira"
+    },
+    "live": {
+      "subject": "¡Tu bot ya está vivo!",
+      "body": "Hola {nombre},\n\n¡Enhorabuena! Tu asistente ya está funcionando.\n\nPruébalo en {url_canales}. El bot responderá según la configuración que nos diste.\n\nPuedes hacer cambios cuando quieras desde el panel.\n\n¡Un saludo!\nKira"
+    }
+  }
+}
