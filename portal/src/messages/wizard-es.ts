@@ -174,11 +174,11 @@ export function getNavigation(): NavigationMessages {
 
 export function getStep(step: StepNumber): StepMessages {
   const key = String(step) as keyof WizardEsMessages['steps'];
-  const raw = (wizardEs as unknown as Record<string, StepMessages>)[key];
+  const raw = (wizardEs as WizardEsMessages).steps?.[key];
   if (!raw) {
     throw new Error(`No wizard messages for step ${step}`);
   }
-  return normalizeStep(raw);
+  return normalizeStep(raw as unknown as StepMessages);
 }
 
 function normalizeField(f: FieldMessages): FieldMessages {

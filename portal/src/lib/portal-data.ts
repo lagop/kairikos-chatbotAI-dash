@@ -257,8 +257,43 @@ export const MOCK_SECONDARY_CLIENT: ChatbotClient = {
   chatbotSpaceId: null,
 };
 
+// KAIA-1519 — dev-mock Starter client for tier-aware wizard smoke tests.
+// The default MOCK_CLIENT above is tier=pro, so without this fixture there
+// is no way to exercise the Starter visibility matrix (Step 3 + Step 7
+// hidden) from the local dev server. Only used in dev-mock mode (no DB).
+export const MOCK_STARTER_CLIENT: ChatbotClient = {
+  id: '00000000-0000-0000-0000-000000000003',
+  slug: 'starter-sl',
+  companyName: 'Starter S.L.',
+  primaryContactEmail: 'qa-test-client-starter@kairikos.com',
+  stripeCustomerId: 'cus_test_client_starter',
+  tier: 'starter',
+  onboardingStatus: 'in_progress',
+  createdAt: '2026-06-01T09:00:00.000Z',
+  goLiveDate: null,
+  chatbotSpaceId: null,
+};
+
 export async function listAdminClients(): Promise<ChatbotClient[]> {
-  return [MOCK_CLIENT, MOCK_SECONDARY_CLIENT];
+  return [MOCK_CLIENT, MOCK_SECONDARY_CLIENT, MOCK_STARTER_CLIENT];
+}
+
+// KAIA-1519 — dev-mock lookup table. Maps an email to its dev-mock client
+// fixture. Used by portal-session in dev-mock mode (no DB configured) so
+// the test runner can switch tiers by setting the dev-email cookie.
+export const DEV_MOCK_CLIENT_BY_EMAIL: ReadonlyMap<string, ChatbotClient> = new Map([
+  [MOCK_CLIENT.primaryContactEmail.toLowerCase(), MOCK_CLIENT],
+  [MOCK_SECONDARY_CLIENT.primaryContactEmail.toLowerCase(), MOCK_SECONDARY_CLIENT],
+  [MOCK_STARTER_CLIENT.primaryContactEmail.toLowerCase(), MOCK_STARTER_CLIENT],
+]);
+
+// KAIA-1519 — dev-mock lookup by clientId. Used by the wizard page in
+// dev-mock mode to recover the tier without a Prisma round trip.
+export function getDevMockClientById(clientId: string): ChatbotClient | null {
+  for (const client of DEV_MOCK_CLIENT_BY_EMAIL.values()) {
+    if (client.id === clientId) return client;
+  }
+  return null;
 }
 
 export const formatPriceEUR = (cents: number): string =>

@@ -38,12 +38,26 @@ async function resolveDevMockSession(): Promise<PortalSession> {
   };
 }
 
+// KAIA-1519 — placeholder Supabase URL/key (e.g. `placeholder.supabase.co`
+// + `placeholder` or `placeholder-key`) is the same dev-mock signal that
+// the .env file ships with. Without this branch the portal layout
+// redirects to /portal/login because Supabase "looks" configured but
+// auth.getSession() returns null. The wizard-side resolver in
+// `portal-session.ts:21` applies the same rule so the layout and the
+// wizard always agree.
+function isDevMockSupabaseConfig(): boolean {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
+  if (!url || !key) return true;
+  if (url.includes('YOUR-PROJECT')) return true;
+  if (url === 'https://invalid.supabase.co') return true;
+  if (url.includes('placeholder.supabase.co')) return true;
+  if (key === 'placeholder' || key === 'placeholder-key') return true;
+  return false;
+}
+
 export async function getSession(): Promise<PortalSession> {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
-  const isDevMock =
-    !supabaseUrl ||
-    supabaseUrl.includes('YOUR-PROJECT') ||
-    supabaseUrl === 'https://invalid.supabase.co';
+  const isDevMock = isDevMockSupabaseConfig();
 
   if (isDevMock) {
     return resolveDevMockSession();
