@@ -27,60 +27,70 @@ import Nodemailer from 'next-auth/providers/nodemailer';
 import { prisma } from '@/lib/prisma';
 import { sendViaResend } from '@/lib/auth-email';
 
-const FROM_ADDRESS = process.env.AUTH_EMAIL_FROM ?? 'Kairikos Portal <hola@kairikos.com>';
 const SUPPORT_EMAIL = process.env.AUTH_SUPPORT_EMAIL ?? 'hola@kairikos.com';
 
 const SUPPORT_HINT = `Tu cuenta no está configurada todavía. Escríbenos a ${SUPPORT_EMAIL} para activarla.`;
 
-const authConfig: NextAuthConfig = {
-  adapter: PrismaAdapter(prisma),
-  session: { strategy: 'jwt' },
-  trustHost: true,
-  pages: {
-    signIn: '/portal/login',
-    error: '/portal/login',
-  },
-  providers: [
-    Nodemailer({
-      server: {
-        host: 'smtp.resend.com',
-        port: 465,
-        auth: { user: 'resend', pass: process.env.RESEND_API_KEY ?? '' },
-      },
-      from: FROM_ADDRESS,
-      sendVerificationRequest: sendViaResend,
-    }),
-  ],
-  callbacks: {
-    async signIn({ user }) {
-      const email = user.email?.toLowerCase().trim();
-      if (!email) return false;
-      const known = await prisma.chatbotClientUser.findUnique({
-        where: { nextAuthEmail: email },
-        select: { clientId: true },
-      });
-      if (!known) {
-        throw new Error(SUPPORT_HINT);
-      }
-      return true;
+function buildAuthConfig(): NextAuthConfig {
+  const fromAddress = process.env.AUTH_EMAIL_FROM ?? 'Kairikos Portal <hola@kairikos.com>';
+  const resendApiKey = process.env.RESEND_API_KEY ?? '';
+  const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
+  console.log(
+    '[auth] buildAuthConfig secret=',
+    typeof authSecret === 'string' ? `len=${authSecret.length}` : 'missing',
+    'resendKey=',
+    typeof resendApiKey === 'string' ? `len=${resendApiKey.length}` : 'missing',
+  );
+  return {
+    adapter: PrismaAdapter(prisma),
+    session: { strategy: 'jwt' },
+    trustHost: true,
+    pages: {
+      signIn: '/portal/login',
+      error: '/portal/login',
     },
-    async jwt({ token, user }) {
-      if (user?.email) {
-        const link = await prisma.chatbotClientUser.findUnique({
-          where: { nextAuthEmail: user.email.toLowerCase() },
+    providers: [
+      Nodemailer({
+        server: {
+          host: 'smtp.resend.com',
+          port: 465,
+          auth: { user: 'resend', pass: resendApiKey },
+        },
+        from: fromAddress,
+        sendVerificationRequest: sendViaResend,
+      }),
+    ],
+    callbacks: {
+      async signIn({ user }) {
+        const email = user.email?.toLowerCase().trim();
+        if (!email) return false;
+        const known = await prisma.chatbotClientUser.findUnique({
+          where: { nextAuthEmail: email },
           select: { clientId: true },
         });
-        if (link) token.clientId = link.clientId;
-      }
-      return token;
+        if (!known) {
+          throw new Error(SUPPORT_HINT);
+        }
+        return true;
+      },
+      async jwt({ token, user }) {
+        if (user?.email) {
+          const link = await prisma.chatbotClientUser.findUnique({
+            where: { nextAuthEmail: user.email.toLowerCase() },
+            select: { clientId: true },
+          });
+          if (link) token.clientId = link.clientId;
+        }
+        return token;
+      },
+      async session({ session, token }) {
+        if (token.clientId && session.user) {
+          (session.user as { clientId?: string }).clientId = token.clientId as string;
+        }
+        return session;
+      },
     },
-    async session({ session, token }) {
-      if (token.clientId && session.user) {
-        (session.user as { clientId?: string }).clientId = token.clientId as string;
-      }
-      return session;
-    },
-  },
-};
+  };
+}
 
-export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
+export const { handlers, auth, signIn, signOut } = NextAuth(buildAuthConfig);
