@@ -15,6 +15,7 @@ export default function middleware(req: NextRequest) {
   }
 
   const res = NextResponse.next();
+  res.headers.set('x-pathname', req.nextUrl.pathname);
   if (!req.cookies.get(DEV_SESSION_COOKIE)) {
     res.cookies.set(DEV_SESSION_COOKIE, '1', {
       httpOnly: true,

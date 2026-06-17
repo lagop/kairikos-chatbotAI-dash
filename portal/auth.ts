@@ -42,6 +42,7 @@ function buildAuthConfig(): NextAuthConfig {
     typeof resendApiKey === 'string' ? `len=${resendApiKey.length}` : 'missing',
   );
   return {
+    secret: authSecret,
     adapter: PrismaAdapter(prisma),
     session: { strategy: 'jwt' },
     trustHost: true,

@@ -1,3 +1,4 @@
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { PortalFooter } from '@/components/portal/PortalFooter';
@@ -6,9 +7,21 @@ import { PageViewTracker } from '@/components/portal/PageViewTracker';
 import { getPortalContext } from '@/lib/portal-data';
 import { getSession } from '@/lib/session';
 
+const PUBLIC_PORTAL_PREFIXES = [
+  '/portal/login',
+  '/portal/sin-acceso',
+  '/api/auth',
+];
+
+function isPublicPortalPath(pathname: string): boolean {
+  return PUBLIC_PORTAL_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
 export default async function PortalLayout({ children }: { children: ReactNode }) {
+  const hdrs = await headers();
+  const pathname = hdrs.get('x-pathname') ?? '';
   const session = await getSession();
-  if (!session.hasClientAccess) {
+  if (!isPublicPortalPath(pathname) && !session.hasClientAccess) {
     const target = session.reason === 'no_session' ? '/portal/login' : '/portal/sin-acceso';
     redirect(target);
   }
