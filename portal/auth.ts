@@ -94,4 +94,4 @@ function buildAuthConfig(): NextAuthConfig {
   };
 }
 
-export const { handlers, auth, signIn, signOut } = NextAuth(buildAuthConfig);
+export const { handlers, auth, signIn, signOut } = NextAuth((req) => buildAuthConfig());
