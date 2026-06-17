@@ -10,13 +10,14 @@ export default function middleware(req: NextRequest) {
     supabaseUrl.includes('YOUR-PROJECT') ||
     supabaseUrl === 'https://invalid.supabase.co';
 
-  if (!isDevMock) {
-    return NextResponse.next();
-  }
-
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set('x-pathname', req.nextUrl.pathname);
   const res = NextResponse.next({ request: { headers: requestHeaders } });
+
+  if (!isDevMock) {
+    return res;
+  }
+
   if (!req.cookies.get(DEV_SESSION_COOKIE)) {
     res.cookies.set(DEV_SESSION_COOKIE, '1', {
       httpOnly: true,
