@@ -11,10 +11,11 @@
 // `sendVerificationRequest` is overridden to POST to /v1/emails via the
 // `resend` SDK.
 //
-// Sessions: JWT (no DB-backed session). The Prisma adapter is still
-// installed because the Email provider needs VerificationToken for the
-// click-once token; Account / Session tables are written into only if
-// someone later adds a third-party OAuth provider.
+// Sessions: JWT (no DB-backed session). The custom NextAuth adapter
+// (`@/lib/auth-adapter`) handles VerificationToken storage (Email
+// provider's click-once token) and maps user lookups onto the existing
+// `ChatbotClientUser` table — see KAIA-1736 for why we do not use
+// `@auth/prisma-adapter` (the schema has no `User` model).
 //
 // signIn callback: rejects unknown emails with a friendly, user-actionable
 // error ("account not set up — contact support"). Returns `false` so the
@@ -22,10 +23,10 @@
 // =============================================================================
 
 import NextAuth, { type NextAuthConfig } from 'next-auth';
-import { PrismaAdapter } from '@auth/prisma-adapter';
 import Nodemailer from 'next-auth/providers/nodemailer';
 import { prisma } from '@/lib/prisma';
 import { sendViaResend } from '@/lib/auth-email';
+import { KairikosPrismaAdapter } from '@/lib/auth-adapter';
 
 const SUPPORT_EMAIL = process.env.AUTH_SUPPORT_EMAIL ?? 'hola@kairikos.com';
 
@@ -37,7 +38,7 @@ function buildAuthConfig(): NextAuthConfig {
   const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
   return {
     secret: authSecret,
-    adapter: PrismaAdapter(prisma),
+    adapter: KairikosPrismaAdapter(),
     session: { strategy: 'jwt' },
     trustHost: true,
     pages: {
@@ -88,6 +89,6 @@ function buildAuthConfig(): NextAuthConfig {
   };
 }
 
-const authConfig = buildAuthConfig();
+export const authConfig = buildAuthConfig();
 
 export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);

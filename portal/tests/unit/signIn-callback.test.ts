@@ -7,20 +7,38 @@
 //   * normalises the email to lower-case + trim before lookup
 //   * rejects when no email is provided
 //
-// The Prisma client is mocked with a vi.fn() that returns
-// `findUnique` results keyed by the lookup argument. We never touch a real
-// database — the goal is to lock the security-relevant branch logic.
+// The Prisma client is mocked with vi.fn() stubs that satisfy both the
+// signIn callback (chatbotClientUser.findUnique) AND the new custom
+// NextAuth adapter (verificationToken CRUD + chatbotClientUser
+// createUser / updateUser / deleteUser / getUser). We never touch a
+// real database — the goal is to lock the security-relevant branch
+// logic.
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock @/lib/prisma so authConfig can import it without a real DB connection.
-// The mock is wired before auth.ts is loaded, so the authConfig singleton
-// captures the mocked prisma reference.
+// Mock @/lib/prisma so auth.ts (which imports KairikosPrismaAdapter)
+// can load without a real DB connection. Each adapter method gets its
+// own vi.fn so tests can assert on the exact call shapes.
 const findUnique = vi.fn();
+const update = vi.fn();
+const deleteRow = vi.fn();
+const createRow = vi.fn();
+const verificationCreate = vi.fn();
+const verificationDelete = vi.fn();
+
 vi.mock('@/lib/prisma', () => ({
   prisma: {
-    chatbotClientUser: { findUnique: (...args: unknown[]) => findUnique(...args) },
+    chatbotClientUser: {
+      findUnique: (...args: unknown[]) => findUnique(...args),
+      update: (...args: unknown[]) => update(...args),
+      delete: (...args: unknown[]) => deleteRow(...args),
+      create: (...args: unknown[]) => createRow(...args),
+    },
+    verificationToken: {
+      create: (...args: unknown[]) => verificationCreate(...args),
+      delete: (...args: unknown[]) => verificationDelete(...args),
+    },
   },
 }));
 
@@ -29,11 +47,17 @@ import { authConfig } from '../../auth';
 
 const KNOWN_EMAIL = 'aurora@example.com';
 const KNOWN_CLIENT_ID = 'client_aurora_001';
+const KNOWN_USER_ID = 'user_aurora_001';
 
-const baseUser = { id: 'user_001', email: KNOWN_EMAIL } as { id: string; email: string };
+const baseUser = { id: KNOWN_USER_ID, email: KNOWN_EMAIL } as { id: string; email: string };
 
 beforeEach(() => {
   findUnique.mockReset();
+  update.mockReset();
+  deleteRow.mockReset();
+  createRow.mockReset();
+  verificationCreate.mockReset();
+  verificationDelete.mockReset();
 });
 
 describe('authConfig.callbacks.signIn', () => {
