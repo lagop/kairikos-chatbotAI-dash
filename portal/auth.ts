@@ -36,7 +36,7 @@ function buildAuthConfig(): NextAuthConfig {
   const resendApiKey = process.env.RESEND_API_KEY ?? '';
   const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
   console.log(
-    '[auth-KAIA-1713-v3] buildAuthConfig secret=',
+    '[auth-KAIA-1713-v4-eager] buildAuthConfig secret=',
     typeof authSecret === 'string' ? `len=${authSecret.length}` : 'missing',
     'resendKey=',
     typeof resendApiKey === 'string' ? `len=${resendApiKey.length}` : 'missing',
@@ -94,4 +94,6 @@ function buildAuthConfig(): NextAuthConfig {
   };
 }
 
-export const { handlers, auth, signIn, signOut } = NextAuth((req) => buildAuthConfig());
+const authConfig = buildAuthConfig();
+
+export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
