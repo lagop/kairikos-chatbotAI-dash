@@ -35,14 +35,6 @@ function buildAuthConfig(): NextAuthConfig {
   const fromAddress = process.env.AUTH_EMAIL_FROM ?? 'Kairikos Portal <hola@kairikos.com>';
   const resendApiKey = process.env.RESEND_API_KEY ?? '';
   const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
-  console.log(
-    '[auth-KAIA-1713-v5] buildAuthConfig secret=',
-    typeof authSecret === 'string' ? `len=${authSecret.length}` : 'missing',
-    'resendKey=',
-    typeof resendApiKey === 'string' ? `len=${resendApiKey.length}` : 'missing',
-    'nodeEnv=', process.env.NODE_ENV,
-    'authUrl=', typeof process.env.AUTH_URL === 'string' ? `len=${process.env.AUTH_URL.length}` : 'missing',
-  );
   return {
     secret: authSecret,
     adapter: PrismaAdapter(prisma),
