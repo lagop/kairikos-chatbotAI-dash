@@ -97,4 +97,30 @@ test.describe('Admin Flow-Health Dashboard', () => {
     await page.goto('/admin/portal/flows');
     await expect(page).toHaveURL(/\/portal\/login/);
   });
+
+  // KAIA-1909 — staging QA bypass: when the request carries
+  // `x-kaia-operator-key` matching the server-side KAIA_OPERATOR_API_KEY,
+  // the operator dashboard must render without redirecting. This mirrors
+  // the gate the API route uses so the same credential unlocks both
+  // surfaces during the live-data smoke pass on project-fxidg.
+  test('@smoke operator-key header reaches /admin/portal/flows on staging', async ({ page, request }) => {
+    const operatorKey = process.env.KAIA_OPERATOR_API_KEY;
+    test.skip(!operatorKey, 'KAIA_OPERATOR_API_KEY not set; skipping header-bypass smoke');
+
+    const res = await request.get('/admin/portal/flows', {
+      headers: { 'x-kaia-operator-key': operatorKey! },
+      maxRedirects: 0,
+    });
+    expect([200, 304]).toContain(res.status());
+  });
+
+  test('@smoke wrong operator-key header does not bypass auth on /admin/portal/flows', async ({ page }) => {
+    await page.context().clearCookies();
+    const res = await page.context().request.get('/admin/portal/flows', {
+      headers: { 'x-kaia-operator-key': 'definitely-not-the-real-key' },
+      maxRedirects: 0,
+    });
+    expect(res.status()).toBeGreaterThanOrEqual(300);
+    expect(res.status()).toBeLessThan(400);
+  });
 });

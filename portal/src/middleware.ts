@@ -40,5 +40,10 @@ export default function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/portal/:path*'],
+  // KAIA-1909 — extend the dev-mock cookie matcher so the operator cookie
+  // is also seeded on `/admin/portal/*`. In production, cookie seeding is
+  // skipped (the production branch returns early above); the
+  // `x-kaia-operator-key` header fallback in `src/lib/session.ts` covers
+  // staging QA. Both paths must be reachable for the QA smoke pass.
+  matcher: ['/portal/:path*', '/admin/portal/:path*'],
 };

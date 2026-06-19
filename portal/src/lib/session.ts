@@ -1,5 +1,5 @@
 import 'server-only';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { auth } from '../../auth';
 import { prisma } from './prisma';
@@ -58,6 +58,18 @@ function isDevMockSupabaseConfig(): boolean {
 
 export async function getSession(): Promise<PortalSession> {
   const isDevMock = isDevMockSupabaseConfig();
+
+  // KAIA-1909: production-stage QA bypass — honor the same operator-key
+  // header the API routes (`/api/admin/portal/*`) already honor. When the
+  // request carries `x-kaia-operator-key` matching `KAIA_OPERATOR_API_KEY`,
+  // return an operator session without redirecting. This is intentionally
+  // an explicit opt-in header — no cookie is required and no Supabase
+  // configuration is touched — so it works on staging where the operator
+  // cookie is never populated by middleware.
+  const operatorKeyBypass = resolveOperatorKeyBypass();
+  if (operatorKeyBypass) {
+    return operatorKeyBypass;
+  }
 
   if (isDevMock) {
     return resolveDevMockSession();
@@ -124,4 +136,41 @@ export function setSessionCookieMarker(value: string) {
     path: '/',
     maxAge: 60 * 60 * 12,
   });
+}
+
+// KAIA-1909 — production-stage operator bypass via `x-kaia-operator-key`
+// header. Mirrors the gate the API route uses (`src/app/api/admin/portal/flows/route.ts`)
+// so the same operator credential unlocks both the page and the JSON API.
+// Constant-time comparison guards against timing oracles on the shared key.
+export function resolveOperatorKeyBypass(): PortalSession | null {
+  const envKey = process.env.KAIA_OPERATOR_API_KEY;
+  if (!envKey) return null;
+  let provided: string | null = null;
+  try {
+    provided = headers().get('x-kaia-operator-key');
+  } catch {
+    // headers() may throw outside a request context (e.g. background work).
+    // Treat as "no header" rather than crashing.
+    provided = null;
+  }
+  if (!provided) return null;
+  if (!timingSafeEqualStrings(provided, envKey)) return null;
+  return {
+    email: 'operator-key-bypass@kairikos.local',
+    accessToken: 'operator-key',
+    userId: 'operator-key-bypass',
+    hasClientAccess: true,
+    isOperator: true,
+    clientSlug: null,
+    clientId: null,
+  };
+}
+
+function timingSafeEqualStrings(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i++) {
+    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return mismatch === 0;
 }
