@@ -10,6 +10,9 @@ import { getSession } from '@/lib/session';
 const PUBLIC_PORTAL_PREFIXES = [
   '/portal/login',
   '/portal/sin-acceso',
+  '/portal/setup-password',
+  '/portal/forgot-password',
+  '/portal/reset-password',
   '/api/auth',
 ];
 

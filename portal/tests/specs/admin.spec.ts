@@ -28,8 +28,8 @@ test.describe('Admin Support View', () => {
   test('unauthenticated request to admin gets redirect to login', async ({ page }) => {
     await page.context().clearCookies();
     await page.goto('/admin/portal/clients');
-    
-    await expect(page).toHaveURL(/\/portal\/login/);
+
+    await expect(page).toHaveURL(/\/admin\/login/);
   });
 
   test('admin page shows client onboarding status', async ({ page }) => {

@@ -7,12 +7,14 @@ export class LoginPage {
   readonly submitButton: Locator;
   readonly errorMessage: Locator;
   readonly noAccessMessage: Locator;
+  readonly passwordInput: Locator;
 
   constructor(page: Page) {
     this.page = page;
     this.emailInput = page.locator('input[type="email"], input[name="email"]');
+    this.passwordInput = page.locator('[data-testid="password-input"]');
     this.submitButton = page.locator('button[type="submit"]');
-    this.errorMessage = page.locator('[data-testid="error-message"], .text-red-600');
+    this.errorMessage = page.locator('[data-testid="signin-error"], .text-red-600');
     this.noAccessMessage = page.locator('text=no tienes acceso, text=no portal access', { exact: false });
   }
 
@@ -22,6 +24,12 @@ export class LoginPage {
 
   async submitMagicLink(email: string) {
     await this.emailInput.fill(email);
+    await this.submitButton.click();
+  }
+
+  async submitCredentials(email: string, password: string) {
+    await this.emailInput.fill(email);
+    await this.passwordInput.fill(password);
     await this.submitButton.click();
   }
 

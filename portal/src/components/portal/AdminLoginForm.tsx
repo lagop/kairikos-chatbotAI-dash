@@ -4,7 +4,7 @@ import { signIn } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
 import { useId, useState } from 'react';
 
-export function LoginForm() {
+export function AdminLoginForm() {
   const params = useSearchParams();
   const errorCode = params.get('error');
   const reason = params.get('reason');
@@ -39,7 +39,7 @@ export function LoginForm() {
 
     setSubmitting(true);
     try {
-      const result = await signIn('portal-credentials', {
+      const result = await signIn('admin-credentials', {
         email,
         password,
         redirect: false,
@@ -51,8 +51,7 @@ export function LoginForm() {
         window.location.href = url.toString();
         return;
       }
-      // Redirect to portal home on success
-      window.location.href = '/portal';
+      window.location.href = '/admin/portal';
     } finally {
       setSubmitting(false);
     }
@@ -109,14 +108,14 @@ export function LoginForm() {
       <div className="flex flex-col gap-1 text-center">
         {isMustReset ? (
           <p className="text-xs text-kairikos-muted">
-            <a className="underline" href="/portal/setup-password">
+            <a className="underline" href="/admin/setup-password">
               Configura tu contraseña
             </a>
           </p>
         ) : (
           <p className="text-xs text-kairikos-muted">
             ¿Olvidaste tu contraseña?{' '}
-            <a className="underline" href="/portal/forgot-password">
+            <a className="underline" href="/admin/forgot-password">
               Restablécela aquí
             </a>
           </p>
