@@ -230,6 +230,10 @@ model ChatbotClientUser {
   // argon2id hash of the user's password. NULL for users whose passwords have
   // not yet been set (they cannot log in until a hash is stored).
   passwordHash  String?
+  // Timestamp of the last time the password was set or changed. NULL until the
+  // user completes setup-password. Used for security auditing and to detect
+  // stale credentials.
+  passwordSetAt DateTime?
   client        ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@index([clientId])

@@ -1,0 +1,2 @@
+-- Rollback: remove passwordHash column from ChatbotClientUser (KAIA-2103)
+ALTER TABLE "ChatbotClientUser" DROP COLUMN IF EXISTS "passwordHash";

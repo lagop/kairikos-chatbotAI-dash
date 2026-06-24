@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
 
   await prisma.chatbotClientUser.update({
     where: { id: user.id },
-    data: { passwordHash },
+    data: { passwordHash, passwordSetAt: new Date() },
   });
 
   return NextResponse.json({ ok: true });

@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
   await prisma.$transaction([
     prisma.chatbotClientUser.update({
       where: { id: user.id },
-      data: { passwordHash },
+      data: { passwordHash, passwordSetAt: new Date() },
     }),
     prisma.passwordResetToken.update({
       where: { id: record.id },

@@ -6,6 +6,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateRequest } from '@/lib/api-auth';
+import { constantTimeEqual } from '@/lib/operator-crypto';
+import { sendEmail, buildResetAdminEmailHtml } from '@/lib/auth-email';
 import * as crypto from 'node:crypto';
 
 const TriggerResetSchema = z.object({
@@ -13,15 +15,14 @@ const TriggerResetSchema = z.object({
 });
 
 const TOKEN_EXPIRY_HOURS = 2;
-const FROM_ADDRESS = process.env.AUTH_EMAIL_FROM ?? 'Kairikos Portal <hola@kairikos.com>';
-const SUPPORT_EMAIL = process.env.AUTH_SUPPORT_EMAIL ?? 'hola@kairikos.com';
 const PORTAL_BASE_URL = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'http://localhost:3001';
 
 function operatorKeyAuth(req: NextRequest): boolean {
   const envKey = process.env.KAIA_OPERATOR_API_KEY;
   if (!envKey) return false;
   const provided = req.headers.get('x-kaia-operator-key');
-  return provided === envKey;
+  if (!provided) return false;
+  return constantTimeEqual(provided, envKey);
 }
 
 function generateToken(): { raw: string; hash: string } {
@@ -31,16 +32,6 @@ function generateToken(): { raw: string; hash: string } {
 }
 
 async function sendResetEmail(params: { to: string; resetUrl: string }): Promise<void> {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
-    throw new Error('RESEND_API_KEY is not configured');
-  }
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const requireResend = (0, eval)('require') as NodeJS.Require;
-  const { Resend } = requireResend('resend') as typeof import('resend');
-  const resend = new Resend(apiKey);
-
-  const { to, resetUrl } = params;
   const subject = 'Restablece tu contraseña — Kairikos';
   const text = [
     'Hola,',
@@ -48,45 +39,21 @@ async function sendResetEmail(params: { to: string; resetUrl: string }): Promise
     'El equipo de Kairikos ha solicitado un restablecimiento de contraseña para tu cuenta.',
     '',
     'Haz clic en el siguiente enlace para crear una nueva contraseña:',
-    resetUrl,
+    params.resetUrl,
     '',
     `Este enlace caduca en ${TOKEN_EXPIRY_HOURS} horas y solo puede usarse una vez.`,
     '',
     'Si no has solicitado esto, contacta con nosotros inmediatamente.',
     '',
     '— Equipo Kairikos',
-    `Soporte: ${SUPPORT_EMAIL}`,
   ].join('\n');
 
-  const html = `<!doctype html>
-<html lang="es">
-  <body style="font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #111;">
-    <div style="border-bottom: 1px solid #e5e7eb; padding-bottom: 12px; margin-bottom: 20px;">
-      <p style="margin: 0; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: #6b7280;">Kairikos</p>
-      <h1 style="margin: 4px 0 0; font-size: 20px;">Restablece tu contraseña</h1>
-    </div>
-    <p>Hola,</p>
-    <p>El equipo de Kairikos ha solicitado un restablecimiento de contraseña para tu cuenta.</p>
-    <p style="margin: 28px 0;">
-      <a href="${resetUrl}" style="background: #111827; color: #ffffff; padding: 12px 20px; border-radius: 8px; text-decoration: none; display: inline-block; font-weight: 600;">
-        Restablecer contraseña
-      </a>
-    </p>
-    <p style="font-size: 12px; color: #6b7280;">Este enlace caduca en ${TOKEN_EXPIRY_HOURS} horas y solo puede usarse una vez.</p>
-    <p style="font-size: 12px; color: #6b7280;">Si el botón no funciona, copia y pega este enlace en tu navegador:</p>
-    <p style="font-size: 12px; color: #6b7280; word-break: break-all;">${resetUrl}</p>
-    <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 28px 0;" />
-    <p style="font-size: 12px; color: #6b7280;">
-      ¿No has solicitado esto? Contacta con nosotros inmediatamente.<br />
-      Escríbenos a <a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a>.
-    </p>
-  </body>
-</html>`;
-
-  const result = await resend.emails.send({ from: FROM_ADDRESS, to, subject, text, html });
-  if (result.error) {
-    throw new Error(`Resend send failed: ${result.error.message}`);
-  }
+  await sendEmail({
+    to: params.to,
+    subject,
+    text,
+    html: buildResetAdminEmailHtml(params.resetUrl, TOKEN_EXPIRY_HOURS),
+  });
 }
 
 export async function POST(

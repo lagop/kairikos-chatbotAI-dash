@@ -5,7 +5,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateRequest } from '@/lib/api-auth';
-import { hashPassword, InMemoryRateLimiter } from '@/lib/operator-crypto';
+import { hashPassword, constantTimeEqual, InMemoryRateLimiter } from '@/lib/operator-crypto';
 
 const SetPasswordSchema = z.object({
   email: z.string().email(),
@@ -18,7 +18,8 @@ function operatorKeyAuth(req: NextRequest): boolean {
   const envKey = process.env.KAIA_OPERATOR_API_KEY;
   if (!envKey) return false;
   const provided = req.headers.get('x-kaia-operator-key');
-  return provided === envKey;
+  if (!provided) return false;
+  return constantTimeEqual(provided, envKey);
 }
 
 export async function POST(
@@ -73,7 +74,7 @@ export async function POST(
 
   await prisma.chatbotClientUser.update({
     where: { id: user.id },
-    data: { passwordHash },
+    data: { passwordHash, passwordSetAt: new Date() },
   });
 
   return NextResponse.json({ ok: true });
