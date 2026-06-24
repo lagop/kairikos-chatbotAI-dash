@@ -4,7 +4,7 @@ import { LoginForm } from '@/components/portal/LoginForm';
 
 export const metadata: Metadata = {
   title: 'Iniciar sesión',
-  description: 'Inicia sesión en el portal de cliente Kairikos con un enlace mágico a tu email.',
+  description: 'Inicia sesión en el portal de cliente Kairikos con tu email y contraseña.',
   alternates: { canonical: '/portal/login' },
   robots: { index: false, follow: false },
 };
@@ -24,7 +24,7 @@ export default function LoginPage() {
             Iniciar sesión
           </h1>
           <p className="mt-2 text-sm text-kairikos-muted">
-            Te enviaremos un enlace de acceso a tu email. No necesitas recordar contraseña.
+            Introduce tu email y contraseña para acceder al portal.
           </p>
         </header>
         <Suspense>
@@ -32,7 +32,7 @@ export default function LoginPage() {
         </Suspense>
       </div>
       <p className="mt-6 text-center text-xs text-kairikos-muted">
-        ¿No tienes acceso? Escríbenos a{' '}
+        ¿No tienes cuenta? Escríbenos a{' '}
         <a className="underline" href="mailto:hola@kairikos.com">
           hola@kairikos.com
         </a>

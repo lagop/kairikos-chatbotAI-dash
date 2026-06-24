@@ -11,8 +11,6 @@ const SetupPasswordSchema = z.object({
   password: z.string().min(8).max(128),
 });
 
-const ALLOWED_DOMAIN = process.env.ALLOWED_SETUP_DOMAIN ?? 'kairikos.com';
-
 export async function POST(req: NextRequest) {
   if (!isDatabaseConfigured) {
     return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
@@ -32,12 +30,6 @@ export async function POST(req: NextRequest) {
 
   const { email, password } = parsed.data;
   const normalizedEmail = email.toLowerCase().trim();
-
-  // Basic domain gate — reject corporate emails unless whitelisted.
-  const domain = normalizedEmail.split('@')[1] ?? '';
-  if (!ALLOWED_DOMAIN.split(',').map((d) => d.trim()).includes(domain)) {
-    return NextResponse.json({ error: 'invalid_email_domain' }, { status: 400 });
-  }
 
   const clientUser = await prisma.chatbotClientUser.findUnique({
     where: { nextAuthEmail: normalizedEmail },

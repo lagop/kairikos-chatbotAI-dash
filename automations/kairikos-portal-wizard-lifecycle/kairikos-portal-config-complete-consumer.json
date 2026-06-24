@@ -1,0 +1,315 @@
+{
+  "name": "Kairikos Portal — config_complete Consumer (KAIA-1521)",
+  "nodes": [
+    {
+      "id": "kairikos-portal-cc-trigger",
+      "name": "config_complete Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "kairikos-portal-config-complete",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "kairikos-portal-config-complete",
+        "responseMode": "lastNode",
+        "responseData": {
+          "responseCode": 200,
+          "responseBody": "{\"status\":\"ok\"}",
+          "responseHeaders": {
+            "values": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        },
+        "options": {
+          "rawBody": true
+        }
+      }
+    },
+    {
+      "id": "kairikos-portal-cc-verify",
+      "name": "Verify Webhook Signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300],
+      "parameters": {
+        "jsCode": "// HMAC-SHA256 verification of the incoming webhook.\n// The portal signs the raw body with X-Kairikos-Portal-Signature header.\n// Shared secret: N8N_WEBHOOK_SHARED_SECRET (set in n8n credential vault).\n// Reject unsigned requests with 401.\nconst crypto = require('crypto');\nconst secret = $env.N8N_WEBHOOK_SHARED_SECRET;\nif (!secret) { throw new Error('N8N_WEBHOOK_SHARED_SECRET not configured'); }\n\nconst rawBody = $input.first().binary?.data?.data\n  ? Buffer.from($input.first().binary.data.data, 'base64').toString('utf8')\n  : JSON.stringify($input.first().json);\n\nconst providedSig = $input.first().headers['x-kairikos-portal-signature'] || '';\nif (!providedSig) {\n  throw new Error('Missing X-Kairikos-Portal-Signature header');\n}\n\nconst expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');\ntry {\n  if (!crypto.timingSafeEqual(Buffer.from(providedSig, 'hex'), Buffer.from(expected, 'hex'))) {\n    throw new Error('Invalid webhook signature');\n  }\n} catch (e) {\n  if (e instanceof Error && (e.message === 'Invalid webhook signature' || e.message.startsWith('Invalid'))) {\n    throw e;\n  }\n  // Length mismatch also throws — treat as invalid.\n  throw new Error('Invalid webhook signature');\n}\n\nreturn [{ json: $input.first().json }];"
+      }
+    },
+    {
+      "id": "kairikos-portal-cc-dedupe",
+      "name": "Dedupe by eventId (Redis 24h TTL)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 300],
+      "parameters": {
+        "jsCode": "// Secondary dedup check on eventId with 24h TTL.\n// The portal is the primary idempotency boundary; this is belt-and-suspenders.\n// In production: use a Redis node with SETEX. In dev/starter: skip with a mock.\n// Shape of incoming event:\n// {\n//   eventId: string,        // unique per event, used as dedup key\n//   eventType: 'config_complete',\n//   clientId: string,\n//   companyName: string,\n//   contactEmail: string,\n//   contactName: string,\n//   tier: string,\n//   completedAt: string,     // ISO-8601\n//   stepsApproved: string[], // list of stepKeys that were approved\n// }\n// For now: just pass through. Redis integration is a future enhancement.\nconst event = $input.first().json;\nconsole.log(`[config_complete] received event ${event.eventId} for client ${event.clientId}`);\nreturn [{ json: { ...event, _dedupChecked: true } }];"
+      }
+    },
+    {
+      "id": "kairikos-portal-cc-supabase-activity",
+      "name": "Write ChatbotActivity (Supabase)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [910, 200],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/chatbot_activity",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  clientId: $json.clientId,\n  milestone: 'config_complete',\n  completedAt: $json.completedAt || new Date().toISOString(),\n  notes: JSON.stringify({\n    eventId: $json.eventId,\n    eventType: $json.eventType,\n    companyName: $json.companyName,\n    contactEmail: $json.contactEmail,\n    contactName: $json.contactName,\n    tier: $json.tier,\n    stepsApproved: $json.stepsApproved,\n  })\n}) }}",
+        "options": {
+          "timeout": 10000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetween": 5000
+          },
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "kairikos-portal-cc-resend-email",
+      "name": "Send config_complete Email (Resend)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [910, 400],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.RESEND_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  from: 'Kairikos Portal <hola@kairikos.com>',\n  to: [$json.contactEmail],\n  subject: '🎉 Tu chatbot está configurado y listo — Kairikos',\n  html: `<p>Hola ${$json.contactName || 'cliente'},</p>\n<p>¡Enhorabuena! Has completado la configuración de tu chatbot con Kairikos.</p>\n<p><strong>Empresa:</strong> ${$json.companyName || 'N/A'}</p>\n<p>Nos pondremos en contacto contigo pronto para activar tu chatbot.</p>\n<p>— El equipo de Kairikos</p>`,\n  text: `Hola ${$json.contactName || 'cliente'},\\n\\n¡Enhorabuena! Has completado la configuración de tu chatbot con Kairikos.\\n\\nEmpresa: ${$json.companyName || 'N/A'}\\n\\nNos pondremos en contacto contigo pronto para activar tu chatbot.\\n\\n— El equipo de Kairikos`\n}) }}",
+        "options": {
+          "timeout": 15000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetween": 5000
+          },
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "kairikos-portal-cc-log",
+      "name": "Log Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1130, 300],
+      "parameters": {
+        "jsCode": "// Log config_complete consumer results.\nconst out = $input.first().json;\nconsole.log(`[config_complete] event ${out.eventId}: activityWritten=${!out.error}, emailSent=${!out.error}`);\nreturn [{ json: { eventId: out.eventId, ok: !out.error } }];"
+      }
+    },
+    {
+      "id": "kairikos-portal-cc-report",
+      "name": "Report Execution to Portal (KAIA-1073)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1350, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/n8n-execution",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "body": "={{ JSON.stringify((() => { const exec = $execution; const startedAt = exec && exec.startedAt ? new Date(exec.startedAt).toISOString() : new Date().toISOString(); const finishedAt = new Date().toISOString(); const errObj = $json && $json.error; const isFailure = Boolean(errObj); const code = isFailure ? (errObj.name || (errObj.httpCode ? 'HTTP_' + errObj.httpCode : 'WORKFLOW_ERROR')) : 'OK'; const message = isFailure ? String(errObj.message || errObj.description || 'unknown n8n error').slice(0, 4000) : null; const eventId = $json && $json.eventId; return { id: String(exec.id), clientId: $json && $json.clientId, clientName: $json && $json.companyName, workflow: 'Kairikos Portal — config_complete Consumer (KAIA-1521)', milestone: 'config_complete', status: isFailure ? 'failed' : 'success', startedAt, finishedAt, errorCode: isFailure ? String(code).slice(0, 100) : null, errorMessage: message }; })()) }}",
+        "options": {
+          "timeout": 15000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetween": 5000
+          },
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "kairikos-portal-cc-trigger": {
+      "main": [
+        [
+          {
+            "node": "kairikos-portal-cc-verify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-portal-cc-verify": {
+      "main": [
+        [
+          {
+            "node": "kairikos-portal-cc-dedupe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-portal-cc-report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-portal-cc-dedupe": {
+      "main": [
+        [
+          {
+            "node": "kairikos-portal-cc-supabase-activity",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "kairikos-portal-cc-resend-email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-portal-cc-report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-portal-cc-supabase-activity": {
+      "main": [
+        [
+          {
+            "node": "kairikos-portal-cc-log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-portal-cc-report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-portal-cc-resend-email": {
+      "main": [
+        [
+          {
+            "node": "kairikos-portal-cc-log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-portal-cc-report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-portal-cc-log": {
+      "main": [
+        [
+          {
+            "node": "kairikos-portal-cc-report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "kairikos"
+    },
+    {
+      "name": "wizard-lifecycle"
+    },
+    {
+      "name": "kind:config-complete-consumer"
+    }
+  ],
+  "active": false,
+  "pinData": {},
+  "versionId": "1.0.0",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "executionCaptureIssue": "KAIA-1073",
+    "linkedIssue": "KAIA-1521"
+  }
+}

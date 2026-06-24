@@ -1,0 +1,226 @@
+{
+  "name": "Operator Notify — stuck (KAIA-1061)",
+  "nodes": [
+    {
+      "id": "kairikos-notify-stuck-trigger",
+      "name": "stuck — Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 * * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "kairikos-notify-stuck-build-payload",
+      "name": "Build Notify Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Stuck-notification payload builder.\n// Input: a list of clients with no activity in the last 24h. The\n// upstream list-node would query the portal for `clients WHERE NOT\n// EXISTS (SELECT 1 FROM \"ChatbotActivity\" WHERE \"ChatbotActivity\".\"clientId\"\n// = \"ChatbotClient\".\"id\" AND \"completedAt\" > now() - interval '24 hours')`\n// and emit one item per stuck client. The code node runs once per\n// item and emits the notify-operator payload.\nconst input = $input.first().json;\nreturn [{\n  json: {\n    payload: {\n      kind: 'stuck',\n      clientId: input.clientId,\n      milestone: input.milestone || 'T+0',\n      hoursSince: Math.max(0, Math.round(Number(input.hoursSince) || 24)),\n    },\n  },\n}];"
+      }
+    },
+    {
+      "id": "kairikos-notify-stuck-send",
+      "name": "POST /api/internal/notify-operator",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        690,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/notify-operator",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "kairikos-notify-stuck-log",
+      "name": "Log Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Surface the dedup / sent state in the workflow logs so the\n// operator can confirm via n8n that the alert reached the\n// portal. The portal persists the row regardless.\nconst out = $input.first().json;\nconst log = {\n  kind: out.kind,\n  clientId: out.clientId,\n  deduped: Boolean(out.deduped),\n  skipped: out.skipped,\n  resendMessageId: out.resendMessageId,\n  sentAt: out.sentAt,\n};\nconsole.log(`[notify-operator] ${JSON.stringify(log)}`);\nreturn [{ json: log }];"
+      }
+    },
+    {
+      "id": "kairikos-notify-stuck-report-execution",
+      "name": "Report Execution to Portal (KAIA-1073)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1130,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/n8n-execution",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "body": "={{ JSON.stringify((() => { const exec = $execution; const startedAt = exec && exec.startedAt ? new Date(exec.startedAt).toISOString() : new Date().toISOString(); const finishedAt = new Date().toISOString(); const errObj = $json && $json.error; const isFailure = Boolean(errObj); const upstream = $('Build Notify Payload').item && $('Build Notify Payload').item.json; const payload = (upstream && upstream.payload) || {}; const clientId = payload.clientId || null; const milestone = payload.milestone || null; const code = isFailure ? (errObj.name || (errObj.httpCode ? 'HTTP_' + errObj.httpCode : 'WORKFLOW_ERROR')) : 'OK'; const message = isFailure ? String(errObj.message || errObj.description || 'unknown n8n error').slice(0, 4000) : null; return { id: String(exec.id), clientId, clientName: null, workflow: 'Operator Notify — stuck', milestone, status: isFailure ? 'failed' : 'success', startedAt, finishedAt, errorCode: isFailure ? String(code).slice(0, 100) : null, errorMessage: message }; })()) }}",
+        "options": {
+          "timeout": 15000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetween": 5000
+          },
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "kairikos-notify-stuck-trigger": {
+      "main": [
+        [
+          {
+            "node": "kairikos-notify-stuck-build-payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-notify-stuck-report-execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-notify-stuck-build-payload": {
+      "main": [
+        [
+          {
+            "node": "kairikos-notify-stuck-send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-notify-stuck-report-execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-notify-stuck-send": {
+      "main": [
+        [
+          {
+            "node": "kairikos-notify-stuck-log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-notify-stuck-report-execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-notify-stuck-log": {
+      "main": [
+        [
+          {
+            "node": "kairikos-notify-stuck-report-execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "kairikos"
+    },
+    {
+      "name": "operator-notify"
+    },
+    {
+      "name": "kind:stuck"
+    }
+  ],
+  "active": false,
+  "pinData": {},
+  "versionId": "1.1.0",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "executionCaptureIssue": "KAIA-1073",
+    "linkedIssue": "KAIA-1061"
+  }
+}

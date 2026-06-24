@@ -1,0 +1,158 @@
+{
+  "name": "Kairikos Portal — config_updated Consumer (KAIA-1521)",
+  "nodes": [
+    {
+      "id": "kairikos-portal-cu-trigger",
+      "name": "config_updated Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "kairikos-portal-config-updated",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "kairikos-portal-config-updated",
+        "responseMode": "lastNode",
+        "responseData": {
+          "responseCode": 200,
+          "responseBody": "{\"status\":\"ok\"}",
+          "responseHeaders": {
+            "values": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        },
+        "options": {
+          "rawBody": true
+        }
+      }
+    },
+    {
+      "id": "kairikos-portal-cu-verify",
+      "name": "Verify Webhook Signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300],
+      "parameters": {
+        "jsCode": "// HMAC-SHA256 verification of the incoming webhook.\n// The portal signs the raw body with X-Kairikos-Portal-Signature header.\n// Shared secret: N8N_WEBHOOK_SHARED_SECRET (set in n8n credential vault).\n// Reject unsigned requests with 401.\nconst crypto = require('crypto');\nconst secret = $env.N8N_WEBHOOK_SHARED_SECRET;\nif (!secret) { throw new Error('N8N_WEBHOOK_SHARED_SECRET not configured'); }\n\nconst rawBody = $input.first().binary?.data?.data\n  ? Buffer.from($input.first().binary.data.data, 'base64').toString('utf8')\n  : JSON.stringify($input.first().json);\n\nconst providedSig = $input.first().headers['x-kairikos-portal-signature'] || '';\nif (!providedSig) {\n  throw new Error('Missing X-Kairikos-Portal-Signature header');\n}\n\nconst expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');\ntry {\n  if (!crypto.timingSafeEqual(Buffer.from(providedSig, 'hex'), Buffer.from(expected, 'hex'))) {\n    throw new Error('Invalid webhook signature');\n  }\n} catch (e) {\n  if (e instanceof Error && (e.message === 'Invalid webhook signature' || e.message.startsWith('Invalid'))) {\n    throw e;\n  }\n  throw new Error('Invalid webhook signature');\n}\n\nreturn [{ json: $input.first().json }];"
+      }
+    },
+    {
+      "id": "kairikos-portal-cu-log",
+      "name": "Log Update (operator dashboard consumer)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 300],
+      "parameters": {
+        "jsCode": "// config_updated consumer — no downstream email.\n// Updates the operator dashboard's last_seen field.\n// The operator dashboard is the only consumer of this event.\n//\n// Expected payload shape:\n// {\n//   eventId: string,\n//   eventType: 'config_updated',\n//   clientId: string,\n//   companyName: string,\n//   operatorId: string,        // the assigned operator\n//   stepKey: string,           // which step was updated\n//   stepStatus: string,        // 'draft' | 'submitted' | 'approved'\n//   updatedAt: string,         // ISO-8601\n// }\n//\n// Currently: just log. The operator dashboard polls /api/portal/clients\n// directly for status. Full last_seen update requires a dedicated\n// operator session table — tracked as a follow-up enhancement.\nconst event = $input.first().json;\nconsole.log(`[config_updated] client=${event.clientId} step=${event.stepKey} status=${event.stepStatus} operator=${event.operatorId}`);\nreturn [{ json: { eventId: event.eventId, clientId: event.clientId, stepKey: event.stepKey, ok: true } }];"
+      }
+    },
+    {
+      "id": "kairikos-portal-cu-report",
+      "name": "Report Execution to Portal (KAIA-1073)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [910, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/n8n-execution",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "body": "={{ JSON.stringify((() => { const exec = $execution; const startedAt = exec && exec.startedAt ? new Date(exec.startedAt).toISOString() : new Date().toISOString(); const finishedAt = new Date().toISOString(); const errObj = $json && $json.error; const isFailure = Boolean(errObj); const code = isFailure ? (errObj.name || (errObj.httpCode ? 'HTTP_' + errObj.httpCode : 'WORKFLOW_ERROR')) : 'OK'; const message = isFailure ? String(errObj.message || errObj.description || 'unknown n8n error').slice(0, 4000) : null; return { id: String(exec.id), clientId: $json && $json.clientId, clientName: null, workflow: 'Kairikos Portal — config_updated Consumer (KAIA-1521)', milestone: 'config_updated', status: isFailure ? 'failed' : 'success', startedAt, finishedAt, errorCode: isFailure ? String(code).slice(0, 100) : null, errorMessage: message }; })()) }}",
+        "options": {
+          "timeout": 15000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetween": 5000
+          },
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "kairikos-portal-cu-trigger": {
+      "main": [
+        [
+          {
+            "node": "kairikos-portal-cu-verify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-portal-cu-verify": {
+      "main": [
+        [
+          {
+            "node": "kairikos-portal-cu-log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-portal-cu-report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-portal-cu-log": {
+      "main": [
+        [
+          {
+            "node": "kairikos-portal-cu-report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "kairikos"
+    },
+    {
+      "name": "wizard-lifecycle"
+    },
+    {
+      "name": "kind:config-updated-consumer"
+    }
+  ],
+  "active": false,
+  "pinData": {},
+  "versionId": "1.0.0",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "executionCaptureIssue": "KAIA-1073",
+    "linkedIssue": "KAIA-1521"
+  }
+}

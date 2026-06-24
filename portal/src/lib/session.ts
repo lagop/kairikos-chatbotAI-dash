@@ -34,7 +34,7 @@ async function resolveDevMockSession(): Promise<PortalSession> {
     userId: 'mock-user-001',
     role: 'client',
     hasClientAccess: true,
-    isOperator: cookies().get(OPERATOR_COOKIE)?.value === '1',
+    isOperator: false,
     clientSlug: MOCK_CLIENT.slug,
     clientId: MOCK_CLIENT.id,
   };
@@ -113,7 +113,7 @@ export async function getSession(): Promise<PortalSession> {
     userId: session.user.id ?? null,
     role: userRow?.role ?? (session.user as { role?: string }).role ?? null,
     hasClientAccess: Boolean(clientUser?.clientId),
-    isOperator: cookies().get(OPERATOR_COOKIE)?.value === '1',
+    isOperator: (userRow?.role ?? (session.user as { role?: string }).role) === 'operator',
     clientSlug: clientUser?.client?.email ?? null,
     clientId: clientUser?.clientId ?? (session.user as { clientId?: string }).clientId ?? null,
     reason: clientUser?.clientId ? undefined : 'no_client_access',

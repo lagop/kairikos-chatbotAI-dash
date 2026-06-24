@@ -1,0 +1,377 @@
+{
+  "name": "Wizard Lifecycle — config_review_overdue (KAIA-1172)",
+  "nodes": [
+    {
+      "id": "kairikos-config-review-overdue-trigger",
+      "name": "config-review-overdue — Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 * * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "kairikos-config-review-overdue-scan",
+      "name": "config-review-overdue — Scan",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        470,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/review-overdue/scan",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ operatorTimezone: 'Europe/Madrid' }) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "kairikos-config-review-overdue-split-batches",
+      "name": "Split Into Batches",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        690,
+        300
+      ],
+      "parameters": {
+        "fieldToSplitOut": "candidates",
+        "options": {}
+      }
+    },
+    {
+      "id": "kairikos-config-review-overdue-skip-already-fired",
+      "name": "If (skip alreadyFiredInWindow=true)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [
+        910,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "uuid-cwon6vqk59l",
+              "name": "alreadyFiredInWindow is true",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              },
+              "value1": "={{ $json.alreadyFiredInWindow }}",
+              "value2": [
+                true
+              ]
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "kairikos-config-review-overdue-build-payload",
+      "name": "Build Fire Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1130,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// config-review-overdue fire payload builder.\n// Input: one scan-candidate item (one row of submitted/needs_revision\n// with client response whose businessHoursElapsed has crossed 24h).\n// Output: the body shape /api/internal/review-overdue/fire expects.\n// The route dispatches the kind based on `severity` and is the only\n// writer of OperatorNotification rows.\nconst input = $input.first().json;\nreturn [{\n  json: {\n    payload: {\n      stepId: input.stepId,\n      clientId: input.clientId,\n      stepKey: input.stepKey,\n      stepVersion: input.stepVersion,\n      status: input.status,\n      severity: input.severity,\n      businessHoursElapsed: Number(input.businessHoursElapsed) || 0,\n      operatorTimezone: input.operatorTimezone || 'Europe/Madrid',\n    },\n  },\n}];"
+      }
+    },
+    {
+      "id": "kairikos-config-review-overdue-fire",
+      "name": "POST /api/internal/config-review-overdue/fire",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1350,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/review-overdue/fire",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "timeout": 15000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetween": 5000
+          },
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "kairikos-config-review-overdue-log",
+      "name": "Log Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1570,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Surface the dedup / sent state in the workflow logs so the\n// operator can confirm via n8n that the alert reached the\n// portal. The portal persists the row regardless.\nconst out = $input.first().json;\nconst log = {\n  kind: \"config-review-overdue\",\n  ok: Boolean(out.ok),\n  deduped: Boolean(out.deduped),\n  resendMessageId: out.resendMessageId,\n  ceoCopied: out.ceoCopied,\n  sentAt: out.sentAt,\n};\nconsole.log(`[wizard-lifecycle] config-review-overdue ${JSON.stringify(log)}`);\nreturn [{ json: log }];"
+      }
+    },
+    {
+      "id": "kairikos-config-review-overdue-report-execution",
+      "name": "Report Execution to Portal (KAIA-1073)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1790,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/n8n-execution",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "body": "={{ JSON.stringify((() => { const exec = $execution; const startedAt = exec && exec.startedAt ? new Date(exec.startedAt).toISOString() : new Date().toISOString(); const finishedAt = new Date().toISOString(); const errObj = $json && $json.error; const isFailure = Boolean(errObj); const upstream = $('Build Fire Payload').item && $('Build Fire Payload').item.json; const payload = (upstream && upstream.payload) || {}; const clientId = payload.clientId || null; const code = isFailure ? (errObj.name || (errObj.httpCode ? 'HTTP_' + errObj.httpCode : 'WORKFLOW_ERROR')) : 'OK'; const message = isFailure ? String(errObj.message || errObj.description || 'unknown n8n error').slice(0, 4000) : null; return { id: String(exec.id), clientId, clientName: null, workflow: \"Wizard Lifecycle — config_review_overdue (KAIA-1172)\", milestone: 'config_review_overdue', status: isFailure ? 'failed' : 'success', startedAt, finishedAt, errorCode: isFailure ? String(code).slice(0, 100) : null, errorMessage: message }; })()) }}",
+        "options": {
+          "timeout": 15000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetween": 5000
+          },
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "kairikos-config-review-overdue-trigger": {
+      "main": [
+        [
+          {
+            "node": "kairikos-config-review-overdue-scan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-config-review-overdue-report-execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-config-review-overdue-scan": {
+      "main": [
+        [
+          {
+            "node": "kairikos-config-review-overdue-split-batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-config-review-overdue-report-execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-config-review-overdue-split-batches": {
+      "main": [
+        [
+          {
+            "node": "kairikos-config-review-overdue-skip-already-fired",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-config-review-overdue-report-execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-config-review-overdue-skip-already-fired": {
+      "main": [
+        [],
+        [
+          {
+            "node": "kairikos-config-review-overdue-build-payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-config-review-overdue-report-execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-config-review-overdue-build-payload": {
+      "main": [
+        [
+          {
+            "node": "kairikos-config-review-overdue-fire",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-config-review-overdue-report-execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-config-review-overdue-fire": {
+      "main": [
+        [
+          {
+            "node": "kairikos-config-review-overdue-log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-config-review-overdue-report-execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-config-review-overdue-log": {
+      "main": [
+        [
+          {
+            "node": "kairikos-config-review-overdue-report-execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "kairikos"
+    },
+    {
+      "name": "wizard-lifecycle"
+    },
+    {
+      "name": "kind:config-review-overdue"
+    }
+  ],
+  "active": false,
+  "pinData": {},
+  "versionId": "1.0.0",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "executionCaptureIssue": "KAIA-1073",
+    "linkedIssue": "KAIA-1172"
+  }
+}

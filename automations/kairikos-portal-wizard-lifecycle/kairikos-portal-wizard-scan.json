@@ -1,0 +1,581 @@
+{
+  "name": "Kairikos Portal — Wizard Scan (KAIA-1521)",
+  "nodes": [
+    {
+      "id": "kairikos-portal-scan-trigger",
+      "name": "Schedule — Every 4h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */4 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "kairikos-portal-wizard-abandoned-scan",
+      "name": "wizard-abandoned — Scan",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [470, 200],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/wizard-abandoned/scan",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({}) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "kairikos-portal-review-overdue-scan",
+      "name": "review-overdue — Scan",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [470, 400],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/review-overdue/scan",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ operatorTimezone: 'Europe/Madrid' }) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "kairikos-portal-wizard-abandoned-split",
+      "name": "wizard-abandoned — Split Batches",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [690, 200],
+      "parameters": {
+        "fieldToSplitOut": "candidates",
+        "options": {}
+      }
+    },
+    {
+      "id": "kairikos-portal-review-overdue-split",
+      "name": "review-overdue — Split Batches",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [690, 400],
+      "parameters": {
+        "fieldToSplitOut": "candidates",
+        "options": {}
+      }
+    },
+    {
+      "id": "kairikos-portal-wizard-abandoned-if",
+      "name": "wizard-abandoned — Skip if alreadyFiredInWindow",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [910, 200],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "uuid-wa-skip",
+              "name": "alreadyFiredInWindow is false (process)",
+              "operator": {
+                "type": "boolean",
+                "operation": "false"
+              },
+              "value1": "={{ $json.alreadyFiredInWindow }}",
+              "value2": [true]
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "kairikos-portal-review-overdue-if",
+      "name": "review-overdue — Skip if alreadyFiredInWindow",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [910, 400],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "uuid-ro-skip",
+              "name": "alreadyFiredInWindow is false (process)",
+              "operator": {
+                "type": "boolean",
+                "operation": "false"
+              },
+              "value1": "={{ $json.alreadyFiredInWindow }}",
+              "value2": [true]
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "kairikos-portal-wizard-abandoned-build-fire",
+      "name": "wizard-abandoned — Build Fire Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1130, 200],
+      "parameters": {
+        "jsCode": "// Build the fire payload for wizard-abandoned.\n// Input: one scan-candidate item from the split batch.\n// Output: body for /api/internal/wizard-abandoned/fire\nconst input = $input.first().json;\nreturn [{\n  json: {\n    clientId: input.clientId,\n    lastDraftAt: input.lastDraftAt,\n    lastStepKey: input.lastStepKey,\n    hoursSinceLastDraft: Math.max(0, Math.round(Number(input.hoursSinceLastDraft) || 0)),\n  },\n}];"
+      }
+    },
+    {
+      "id": "kairikos-portal-review-overdue-build-fire",
+      "name": "review-overdue — Build Fire Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1130, 400],
+      "parameters": {
+        "jsCode": "// Build the fire payload for review-overdue.\n// Input: one scan-candidate item from the split batch.\n// Output: body for /api/internal/review-overdue/fire\nconst input = $input.first().json;\nreturn [{\n  json: {\n    stepId: input.stepId,\n    clientId: input.clientId,\n    stepKey: input.stepKey,\n    stepVersion: input.stepVersion,\n    status: input.status,\n    severity: input.severity,\n    businessHoursElapsed: Number(input.businessHoursElapsed) || 0,\n    operatorTimezone: input.operatorTimezone || 'Europe/Madrid',\n  },\n}];"
+      }
+    },
+    {
+      "id": "kairikos-portal-wizard-abandoned-fire",
+      "name": "wizard-abandoned — Fire",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1350, 200],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/wizard-abandoned/fire",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 15000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetween": 5000
+          },
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "kairikos-portal-review-overdue-fire",
+      "name": "review-overdue — Fire",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1350, 400],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/review-overdue/fire",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 15000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetween": 5000
+          },
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "kairikos-portal-scan-log",
+      "name": "Log Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1570, 300],
+      "parameters": {
+        "jsCode": "// Aggregate log for both scan types.\n// Each branch appends its own result. We flatten here.\nconst items = $input.all();\nconst results = items.map(item => item.json);\nconst wizardAbandonedCount = results.filter(r => r.clientId && r.milestone === 'wizard_abandoned').length;\nconst reviewOverdueCount = results.filter(r => r.stepId && r.kind && r.kind.startsWith('review-overdue')).length;\nconst dedupedCount = results.filter(r => r.deduped === true).length;\nconst firedCount = results.filter(r => r.deduped === false).length;\nconsole.log(`[kairikos-portal-wizard-scan] wizard-abandoned: ${wizardAbandonedCount} candidates, ${dedupedCount} deduped, ${firedCount} fired`);\nconsole.log(`[kairikos-portal-wizard-scan] review-overdue: ${reviewOverdueCount} candidates, ${dedupedCount} deduped, ${firedCount} fired`);\nreturn results.map(r => ({ json: r }));"
+      }
+    },
+    {
+      "id": "kairikos-portal-scan-report",
+      "name": "Report Execution to Portal (KAIA-1073)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1790, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/n8n-execution",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "body": "={{ JSON.stringify((() => { const exec = $execution; const startedAt = exec && exec.startedAt ? new Date(exec.startedAt).toISOString() : new Date().toISOString(); const finishedAt = new Date().toISOString(); const errObj = $json && $json.error; const isFailure = Boolean(errObj); const code = isFailure ? (errObj.name || (errObj.httpCode ? 'HTTP_' + errObj.httpCode : 'WORKFLOW_ERROR')) : 'OK'; const message = isFailure ? String(errObj.message || errObj.description || 'unknown n8n error').slice(0, 4000) : null; return { id: String(exec.id), clientId: null, clientName: null, workflow: 'Kairikos Portal — Wizard Scan (KAIA-1521)', milestone: 'wizard_scan', status: isFailure ? 'failed' : 'success', startedAt, finishedAt, errorCode: isFailure ? String(code).slice(0, 100) : null, errorMessage: message }; })()) }}",
+        "options": {
+          "timeout": 15000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetween": 5000
+          },
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "kairikos-portal-scan-trigger": {
+      "main": [
+        [
+          {
+            "node": "kairikos-portal-wizard-abandoned-scan",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "kairikos-portal-review-overdue-scan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-portal-scan-report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-portal-wizard-abandoned-scan": {
+      "main": [
+        [
+          {
+            "node": "kairikos-portal-wizard-abandoned-split",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-portal-scan-report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-portal-review-overdue-scan": {
+      "main": [
+        [
+          {
+            "node": "kairikos-portal-review-overdue-split",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-portal-scan-report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-portal-wizard-abandoned-split": {
+      "main": [
+        [
+          {
+            "node": "kairikos-portal-wizard-abandoned-if",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-portal-scan-report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-portal-review-overdue-split": {
+      "main": [
+        [
+          {
+            "node": "kairikos-portal-review-overdue-if",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-portal-scan-report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-portal-wizard-abandoned-if": {
+      "main": [
+        [],
+        [
+          {
+            "node": "kairikos-portal-wizard-abandoned-build-fire",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-portal-scan-report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-portal-review-overdue-if": {
+      "main": [
+        [],
+        [
+          {
+            "node": "kairikos-portal-review-overdue-build-fire",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-portal-scan-report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-portal-wizard-abandoned-build-fire": {
+      "main": [
+        [
+          {
+            "node": "kairikos-portal-wizard-abandoned-fire",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-portal-scan-report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-portal-review-overdue-build-fire": {
+      "main": [
+        [
+          {
+            "node": "kairikos-portal-review-overdue-fire",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-portal-scan-report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-portal-wizard-abandoned-fire": {
+      "main": [
+        [
+          {
+            "node": "kairikos-portal-scan-log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-portal-scan-report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-portal-review-overdue-fire": {
+      "main": [
+        [
+          {
+            "node": "kairikos-portal-scan-log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-portal-scan-report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-portal-scan-log": {
+      "main": [
+        [
+          {
+            "node": "kairikos-portal-scan-report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "kairikos"
+    },
+    {
+      "name": "wizard-lifecycle"
+    },
+    {
+      "name": "kind:wizard-scan"
+    }
+  ],
+  "active": false,
+  "pinData": {},
+  "versionId": "1.0.0",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "executionCaptureIssue": "KAIA-1073",
+    "linkedIssue": "KAIA-1521"
+  }
+}

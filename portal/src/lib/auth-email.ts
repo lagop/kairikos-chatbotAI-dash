@@ -1,22 +1,15 @@
 // KAIA-2103 — Shared email-sending helpers for auth flows.
 // Wraps the Resend API with consistent error handling.
-// All routes import from here instead of duplicating the Resend eval pattern.
 
-type ResendClient = import('resend').Resend;
-let _Resend: ResendClient | null = null;
+import { Resend } from 'resend';
 
-function getResendClient(): ResendClient {
+let _Resend: Resend | null = null;
+
+function getResendClient(): Resend {
   if (_Resend) return _Resend;
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) throw new Error('RESEND_API_KEY is not configured');
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const requireResend = (0, eval)('require') as NodeJS.Require;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mod = requireResend('resend') as any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ResendClass = mod.Resend ?? mod.default?.Resend ?? mod;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  _Resend = new (ResendClass as any)(apiKey) as ResendClient;
+  _Resend = new Resend(apiKey);
   return _Resend;
 }
 
