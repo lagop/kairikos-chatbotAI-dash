@@ -235,6 +235,23 @@ model ChatbotClientUser {
   @@index([clientId])
 }
 
+// =============================================================================
+// KAIA-2103 — Password reset tokens for client portal users.
+// Supports forgot-password + reset-password flow via time-limited tokens.
+// Tokens are single-use; once consumed they cannot be reused.
+// =============================================================================
+model PasswordResetToken {
+  id         String     @id @default(cuid())
+  email      String
+  tokenHash  String
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime   @default(now())
+
+  @@index([email])
+  @@index([tokenHash])
+}
+
 // One row per T+N event the n8n flow emits (T+0, T+3, T+7, T+14, …).
 // Drives the portal onboarding timeline.
 //

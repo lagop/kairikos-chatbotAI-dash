@@ -11,6 +11,7 @@ export interface PortalSession {
   email: string | null;
   accessToken: string | null;
   userId: string | null;
+  role: string | null;
   hasClientAccess: boolean;
   isOperator: boolean;
   clientSlug: string | null;
@@ -31,6 +32,7 @@ async function resolveDevMockSession(): Promise<PortalSession> {
     email: MOCK_CLIENT.primaryContactEmail,
     accessToken: 'dev-mock',
     userId: 'mock-user-001',
+    role: 'client',
     hasClientAccess: true,
     isOperator: cookies().get(OPERATOR_COOKIE)?.value === '1',
     clientSlug: MOCK_CLIENT.slug,
@@ -81,6 +83,7 @@ export async function getSession(): Promise<PortalSession> {
       email: null,
       accessToken: null,
       userId: null,
+      role: null,
       hasClientAccess: false,
       isOperator: false,
       clientSlug: null,
@@ -100,10 +103,11 @@ export async function getSession(): Promise<PortalSession> {
     email,
     accessToken: null,
     userId: session.user.id ?? null,
+    role: (session.user as { role?: string }).role ?? null,
     hasClientAccess: Boolean(link?.clientId),
     isOperator: cookies().get(OPERATOR_COOKIE)?.value === '1',
     clientSlug: link?.client?.slug ?? null,
-    clientId: link?.clientId ?? session.user.clientId ?? null,
+    clientId: link?.clientId ?? (session.user as { clientId?: string }).clientId ?? null,
     reason: link?.clientId ? undefined : 'no_client_access',
   };
 }
@@ -159,6 +163,7 @@ export function resolveOperatorKeyBypass(): PortalSession | null {
     email: 'operator-key-bypass@kairikos.local',
     accessToken: 'operator-key',
     userId: 'operator-key-bypass',
+    role: 'operator',
     hasClientAccess: true,
     isOperator: true,
     clientSlug: null,

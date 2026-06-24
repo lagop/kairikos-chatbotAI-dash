@@ -53,7 +53,7 @@ function buildAuthConfig(): NextAuthConfig {
           const valid = await verifyPassword(record.passwordHash, password);
           if (!valid) return null;
 
-          return { id: record.id, email, clientId: record.clientId };
+          return { id: record.id, email, clientId: record.clientId, role: 'client' as const };
         },
       }),
     ],
@@ -61,12 +61,18 @@ function buildAuthConfig(): NextAuthConfig {
       async jwt({ token, user }) {
         if (user && 'clientId' in user) {
           token.clientId = (user as { clientId: string }).clientId;
+          token.role = (user as { role?: string }).role ?? 'client';
         }
         return token;
       },
       async session({ session, token }) {
-        if (token.clientId && session.user) {
-          (session.user as { clientId?: string }).clientId = token.clientId as string;
+        if (session.user) {
+          if (token.clientId) {
+            (session.user as { clientId?: string }).clientId = token.clientId as string;
+          }
+          if (token.role) {
+            (session.user as { role?: string }).role = token.role as string;
+          }
         }
         return session;
       },
