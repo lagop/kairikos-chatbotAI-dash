@@ -39,13 +39,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'invalid_email_domain' }, { status: 400 });
   }
 
-  const user = await prisma.chatbotClientUser.findUnique({
+  const clientUser = await prisma.chatbotClientUser.findUnique({
     where: { nextAuthEmail: normalizedEmail },
+    select: { id: true, userId: true },
+  });
+
+  if (!clientUser || !clientUser.userId) {
+    return NextResponse.json({ ok: true });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: clientUser.userId },
     select: { id: true, passwordHash: true },
   });
 
   if (!user) {
-    // Security: do not reveal whether the email exists.
     return NextResponse.json({ ok: true });
   }
 
@@ -55,7 +63,7 @@ export async function POST(req: NextRequest) {
 
   const passwordHash = await hashPassword(password);
 
-  await prisma.chatbotClientUser.update({
+  await prisma.user.update({
     where: { id: user.id },
     data: { passwordHash, passwordSetAt: new Date() },
   });

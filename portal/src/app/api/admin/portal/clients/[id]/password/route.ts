@@ -61,19 +61,19 @@ export async function POST(
   const { email, password } = parsed.data;
   const normalizedEmail = email.toLowerCase().trim();
 
-  const user = await prisma.chatbotClientUser.findFirst({
+  const clientUser = await prisma.chatbotClientUser.findFirst({
     where: { nextAuthEmail: normalizedEmail, clientId },
-    select: { id: true },
+    select: { id: true, userId: true },
   });
 
-  if (!user) {
+  if (!clientUser || !clientUser.userId) {
     return NextResponse.json({ error: 'user_not_found' }, { status: 404 });
   }
 
   const passwordHash = await hashPassword(password);
 
-  await prisma.chatbotClientUser.update({
-    where: { id: user.id },
+  await prisma.user.update({
+    where: { id: clientUser.userId },
     data: { passwordHash, passwordSetAt: new Date() },
   });
 

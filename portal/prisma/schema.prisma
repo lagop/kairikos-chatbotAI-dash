@@ -227,16 +227,38 @@ model ChatbotClientUser {
   clientId      String
   // NextAuth session email (the JWT subject). Unique — credentials login email.
   nextAuthEmail String        @unique
-  // argon2id hash of the user's password. NULL for users whose passwords have
-  // not yet been set (they cannot log in until a hash is stored).
-  passwordHash  String?
-  // Timestamp of the last time the password was set or changed. NULL until the
-  // user completes setup-password. Used for security auditing and to detect
-  // stale credentials.
-  passwordSetAt DateTime?
+  // FK to User — the canonical identity row that holds the credential hash.
+  // NULL for users who have not yet been linked (backfill completes this).
+  userId        String?       @unique
   client        ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user          User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([clientId])
+}
+
+// =============================================================================
+// KAIA-2103 — Unified user identity for credential-based auth.
+// Stores role (client | operator), email, and the password hash.
+// Both ChatbotClientUser and Operator link to User via userId.
+// =============================================================================
+model User {
+  id            String    @id @default(cuid())
+  // 'client' | 'operator'. Determines which auth provider accepts this user.
+  role          String    @default("client")
+  email         String    @unique
+  // argon2id hash of the password. NULL until the user sets a password via
+  // the setup-password flow. '__must_reset__' is the backfill marker for
+  // existing ChatbotClientUser rows that had NULL passwordHash — these users
+  // cannot authenticate until they complete setup-password.
+  passwordHash  String?
+  passwordSetAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  chatbotClientUsers ChatbotClientUser[]
+
+  @@index([email])
+  @@index([role])
 }
 
 // =============================================================================

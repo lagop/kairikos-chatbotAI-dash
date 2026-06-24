@@ -52,9 +52,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'invalid_or_expired_token' }, { status: 400 });
   }
 
-  const user = await prisma.chatbotClientUser.findUnique({
+  const clientUser = await prisma.chatbotClientUser.findUnique({
     where: { nextAuthEmail: normalizedEmail },
-    select: { id: true, passwordHash: true },
+    select: { id: true, userId: true },
+  });
+
+  if (!clientUser || !clientUser.userId) {
+    return NextResponse.json({ error: 'user_not_found' }, { status: 404 });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: clientUser.userId },
+    select: { id: true },
   });
 
   if (!user) {
@@ -64,7 +73,7 @@ export async function POST(req: NextRequest) {
   const passwordHash = await hashPassword(password);
 
   await prisma.$transaction([
-    prisma.chatbotClientUser.update({
+    prisma.user.update({
       where: { id: user.id },
       data: { passwordHash, passwordSetAt: new Date() },
     }),

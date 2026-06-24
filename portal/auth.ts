@@ -1,9 +1,9 @@
 // =============================================================================
 // Kairikos — NextAuth.js v5 + Credentials (email + password) (KAIA-2103)
 //
-// Replaces the previous magic-link / Nodemailer provider.
-// The Credentials provider validates the submitted password against the
-// argon2id hash stored in ChatbotClientUser.passwordHash.
+// Two Credentials providers split by role:
+//   - portal-credentials : client users (role='client') → ChatbotClientUser
+//   - admin-credentials  : operator users (role='operator') → Operator
 //
 // Sessions: JWT (no DB-backed session). The jwt callback embeds clientId from
 // ChatbotClientUser so every protected route can resolve the caller without
@@ -28,8 +28,10 @@ function buildAuthConfig(): NextAuthConfig {
       error: '/portal/login',
     },
     providers: [
+      // portal-credentials: client user login via email + password
       Credentials({
-        name: 'credentials',
+        id: 'portal-credentials',
+        name: 'portal-credentials',
         credentials: {
           email: { label: 'Email', type: 'email' },
           password: { label: 'Contraseña', type: 'password' },
@@ -39,28 +41,69 @@ function buildAuthConfig(): NextAuthConfig {
           const password = credentials?.password as string | undefined;
           if (!email || !password) return null;
 
-          const record = await prisma.chatbotClientUser.findUnique({
-            where: { nextAuthEmail: email },
-            select: { id: true, clientId: true, passwordHash: true },
+          // Look up the User row for this client user
+          const user = await prisma.user.findUnique({
+            where: { email },
+            select: { id: true, role: true, passwordHash: true },
           });
 
-          if (!record || !record.passwordHash) {
-            // Unknown email or password not set — return null to surface
-            // CredentialsSignin error, which maps to "invalid_credentials" in the UI.
+          if (!user || user.role !== 'client' || !user.passwordHash) {
             return null;
           }
 
-          const valid = await verifyPassword(record.passwordHash, password);
+          if (user.passwordHash === '__must_reset__') {
+            return null;
+          }
+
+          const valid = await verifyPassword(user.passwordHash, password);
           if (!valid) return null;
 
-          return { id: record.id, email, clientId: record.clientId, role: 'client' as const };
+          // Resolve clientId from the linked ChatbotClientUser
+          const clientUser = await prisma.chatbotClientUser.findUnique({
+            where: { userId: user.id },
+            select: { clientId: true },
+          });
+
+          return { id: user.id, email, clientId: clientUser?.clientId ?? null, role: 'client' };
+        },
+      }),
+      // admin-credentials: operator login via email + password
+      Credentials({
+        id: 'admin-credentials',
+        name: 'admin-credentials',
+        credentials: {
+          email: { label: 'Email', type: 'email' },
+          password: { label: 'Contraseña', type: 'password' },
+        },
+        async authorize(credentials) {
+          const email = (credentials?.email as string | undefined)?.toLowerCase().trim();
+          const password = credentials?.password as string | undefined;
+          if (!email || !password) return null;
+
+          const operator = await prisma.operator.findUnique({
+            where: { email },
+            select: { id: true, email: true, passwordHash: true, isActive: true },
+          });
+
+          if (!operator || !operator.isActive || !operator.passwordHash) {
+            return null;
+          }
+
+          if (operator.passwordHash === '__must_reset__') {
+            return null;
+          }
+
+          const valid = await verifyPassword(operator.passwordHash, password);
+          if (!valid) return null;
+
+          return { id: operator.id, email: operator.email, role: 'operator' };
         },
       }),
     ],
     callbacks: {
       async jwt({ token, user }) {
         if (user && 'clientId' in user) {
-          token.clientId = (user as { clientId: string }).clientId;
+          token.clientId = (user as { clientId?: string }).clientId;
           token.role = (user as { role?: string }).role ?? 'client';
         }
         return token;

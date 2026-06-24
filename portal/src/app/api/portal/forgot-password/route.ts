@@ -65,8 +65,17 @@ export async function POST(req: NextRequest) {
   const { email } = parsed.data;
   const normalizedEmail = email.toLowerCase().trim();
 
-  const user = await prisma.chatbotClientUser.findUnique({
+  const clientUser = await prisma.chatbotClientUser.findUnique({
     where: { nextAuthEmail: normalizedEmail },
+    select: { id: true, userId: true },
+  });
+
+  if (!clientUser || !clientUser.userId) {
+    return NextResponse.json({ ok: true });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: clientUser.userId },
     select: { id: true, passwordHash: true },
   });
 

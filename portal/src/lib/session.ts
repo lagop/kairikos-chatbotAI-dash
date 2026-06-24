@@ -92,23 +92,31 @@ export async function getSession(): Promise<PortalSession> {
     };
   }
   const email = session.user.email.toLowerCase();
-  const link = await prisma.chatbotClientUser.findUnique({
-    where: { nextAuthEmail: email },
-    select: {
-      clientId: true,
-      client: { select: { slug: true } },
-    },
+
+  // Resolve role from the User table; default to 'client' if not found.
+  const userRow = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true, role: true },
   });
+
+  // Resolve clientId from the linked ChatbotClientUser via userId
+  const clientUser = userRow
+    ? await prisma.chatbotClientUser.findUnique({
+        where: { userId: userRow.id },
+        select: { clientId: true, client: { select: { email: true } } },
+      })
+    : null;
+
   return {
     email,
     accessToken: null,
     userId: session.user.id ?? null,
-    role: (session.user as { role?: string }).role ?? null,
-    hasClientAccess: Boolean(link?.clientId),
+    role: userRow?.role ?? (session.user as { role?: string }).role ?? null,
+    hasClientAccess: Boolean(clientUser?.clientId),
     isOperator: cookies().get(OPERATOR_COOKIE)?.value === '1',
-    clientSlug: link?.client?.slug ?? null,
-    clientId: link?.clientId ?? (session.user as { clientId?: string }).clientId ?? null,
-    reason: link?.clientId ? undefined : 'no_client_access',
+    clientSlug: clientUser?.client?.email ?? null,
+    clientId: clientUser?.clientId ?? (session.user as { clientId?: string }).clientId ?? null,
+    reason: clientUser?.clientId ? undefined : 'no_client_access',
   };
 }
 

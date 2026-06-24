@@ -46,7 +46,7 @@ beforeEach(() => {
 });
 
 function buildCredentials(email: string, password: string) {
-  return { email: { label: 'Email', type: 'email', value: email }, password: { label: 'Contraseña', type: 'password', value: password } };
+  return { email, password };
 }
 
 describe('authConfig.providers[0].authorize (Credentials)', () => {
