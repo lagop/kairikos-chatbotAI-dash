@@ -2,16 +2,21 @@
 // Wraps the Resend API with consistent error handling.
 // All routes import from here instead of duplicating the Resend eval pattern.
 
-let _Resend: typeof import('resend').Resend | null = null;
+type ResendClient = import('resend').Resend;
+let _Resend: ResendClient | null = null;
 
-function getResendClient(): import('resend').Resend {
+function getResendClient(): ResendClient {
   if (_Resend) return _Resend;
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) throw new Error('RESEND_API_KEY is not configured');
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const requireResend = (0, eval)('require') as NodeJS.Require;
-  const { Resend } = requireResend('resend') as typeof import('resend');
-  _Resend = new Resend(apiKey);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mod = requireResend('resend') as any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ResendClass = mod.Resend ?? mod.default?.Resend ?? mod;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  _Resend = new (ResendClass as any)(apiKey) as ResendClient;
   return _Resend;
 }
 
