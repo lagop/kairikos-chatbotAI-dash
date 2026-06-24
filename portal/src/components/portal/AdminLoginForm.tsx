@@ -102,7 +102,7 @@ export function AdminLoginForm() {
           {errorMessage}
         </p>
       ) : null}
-      <button type="submit" className="btn-primary w-full" disabled={submitting}>
+      <button type="submit" data-testid="login-submit" className="btn-primary w-full" disabled={submitting}>
         {submitting ? 'Entrando…' : 'Iniciar sesión'}
       </button>
       <div className="flex flex-col gap-1 text-center">
