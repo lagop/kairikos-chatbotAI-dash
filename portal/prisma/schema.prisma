@@ -225,8 +225,11 @@ model N8nExecution {
 model ChatbotClientUser {
   id            String        @id @default(cuid())
   clientId      String
-  // NextAuth session email (the JWT subject). Unique — magic-link recipient.
+  // NextAuth session email (the JWT subject). Unique — credentials login email.
   nextAuthEmail String        @unique
+  // argon2id hash of the user's password. NULL for users whose passwords have
+  // not yet been set (they cannot log in until a hash is stored).
+  passwordHash  String?
   client        ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@index([clientId])
