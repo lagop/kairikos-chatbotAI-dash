@@ -77,7 +77,13 @@ export async function getSession(): Promise<PortalSession> {
     return resolveDevMockSession();
   }
 
-  const session = await auth();
+  let session;
+  try {
+    session = await auth();
+  } catch (err) {
+    console.error('[getSession] auth() failed:', err);
+    session = null;
+  }
   if (!session?.user?.email) {
     return {
       email: null,
@@ -94,18 +100,35 @@ export async function getSession(): Promise<PortalSession> {
   const email = session.user.email.toLowerCase();
 
   // Resolve role from the User table; default to 'client' if not found.
-  const userRow = await prisma.user.findUnique({
-    where: { email },
-    select: { id: true, role: true },
-  });
+  let userRow;
+  let clientUser;
+  try {
+    userRow = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true, role: true },
+    });
 
-  // Resolve clientId from the linked ChatbotClientUser via userId
-  const clientUser = userRow
-    ? await prisma.chatbotClientUser.findUnique({
-        where: { userId: userRow.id },
-        select: { clientId: true, client: { select: { email: true } } },
-      })
-    : null;
+    // Resolve clientId from the linked ChatbotClientUser via userId
+    clientUser = userRow
+      ? await prisma.chatbotClientUser.findUnique({
+          where: { userId: userRow.id },
+          select: { clientId: true, client: { select: { email: true } } },
+        })
+      : null;
+  } catch (err) {
+    console.error('[getSession] Prisma query failed:', err);
+    return {
+      email,
+      accessToken: null,
+      userId: session.user.id ?? null,
+      role: null,
+      hasClientAccess: false,
+      isOperator: false,
+      clientSlug: null,
+      clientId: null,
+      reason: 'no_session',
+    };
+  }
 
   return {
     email,
