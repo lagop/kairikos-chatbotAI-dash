@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { LoginForm } from '@/components/portal/LoginForm';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Iniciar sesión',
   description: 'Inicia sesión en el portal de cliente Kairikos con tu email y contraseña.',
