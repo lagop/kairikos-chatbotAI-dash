@@ -35,8 +35,19 @@ async function resolveBusinessName(session: PortalSession): Promise<string | und
 export default async function PortalLayout({ children }: { children: ReactNode }) {
   const hdrs = await headers();
   const pathname = hdrs.get('x-pathname') ?? '';
+  if (isPublicPortalPath(pathname)) {
+    return (
+      <div className="flex min-h-screen flex-col">
+        <PortalHeader email={null} businessName={undefined} />
+        <main id="contenido" className="mx-auto w-full max-w-page flex-1 px-4 py-6 sm:px-6 sm:py-8">
+          {children}
+        </main>
+        <PortalFooter />
+      </div>
+    );
+  }
   const session = await getSession();
-  if (!isPublicPortalPath(pathname) && !session.hasClientAccess) {
+  if (!session.hasClientAccess) {
     const target = session.reason === 'no_session' ? '/portal/login' : '/portal/sin-acceso';
     redirect(target);
   }
