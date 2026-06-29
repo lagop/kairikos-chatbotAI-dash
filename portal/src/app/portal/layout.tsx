@@ -5,7 +5,9 @@ import { PortalFooter } from '@/components/portal/PortalFooter';
 import { PortalHeader } from '@/components/portal/PortalHeader';
 import { PageViewTracker } from '@/components/portal/PageViewTracker';
 import { getPortalContext } from '@/lib/portal-data';
-import { getSession } from '@/lib/session';
+import { getSession, type PortalSession } from '@/lib/session';
+
+export const dynamic = 'force-dynamic';
 
 const PUBLIC_PORTAL_PREFIXES = [
   '/portal/login',
@@ -20,6 +22,16 @@ function isPublicPortalPath(pathname: string): boolean {
   return PUBLIC_PORTAL_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
+async function resolveBusinessName(session: PortalSession): Promise<string | undefined> {
+  if (!session.accessToken) return undefined;
+  try {
+    const ctx = await getPortalContext(session.accessToken);
+    return ctx.client.companyName;
+  } catch {
+    return undefined;
+  }
+}
+
 export default async function PortalLayout({ children }: { children: ReactNode }) {
   const hdrs = await headers();
   const pathname = hdrs.get('x-pathname') ?? '';
@@ -28,15 +40,7 @@ export default async function PortalLayout({ children }: { children: ReactNode }
     const target = session.reason === 'no_session' ? '/portal/login' : '/portal/sin-acceso';
     redirect(target);
   }
-  let businessName: string | undefined;
-  if (session.accessToken) {
-    try {
-      const ctx = await getPortalContext(session.accessToken);
-      businessName = ctx.client.companyName;
-    } catch {
-      businessName = undefined;
-    }
-  }
+  const businessName = await resolveBusinessName(session);
   return (
     <div className="flex min-h-screen flex-col">
       <PortalHeader email={session.email} businessName={businessName} />
