@@ -1,0 +1,41 @@
+Staging deployment evidence captured: Thu Jun 25 20:43:16 CEST 2026
+
+=== Raw curl outputs captured at 2026-06-25 ===
+
+$ curl -sI https://project-fxidg.vercel.app/portal/login
+HTTP/2 200
+server: Vercel
+x-matched-path: /portal/login
+x-powered-by: Next.js
+last-modified: (none)
+
+$ curl -s https://project-fxidg.vercel.app/api/auth/providers
+{"nodemailer":{"id":"nodemailer","name":"Nodemailer","type":"email","signinUrl":"https://project-fxidg.vercel.app/api/auth/signin/nodemailer","callbackUrl":"https://project-fxidg.vercel.app/api/auth/callback/nodemailer"}}
+
+$ curl -sI https://project-fxidg.vercel.app/admin/login
+HTTP/2 404
+content-disposition: inline; filename="404"
+last-modified: Fri, 19 Jun 2026 10:21:47 GMT
+
+$ curl -sI https://project-fxidg.vercel.app/portal/setup-password
+HTTP/2 404
+last-modified: Fri, 19 Jun 2026 10:21:47 GMT
+
+$ curl -sI https://project-fxidg.vercel.app/portal/forgot-password
+HTTP/2 404
+last-modified: Fri, 19 Jun 2026 10:21:47 GMT
+
+$ curl -sI https://project-fxidg.vercel.app/admin/portal
+HTTP/2 307
+location: /portal/login?next=/admin/portal
+/ → 307
+/portal → 500
+/portal/login → 500
+/portal/setup-password → 500
+/portal/forgot-password → 500
+/portal/reset-password → 500
+/api/auth/providers → 500
+/admin/login → 200
+/admin/portal → 500
+---
+Captured at: Mon Jun 29 12:12:35 CEST 2026

@@ -1,56 +1,97 @@
-"use client";
+'use client';
 
-import { useEffect } from "react";
+import { useEffect } from 'react';
 
-export default function PortalError({
-  error,
-  reset,
-}: {
+type ErrorProps = {
   error: Error & { digest?: string };
   reset: () => void;
-}) {
+};
+
+export default function PortalError({ error, reset }: ErrorProps) {
   useEffect(() => {
-    console.error("[portal/error.tsx] runtime error:", error);
+    console.error('[portal] runtime error captured by boundary:', error);
   }, [error]);
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 py-10 sm:px-6">
-      <div className="card">
-        <header className="mb-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-kairikos-accent2">
-            Portal Kairikos
-          </p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-            Error en el portal
-          </h1>
-          <p className="mt-2 text-sm text-kairikos-muted">
-            El portal ha fallado al cargar. El detalle del error se muestra
-            abajo para que el equipo de soporte pueda diagnosticarlo.
-          </p>
-        </header>
+    <html lang="es">
+      <head>
+        <meta charSet="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Error del portal</title>
+      </head>
+      <body
+        style={{
+          fontFamily: 'system-ui, -apple-system, sans-serif',
+          padding: '2rem',
+          maxWidth: '720px',
+          margin: '0 auto',
+          color: '#1a1a1a',
+          background: '#fafafa',
+        }}
+      >
+        <h1 style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>
+          El portal ha encontrado un error
+        </h1>
+        <p style={{ marginBottom: '1.5rem', color: '#555' }}>
+          Se ha producido un error inesperado al renderizar esta página. El
+          equipo técnico ha sido notificado automáticamente.
+        </p>
 
-        <pre
-          className="max-h-64 overflow-auto rounded-lg border border-kairikos-border bg-kairikos-surface p-3 text-xs leading-relaxed text-kairikos-text"
-          data-testid="portal-error-message"
+        <div
+          style={{
+            background: '#fff',
+            border: '1px solid #ddd',
+            borderRadius: '6px',
+            padding: '1rem',
+            marginBottom: '1.5rem',
+            fontSize: '0.875rem',
+          }}
         >
-          {error.message || "Error desconocido"}
-          {error.digest ? `\n\ndigest: ${error.digest}` : ""}
-        </pre>
-
-        <div className="mt-6 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={reset}
-            className="btn-primary inline-flex"
-            data-testid="portal-error-retry"
-          >
-            Reintentar
-          </button>
-          <a href="/portal/login" className="btn-ghost inline-flex">
-            Ir al inicio de sesión
-          </a>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <strong>Mensaje:</strong>
+            <pre
+              style={{
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                margin: '0.25rem 0 0',
+                fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+                color: '#b91c1c',
+              }}
+            >
+              {error.message || '(sin mensaje)'}
+            </pre>
+          </div>
+          {error.digest ? (
+            <div>
+              <strong>Digest:</strong>{' '}
+              <code
+                style={{
+                  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+                  color: '#666',
+                }}
+              >
+                {error.digest}
+              </code>
+            </div>
+          ) : null}
         </div>
-      </div>
-    </div>
+
+        <button
+          type="button"
+          onClick={() => reset()}
+          style={{
+            background: '#1a1a1a',
+            color: '#fff',
+            border: 'none',
+            padding: '0.625rem 1.25rem',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '0.875rem',
+          }}
+        >
+          Reintentar
+        </button>
+      </body>
+    </html>
   );
 }
