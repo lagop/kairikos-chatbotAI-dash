@@ -1,10 +1,13 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { ChatbotStatusCard } from '@/components/portal/ChatbotStatusCard';
 import { OnboardingTimeline } from '@/components/portal/OnboardingTimeline';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { getPortalContext } from '@/lib/portal-data';
-import { assertSameClient, requirePortalSession } from '@/lib/session';
+import { assertSameClient, getSession } from '@/lib/session';
+
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'Resumen',
@@ -20,9 +23,31 @@ export default async function PortalHome({
 }: {
   searchParams: { client?: string };
 }) {
-  const session = await requirePortalSession();
+  // KAIA-2857 — call getSession() and translate "no access" into a redirect
+  // locally so any throw from requirePortalSession() never escapes the page.
+  // On Vercel, getSession() catches auth()/Prisma init failures and returns
+  // { reason: 'no_session' } which we forward to /portal/login (or
+  // /portal/sin-acceso for cross-tenant). This keeps /portal returning 200/307
+  // instead of the Vercel-rendered 500 pages/_error fallback.
+  let session;
+  try {
+    session = await getSession();
+  } catch (err) {
+    console.error('[portal] /portal getSession() crashed, treating as no_session:', err);
+    redirect('/portal/login');
+  }
+  if (!session.hasClientAccess) {
+    const target = session.reason === 'no_session' ? '/portal/login' : '/portal/sin-acceso';
+    redirect(target);
+  }
   assertSameClient(session, searchParams.client ?? null);
-  const ctx = await getPortalContext(session.accessToken ?? '');
+  let ctx;
+  try {
+    ctx = await getPortalContext(session.accessToken ?? '');
+  } catch (err) {
+    console.error('[portal] /portal getPortalContext() crashed, redirecting to support:', err);
+    redirect('/portal/support');
+  }
 
   const currentStep = ctx.onboarding.find((s) => s.status === 'current');
   const completedSteps = ctx.onboarding.filter((s) => s.status === 'done').length;
