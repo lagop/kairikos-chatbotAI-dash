@@ -22,6 +22,15 @@ function isPublicPortalPath(pathname: string): boolean {
   return PUBLIC_PORTAL_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
+function resolvePathname(): string {
+  try {
+    const hdrs = headers();
+    return hdrs.get('x-pathname') ?? '';
+  } catch {
+    return '';
+  }
+}
+
 async function resolveBusinessName(session: PortalSession): Promise<string | undefined> {
   if (!session.accessToken) return undefined;
   try {
@@ -33,9 +42,8 @@ async function resolveBusinessName(session: PortalSession): Promise<string | und
 }
 
 export default async function PortalLayout({ children }: { children: ReactNode }) {
-  const hdrs = await headers();
-  const pathname = hdrs.get('x-pathname') ?? '';
-  if (isPublicPortalPath(pathname)) {
+  const pathname = resolvePathname();
+  if (!pathname || isPublicPortalPath(pathname)) {
     return (
       <div className="flex min-h-screen flex-col">
         <PortalHeader email={null} businessName={undefined} />
