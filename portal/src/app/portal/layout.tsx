@@ -22,14 +22,39 @@ function isPublicPortalPath(pathname: string): boolean {
   return PUBLIC_PORTAL_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
+function PortalLayoutShell({ children, email, businessName }: { children: ReactNode; email: string | undefined; businessName: string | undefined }) {
+  return (
+    <div className="flex min-h-screen flex-col">
+      <PortalHeader email={email} businessName={businessName} />
+      <main id="contenido" className="mx-auto w-full max-w-page flex-1 px-4 py-6 sm:px-6 sm:py-8">
+        {children}
+      </main>
+      <PortalFooter />
+      <PageViewTracker />
+    </div>
+  );
+}
+
 export default async function PortalLayout({ children }: { children: ReactNode }) {
   const hdrs = await headers();
   const pathname = hdrs.get('x-pathname') ?? '';
-  const session = await getSession();
-  if (!isPublicPortalPath(pathname) && !session.hasClientAccess) {
+
+  if (isPublicPortalPath(pathname)) {
+    return <PortalLayoutShell email={undefined} businessName={undefined}>{children}</PortalLayoutShell>;
+  }
+
+  let session;
+  try {
+    session = await getSession();
+  } catch {
+    session = { hasClientAccess: false, reason: 'no_session', email: undefined, accessToken: undefined };
+  }
+
+  if (!session.hasClientAccess) {
     const target = session.reason === 'no_session' ? '/portal/login' : '/portal/sin-acceso';
     redirect(target);
   }
+
   let businessName: string | undefined;
   if (session.accessToken) {
     try {
@@ -40,13 +65,6 @@ export default async function PortalLayout({ children }: { children: ReactNode }
     }
   }
   return (
-    <div className="flex min-h-screen flex-col">
-      <PortalHeader email={session.email} businessName={businessName} />
-      <main id="contenido" className="mx-auto w-full max-w-page flex-1 px-4 py-6 sm:px-6 sm:py-8">
-        {children}
-      </main>
-      <PortalFooter />
-      <PageViewTracker />
-    </div>
+    <PortalLayoutShell email={session.email} businessName={businessName}>{children}</PortalLayoutShell>
   );
 }
