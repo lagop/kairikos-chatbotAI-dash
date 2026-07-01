@@ -7,6 +7,8 @@ import { getSession } from '@/lib/session';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { parseStepNumber, getStepDefinition, WIZARD_STEP_NUMBERS } from '@/lib/wizard-catalog';
 
+export const dynamic = 'force-dynamic';
+
 interface PageProps {
   params: { clientId: string; step: string };
 }

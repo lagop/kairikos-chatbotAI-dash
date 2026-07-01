@@ -7,6 +7,8 @@ import { PageViewTracker } from '@/components/portal/PageViewTracker';
 import { getPortalContext } from '@/lib/portal-data';
 import { getSession } from '@/lib/session';
 
+export const dynamic = 'force-dynamic';
+
 const PUBLIC_PORTAL_PREFIXES = [
   '/portal/login',
   '/portal/sin-acceso',

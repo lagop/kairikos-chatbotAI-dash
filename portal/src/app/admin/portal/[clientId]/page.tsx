@@ -10,6 +10,8 @@ import { getSession } from '@/lib/session';
 import { MOCK_CLIENT, MOCK_SECONDARY_CLIENT, MOCK_CHATBOT, MOCK_TIMELINE } from '@/lib/portal-data';
 import { MOCK_FLOW_ACTIVITY, MOCK_N8N_EXECUTIONS, type FlowActivityEntry } from '@/lib/flow-health';
 
+export const dynamic = 'force-dynamic';
+
 interface PageProps {
   params: { clientId: string };
   searchParams: { tab?: string };

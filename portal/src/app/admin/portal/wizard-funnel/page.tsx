@@ -8,6 +8,8 @@ import { getSession } from '@/lib/session';
 import { MOCK_CLIENT, MOCK_SECONDARY_CLIENT } from '@/lib/portal-data';
 import { WIZARD_STEP_NUMBERS, type WizardStepNumber } from '@/lib/wizard-catalog';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Embudo de cohortes · Operador',
   description:

@@ -6,6 +6,8 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { MOCK_CLIENT, MOCK_SECONDARY_CLIENT } from '@/lib/portal-data';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Clientes · Operador',
   description: 'Listado de todos los clientes del portal y su estado (sólo lectura).',

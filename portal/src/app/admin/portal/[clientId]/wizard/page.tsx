@@ -11,6 +11,8 @@ import { resolveClientTier, readLatestStepsForClient } from '@/lib/wizard-tier-p
 import { buildSavedStateMap, listStepsForOperator } from '@/lib/wizard-visibility';
 import { getStepDefinition, WIZARD_STEP_NUMBERS, type WizardStepNumber } from '@/lib/wizard-catalog';
 
+export const dynamic = 'force-dynamic';
+
 interface PageProps {
   params: { clientId: string };
 }

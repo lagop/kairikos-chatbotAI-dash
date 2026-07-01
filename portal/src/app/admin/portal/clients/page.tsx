@@ -5,6 +5,8 @@ import { PageHeading } from '@/components/portal/PageHeading';
 import { listAdminClients } from '@/lib/portal-data';
 import { getSession } from '@/lib/session';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Clientes · Admin',
   description: 'Listado de clientes y su estado en el portal (sólo lectura).',
