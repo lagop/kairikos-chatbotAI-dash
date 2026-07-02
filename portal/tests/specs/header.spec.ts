@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test';
-import { portalFixture as test } from '../fixtures/portal';
+import { authedPortalFixture as test } from '../fixtures/portal';
 
 test.describe('Portal header — profile + logout (KAIA-2878)', () => {
   test('header shows the profile trigger with the signed-in email', async ({ page, clientA }) => {
