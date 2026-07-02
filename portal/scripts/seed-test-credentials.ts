@@ -1,21 +1,30 @@
 /**
  * KAIA-2869 — Seed test users for the CEO's hands-on credentials test.
+ * KAIA-2900 — Make the password env-var driven so the Playwright fixture
+ *            can log in via `portal-credentials` (no magic-link detour).
  *
  * Sets known plaintext passwords for:
  *   - onboarding-test1@kairikos.dev  (client, role='client')
  *   - onboarding-test2@kairikos.dev  (client, role='client')
- *   - staff-test@kairikos.dev        (operator, role='operator')
- *   - ops-staging@kairikos.com       (operator)
+ *   - staff-test@kairikos.dev        (client, role='client')
+ *   - ops-staging@kairikos.com       (operator, role='operator')
  *
  * The CEO will log in at https://project-fxidg.vercel.app/portal/login
- * (portal-credentials) and /admin/login (admin-credentials).
+ * (portal-credentials) and /admin/login (admin-credentials). The Playwright
+ * fixture in tests/fixtures/portal.ts reads the same env var to drive the
+ * credentials login against the seeded users.
  *
  * Hashing uses argon2id via the same @node-rs/argon2 lib the production
  * auth.ts uses, so verifyPassword in the credentials provider will accept
  * these passwords.
  *
- * Plaintext passwords are read from env (so they are not hard-coded).
- * Defaults are set for the CEO's convenience.
+ * Plaintext password resolution (first match wins):
+ *   1. STAGING_TEST_USER_PASSWORD              (canonical name — QA's
+ *      load-secrets.sh sources this from .env; documented in
+ *      portal/.env.example + STAGING.md. KAIA-2900.)
+ *   2. TEST_PASSWORD_<EMAIL_SANITISED>         (per-user override)
+ *   3. TEST_PASSWORD                           (legacy, all users)
+ *   4. defaultPassword below                    (hard-coded last-resort)
  *
  * Idempotent: re-running this script updates the passwordHash in place.
  */
@@ -71,7 +80,16 @@ const TEST_USERS: Array<{
 
 function readPasswordEnv(email: string, fallback: string): string {
   const envKey = `TEST_PASSWORD_${email.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`;
-  return process.env[envKey] ?? process.env.TEST_PASSWORD ?? fallback;
+  // KAIA-2900 — STAGING_TEST_USER_PASSWORD is the canonical name the QA
+  // fixture (tests/fixtures/portal.ts) and load-secrets.sh agree on.
+  // Per-user and legacy TEST_PASSWORD overrides still take priority so
+  // operators who already set those keep working without a rename.
+  return (
+    process.env[envKey] ??
+    process.env.TEST_PASSWORD ??
+    process.env.STAGING_TEST_USER_PASSWORD ??
+    fallback
+  );
 }
 
 async function ensureClientUser(email: string, role: 'client' | 'operator'): Promise<void> {
