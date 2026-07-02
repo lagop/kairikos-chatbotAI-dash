@@ -1,4 +1,4 @@
-import * as argon2 from 'argon2';
+import { hash as argon2Hash, verify as argon2Verify, Algorithm } from '@node-rs/argon2';
 import * as crypto from 'node:crypto';
 import { authenticator } from '@otplib/preset-default';
 
@@ -39,12 +39,12 @@ export function decryptTotpSecret(encrypted: string): string {
 }
 
 export async function hashPassword(password: string): Promise<string> {
-  return argon2.hash(password, { type: argon2.argon2id });
+  return argon2Hash(password, { algorithm: Algorithm.Argon2id });
 }
 
 export async function verifyPassword(hash: string, password: string): Promise<boolean> {
   try {
-    return await argon2.verify(hash, password);
+    return await argon2Verify(hash, password);
   } catch {
     return false;
   }
@@ -77,12 +77,12 @@ export function generateRecoveryCodes(count = 8): string[] {
 }
 
 export async function hashRecoveryCode(code: string): Promise<string> {
-  return argon2.hash(code, { type: argon2.argon2id });
+  return argon2Hash(code, { algorithm: Algorithm.Argon2id });
 }
 
 export async function verifyRecoveryCode(hash: string, code: string): Promise<boolean> {
   try {
-    return await argon2.verify(hash, code);
+    return await argon2Verify(hash, code);
   } catch {
     return false;
   }
