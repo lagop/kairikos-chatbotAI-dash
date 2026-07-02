@@ -40,12 +40,7 @@ export function PortalHeader({ email, businessName }: { email: string | null; bu
             </Link>
           ))}
         </nav>
-        {email ? (
-          <div className="hidden text-xs text-kairikos-muted sm:block">
-            <span className="sr-only">Sesión iniciada como</span>
-            {email}
-          </div>
-        ) : null}
+        {email ? <UserMenu email={email} businessName={businessName} /> : null}
       </div>
       <nav aria-label="Navegación móvil" className="border-t border-kairikos-border/60 sm:hidden">
         <ul className="mx-auto flex max-w-page gap-1 overflow-x-auto px-4 py-2 text-sm">
@@ -62,5 +57,60 @@ export function PortalHeader({ email, businessName }: { email: string | null; bu
         </ul>
       </nav>
     </header>
+  );
+}
+
+function UserMenu({ email, businessName }: { email: string; businessName?: string }) {
+  const initials = (businessName ?? email).trim().slice(0, 1).toUpperCase() || 'K';
+  return (
+    <details
+      data-testid="header-profile"
+      className="relative hidden text-sm sm:block"
+    >
+      <summary
+        className="flex cursor-pointer list-none items-center gap-2 rounded-lg px-2 py-1.5 text-kairikos-muted transition hover:bg-kairikos-surface hover:text-kairikos-text"
+        data-testid="header-profile-trigger"
+      >
+        <span
+          aria-hidden
+          className="grid h-7 w-7 place-items-center rounded-full bg-kairikos-surface2 text-xs font-semibold text-kairikos-text"
+        >
+          {initials}
+        </span>
+        <span className="hidden max-w-[180px] truncate md:inline" data-testid="header-profile-email">
+          {email}
+        </span>
+        <span aria-hidden className="text-xs">▾</span>
+      </summary>
+      <div
+        role="menu"
+        className="absolute right-0 mt-2 w-64 origin-top-right rounded-xl border border-kairikos-border bg-kairikos-surface p-3 shadow-xl"
+        data-testid="header-profile-panel"
+      >
+        <div className="border-b border-kairikos-border/60 pb-2">
+          <p className="text-xs uppercase tracking-wider text-kairikos-muted">Sesión iniciada como</p>
+          <p className="mt-1 break-all text-sm font-medium text-kairikos-text" data-testid="header-profile-email-full">
+            {email}
+          </p>
+          {businessName ? (
+            <p className="mt-2 text-xs text-kairikos-muted">
+              Empresa: <span className="text-kairikos-text">{businessName}</span>
+            </p>
+          ) : null}
+        </div>
+        <div className="pt-2">
+          <form action="/api/portal/logout" method="post">
+            <button
+              type="submit"
+              className="block w-full rounded-lg px-3 py-2 text-left text-sm text-kairikos-muted transition hover:bg-kairikos-surface2 hover:text-kairikos-text"
+              data-testid="header-logout"
+              formMethod="post"
+            >
+              Cerrar sesión
+            </button>
+          </form>
+        </div>
+      </div>
+    </details>
   );
 }
