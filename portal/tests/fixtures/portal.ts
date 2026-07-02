@@ -112,28 +112,12 @@ export const portalFixture = base.extend<PortalTestFixtures>({
 export const authedPortalFixture = portalFixture.extend({
   clientA: async ({ clientA, page, context }, use) => {
     const portalUrl = process.env.PORTAL_URL ?? 'https://project-fxidg.vercel.app';
-    const csrfResp = await context.request.get(`${portalUrl}/api/auth/csrf`);
-    const csrfJson = await csrfResp.json();
-    const csrfToken = csrfJson.csrfToken as string;
-    const loginResp = await context.request.post(
-      `${portalUrl}/api/auth/callback/portal-credentials`,
-      {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        form: {
-          csrfToken,
-          email: 'onboarding-test1@kairikos.dev',
-          password: process.env.STAGING_TEST_USER_PASSWORD ?? '',
-          redirect: 'false',
-        },
-      }
-    );
-    const status = loginResp.status();
-    if (status !== 302 && status !== 200) {
-      throw new Error(
-        `portal-credentials login failed: ${status} ${loginResp.url()}`
-      );
-    }
-    await page.goto(`${portalUrl}/portal/dashboard`, { waitUntil: 'networkidle' });
+    const client = createStagingMagicLinkClient(process.env as NodeJS.ProcessEnv);
+    const link = await client.generateMagicLink(clientA.users[0].email, {
+      redirectTo: `${portalUrl}/portal/dashboard`,
+    });
+    await context.clearCookies();
+    await page.goto(link, { waitUntil: 'networkidle' });
     await use(clientA);
   },
 });
