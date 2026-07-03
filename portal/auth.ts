@@ -102,9 +102,14 @@ function buildAuthConfig(): NextAuthConfig {
     ],
     callbacks: {
       async jwt({ token, user }) {
-        if (user && 'clientId' in user) {
-          token.clientId = (user as { clientId?: string }).clientId;
-          token.role = (user as { role?: string }).role ?? 'client';
+        if (user) {
+          const u = user as { clientId?: string | null; role?: string };
+          if ('clientId' in u && u.clientId != null) {
+            token.clientId = u.clientId;
+            token.role = u.role ?? 'client';
+          } else if (u.role) {
+            token.role = u.role;
+          }
         }
         return token;
       },

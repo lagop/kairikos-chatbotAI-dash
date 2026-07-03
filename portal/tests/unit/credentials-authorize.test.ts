@@ -136,6 +136,13 @@ describe('authConfig.callbacks.jwt', () => {
     expect(token).toMatchObject({ clientId: 'cid1', role: 'client' });
   });
 
+  it('embeds role from admin-credentials user (no clientId) into token', async () => {
+    const jwt = authConfig.callbacks?.jwt;
+    const token = await jwt!({ token: {}, user: { id: 'op1', email: 'admin@kairikos.com', role: 'operator' } });
+    expect(token).toMatchObject({ role: 'operator' });
+    expect(token).not.toHaveProperty('clientId');
+  });
+
   it('passes token through when no user', async () => {
     const jwt = authConfig.callbacks?.jwt;
     const token = { foo: 'bar' };
