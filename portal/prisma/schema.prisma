@@ -74,10 +74,61 @@ model ChatbotClient {
   operatorNotifications OperatorNotification[]
   n8nExecutions         N8nExecution[]
   configSteps           ChatbotConfigStep[]
+  intakeSubmissions     IntakeSubmission[]
 
   @@index([stripeCustomerId])
   @@index([tier])
   @@index([state])
+}
+
+// =============================================================================
+// KAIA-2913 — In-house intake submission (replaces Tally webhook ingestion).
+//
+// One row per accepted POST /api/public/intake. The endpoint:
+//   1. validates the payload with the Zod schema in src/lib/intake-schema.ts
+//   2. upserts a ChatbotClient + ChatbotClientUser pair (idempotency on email)
+//   3. writes the IntakeSubmission row with the resolved client_id
+//   4. triggers Drive folder creation + CTO notify-operator + Paperclip Day-2
+//
+// Idempotency: client supplies X-Idempotency-Key (or the server mints a
+// UUIDv4 fallback). The route resolves to the existing row on retries and
+// returns the same response payload — never duplicates the side effects.
+// =============================================================================
+
+model IntakeSubmission {
+  id                 String   @id @default(cuid())
+  // Client-supplied or server-generated idempotency token. UNIQUE.
+  idempotencyKey     String   @unique
+  // 'public_intake' | future sources (csv_import, partner_api, ...). Free-form.
+  source             String
+  // Vertical tag derived from the `sector` field in the payload.
+  vertical           String
+  // Slug of the form spec this submission belongs to. Keeps the table
+  // multi-form-friendly in case more intake funnels land later.
+  intakeSlug         String
+  // Full payload as JSONB so the admin portal can re-render the submission.
+  payload           Json
+  // FK to ChatbotClient. NULL during the brief window between row insert
+  // and the client upsert completing in the same transaction.
+  clientId           String?
+  // Denormalized for list/search views so the admin query doesn't have to
+  // extract from JSONB on every page load.
+  businessName       String
+  humanHandoffEmail  String
+  ipHash             String?
+  userAgent          String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  client             ChatbotClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt(sort: Desc)])
+  @@index([vertical])
+  @@index([source])
+  @@index([intakeSlug])
+  @@index([businessName])
+  @@index([humanHandoffEmail])
+  @@index([clientId])
 }
 
 // One row per operator notification fired (KAIA-1061). Drives the
