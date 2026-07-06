@@ -98,27 +98,27 @@ model ChatbotClient {
 model IntakeSubmission {
   id                 String   @id @default(cuid())
   // Client-supplied or server-generated idempotency token. UNIQUE.
-  idempotencyKey     String   @unique
+  idempotencyKey     String   @unique @map("idempotency_key")
   // 'public_intake' | future sources (csv_import, partner_api, ...). Free-form.
   source             String
   // Vertical tag derived from the `sector` field in the payload.
   vertical           String
   // Slug of the form spec this submission belongs to. Keeps the table
   // multi-form-friendly in case more intake funnels land later.
-  intakeSlug         String
+  intakeSlug         String   @map("intake_slug")
   // Full payload as JSONB so the admin portal can re-render the submission.
   payload           Json
   // FK to ChatbotClient. NULL during the brief window between row insert
   // and the client upsert completing in the same transaction.
-  clientId           String?
+  clientId           String?  @map("client_id")
   // Denormalized for list/search views so the admin query doesn't have to
   // extract from JSONB on every page load.
-  businessName       String
-  humanHandoffEmail  String
-  ipHash             String?
-  userAgent          String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  businessName       String   @map("business_name")
+  humanHandoffEmail  String   @map("human_handoff_email")
+  ipHash             String?  @map("ip_hash")
+  userAgent          String?  @map("user_agent")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
 
   client             ChatbotClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
