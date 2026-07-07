@@ -99,8 +99,15 @@ export async function createDay2OnboardingIssue(
     status: 'todo',
     kind: 'intake_day2',
   };
-  if (env.agentId) {
+  // Defensive: Paperclip rejects 400 "Invalid uuid" if assigneeAgentId is malformed
+  // (e.g. an old Paperclip user-id like "AXvGsJxnGWhZgJfsBE0nwMQkW6JMTcJA" rather
+  // than a UUID). A modern agent-id is a 36-char [0-9a-f-]+ UUID. Drop silently
+  // if it doesn't look like one — the issue still lands, just unassigned.
+  if (env.agentId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(env.agentId)) {
     body.assigneeAgentId = env.agentId;
+  } else if (env.agentId) {
+    // eslint-disable-next-line no-console
+    console.warn(`[paperclip-day2] PAPERCLIP_DAY2_AGENT_ID is set but not a UUID; skipping assignment. Got length=${env.agentId.length}`);
   }
 
   try {
