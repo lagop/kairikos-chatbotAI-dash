@@ -26,6 +26,7 @@
     "prisma:validate": "prisma validate",
     "smoke:internal-activity": "tsx scripts/smoke-internal-activity.ts",
     "smoke:internal-routes": "tsx scripts/smoke-internal-routes.ts",
+    "smoke:internal-state-transition": "tsx scripts/smoke-internal-state-transition.ts",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest"
   },
