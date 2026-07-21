@@ -549,6 +549,12 @@ function IntakePage() {
                   className="intake-input"
                   placeholder="facturas@tuempresa.com"
                   {...register("billing_email")}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      goNext();
+                    }
+                  }}
                   aria-required="true"
                 />
               </StepField>
@@ -558,6 +564,12 @@ function IntakePage() {
                   className="intake-input"
                   placeholder="Nombre tal como aparece en facturas"
                   {...register("billing_name")}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      goNext();
+                    }
+                  }}
                   aria-required="true"
                 />
               </StepField>
@@ -567,6 +579,12 @@ function IntakePage() {
                   className="intake-input"
                   placeholder="B12345678"
                   {...register("billing_nif")}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      goNext();
+                    }
+                  }}
                 />
               </StepField>
               <StepField label="Dirección fiscal" required error={errors.billing_address?.message}>
@@ -575,6 +593,12 @@ function IntakePage() {
                   placeholder="Calle, número, código postal, ciudad"
                   rows={3}
                   {...register("billing_address")}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      goNext();
+                    }
+                  }}
                   aria-required="true"
                 />
               </StepField>
