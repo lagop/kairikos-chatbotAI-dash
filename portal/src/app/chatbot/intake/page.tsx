@@ -14,7 +14,7 @@ import {
   TIMEZONES,
   STORAGE_KEY,
   type Sector,
-} from "@/lib/intake-schema";
+} from "@/lib/intake-form-schema";
 
 const DAY_LABELS: Record<string, string> = {
   monday: "Lunes",
