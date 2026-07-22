@@ -199,9 +199,22 @@ function IntakePage() {
         body: JSON.stringify(data),
       });
       if (res.ok) {
+        let submissionId: string | undefined;
+        try {
+          const body = (await res.json()) as {
+            ok?: boolean;
+            submissionId?: string;
+            clientId?: string;
+          };
+          submissionId = body.submissionId;
+        } catch {
+          submissionId = undefined;
+        }
         localStorage.removeItem(STORAGE_KEY);
         setSubmitted(true);
-        window.location.href = "/chatbot-gracias/?ref=intake";
+        const params = new URLSearchParams({ ref: "intake" });
+        if (submissionId) params.set("submission_id", submissionId);
+        window.location.href = `/chatbot-gracias/?${params.toString()}`;
       } else {
         throw new Error(`HTTP ${res.status}`);
       }
