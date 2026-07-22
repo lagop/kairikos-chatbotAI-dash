@@ -8,50 +8,49 @@ import {
   type IntakeFormData,
   STEPS,
   SECTOR_LABELS,
-  SECTORS,
+  SECTOR_OPTIONS,
   CHANNEL_OPTIONS,
-  TONE_OPTIONS,
-  TIMEZONES,
+  VOICE_TONE_OPTIONS,
+  VOICE_TONE_LABELS,
+  PRONOUN_OPTIONS,
+  PRONOUN_LABELS,
+  LANGUAGE_OPTIONS,
+  OUT_OF_HOURS_OPTIONS,
+  WHATSAPP_VERIFIED_OPTIONS,
+  WEB_INSTALL_OPTIONS,
   STORAGE_KEY,
   type Sector,
-} from "@/lib/intake-form-schema";
-
-const DAY_LABELS: Record<string, string> = {
-  monday: "Lunes",
-  tuesday: "Martes",
-  wednesday: "Miércoles",
-  thursday: "Jueves",
-  friday: "Viernes",
-  saturday: "Sábado",
-  sunday: "Domingo",
-};
-
-const defaultSchedule = {
-  monday: { enabled: false, openAM: "", closeAM: "", openPM: "", closePM: "" },
-  tuesday: { enabled: false, openAM: "", closeAM: "", openPM: "", closePM: "" },
-  wednesday: { enabled: false, openAM: "", closeAM: "", openPM: "", closePM: "" },
-  thursday: { enabled: false, openAM: "", closeAM: "", openPM: "", closePM: "" },
-  friday: { enabled: false, openAM: "", closeAM: "", openPM: "", closePM: "" },
-  saturday: { enabled: false, openAM: "", closeAM: "", openPM: "", closePM: "" },
-  sunday: { enabled: false, openAM: "", closeAM: "", openPM: "", closePM: "" },
-};
+  type VoiceTone,
+  type Pronoun,
+} from "@/lib/intake-schema";
 
 const defaultValues: IntakeFormData = {
   business_name: "",
   legal_name: "",
-  sector: "abogado",
-  faqs: Array.from({ length: 10 }, () => ({ question: "", answer: "" })),
-  channels: ["web_chat"],
-  whatsapp_number: "",
+  sector: "clínica dental",
+  short_description: "",
+  website_url: "",
+  logo_upload: "",
+  voice_tone: "cercano",
+  pronoun: "tú",
+  language: ["español"],
+  forbidden_words: "",
+  business_hours_weekday: "",
+  business_hours_weekend: "",
+  holidays_url_or_text: "",
+  out_of_hours_behavior: "dejar mensaje",
+  faqs: Array.from({ length: 10 }, () => ({ q: "", a: "" })),
+  channels_enabled: ["web"],
+  whatsapp_business_number: "",
+  whatsapp_business_verified: undefined,
   instagram_handle: "",
-  tone: "formal",
-  timezone: "Europe/Madrid",
-  schedule: defaultSchedule,
-  billing_email: "",
-  billing_name: "",
-  billing_nif: "",
-  billing_address: "",
-  rgpd_consent: true,
+  web_install_target: undefined,
+  human_handoff_email: "",
+  human_handoff_whatsapp: "",
+  human_handoff_hours: "",
+  escalation_triggers: "",
+  gdpr_responsible_email: "",
+  privacy_url: "",
 };
 
 function loadSaved(): Partial<IntakeFormData> {
@@ -156,7 +155,8 @@ function IntakePage() {
   });
 
   const watchedSector = useWatch({ control, name: "sector" });
-  const watchedChannels = useWatch({ control, name: "channels" });
+  const watchedChannels = useWatch({ control, name: "channels_enabled" });
+  const watchedLanguage = useWatch({ control, name: "language" });
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -171,10 +171,10 @@ function IntakePage() {
     const stepFields: (keyof IntakeFormData)[] = [
       "business_name",
       "faqs",
-      "channels",
-      "tone",
-      "timezone",
-      "billing_email",
+      "channels_enabled",
+      "voice_tone",
+      "business_hours_weekday",
+      "human_handoff_email",
     ];
     const fieldsToValidate = Array.isArray(stepFields[currentStep])
       ? stepFields[currentStep]
@@ -199,22 +199,9 @@ function IntakePage() {
         body: JSON.stringify(data),
       });
       if (res.ok) {
-        let submissionId: string | undefined;
-        try {
-          const body = (await res.json()) as {
-            ok?: boolean;
-            submissionId?: string;
-            clientId?: string;
-          };
-          submissionId = body.submissionId;
-        } catch {
-          submissionId = undefined;
-        }
         localStorage.removeItem(STORAGE_KEY);
         setSubmitted(true);
-        const params = new URLSearchParams({ ref: "intake" });
-        if (submissionId) params.set("submission_id", submissionId);
-        window.location.href = `/chatbot-gracias/?${params.toString()}`;
+        window.location.href = "/chatbot-gracias/?ref=intake";
       } else {
         throw new Error(`HTTP ${res.status}`);
       }
@@ -223,6 +210,23 @@ function IntakePage() {
       alert("Hubo un error al enviar el formulario. Por favor, inténtalo de nuevo.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const toggleLanguage = (lang: string) => {
+    const current = getValues("language") || [];
+    if (current.includes(lang as typeof LANGUAGE_OPTIONS[number])) {
+      setValue(
+        "language",
+        current.filter((l) => l !== lang) as typeof current,
+        { shouldValidate: true }
+      );
+    } else {
+      setValue(
+        "language",
+        [...current, lang] as typeof current,
+        { shouldValidate: true }
+      );
     }
   };
 
@@ -253,7 +257,6 @@ function IntakePage() {
         <ProgressBar steps={STEPS} currentStep={currentStep} />
 
         <form onSubmit={handleSubmit(onSubmit)} noValidate>
-          {/* P1 — Identidad del negocio */}
           {currentStep === 0 && (
             <div className="intake-step">
               <h2 className="intake-step-title">Identidad del negocio</h2>
@@ -262,7 +265,7 @@ function IntakePage() {
                   id="business_name"
                   type="text"
                   className="intake-input"
-                  placeholder="Ej: Despacho García & Asociados"
+                  placeholder="Ej: Clínica Dental Martínez"
                   {...register("business_name")}
                   aria-required="true"
                 />
@@ -272,7 +275,7 @@ function IntakePage() {
                   id="legal_name"
                   type="text"
                   className="intake-input"
-                  placeholder="Ej: García López S.L.P."
+                  placeholder="Ej: Martínez López S.L.P."
                   {...register("legal_name")}
                 />
               </StepField>
@@ -284,22 +287,42 @@ function IntakePage() {
                   aria-required="true"
                 >
                   <option value="">Selecciona tu sector</option>
-                  {SECTORS.map((s) => (
+                  {SECTOR_OPTIONS.map((s) => (
                     <option key={s} value={s}>
                       {SECTOR_LABELS[s as Sector]}
                     </option>
                   ))}
                 </select>
               </StepField>
+              <StepField label="Descripción corta del negocio" required error={errors.short_description?.message}>
+                <textarea
+                  id="short_description"
+                  className="intake-input intake-textarea"
+                  placeholder="Ej: Somos una clínica dental familiar en el centro de Madrid, especializada en ortodoncia y estética dental."
+                  rows={3}
+                  maxLength={280}
+                  {...register("short_description")}
+                  aria-required="true"
+                />
+                <small className="intake-hint">Máx. 280 caracteres</small>
+              </StepField>
+              <StepField label="URL de tu web (opcional)" error={errors.website_url?.message}>
+                <input
+                  id="website_url"
+                  type="url"
+                  className="intake-input"
+                  placeholder="https://www.tuclinica.com"
+                  {...register("website_url")}
+                />
+              </StepField>
             </div>
           )}
 
-          {/* P2 — FAQs del sector */}
           {currentStep === 1 && (
             <div className="intake-step">
               <h2 className="intake-step-title">FAQs del sector</h2>
               <p className="intake-step-desc">
-                Añade las preguntas más frecuentes de tus clientes. Mínimo 10, máximo 50.
+                Añade las preguntas más frecuentes de tus clientes. Mínimo 10, máximo 15.
               </p>
               <div className="intake-faq-list">
                 {faqFields.map((field, i) => (
@@ -310,14 +333,14 @@ function IntakePage() {
                         type="text"
                         className="intake-input"
                         placeholder="Pregunta"
-                        {...register(`faqs.${i}.question` as const)}
+                        {...register(`faqs.${i}.q` as const)}
                         aria-label={`Pregunta ${i + 1}`}
                       />
                       <textarea
                         className="intake-input intake-textarea"
                         placeholder="Respuesta"
                         rows={2}
-                        {...register(`faqs.${i}.answer` as const)}
+                        {...register(`faqs.${i}.a` as const)}
                         aria-label={`Respuesta ${i + 1}`}
                       />
                     </div>
@@ -334,11 +357,11 @@ function IntakePage() {
                   </div>
                 ))}
               </div>
-              {faqFields.length < 50 && (
+              {faqFields.length < 15 && (
                 <button
                   type="button"
                   className="intake-add-btn"
-                  onClick={() => append({ question: "", answer: "" })}
+                  onClick={() => append({ q: "", a: "" })}
                 >
                   + Añadir pregunta
                 </button>
@@ -349,7 +372,6 @@ function IntakePage() {
             </div>
           )}
 
-          {/* P3 — Canales */}
           {currentStep === 2 && (
             <div className="intake-step">
               <h2 className="intake-step-title">Canales de contacto</h2>
@@ -364,32 +386,46 @@ function IntakePage() {
                       <input
                         type="checkbox"
                         value={ch}
-                        {...register("channels")}
+                        {...register("channels_enabled")}
                         className="intake-checkbox"
                       />
                       <span className="intake-channel-label">
-                        {ch === "web_chat" ? "Chat en tu web" : ch === "whatsapp" ? "WhatsApp" : "Instagram"}
+                        {ch === "web" ? "Chat en tu web" : ch === "whatsapp" ? "WhatsApp" : "Instagram"}
                       </span>
                     </label>
                   );
                 })}
               </div>
-              {errors.channels && (
-                <p className="intake-error" role="alert">{errors.channels.message}</p>
+              {errors.channels_enabled && (
+                <p className="intake-error" role="alert">{errors.channels_enabled.message}</p>
               )}
 
               {watchedChannels?.includes("whatsapp") && (
-                <StepField label="Número de WhatsApp" error={errors.whatsapp_number?.message}>
-                  <input
-                    type="tel"
-                    className="intake-input"
-                    placeholder="+34 600 000 000"
-                    {...register("whatsapp_number")}
-                  />
-                </StepField>
+                <>
+                  <StepField label="Número de WhatsApp Business" required error={errors.whatsapp_business_number?.message}>
+                    <input
+                      type="tel"
+                      className="intake-input"
+                      placeholder="+34612345678"
+                      {...register("whatsapp_business_number")}
+                    />
+                    <small className="intake-hint">Formato E.164 (ej. +34612345678)</small>
+                  </StepField>
+                  <StepField label="¿Número verificado en Meta Business Manager?" required error={errors.whatsapp_business_verified?.message}>
+                    <select
+                      className="intake-select"
+                      {...register("whatsapp_business_verified")}
+                      aria-required="true"
+                    >
+                      <option value="">Selecciona</option>
+                      <option value="sí">Sí, está verificado</option>
+                      <option value="no">No, es un número normal</option>
+                    </select>
+                  </StepField>
+                </>
               )}
               {watchedChannels?.includes("instagram") && (
-                <StepField label="Usuario de Instagram" error={errors.instagram_handle?.message}>
+                <StepField label="Usuario de Instagram" required error={errors.instagram_handle?.message}>
                   <input
                     type="text"
                     className="intake-input"
@@ -401,227 +437,220 @@ function IntakePage() {
             </div>
           )}
 
-          {/* P4 — Tono y estilo */}
           {currentStep === 3 && (
             <div className="intake-step">
               <h2 className="intake-step-title">Tono y estilo</h2>
               <p className="intake-step-desc">
                 ¿Cómo quieres que se comunique tu chatbot con los clientes?
               </p>
-              <div className="intake-tones">
-                {TONE_OPTIONS.map((tone) => (
-                  <label key={tone} className="intake-tone-option">
-                    <input
-                      type="radio"
-                      value={tone}
-                      {...register("tone")}
-                      className="intake-radio"
-                    />
-                    <span>
-                      {tone === "formal"
-                        ? "Formal"
-                        : tone === "semiformal"
-                        ? "Semi-formal"
-                        : tone === "casual"
-                        ? "Casual"
-                        : "Amigable"}
-                    </span>
-                    <small>
-                      {tone === "formal"
-                        ? "Lenguaje profesional y respetuoso"
-                        : tone === "semiformal"
-                        ? "Profesional pero cercano"
-                        : tone === "casual"
-                        ? "Desenfadado y directo"
-                        : "Cálido y cercano"}
-                    </small>
-                  </label>
-                ))}
-              </div>
-              {errors.tone && (
-                <p className="intake-error" role="alert">{errors.tone.message}</p>
-              )}
+
+              <StepField label="Tono de voz" required error={errors.voice_tone?.message}>
+                <div className="intake-tones">
+                  {VOICE_TONE_OPTIONS.map((tone) => (
+                    <label key={tone} className="intake-tone-option">
+                      <input
+                        type="radio"
+                        value={tone}
+                        {...register("voice_tone")}
+                        className="intake-radio"
+                      />
+                      <span>{VOICE_TONE_LABELS[tone as VoiceTone]}</span>
+                      <small>
+                        {tone === "formal"
+                          ? "Lenguaje profesional y respetuoso"
+                          : tone === "cercano"
+                          ? "Profesional pero cercano y amigable"
+                          : "Desenfadado y directo"}
+                      </small>
+                    </label>
+                  ))}
+                </div>
+              </StepField>
+
+              <StepField label="Pronombre" required error={errors.pronoun?.message}>
+                <div className="intake-pronouns">
+                  {PRONOUN_OPTIONS.map((pronoun) => (
+                    <label key={pronoun} className="intake-tone-option">
+                      <input
+                        type="radio"
+                        value={pronoun}
+                        {...register("pronoun")}
+                        className="intake-radio"
+                      />
+                      <span>{PRONOUN_LABELS[pronoun as Pronoun]}</span>
+                    </label>
+                  ))}
+                </div>
+              </StepField>
+
+              <StepField label="Idioma del chatbot" required error={errors.language?.message}>
+                <div className="intake-languages">
+                  {LANGUAGE_OPTIONS.map((lang) => {
+                    const checked = watchedLanguage?.includes(lang) ?? false;
+                    return (
+                      <label key={lang} className={`intake-language ${checked ? "checked" : ""}`}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleLanguage(lang)}
+                          className="intake-checkbox"
+                        />
+                        <span>
+                          {lang === "español" ? "Español" : lang === "catalán" ? "Catalán" : "Inglés"}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </StepField>
+
+              <StepField label="Palabras taboo (opcional)" error={errors.forbidden_words?.message}>
+                <input
+                  type="text"
+                  className="intake-input"
+                  placeholder="Ej: presupuesto, presupuesto gratis, presupuesto sin compromiso"
+                  {...register("forbidden_words")}
+                />
+                <small className="intake-hint">El chatbot no usará estas palabras en sus respuestas</small>
+              </StepField>
             </div>
           )}
 
-          {/* P5 — Horario operativo */}
           {currentStep === 4 && (
             <div className="intake-step">
               <h2 className="intake-step-title">Horario operativo</h2>
-              <StepField label="Zona horaria" required error={errors.timezone?.message}>
+
+              <StepField label="Horario entre semana (L-V)" required error={errors.business_hours_weekday?.message}>
+                <input
+                  type="text"
+                  className="intake-input"
+                  placeholder="Ej: 9:00 - 18:00"
+                  {...register("business_hours_weekday")}
+                  aria-required="true"
+                />
+              </StepField>
+
+              <StepField label="Horario fin de semana (S-D)" required error={errors.business_hours_weekend?.message}>
+                <input
+                  type="text"
+                  className="intake-input"
+                  placeholder="Ej: 10:00 - 14:00 o cerrado"
+                  {...register("business_hours_weekend")}
+                  aria-required="true"
+                />
+              </StepField>
+
+              <StepField label="Festivos o vacaciones (opcional)" error={errors.holidays_url_or_text?.message}>
+                <input
+                  type="text"
+                  className="intake-input"
+                  placeholder="Ej: Consultar calendario en https://..."
+                  {...register("holidays_url_or_text")}
+                />
+              </StepField>
+
+              <StepField label="Comportamiento fuera de horario" required error={errors.out_of_hours_behavior?.message}>
                 <select
-                  id="timezone"
                   className="intake-select"
-                  {...register("timezone")}
+                  {...register("out_of_hours_behavior")}
                   aria-required="true"
                 >
-                  <option value="">Selecciona zona horaria</option>
-                  {TIMEZONES.map((tz) => (
-                    <option key={tz} value={tz}>
-                      {tz.replace("_", " ")}
+                  <option value="">Selecciona una opción</option>
+                  <option value="derivar a humano siguiente día">Derivar a humano (respuesta siguiente día laborable)</option>
+                  <option value="dejar mensaje">Dejar mensaje para que el negocio responda</option>
+                  <option value="cita automática">Permitir pedir cita automáticamente</option>
+                </select>
+              </StepField>
+            </div>
+          )}
+
+          {currentStep === 5 && (
+            <div className="intake-step">
+              <h2 className="intake-step-title">Handoff y escalación</h2>
+              <p className="intake-step-desc">
+                ¿Cómo debe actuar el chatbot cuando necesite derivar a un humano?
+              </p>
+
+              <StepField label="Email para derivaciones" required error={errors.human_handoff_email?.message}>
+                <input
+                  type="email"
+                  className="intake-input"
+                  placeholder="humano@tuempresa.com"
+                  {...register("human_handoff_email")}
+                  aria-required="true"
+                />
+              </StepField>
+
+              <StepField label="WhatsApp para derivaciones (opcional)" error={errors.human_handoff_whatsapp?.message}>
+                <input
+                  type="tel"
+                  className="intake-input"
+                  placeholder="+34612345678"
+                  {...register("human_handoff_whatsapp")}
+                />
+                <small className="intake-hint">Formato E.164 (ej. +34612345678)</small>
+              </StepField>
+
+              <StepField label="Horario para derivaciones humanas" required error={errors.human_handoff_hours?.message}>
+                <input
+                  type="text"
+                  className="intake-input"
+                  placeholder="Ej: L-V 9:00-18:00"
+                  {...register("human_handoff_hours")}
+                  aria-required="true"
+                />
+              </StepField>
+
+              <StepField label="Casos que requieren derivación humana" required error={errors.escalation_triggers?.message}>
+                <textarea
+                  className="intake-input intake-textarea"
+                  placeholder="Ej: Quejas, devoluciones, presupuestos personalizados, citas canceladas"
+                  rows={3}
+                  {...register("escalation_triggers")}
+                  aria-required="true"
+                />
+              </StepField>
+
+              <StepField label="¿En qué plataforma está tu web?" error={errors.web_install_target?.message}>
+                <select className="intake-select" {...register("web_install_target")}>
+                  <option value="">Selecciona una opción</option>
+                  {WEB_INSTALL_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt === "WordPress" ? "WordPress" : opt === "Shopify" ? "Shopify" : opt === "otra" ? "Otra plataforma" : "No lo sé todavía"}
                     </option>
                   ))}
                 </select>
               </StepField>
-              <div className="intake-schedule">
-                {/* Monday */}
-                <div className="intake-day-row">
-                  <label className="intake-day-toggle">
-                    <input type="checkbox" {...register("schedule.monday.enabled" as any)} />
-                    <span>Lunes</span>
-                  </label>
-                  <div className="intake-day-hours">
-                    <input type="time" className="intake-input intake-time" placeholder="Abre" {...register("schedule.monday.openAM" as any)} />
-                    <span>–</span>
-                    <input type="time" className="intake-input intake-time" placeholder="Cierra" {...register("schedule.monday.closeAM" as any)} />
-                  </div>
-                </div>
-                {/* Tuesday */}
-                <div className="intake-day-row">
-                  <label className="intake-day-toggle">
-                    <input type="checkbox" {...register("schedule.tuesday.enabled" as any)} />
-                    <span>Martes</span>
-                  </label>
-                  <div className="intake-day-hours">
-                    <input type="time" className="intake-input intake-time" placeholder="Abre" {...register("schedule.tuesday.openAM" as any)} />
-                    <span>–</span>
-                    <input type="time" className="intake-input intake-time" placeholder="Cierra" {...register("schedule.tuesday.closeAM" as any)} />
-                  </div>
-                </div>
-                {/* Wednesday */}
-                <div className="intake-day-row">
-                  <label className="intake-day-toggle">
-                    <input type="checkbox" {...register("schedule.wednesday.enabled" as any)} />
-                    <span>Miércoles</span>
-                  </label>
-                  <div className="intake-day-hours">
-                    <input type="time" className="intake-input intake-time" placeholder="Abre" {...register("schedule.wednesday.openAM" as any)} />
-                    <span>–</span>
-                    <input type="time" className="intake-input intake-time" placeholder="Cierra" {...register("schedule.wednesday.closeAM" as any)} />
-                  </div>
-                </div>
-                {/* Thursday */}
-                <div className="intake-day-row">
-                  <label className="intake-day-toggle">
-                    <input type="checkbox" {...register("schedule.thursday.enabled" as any)} />
-                    <span>Jueves</span>
-                  </label>
-                  <div className="intake-day-hours">
-                    <input type="time" className="intake-input intake-time" placeholder="Abre" {...register("schedule.thursday.openAM" as any)} />
-                    <span>–</span>
-                    <input type="time" className="intake-input intake-time" placeholder="Cierra" {...register("schedule.thursday.closeAM" as any)} />
-                  </div>
-                </div>
-                {/* Friday */}
-                <div className="intake-day-row">
-                  <label className="intake-day-toggle">
-                    <input type="checkbox" {...register("schedule.friday.enabled" as any)} />
-                    <span>Viernes</span>
-                  </label>
-                  <div className="intake-day-hours">
-                    <input type="time" className="intake-input intake-time" placeholder="Abre" {...register("schedule.friday.openAM" as any)} />
-                    <span>–</span>
-                    <input type="time" className="intake-input intake-time" placeholder="Cierra" {...register("schedule.friday.closeAM" as any)} />
-                  </div>
-                </div>
-                {/* Saturday */}
-                <div className="intake-day-row">
-                  <label className="intake-day-toggle">
-                    <input type="checkbox" {...register("schedule.saturday.enabled" as any)} />
-                    <span>Sábado</span>
-                  </label>
-                  <div className="intake-day-hours">
-                    <input type="time" className="intake-input intake-time" placeholder="Abre" {...register("schedule.saturday.openAM" as any)} />
-                    <span>–</span>
-                    <input type="time" className="intake-input intake-time" placeholder="Cierra" {...register("schedule.saturday.closeAM" as any)} />
-                  </div>
-                </div>
-                {/* Sunday */}
-                <div className="intake-day-row">
-                  <label className="intake-day-toggle">
-                    <input type="checkbox" {...register("schedule.sunday.enabled" as any)} />
-                    <span>Domingo</span>
-                  </label>
-                  <div className="intake-day-hours">
-                    <input type="time" className="intake-input intake-time" placeholder="Abre" {...register("schedule.sunday.openAM" as any)} />
-                    <span>–</span>
-                    <input type="time" className="intake-input intake-time" placeholder="Cierra" {...register("schedule.sunday.closeAM" as any)} />
-                  </div>
-                </div>
-              </div>
             </div>
           )}
 
-          {/* P6 — Datos de facturación */}
-          {currentStep === 5 && (
+          {currentStep === 6 && (
             <div className="intake-step">
-              <h2 className="intake-step-title">Datos de facturación</h2>
-              <StepField label="Correo electrónico de facturación" required error={errors.billing_email?.message}>
+              <h2 className="intake-step-title">Privacidad y protección de datos</h2>
+              <p className="intake-step-desc">
+                Información sobre el responsable del tratamiento de datos.
+              </p>
+
+              <StepField label="Email del responsable de protección de datos" required error={errors.gdpr_responsible_email?.message}>
                 <input
                   type="email"
                   className="intake-input"
-                  placeholder="facturas@tuempresa.com"
-                  {...register("billing_email")}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      goNext();
-                    }
-                  }}
+                  placeholder="dpo@tuempresa.com"
+                  {...register("gdpr_responsible_email")}
                   aria-required="true"
                 />
               </StepField>
-              <StepField label="Nombre fiscal" required error={errors.billing_name?.message}>
-                <input
-                  type="text"
-                  className="intake-input"
-                  placeholder="Nombre tal como aparece en facturas"
-                  {...register("billing_name")}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      goNext();
-                    }
-                  }}
-                  aria-required="true"
-                />
-              </StepField>
-              <StepField label="NIF / CIF (opcional)" error={errors.billing_nif?.message}>
-                <input
-                  type="text"
-                  className="intake-input"
-                  placeholder="B12345678"
-                  {...register("billing_nif")}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      goNext();
-                    }
-                  }}
-                />
-              </StepField>
-              <StepField label="Dirección fiscal" required error={errors.billing_address?.message}>
-                <textarea
-                  className="intake-input intake-textarea"
-                  placeholder="Calle, número, código postal, ciudad"
-                  rows={3}
-                  {...register("billing_address")}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      goNext();
-                    }
-                  }}
-                  aria-required="true"
-                />
-              </StepField>
-            </div>
-          )}
 
-          {/* P7 — Confirmación + RGPD */}
-          {currentStep === 6 && (
-            <div className="intake-step">
-              <h2 className="intake-step-title">Confirmación</h2>
+              <StepField label="URL de tu política de privacidad" required error={errors.privacy_url?.message}>
+                <input
+                  type="url"
+                  className="intake-input"
+                  placeholder="https://www.tuempresa.com/politica-privacidad"
+                  {...register("privacy_url")}
+                  aria-required="true"
+                />
+              </StepField>
+
               <div className="intake-review">
                 <h3>Resumen de tu configuración</h3>
                 <dl className="intake-review-list">
@@ -635,36 +664,18 @@ function IntakePage() {
                   </div>
                   <div className="intake-review-row">
                     <dt>Preguntas FAQ</dt>
-                    <dd>{getValues("faqs").filter((f) => f.question).length}</dd>
+                    <dd>{getValues("faqs").filter((f) => f.q).length}</dd>
                   </div>
                   <div className="intake-review-row">
                     <dt>Canales</dt>
-                    <dd>{getValues("channels").join(", ")}</dd>
+                    <dd>{getValues("channels_enabled").join(", ")}</dd>
                   </div>
                   <div className="intake-review-row">
                     <dt>Tono</dt>
-                    <dd>{getValues("tone")}</dd>
+                    <dd>{VOICE_TONE_LABELS[getValues("voice_tone") as VoiceTone]}</dd>
                   </div>
                 </dl>
               </div>
-              <label className="intake-rgpd">
-                <input
-                  type="checkbox"
-                  {...register("rgpd_consent")}
-                  className="intake-checkbox"
-                  aria-required="true"
-                />
-                <span>
-                  He leído y acepto la{" "}
-                  <a href="/politica-privacidad" target="_blank" rel="noopener">
-                    política de privacidad
-                  </a>{" "}
-                  y consiento el tratamiento de mis datos para la prestación del servicio.
-                </span>
-              </label>
-              {errors.rgpd_consent && (
-                <p className="intake-error" role="alert">{errors.rgpd_consent.message}</p>
-              )}
             </div>
           )}
 
@@ -765,6 +776,11 @@ function IntakePage() {
 
         .intake-required {
           color: var(--color-accent, #e53e3e);
+        }
+
+        .intake-hint {
+          color: var(--color-text-light, #4a5568);
+          font-size: 0.8125rem;
         }
 
         .intake-input,
@@ -899,10 +915,12 @@ function IntakePage() {
           cursor: pointer;
         }
 
-        .intake-tones {
+        .intake-tones,
+        .intake-pronouns {
           display: flex;
           flex-direction: column;
           gap: 0.75rem;
+          margin-top: 0.5rem;
         }
 
         .intake-tone-option {
@@ -939,45 +957,40 @@ function IntakePage() {
           cursor: pointer;
         }
 
-        .intake-schedule {
-          margin-top: 1.5rem;
+        .intake-languages {
           display: flex;
           flex-direction: column;
           gap: 0.75rem;
+          margin-top: 0.5rem;
         }
 
-        .intake-day-row {
+        .intake-language {
           display: flex;
           align-items: center;
-          gap: 1rem;
-          padding: 0.5rem 0;
-          border-bottom: 1px solid var(--color-border, #e2e8f0);
-        }
-
-        .intake-day-toggle {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          min-width: 120px;
+          gap: 0.75rem;
+          padding: 0.875rem 1rem;
+          border: 1px solid var(--color-border, #e2e8f0);
+          border-radius: 0.5rem;
           cursor: pointer;
+          transition: border-color 0.15s, background-color 0.15s;
+        }
+
+        .intake-language.checked {
+          border-color: var(--color-primary, #1a365d);
+          background: rgba(26, 54, 93, 0.04);
+        }
+
+        .intake-language span {
           font-size: 0.9375rem;
-        }
-
-        .intake-day-hours {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          margin-left: auto;
-        }
-
-        .intake-time {
-          width: 110px;
+          font-weight: 500;
+          color: var(--color-text, #1a202c);
         }
 
         .intake-review {
           background: var(--color-bg-alt, #f7fafc);
           border-radius: 0.5rem;
           padding: 1.25rem;
+          margin-top: 1.5rem;
           margin-bottom: 1.5rem;
         }
 
@@ -1007,21 +1020,6 @@ function IntakePage() {
         .intake-review-row dd {
           font-weight: 500;
           color: var(--color-text, #1a202c);
-        }
-
-        .intake-rgpd {
-          display: flex;
-          align-items: flex-start;
-          gap: 0.75rem;
-          font-size: 0.875rem;
-          color: var(--color-text, #1a202c);
-          cursor: pointer;
-          line-height: 1.5;
-        }
-
-        .intake-rgpd a {
-          color: var(--color-primary, #1a365d);
-          text-decoration: underline;
         }
 
         .intake-nav {
@@ -1109,7 +1107,6 @@ function IntakePage() {
           font-size: 1rem;
         }
 
-        /* Progress Bar */
         .intake-progress {
           margin-bottom: 2rem;
         }
@@ -1183,14 +1180,8 @@ function IntakePage() {
             font-size: 1.5rem;
           }
 
-          .intake-day-row {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 0.5rem;
-          }
-
-          .intake-day-hours {
-            margin-left: 0;
+          .intake-tone-option small {
+            display: none;
           }
         }
       `}</style>

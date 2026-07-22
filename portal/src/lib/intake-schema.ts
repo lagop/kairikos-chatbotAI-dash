@@ -27,7 +27,7 @@ import { z } from 'zod';
 //   * instagram_requires_handle (cross-field, superRefine)
 // =============================================================================
 
-const SECTOR_OPTIONS = [
+export const SECTOR_OPTIONS = [
   'clínica dental',
   'restaurante/bar',
   'despacho jurídico/asesoría',
@@ -36,17 +36,53 @@ const SECTOR_OPTIONS = [
   'otro',
 ] as const;
 
-const VOICE_TONE_OPTIONS = ['formal', 'cercano', 'informal-divertido'] as const;
-const PRONOUN_OPTIONS = ['tú', 'usted', 'nosotros'] as const;
-const LANGUAGE_OPTIONS = ['español', 'catalán', 'inglés'] as const;
-const OUT_OF_HOURS_OPTIONS = [
+export type Sector = (typeof SECTOR_OPTIONS)[number];
+
+export const SECTOR_LABELS: Record<Sector, string> = {
+  'clínica dental': 'Clínica dental',
+  'restaurante/bar': 'Restaurante / Bar',
+  'despacho jurídico/asesoría': 'Despacho jurídico / Asesoría',
+  'peluquería/estética': 'Peluquería / Estética',
+  inmobiliaria: 'Inmobiliaria',
+  otro: 'Otro',
+};
+
+export const VOICE_TONE_OPTIONS = ['formal', 'cercano', 'informal-divertido'] as const;
+export type VoiceTone = (typeof VOICE_TONE_OPTIONS)[number];
+
+export const VOICE_TONE_LABELS: Record<VoiceTone, string> = {
+  formal: 'Formal',
+  cercano: 'Cercano',
+  'informal-divertido': 'Informal / Divertido',
+};
+
+export const PRONOUN_OPTIONS = ['tú', 'usted', 'nosotros'] as const;
+export type Pronoun = (typeof PRONOUN_OPTIONS)[number];
+
+export const PRONOUN_LABELS: Record<Pronoun, string> = {
+  tú: 'Tú (informal)',
+  usted: 'Usted (formal)',
+  nosotros: 'Nosotros (primera persona plural)',
+};
+
+export const LANGUAGE_OPTIONS = ['español', 'catalán', 'inglés'] as const;
+export type Language = (typeof LANGUAGE_OPTIONS)[number];
+
+export const OUT_OF_HOURS_OPTIONS = [
   'derivar a humano siguiente día',
   'dejar mensaje',
   'cita automática',
 ] as const;
-const WHATSAPP_VERIFIED_OPTIONS = ['sí', 'no'] as const;
-const CHANNEL_OPTIONS = ['web', 'whatsapp', 'instagram'] as const;
-const WEB_INSTALL_OPTIONS = ['WordPress', 'Shopify', 'otra', 'no lo sé'] as const;
+export type OutOfHoursBehavior = (typeof OUT_OF_HOURS_OPTIONS)[number];
+
+export const WHATSAPP_VERIFIED_OPTIONS = ['sí', 'no'] as const;
+export type WhatsAppVerified = (typeof WHATSAPP_VERIFIED_OPTIONS)[number];
+
+export const CHANNEL_OPTIONS = ['web', 'whatsapp', 'instagram'] as const;
+export type Channel = (typeof CHANNEL_OPTIONS)[number];
+
+export const WEB_INSTALL_OPTIONS = ['WordPress', 'Shopify', 'otra', 'no lo sé'] as const;
+export type WebInstallTarget = (typeof WEB_INSTALL_OPTIONS)[number];
 
 // E.164-ish (leading +, country code, 7-15 digits total). Same regex as
 // the Tally spec; loosened on the trailing count to be safe.
@@ -158,6 +194,22 @@ export const intakePayloadSchema = z
   });
 
 export type IntakePayload = z.infer<typeof intakePayloadSchema>;
+
+// Backwards-compatible aliases for the form-side (`intakeSchema`, `IntakeFormData`).
+export const intakeSchema = intakePayloadSchema;
+export type IntakeFormData = IntakePayload;
+
+export const STEPS = [
+  'Identidad del negocio',
+  'FAQs del sector',
+  'Canales de contacto',
+  'Tono y estilo',
+  'Horario operativo',
+  'Handoff y escalación',
+  'Privacidad',
+] as const;
+
+export const STORAGE_KEY = 'kairikos-chatbot-intake';
 
 // =============================================================================
 // Field-level error shape exposed by the public endpoint. Zod's default
