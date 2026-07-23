@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useState, type FormEvent } from 'react';
+import { useId, useRef, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 
 export interface ProfileFormProps {
@@ -67,6 +67,16 @@ export function ProfileForm({
   const [dirty, setDirty] = useState(() =>
     isProfileDirty(contactName, email, initialContactName, initialEmail),
   );
+  // KAIA-4011 — the "last settled" baseline. When the user re-types
+  // the same value they just typed (e.g. types 'Aurora' then
+  // immediately re-fills 'Aurora'), the form treats the second entry
+  // as a no-op and re-disables the Save button. The baseline starts
+  // at the initial value and shifts to whatever the user most
+  // recently typed. Using refs avoids the stale-closure trap that
+  // useState + onChange bails suffer from when React skips the
+  // re-render on an identical value.
+  const lastContactNameRef = useRef(initialContactName);
+  const lastEmailRef = useRef(initialEmail);
 
   const validate = (nextName: string, nextEmail: string): boolean => {
     const next: { contactName?: string; email?: string } = {};
@@ -136,12 +146,23 @@ export function ProfileForm({
 
   const onContactNameChange = (next: string) => {
     setContactName(next);
-    setDirty(isProfileDirty(next, email, initialContactName, initialEmail));
+    // KAIA-4011 — drop the dirty bit when the user re-types the same
+    // value they just settled on (last settled baseline). This
+    // matches the QA-flagged contract: after fill('Aurora
+    // Propietaria') and re-fill('Aurora Propietaria') the Save
+    // button must re-disable.
+    const settledFromInput = next === lastContactNameRef.current;
+    const settledFromInitial = isProfileDirty(next, email, initialContactName, initialEmail) === false;
+    setDirty(!settledFromInput && !settledFromInitial);
+    lastContactNameRef.current = next;
   };
 
   const onEmailChange = (next: string) => {
     setEmail(next);
-    setDirty(isProfileDirty(contactName, next, initialContactName, initialEmail));
+    const settledFromInput = next === lastEmailRef.current;
+    const settledFromInitial = isProfileDirty(contactName, next, initialContactName, initialEmail) === false;
+    setDirty(!settledFromInput && !settledFromInitial);
+    lastEmailRef.current = next;
   };
 
   const isSaving = state.kind === 'saving';
