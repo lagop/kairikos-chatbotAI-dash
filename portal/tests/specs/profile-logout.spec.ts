@@ -98,19 +98,26 @@ test.describe('Client profile + logout', () => {
     await expect(submit).toBeEnabled();
 
     // KAIA-4011 — re-filling the same value must re-disable the
-    // button. The fix tracks the last settled input value in a ref
-    // and clears the dirty bit when the user re-enters the same
-    // value. We force the input event via the native DOM setter so
-    // the change is visible to React regardless of Playwright's
-    // fill() short-circuit on same-value inputs.
+    // button (Finding D). The fix tracks the last settled input
+    // value in a ref and clears the dirty bit on a same-value
+    // re-entry. We poke the value tracker + native setter + input
+    // event so React's onChange fires even when the target value
+    // matches the current input value (Playwright's
+    // locator.fill() short-circuits in that case, and a plain
+    // 'input' event is ignored by React's tracker when the value
+    // is unchanged).
     const current = await nameInput.inputValue();
     await nameInput.evaluate((el, value) => {
       const setValue = Object.getOwnPropertyDescriptor(
         window.HTMLInputElement.prototype,
         'value',
       ).set;
+      const tracker = el._valueTracker;
+      if (tracker) {
+        tracker.setValue('');
+      }
       setValue.call(el, value);
-      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new InputEvent('input', { bubbles: true, data: value }));
     }, current);
     await expect(submit).toBeDisabled();
   });
