@@ -22,9 +22,28 @@ type SaveState =
 // Lightweight email regex — Zod on the server is the source of truth.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// KAIA-3921 / KAIA-3922 — editable profile form. Validation runs
-// client-side for UX and on the server (Zod) for safety. The Spanish
-// error strings match the tone the rest of the portal uses.
+function isProfileDirty(
+  contactName: string,
+  email: string,
+  initialContactName: string,
+  initialEmail: string,
+): boolean {
+  return (
+    contactName.trim() !== initialContactName.trim() ||
+    email.trim().toLowerCase() !== initialEmail.trim().toLowerCase()
+  );
+}
+
+// KAIA-3921 / KAIA-3922 / KAIA-4011 — editable profile form.
+// Validation runs client-side for UX and on the server (Zod) for
+// safety. The Spanish error strings match the tone the rest of the
+// portal uses. The dirty flag is its own state, derived from the
+// trimmed current values vs. the trimmed initial values, and is
+// recomputed in every onChange handler so a no-op re-fill (typing the
+// same value back into a field) drops the form back to "not dirty"
+// and re-disables the submit button. KAIA-4011 fixed the previous
+// bug where `useState`'s same-value bailout meant dirty stayed true
+// after a re-fill.
 export function ProfileForm({
   initialContactName,
   initialEmail,
@@ -41,16 +60,23 @@ export function ProfileForm({
   const [email, setEmail] = useState(initialEmail);
   const [state, setState] = useState<SaveState>({ kind: 'idle' });
   const [fieldErrors, setFieldErrors] = useState<{ contactName?: string; email?: string }>({});
+  // KAIA-4011 — explicit dirty state. We track it on every onChange so
+  // a re-fill with the same value drops it back to false, even when
+  // React would otherwise bail out of re-rendering because the new
+  // state value is identical to the previous one (Object.is).
+  const [dirty, setDirty] = useState(() =>
+    isProfileDirty(contactName, email, initialContactName, initialEmail),
+  );
 
-  const validate = (): boolean => {
+  const validate = (nextName: string, nextEmail: string): boolean => {
     const next: { contactName?: string; email?: string } = {};
-    const trimmedName = contactName.trim();
+    const trimmedName = nextName.trim();
     if (trimmedName.length < 1) {
       next.contactName = 'Indica tu nombre.';
     } else if (trimmedName.length > 120) {
       next.contactName = 'El nombre es demasiado largo (máximo 120 caracteres).';
     }
-    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedEmail = nextEmail.trim().toLowerCase();
     if (!trimmedEmail) {
       next.email = 'Indica tu email.';
     } else if (!EMAIL_RE.test(trimmedEmail) || trimmedEmail.length > 254) {
@@ -67,7 +93,7 @@ export function ProfileForm({
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (state.kind === 'saving') return;
-    if (!validate()) return;
+    if (!validate(contactName, email)) return;
     setState({ kind: 'saving' });
     try {
       const res = await fetch('/api/portal/me', {
@@ -85,6 +111,12 @@ export function ProfileForm({
       });
       if (res.ok) {
         setState({ kind: 'success', message: 'Cambios guardados correctamente.' });
+        // The Save button stays enabled as long as the form is
+        // dirty; the save just succeeded so the inputs now match
+        // the persisted values — clear dirty to keep the contract
+        // honest (KAIA-4011: the spec expects the button to disable
+        // when the values match the initial props).
+        setDirty(false);
         router.refresh();
         return;
       }
@@ -102,10 +134,17 @@ export function ProfileForm({
     }
   };
 
+  const onContactNameChange = (next: string) => {
+    setContactName(next);
+    setDirty(isProfileDirty(next, email, initialContactName, initialEmail));
+  };
+
+  const onEmailChange = (next: string) => {
+    setEmail(next);
+    setDirty(isProfileDirty(contactName, next, initialContactName, initialEmail));
+  };
+
   const isSaving = state.kind === 'saving';
-  const dirty =
-    contactName.trim() !== initialContactName.trim() ||
-    email.trim().toLowerCase() !== initialEmail.trim().toLowerCase();
 
   return (
     <form
@@ -128,7 +167,7 @@ export function ProfileForm({
           maxLength={120}
           required
           value={contactName}
-          onChange={(event) => setContactName(event.target.value)}
+          onChange={(event) => onContactNameChange(event.target.value)}
           aria-invalid={Boolean(fieldErrors.contactName) || undefined}
           aria-describedby={fieldErrors.contactName ? `${nameId}-error` : undefined}
           data-testid="profile-contact-name"
@@ -154,7 +193,7 @@ export function ProfileForm({
           maxLength={254}
           required
           value={email}
-          onChange={(event) => setEmail(event.target.value)}
+          onChange={(event) => onEmailChange(event.target.value)}
           aria-invalid={Boolean(fieldErrors.email) || undefined}
           aria-describedby={fieldErrors.email ? `${emailId}-error` : undefined}
           data-testid="profile-email"

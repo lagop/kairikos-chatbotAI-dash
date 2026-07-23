@@ -82,6 +82,18 @@ export function PasswordChangeForm() {
         // Sign the client out so any leaked JWT cookie stops being
         // accepted. After sign-out we route to /portal/login.
         if (data.reauth_required) {
+          // KAIA-4011 — dev-mock preview also needs the active flag
+          // cleared so the middleware cannot resurrect the seeded
+          // session on the next /portal/perfil visit (the acceptance
+          // contract is "next /portal/perfil → /portal/login"). We
+          // call the dev-mock logout endpoint first, then sign out so
+          // the JWT cookie is also removed in real-auth environments.
+          try {
+            await fetch('/api/portal/dev-session', { method: 'DELETE' });
+          } catch {
+            // The route is only registered in dev-mock; ignore network
+            // errors so the success path still reaches /portal/login.
+          }
           await signOut({ redirect: false });
           router.push('/portal/login?reason=password_changed');
           router.refresh();

@@ -15,6 +15,13 @@
 //      frontend signs the user out and forces a fresh login on the next
 //      page. This matches the policy already documented in auth.ts:7-9.
 //
+// KAIA-4011 — dev-mock branch. When Supabase env vars signal a dev-mock
+// build AND the caller is one of the dev-mock fixture emails, the route
+// uses an in-memory password store keyed by email (deterministic
+// `dev-old` initial, then whatever the caller rotates to) so the QA
+// golden path can exercise the full rotation + forced re-login flow
+// without a real Supabase row.
+//
 // Lens: blast radius — only the caller can rotate their own credential;
 // MTTR — the response includes the re-auth signal so dashboards can flag
 // stale tokens; separation of concerns — the route never echoes the new
@@ -23,8 +30,9 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
-import { resolveClientFromSession } from '@/lib/portal-session';
+import { resolveClientFromSession, isPortalDevMock } from '@/lib/portal-session';
 import { hashPassword, verifyPassword, InMemoryRateLimiter } from '@/lib/operator-crypto';
+import { DEV_MOCK_CLIENT_BY_EMAIL } from '@/lib/portal-data';
 
 const ChangePasswordSchema = z
   .object({
@@ -41,6 +49,20 @@ const ChangePasswordSchema = z
 
 const ipRateLimiter = new InMemoryRateLimiter(15 * 60 * 1000);
 
+// KAIA-4011 — in-memory password store for dev-mock rotations. Initial
+// credential for every fixture is the deterministic `dev-old` so the
+// QA Playwright spec can use a known value. The store lives only for
+// the lifetime of the dev-mock preview process; restarts reset it.
+const DEV_MOCK_INITIAL_PASSWORD = 'dev-old';
+const devMockPasswords = new Map<string, string>();
+
+function getDevMockPassword(email: string): string {
+  const existing = devMockPasswords.get(email.toLowerCase());
+  if (existing) return existing;
+  devMockPasswords.set(email.toLowerCase(), DEV_MOCK_INITIAL_PASSWORD);
+  return DEV_MOCK_INITIAL_PASSWORD;
+}
+
 function clientIp(req: NextRequest): string {
   const forwardedFor = req.headers.get('x-forwarded-for');
   const ip = forwardedFor?.split(',')[0]?.trim();
@@ -48,7 +70,7 @@ function clientIp(req: NextRequest): string {
 }
 
 export async function POST(req: NextRequest) {
-  if (!isDatabaseConfigured) {
+  if (!isDatabaseConfigured && !isPortalDevMock()) {
     return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
   }
 
@@ -83,6 +105,28 @@ export async function POST(req: NextRequest) {
     );
   }
   const { currentPassword, newPassword } = parsed.data;
+
+  // KAIA-4011 — dev-mock branch. When the caller's email resolves to a
+  // known dev-mock fixture AND we are running in dev-mock mode, exercise
+  // the in-memory password store so the QA suite can run the full
+  // rotation + forced re-login flow without a Supabase row.
+  if (isPortalDevMock()) {
+    const mockClient = DEV_MOCK_CLIENT_BY_EMAIL.get(resolved.email.toLowerCase());
+    if (mockClient) {
+      const current = getDevMockPassword(resolved.email);
+      if (currentPassword !== current) {
+        return NextResponse.json({ error: 'invalid_current_password' }, { status: 401 });
+      }
+      devMockPasswords.set(resolved.email.toLowerCase(), newPassword);
+      return NextResponse.json({ ok: true, reauth_required: true });
+    }
+    if (!isDatabaseConfigured) {
+      // Dev-mock caller with no fixture match and no DB → reject as
+      // user_not_found so the spec surfaces the mismatch instead of
+      // pretending the rotation succeeded.
+      return NextResponse.json({ error: 'user_not_found' }, { status: 404 });
+    }
+  }
 
   // Resolve the User row through the session email — never through a body
   // parameter. Cross-tenant attempts are impossible by construction because
