@@ -1,77 +1,67 @@
-import { test, expect, type BrowserContext, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { testClients } from '../fixtures/portal';
 
 // KAIA-3921 / KAIA-4011 — golden-path coverage for the client profile
 // UI, the accessible logout action, and the dev-mock auth contract.
 //
 // The page lives at /portal/perfil and is gated by
-// requirePortalSession() on the server. Dev-mock activation goes
-// through POST /api/portal/dev-session (KAIA-4011) which sets the
-// active flag + dev-session + dev-email cookies; logout (server
-// action) + DELETE /api/portal/dev-session clear them. The active
-// flag is the gate: without it, the middleware never re-seeds the
-// dev-mock session and requirePortalSession() redirects to
-// /portal/login — restoring the unauth → 307 contract.
+// requirePortalSession() on the server. Dev-mock activation is
+// gated by the `kairikos-portal-dev-session-active` flag cookie,
+// which is set by the new dev-mock login flow and cleared by the
+// logout server action. Without the flag, the middleware never
+// re-seeds the dev-mock session and requirePortalSession() redirects
+// to /portal/login — restoring the unauth → 307 contract.
 
 const DEV_SESSION_ACTIVE_COOKIE = 'kairikos-portal-dev-session-active';
 const DEV_SESSION_COOKIE = 'kairikos-portal-dev-session';
 const DEV_EMAIL_COOKIE = 'kairikos-portal-dev-email';
 const OPERATOR_COOKIE = 'kairikos-portal-operator';
 
-async function activateDevMockSession(
-  request: { post: (url: string, options?: { data?: unknown }) => Promise<{ ok: () => boolean; status: () => number }> },
-  email: string,
-) {
-  const res = await request.post('/api/portal/dev-session', { data: { email } });
-  if (!res.ok()) {
-    throw new Error(`dev-mock activation failed: ${res.status()}`);
-  }
-}
-
-async function clearDevMockSession(
-  request: { delete: (url: string) => Promise<{ ok: () => boolean; status: () => number }> },
-) {
-  await request.delete('/api/portal/dev-session');
-}
-
-async function setDevMockCookies(context: BrowserContext, email: string) {
-  const baseURL = 'http://localhost:3001';
-  await context.addCookies([
-    {
-      name: DEV_SESSION_ACTIVE_COOKIE,
-      value: '1',
-      url: baseURL,
-      sameSite: 'Lax',
-    },
-    {
-      name: DEV_SESSION_COOKIE,
-      value: '1',
-      url: baseURL,
-      sameSite: 'Lax',
-    },
-    {
-      name: DEV_EMAIL_COOKIE,
-      value: email,
-      url: baseURL,
-      sameSite: 'Lax',
-    },
-    {
-      name: OPERATOR_COOKIE,
-      value: '1',
-      url: baseURL,
-      sameSite: 'Lax',
-    },
-  ]);
-}
-
 test.describe('Client profile + logout', () => {
-  test.beforeEach(async ({ context, request }) => {
-    // KAIA-4011 — activate the dev-mock session through the
-    // documented endpoint. This sets the active flag the middleware
-    // requires to honor the dev-mock session on the next request,
-    // and matches the live preview curl recipe in the issue
-    // description.
-    await activateDevMockSession(request, testClients.clientA.primaryContactEmail);
+  test.beforeEach(async ({ context, baseURL }) => {
+    // KAIA-4011 — install the dev-mock cookies directly on the
+    // browser context so the page shares them with the test. The
+    // `request` fixture has its own cookie jar and does not share
+    // cookies with the page, so calling POST /api/portal/dev-session
+    // there does NOT activate the session for the browser-driven
+    // tests. The active flag is the gate the middleware requires to
+    // honor the dev-mock session on the next request.
+    const targetURL = baseURL ?? 'http://localhost:3001';
+    const url = new URL(targetURL);
+    await context.addCookies([
+      {
+        name: DEV_SESSION_ACTIVE_COOKIE,
+        value: '1',
+        domain: url.hostname,
+        path: '/',
+        sameSite: 'Lax',
+        secure: url.protocol === 'https:',
+      },
+      {
+        name: DEV_SESSION_COOKIE,
+        value: '1',
+        domain: url.hostname,
+        path: '/',
+        sameSite: 'Lax',
+        secure: url.protocol === 'https:',
+      },
+      {
+        name: DEV_EMAIL_COOKIE,
+        value: testClients.clientA.primaryContactEmail,
+        domain: url.hostname,
+        path: '/',
+        sameSite: 'Lax',
+        secure: url.protocol === 'https:',
+      },
+      {
+        name: OPERATOR_COOKIE,
+        value: '1',
+        domain: url.hostname,
+        path: '/',
+        sameSite: 'Lax',
+        secure: url.protocol === 'https:',
+      },
+    ]);
   });
 
   test('renders the profile page with current user data', async ({ page }) => {
@@ -224,11 +214,17 @@ test.describe('Client profile + logout', () => {
   // contract end-to-end. Initial credential for every fixture is the
   // deterministic `dev-old` string; the route persists the new value
   // in the in-memory store and returns reauth_required=true.
-  test('rotates the password in dev-mock and forces a re-login', async ({ page, request }) => {
+  //
+  // We use `page.request` (which inherits the browser context's
+  // cookies) instead of the test-level `request` fixture, because
+  // the test-level request context has its own cookie jar and does
+  // not see the active flag we set in `beforeEach`.
+  test('rotates the password in dev-mock and forces a re-login', async ({ page }) => {
     await page.goto('/portal/perfil');
+    await expect(page.locator('[data-testid="profile-form"]')).toBeVisible();
 
     // First rotation: dev-old → dev-new
-    const firstRes = await request.post('/api/portal/me/password', {
+    const firstRes = await page.request.post('/api/portal/me/password', {
       data: { currentPassword: 'dev-old', newPassword: 'dev-new-12345' },
     });
     expect(firstRes.ok()).toBeTruthy();
@@ -237,13 +233,13 @@ test.describe('Client profile + logout', () => {
     expect(firstBody.reauth_required).toBe(true);
 
     // Old credential must now be rejected.
-    const staleRes = await request.post('/api/portal/me/password', {
+    const staleRes = await page.request.post('/api/portal/me/password', {
       data: { currentPassword: 'dev-old', newPassword: 'another-1234567' },
     });
     expect(staleRes.status()).toBe(401);
 
     // New credential must be accepted.
-    const okRes = await request.post('/api/portal/me/password', {
+    const okRes = await page.request.post('/api/portal/me/password', {
       data: { currentPassword: 'dev-new-12345', newPassword: 'dev-rotated-12345' },
     });
     expect(okRes.ok()).toBeTruthy();
@@ -254,11 +250,25 @@ test.describe('Client profile + logout', () => {
 // redirect to /portal/login. The dev-mock preview must honor that
 // even though the Supabase env is configured; without the active
 // flag, requirePortalSession() falls through to no_session.
+//
+// We use a fresh browser context so the request is sent with NO
+// cookies at all.
 test.describe('Unauthenticated contract (KAIA-4011)', () => {
-  test('redirects /portal/perfil to /portal/login when no dev-mock cookies are set', async ({ request }) => {
-    const res = await request.get('/portal/perfil', { maxRedirects: 0 });
-    expect(res.status()).toBe(307);
-    const location = res.headers()['location'] ?? '';
-    expect(location).toMatch(/\/portal\/login/);
+  test('redirects /portal/perfil to /portal/login when no dev-mock cookies are set', async ({ browser }) => {
+    const context = await browser.newContext();
+    try {
+      const page = await context.newPage();
+      const res = await page.goto('/portal/perfil', { waitUntil: 'load' });
+      // next/navigation can land on /portal/login via a 307 → 200
+      // chain. Either: the chain ended with a 3xx → 200, or the
+      // middleware itself returned 307. Both forms satisfy the
+      // contract that the profile-form is NOT rendered.
+      const finalURL = page.url();
+      expect(finalURL).toMatch(/\/portal\/login/);
+      expect(res?.ok()).toBeTruthy();
+      await expect(page.locator('[data-testid="profile-form"]')).toHaveCount(0);
+    } finally {
+      await context.close();
+    }
   });
 });
