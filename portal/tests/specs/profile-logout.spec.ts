@@ -241,40 +241,31 @@ test.describe('Client profile + logout', () => {
 
     // KAIA-4011 — the dev-mock password store is in-memory per Lambda
     // invocation. After a warm Lambda the store may already hold a
-    // rotated value from a previous test run or a manual curl. Rather
-    // than trying to discover the current state (which is impossible
-    // without a probe-and-guess loop), we check the two contracts the
-    // route must satisfy:
-    //
-    //   1. A successful rotation returns 200 with `{ ok: true,
-    //      reauth_required: true }`.
-    //   2. A subsequent rotation with the previous current password
-    //      must be rejected (401) after the rotation completed.
-    //
-    // If the first attempt to rotate with `dev-old` returns 401 the
-    // store is in an unknown state; we re-test with `dev-rotated-12345`
-    // (the value the QA regression test rotates to). If neither works
-    // the store is in a third state and we skip the assertive part of
-    // the test — the contract (route responds 200/401 by credential)
-    // is still observable on the next spec run.
+    // rotated value from a previous test run or a manual curl. The
+    // route's contract is: a successful rotation returns 200 with
+    // `{ ok: true, reauth_required: true }`; a wrong credential
+    // returns 401. We attempt to rotate from each known candidate
+    // ('dev-old' is the documented initial; 'dev-rotated-12345' is
+    // the most recent rotation target) and accept whichever
+    // succeeds — that doubles as both the discovery probe and the
+    // happy-path rotation.
     const newPassword = `dev-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const probeCandidates = ['dev-old', 'dev-rotated-12345'];
+    const candidates = ['dev-old', 'dev-rotated-12345'];
     let knownCurrent: string | null = null;
-    for (const candidate of probeCandidates) {
-      const probe = await page.request.post('/api/portal/me/password', {
-        data: { currentPassword: candidate, newPassword: '__probe__' },
+    let firstRes: Awaited<ReturnType<typeof page.request.post>> | null = null;
+    for (const candidate of candidates) {
+      const res = await page.request.post('/api/portal/me/password', {
+        data: { currentPassword: candidate, newPassword },
       });
-      if (probe.ok()) {
+      if (res.ok()) {
         knownCurrent = candidate;
+        firstRes = res;
         break;
       }
     }
-    if (!knownCurrent) {
-      // The store has rotated past both candidates. We can't drive the
-      // full happy-path from a known state, but the route is still
-      // observable: record the 401 contract and finish. The next
-      // Lambda cold-start (or a probe loop against fresh permutations)
-      // can restart the full rotation chain.
+    if (!knownCurrent || !firstRes) {
+      // The store has been rotated past both candidates — the
+      // contract for wrong-credential rejection is still observable.
       const unknown = await page.request.post('/api/portal/me/password', {
         data: { currentPassword: 'dev-old', newPassword: 'still-rejected-12345' },
       });
@@ -282,11 +273,6 @@ test.describe('Client profile + logout', () => {
       return;
     }
 
-    // Happy path: rotate from the discovered baseline to a fresh value.
-    const firstRes = await page.request.post('/api/portal/me/password', {
-      data: { currentPassword: knownCurrent, newPassword },
-    });
-    expect(firstRes.ok()).toBeTruthy();
     const firstBody = (await firstRes.json()) as { ok: boolean; reauth_required: boolean };
     expect(firstBody.ok).toBe(true);
     expect(firstBody.reauth_required).toBe(true);
