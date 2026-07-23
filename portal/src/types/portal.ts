@@ -90,3 +90,22 @@ export interface PortalContext {
   onboarding: OnboardingTimelineRow[];
   chatbot: ChatbotStatusSummary;
 }
+
+// KAIA-3921 — client profile contract. Mirrors the fields exposed by
+// `GET /api/portal/me` so the profile page can render the same shape
+// the API returns. The PATCH endpoint accepts the same fields minus the
+// server-managed ones (id, slug, createdAt, goLiveDate, etc.).
+export interface ClientProfile extends ChatbotClient {
+  contactName: string | null;
+}
+
+// Subset of ClientProfile the client UI is allowed to edit. The
+// backend owns audit, validation depth, and side effects — the
+// frontend only renders inputs and surfaces errors.
+export interface ClientProfileUpdate {
+  contactName?: string;
+  primaryContactEmail?: string;
+}
+
+export const PROFILE_EDITABLE_FIELDS = ['contactName', 'primaryContactEmail'] as const;
+export type ProfileEditableField = (typeof PROFILE_EDITABLE_FIELDS)[number];

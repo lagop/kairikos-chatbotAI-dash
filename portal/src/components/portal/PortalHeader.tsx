@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 
 const NAV = [
   { href: '/portal', label: 'Resumen' },
@@ -9,10 +10,20 @@ const NAV = [
   { href: '/portal/support', label: 'Soporte' },
 ] as const;
 
-export function PortalHeader({ email, businessName }: { email: string | null; businessName?: string }) {
+const PROFILE_HREF = '/portal/perfil';
+
+export function PortalHeader({
+  email,
+  businessName,
+  userMenu,
+}: {
+  email: string | null;
+  businessName?: string;
+  userMenu?: ReactNode;
+}) {
   return (
     <header className="sticky top-0 z-10 border-b border-kairikos-border bg-kairikos-bg/80 backdrop-blur">
-      <div className="mx-auto flex max-w-page items-center justify-between px-4 py-3 sm:px-6">
+      <div className="mx-auto flex max-w-page items-center justify-between gap-3 px-4 py-3 sm:px-6">
         <div className="flex items-center gap-2">
           <Link href="/portal" className="flex items-center gap-2">
             <span
@@ -40,12 +51,20 @@ export function PortalHeader({ email, businessName }: { email: string | null; bu
             </Link>
           ))}
         </nav>
-        {email ? (
-          <div className="hidden text-xs text-kairikos-muted sm:block">
-            <span className="sr-only">Sesión iniciada como</span>
-            {email}
-          </div>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {email ? (
+            <Link
+              href={PROFILE_HREF}
+              className="hidden text-xs text-kairikos-muted underline-offset-2 hover:text-kairikos-text hover:underline sm:inline"
+              aria-label={`Ir al perfil de ${email}`}
+              data-testid="header-profile-link"
+            >
+              <span className="sr-only">Sesión iniciada como</span>
+              {email}
+            </Link>
+          ) : null}
+          {userMenu}
+        </div>
       </div>
       <nav aria-label="Navegación móvil" className="border-t border-kairikos-border/60 sm:hidden">
         <ul className="mx-auto flex max-w-page gap-1 overflow-x-auto px-4 py-2 text-sm">
@@ -59,6 +78,15 @@ export function PortalHeader({ email, businessName }: { email: string | null; bu
               </Link>
             </li>
           ))}
+          <li>
+            <Link
+              href={PROFILE_HREF}
+              className="block whitespace-nowrap rounded-lg px-3 py-1.5 text-kairikos-muted hover:bg-kairikos-surface hover:text-kairikos-text"
+              data-testid="header-profile-link-mobile"
+            >
+              Perfil
+            </Link>
+          </li>
         </ul>
       </nav>
     </header>
