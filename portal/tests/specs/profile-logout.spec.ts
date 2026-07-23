@@ -239,9 +239,33 @@ test.describe('Client profile + logout', () => {
     await page.goto('/portal/perfil');
     await expect(page.locator('[data-testid="profile-form"]')).toBeVisible();
 
-    // First rotation: dev-old → dev-new
+    // KAIA-4011 — the dev-mock password store is in-memory per Lambda
+    // invocation. After a warm Lambda, the store may already have a
+    // rotated value from a previous test run. Find a known-good
+    // starting credential by probing the documented initial
+    // (`dev-old`) and the most recent rotation target
+    // (`dev-rotated-12345`).
+    const candidates = ['dev-old', 'dev-rotated-12345'];
+    let currentPassword = '';
+    for (const candidate of candidates) {
+      const probe = await page.request.post('/api/portal/me/password', {
+        data: { currentPassword: candidate, newPassword: '__probe__' },
+      });
+      if (probe.ok()) {
+        currentPassword = candidate;
+        break;
+      }
+    }
+    if (!currentPassword) {
+      throw new Error(
+        'dev-mock password store is in an unrecognized state — neither dev-old nor dev-rotated-12345 worked.',
+      );
+    }
+
+    // Rotate from the discovered baseline to a fresh value.
+    const newPassword = `dev-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const firstRes = await page.request.post('/api/portal/me/password', {
-      data: { currentPassword: 'dev-old', newPassword: 'dev-new-12345' },
+      data: { currentPassword, newPassword },
     });
     expect(firstRes.ok()).toBeTruthy();
     const firstBody = (await firstRes.json()) as { ok: boolean; reauth_required: boolean };
@@ -250,13 +274,13 @@ test.describe('Client profile + logout', () => {
 
     // Old credential must now be rejected.
     const staleRes = await page.request.post('/api/portal/me/password', {
-      data: { currentPassword: 'dev-old', newPassword: 'another-1234567' },
+      data: { currentPassword, newPassword: 'another-1234567' },
     });
     expect(staleRes.status()).toBe(401);
 
     // New credential must be accepted.
     const okRes = await page.request.post('/api/portal/me/password', {
-      data: { currentPassword: 'dev-new-12345', newPassword: 'dev-rotated-12345' },
+      data: { currentPassword: newPassword, newPassword: `${newPassword}-v2` },
     });
     expect(okRes.ok()).toBeTruthy();
   });
