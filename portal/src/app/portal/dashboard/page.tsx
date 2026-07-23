@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
-import { PageHeading } from '@/components/portal/PageHeading';
+import { redirect } from 'next/navigation';
 import { ChatbotStatusCard } from '@/components/portal/ChatbotStatusCard';
 import { OnboardingTimeline } from '@/components/portal/OnboardingTimeline';
 import { SelfServiceActions } from '@/components/portal/SelfServiceActions';
@@ -18,31 +17,29 @@ export const metadata: Metadata = {
 
 const DATE_FMT = new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
 
+// KAIA-3920 board-user report (2026-07-23T22:22Z): the unauth-landing panel
+// rendered at /portal/dashboard looked like the login page to clients and
+// they reported being "stuck on the login page" after login. Other portal
+// routes already redirect on no-session; this page did not. Align it with
+// the rest of the portal so the unauth contract is uniform across the
+// chrome — visiting /portal/dashboard without a session redirects to
+// /portal/login (or /portal/sin-acceso for cross-tenant), never renders
+// the "Necesitas iniciar sesión" panel.
 export default async function PortalDashboardPage() {
-  const session = await getSession();
+  let session;
+  try {
+    session = await getSession();
+  } catch (err) {
+    console.error('[portal] /portal/dashboard getSession() crashed, treating as no_session:', err);
+    redirect('/portal/login');
+  }
   if (!session.hasClientAccess) {
-    return (
-      <div className="space-y-6">
-        <PageHeading
-          eyebrow="Sin acceso"
-          title="Necesitas iniciar sesión"
-          description="Inicia sesión para ver el dashboard de tu chatbot."
-        />
-        <Link href="/portal/login" className="btn-primary">Iniciar sesión</Link>
-      </div>
-    );
+    const target = session.reason === 'no_session' ? '/portal/login' : '/portal/sin-acceso';
+    redirect(target);
   }
   const resolved = await resolveClientFromSession();
   if (!resolved) {
-    return (
-      <div className="space-y-6">
-        <PageHeading
-          eyebrow="Sin acceso"
-          title="No hemos podido identificar tu cliente"
-          description="Contacta con soporte si crees que es un error."
-        />
-      </div>
-    );
+    redirect('/portal/sin-acceso');
   }
   let clientName = MOCK_CLIENT.companyName;
   let goLiveAt: string | null = null;
