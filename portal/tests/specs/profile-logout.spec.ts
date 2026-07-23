@@ -1,15 +1,13 @@
 import { test, expect } from '@playwright/test';
-import { PortalTestFixtures } from '../fixtures/portal';
-
-const T = test.extend<PortalTestFixtures>;
+import { testClients } from '../fixtures/portal';
 
 // KAIA-3921 — golden-path coverage for the client profile UI and the
 // accessible logout action. The page lives at /portal/perfil and is
 // gated by requirePortalSession() on the server, so these tests use
 // the dev-mock session cookie set by the middleware.
 
-T.describe('Client profile + logout', () => {
-  T('renders the profile page with current user data', async ({ page }) => {
+test.describe('Client profile + logout', () => {
+  test('renders the profile page with current user data', async ({ page }) => {
     await page.goto('/portal/perfil');
 
     await expect(page).toHaveTitle(/Mi perfil/);
@@ -19,7 +17,7 @@ T.describe('Client profile + logout', () => {
     await expect(page.locator('[data-testid="profile-tier"]')).toBeVisible();
   });
 
-  T('exposes canonical + OpenGraph meta tags for SEO hygiene', async ({ page }) => {
+  test('exposes canonical + OpenGraph meta tags for SEO hygiene', async ({ page }) => {
     await page.goto('/portal/perfil');
 
     const canonical = page.locator('head link[rel="canonical"]');
@@ -32,7 +30,7 @@ T.describe('Client profile + logout', () => {
     await expect(ogDescription).toHaveAttribute('content', /portal Kairikos/);
   });
 
-  T('disables the submit button until the form is dirty', async ({ page }) => {
+  test('disables the submit button until the form is dirty', async ({ page }) => {
     await page.goto('/portal/perfil');
 
     const submit = page.locator('[data-testid="profile-submit"]');
@@ -42,11 +40,11 @@ T.describe('Client profile + logout', () => {
     await nameInput.fill('Aurora Propietaria');
     await expect(submit).toBeEnabled();
 
-    await nameInput.fill(await nameInput.inputValue().then((v) => v)); // unchanged
+    await nameInput.fill(await nameInput.inputValue().then((v) => v));
     await expect(submit).toBeDisabled();
   });
 
-  T('shows a Spanish success message after a successful PATCH', async ({ page }) => {
+  test('shows a Spanish success message after a successful PATCH', async ({ page }) => {
     await page.goto('/portal/perfil');
 
     await page.route('**/api/portal/me', async (route, request) => {
@@ -71,7 +69,7 @@ T.describe('Client profile + logout', () => {
     await expect(status).toContainText(/guardados/i);
   });
 
-  T('shows a Spanish error message when the API returns 400', async ({ page }) => {
+  test('shows a Spanish error message when the API returns 400', async ({ page }) => {
     await page.goto('/portal/perfil');
 
     await page.route('**/api/portal/me', async (route, request) => {
@@ -93,14 +91,14 @@ T.describe('Client profile + logout', () => {
     await expect(status).toBeVisible();
   });
 
-  T('surfaces a logout button in the header for signed-in users', async ({ page }) => {
+  test('surfaces a logout button in the header for signed-in users', async ({ page }) => {
     await page.goto('/portal');
 
     const logout = page.locator('[data-testid="header-logout"]');
     await expect(logout).toBeVisible();
   });
 
-  T('shows a Perfil link in the navigation and routes to /portal/perfil', async ({ page }) => {
+  test('shows a Perfil link in the navigation and routes to /portal/perfil', async ({ page }) => {
     await page.goto('/portal');
 
     const profileLink = page.locator('[data-testid="header-profile-link"]').first();
@@ -111,7 +109,7 @@ T.describe('Client profile + logout', () => {
     await expect(page.locator('[data-testid="profile-form"]')).toBeVisible();
   });
 
-  T('renders a Logout button on the profile page that signs the user out', async ({ page }) => {
+  test('renders a Logout button on the profile page that signs the user out', async ({ page }) => {
     await page.goto('/portal/perfil');
 
     const logout = page.locator('[data-testid="profile-logout"]');
@@ -121,5 +119,13 @@ T.describe('Client profile + logout', () => {
     await logout.click();
 
     await expect(page).toHaveURL(/\/portal\/login/);
+  });
+
+  test('reflects the seeded client email in the read-only profile field', async ({ page }) => {
+    await page.goto('/portal/perfil');
+
+    await expect(page.locator('[data-testid="profile-email"]')).toHaveValue(
+      testClients.clientA.primaryContactEmail
+    );
   });
 });
