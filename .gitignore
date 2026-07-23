@@ -32,3 +32,4 @@ portal/test-results/
 portal/tsconfig.tsbuildinfo
 portal/tsconfig.kiaia755.tsbuildinfo
 supabase/tests/chatbot_clients_rls_smoke.run.log
+.vercel

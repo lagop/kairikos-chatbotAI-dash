@@ -21,6 +21,7 @@ export interface PortalSession {
 
 const OPERATOR_COOKIE = 'kairikos-portal-operator';
 const DEV_SESSION_COOKIE = 'kairikos-portal-dev-session';
+const DEV_SESSION_ACTIVE_COOKIE = 'kairikos-portal-dev-session-active';
 
 // Resolves a session for the current request. In dev-mock mode (Supabase
 // env not configured), this auto-activates the mock session without
@@ -74,7 +75,28 @@ export async function getSession(): Promise<PortalSession> {
   }
 
   if (isDevMock) {
-    return resolveDevMockSession();
+    // KAIA-4011 — dev-mock auto-login is gated on the
+    // `kairikos-portal-dev-session-active` flag cookie. The flag is set
+    // by an explicit dev-mock login action and cleared by the logout
+    // action. Without the flag, dev-mock returns the no-session shape
+    // so the layout redirects to /portal/login — restoring the
+    // unauth → 307 contract and the back-nav protection that the QA
+    // verdict flagged as missing.
+    const hasActiveDevSession = Boolean(cookies().get(DEV_SESSION_ACTIVE_COOKIE)?.value);
+    if (hasActiveDevSession) {
+      return resolveDevMockSession();
+    }
+    return {
+      email: null,
+      accessToken: null,
+      userId: null,
+      role: null,
+      hasClientAccess: false,
+      isOperator: false,
+      clientSlug: null,
+      clientId: null,
+      reason: 'no_session',
+    };
   }
 
   let session;

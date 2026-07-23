@@ -9,7 +9,15 @@ const NAV = [
   { href: '/portal/support', label: 'Soporte' },
 ] as const;
 
-export function PortalHeader({ email, businessName }: { email: string | null; businessName?: string }) {
+const PROFILE_HREF = '/portal/perfil';
+
+export function PortalHeader({
+  email,
+  businessName,
+}: {
+  email: string | null;
+  businessName?: string;
+}) {
   return (
     <header className="sticky top-0 z-10 border-b border-kairikos-border bg-kairikos-bg/80 backdrop-blur">
       <div className="mx-auto flex max-w-page items-center justify-between px-4 py-3 sm:px-6">
@@ -54,6 +62,15 @@ export function PortalHeader({ email, businessName }: { email: string | null; bu
               </Link>
             </li>
           ))}
+          <li>
+            <Link
+              href={PROFILE_HREF}
+              className="block whitespace-nowrap rounded-lg px-3 py-1.5 text-kairikos-muted hover:bg-kairikos-surface hover:text-kairikos-text"
+              data-testid="header-profile-link-mobile"
+            >
+              Perfil
+            </Link>
+          </li>
         </ul>
       </nav>
     </header>
@@ -98,13 +115,22 @@ function UserMenu({ email, businessName }: { email: string; businessName?: strin
             </p>
           ) : null}
         </div>
-        <div className="pt-2">
+        <div className="space-y-1 pt-2">
+          <Link
+            href={PROFILE_HREF}
+            className="block rounded-lg px-3 py-2 text-sm text-kairikos-muted transition hover:bg-kairikos-surface2 hover:text-kairikos-text"
+            data-testid="header-profile-link"
+            role="menuitem"
+          >
+            Mi perfil
+          </Link>
           <form action="/api/portal/logout" method="post">
             <button
               type="submit"
               className="block w-full rounded-lg px-3 py-2 text-left text-sm text-kairikos-muted transition hover:bg-kairikos-surface2 hover:text-kairikos-text"
               data-testid="header-logout"
               formMethod="post"
+              role="menuitem"
             >
               Cerrar sesión
             </button>
