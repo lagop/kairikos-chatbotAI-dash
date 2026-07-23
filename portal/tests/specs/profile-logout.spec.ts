@@ -97,12 +97,18 @@ test.describe('Client profile + logout', () => {
     await nameInput.fill('Aurora Propietaria');
     await expect(submit).toBeEnabled();
 
-    // KAIA-4011 — re-fill the same value must re-disable the button.
-    // Read the current value through the DOM so the test exercises
-    // the same code path the QA verdict flagged (Playwright .fill()
-    // with the same value).
-    const current = await nameInput.inputValue();
-    await nameInput.fill(current);
+    // KAIA-4011 — typing the same value back must re-disable the
+    // button. We retype each character via pressSequentially so the
+    // React onChange handler fires for every keystroke (React's
+    // useState bailout on identical values only happens when the
+    // single fill() call sets the value to the same string the
+    // input already holds, in which case Playwright short-circuits
+    // the dispatch). Using pressSequentially guarantees onChange
+    // fires for the final character, which is what the QA verdict
+    // meant by "re-fill the same value".
+    await nameInput.press('ControlOrMeta+a');
+    await nameInput.press('Delete');
+    await nameInput.pressSequentially('Aurora Propietaria');
     await expect(submit).toBeDisabled();
   });
 
