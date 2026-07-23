@@ -8,6 +8,7 @@ import { LogoutButton } from '@/components/portal/LogoutButton';
 import { getSession } from '@/lib/session';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { DEV_MOCK_CLIENT_BY_EMAIL } from '@/lib/portal-data';
+import { isPortalDevMock } from '@/lib/portal-session';
 import type { ClientProfile } from '@/types/portal';
 
 export const dynamic = 'force-dynamic';
@@ -56,7 +57,7 @@ async function loadProfile(
   const devCookie = cookies().get('kairikos-portal-dev-email')?.value;
   const lookupEmail = (devCookie ?? email).toLowerCase();
 
-  if (!isDatabaseConfigured) {
+  if (!isDatabaseConfigured || isPortalDevMock()) {
     const mock = DEV_MOCK_CLIENT_BY_EMAIL.get(lookupEmail);
     if (!mock) return null;
     return { ...mock, contactName: mock.companyName };
