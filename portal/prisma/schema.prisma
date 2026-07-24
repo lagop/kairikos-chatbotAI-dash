@@ -81,7 +81,7 @@ model ChatbotClient {
   n8nExecutions         N8nExecution[]
   configSteps           ChatbotConfigStep[]
   intakeSubmissions     IntakeSubmission[]
-  tenant                Tenant?           @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  tenant                Tenant?                @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   clientProducts        ClientProduct[]
 
   @@index([stripeCustomerId])
@@ -105,35 +105,35 @@ model ChatbotClient {
 // =============================================================================
 
 model IntakeSubmission {
-  id                 String   @id @default(cuid())
+  id                String   @id @default(cuid())
   // Client-supplied or server-generated idempotency token. UNIQUE.
-  idempotencyKey     String   @unique @map("idempotency_key")
+  idempotencyKey    String   @unique @map("idempotency_key")
   // 'public_intake' | future sources (csv_import, partner_api, ...). Free-form.
-  source             String
+  source            String
   // Vertical tag derived from the `sector` field in the payload.
-  vertical           String
+  vertical          String
   // Slug of the form spec this submission belongs to. Keeps the table
   // multi-form-friendly in case more intake funnels land later.
-  intakeSlug         String   @map("intake_slug")
+  intakeSlug        String   @map("intake_slug")
   // Full payload as JSONB so the admin portal can re-render the submission.
   payload           Json
   // FK to ChatbotClient. NULL during the brief window between row insert
   // and the client upsert completing in the same transaction.
-  clientId           String?  @map("client_id")
+  clientId          String?  @map("client_id")
   // KAIA-4258: tenant isolation FK. NULL for pre-multi-tenant rows; the
   // backfill migration sets it to the default tenant.
-  tenantId           String?  @map("tenant_id") @db.Uuid
+  tenantId          String?  @map("tenant_id") @db.Uuid
   // Denormalized for list/search views so the admin query doesn't have to
   // extract from JSONB on every page load.
-  businessName       String   @map("business_name")
-  humanHandoffEmail  String   @map("human_handoff_email")
-  ipHash             String?  @map("ip_hash")
-  userAgent          String?  @map("user_agent")
-  createdAt          DateTime @default(now()) @map("created_at")
-  updatedAt          DateTime @updatedAt @map("updated_at")
+  businessName      String   @map("business_name")
+  humanHandoffEmail String   @map("human_handoff_email")
+  ipHash            String?  @map("ip_hash")
+  userAgent         String?  @map("user_agent")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
-  client             ChatbotClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  tenant             Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  client ChatbotClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  tenant Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([createdAt(sort: Desc)])
   @@index([vertical])
@@ -297,8 +297,8 @@ model N8nExecution {
   errorMessage String?
   createdAt    DateTime  @default(now())
 
-  client       ChatbotClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  tenant       Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  client ChatbotClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  tenant Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([clientId, startedAt(sort: Desc)])
   @@index([status, startedAt(sort: Desc)])
@@ -343,8 +343,8 @@ model User {
   // cannot authenticate until they complete setup-password.
   passwordHash  String?
   passwordSetAt DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   chatbotClientUsers ChatbotClientUser[]
   profile            Profile?
@@ -371,17 +371,17 @@ model Tenant {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  profiles               Profile[]
-  chatbotClients         ChatbotClient[]
-  chatbotClientUsers     ChatbotClientUser[]
-  chatbotActivities      ChatbotActivity[]
-  chatbotConversations   ChatbotConversation[]
-  chatbotConfigSteps     ChatbotConfigStep[]
+  profiles                Profile[]
+  chatbotClients          ChatbotClient[]
+  chatbotClientUsers      ChatbotClientUser[]
+  chatbotActivities       ChatbotActivity[]
+  chatbotConversations    ChatbotConversation[]
+  chatbotConfigSteps      ChatbotConfigStep[]
   chatbotConfigStepAudits ChatbotConfigStepAudit[]
-  intakeSubmissions      IntakeSubmission[]
-  operatorNotifications  OperatorNotification[]
-  n8nExecutions          N8nExecution[]
-  clientProducts         ClientProduct[]
+  intakeSubmissions       IntakeSubmission[]
+  operatorNotifications   OperatorNotification[]
+  n8nExecutions           N8nExecution[]
+  clientProducts          ClientProduct[]
 
   @@index([slug])
   @@index([status])
@@ -454,6 +454,9 @@ model ClientProduct {
   id           String    @id @default(uuid()) @db.Uuid
   clientId     String    @map("client_id") @db.Uuid
   productId    String    @map("product_id") @db.Uuid
+  // KAIA-4258: tenant isolation FK (denormalized from ChatbotClient so the
+  // owner aggregation view can filter ClientProduct by tenant_id directly).
+  tenantId     String?   @map("tenant_id") @db.Uuid
   // 'active' | 'cancelled' | 'past_due'. Enforced server-side.
   status       String    @default("active")
   subscribedAt DateTime  @default(now()) @map("subscribed_at")
@@ -461,11 +464,13 @@ model ClientProduct {
 
   client  ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
   product Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+  tenant  Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@unique([clientId, productId])
   @@index([clientId])
   @@index([productId])
   @@index([status])
+  @@index([tenantId])
 }
 
 // =============================================================================
@@ -474,12 +479,12 @@ model ClientProduct {
 // Tokens are single-use; once consumed they cannot be reused.
 // =============================================================================
 model PasswordResetToken {
-  id         String     @id @default(cuid())
-  email      String
-  tokenHash  String
-  expiresAt  DateTime
-  usedAt     DateTime?
-  createdAt  DateTime   @default(now())
+  id        String    @id @default(cuid())
+  email     String
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
 
   @@index([email])
   @@index([tokenHash])
