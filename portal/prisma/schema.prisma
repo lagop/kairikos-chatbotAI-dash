@@ -7,6 +7,8 @@
 //   ChatbotClientUser.nextAuthEmail = session.user.email
 // before any other query. No raw SQL — all reads go through Prisma
 // `where: { clientId }` clauses. See prisma/README.md for the rule.
+//
+// Multi-tenant: KAIA-4258 — tenant isolation via profiles.tenant_id FK.
 // =============================================================================
 
 generator client {
@@ -65,6 +67,10 @@ model ChatbotClient {
   // so the status-change watcher can resolve the Supabase UUID to the
   // portal's cuid without going through the email join path.
   supabaseClientId String?   @unique
+  // KAIA-4258: tenant isolation FK. All client data is scoped to this tenant.
+  // NULL during the migration window; the data backfill migration sets it
+  // to the default tenant for any row that pre-dates this column.
+  tenantId         String?   @map("tenant_id") @db.Uuid
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -75,10 +81,13 @@ model ChatbotClient {
   n8nExecutions         N8nExecution[]
   configSteps           ChatbotConfigStep[]
   intakeSubmissions     IntakeSubmission[]
+  tenant                Tenant?           @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  clientProducts        ClientProduct[]
 
   @@index([stripeCustomerId])
   @@index([tier])
   @@index([state])
+  @@index([tenantId])
 }
 
 // =============================================================================
@@ -111,6 +120,9 @@ model IntakeSubmission {
   // FK to ChatbotClient. NULL during the brief window between row insert
   // and the client upsert completing in the same transaction.
   clientId           String?  @map("client_id")
+  // KAIA-4258: tenant isolation FK. NULL for pre-multi-tenant rows; the
+  // backfill migration sets it to the default tenant.
+  tenantId           String?  @map("tenant_id") @db.Uuid
   // Denormalized for list/search views so the admin query doesn't have to
   // extract from JSONB on every page load.
   businessName       String   @map("business_name")
@@ -121,6 +133,7 @@ model IntakeSubmission {
   updatedAt          DateTime @updatedAt @map("updated_at")
 
   client             ChatbotClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  tenant             Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([createdAt(sort: Desc)])
   @@index([vertical])
@@ -129,6 +142,7 @@ model IntakeSubmission {
   @@index([businessName])
   @@index([humanHandoffEmail])
   @@index([clientId])
+  @@index([tenantId])
 }
 
 // One row per operator notification fired (KAIA-1061). Drives the
@@ -143,6 +157,10 @@ model IntakeSubmission {
 model OperatorNotification {
   id              String         @id @default(cuid())
   clientId        String?
+  // KAIA-4258: tenant isolation FK. NULL for non-client-scoped events
+  // (e.g. a global n8n failure) and for pre-multi-tenant rows; the
+  // backfill migration sets it from ChatbotClient.tenantId where known.
+  tenantId        String?        @map("tenant_id") @db.Uuid
   // 'stuck' | 'execution-failed' | 'escalation'
   // | 'review-overdue-warning' | 'review-overdue-escalation'. Enforced
   // server-side in the route handlers — Postgres does not need a CHECK
@@ -166,6 +184,7 @@ model OperatorNotification {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   client          ChatbotClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  tenant          Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@unique([clientId, kind, day])
   @@index([day])
@@ -178,6 +197,7 @@ model OperatorNotification {
   // trip.
   @@index([stepId, kind, day])
   @@index([stepId])
+  @@index([tenantId])
 }
 
 // =============================================================================
@@ -264,6 +284,9 @@ model OperatorRecoveryCode {
 model N8nExecution {
   id           String    @id
   clientId     String?
+  // KAIA-4258: tenant isolation FK. NULL for non-client-scoped flows
+  // (e.g. a global n8n failure) and for pre-multi-tenant rows.
+  tenantId     String?   @map("tenant_id") @db.Uuid
   clientName   String?
   workflow     String
   milestone    String?
@@ -275,9 +298,11 @@ model N8nExecution {
   createdAt    DateTime  @default(now())
 
   client       ChatbotClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  tenant       Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([clientId, startedAt(sort: Desc)])
   @@index([status, startedAt(sort: Desc)])
+  @@index([tenantId])
 }
 
 // Maps a NextAuth session email to a ChatbotClient row. v1 is 1:1 — one
@@ -290,10 +315,16 @@ model ChatbotClientUser {
   // FK to User — the canonical identity row that holds the credential hash.
   // NULL for users who have not yet been linked (backfill completes this).
   userId        String?       @unique
+  // KAIA-4258: tenant isolation FK, resolved via the linked Profile on insert.
+  // NULL for pre-multi-tenant rows; the backfill migration sets it from
+  // ChatbotClient.tenantId.
+  tenantId      String?       @map("tenant_id") @db.Uuid
   client        ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
   user          User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  tenant        Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([clientId])
+  @@index([tenantId])
 }
 
 // =============================================================================
@@ -316,9 +347,107 @@ model User {
   updatedAt    DateTime  @updatedAt
 
   chatbotClientUsers ChatbotClientUser[]
+  profile            Profile?
 
   @@index([email])
   @@index([role])
+}
+
+// =============================================================================
+// KAIA-4258 — Multi-tenant: Tenant organizations
+//
+// One row per tenant organization. The tenant owns all client data.
+// Feature flags stored as JSONB for per-tenant rollout.
+// =============================================================================
+model Tenant {
+  id         String   @id @default(uuid()) @db.Uuid
+  name       String
+  slug       String   @unique
+  status     String   @default("active")
+             @map("status")
+             // 'active' | 'suspended' | 'cancelled'
+  features   Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  profiles        Profile[]
+  chatbotClients ChatbotClient[]
+
+  @@index([slug])
+  @@index([status])
+}
+
+// =============================================================================
+// KAIA-4258 — Multi-tenant: User profiles
+//
+// One row per auth.users, extending with tenant_id and role.
+// The profile is auto-created by a DB trigger on auth.users insert.
+// =============================================================================
+model Profile {
+  id        String   @id @default(cuid())
+  // Same ID as the linked User — 1:1 relationship
+  userId    String   @unique @map("user_id")
+  tenantId  String   @map("tenant_id")
+           @db.Uuid
+  role      String   @default("viewer")
+           // 'owner' | 'admin' | 'viewer'
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([role])
+}
+
+// =============================================================================
+// KAIA-4258 — Multi-tenant: Service products (tiers)
+//
+// Kairikos service tiers. Source of truth is Stripe, but we store metadata
+// here for portal display and feature-gating.
+// =============================================================================
+model Product {
+  id            String   @id @default(uuid()) @db.Uuid
+  stripePriceId String? @unique @map("stripe_price_id")
+  name         String
+  tier         String   @unique
+               // 'starter' | 'pro' | 'premium'
+  priceCents   Int      @map("price_cents")
+  currency     String   @default("EUR")
+  features     Json     @default("{}")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  clientProducts ClientProduct[]
+
+  @@index([tier])
+  @@index([isActive])
+}
+
+// =============================================================================
+// KAIA-4258 — Multi-tenant: Client-Product many-to-many join
+//
+// Associates chatbot clients with their subscribed products.
+// =============================================================================
+model ClientProduct {
+  id            String    @id @default(uuid()) @db.Uuid
+  clientId     String    @map("client_id")
+             @db.Uuid
+  productId    String    @map("product_id")
+             @db.Uuid
+  status       String    @default("active")
+             // 'active' | 'cancelled' | 'past_due'
+  subscribedAt DateTime  @default(now()) @map("subscribed_at")
+  cancelledAt  DateTime? @map("cancelled_at")
+
+  client  ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  product Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([clientId, productId])
+  @@index([clientId])
+  @@index([productId])
+  @@index([status])
 }
 
 // =============================================================================
@@ -349,6 +478,11 @@ model PasswordResetToken {
 model ChatbotActivity {
   id          String        @id @default(cuid())
   clientId    String
+  // KAIA-4258: tenant isolation FK (denormalized from ChatbotClient for query
+  // plans that filter by tenant_id directly without a join). NULL for
+  // pre-multi-tenant rows; the backfill migration sets it from
+  // ChatbotClient.tenantId.
+  tenantId    String?       @map("tenant_id") @db.Uuid
   // T+N milestone label — "T+0", "T+3", "T+7", "T+14" by convention; free-form
   // string so n8n can extend without a schema migration. Enforced allowlist
   // lives in the route handler at src/app/api/internal/activity/route.ts.
@@ -358,9 +492,11 @@ model ChatbotActivity {
   completedAt DateTime?
   notes       String?
   client      ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant      Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@unique([clientId, milestone])
   @@index([clientId, completedAt])
+  @@index([tenantId])
 }
 
 // One row per chatbot conversation. Read-only on the portal in v1
@@ -368,6 +504,9 @@ model ChatbotActivity {
 model ChatbotConversation {
   id         String        @id @default(cuid())
   clientId   String
+  // KAIA-4258: tenant isolation FK (denormalized for RLS performance).
+  tenantId   String?       @map("tenant_id")
+            @db.Uuid
   startedAt  DateTime
   // Duration in seconds. NULL while the conversation is still open.
   duration   Int?
@@ -381,6 +520,7 @@ model ChatbotConversation {
 
   @@index([clientId, startedAt])
   @@index([clientId, outcome])
+  @@index([tenantId])
 }
 
 // =============================================================================
@@ -410,6 +550,9 @@ model ChatbotConversation {
 model ChatbotConfigStep {
   id                   String    @id @default(cuid())
   clientId             String
+  // KAIA-4258: tenant isolation FK (denormalized for RLS performance).
+  tenantId             String?   @map("tenant_id")
+                      @db.Uuid
   // Step identifier: "1" through "12" (Steps 1-10 + 11 Pruebas + 12 Integraciones).
   // Enforced server-side via a per-step Zod schema registry.
   stepKey              String
@@ -451,6 +594,7 @@ model ChatbotConfigStep {
   @@index([clientId, stepKey])
   @@index([clientId, stepKey, activeForBot])
   @@index([clientId, status])
+  @@index([tenantId])
 }
 
 // Immutable (append-only) audit log for ChatbotConfigStep changes.
@@ -460,6 +604,9 @@ model ChatbotConfigStep {
 model ChatbotConfigStepAudit {
   id        String   @id @default(cuid())
   stepId    String
+  // KAIA-4258: tenant isolation FK (denormalized for RLS performance).
+  tenantId  String?  @map("tenant_id")
+            @db.Uuid
   // Denormalized version at the time of the event so the audit trail is
   // meaningful even if versions are later cleaned up.
   version   Int
@@ -480,6 +627,7 @@ model ChatbotConfigStepAudit {
   @@index([stepId, createdAt])
   @@index([actor])
   @@index([action])
+  @@index([tenantId])
 }
 
 // =============================================================================
