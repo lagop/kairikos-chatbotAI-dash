@@ -83,6 +83,7 @@ model ChatbotClient {
   intakeSubmissions     IntakeSubmission[]
   tenant                Tenant?                @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   clientProducts        ClientProduct[]
+  productAudits         ClientProductAudit[]
 
   @@index([stripeCustomerId])
   @@index([tier])
@@ -382,6 +383,7 @@ model Tenant {
   operatorNotifications   OperatorNotification[]
   n8nExecutions           N8nExecution[]
   clientProducts          ClientProduct[]
+  productAudits           ClientProductAudit[]
 
   @@index([slug])
   @@index([status])
@@ -436,13 +438,37 @@ model Product {
   createdAt     DateTime @default(now()) @map("created_at")
 
   clientProducts ClientProduct[]
-
+  auditLogs      ClientProductAudit[]
   @@index([tier])
   @@index([isActive])
 }
 
+// Immutable audit trail for product assignment and lifecycle changes.
+model ClientProductAudit {
+  id              String    @id @default(uuid()) @db.Uuid
+  clientProductId  String    @map("client_product_id") @db.Uuid
+  clientId         String    @map("client_id")
+  productId        String    @map("product_id") @db.Uuid
+  tenantId         String?   @map("tenant_id") @db.Uuid
+  action           String
+  statusBefore     String?   @map("status_before")
+  statusAfter      String?   @map("status_after")
+  actorId          String    @map("actor_id")
+  changedAt        DateTime  @default(now()) @map("changed_at")
+
+  clientProduct ClientProduct @relation(fields: [clientProductId], references: [id], onDelete: Restrict)
+  client        ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  product       Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+  tenant        Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([clientProductId, changedAt])
+  @@index([clientId, changedAt])
+  @@index([tenantId])
+}
+
 // =============================================================================
 // KAIA-4258 — Multi-tenant: Client-Product many-to-many join
+
 //
 // Associates chatbot clients with their subscribed products. Stripe stores
 // the subscription itself; this row is the portal/Supabase denormalization
@@ -452,19 +478,20 @@ model Product {
 // =============================================================================
 model ClientProduct {
   id           String    @id @default(uuid()) @db.Uuid
-  clientId     String    @map("client_id") @db.Uuid
+  clientId     String    @map("client_id")
   productId    String    @map("product_id") @db.Uuid
-  // KAIA-4258: tenant isolation FK (denormalized from ChatbotClient so the
-  // owner aggregation view can filter ClientProduct by tenant_id directly).
   tenantId     String?   @map("tenant_id") @db.Uuid
-  // 'active' | 'cancelled' | 'past_due'. Enforced server-side.
   status       String    @default("active")
   subscribedAt DateTime  @default(now()) @map("subscribed_at")
   cancelledAt  DateTime? @map("cancelled_at")
+  createdBy    String?   @map("created_by")
+  changedBy    String?   @map("changed_by")
+  changedAt    DateTime  @default(now()) @map("changed_at")
 
   client  ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
   product Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
   tenant  Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  auditLogs ClientProductAudit[]
 
   @@unique([clientId, productId])
   @@index([clientId])
