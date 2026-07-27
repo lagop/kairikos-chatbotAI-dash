@@ -84,6 +84,8 @@ model ChatbotClient {
   tenant                Tenant?                @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   clientProducts        ClientProduct[]
   productAudits         ClientProductAudit[]
+  subscriptions         Subscription[]
+  invoices              Invoice[]
 
   @@index([stripeCustomerId])
   @@index([tier])
@@ -369,6 +371,11 @@ model Tenant {
   // 'active' | 'suspended' | 'cancelled'. Enforced server-side.
   status    String   @default("active")
   features  Json     @default("{}")
+  // KAIA-4262 — Stripe Customer link. NULL until the portal (or owner
+  // operator flow) creates the Customer and the Stripe webhook stores
+  // the id back. UNIQUE so the same Stripe customer can only be
+  // linked to one tenant.
+  stripeCustomerId String? @unique @map("stripe_customer_id")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -384,6 +391,8 @@ model Tenant {
   n8nExecutions           N8nExecution[]
   clientProducts          ClientProduct[]
   productAudits           ClientProductAudit[]
+  subscriptions           Subscription[]
+  invoices                Invoice[]
 
   @@index([slug])
   @@index([status])
@@ -492,12 +501,130 @@ model ClientProduct {
   product Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
   tenant  Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   auditLogs ClientProductAudit[]
+  subscription Subscription?
 
   @@unique([clientId, productId])
   @@index([clientId])
   @@index([productId])
   @@index([status])
   @@index([tenantId])
+}
+
+// =============================================================================
+// KAIA-4262 — Stripe Subscription state mirror (per ClientProduct)
+//
+// One row per Stripe Subscription. Stripe is the source of truth — this
+// row is the portal/Supabase denormalization for the owner billing UI,
+// the client billing page, and the MRR aggregation.
+//
+// Idempotency: stripe_id is UNIQUE so the webhook upsert is naturally
+// idempotent even if the StripeWebhookEvent idempotency row is missing.
+// 1:1 with ClientProduct so each product-tier subscription per client
+// maps to exactly one ClientProduct row.
+// =============================================================================
+model Subscription {
+  id                  String   @id @default(uuid()) @db.Uuid
+  tenantId            String   @map("tenant_id") @db.Uuid
+  clientId            String   @map("client_id")
+  clientProductId     String   @unique @map("client_product_id") @db.Uuid
+  // Stripe identifiers — stripe_id is the business key.
+  stripeId            String   @unique @map("stripe_id")
+  stripeCustomerId    String   @map("stripe_customer_id")
+  stripePriceId       String?  @map("stripe_price_id")
+  // 'incomplete' | 'trialing' | 'active' | 'past_due' | 'canceled' |
+  // 'unpaid' | 'incomplete_expired' | 'paused'. Mirrors Stripe's enum.
+  status              String   @default("incomplete")
+  currentPeriodStart  DateTime? @map("current_period_start")
+  currentPeriodEnd    DateTime? @map("current_period_end")
+  cancelAtPeriodEnd   Boolean  @default(false) @map("cancel_at_period_end")
+  canceledAt          DateTime? @map("canceled_at")
+  // Currency minor units (9900 = 99€).
+  amountCents         Int?     @map("amount_cents")
+  currency            String   @default("eur")
+  // Latest Stripe subscription snapshot. NOT source of truth.
+  metadata            Json     @default("{}")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  client   ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientProduct ClientProduct @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
+  invoices Invoice[]
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@index([status])
+  @@index([stripeCustomerId])
+}
+
+// =============================================================================
+// KAIA-4262 — Stripe Invoice state mirror (per Subscription)
+//
+// One row per Stripe Invoice. Used by the client billing page (latest
+// invoice + PDF link) and by the owner MRR aggregation. host_invoice_url
+// is what the portal sends the user to for the Stripe-hosted view;
+// invoice_pdf_url is the direct PDF download.
+//
+// Idempotency: stripe_id is UNIQUE so webhook retries collapse to a
+// no-op upsert.
+// =============================================================================
+model Invoice {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  clientId         String   @map("client_id")
+  subscriptionId   String   @map("subscription_id") @db.Uuid
+  stripeId         String   @unique @map("stripe_id")
+  // 'draft' | 'open' | 'paid' | 'uncollectible' | 'void'.
+  status           String   @default("draft")
+  number           String?
+  amountDueCents   Int      @default(0) @map("amount_due_cents")
+  amountPaidCents  Int      @default(0) @map("amount_paid_cents")
+  currency         String   @default("eur")
+  issuedAt         DateTime? @map("issued_at")
+  dueAt            DateTime? @map("due_at")
+  paidAt           DateTime? @map("paid_at")
+  periodStart      DateTime? @map("period_start")
+  periodEnd        DateTime? @map("period_end")
+  hostInvoiceUrl   String?  @map("host_invoice_url")
+  invoicePdfUrl    String?  @map("invoice_pdf_url")
+  metadata         Json     @default("{}")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  client       ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@index([subscriptionId])
+  @@index([status])
+}
+
+// =============================================================================
+// KAIA-4262 — Stripe webhook event idempotency log
+//
+// Primary key = Stripe event id. Inserted before any state mutation so
+// a redelivery of the same event id short-circuits. payload_hash guards
+// against the (rare) case where Stripe re-delivers an event id with a
+// mutated body — we still no-op on the second delivery.
+// =============================================================================
+model StripeWebhookEvent {
+  eventId           String   @id @map("event_id")
+  eventType         String   @map("event_type")
+  payloadHash       String   @map("payload_hash")
+  receivedAt        DateTime @default(now()) @map("received_at")
+  processedAt       DateTime? @map("processed_at")
+  // 'pending' | 'processed' | 'failed'. failed means the handler
+  // threw; we keep the row so retry deliveries are still no-ops.
+  status            String   @default("pending")
+  errorMessage      String?  @map("error_message")
+  // 'subscription' | 'invoice' | 'ignored' — what the event mutated.
+  appliedTo         String?  @map("applied_to")
+  stripeApiVersion  String?  @map("stripe_api_version")
+
+  @@index([status])
+  @@index([receivedAt])
 }
 
 // =============================================================================
