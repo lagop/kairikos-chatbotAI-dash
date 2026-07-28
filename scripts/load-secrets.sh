@@ -50,8 +50,35 @@ esac
 [[ -n "${SUPABASE_ACCESS_TOKEN:-}"      ]] || export SUPABASE_ACCESS_TOKEN="$(_resolve supabase-access-token)"
 [[ -n "${SUPABASE_DB_PASSWORD:-}"       ]] || export SUPABASE_DB_PASSWORD="$(_resolve supabase-db-password)"
 [[ -n "${SUPABASE_DB_URL:-}"            ]] || export SUPABASE_DB_URL="$(_resolve supabase-db-url)"
+[[ -n "${SUPABASE_PROJECT_REF:-}"       ]] || export SUPABASE_PROJECT_REF="$(_resolve supabase-project-ref)"
 [[ -n "${GOOGLE_API_KEY:-}"             ]] || export GOOGLE_API_KEY="$(_resolve google-api-key)"
 [[ -n "${WP_ADMIN_PASSWORD:-}"          ]] || export WP_ADMIN_PASSWORD="$(_resolve wp-admin-password)"
 [[ -n "${DASHSCOPE_API_KEY:-}"          ]] || export DASHSCOPE_API_KEY="$(_resolve dashscope-api-key)"
+
+# --- ds-product-reviews (KAIA-4261.6 / KAIA-4277) -----------------------------
+# These four secrets are required by the `ds-product-reviews` n8n workflows
+# (reviews-request-from-dashboard, reviews-received-inbound). Without them,
+# the workflows cannot HMAC-verify dashboard callbacks, reach the relay, or
+# page the on-call channel. Source paths live in GCP Secret Manager under
+# $GCP_SECRETS_PREFIX (e.g. kairikos-secrets/).
+[[ -n "${DASHBOARD_WEBHOOK_SHARED_SECRET:-}" ]] || export DASHBOARD_WEBHOOK_SHARED_SECRET="$(_resolve dashboard-webhook-shared-secret)"
+[[ -n "${N8N_RELAY_BASE_URL:-}"              ]] || export N8N_RELAY_BASE_URL="$(_resolve n8n-relay-base-url)"
+[[ -n "${N8N_RELAY_TOKEN:-}"                 ]] || export N8N_RELAY_TOKEN="$(_resolve n8n-relay-token)"
+[[ -n "${SLACK_ERROR_WEBHOOK_URL:-}"         ]] || export SLACK_ERROR_WEBHOOK_URL="$(_resolve slack-error-webhook-url)"
+
+# --- Stripe (KAIA-4262 / KAIA-5514) ------------------------------------------
+# STRIPE_SECRET_KEY is the canonical Stripe account credential. Per
+# KAIA-2917 topology, it primarily lives in Vercel project env so the
+# deployed portal can read it at runtime via process.env. The agent also
+# needs it to bootstrap product/price creation (see
+# scripts/create-stripe-products.sh), so we mirror it from GCP Secret
+# Manager when the operator provisions it under
+# $GCP_SECRETS_PREFIX/stripe-secret-key.
+[[ -n "${STRIPE_SECRET_KEY:-}"        ]] || export STRIPE_SECRET_KEY="$(_resolve stripe-secret-key)"
+# STRIPE_WEBHOOK_SECRET is the signing secret for the webhook endpoint.
+# Lives in Vercel project env for the deployed portal. Mirror in GCP SM
+# at $GCP_SECRETS_PREFIX/stripe-webhook-secret for agent-side testing
+# (scripts/verify-stripe-webhook.sh).
+[[ -n "${STRIPE_WEBHOOK_SECRET:-}"    ]] || export STRIPE_WEBHOOK_SECRET="$(_resolve stripe-webhook-secret)"
 
 unset -f _resolve
