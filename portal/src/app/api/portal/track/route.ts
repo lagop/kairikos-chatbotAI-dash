@@ -1,17 +1,30 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { resolveClientFromSession } from '@/lib/portal-session';
-import { trackPageView } from '@/lib/analytics';
+import { trackPageView, trackOnboardingEvent } from '@/lib/analytics';
 import { handleAssetsUploaded } from '@/lib/onboarding-actions';
+import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+const ALLOWED_FUNNEL_EVENTS: ReadonlySet<string> = new Set([
+  'step_seen',
+  'step_completed',
+  'signup',
+  'product_selected',
+  'config_saved',
+  'checkout_started',
+  'activated',
+  'abandoned',
+]);
+
 export async function POST(req: NextRequest) {
-  // Two event shapes flow through this route:
+  // Three event shapes flow through this route:
   //   * `page_view` — public page analytics; no session required.
   //   * `assets-uploaded` — KAIA-1062 self-service; client confirms
-  //     "I uploaded my assets" on /portal/onboarding. Marks the
-  //     assets milestone complete in the activity log.
+  //     "I uploaded my assets" on /portal/onboarding.
+  //   * `onboarding_event` — KAIA-4263 self-serve wizard funnel
+  //     event. Anonymous, no session required.
   let body: Record<string, unknown> = {};
   try {
     body = (await req.json()) as Record<string, unknown>;
@@ -32,6 +45,43 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  if (body?.type === 'onboarding_event') {
+    const event = typeof body.event === 'string' ? body.event : '';
+    const sessionId = typeof body.sessionId === 'string' ? body.sessionId : '';
+    if (!ALLOWED_FUNNEL_EVENTS.has(event) || sessionId.length < 8) {
+      return NextResponse.json({ ok: true, ignored: true });
+    }
+    const path = typeof body.path === 'string' ? body.path : '/onboarding';
+    const step = typeof body.step === 'string' ? body.step : null;
+    const reason = typeof body.reason === 'string' ? body.reason : null;
+    const ts = typeof body.ts === 'string' ? body.ts : new Date().toISOString();
+    await trackOnboardingEvent({
+      event: event as Parameters<typeof trackOnboardingEvent>[0]['event'],
+      step: step ?? undefined,
+      reason: reason ?? undefined,
+      sessionId,
+      path,
+      ts,
+    });
+    if (isDatabaseConfigured) {
+      try {
+        await prisma.onboardingFunnelEvent.create({
+          data: {
+            event,
+            sessionToken: sessionId,
+            step,
+            reason,
+            path,
+            ts: new Date(ts),
+          },
+        });
+      } catch {
+        // analytics must never 500 the wizard
+      }
+    }
+    return NextResponse.json({ ok: true });
+  }
+
   if (body?.event === 'assets-uploaded') {
     const resolved = await resolveClientFromSession();
     if (!resolved) {
@@ -46,8 +96,6 @@ export async function POST(req: NextRequest) {
         ? body.notes
         : undefined;
     if (resolved.source === 'mock_dev') {
-      // The dev-mock branch in handleAssetsUploaded already short-circuits
-      // when no DB is configured, so the same handler covers both.
       return handleAssetsUploaded(resolved.clientId, { milestone, notes });
     }
     return handleAssetsUploaded(resolved.clientId, { milestone, notes });
@@ -55,3 +103,4 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ ok: true, ignored: true });
 }
+

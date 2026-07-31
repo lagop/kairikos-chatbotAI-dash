@@ -511,6 +511,87 @@ model ClientProduct {
 }
 
 // =============================================================================
+// KAIA-4263 — Public self-serve onboarding session (product-agnostic).
+//
+// One row per anonymous wizard run. Holds the wizard session token, the
+// selected product tier, the captured minimum configuration, and the
+// Stripe checkout session id. When the Stripe webhook flips the row
+// to `active`, the Backend Developer migrates the row content into
+// the canonical Tenant / Profile / ClientProduct models in the same
+// transaction (or this row is the canonical one — TBD when the
+// Backend Developer ships KAIA-4263 backend). Idempotency is
+// guaranteed by the unique `idempotencyKey` (defaults to a SHA-256 of
+// the lowercase email so retries never create a second tenant).
+// =============================================================================
+model OnboardingSession {
+  id                     String    @id @default(uuid()) @db.Uuid
+  // Public token the wizard uses as its session id.
+  sessionToken           String    @unique @map("session_token")
+  // Idempotency key — usually SHA-256(lowercase(email)) but can be a
+  // client-supplied X-Idempotency-Key echoed back through /api/onboarding/start.
+  idempotencyKey         String    @unique @map("idempotency_key")
+  email                  String
+  // Pre-reserved tenant slug (snake-cased prefix from email + uuid suffix).
+  tenantSlug             String    @unique @map("tenant_slug")
+  // 'starter' | 'pro' | 'premium'. NULL until the user picks the plan.
+  productTier            String?   @map("product_tier")
+  // Product.id (UUID). Resolved at the /product step.
+  productId              String?   @map("product_id") @db.Uuid
+  // ClientProduct.id set once checkout begins.
+  clientProductId        String?   @map("client_product_id") @db.Uuid
+  // Minimum-configuration payload (validated server-side at /api/onboarding/config).
+  businessName           String?   @map("business_name")
+  sector                 String?   @map("sector")
+  whatsapp               String?
+  contactEmail           String?   @map("contact_email")
+  // Stripe linkage set when the wizard enters /pago.
+  stripeCheckoutSessionId String?  @map("stripe_checkout_session_id")
+  stripeCustomerId       String?   @map("stripe_customer_id")
+  // Cross-link to tenant/client once Stripe webhook or backend migrate.
+  clientId               String?   @map("client_id")
+  tenantId               String?   @map("tenant_id") @db.Uuid
+  // 'pending' | 'checkout_pending' | 'active' | 'abandoned'.
+  status                 String    @default("pending")
+  activationAt           DateTime? @map("activation_at")
+  abandonedReason        String?   @map("abandoned_reason")
+  source                 String    @default("self_serve_landing")
+  expiresAt              DateTime  @map("expires_at")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([email])
+  @@index([stripeCheckoutSessionId])
+}
+
+// =============================================================================
+// KAIA-4263 — Onboarding funnel events (wizard self-serve).
+//
+// Append-only log of wizard funnel events. One row per
+// `trackOnboardingEvent` call from `/onboarding/*`. Anonymous,
+// denormalized so the owner-facing view at
+// /admin/portal/onboarding-funnel can compute drop-off in pure SQL.
+//
+// The (sessionToken, event, ts) triplet is the unique key: a wizard
+// may legitimately emit step_seen twice (refresh, re-entry) so we
+// keep the timestamp on the row instead of collapsing.
+// =============================================================================
+model OnboardingFunnelEvent {
+  id           String   @id @default(uuid()) @db.Uuid
+  // 'step_seen' | 'step_completed' | 'signup' | 'product_selected' |
+  // 'config_saved' | 'checkout_started' | 'activated' | 'abandoned'.
+  event        String
+  sessionToken String   @map("session_token")
+  step         String?
+  reason       String?
+  path         String
+  ts           DateTime @default(now())
+
+  @@index([sessionToken, ts])
+  @@index([event, ts])
+}
+
+// =============================================================================
 // KAIA-4262 — Stripe Subscription state mirror (per ClientProduct)
 //
 // One row per Stripe Subscription. Stripe is the source of truth — this
