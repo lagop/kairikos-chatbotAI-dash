@@ -4,6 +4,10 @@ import type Stripe from 'stripe';
 import { prisma } from './prisma';
 import { isStripeConfigured, getStripe } from './stripe';
 import { syncSubscriptionFromStripe, syncInvoiceFromStripe, deleteSubscriptionFromStripe } from './stripe-billing';
+import {
+  activateOnboardingSession,
+  OnboardingActivationError,
+} from './onboarding-activation';
 
 /**
  * KAIA-4262 — Stripe webhook event handler.
@@ -110,12 +114,25 @@ export async function handleStripeEvent(
 
 async function dispatch(event: Stripe.Event): Promise<string> {
   switch (event.type) {
+    case 'checkout.session.completed': {
+      const session = event.data.object as Stripe.Checkout.Session;
+      return await activateFromCheckoutSession(session);
+    }
     case 'customer.subscription.created':
     case 'customer.subscription.updated':
     case 'customer.subscription.paused':
     case 'customer.subscription.resumed':
     case 'customer.subscription.trial_will_end': {
       const sub = event.data.object as Stripe.Subscription;
+      // KAIA-8107 — canonical activation. When the subscription was
+      // created via the self-serve onboarding wizard, the local
+      // ClientProduct stub (created by /api/public/billing/checkout-session)
+      // may not yet exist on the Stripe metadata side or the
+      // canonical row may not yet be linked. Run the activation
+      // upsert first so syncSubscriptionFromStripe never sees a
+      // missing client_product_id. The activation is idempotent on
+      // webhook redelivery.
+      await activateFromSubscription(sub);
       await syncSubscriptionFromStripe(sub);
       return 'subscription';
     }
@@ -136,6 +153,80 @@ async function dispatch(event: Stripe.Event): Promise<string> {
     }
     default:
       return 'ignored';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// KAIA-8107 — Onboarding activation wiring for Stripe events.
+//
+// Both event sources carry the OnboardingSession id in metadata:
+//   * `checkout.session.completed` — set when the wizard creates the
+//     Stripe Checkout Session in /api/public/billing/checkout-session.
+//   * `customer.subscription.created` — Stripe copies the checkout
+//     metadata into the subscription metadata, so the same field
+//     resolves the session token even when the wizard wrote the
+//     canonical Customer id there instead.
+//
+// Activation is the canonical multi-tenant upsert. We never block the
+// webhook on activation failure for a non-onboarding subscription
+// (no metadata token = no wizard session = legacy/manual signup); in
+// that case we 200 short-circuit and let the legacy path run.
+// ---------------------------------------------------------------------------
+
+function readOnboardingSessionToken(meta: Record<string, string> | null | undefined): string | null {
+  const token = meta?.kairikos_onboarding_session;
+  return token && token.length >= 8 ? token : null;
+}
+
+function readStripeCustomerId(value: Stripe.Subscription['customer'] | Stripe.Checkout.Session['customer']): string | null {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object' && 'id' in value && typeof (value as { id: string }).id === 'string') {
+    return (value as { id: string }).id;
+  }
+  return null;
+}
+
+async function activateFromCheckoutSession(session: Stripe.Checkout.Session): Promise<string> {
+  const token = readOnboardingSessionToken((session.metadata ?? {}) as Record<string, string>);
+  if (!token) {
+    // Not a self-serve onboarding checkout — nothing to absorb.
+    return 'checkout:non_onboarding';
+  }
+  const stripeCustomerId = readStripeCustomerId(session.customer);
+  try {
+    const result = await activateOnboardingSession({
+      sessionToken: token,
+      stripeCustomerId: stripeCustomerId ?? null,
+    });
+    return result.alreadyActive ? 'checkout:onboarding_already_active' : 'checkout:onboarding_activated';
+  } catch (err) {
+    if (err instanceof OnboardingActivationError) {
+      throw err;
+    }
+    throw err;
+  }
+}
+
+async function activateFromSubscription(sub: Stripe.Subscription): Promise<void> {
+  const token = readOnboardingSessionToken((sub.metadata ?? {}) as Record<string, string>);
+  if (!token) {
+    return;
+  }
+  const stripeCustomerId = readStripeCustomerId(sub.customer);
+  const item = sub.items.data[0];
+  const stripePriceId = item?.price?.id ?? null;
+  try {
+    await activateOnboardingSession({
+      sessionToken: token,
+      stripeCustomerId: stripeCustomerId ?? null,
+      stripeSubscriptionId: sub.id,
+      stripePriceId: stripePriceId ?? null,
+    });
+  } catch (err) {
+    if (err instanceof OnboardingActivationError) {
+      throw err;
+    }
+    throw err;
   }
 }
 
