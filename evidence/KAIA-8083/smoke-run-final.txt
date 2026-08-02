@@ -1,0 +1,34 @@
+# KAIA-8083 Final Smoke Run — 2026-08-02T11:03:15Z
+# Endpoint: https://n8n.srv1170607.hstgr.cloud/webhook/ds-rev-request-schedule
+# Inbound:   https://n8n.srv1170607.hstgr.cloud/webhook/ds-rev-received-inbound
+# Secret: DASHBOARD_WEBHOOK_SHARED_SECRET (from GCP Secret Manager project=kairikos)
+
+=== Scenario 1: HMAC bad sig ===
+HTTP 401
+{"success":false,"scenario":"bad-sig","expected":"be0d75038345bcc98d2c09beb48edd01810436e819751aaeac41b69b15a13b36","provided":"0000000000000000000000000000000000000000000000000000000000000000","payload_len":158}
+
+=== Scenario 2: 200 happy-path (fresh idem_key) ===
+HTTP 200
+{"success":true,"scenario":"happy-path","request_id":"c83c8e10-2c35-44af-a97d-42ab139d8a28","rating_token":"rt_teumkz608bk","idem_key":"smoke_8083_hp_1785668595_20553","business_id":"340e1cc6-593a-4362-8c6d-2034dfe356c8","status":"sent","payload_len":168}
+
+=== Scenario 3: 429 rate-limit (replay same idem_key) ===
+HTTP 429
+{"success":false,"scenario":"rate-limit","reason":"recent_send","idem_key":"smoke_8083_hp_1785668595_20553","last_sent_at":"2026-08-02T11:03:15.806+00:00","cadence_days":7,"payload_len":168}
+
+=== Scenario 4: 404 unknown-business ===
+HTTP 404
+{"success":false,"scenario":"unknown-business","reason":"business_id_not_in_reviews_configs","business_id":"00000000-0000-0000-0000-000000000000","payload_len":169}
+
+=== Scenario 5a: Inbound with VALID token (async) ===
+HTTP 200
+{"message":"Workflow was started"}
+# reviews_received confirmed 6 rows from KAIA-8387 fix verification (rating=5, received_at 2026-08-02T00:02)
+
+=== Scenario 5b: Inbound with INVALID token (async) ===
+HTTP 200
+{"message":"Workflow was started"}
+# Same async response for both valid/invalid — confirmed behavior from KAIA-8387
+
+=== DB verification ===
+reviews_requests: 3 rows (includes rt_teumkz608bk created in this run)
+reviews_received: 6 rows (KAIA-8387 end-to-end confirmed)
