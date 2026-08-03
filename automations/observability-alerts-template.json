@@ -1,0 +1,43 @@
+{
+  "name": "Kairikos observability alerts template",
+  "version": "1.0.0",
+  "description": "Reusable n8n-compatible monitoring flow definitions. Configure Telegram and Supabase credentials through the n8n secret store.",
+  "defaults": {
+    "timezone": "Europe/Madrid",
+    "retry": { "maxAttempts": 3, "backoffSeconds": 30 },
+    "deduplication": "event_type + time_window + fingerprint"
+  },
+  "flows": [
+    {
+      "name": "Stripe webhook failure threshold",
+      "trigger": { "type": "schedule", "everyMinutes": 1 },
+      "query": { "source": "system_events", "eventType": "stripe_webhook_failure", "windowMinutes": 5, "threshold": 2 },
+      "action": { "type": "slack", "channel": "owner-alerts", "severity": "critical", "message": "Stripe webhook failures exceeded 2 in 5 minutes." },
+      "fallback": { "type": "telegram", "when": "TELEGRAM_BOT_TOKEN present" }
+    },
+    {
+      "name": "Reviews workflow failure threshold",
+      "trigger": { "type": "schedule", "everyMinutes": 1 },
+      "query": { "source": "system_events", "eventType": "reviews_workflow_failure", "windowMinutes": 10, "threshold": 3 },
+      "action": { "type": "slack", "channel": "owner-alerts", "severity": "critical", "message": "Reviews workflow failures exceeded 3 in 10 minutes." },
+      "fallback": { "type": "telegram", "when": "TELEGRAM_BOT_TOKEN present" }
+    },
+    {
+      "name": "Daily owner revenue summary",
+      "trigger": { "type": "cron", "expression": "0 9 * * *", "timezone": "Europe/Madrid" },
+      "query": { "source": "owner_billing_overview", "fields": ["mrr", "newClients", "cancellations"] },
+      "action": { "type": "slack", "channel": "owner-daily", "severity": "info", "message": "Daily MRR, new clients, and cancellations summary." },
+      "fallback": { "type": "telegram", "when": "TELEGRAM_BOT_TOKEN present" }
+    },
+    {
+      "name": "Supabase Edge Function error rate",
+      "trigger": { "type": "schedule", "everyMinutes": 5 },
+      "query": { "source": "system_events", "eventType": "edge_function_invocation", "windowMinutes": 60, "errorRateGreaterThan": 0.01 },
+      "action": { "type": "slack", "channel": "owner-alerts", "severity": "critical", "message": "Supabase Edge Function error rate exceeded 1% in the last hour." },
+      "fallback": { "type": "telegram", "when": "TELEGRAM_BOT_TOKEN present" }
+    }
+  ],
+  "requiredSecrets": ["SLACK_ERROR_WEBHOOK_URL", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"],
+  "optionalSecrets": ["TELEGRAM_BOT_TOKEN", "TELEGRAM_OWNER_CHAT_ID"],
+  "errorHandling": { "onFailure": "record system_events error and retry", "deadLetter": "system_events" }
+}
