@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { useMemo } from 'react';
-import { WIZARD_STEPS, useOnboarding, type WizardStep } from '@/lib/onboarding/self-serve-context';
+import { useOnboarding } from '@/lib/onboarding/self-serve-context';
+import { WIZARD_STEPS, type WizardStep } from '@/lib/onboarding/wizard-steps';
 
 const STEP_LABEL: Record<WizardStep, string> = {
   signup: 'Registro',
