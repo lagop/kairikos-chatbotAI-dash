@@ -562,20 +562,16 @@ model OnboardingSession {
   @@index([status])
   @@index([email])
   @@index([stripeCheckoutSessionId])
+
+  // KAIA-10138: align Prisma table mapping with the migration files in
+  // portal/prisma/migrations/20260801100000_onboarding_session/migration.sql.
+  // Without this @@map the generated Prisma client queries
+  // public.OnboardingSession (PascalCase derived from the model name) and
+  // reports "table does not exist" at runtime, even though the migration
+  // creates onboarding_sessions (snake_case).
+  @@map("onboarding_sessions")
 }
 
-// =============================================================================
-// KAIA-4263 — Onboarding funnel events (wizard self-serve).
-//
-// Append-only log of wizard funnel events. One row per
-// `trackOnboardingEvent` call from `/onboarding/*`. Anonymous,
-// denormalized so the owner-facing view at
-// /admin/portal/onboarding-funnel can compute drop-off in pure SQL.
-//
-// The (sessionToken, event, ts) triplet is the unique key: a wizard
-// may legitimately emit step_seen twice (refresh, re-entry) so we
-// keep the timestamp on the row instead of collapsing.
-// =============================================================================
 model OnboardingFunnelEvent {
   id           String   @id @default(uuid()) @db.Uuid
   // 'step_seen' | 'step_completed' | 'signup' | 'product_selected' |
@@ -589,6 +585,10 @@ model OnboardingFunnelEvent {
 
   @@index([sessionToken, ts])
   @@index([event, ts])
+
+  // KAIA-10138: align Prisma table mapping with
+  // portal/prisma/migrations/20260801100500_onboarding_funnel_events/migration.sql.
+  @@map("onboarding_funnel_events")
 }
 
 // =============================================================================
