@@ -35,10 +35,19 @@ export const runtime = 'nodejs';
 //   6. Mark the OnboardingSession as checkout_pending and return the
 //      checkout URL + clientProductId so the React wizard can redirect.
 //
+// KAIA-10264 (H3): every step downstream of schema validation is wrapped
+// in a single try/catch so an unexpected throw (e.g. Stripe rejecting
+// the customer, a transient Prisma error, an invalid metadata value)
+// returns `{ error: 'service_unavailable', detail }` with HTTP 500
+// instead of Next.js' default empty-body 500. That gives the wizard
+// enough context to surface a useful error and gives QA / logs a
+// reproducible failure payload.
+//
 // Responses:
 //   200 { checkoutUrl, clientProductId, stripeSessionId }
 //   400 { error: 'invalid_body', details }
 //   404 { error: 'session_not_found' | 'product_not_found' | 'price_id_missing' }
+//   500 { error: 'service_unavailable', detail }   // KAIA-10264
 //   503 { error: 'service_unavailable', detail }
 // =============================================================================
 
@@ -62,6 +71,33 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  try {
+    return await handleCheckout(parsed.data);
+  } catch (err) {
+    // KAIA-10264 (H3): surface the underlying failure in the JSON body
+    // so the wizard can render a useful message and QA / log search can
+    // reproduce the failure without scraping empty responses.
+    const detail = err instanceof Error ? err.message : String(err);
+    return NextResponse.json(
+      { error: 'service_unavailable', detail },
+      { status: 500 },
+    );
+  }
+}
+
+async function handleCheckout(
+  parsed: {
+    sessionId: string;
+    productTier: 'starter' | 'pro' | 'premium';
+    email: string;
+    config: {
+      businessName: string;
+      sector: string;
+      whatsapp?: string;
+      contactEmail?: string;
+    };
+  },
+) {
   if (!isStripeConfigured()) {
     return NextResponse.json(
       { error: 'service_unavailable', detail: 'stripe_not_configured' },
@@ -69,7 +105,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const session = await getOnboardingSession(parsed.data.sessionId);
+  const session = await getOnboardingSession(parsed.sessionId);
   if (!session) {
     return NextResponse.json({ error: 'session_not_found' }, { status: 404 });
   }
@@ -83,7 +119,7 @@ export async function POST(req: NextRequest) {
 
   // Resolve the Product row.
   const product = await prisma.product.findUnique({
-    where: { tier: parsed.data.productTier },
+    where: { tier: parsed.productTier },
     select: { id: true, name: true, tier: true, stripePriceId: true, priceCents: true, currency: true },
   });
   if (!product) {
@@ -107,7 +143,7 @@ export async function POST(req: NextRequest) {
   if (!tenant) {
     tenant = await prisma.tenant.create({
       data: {
-        name: parsed.data.config.businessName,
+        name: parsed.config.businessName,
         slug: ensureSlug(session.tenantSlug, 'kairikos-' + createHash('sha1').update(session.tenantSlug).digest('hex').slice(0, 6)),
       },
       select: { id: true, stripeCustomerId: true },
@@ -115,16 +151,16 @@ export async function POST(req: NextRequest) {
   }
 
   let client = await prisma.chatbotClient.findFirst({
-    where: { tenantId: tenant.id, email: parsed.data.email },
+    where: { tenantId: tenant.id, email: parsed.email },
     select: { id: true },
   });
   if (!client) {
     client = await prisma.chatbotClient.create({
       data: {
         tenantId: tenant.id,
-        email: parsed.data.email,
-        name: parsed.data.config.businessName,
-        tier: parsed.data.productTier,
+        email: parsed.email,
+        name: parsed.config.businessName,
+        tier: parsed.productTier,
         state: 'in-progress',
       },
       select: { id: true },
@@ -144,18 +180,18 @@ export async function POST(req: NextRequest) {
           clientId: client.id,
           productId: product.id,
           status: 'onboarding',
-          createdBy: parsed.data.email,
+          createdBy: parsed.email,
         },
         select: { id: true },
       });
 
-  await updateOnboardingSession(parsed.data.sessionId, {
+  await updateOnboardingSession(parsed.sessionId, {
     productId: product.id,
-    productTier: parsed.data.productTier,
-    businessName: parsed.data.config.businessName,
-    sector: parsed.data.config.sector,
-    whatsapp: parsed.data.config.whatsapp ?? null,
-    contactEmail: parsed.data.config.contactEmail ?? null,
+    productTier: parsed.productTier,
+    businessName: parsed.config.businessName,
+    sector: parsed.config.sector,
+    whatsapp: parsed.config.whatsapp ?? null,
+    contactEmail: parsed.config.contactEmail ?? null,
   });
 
   // Resolve or create Stripe customer.
@@ -163,12 +199,12 @@ export async function POST(req: NextRequest) {
   const stripe = getStripe();
   if (!stripeCustomerId) {
     const created = await stripe.customers.create({
-      email: parsed.data.email,
-      name: parsed.data.config.businessName,
+      email: parsed.email,
+      name: parsed.config.businessName,
       metadata: {
         kairikos_tenant_id: tenant.id,
         kairikos_onboarding_session: session.sessionToken,
-        kairikos_product_tier: parsed.data.productTier,
+        kairikos_product_tier: parsed.productTier,
       },
     });
     stripeCustomerId = created.id;
@@ -192,7 +228,7 @@ export async function POST(req: NextRequest) {
       kairikos_client_id: client.id,
       kairikos_client_product_id: clientProduct.id,
       kairikos_onboarding_session: session.sessionToken,
-      kairikos_product_tier: parsed.data.productTier,
+      kairikos_product_tier: parsed.productTier,
     },
     allow_promotion_codes: true,
   });
@@ -204,15 +240,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  await markCheckoutStarted(parsed.data.sessionId, {
+  await markCheckoutStarted(parsed.sessionId, {
     productId: product.id,
-    productTier: parsed.data.productTier,
+    productTier: parsed.productTier,
     clientProductId: clientProduct.id,
     stripeCheckoutSessionId: checkout.id,
-    businessName: parsed.data.config.businessName,
-    sector: parsed.data.config.sector,
-    whatsapp: parsed.data.config.whatsapp ?? null,
-    contactEmail: parsed.data.config.contactEmail ?? null,
+    businessName: parsed.config.businessName,
+    sector: parsed.config.sector,
+    whatsapp: parsed.config.whatsapp ?? null,
+    contactEmail: parsed.config.contactEmail ?? null,
     stripeCustomerId,
   });
 
