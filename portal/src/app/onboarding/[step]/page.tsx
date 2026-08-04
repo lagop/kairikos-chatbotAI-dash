@@ -6,7 +6,7 @@ import { OnboardingProduct } from '@/components/onboarding/steps/OnboardingProdu
 import { OnboardingConfig } from '@/components/onboarding/steps/OnboardingConfig';
 import { OnboardingPago } from '@/components/onboarding/steps/OnboardingPago';
 import { OnboardingActivado } from '@/components/onboarding/steps/OnboardingActivado';
-import { WIZARD_STEPS, type WizardStep } from '@/lib/onboarding/self-serve-context';
+import { WIZARD_STEPS, isWizardStep, type WizardStep } from '@/lib/onboarding/wizard-steps';
 
 interface PageProps {
   params: { step: string };

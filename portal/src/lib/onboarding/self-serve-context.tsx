@@ -16,20 +16,12 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useReducer,
 // backend analyst view lives at /admin/portal/onboarding-funnel.
 // =============================================================================
 
-export type WizardStep =
-  | 'signup'
-  | 'product'
-  | 'config'
-  | 'pago'
-  | 'activado';
-
-export const WIZARD_STEPS: readonly WizardStep[] = [
-  'signup',
-  'product',
-  'config',
-  'pago',
-  'activado',
-] as const;
+// Re-export the step list / type from a non-`'use client'` module so server
+// components (e.g. `/onboarding/[step]/page.tsx`) can call
+// `WIZARD_STEPS.includes(step)` without triggering Next.js 14's
+// "called a client function from the server" proxy error.
+export type { WizardStep } from './wizard-steps';
+export { WIZARD_STEPS } from './wizard-steps';
 
 export interface OnboardingState {
   sessionId: string;
