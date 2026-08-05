@@ -155,9 +155,15 @@ async function handleCheckout(
     select: { id: true, supabaseClientId: true },
   });
 
-  // clientId for ClientProduct must be a UUID (public.client_products.client_id is uuid).
-  // ChatbotClient.supabaseClientId stores the UUID link to snake_case chatbot_clients.
-  // Populate it if not yet set so the FK constraint is satisfied.
+  // clientId for ClientProduct must be a UUID that exists in chatbot_clients.id
+  // (FK: client_products.client_id → chatbot_clients.id). We upsert a row in
+  // snake_case chatbot_clients for every new or existing ChatbotClient so the
+  // FK is satisfied. slug is unique in chatbot_clients; derive it from the
+  // PascalCase cuid so it's stable across calls for the same client.
+  function emailHash(email: string): string {
+    return createHash('sha1').update(email.toLowerCase()).digest('hex').slice(0, 8);
+  }
+
   let supabaseClientUuid: string;
   if (!client) {
     const created = await prisma.chatbotClient.create({
@@ -170,7 +176,21 @@ async function handleCheckout(
       },
       select: { id: true },
     });
-    supabaseClientUuid = randomUUID();
+    const slug = `wizard-${created.id.slice(0, 8)}-${emailHash(parsed.email)}`;
+    const publicClient = await prisma.chatbotClientPublic.upsert({
+      where: { slug },
+      create: {
+        slug,
+        companyName: parsed.config.businessName,
+        primaryContactEmail: parsed.email,
+        tier: parsed.productTier,
+        onboardingStatus: 'in_progress',
+        tenantId: tenant.id,
+      },
+      update: {},
+      select: { id: true },
+    });
+    supabaseClientUuid = publicClient.id;
     await prisma.chatbotClient.update({
       where: { id: created.id },
       data: { supabaseClientId: supabaseClientUuid },
@@ -178,7 +198,21 @@ async function handleCheckout(
     client = { id: created.id, supabaseClientId: supabaseClientUuid };
   } else {
     if (!client.supabaseClientId) {
-      supabaseClientUuid = randomUUID();
+      const slug = `wizard-${client.id.slice(0, 8)}-${emailHash(parsed.email)}`;
+      const publicClient = await prisma.chatbotClientPublic.upsert({
+        where: { slug },
+        create: {
+          slug,
+          companyName: parsed.config.businessName,
+          primaryContactEmail: parsed.email,
+          tier: parsed.productTier,
+          onboardingStatus: 'in_progress',
+          tenantId: tenant.id,
+        },
+        update: {},
+        select: { id: true },
+      });
+      supabaseClientUuid = publicClient.id;
       await prisma.chatbotClient.update({
         where: { id: client.id },
         data: { supabaseClientId: supabaseClientUuid },

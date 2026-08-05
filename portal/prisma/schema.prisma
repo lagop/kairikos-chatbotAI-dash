@@ -94,6 +94,35 @@ model ChatbotClient {
 }
 
 // =============================================================================
+// KAIA-10783 (F3 L4) — Snake_case chatbot_clients model.
+//
+// The PascalCase ChatbotClient.id is a CUID (text). The
+// public.client_products.client_id column is UUID and references
+// public.chatbot_clients(id). The PascalCase ChatbotClient.supabaseClientId
+// stores the UUID link to this table. The portal MUST write a row here
+// before inserting into client_products so the FK constraint is satisfied.
+//
+// Only used by the onboarding checkout flow. Other portal routes continue
+// to use PascalCase ChatbotClient (CUID).
+// =============================================================================
+model ChatbotClientPublic {
+  id                  String   @id @default(uuid()) @db.Uuid
+  slug                String   @unique
+  companyName         String   @map("company_name")
+  primaryContactEmail String   @map("primary_contact_email")
+  tier                String   @default("starter")
+  stripeCustomerId    String?  @map("stripe_customer_id")
+  onboardingStatus    String   @default("pending") @map("onboarding_status")
+  tenantId            String?  @map("tenant_id") @db.Uuid
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([primaryContactEmail])
+  @@map("chatbot_clients")
+}
+
+// =============================================================================
 // KAIA-2913 — In-house intake submission (replaces Tally webhook ingestion).
 //
 // One row per accepted POST /api/public/intake. The endpoint:
