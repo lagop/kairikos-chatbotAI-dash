@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { CheckoutRequestSchema } from '@/lib/onboarding/schemas';
 import {
   getOnboardingSession,
@@ -152,10 +152,15 @@ async function handleCheckout(
 
   let client = await prisma.chatbotClient.findFirst({
     where: { tenantId: tenant.id, email: parsed.email },
-    select: { id: true },
+    select: { id: true, supabaseClientId: true },
   });
+
+  // clientId for ClientProduct must be a UUID (public.client_products.client_id is uuid).
+  // ChatbotClient.supabaseClientId stores the UUID link to snake_case chatbot_clients.
+  // Populate it if not yet set so the FK constraint is satisfied.
+  let supabaseClientUuid: string;
   if (!client) {
-    client = await prisma.chatbotClient.create({
+    const created = await prisma.chatbotClient.create({
       data: {
         tenantId: tenant.id,
         email: parsed.email,
@@ -165,11 +170,29 @@ async function handleCheckout(
       },
       select: { id: true },
     });
+    supabaseClientUuid = randomUUID();
+    await prisma.chatbotClient.update({
+      where: { id: created.id },
+      data: { supabaseClientId: supabaseClientUuid },
+    });
+    client = { id: created.id, supabaseClientId: supabaseClientUuid };
+  } else {
+    if (!client.supabaseClientId) {
+      supabaseClientUuid = randomUUID();
+      await prisma.chatbotClient.update({
+        where: { id: client.id },
+        data: { supabaseClientId: supabaseClientUuid },
+      });
+    } else {
+      supabaseClientUuid = client.supabaseClientId;
+    }
   }
 
   // Find or create the ClientProduct row for this (client, product) pair.
+  // clientId must be the UUID from ChatbotClientPublic (snake_case chatbot_clients),
+  // NOT the PascalCase ChatbotClient cuid — public.client_products.client_id is uuid.
   const existingCp = await prisma.clientProduct.findUnique({
-    where: { clientId_productId: { clientId: client.id, productId: product.id } },
+    where: { clientId_productId: { clientId: supabaseClientUuid, productId: product.id } },
     select: { id: true },
   });
   const clientProduct = existingCp
@@ -177,7 +200,7 @@ async function handleCheckout(
     : await prisma.clientProduct.create({
         data: {
           tenantId: tenant.id,
-          clientId: client.id,
+          clientId: supabaseClientUuid,
           productId: product.id,
           status: 'onboarding',
           createdBy: parsed.email,

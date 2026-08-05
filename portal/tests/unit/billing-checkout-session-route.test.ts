@@ -29,6 +29,7 @@ const findUniqueTenant = vi.fn();
 const createTenant = vi.fn();
 const findFirstClient = vi.fn();
 const createClient = vi.fn();
+const updateClient = vi.fn();
 const findUniqueClientProduct = vi.fn();
 const createClientProduct = vi.fn();
 const updateTenant = vi.fn();
@@ -54,6 +55,7 @@ vi.mock('@/lib/prisma', () => ({
     chatbotClient: {
       findFirst: (...args: unknown[]) => findFirstClient(...args),
       create: (...args: unknown[]) => createClient(...args),
+      update: (...args: unknown[]) => updateClient(...args),
     },
     clientProduct: {
       findUnique: (...args: unknown[]) => findUniqueClientProduct(...args),
@@ -148,14 +150,16 @@ function happyPathMocks() {
   });
   findFirstClient.mockResolvedValue({
     id: KNOWN_CLIENT_ID,
+    supabaseClientId: null,
   });
   findUniqueClientProduct.mockResolvedValue({
     id: KNOWN_CLIENT_PRODUCT_ID,
   });
   updateOnboardingSession.mockResolvedValue(undefined);
   createTenant.mockResolvedValue({ id: KNOWN_TENANT_ID, stripeCustomerId: null });
-  createClient.mockResolvedValue({ id: KNOWN_CLIENT_ID });
+  createClient.mockResolvedValue({ id: KNOWN_CLIENT_ID, supabaseClientId: null });
   createClientProduct.mockResolvedValue({ id: KNOWN_CLIENT_PRODUCT_ID });
+  updateClient.mockResolvedValue({ id: KNOWN_CLIENT_ID, supabaseClientId: expect.any(String) });
   updateTenant.mockResolvedValue({ id: KNOWN_TENANT_ID, stripeCustomerId: KNOWN_STRIPE_CUSTOMER });
   stripeCustomerCreate.mockResolvedValue({ id: KNOWN_STRIPE_CUSTOMER });
   stripeCheckoutCreate.mockResolvedValue({ id: KNOWN_CHECKOUT_ID, url: KNOWN_CHECKOUT_URL });
@@ -170,7 +174,7 @@ beforeEach(() => {
   [
     getOnboardingSession, updateOnboardingSession, markCheckoutStarted,
     findUniqueProduct, findUniqueTenant, createTenant, findFirstClient,
-    createClient, findUniqueClientProduct, createClientProduct, updateTenant,
+    createClient, updateClient, findUniqueClientProduct, createClientProduct, updateTenant,
     isStripeConfigured, getStripe, stripeCustomerCreate, stripeCheckoutCreate,
   ].forEach((fn) => fn.mockReset());
 });
