@@ -396,6 +396,19 @@ model Tenant {
 
   @@index([slug])
   @@index([status])
+
+  // KAIA-10766: align Prisma table mapping with the Supabase migration
+  // supabase/migrations/20260724_tenant_isolation_v1.up.sql which creates
+  // public.tenants (snake_case, lowercase). Without this @@map the
+  // generated Prisma client queries public.Tenant (PascalCase derived
+  // from the model name) and reports "table does not exist" at runtime,
+  // surfacing as HTTP 500 on /api/public/billing/checkout-session once
+  // the Product @@map("products") from KAIA-10760 is in place (commit
+  // 0339546), because the next Prisma call in the same handler —
+  // prisma.tenant.findUnique() — then fails the same way. Same pattern
+  // as KAIA-10138 / commit 4dd7cae (OnboardingSession, OnboardingFunnelEvent)
+  // and KAIA-10760 / commit 0339546 (Product).
+  @@map("tenants")
 }
 
 // =============================================================================
