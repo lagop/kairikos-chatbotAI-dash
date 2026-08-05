@@ -450,6 +450,17 @@ model Product {
   auditLogs      ClientProductAudit[]
   @@index([tier])
   @@index([isActive])
+
+  // KAIA-10760: align Prisma table mapping with the Supabase migration
+  // supabase/migrations/20260724_tenant_isolation_v1.up.sql which creates
+  // public.products (snake_case, lowercase). Without this @@map the
+  // generated Prisma client queries public.Product (PascalCase derived
+  // from the model name) and reports "table does not exist" at runtime,
+  // surfacing as HTTP 500 on /api/public/billing/checkout-session because
+  // prisma.product.findUnique() cannot resolve the tier row. Same pattern
+  // as KAIA-10138 / commit 4dd7cae which fixed OnboardingSession and
+  // OnboardingFunnelEvent with @@map.
+  @@map("products")
 }
 
 // Immutable audit trail for product assignment and lifecycle changes.
