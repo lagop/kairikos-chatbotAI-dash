@@ -197,9 +197,8 @@ async function handleCheckout(
   });
   const clientProduct = existingCp
     ? existingCp
-    : await prisma.clientProduct.create({
+      : await prisma.clientProduct.create({
         data: {
-          tenantId: tenant.id,
           clientId: supabaseClientUuid,
           productId: product.id,
           status: 'onboarding',
