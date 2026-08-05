@@ -199,9 +199,10 @@ async function handleCheckout(
     ? existingCp
       : await prisma.clientProduct.create({
         data: {
+          tenantId: tenant.id,
           clientId: supabaseClientUuid,
           productId: product.id,
-          status: 'onboarding',
+          status: 'active',
         },
         select: { id: true },
       });
