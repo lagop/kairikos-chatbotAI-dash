@@ -202,7 +202,6 @@ async function handleCheckout(
           clientId: supabaseClientUuid,
           productId: product.id,
           status: 'onboarding',
-          createdBy: parsed.email,
         },
         select: { id: true },
       });
