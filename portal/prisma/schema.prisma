@@ -532,6 +532,26 @@ model ClientProduct {
   @@index([productId])
   @@index([status])
   @@index([tenantId])
+
+  // KAIA-10767: align Prisma table mapping with the Supabase migration
+  // supabase/migrations/20260724_tenant_isolation_v1.up.sql (section 4)
+  // which creates public.client_products (snake_case, lowercase). Without
+  // this @@map the generated Prisma client queries public.ClientProduct
+  // (PascalCase derived from the model name) and reports "table does not
+  // exist" at runtime. The next call in the checkout-session handler after
+  // prisma.product.findUnique() / prisma.tenant.findUnique() /
+  // prisma.chatbotClient.findFirst() is prisma.clientProduct.findUnique()
+  // and prisma.clientProduct.create(), which then fail the same way
+  // surfaced in H3 as HTTP 500 once the upstream Product (KAIA-10760) and
+  // Tenant (KAIA-10766) @@map fixes are in place. Same pattern as
+  // KAIA-10138 / commit 4dd7cae, KAIA-10760 / commit 0339546, and
+  // KAIA-10766.
+  //
+  // Verified live in Supabase staging (project ref ikexqreuvoqwvwopftkt):
+  //   select table_name from information_schema.tables where table_schema='public'
+  //     and table_name in ('client_products','ClientProduct');
+  //   → returns {"table_name":"client_products"} (no ClientProduct).
+  @@map("client_products")
 }
 
 // =============================================================================
