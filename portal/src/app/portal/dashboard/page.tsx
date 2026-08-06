@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { ChatbotStatusCard } from '@/components/portal/ChatbotStatusCard';
 import { OnboardingTimeline } from '@/components/portal/OnboardingTimeline';
+import { PageHeading } from '@/components/portal/PageHeading';
 import { SelfServiceActions } from '@/components/portal/SelfServiceActions';
 import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
