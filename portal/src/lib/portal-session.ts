@@ -1,6 +1,6 @@
 import 'server-only';
 import { cookies } from 'next/headers';
-import { createSupabaseServerClient } from './supabase';
+import { auth } from '../../auth';
 import { prisma, isDatabaseConfigured } from './prisma';
 import { MOCK_CLIENT, DEV_MOCK_CLIENT_BY_EMAIL } from './portal-data';
 
@@ -60,12 +60,16 @@ async function resolveFromSupabaseEmail(email: string): Promise<ResolvedClient |
 
 export async function resolveClientFromSession(): Promise<ResolvedClient | null> {
   if (!isPortalDevMock()) {
-    const supabase = await createSupabaseServerClient();
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session?.user?.email) return null;
-    return resolveFromSupabaseEmail(session.user.email);
+    if (!isDatabaseConfigured) return null;
+    const session = await auth();
+    const email = session?.user?.email?.toLowerCase().trim();
+    if (!email) return null;
+    const link = await prisma.chatbotClientUser.findUnique({
+      where: { nextAuthEmail: email },
+      select: { clientId: true },
+    });
+    if (!link) return null;
+    return { clientId: link.clientId, email, source: 'database' };
   }
   // Dev fallback: trust an explicit dev-email cookie set by Playwright /
   // local tools. If absent, fall back to the mock client so the UI is
