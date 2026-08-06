@@ -9,6 +9,8 @@ import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { MOCK_CLIENT, MOCK_CHATBOT, MOCK_TIMELINE } from '@/lib/portal-data';
+import type { ClientProfile } from '@/types/portal';
+import { loadClientProfileViaPortalApi } from '@/lib/dashboard-fallback';
 
 export const metadata: Metadata = {
   title: 'Dashboard',
@@ -47,7 +49,9 @@ export default async function PortalDashboardPage() {
   let goLiveAt: string | null = null;
   let conversationCount = 0;
   let timeline = MOCK_TIMELINE;
+  let dataSource: 'prisma' | 'portal_api_fallback' | 'mock_dev' = 'mock_dev';
   if (resolved.source !== 'mock_dev' || isDatabaseConfigured) {
+    let prismaError: unknown = null;
     try {
       const [client, count, activities] = await Promise.all([
         prisma.chatbotClient.findUnique({
@@ -63,6 +67,13 @@ export default async function PortalDashboardPage() {
       if (client) {
         clientName = client.companyName ?? client.name;
         goLiveAt = client.goLiveAt?.toISOString() ?? null;
+        dataSource = 'prisma';
+      } else {
+        console.warn(
+          '[portal] /portal/dashboard prisma.chatbotClient.findUnique returned null for resolved.clientId=%s (email=%s)',
+          resolved.clientId,
+          resolved.email,
+        );
       }
       conversationCount = count;
       if (activities.length > 0) {
@@ -87,8 +98,37 @@ export default async function PortalDashboardPage() {
           status: a.completedAt ? 'done' : i === activities.findIndex((x) => !x.completedAt) ? 'current' : 'pending',
         }));
       }
-    } catch {
-      // fall through to mocks
+    } catch (err) {
+      prismaError = err;
+      console.error(
+        '[portal] /portal/dashboard prisma fetch threw for clientId=%s email=%s:',
+        resolved.clientId,
+        resolved.email,
+        err,
+      );
+    }
+    // KAIA-11641: when Prisma is broken, route the dashboard data through
+    // the same /api/portal/me source that returns the real customer data
+    // (because /me uses the same `prisma.chatbotClient.findUnique` shape but
+    // it has been observed to succeed where the direct call does not — most
+    // likely a schema-drift / relationMode miss). This preserves the
+    // "real customer data, not MOCK_CLIENT" contract even when the
+    // underlying Prisma query is the failure point.
+    if (dataSource !== 'prisma') {
+      const profile = await loadClientProfileViaPortalApi();
+      if (profile) {
+        const fallbackName = profile.companyName ?? profile.contactName ?? '';
+        if (fallbackName) {
+          clientName = fallbackName;
+          goLiveAt = profile.goLiveDate ?? null;
+        }
+        dataSource = 'portal_api_fallback';
+      } else if (prismaError) {
+        console.error(
+          '[portal] /portal/dashboard prisma + portal_api_fallback both failed for clientId=%s; rendering with mock data',
+          resolved.clientId,
+        );
+      }
     }
   }
 
@@ -108,6 +148,9 @@ export default async function PortalDashboardPage() {
           <Link href="/portal/support" className="btn-ghost">Contactar soporte</Link>
         }
       />
+      <span data-testid="dashboard-client-name" data-dashboard-source={dataSource} hidden>
+        {clientName}
+      </span>
 
       <section className="card" aria-label="Estado del chatbot">
         <header className="mb-4 flex items-center justify-between">
