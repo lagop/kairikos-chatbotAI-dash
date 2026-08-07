@@ -163,6 +163,27 @@ export default async function PortalDashboardPage() {
   const progressPct = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
   const status = goLiveAt ? 'live' : 'in_progress';
 
+  // KAIA-11955 — chatbot summary: dev-mock mode renders the Acme
+  // MOCK_CHATBOT (spc_acme_corp, 142 conversaciones, 8% / 12%
+  // rates, 2026-05-29 go-live). For every other mode the summary is
+  // built from the actual customer's data: real spaceId stem, real
+  // (possibly zero) conversation count, and null goLiveDate when
+  // the chatbot is not live yet. The Acme fixture must NEVER bleed
+  // into a real signed-in customer's view.
+  const chatbotSummary =
+    dataSource === 'mock_dev'
+      ? MOCK_CHATBOT
+      : {
+          spaceId: `spc_${resolved.clientId}`,
+          status: status,
+          goLiveDate: goLiveAt,
+          last7Days: {
+            conversations: conversationCount,
+            fallbackRate: 0,
+            escalationRate: 0,
+          },
+        };
+
   return (
     <div className="space-y-6">
       <PageHeading
@@ -184,18 +205,7 @@ export default async function PortalDashboardPage() {
             {status === 'live' ? 'En producción' : 'En curso'}
           </span>
         </header>
-        <ChatbotStatusCard
-          summary={{
-            spaceId: MOCK_CHATBOT.spaceId,
-            status: status,
-            goLiveDate: goLiveAt ?? MOCK_CHATBOT.goLiveDate,
-            last7Days: {
-              conversations: conversationCount || MOCK_CHATBOT.last7Days.conversations,
-              fallbackRate: MOCK_CHATBOT.last7Days.fallbackRate,
-              escalationRate: MOCK_CHATBOT.last7Days.escalationRate,
-            },
-          }}
-        />
+        <ChatbotStatusCard summary={chatbotSummary} />
         <p className="mt-3 text-xs text-kairikos-muted">
           {goLiveAt
             ? `En producción desde el ${DATE_FMT.format(new Date(goLiveAt))}.`

@@ -219,7 +219,15 @@ export async function getOnboardingFor(
 }
 
 export async function getChatbotStatus(accessToken: string): Promise<ChatbotStatusSummary> {
-  const fromApi = await portalFetch<ChatbotStatusSummary>('/portal/chatbot-status', accessToken);
+  // KAIA-11955 — the GET route is /portal/status (see
+  // src/app/api/portal/status/route.ts), not /portal/chatbot-status.
+  // Calling the wrong path returned 404 and the customer saw the
+  // Acme MOCK_CHATBOT (spc_acme_corp, 142 conversaciones, 8% / 12%
+  // rates) instead of their real (empty) chatbot status. The real
+  // route returns the customer's actual `chatbotClient.id` as
+  // spaceId, the live/in_progress status, and a 7-day window
+  // derived from the real conversation count.
+  const fromApi = await portalFetch<ChatbotStatusSummary>('/portal/status', accessToken);
   return fromApi ?? MOCK_CHATBOT;
 }
 
