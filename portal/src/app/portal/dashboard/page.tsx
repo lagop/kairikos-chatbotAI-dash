@@ -78,17 +78,33 @@ export default async function PortalDashboardPage() {
   if (resolved.source !== 'mock_dev' || isDatabaseConfigured) {
     let prismaError: unknown = null;
     try {
-      const [client, count, activities] = await Promise.all([
+      // KAIA-11932 — split the activities query out of Promise.all. The
+      // chatbotActivity.findMany has been observed to throw on production
+      // DBs that pre-date the `tenant_id` column, and Promise.all would
+      // surface that to the page even when chatbotClient.findUnique (the
+      // authoritative source for the heading) would otherwise succeed.
+      // The activities timeline already has a safe default (MOCK_TIMELINE)
+      // when no rows are returned, so a thrown query should not force
+      // the page into the mock_dev branch.
+      const [client, count] = await Promise.all([
         prisma.chatbotClient.findUnique({
           where: { id: resolved.clientId },
           select: { companyName: true, name: true, goLiveAt: true },
         }),
         prisma.chatbotConversation.count({ where: { clientId: resolved.clientId } }),
-        prisma.chatbotActivity.findMany({
+      ]);
+      let activities: Array<{ id: string; milestone: string; notes: string | null; completedAt: Date | null }> = [];
+      try {
+        activities = await prisma.chatbotActivity.findMany({
           where: { clientId: resolved.clientId },
           orderBy: { completedAt: 'asc' },
-        }),
-      ]);
+        });
+      } catch (activitiesErr) {
+        console.warn(
+          '[portal] /portal/dashboard prisma.chatbotActivity.findMany failed; using MOCK_TIMELINE.',
+          activitiesErr,
+        );
+      }
       if (client) {
         clientName = client.companyName ?? client.name;
         goLiveAt = client.goLiveAt?.toISOString() ?? null;
