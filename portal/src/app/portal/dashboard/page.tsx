@@ -159,8 +159,26 @@ export default async function PortalDashboardPage() {
   const progressPct = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
   const status = goLiveAt ? 'live' : 'in_progress';
 
+  // KAIA-11932 — temporary diag. Emit the env values seen by the page
+  // lambda as an HTML comment at the top of the rendered page so we can
+  // capture the values without depending on Vercel runtime logs. Removed
+  // once the env visibility issue is identified.
+  const diag = `<!-- KAIA-11932 diag
+env.isPortalDevMock=${isPortalDevMock()}
+env.isDatabaseConfigured=${isDatabaseConfigured}
+env.NEXT_PUBLIC_SUPABASE_URL=${process.env.NEXT_PUBLIC_SUPABASE_URL ? '<set len=' + process.env.NEXT_PUBLIC_SUPABASE_URL.length + '>' : '<missing>'}
+env.NEXT_PUBLIC_SUPABASE_ANON_KEY=${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? '<set len=' + process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.length + '>' : '<missing>'}
+env.DATABASE_URL=${process.env.DATABASE_URL ? '<set len=' + process.env.DATABASE_URL.length + '>' : '<missing>'}
+env.DIRECT_URL=${process.env.DIRECT_URL ? '<set len=' + process.env.DIRECT_URL.length + '>' : '<missing>'}
+env.VERCEL_ENV=${process.env.VERCEL_ENV ?? '<missing>'}
+env.VERCEL_REGION=${process.env.VERCEL_REGION ?? '<missing>'}
+resolved=${JSON.stringify({ clientId: resolved.clientId, email: resolved.email, source: resolved.source })}
+dataSource=${dataSource}
+-->`;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" suppressHydrationWarning>
+      <div dangerouslySetInnerHTML={{ __html: diag }} />
       <PageHeading
         eyebrow="Dashboard"
         title={clientName}
