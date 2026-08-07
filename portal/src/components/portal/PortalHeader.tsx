@@ -64,9 +64,14 @@ export function PortalHeader({
               <Link
                 href={item.href}
                 data-testid={`header-nav-${item.href.replace(/\//g, '-')}`}
-                className="block whitespace-nowrap rounded-lg px-3 py-1.5 text-kairikos-muted hover:bg-kairikos-surface hover:text-kairikos-text"
+                className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-kairikos-muted hover:bg-kairikos-surface hover:text-kairikos-text"
               >
-                {item.label}
+                <span>{item.label}</span>
+                {'badge' in item && item.badge ? (
+                  <span className="rounded-full border border-kairikos-border bg-kairikos-surface2 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-kairikos-muted">
+                    {item.badge}
+                  </span>
+                ) : null}
               </Link>
             </li>
           ))}
