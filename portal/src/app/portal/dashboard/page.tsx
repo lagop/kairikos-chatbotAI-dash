@@ -57,6 +57,12 @@ export default async function PortalDashboardPage() {
     redirect(target);
   }
   const resolved = await resolveClientFromSession();
+  console.log(
+    '[KAIA-11932][page-resolve] resolved=%s isPortalDevMock=%s isDatabaseConfigured=%s',
+    resolved ? JSON.stringify({ clientId: resolved.clientId, email: resolved.email, source: resolved.source }) : 'null',
+    isPortalDevMock(),
+    isDatabaseConfigured,
+  );
   if (!resolved) {
     redirect('/portal/sin-acceso');
   }
