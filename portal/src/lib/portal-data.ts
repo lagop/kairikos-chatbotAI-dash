@@ -120,10 +120,31 @@ const MOCK_SUPPORT: SupportLink = {
   description: 'Te respondemos por WhatsApp en horario laboral (L–V, 9:00–18:00 CET).',
 };
 
+// KAIA-11955 — PORTAL_API_BASE_URL on production is set to
+// `https://project-fxidg.vercel.app/portal` (the user-facing SPA path),
+// not `https://project-fxidg.vercel.app/api` (where the Next.js route
+// handlers actually live). Building `${base}/portal/...` produces a
+// double `/portal/portal/...` and 404s, which made the customer-facing
+// `getOnboarding` and friends silently fall back to the Acme
+// MOCK_TIMELINE_INTERNAL fixture. Normalise the URL: strip a trailing
+// `/portal` from the base, and if the caller path starts with
+// `/portal/...` translate it to `/api/portal/...` so the request hits
+// the real route.
+function buildApiUrl(path: string): string {
+  let base = PORTAL_API_BASE_URL.replace(/\/$/, '');
+  if (base.endsWith('/portal')) {
+    base = base.slice(0, -'/portal'.length);
+  }
+  if (path.startsWith('/portal/')) {
+    return `${base}/api${path}`;
+  }
+  return `${base}${path}`;
+}
+
 async function portalFetch<T>(path: string, accessToken: string): Promise<T | null> {
   if (!isBackendConfigured) return null;
   try {
-    const res = await fetch(`${PORTAL_API_BASE_URL}${path}`, {
+    const res = await fetch(buildApiUrl(path), {
       headers: {
         Accept: 'application/json',
         Authorization: `Bearer ${accessToken}`,

@@ -90,6 +90,16 @@ async function resolveBaseUrl(): Promise<string> {
   return inboundOrigin;
 }
 
+// KAIA-11955 — production PORTAL_API_BASE_URL ends in `/portal` (the
+// SPA path) but the route handlers live at `/api/...`. When the base
+// resolves to the inbound origin (a Vercel preview, e.g. host=
+// `project-fxidg-...vercel.app`) it has no `/portal` suffix, but on
+// production it points to `…/portal`. Strip the trailing `/portal` so
+// the request actually hits `${origin}/api/portal/me`.
+function apiOriginFrom(base: string): string {
+  return base.replace(/\/$/, '').replace(/\/portal$/, '');
+}
+
 export async function loadClientProfileViaPortalApi(): Promise<ClientProfile | null> {
   const base = await resolveBaseUrl();
   if (!base) return null;
@@ -104,7 +114,7 @@ export async function loadClientProfileViaPortalApi(): Promise<ClientProfile | n
     cookieHeader = '';
   }
   try {
-    const res = await fetch(`${base.replace(/\/$/, '')}/api/portal/me`, {
+    const res = await fetch(`${apiOriginFrom(base)}/api/portal/me`, {
       headers: cookieHeader ? { cookie: cookieHeader } : undefined,
       cache: 'no-store',
     });

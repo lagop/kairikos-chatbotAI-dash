@@ -449,8 +449,19 @@ async function notifyOperatorOfIntake(args: NotifyArgs): Promise<{
   ok: boolean;
   error?: string;
 }> {
+  // KAIA-11955 — production PORTAL_API_BASE_URL ends in `/portal`
+  // (the SPA path) but the route handlers live at `/api/...`. Build the
+  // API URL by stripping the trailing `/portal` so the request hits
+  // `${origin}/api/internal/notify-operator` instead of the
+  // 404-producing `${origin}/portal/api/internal/notify-operator`.
   const internalUrl = process.env.PORTAL_API_BASE_URL
-    ? `${process.env.PORTAL_API_BASE_URL.replace(/\/$/, '')}/api/internal/notify-operator`
+    ? (() => {
+        const stripped = process.env.PORTAL_API_BASE_URL!.replace(/\/$/, '').replace(
+          /\/portal$/,
+          '',
+        );
+        return `${stripped}/api/internal/notify-operator`;
+      })()
     : null;
   const portalApiKey = process.env.PORTAL_API_KEY;
 
