@@ -8,7 +8,7 @@ import { OnboardingTimeline } from '@/components/portal/OnboardingTimeline';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { SelfServiceActions } from '@/components/portal/SelfServiceActions';
 import { getSession } from '@/lib/session';
-import { resolveClientFromSession } from '@/lib/portal-session';
+import { resolveClientFromSession, isPortalDevMock } from '@/lib/portal-session';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { MOCK_CLIENT, MOCK_CHATBOT, MOCK_TIMELINE } from '@/lib/portal-data';
 import type { ClientProfile } from '@/types/portal';
@@ -32,6 +32,19 @@ const DATE_FMT = new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'long
 // /portal/login (or /portal/sin-acceso for cross-tenant), never renders
 // the "Necesitas iniciar sesión" panel.
 export default async function PortalDashboardPage() {
+  // KAIA-11932 temporary diag — log env vars on every request so we can
+  // capture what the page lambda's process.env actually contains. Removed
+  // once the env visibility bug is identified.
+  console.log(
+    '[KAIA-11932][page-env] NEXT_PUBLIC_SUPABASE_URL=%s NEXT_PUBLIC_SUPABASE_ANON_KEY=%s DATABASE_URL=%s DIRECT_URL=%s VERCEL_ENV=%s NODE_ENV=%s isPortalDevMock=%s',
+    process.env.NEXT_PUBLIC_SUPABASE_URL ?? '<missing>',
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? `<set len=${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.length}>` : '<missing>',
+    process.env.DATABASE_URL ? `<set len=${process.env.DATABASE_URL.length}>` : '<missing>',
+    process.env.DIRECT_URL ? `<set len=${process.env.DIRECT_URL.length}>` : '<missing>',
+    process.env.VERCEL_ENV ?? '<missing>',
+    process.env.NODE_ENV ?? '<missing>',
+    isPortalDevMock(),
+  );
   let session;
   try {
     session = await getSession();
