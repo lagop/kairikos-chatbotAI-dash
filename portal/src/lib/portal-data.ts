@@ -148,8 +148,15 @@ export async function getClientUser(): Promise<ChatbotClientUser> {
 }
 
 export async function getOnboarding(accessToken: string): Promise<OnboardingTimelineRow[]> {
+  // KAIA-11955 — the GET route is /portal/onboarding (see
+  // src/app/api/portal/onboarding/route.ts), not /portal/onboarding-status.
+  // Calling the wrong path returned 404 and the customer saw the Acme
+  // mock fixture instead of their real (empty) timeline. The real route
+  // returns `{ timeline: [] }` for a customer with no ChatbotActivity rows,
+  // which the OnboardingTimeline component renders as the "preparing your
+  // portal" empty state.
   const fromApi = await portalFetch<{ timeline: OnboardingTimelineRow[] }>(
-    '/portal/onboarding-status',
+    '/portal/onboarding',
     accessToken,
   );
   return fromApi?.timeline ?? MOCK_TIMELINE_INTERNAL;

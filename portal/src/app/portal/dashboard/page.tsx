@@ -50,9 +50,16 @@ export default async function PortalDashboardPage() {
   let clientName = MOCK_CLIENT.companyName;
   let goLiveAt: string | null = null;
   let conversationCount = 0;
-  let timeline = MOCK_TIMELINE;
+  // KAIA-11955: a real customer with zero activity rows must NOT see
+  // MOCK_TIMELINE (the Acme 4-step fixture). The page starts with an
+  // empty timeline and the OnboardingTimeline component renders the
+  // honest "Aún no hay pasos registrados" copy when the list is empty.
+  // MOCK_TIMELINE is only used as the dev-mock default below.
+  let timeline: typeof MOCK_TIMELINE = [];
   let dataSource: 'prisma' | 'portal_api_fallback' | 'mock_dev' = 'mock_dev';
-  if (resolved.source !== 'mock_dev' || isDatabaseConfigured) {
+  if (resolved.source === 'mock_dev' && !isDatabaseConfigured) {
+    timeline = MOCK_TIMELINE;
+  } else {
     let prismaError: unknown = null;
     try {
       // KAIA-11932 — split the activities query out of Promise.all. The
@@ -60,9 +67,9 @@ export default async function PortalDashboardPage() {
       // DBs that pre-date the `tenant_id` column, and Promise.all would
       // surface that to the page even when chatbotClient.findUnique (the
       // authoritative source for the heading) would otherwise succeed.
-      // The activities timeline already has a safe default (MOCK_TIMELINE)
-      // when no rows are returned, so a thrown query should not force
-      // the page into the mock_dev branch.
+      // The activities timeline is left as `[]` when no rows are returned,
+      // and the OnboardingTimeline component renders a clear "preparing
+      // your portal" message in that case (see KAIA-11955).
       const [client, count] = await Promise.all([
         prisma.chatbotClient.findUnique({
           where: { id: resolved.clientId },
@@ -78,7 +85,7 @@ export default async function PortalDashboardPage() {
         });
       } catch (activitiesErr) {
         console.warn(
-          '[portal] /portal/dashboard prisma.chatbotActivity.findMany failed; using MOCK_TIMELINE.',
+          '[portal] /portal/dashboard prisma.chatbotActivity.findMany failed; rendering empty timeline.',
           activitiesErr,
         );
       }
@@ -200,11 +207,29 @@ export default async function PortalDashboardPage() {
         <header className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold">Onboarding</h2>
           <span className="text-sm text-kairikos-muted" data-testid="onboarding-progress">
-            {progressPct}% · paso {Math.min(completedSteps + 1, totalSteps)} de {totalSteps}
+            {/* KAIA-11955 — for a freshly-signed-up customer with no
+                ChatbotActivity rows yet, totalSteps is 0. Render a
+                honest "preparing" copy instead of the misleading
+                "0% · paso 0 de 0" which the user read as "stuck at
+                the T+0 step". */}
+            {totalSteps > 0
+              ? `${progressPct}% · paso ${Math.min(completedSteps + 1, totalSteps)} de ${totalSteps}`
+              : 'Preparando tu portal…'}
           </span>
         </header>
         <OnboardingTimeline rows={timeline} />
-        {currentStep ? (
+        {/* KAIA-11955 — when there are no activity rows, the empty
+            state inside <OnboardingTimeline /> already explains
+            "Aún no hay pasos registrados". The extra reassurance
+            below tells the customer *why* (their portal is being
+            set up) and *what happens next* (an email) so they do
+            not think they are stuck. */}
+        {totalSteps === 0 ? (
+          <p className="mt-3 text-sm text-kairikos-muted">
+            Tu portal está en preparación. Te enviaremos un email cuando
+            completemos el primer paso del onboarding.
+          </p>
+        ) : currentStep ? (
           <p className="mt-3 text-sm text-kairikos-muted">
             Siguiente: <span className="text-kairikos-text">{currentStep.label}</span>
           </p>

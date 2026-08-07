@@ -77,10 +77,25 @@ export default async function PortalHome({
         </div>
         <div className="card">
           <p className="text-xs uppercase tracking-wider text-kairikos-muted">Onboarding</p>
-          <p className="mt-1 text-lg font-semibold">{progressPct}% completado</p>
-          <p className="mt-1 text-xs text-kairikos-muted">
-            {completedSteps} de {totalSteps} pasos
-          </p>
+          {/* KAIA-11955 — render a clear "preparing" copy when the
+              customer has no ChatbotActivity rows yet, instead of the
+              misleading "0% completado / 0 de 0 pasos" which the user
+              read as "stuck at the T+0 step". */}
+          {totalSteps > 0 ? (
+            <>
+              <p className="mt-1 text-lg font-semibold">{progressPct}% completado</p>
+              <p className="mt-1 text-xs text-kairikos-muted">
+                {completedSteps} de {totalSteps} pasos
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="mt-1 text-lg font-semibold">Preparando tu portal</p>
+              <p className="mt-1 text-xs text-kairikos-muted">
+                Te avisaremos por email cuando completemos el primer paso.
+              </p>
+            </>
+          )}
         </div>
         <div className="card">
           <p className="text-xs uppercase tracking-wider text-kairikos-muted">Chatbot</p>
