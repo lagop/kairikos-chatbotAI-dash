@@ -8,7 +8,7 @@ import { OnboardingTimeline } from '@/components/portal/OnboardingTimeline';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { SelfServiceActions } from '@/components/portal/SelfServiceActions';
 import { getSession } from '@/lib/session';
-import { resolveClientFromSession, isPortalDevMock } from '@/lib/portal-session';
+import { resolveClientFromSession } from '@/lib/portal-session';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { MOCK_CLIENT, MOCK_CHATBOT, MOCK_TIMELINE } from '@/lib/portal-data';
 import type { ClientProfile } from '@/types/portal';
@@ -32,19 +32,6 @@ const DATE_FMT = new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'long
 // /portal/login (or /portal/sin-acceso for cross-tenant), never renders
 // the "Necesitas iniciar sesión" panel.
 export default async function PortalDashboardPage() {
-  // KAIA-11932 temporary diag — log env vars on every request so we can
-  // capture what the page lambda's process.env actually contains. Removed
-  // once the env visibility bug is identified.
-  console.log(
-    '[KAIA-11932][page-env] NEXT_PUBLIC_SUPABASE_URL=%s NEXT_PUBLIC_SUPABASE_ANON_KEY=%s DATABASE_URL=%s DIRECT_URL=%s VERCEL_ENV=%s NODE_ENV=%s isPortalDevMock=%s',
-    process.env.NEXT_PUBLIC_SUPABASE_URL ?? '<missing>',
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? `<set len=${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.length}>` : '<missing>',
-    process.env.DATABASE_URL ? `<set len=${process.env.DATABASE_URL.length}>` : '<missing>',
-    process.env.DIRECT_URL ? `<set len=${process.env.DIRECT_URL.length}>` : '<missing>',
-    process.env.VERCEL_ENV ?? '<missing>',
-    process.env.NODE_ENV ?? '<missing>',
-    isPortalDevMock(),
-  );
   let session;
   try {
     session = await getSession();
@@ -57,12 +44,6 @@ export default async function PortalDashboardPage() {
     redirect(target);
   }
   const resolved = await resolveClientFromSession();
-  console.log(
-    '[KAIA-11932][page-resolve] resolved=%s isPortalDevMock=%s isDatabaseConfigured=%s',
-    resolved ? JSON.stringify({ clientId: resolved.clientId, email: resolved.email, source: resolved.source }) : 'null',
-    isPortalDevMock(),
-    isDatabaseConfigured,
-  );
   if (!resolved) {
     redirect('/portal/sin-acceso');
   }
@@ -71,10 +52,6 @@ export default async function PortalDashboardPage() {
   let conversationCount = 0;
   let timeline = MOCK_TIMELINE;
   let dataSource: 'prisma' | 'portal_api_fallback' | 'mock_dev' = 'mock_dev';
-  let prismaRow: unknown = null;
-  let prismaThrew: string | null = null;
-  let fallbackProfile: unknown = null;
-  let fallbackBaseUrl: string | null = null;
   if (resolved.source !== 'mock_dev' || isDatabaseConfigured) {
     let prismaError: unknown = null;
     try {
@@ -109,7 +86,6 @@ export default async function PortalDashboardPage() {
         clientName = client.companyName ?? client.name;
         goLiveAt = client.goLiveAt?.toISOString() ?? null;
         dataSource = 'prisma';
-        prismaRow = client;
       } else {
         console.warn(
           '[portal] /portal/dashboard prisma.chatbotClient.findUnique returned null for resolved.clientId=%s (email=%s)',
@@ -142,7 +118,6 @@ export default async function PortalDashboardPage() {
       }
     } catch (err) {
       prismaError = err;
-      prismaThrew = String((err as Error)?.message ?? err);
       console.error(
         '[portal] /portal/dashboard prisma fetch threw for clientId=%s email=%s:',
         resolved.clientId,
@@ -159,28 +134,6 @@ export default async function PortalDashboardPage() {
     // underlying Prisma query is the failure point.
     if (dataSource !== 'prisma') {
       const profile = await loadClientProfileViaPortalApi();
-      // KAIA-11932 diag — capture fallback state
-      fallbackProfile = profile
-        ? { companyName: profile.companyName, contactName: profile.contactName, id: profile.id }
-        : null;
-      // Show what the helper would have used as base URL (resolved against
-      // the request). Best-effort via a copy of the helper logic; failure
-      // here does not affect the page's data path.
-      try {
-        const { headers } = await import('next/headers');
-        const h = headers();
-        const host = h.get('x-forwarded-host') ?? h.get('host') ?? '';
-        const proto = h.get('x-forwarded-proto') ?? 'https';
-        const inboundOrigin = host ? `${proto}://${host}` : '';
-        const configured = process.env.PORTAL_API_BASE_URL ?? process.env.NEXT_PUBLIC_PORTAL_URL ?? '';
-        const hostOf = (u: string) => { try { return new URL(u).host.toLowerCase(); } catch { return ''; } };
-        if (!configured) fallbackBaseUrl = inboundOrigin || '<empty>';
-        else if (!inboundOrigin) fallbackBaseUrl = configured;
-        else if (hostOf(configured) === hostOf(inboundOrigin)) fallbackBaseUrl = configured;
-        else fallbackBaseUrl = `<configured=${configured}><inbound=${inboundOrigin}>`;
-      } catch (e) {
-        fallbackBaseUrl = `<err:${String((e as Error)?.message ?? e)}>`;
-      }
       if (profile) {
         const fallbackName = profile.companyName ?? profile.contactName ?? '';
         if (fallbackName) {
@@ -203,32 +156,8 @@ export default async function PortalDashboardPage() {
   const progressPct = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
   const status = goLiveAt ? 'live' : 'in_progress';
 
-  // KAIA-11932 — temporary diag. Emit the env values seen by the page
-  // lambda as an HTML comment at the top of the rendered page so we can
-  // capture the values without depending on Vercel runtime logs. Removed
-  // once the env visibility issue is identified.
-  const diag = `<!-- KAIA-11932 diag
-env.isPortalDevMock=${isPortalDevMock()}
-env.isDatabaseConfigured=${isDatabaseConfigured}
-env.NEXT_PUBLIC_SUPABASE_URL=${process.env.NEXT_PUBLIC_SUPABASE_URL ? '<set len=' + process.env.NEXT_PUBLIC_SUPABASE_URL.length + '>' : '<missing>'}
-env.NEXT_PUBLIC_SUPABASE_ANON_KEY=${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? '<set len=' + process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.length + '>' : '<missing>'}
-env.DATABASE_URL=${process.env.DATABASE_URL ? '<set len=' + process.env.DATABASE_URL.length + '>' : '<missing>'}
-env.DIRECT_URL=${process.env.DIRECT_URL ? '<set len=' + process.env.DIRECT_URL.length + '>' : '<missing>'}
-env.PORTAL_API_BASE_URL=${process.env.PORTAL_API_BASE_URL ? '<set len=' + process.env.PORTAL_API_BASE_URL.length + '>' : '<missing>'}
-env.NEXT_PUBLIC_PORTAL_URL=${process.env.NEXT_PUBLIC_PORTAL_URL ? '<set len=' + process.env.NEXT_PUBLIC_PORTAL_URL.length + '>' : '<missing>'}
-env.VERCEL_ENV=${process.env.VERCEL_ENV ?? '<missing>'}
-env.VERCEL_REGION=${process.env.VERCEL_REGION ?? '<missing>'}
-resolved=${JSON.stringify({ clientId: resolved.clientId, email: resolved.email, source: resolved.source })}
-prismaRow=${prismaRow ? JSON.stringify(prismaRow) : 'null'}
-prismaThrew=${prismaThrew ?? 'null'}
-fallbackBaseUrl=${fallbackBaseUrl ?? 'null'}
-fallbackProfile=${fallbackProfile ? JSON.stringify(fallbackProfile) : 'null'}
-dataSource=${dataSource}
--->`;
-
   return (
-    <div className="space-y-6" suppressHydrationWarning>
-      <div dangerouslySetInnerHTML={{ __html: diag }} />
+    <div className="space-y-6">
       <PageHeading
         eyebrow="Dashboard"
         title={clientName}
