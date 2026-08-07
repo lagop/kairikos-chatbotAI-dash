@@ -5,6 +5,7 @@ const NAV = [
   { href: '/portal/onboarding', label: 'Onboarding' },
   { href: '/portal/status', label: 'Chatbot' },
   { href: '/portal/conversations', label: 'Conversaciones' },
+  { href: '/portal/resenas', label: 'Reseñas', badge: 'Pronto' },
   { href: '/portal/billing', label: 'Facturación' },
   { href: '/portal/support', label: 'Soporte' },
 ] as const;
@@ -42,9 +43,15 @@ export function PortalHeader({
             <Link
               key={item.href}
               href={item.href}
-              className="rounded-lg px-3 py-1.5 text-sm text-kairikos-muted transition hover:bg-kairikos-surface hover:text-kairikos-text"
+              data-testid={`header-nav-${item.href.replace(/\//g, '-')}`}
+              className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-kairikos-muted transition hover:bg-kairikos-surface hover:text-kairikos-text"
             >
-              {item.label}
+              <span>{item.label}</span>
+              {'badge' in item && item.badge ? (
+                <span className="rounded-full border border-kairikos-border bg-kairikos-surface2 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-kairikos-muted">
+                  {item.badge}
+                </span>
+              ) : null}
             </Link>
           ))}
         </nav>
@@ -56,6 +63,7 @@ export function PortalHeader({
             <li key={item.href}>
               <Link
                 href={item.href}
+                data-testid={`header-nav-${item.href.replace(/\//g, '-')}`}
                 className="block whitespace-nowrap rounded-lg px-3 py-1.5 text-kairikos-muted hover:bg-kairikos-surface hover:text-kairikos-text"
               >
                 {item.label}

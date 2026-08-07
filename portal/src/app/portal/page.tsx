@@ -113,6 +113,29 @@ export default async function PortalHome({
         </section>
 
         <ChatbotStatusCard summary={ctx.chatbot} />
+
+        <section
+          className="card"
+          aria-labelledby="resenas-resumen"
+          data-testid="resenas-summary-card"
+        >
+          <div className="mb-3 flex items-center justify-between">
+            <h2 id="resenas-resumen" className="text-lg font-semibold">
+              Reseñas de Google
+            </h2>
+            <span className="pill-muted">Pronto</span>
+          </div>
+          <p className="text-sm text-kairikos-muted">
+            Pronto podrás ver y responder tus reseñas de Google desde el portal. Estamos preparando la integración con Google Business Profile en la fase 2 del Dashboard v2.
+          </p>
+          <Link
+            href="/portal/resenas"
+            className="mt-4 inline-flex items-center gap-2 text-sm text-kairikos-accent2 hover:underline"
+            data-testid="resenas-summary-link"
+          >
+            Ver la sección de Reseñas →
+          </Link>
+        </section>
       </div>
     </div>
   );
