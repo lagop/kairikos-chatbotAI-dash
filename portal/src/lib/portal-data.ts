@@ -144,12 +144,34 @@ function buildApiUrl(path: string): string {
 async function portalFetch<T>(path: string, accessToken: string): Promise<T | null> {
   if (!isBackendConfigured) return null;
   try {
+    // KAIA-11955 — production NextAuth sessions have `accessToken: null`
+    // (NextAuth only issues JWT session cookies, not Bearer tokens), so
+    // the server-side portal pages were sending `Authorization: Bearer `
+    // (empty) and the API returned 401, which made every helper fall
+    // back to the Acme MOCK fixture. On the server, forward the inbound
+    // cookies instead — that's how the route handler authenticates the
+    // call in the first place. On the client, keep using the
+    // accessToken Bearer header (the only auth signal the client has).
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      'X-Kairikos-Client': 'portal-web',
+    };
+    if (accessToken) {
+      headers.Authorization = `Bearer ${accessToken}`;
+    }
+    if (typeof window === 'undefined') {
+      try {
+        const { cookies } = await import('next/headers');
+        const all = cookies().getAll();
+        if (all.length > 0) {
+          headers.cookie = all.map((c) => `${c.name}=${c.value}`).join('; ');
+        }
+      } catch {
+        // Outside a request context (background work, build): no cookies.
+      }
+    }
     const res = await fetch(buildApiUrl(path), {
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-        'X-Kairikos-Client': 'portal-web',
-      },
+      headers,
       cache: 'no-store',
     });
     if (!res.ok) return null;

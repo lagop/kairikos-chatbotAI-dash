@@ -131,3 +131,55 @@ describe('portalFetch URL normalisation (KAIA-11955 round 2)', () => {
     expect(calledUrl).toBe('https://project-fxidg.vercel.app/api/portal/billing');
   });
 });
+
+describe('portalFetch cookie forwarding (KAIA-11955 round 3)', () => {
+  // Production NextAuth sessions have `accessToken: null` and rely on
+  // session cookies. Server-side portal pages (which call the helpers
+  // with `session.accessToken ?? ''`) used to send `Authorization: Bearer `
+  // (empty) and the API returned 401, falling back to the Acme mock.
+  // Fix: when running on the server, forward the inbound cookies so
+  // the API can authenticate the request the same way the page did.
+  afterEach(() => {
+    fetchMock.mockReset();
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  it('forwards inbound cookies as `cookie:` header on the server', async () => {
+    vi.doMock('next/headers', () => ({
+      cookies: () => ({
+        getAll: () => [
+          { name: 'authjs.session-token', value: 'sess-xyz' },
+          { name: 'kairikos-portal-dev-session-active', value: '1' },
+        ],
+      }),
+    }));
+    // Force the test to look like server context.
+    (globalThis as { window: unknown }).window = undefined as unknown;
+    mockApiResponse({ timeline: [] });
+    const { getOnboarding } = await import('@/lib/portal-data');
+    await getOnboarding(''); // empty accessToken — what real NextAuth sessions produce
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    const headers = init.headers as Record<string, string>;
+    expect(headers.cookie).toContain('authjs.session-token=sess-xyz');
+    expect(headers.cookie).toContain('kairikos-portal-dev-session-active=1');
+    // No Authorization header should be set when accessToken is empty.
+    expect(headers.Authorization).toBeUndefined();
+    vi.doUnmock('next/headers');
+    vi.resetModules();
+  });
+
+  it('does not set Authorization when accessToken is empty (server)', async () => {
+    vi.doMock('next/headers', () => ({
+      cookies: () => ({ getAll: () => [] }),
+    }));
+    (globalThis as { window: unknown }).window = undefined as unknown;
+    mockApiResponse({ timeline: [] });
+    const { getOnboarding } = await import('@/lib/portal-data');
+    await getOnboarding('');
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    const headers = init.headers as Record<string, string>;
+    expect(headers.Authorization).toBeUndefined();
+    vi.doUnmock('next/headers');
+    vi.resetModules();
+  });
+});
