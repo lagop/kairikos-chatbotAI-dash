@@ -71,6 +71,10 @@ export default async function PortalDashboardPage() {
   let conversationCount = 0;
   let timeline = MOCK_TIMELINE;
   let dataSource: 'prisma' | 'portal_api_fallback' | 'mock_dev' = 'mock_dev';
+  let prismaRow: unknown = null;
+  let prismaThrew: string | null = null;
+  let fallbackProfile: unknown = null;
+  let fallbackBaseUrl: string | null = null;
   if (resolved.source !== 'mock_dev' || isDatabaseConfigured) {
     let prismaError: unknown = null;
     try {
@@ -89,6 +93,7 @@ export default async function PortalDashboardPage() {
         clientName = client.companyName ?? client.name;
         goLiveAt = client.goLiveAt?.toISOString() ?? null;
         dataSource = 'prisma';
+        prismaRow = client;
       } else {
         console.warn(
           '[portal] /portal/dashboard prisma.chatbotClient.findUnique returned null for resolved.clientId=%s (email=%s)',
@@ -121,6 +126,7 @@ export default async function PortalDashboardPage() {
       }
     } catch (err) {
       prismaError = err;
+      prismaThrew = String((err as Error)?.message ?? err);
       console.error(
         '[portal] /portal/dashboard prisma fetch threw for clientId=%s email=%s:',
         resolved.clientId,
@@ -137,6 +143,28 @@ export default async function PortalDashboardPage() {
     // underlying Prisma query is the failure point.
     if (dataSource !== 'prisma') {
       const profile = await loadClientProfileViaPortalApi();
+      // KAIA-11932 diag — capture fallback state
+      fallbackProfile = profile
+        ? { companyName: profile.companyName, contactName: profile.contactName, id: profile.id }
+        : null;
+      // Show what the helper would have used as base URL (resolved against
+      // the request). Best-effort via a copy of the helper logic; failure
+      // here does not affect the page's data path.
+      try {
+        const { headers } = await import('next/headers');
+        const h = headers();
+        const host = h.get('x-forwarded-host') ?? h.get('host') ?? '';
+        const proto = h.get('x-forwarded-proto') ?? 'https';
+        const inboundOrigin = host ? `${proto}://${host}` : '';
+        const configured = process.env.PORTAL_API_BASE_URL ?? process.env.NEXT_PUBLIC_PORTAL_URL ?? '';
+        const hostOf = (u: string) => { try { return new URL(u).host.toLowerCase(); } catch { return ''; } };
+        if (!configured) fallbackBaseUrl = inboundOrigin || '<empty>';
+        else if (!inboundOrigin) fallbackBaseUrl = configured;
+        else if (hostOf(configured) === hostOf(inboundOrigin)) fallbackBaseUrl = configured;
+        else fallbackBaseUrl = `<configured=${configured}><inbound=${inboundOrigin}>`;
+      } catch (e) {
+        fallbackBaseUrl = `<err:${String((e as Error)?.message ?? e)}>`;
+      }
       if (profile) {
         const fallbackName = profile.companyName ?? profile.contactName ?? '';
         if (fallbackName) {
@@ -170,9 +198,15 @@ env.NEXT_PUBLIC_SUPABASE_URL=${process.env.NEXT_PUBLIC_SUPABASE_URL ? '<set len=
 env.NEXT_PUBLIC_SUPABASE_ANON_KEY=${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? '<set len=' + process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.length + '>' : '<missing>'}
 env.DATABASE_URL=${process.env.DATABASE_URL ? '<set len=' + process.env.DATABASE_URL.length + '>' : '<missing>'}
 env.DIRECT_URL=${process.env.DIRECT_URL ? '<set len=' + process.env.DIRECT_URL.length + '>' : '<missing>'}
+env.PORTAL_API_BASE_URL=${process.env.PORTAL_API_BASE_URL ? '<set len=' + process.env.PORTAL_API_BASE_URL.length + '>' : '<missing>'}
+env.NEXT_PUBLIC_PORTAL_URL=${process.env.NEXT_PUBLIC_PORTAL_URL ? '<set len=' + process.env.NEXT_PUBLIC_PORTAL_URL.length + '>' : '<missing>'}
 env.VERCEL_ENV=${process.env.VERCEL_ENV ?? '<missing>'}
 env.VERCEL_REGION=${process.env.VERCEL_REGION ?? '<missing>'}
 resolved=${JSON.stringify({ clientId: resolved.clientId, email: resolved.email, source: resolved.source })}
+prismaRow=${prismaRow ? JSON.stringify(prismaRow) : 'null'}
+prismaThrew=${prismaThrew ?? 'null'}
+fallbackBaseUrl=${fallbackBaseUrl ?? 'null'}
+fallbackProfile=${fallbackProfile ? JSON.stringify(fallbackProfile) : 'null'}
 dataSource=${dataSource}
 -->`;
 
