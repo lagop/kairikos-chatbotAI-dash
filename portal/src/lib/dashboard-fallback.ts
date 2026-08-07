@@ -28,6 +28,16 @@
 //     customer's name", and the fallback is gated so we never replace
 //     good Prisma data with possibly-stale portal-route data.
 //
+// KAIA-11891 — Cookie-scoping fix.
+// `NEXT_PUBLIC_PORTAL_URL` on the Vercel preview is set to the production
+// alias (`project-fxidg.vercel.app` -> production alias). The session
+// cookies forwarded below are scoped to the inbound hostname (the preview
+// URL). Hitting the production alias therefore loses the session cookie,
+// `/api/portal/me` returns 401, the helper collapses to null, and the
+// page silently falls back to MOCK_CLIENT ("Acme Corp"). We now resolve
+// the base URL with the inbound request's own origin as a third fallback
+// when neither configured env var's host matches the inbound request.
+//
 // Notes for reviewers:
 //   * This helper is intentionally a thin wrapper around `fetch`. We do
 //     NOT introduce a new env var / config layer. The base URL is read
@@ -41,11 +51,47 @@
 import 'server-only';
 import type { ClientProfile } from '@/types/portal';
 
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+async function resolveInboundOrigin(): Promise<string> {
+  try {
+    // `headers()` is sync inside the App Router request scope. If it throws
+    // (e.g. background work, RSC outside a request context), return ''.
+    const { headers } = await import('next/headers');
+    const h = headers();
+    const host = h.get('x-forwarded-host') ?? h.get('host') ?? '';
+    if (!host) return '';
+    const proto = h.get('x-forwarded-proto') ?? 'https';
+    return `${proto}://${host}`;
+  } catch {
+    return '';
+  }
+}
+
+async function resolveBaseUrl(): Promise<string> {
+  const configured =
+    process.env.PORTAL_API_BASE_URL ?? process.env.NEXT_PUBLIC_PORTAL_URL ?? '';
+  const inboundOrigin = await resolveInboundOrigin();
+  // Prefer the configured base when either it is unset or its host matches
+  // the inbound request's host — that's the case where the forwarded
+  // cookies will reach the target. If the configured base points to a
+  // different host (e.g. production alias on a Vercel preview deploy),
+  // fall back to the inbound origin so cookies stay scoped to the
+  // request's own origin and the session survives.
+  if (!configured) return inboundOrigin;
+  if (!inboundOrigin) return configured;
+  if (hostOf(configured) === hostOf(inboundOrigin)) return configured;
+  return inboundOrigin;
+}
+
 export async function loadClientProfileViaPortalApi(): Promise<ClientProfile | null> {
-  const base =
-    process.env.PORTAL_API_BASE_URL ??
-    process.env.NEXT_PUBLIC_PORTAL_URL ??
-    '';
+  const base = await resolveBaseUrl();
   if (!base) return null;
   let cookieHeader = '';
   try {
