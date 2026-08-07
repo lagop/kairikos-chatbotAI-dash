@@ -259,17 +259,18 @@ export default async function PortalHome({
             <h2 id="resenas-resumen" className="text-lg font-semibold">
               Reseñas de Google
             </h2>
-            <span className="pill-muted">Pronto</span>
+            <span className="pill-muted">No incluido</span>
           </div>
           <p className="text-sm text-kairikos-muted">
-            Pronto podrás ver y responder tus reseñas de Google desde el portal. Estamos preparando la integración con Google Business Profile en la fase 2 del Dashboard v2.
+            La gestión de reseñas de Google no está incluida en tu plan actual.
+            Si quieres añadirla a tu cuenta, escríbenos y te contamos las opciones disponibles.
           </p>
           <Link
             href="/portal/resenas"
             className="mt-4 inline-flex items-center gap-2 text-sm text-kairikos-accent2 hover:underline"
             data-testid="resenas-summary-link"
           >
-            Ver la sección de Reseñas →
+            Ver detalles →
           </Link>
         </section>
       </div>

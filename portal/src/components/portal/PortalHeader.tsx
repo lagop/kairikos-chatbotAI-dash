@@ -5,7 +5,7 @@ const NAV = [
   { href: '/portal/onboarding', label: 'Onboarding' },
   { href: '/portal/status', label: 'Chatbot' },
   { href: '/portal/conversations', label: 'Conversaciones' },
-  { href: '/portal/resenas', label: 'Reseñas', badge: 'Pronto' },
+  { href: '/portal/resenas', label: 'Reseñas' },
   { href: '/portal/billing', label: 'Facturación' },
   { href: '/portal/support', label: 'Soporte' },
 ] as const;
