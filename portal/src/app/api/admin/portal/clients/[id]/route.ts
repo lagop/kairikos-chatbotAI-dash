@@ -1,4 +1,4 @@
-// KAIA-13281 — Admin: PATCH /api/admin/portal/clients/[clientId]
+// KAIA-13281 — Admin: PATCH /api/admin/portal/clients/[id]
 //
 // Operator-only endpoint that mutates a ChatbotClient row and writes one
 // OperatorAction audit row per changed field in a single Prisma
@@ -18,7 +18,7 @@
 //   * 401 — not authenticated, or session is not an operator
 //   * 400 — body is not JSON, has unknown fields, or has an invalid
 //           tier/state/goLiveAt value
-//   * 404 — ChatbotClient not found for [clientId]
+//   * 404 — ChatbotClient not found for [id]
 //   * 500 — DB / transaction failure (audited via console.error)
 
 import { NextResponse, type NextRequest } from 'next/server';
@@ -282,7 +282,7 @@ function buildPrismaPatch(changes: FieldChange[]): Record<string, unknown> {
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { clientId: string } },
+  { params }: { params: { id: string } },
 ) {
   if (!isDatabaseConfigured) {
     return jsonError(503, 'service_unavailable', 'DATABASE_URL is not configured');
@@ -298,7 +298,7 @@ export async function PATCH(
       const session = await getSession();
       operatorAuthorized = session.isOperator;
     } catch (err) {
-      console.error('[PATCH /api/admin/portal/clients/[clientId]] getSession failed', err);
+      console.error('[PATCH /api/admin/portal/clients/[id]] getSession failed', err);
       operatorAuthorized = false;
     }
   }
@@ -306,7 +306,7 @@ export async function PATCH(
     return jsonError(401, 'unauthorized');
   }
 
-  const clientId = params.clientId;
+  const clientId = params.id;
   if (!clientId) {
     return jsonError(400, 'bad_request', 'clientId is required');
   }
@@ -332,7 +332,7 @@ export async function PATCH(
       },
     });
   } catch (err) {
-    console.error('[PATCH /api/admin/portal/clients/[clientId]] findUnique failed', err);
+    console.error('[PATCH /api/admin/portal/clients/[id]] findUnique failed', err);
     return jsonError(500, 'internal_error');
   }
   if (!current) {
@@ -420,7 +420,7 @@ export async function PATCH(
       })),
     });
   } catch (err) {
-    console.error('[PATCH /api/admin/portal/clients/[clientId]] transaction failed', err);
+    console.error('[PATCH /api/admin/portal/clients/[id]] transaction failed', err);
     return jsonError(500, 'internal_error');
   }
 }
