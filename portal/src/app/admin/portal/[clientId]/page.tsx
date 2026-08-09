@@ -5,10 +5,13 @@ import { PageHeading } from '@/components/portal/PageHeading';
 import { ChatbotStatusCard } from '@/components/portal/ChatbotStatusCard';
 import { OnboardingTimeline } from '@/components/portal/OnboardingTimeline';
 import { EmptyState } from '@/components/portal/EmptyState';
+import { OperatorEditor } from '@/components/portal/OperatorEditor';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { MOCK_CLIENT, MOCK_SECONDARY_CLIENT, MOCK_CHATBOT, MOCK_TIMELINE } from '@/lib/portal-data';
 import { MOCK_FLOW_ACTIVITY, MOCK_N8N_EXECUTIONS, type FlowActivityEntry } from '@/lib/flow-health';
+
+export const dynamic = 'force-dynamic';
 
 interface PageProps {
   params: { clientId: string };
@@ -130,6 +133,8 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
   let companyName = 'Cliente';
   let email = '';
   let tier = 'starter';
+  let state = 'in-progress';
+  let notes: string | null = null;
   let goLiveAt: string | null = null;
   let conversationCount = 0;
   let timeline = MOCK_TIMELINE;
@@ -144,6 +149,8 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
           name: true,
           email: true,
           tier: true,
+          state: true,
+          notes: true,
           goLiveAt: true,
         },
       });
@@ -151,6 +158,8 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
         companyName = client.companyName ?? client.name;
         email = client.email;
         tier = client.tier;
+        state = client.state;
+        notes = client.notes;
         goLiveAt = client.goLiveAt?.toISOString() ?? null;
         const [count, activities] = await Promise.all([
           prisma.chatbotConversation.count({ where: { clientId: client.id } }),
@@ -197,6 +206,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
       companyName = mockMatch.companyName;
       email = mockMatch.primaryContactEmail;
       tier = mockMatch.tier;
+      state = mockMatch.onboardingStatus;
       goLiveAt = mockMatch.goLiveDate;
     } else {
       notFound();
@@ -224,7 +234,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
             data-testid="operator-readonly-badge"
             className="pill-warning"
           >
-            Modo lectura
+            Modo lectura — para editar, baja a la sección Editar
           </span>
         }
       />
@@ -237,6 +247,18 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
         <TabLink clientId={params.clientId} current={tab} value="overview" label="Resumen" />
         <TabLink clientId={params.clientId} current={tab} value="flow" label="Flujo" />
       </nav>
+
+      <OperatorEditor
+        clientId={params.clientId}
+        initial={{
+          companyName,
+          email,
+          tier,
+          state,
+          goLiveAt,
+          notes,
+        }}
+      />
 
       {tab === 'overview' ? (
         <>

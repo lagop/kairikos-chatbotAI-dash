@@ -1,13 +1,18 @@
+export const dynamic = 'force-dynamic';
+
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { PageHeading } from '@/components/portal/PageHeading';
+import { redirect } from 'next/navigation';
 import { ChatbotStatusCard } from '@/components/portal/ChatbotStatusCard';
 import { OnboardingTimeline } from '@/components/portal/OnboardingTimeline';
+import { PageHeading } from '@/components/portal/PageHeading';
 import { SelfServiceActions } from '@/components/portal/SelfServiceActions';
 import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { MOCK_CLIENT, MOCK_CHATBOT, MOCK_TIMELINE } from '@/lib/portal-data';
+import type { ClientProfile } from '@/types/portal';
+import { loadClientProfileViaPortalApi } from '@/lib/dashboard-fallback';
 
 export const metadata: Metadata = {
   title: 'Dashboard',
@@ -18,52 +23,82 @@ export const metadata: Metadata = {
 
 const DATE_FMT = new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
 
+// KAIA-3920 board-user report (2026-07-23T22:22Z): the unauth-landing panel
+// rendered at /portal/dashboard looked like the login page to clients and
+// they reported being "stuck on the login page" after login. Other portal
+// routes already redirect on no-session; this page did not. Align it with
+// the rest of the portal so the unauth contract is uniform across the
+// chrome — visiting /portal/dashboard without a session redirects to
+// /portal/login (or /portal/sin-acceso for cross-tenant), never renders
+// the "Necesitas iniciar sesión" panel.
 export default async function PortalDashboardPage() {
-  const session = await getSession();
+  let session;
+  try {
+    session = await getSession();
+  } catch (err) {
+    console.error('[portal] /portal/dashboard getSession() crashed, treating as no_session:', err);
+    redirect('/portal/login');
+  }
   if (!session.hasClientAccess) {
-    return (
-      <div className="space-y-6">
-        <PageHeading
-          eyebrow="Sin acceso"
-          title="Necesitas iniciar sesión"
-          description="Inicia sesión para ver el dashboard de tu chatbot."
-        />
-        <Link href="/portal/login" className="btn-primary">Iniciar sesión</Link>
-      </div>
-    );
+    const target = session.reason === 'no_session' ? '/portal/login' : '/portal/sin-acceso';
+    redirect(target);
   }
   const resolved = await resolveClientFromSession();
   if (!resolved) {
-    return (
-      <div className="space-y-6">
-        <PageHeading
-          eyebrow="Sin acceso"
-          title="No hemos podido identificar tu cliente"
-          description="Contacta con soporte si crees que es un error."
-        />
-      </div>
-    );
+    redirect('/portal/sin-acceso');
   }
   let clientName = MOCK_CLIENT.companyName;
   let goLiveAt: string | null = null;
   let conversationCount = 0;
-  let timeline = MOCK_TIMELINE;
-  if (resolved.source !== 'mock_dev' || isDatabaseConfigured) {
+  // KAIA-11955: a real customer with zero activity rows must NOT see
+  // MOCK_TIMELINE (the Acme 4-step fixture). The page starts with an
+  // empty timeline and the OnboardingTimeline component renders the
+  // honest "Aún no hay pasos registrados" copy when the list is empty.
+  // MOCK_TIMELINE is only used as the dev-mock default below.
+  let timeline: typeof MOCK_TIMELINE = [];
+  let dataSource: 'prisma' | 'portal_api_fallback' | 'mock_dev' = 'mock_dev';
+  if (resolved.source === 'mock_dev' && !isDatabaseConfigured) {
+    timeline = MOCK_TIMELINE;
+  } else {
+    let prismaError: unknown = null;
     try {
-      const [client, count, activities] = await Promise.all([
+      // KAIA-11932 — split the activities query out of Promise.all. The
+      // chatbotActivity.findMany has been observed to throw on production
+      // DBs that pre-date the `tenant_id` column, and Promise.all would
+      // surface that to the page even when chatbotClient.findUnique (the
+      // authoritative source for the heading) would otherwise succeed.
+      // The activities timeline is left as `[]` when no rows are returned,
+      // and the OnboardingTimeline component renders a clear "preparing
+      // your portal" message in that case (see KAIA-11955).
+      const [client, count] = await Promise.all([
         prisma.chatbotClient.findUnique({
           where: { id: resolved.clientId },
           select: { companyName: true, name: true, goLiveAt: true },
         }),
         prisma.chatbotConversation.count({ where: { clientId: resolved.clientId } }),
-        prisma.chatbotActivity.findMany({
+      ]);
+      let activities: Array<{ id: string; milestone: string; notes: string | null; completedAt: Date | null }> = [];
+      try {
+        activities = await prisma.chatbotActivity.findMany({
           where: { clientId: resolved.clientId },
           orderBy: { completedAt: 'asc' },
-        }),
-      ]);
+        });
+      } catch (activitiesErr) {
+        console.warn(
+          '[portal] /portal/dashboard prisma.chatbotActivity.findMany failed; rendering empty timeline.',
+          activitiesErr,
+        );
+      }
       if (client) {
         clientName = client.companyName ?? client.name;
         goLiveAt = client.goLiveAt?.toISOString() ?? null;
+        dataSource = 'prisma';
+      } else {
+        console.warn(
+          '[portal] /portal/dashboard prisma.chatbotClient.findUnique returned null for resolved.clientId=%s (email=%s)',
+          resolved.clientId,
+          resolved.email,
+        );
       }
       conversationCount = count;
       if (activities.length > 0) {
@@ -88,8 +123,37 @@ export default async function PortalDashboardPage() {
           status: a.completedAt ? 'done' : i === activities.findIndex((x) => !x.completedAt) ? 'current' : 'pending',
         }));
       }
-    } catch {
-      // fall through to mocks
+    } catch (err) {
+      prismaError = err;
+      console.error(
+        '[portal] /portal/dashboard prisma fetch threw for clientId=%s email=%s:',
+        resolved.clientId,
+        resolved.email,
+        err,
+      );
+    }
+    // KAIA-11641: when Prisma is broken, route the dashboard data through
+    // the same /api/portal/me source that returns the real customer data
+    // (because /me uses the same `prisma.chatbotClient.findUnique` shape but
+    // it has been observed to succeed where the direct call does not — most
+    // likely a schema-drift / relationMode miss). This preserves the
+    // "real customer data, not MOCK_CLIENT" contract even when the
+    // underlying Prisma query is the failure point.
+    if (dataSource !== 'prisma') {
+      const profile = await loadClientProfileViaPortalApi();
+      if (profile) {
+        const fallbackName = profile.companyName ?? profile.contactName ?? '';
+        if (fallbackName) {
+          clientName = fallbackName;
+          goLiveAt = profile.goLiveDate ?? null;
+        }
+        dataSource = 'portal_api_fallback';
+      } else if (prismaError) {
+        console.error(
+          '[portal] /portal/dashboard prisma + portal_api_fallback both failed for clientId=%s; rendering with mock data',
+          resolved.clientId,
+        );
+      }
     }
   }
 
@@ -98,6 +162,27 @@ export default async function PortalDashboardPage() {
   const totalSteps = timeline.length;
   const progressPct = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
   const status = goLiveAt ? 'live' : 'in_progress';
+
+  // KAIA-11955 — chatbot summary: dev-mock mode renders the Acme
+  // MOCK_CHATBOT (spc_acme_corp, 142 conversaciones, 8% / 12%
+  // rates, 2026-05-29 go-live). For every other mode the summary is
+  // built from the actual customer's data: real spaceId stem, real
+  // (possibly zero) conversation count, and null goLiveDate when
+  // the chatbot is not live yet. The Acme fixture must NEVER bleed
+  // into a real signed-in customer's view.
+  const chatbotSummary =
+    dataSource === 'mock_dev'
+      ? MOCK_CHATBOT
+      : {
+          spaceId: `spc_${resolved.clientId}`,
+          status: status,
+          goLiveDate: goLiveAt,
+          last7Days: {
+            conversations: conversationCount,
+            fallbackRate: 0,
+            escalationRate: 0,
+          },
+        };
 
   return (
     <div className="space-y-6">
@@ -109,6 +194,9 @@ export default async function PortalDashboardPage() {
           <Link href="/portal/support" className="btn-ghost">Contactar soporte</Link>
         }
       />
+      <span data-testid="dashboard-client-name" data-dashboard-source={dataSource} hidden>
+        {clientName}
+      </span>
 
       <section className="card" aria-label="Estado del chatbot">
         <header className="mb-4 flex items-center justify-between">
@@ -117,18 +205,7 @@ export default async function PortalDashboardPage() {
             {status === 'live' ? 'En producción' : 'En curso'}
           </span>
         </header>
-        <ChatbotStatusCard
-          summary={{
-            spaceId: MOCK_CHATBOT.spaceId,
-            status: status,
-            goLiveDate: goLiveAt ?? MOCK_CHATBOT.goLiveDate,
-            last7Days: {
-              conversations: conversationCount || MOCK_CHATBOT.last7Days.conversations,
-              fallbackRate: MOCK_CHATBOT.last7Days.fallbackRate,
-              escalationRate: MOCK_CHATBOT.last7Days.escalationRate,
-            },
-          }}
-        />
+        <ChatbotStatusCard summary={chatbotSummary} />
         <p className="mt-3 text-xs text-kairikos-muted">
           {goLiveAt
             ? `En producción desde el ${DATE_FMT.format(new Date(goLiveAt))}.`
@@ -140,11 +217,29 @@ export default async function PortalDashboardPage() {
         <header className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold">Onboarding</h2>
           <span className="text-sm text-kairikos-muted" data-testid="onboarding-progress">
-            {progressPct}% · paso {Math.min(completedSteps + 1, totalSteps)} de {totalSteps}
+            {/* KAIA-11955 — for a freshly-signed-up customer with no
+                ChatbotActivity rows yet, totalSteps is 0. Render a
+                honest "preparing" copy instead of the misleading
+                "0% · paso 0 de 0" which the user read as "stuck at
+                the T+0 step". */}
+            {totalSteps > 0
+              ? `${progressPct}% · paso ${Math.min(completedSteps + 1, totalSteps)} de ${totalSteps}`
+              : 'Preparando tu portal…'}
           </span>
         </header>
         <OnboardingTimeline rows={timeline} />
-        {currentStep ? (
+        {/* KAIA-11955 — when there are no activity rows, the empty
+            state inside <OnboardingTimeline /> already explains
+            "Aún no hay pasos registrados". The extra reassurance
+            below tells the customer *why* (their portal is being
+            set up) and *what happens next* (an email) so they do
+            not think they are stuck. */}
+        {totalSteps === 0 ? (
+          <p className="mt-3 text-sm text-kairikos-muted">
+            Tu portal está en preparación. Te enviaremos un email cuando
+            completemos el primer paso del onboarding.
+          </p>
+        ) : currentStep ? (
           <p className="mt-3 text-sm text-kairikos-muted">
             Siguiente: <span className="text-kairikos-text">{currentStep.label}</span>
           </p>

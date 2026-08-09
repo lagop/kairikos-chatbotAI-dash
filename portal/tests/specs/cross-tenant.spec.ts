@@ -1,8 +1,6 @@
-import { test, expect } from '@playwright/test';
-import { PortalTestFixtures, portalPages, adminPages } from '../fixtures/portal';
+import { expect } from '@playwright/test';
+import { portalFixture as test, portalPages, adminPages } from '../fixtures/portal';
 import { LoginPage, OnboardingPage, StatusPage, ConversationsPage, BillingPage, SupportPage, AdminClientListPage } from '../pages/portal';
-
-const T = test.extend<PortalTestFixtures>;
 
 test.describe('Cross-Tenant Isolation', () => {
   test('client-A cannot access client-B onboarding via direct URL', async ({ page, clientA, clientB }) => {

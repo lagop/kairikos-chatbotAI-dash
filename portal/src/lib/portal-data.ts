@@ -120,15 +120,58 @@ const MOCK_SUPPORT: SupportLink = {
   description: 'Te respondemos por WhatsApp en horario laboral (L–V, 9:00–18:00 CET).',
 };
 
+// KAIA-11955 — PORTAL_API_BASE_URL on production is set to
+// `https://project-fxidg.vercel.app/portal` (the user-facing SPA path),
+// not `https://project-fxidg.vercel.app/api` (where the Next.js route
+// handlers actually live). Building `${base}/portal/...` produces a
+// double `/portal/portal/...` and 404s, which made the customer-facing
+// `getOnboarding` and friends silently fall back to the Acme
+// MOCK_TIMELINE_INTERNAL fixture. Normalise the URL: strip a trailing
+// `/portal` from the base, and if the caller path starts with
+// `/portal/...` translate it to `/api/portal/...` so the request hits
+// the real route.
+function buildApiUrl(path: string): string {
+  let base = PORTAL_API_BASE_URL.replace(/\/$/, '');
+  if (base.endsWith('/portal')) {
+    base = base.slice(0, -'/portal'.length);
+  }
+  if (path.startsWith('/portal/')) {
+    return `${base}/api${path}`;
+  }
+  return `${base}${path}`;
+}
+
 async function portalFetch<T>(path: string, accessToken: string): Promise<T | null> {
   if (!isBackendConfigured) return null;
   try {
-    const res = await fetch(`${PORTAL_API_BASE_URL}${path}`, {
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-        'X-Kairikos-Client': 'portal-web',
-      },
+    // KAIA-11955 — production NextAuth sessions have `accessToken: null`
+    // (NextAuth only issues JWT session cookies, not Bearer tokens), so
+    // the server-side portal pages were sending `Authorization: Bearer `
+    // (empty) and the API returned 401, which made every helper fall
+    // back to the Acme MOCK fixture. On the server, forward the inbound
+    // cookies instead — that's how the route handler authenticates the
+    // call in the first place. On the client, keep using the
+    // accessToken Bearer header (the only auth signal the client has).
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      'X-Kairikos-Client': 'portal-web',
+    };
+    if (accessToken) {
+      headers.Authorization = `Bearer ${accessToken}`;
+    }
+    if (typeof window === 'undefined') {
+      try {
+        const { cookies } = await import('next/headers');
+        const all = cookies().getAll();
+        if (all.length > 0) {
+          headers.cookie = all.map((c) => `${c.name}=${c.value}`).join('; ');
+        }
+      } catch {
+        // Outside a request context (background work, build): no cookies.
+      }
+    }
+    const res = await fetch(buildApiUrl(path), {
+      headers,
       cache: 'no-store',
     });
     if (!res.ok) return null;
@@ -148,8 +191,15 @@ export async function getClientUser(): Promise<ChatbotClientUser> {
 }
 
 export async function getOnboarding(accessToken: string): Promise<OnboardingTimelineRow[]> {
+  // KAIA-11955 — the GET route is /portal/onboarding (see
+  // src/app/api/portal/onboarding/route.ts), not /portal/onboarding-status.
+  // Calling the wrong path returned 404 and the customer saw the Acme
+  // mock fixture instead of their real (empty) timeline. The real route
+  // returns `{ timeline: [] }` for a customer with no ChatbotActivity rows,
+  // which the OnboardingTimeline component renders as the "preparing your
+  // portal" empty state.
   const fromApi = await portalFetch<{ timeline: OnboardingTimelineRow[] }>(
-    '/portal/onboarding-status',
+    '/portal/onboarding',
     accessToken,
   );
   return fromApi?.timeline ?? MOCK_TIMELINE_INTERNAL;
@@ -169,7 +219,15 @@ export async function getOnboardingFor(
 }
 
 export async function getChatbotStatus(accessToken: string): Promise<ChatbotStatusSummary> {
-  const fromApi = await portalFetch<ChatbotStatusSummary>('/portal/chatbot-status', accessToken);
+  // KAIA-11955 — the GET route is /portal/status (see
+  // src/app/api/portal/status/route.ts), not /portal/chatbot-status.
+  // Calling the wrong path returned 404 and the customer saw the
+  // Acme MOCK_CHATBOT (spc_acme_corp, 142 conversaciones, 8% / 12%
+  // rates) instead of their real (empty) chatbot status. The real
+  // route returns the customer's actual `chatbotClient.id` as
+  // spaceId, the live/in_progress status, and a 7-day window
+  // derived from the real conversation count.
+  const fromApi = await portalFetch<ChatbotStatusSummary>('/portal/status', accessToken);
   return fromApi ?? MOCK_CHATBOT;
 }
 

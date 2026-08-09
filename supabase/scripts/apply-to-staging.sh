@@ -19,11 +19,18 @@
 #   4. Ensures the two auth.users rows exist (Admin API if
 #      SUPABASE_SERVICE_ROLE_KEY is set, else prints the exact payload for
 #      the operator to run in Supabase Studio).
-#   5. Runs the Supabase-friendly RLS smoke
+#   5. (KAIA-2900) Seeds a known argon2id passwordHash on the three client
+#      test users (onboarding-test1/2, staff-test@kairikos.dev) via the
+#      portal/scripts/seed-test-passwords.ts helper. Password is sourced
+#      from $STAGING_TEST_USER_PASSWORD (canonical, what the QA fixture and
+#      load-secrets.sh agree on) with a hard-coded fallback so the seed is
+#      never silent. Idempotent. If node + the portal deps are not
+#      available, prints the exact payload for the operator to run by hand.
+#   6. Runs the Supabase-friendly RLS smoke
 #      supabase/tests/chatbot_clients_rls_smoke.staging.sql
 #      (no local auth shim — uses real Supabase auth.uid()/auth.jwt()).
 #      Writes the run log to supabase/tests/chatbot_clients_rls_smoke.staging.log
-#   6. Captures post-migration schema dump -> /tmp/kaia-740-post.schema.sql
+#   7. Captures post-migration schema dump -> /tmp/kaia-740-post.schema.sql
 #      and diffs against pre. Fails loudly if anything other than the four
 #      new tables/indexes/policies appears in the diff.
 #   7. Prints a one-screen summary (pre/post diff summary, smoke status,
@@ -320,7 +327,70 @@ PRESENT="$(auth_user_count)"
 ok "both test auth.users rows present (count=$PRESENT)"
 
 # ---------------------------------------------------------------------------
-# Step 5 — run the staging RLS smoke
+# Step 5 — (KAIA-2900) seed a known passwordHash on the three client test
+# users so the Playwright `authedPortalFixture` can log in via
+# `portal-credentials` (the Supabase magic-link path returns a fragment
+# cookie that the portal's auth.ts does not consume).
+#
+# The seed is delegated to `portal/scripts/seed-test-passwords.ts`, which
+# uses @supabase/supabase-js + src/lib/operator-crypto.hashPassword
+# (argon2id) against the User table. It is idempotent (re-running refreshes
+# the hash on the existing rows).
+#
+# Why a portal tsx script (and not inline psql)
+# ----------------------------------------------
+# We need a standard argon2id hash with the same parameters the request
+# path uses in `verifyPassword(user.passwordHash, password)`. PostgreSQL
+# has no built-in argon2; pgcrypto's crypt() only does bcrypt/standard.
+# Generating the hash inline in psql would either (a) be a different
+# algorithm that auth.ts rejects, or (b) require shelling out from psql,
+# which is fragile. The portal tsx helper uses the exact same code path
+# the auth lib runs on the request path, so the hash is guaranteed to
+# verify. It also reads $STAGING_TEST_USER_PASSWORD the same way the
+# QA fixture does, so the QA runtime and the seed agree on the password
+# by construction.
+# ---------------------------------------------------------------------------
+log "Step 5: seeding passwordHash on the client test users (KAIA-2900)"
+
+PORTAL_DIR="$REPO_ROOT/portal"
+SEED_TEST_PW_SCRIPT="$PORTAL_DIR/scripts/seed-test-passwords.ts"
+
+if [[ ! -f "$SEED_TEST_PW_SCRIPT" ]]; then
+  die "KAIA-2900: seed-test-passwords.ts missing at $SEED_TEST_PW_SCRIPT"
+fi
+
+if [[ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]]; then
+  warn "SUPABASE_SERVICE_ROLE_KEY is not set — cannot run seed-test-passwords.ts."
+  warn "Run it manually after this script finishes (see portal/scripts/seed-test-passwords.ts):"
+  warn "  cd $PORTAL_DIR"
+  warn "  SUPABASE_URL='$SUPABASE_URL' \\"
+  warn "  SUPABASE_SERVICE_ROLE_KEY='<paste from 1Password>' \\"
+  warn "  STAGING_TEST_USER_PASSWORD='<value the QA fixture sources>' \\"
+  warn "    npx tsx scripts/seed-test-passwords.ts"
+  warn "Until that runs, the Playwright authedPortalFixture will fail with a 302"
+  warn "to /portal/login?error=CredentialsSignin (the User.passwordHash is still"
+  warn "null or __must_reset__)."
+else
+  # Export everything the helper needs. .env is already loaded above; we
+  # only override SUPABASE_URL so the helper matches what was used for
+  # the admin API in Step 4.
+  export SUPABASE_URL
+  export SUPABASE_SERVICE_ROLE_KEY
+  # STAGING_TEST_USER_PASSWORD is sourced from .env if the operator set
+  # it; if not, the helper falls back to its hard-coded default. Either
+  # way the seed is non-silent (it prints the chosen source).
+  pushd "$PORTAL_DIR" >/dev/null || die "could not cd to $PORTAL_DIR"
+  if ! npx --no-install tsx scripts/seed-test-passwords.ts >/tmp/kaia-2900-seed.log 2>&1; then
+    popd >/dev/null || true
+    tail -50 /tmp/kaia-2900-seed.log >&2 || true
+    die "KAIA-2900: seed-test-passwords.ts failed. See /tmp/kaia-2900-seed.log."
+  fi
+  popd >/dev/null || true
+  ok "KAIA-2900: client test users seeded (log: /tmp/kaia-2900-seed.log)"
+fi
+
+# ---------------------------------------------------------------------------
+# Step 6 — run the staging RLS smoke
 # ---------------------------------------------------------------------------
 log "Step 5: running RLS smoke (writes log to $SMOKE_STAGING_LOG)"
 log "  -> $SMOKE_STAGING"
@@ -340,9 +410,9 @@ psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 \
 ok "RLS smoke passed (log: $SMOKE_STAGING_LOG)"
 
 # ---------------------------------------------------------------------------
-# Step 6 — post-migration schema dump + diff
+# Step 7 — post-migration schema dump + diff
 # ---------------------------------------------------------------------------
-log "Step 6: capturing post-migration schema and diffing"
+log "Step 7: capturing post-migration schema and diffing"
 pg_dump "$SUPABASE_SERVICE_ROLE_DB_URL" --schema-only --no-owner --no-acl \
   >"$POST_DUMP" 2>/dev/null || die "pg_dump post failed"
 ok "post-dump written to $POST_DUMP ($(wc -l <"$POST_DUMP") lines)"
@@ -374,9 +444,9 @@ fi
 ok "post-diff is additive-only and limited to the four chatbot_* tables"
 
 # ---------------------------------------------------------------------------
-# Step 7 — summary
+# Step 8 — summary
 # ---------------------------------------------------------------------------
-log "Step 7: summary"
+log "Step 8: summary"
 cat <<SUMMARY
 
 $(printf '%b' "$GRN")=== KAIA-740 staging apply + smoke: SUCCESS ===$(printf '%b' "$RST")
@@ -388,6 +458,7 @@ $(printf '%b' "$GRN")=== KAIA-740 staging apply + smoke: SUCCESS ===$(printf '%b
   Migrations:  001 + 002 applied
   Seed:        2 fake clients + activity + conversations inserted
   Auth users:  $PRESENT/2 expected rows present
+  Test users:  argon2id passwordHash set on 3 client test users (KAIA-2900)
   Smoke log:   $SMOKE_STAGING_LOG
   Smoke:       8/8 RLS checks passed
 

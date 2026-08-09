@@ -7,10 +7,21 @@
 //   ChatbotClientUser.nextAuthEmail = session.user.email
 // before any other query. No raw SQL — all reads go through Prisma
 // `where: { clientId }` clauses. See prisma/README.md for the rule.
+//
+// Multi-tenant: KAIA-4258 — tenant isolation via profiles.tenant_id FK.
 // =============================================================================
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // KAIA-2858 — Vercel runtime is Amazon Linux 2 (RHEL-derived, glibc, openssl
+  // 3.0.x), but `prisma generate` on the build host (Debian) defaults to
+  // `debian-openssl-3.0.x`. The mismatch means every route that transitively
+  // imports `@/lib/prisma` (e.g. `/portal`, `/api/auth/*`) blows up at
+  // module-load time on Vercel with "Failed to load query engine" → HTTP 500,
+  // while routes that never import prisma (`/portal/login`, `/api/health`)
+  // keep working. Emit both binaries so the same generated client works in
+  // the Docker / VPS build (debian) AND in Vercel serverless (rhel).
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
@@ -52,10 +63,19 @@ model ChatbotClient {
   state            String    @default("in-progress")
   // Set when the CTO marks the chatbot live in the operator flow.
   goLiveAt         DateTime?
+  // KAIA-13281 — Operator-editable free-form notes. Mutated via
+  // PATCH /api/admin/portal/clients/[clientId] by an operator session;
+  // every write produces an OperatorAction audit row in the same
+  // transaction.
+  notes            String?
   // Supabase chatbot_clients.id (UUID). Populated by the backfill in KAIA-762
   // so the status-change watcher can resolve the Supabase UUID to the
   // portal's cuid without going through the email join path.
   supabaseClientId String?   @unique
+  // KAIA-4258: tenant isolation FK. All client data is scoped to this tenant.
+  // NULL during the migration window; the data backfill migration sets it
+  // to the default tenant for any row that pre-dates this column.
+  tenantId         String?   @map("tenant_id") @db.Uuid
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -65,10 +85,73 @@ model ChatbotClient {
   operatorNotifications OperatorNotification[]
   n8nExecutions         N8nExecution[]
   configSteps           ChatbotConfigStep[]
+  intakeSubmissions     IntakeSubmission[]
+  tenant                Tenant?                @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  clientProducts        ClientProduct[]
+  productAudits         ClientProductAudit[]
+  subscriptions         Subscription[]
+  invoices              Invoice[]
+  operatorActions       OperatorAction[]
 
   @@index([stripeCustomerId])
   @@index([tier])
   @@index([state])
+  @@index([tenantId])
+}
+
+// =============================================================================
+// KAIA-2913 — In-house intake submission (replaces Tally webhook ingestion).
+//
+// One row per accepted POST /api/public/intake. The endpoint:
+//   1. validates the payload with the Zod schema in src/lib/intake-schema.ts
+//   2. upserts a ChatbotClient + ChatbotClientUser pair (idempotency on email)
+//   3. writes the IntakeSubmission row with the resolved client_id
+//   4. triggers Drive folder creation + CTO notify-operator + Paperclip Day-2
+//
+// Idempotency: client supplies X-Idempotency-Key (or the server mints a
+// UUIDv4 fallback). The route resolves to the existing row on retries and
+// returns the same response payload — never duplicates the side effects.
+// =============================================================================
+
+model IntakeSubmission {
+  id                String   @id @default(cuid())
+  // Client-supplied or server-generated idempotency token. UNIQUE.
+  idempotencyKey    String   @unique @map("idempotency_key")
+  // 'public_intake' | future sources (csv_import, partner_api, ...). Free-form.
+  source            String
+  // Vertical tag derived from the `sector` field in the payload.
+  vertical          String
+  // Slug of the form spec this submission belongs to. Keeps the table
+  // multi-form-friendly in case more intake funnels land later.
+  intakeSlug        String   @map("intake_slug")
+  // Full payload as JSONB so the admin portal can re-render the submission.
+  payload           Json
+  // FK to ChatbotClient. NULL during the brief window between row insert
+  // and the client upsert completing in the same transaction.
+  clientId          String?  @map("client_id")
+  // KAIA-4258: tenant isolation FK. NULL for pre-multi-tenant rows; the
+  // backfill migration sets it to the default tenant.
+  tenantId          String?  @map("tenant_id") @db.Uuid
+  // Denormalized for list/search views so the admin query doesn't have to
+  // extract from JSONB on every page load.
+  businessName      String   @map("business_name")
+  humanHandoffEmail String   @map("human_handoff_email")
+  ipHash            String?  @map("ip_hash")
+  userAgent         String?  @map("user_agent")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  client ChatbotClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  tenant Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt(sort: Desc)])
+  @@index([vertical])
+  @@index([source])
+  @@index([intakeSlug])
+  @@index([businessName])
+  @@index([humanHandoffEmail])
+  @@index([clientId])
+  @@index([tenantId])
 }
 
 // One row per operator notification fired (KAIA-1061). Drives the
@@ -83,6 +166,10 @@ model ChatbotClient {
 model OperatorNotification {
   id              String         @id @default(cuid())
   clientId        String?
+  // KAIA-4258: tenant isolation FK. NULL for non-client-scoped events
+  // (e.g. a global n8n failure) and for pre-multi-tenant rows; the
+  // backfill migration sets it from ChatbotClient.tenantId where known.
+  tenantId        String?        @map("tenant_id") @db.Uuid
   // 'stuck' | 'execution-failed' | 'escalation'
   // | 'review-overdue-warning' | 'review-overdue-escalation'. Enforced
   // server-side in the route handlers — Postgres does not need a CHECK
@@ -106,6 +193,7 @@ model OperatorNotification {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   client          ChatbotClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  tenant          Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@unique([clientId, kind, day])
   @@index([day])
@@ -118,6 +206,7 @@ model OperatorNotification {
   // trip.
   @@index([stepId, kind, day])
   @@index([stepId])
+  @@index([tenantId])
 }
 
 // =============================================================================
@@ -204,6 +293,9 @@ model OperatorRecoveryCode {
 model N8nExecution {
   id           String    @id
   clientId     String?
+  // KAIA-4258: tenant isolation FK. NULL for non-client-scoped flows
+  // (e.g. a global n8n failure) and for pre-multi-tenant rows.
+  tenantId     String?   @map("tenant_id") @db.Uuid
   clientName   String?
   workflow     String
   milestone    String?
@@ -214,10 +306,12 @@ model N8nExecution {
   errorMessage String?
   createdAt    DateTime  @default(now())
 
-  client       ChatbotClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  client ChatbotClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  tenant Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([clientId, startedAt(sort: Desc)])
   @@index([status, startedAt(sort: Desc)])
+  @@index([tenantId])
 }
 
 // Maps a NextAuth session email to a ChatbotClient row. v1 is 1:1 — one
@@ -225,11 +319,336 @@ model N8nExecution {
 model ChatbotClientUser {
   id            String        @id @default(cuid())
   clientId      String
-  // NextAuth session email (the JWT subject). Unique — magic-link recipient.
+  // NextAuth session email (the JWT subject). Unique — credentials login email.
   nextAuthEmail String        @unique
+  // FK to User — the canonical identity row that holds the credential hash.
+  // NULL for users who have not yet been linked (backfill completes this).
+  userId        String?       @unique
+  // KAIA-4258: tenant isolation FK, resolved via the linked Profile on insert.
+  // NULL for pre-multi-tenant rows; the backfill migration sets it from
+  // ChatbotClient.tenantId.
+  tenantId      String?       @map("tenant_id") @db.Uuid
   client        ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user          User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  tenant        Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([clientId])
+  @@index([tenantId])
+}
+
+// =============================================================================
+// KAIA-2103 — Unified user identity for credential-based auth.
+// Stores role (client | operator), email, and the password hash.
+// Both ChatbotClientUser and Operator link to User via userId.
+// =============================================================================
+model User {
+  id            String    @id @default(cuid())
+  // 'client' | 'operator'. Determines which auth provider accepts this user.
+  role          String    @default("client")
+  email         String    @unique
+  // argon2id hash of the password. NULL until the user sets a password via
+  // the setup-password flow. '__must_reset__' is the backfill marker for
+  // existing ChatbotClientUser rows that had NULL passwordHash — these users
+  // cannot authenticate until they complete setup-password.
+  passwordHash  String?
+  passwordSetAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  chatbotClientUsers ChatbotClientUser[]
+  profile            Profile?
+
+  @@index([email])
+  @@index([role])
+}
+
+// =============================================================================
+// KAIA-4258 — Multi-tenant: Tenant organizations
+//
+// One row per tenant organization. The tenant owns all client data.
+// Feature flags stored as JSONB for per-tenant rollout (mirrors the
+// Supabase supabase/migrations/20260724_tenant_isolation_v1.up.sql
+// shape so the two databases stay aligned for the same logical entity).
+// =============================================================================
+model Tenant {
+  id               String   @id @default(uuid()) @db.Uuid
+  name             String
+  slug             String   @unique
+  // 'active' | 'suspended' | 'cancelled'. Enforced server-side.
+  status           String   @default("active")
+  features         Json     @default("{}")
+  // KAIA-4262 — Stripe Customer link. NULL until the portal (or owner
+  // operator flow) creates the Customer and the Stripe webhook stores
+  // the id back. UNIQUE so the same Stripe customer can only be
+  // linked to one tenant.
+  stripeCustomerId String?  @unique @map("stripe_customer_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  profiles                Profile[]
+  chatbotClients          ChatbotClient[]
+  chatbotClientUsers      ChatbotClientUser[]
+  chatbotActivities       ChatbotActivity[]
+  chatbotConversations    ChatbotConversation[]
+  chatbotConfigSteps      ChatbotConfigStep[]
+  chatbotConfigStepAudits ChatbotConfigStepAudit[]
+  intakeSubmissions       IntakeSubmission[]
+  operatorNotifications   OperatorNotification[]
+  n8nExecutions           N8nExecution[]
+  clientProducts          ClientProduct[]
+  productAudits           ClientProductAudit[]
+  subscriptions           Subscription[]
+  invoices                Invoice[]
+
+  @@index([slug])
+  @@index([status])
+}
+
+// =============================================================================
+// KAIA-4258 — Multi-tenant: User profiles
+//
+// One row per linked User (1:1). Carries the tenant FK and the role that
+// gates RLS-equivalent application-layer checks. The portal routes resolve
+// `tenantId` from Profile via the session email; rows are created when a
+// User is provisioned (the credentials signup flow creates User + Profile
+// in the same transaction).
+// =============================================================================
+model Profile {
+  id        String   @id @default(cuid())
+  // FK to User — 1:1. UNIQUE so the canonical identity row is unambiguous.
+  userId    String   @unique @map("user_id")
+  tenantId  String   @map("tenant_id") @db.Uuid
+  // 'owner' | 'admin' | 'viewer'. Enforced server-side. Owner sees all
+  // tenant data; admin can mutate; viewer is read-only.
+  role      String   @default("viewer")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([role])
+}
+
+// =============================================================================
+// KAIA-4258 — Multi-tenant: Service products (tiers)
+//
+// Kairikos service tiers. Source of truth is Stripe, but we store metadata
+// here for portal display and feature-gating. Mirrors the shape of the
+// Supabase products table so the same Stripe webhook can write both.
+// =============================================================================
+model Product {
+  id            String   @id @default(uuid()) @db.Uuid
+  // Stripe price id (populated by the Stripe webhook handler in
+  // kira-studio-billing-backend). NULL for unsynced or grandfathered rows.
+  stripePriceId String?  @unique @map("stripe_price_id")
+  name          String
+  // 'starter' | 'pro' | 'premium'. UNIQUE — one row per tier.
+  tier          String   @unique
+  priceCents    Int      @map("price_cents")
+  currency      String   @default("EUR")
+  features      Json     @default("{}")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  clientProducts ClientProduct[]
+  auditLogs      ClientProductAudit[]
+
+  @@index([tier])
+  @@index([isActive])
+}
+
+// Immutable audit trail for product assignment and lifecycle changes.
+model ClientProductAudit {
+  id              String   @id @default(uuid()) @db.Uuid
+  clientProductId String   @map("client_product_id") @db.Uuid
+  clientId        String   @map("client_id")
+  productId       String   @map("product_id") @db.Uuid
+  tenantId        String?  @map("tenant_id") @db.Uuid
+  action          String
+  statusBefore    String?  @map("status_before")
+  statusAfter     String?  @map("status_after")
+  actorId         String   @map("actor_id")
+  changedAt       DateTime @default(now()) @map("changed_at")
+
+  clientProduct ClientProduct @relation(fields: [clientProductId], references: [id], onDelete: Restrict)
+  client        ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  product       Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+  tenant        Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([clientProductId, changedAt])
+  @@index([clientId, changedAt])
+  @@index([tenantId])
+}
+
+// =============================================================================
+// KAIA-4258 — Multi-tenant: Client-Product many-to-many join
+
+//
+// Associates chatbot clients with their subscribed products. Stripe stores
+// the subscription itself; this row is the portal/Supabase denormalization
+// for owner views and feature gating. UNIQUE (clientId, productId) so a
+// client cannot have two rows for the same tier — reactivation goes
+// through UPDATE on the existing row, not a fresh INSERT.
+// =============================================================================
+model ClientProduct {
+  id           String    @id @default(uuid()) @db.Uuid
+  clientId     String    @map("client_id")
+  productId    String    @map("product_id") @db.Uuid
+  tenantId     String?   @map("tenant_id") @db.Uuid
+  status       String    @default("active")
+  subscribedAt DateTime  @default(now()) @map("subscribed_at")
+  cancelledAt  DateTime? @map("cancelled_at")
+  createdBy    String?   @map("created_by")
+  changedBy    String?   @map("changed_by")
+  changedAt    DateTime  @default(now()) @map("changed_at")
+
+  client       ChatbotClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  product      Product              @relation(fields: [productId], references: [id], onDelete: Restrict)
+  tenant       Tenant?              @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  auditLogs    ClientProductAudit[]
+  subscription Subscription?
+
+  @@unique([clientId, productId])
+  @@index([clientId])
+  @@index([productId])
+  @@index([status])
+  @@index([tenantId])
+}
+
+// =============================================================================
+// KAIA-4262 — Stripe Subscription state mirror (per ClientProduct)
+//
+// One row per Stripe Subscription. Stripe is the source of truth — this
+// row is the portal/Supabase denormalization for the owner billing UI,
+// the client billing page, and the MRR aggregation.
+//
+// Idempotency: stripe_id is UNIQUE so the webhook upsert is naturally
+// idempotent even if the StripeWebhookEvent idempotency row is missing.
+// 1:1 with ClientProduct so each product-tier subscription per client
+// maps to exactly one ClientProduct row.
+// =============================================================================
+model Subscription {
+  id                 String    @id @default(uuid()) @db.Uuid
+  tenantId           String    @map("tenant_id") @db.Uuid
+  clientId           String    @map("client_id")
+  clientProductId    String    @unique @map("client_product_id") @db.Uuid
+  // Stripe identifiers — stripe_id is the business key.
+  stripeId           String    @unique @map("stripe_id")
+  stripeCustomerId   String    @map("stripe_customer_id")
+  stripePriceId      String?   @map("stripe_price_id")
+  // 'incomplete' | 'trialing' | 'active' | 'past_due' | 'canceled' |
+  // 'unpaid' | 'incomplete_expired' | 'paused'. Mirrors Stripe's enum.
+  status             String    @default("incomplete")
+  currentPeriodStart DateTime? @map("current_period_start")
+  currentPeriodEnd   DateTime? @map("current_period_end")
+  cancelAtPeriodEnd  Boolean   @default(false) @map("cancel_at_period_end")
+  canceledAt         DateTime? @map("canceled_at")
+  // Currency minor units (9900 = 99€).
+  amountCents        Int?      @map("amount_cents")
+  currency           String    @default("eur")
+  // Latest Stripe subscription snapshot. NOT source of truth.
+  metadata           Json      @default("{}")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  client        ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientProduct ClientProduct @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
+  invoices      Invoice[]
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@index([status])
+  @@index([stripeCustomerId])
+}
+
+// =============================================================================
+// KAIA-4262 — Stripe Invoice state mirror (per Subscription)
+//
+// One row per Stripe Invoice. Used by the client billing page (latest
+// invoice + PDF link) and by the owner MRR aggregation. host_invoice_url
+// is what the portal sends the user to for the Stripe-hosted view;
+// invoice_pdf_url is the direct PDF download.
+//
+// Idempotency: stripe_id is UNIQUE so webhook retries collapse to a
+// no-op upsert.
+// =============================================================================
+model Invoice {
+  id              String    @id @default(uuid()) @db.Uuid
+  tenantId        String    @map("tenant_id") @db.Uuid
+  clientId        String    @map("client_id")
+  subscriptionId  String    @map("subscription_id") @db.Uuid
+  stripeId        String    @unique @map("stripe_id")
+  // 'draft' | 'open' | 'paid' | 'uncollectible' | 'void'.
+  status          String    @default("draft")
+  number          String?
+  amountDueCents  Int       @default(0) @map("amount_due_cents")
+  amountPaidCents Int       @default(0) @map("amount_paid_cents")
+  currency        String    @default("eur")
+  issuedAt        DateTime? @map("issued_at")
+  dueAt           DateTime? @map("due_at")
+  paidAt          DateTime? @map("paid_at")
+  periodStart     DateTime? @map("period_start")
+  periodEnd       DateTime? @map("period_end")
+  hostInvoiceUrl  String?   @map("host_invoice_url")
+  invoicePdfUrl   String?   @map("invoice_pdf_url")
+  metadata        Json      @default("{}")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  client       ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  subscription Subscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@index([subscriptionId])
+  @@index([status])
+}
+
+// =============================================================================
+// KAIA-4262 — Stripe webhook event idempotency log
+//
+// Primary key = Stripe event id. Inserted before any state mutation so
+// a redelivery of the same event id short-circuits. payload_hash guards
+// against the (rare) case where Stripe re-delivers an event id with a
+// mutated body — we still no-op on the second delivery.
+// =============================================================================
+model StripeWebhookEvent {
+  eventId          String    @id @map("event_id")
+  eventType        String    @map("event_type")
+  payloadHash      String    @map("payload_hash")
+  receivedAt       DateTime  @default(now()) @map("received_at")
+  processedAt      DateTime? @map("processed_at")
+  // 'pending' | 'processed' | 'failed'. failed means the handler
+  // threw; we keep the row so retry deliveries are still no-ops.
+  status           String    @default("pending")
+  errorMessage     String?   @map("error_message")
+  // 'subscription' | 'invoice' | 'ignored' — what the event mutated.
+  appliedTo        String?   @map("applied_to")
+  stripeApiVersion String?   @map("stripe_api_version")
+
+  @@index([status])
+  @@index([receivedAt])
+}
+
+// =============================================================================
+// KAIA-2103 — Password reset tokens for client portal users.
+// Supports forgot-password + reset-password flow via time-limited tokens.
+// Tokens are single-use; once consumed they cannot be reused.
+// =============================================================================
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  email     String
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([email])
+  @@index([tokenHash])
 }
 
 // One row per T+N event the n8n flow emits (T+0, T+3, T+7, T+14, …).
@@ -243,6 +662,11 @@ model ChatbotClientUser {
 model ChatbotActivity {
   id          String        @id @default(cuid())
   clientId    String
+  // KAIA-4258: tenant isolation FK (denormalized from ChatbotClient for query
+  // plans that filter by tenant_id directly without a join). NULL for
+  // pre-multi-tenant rows; the backfill migration sets it from
+  // ChatbotClient.tenantId.
+  tenantId    String?       @map("tenant_id") @db.Uuid
   // T+N milestone label — "T+0", "T+3", "T+7", "T+14" by convention; free-form
   // string so n8n can extend without a schema migration. Enforced allowlist
   // lives in the route handler at src/app/api/internal/activity/route.ts.
@@ -252,9 +676,11 @@ model ChatbotActivity {
   completedAt DateTime?
   notes       String?
   client      ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant      Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@unique([clientId, milestone])
   @@index([clientId, completedAt])
+  @@index([tenantId])
 }
 
 // One row per chatbot conversation. Read-only on the portal in v1
@@ -262,6 +688,10 @@ model ChatbotActivity {
 model ChatbotConversation {
   id         String        @id @default(cuid())
   clientId   String
+  // KAIA-4258: tenant isolation FK (denormalized from ChatbotClient for
+  // query plans that filter by tenant_id directly). NULL for
+  // pre-multi-tenant rows; the backfill migration sets it.
+  tenantId   String?       @map("tenant_id") @db.Uuid
   startedAt  DateTime
   // Duration in seconds. NULL while the conversation is still open.
   duration   Int?
@@ -272,9 +702,11 @@ model ChatbotConversation {
   // Full transcript as JSON — message list, metadata, tool calls, etc.
   transcript Json?
   client     ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant     Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([clientId, startedAt])
   @@index([clientId, outcome])
+  @@index([tenantId])
 }
 
 // =============================================================================
@@ -304,6 +736,10 @@ model ChatbotConversation {
 model ChatbotConfigStep {
   id                   String    @id @default(cuid())
   clientId             String
+  // KAIA-4258: tenant isolation FK (denormalized from ChatbotClient for
+  // query plans that filter by tenant_id directly). NULL for
+  // pre-multi-tenant rows; the backfill migration sets it.
+  tenantId             String?   @map("tenant_id") @db.Uuid
   // Step identifier: "1" through "12" (Steps 1-10 + 11 Pruebas + 12 Integraciones).
   // Enforced server-side via a per-step Zod schema registry.
   stepKey              String
@@ -339,12 +775,14 @@ model ChatbotConfigStep {
 
   client     ChatbotClient            @relation(fields: [clientId], references: [id], onDelete: Cascade)
   approvedBy Operator?                @relation(fields: [approvedByOperatorId], references: [id], onDelete: SetNull)
+  tenant     Tenant?                  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   auditLogs  ChatbotConfigStepAudit[]
 
   @@unique([clientId, stepKey, version])
   @@index([clientId, stepKey])
   @@index([clientId, stepKey, activeForBot])
   @@index([clientId, status])
+  @@index([tenantId])
 }
 
 // Immutable (append-only) audit log for ChatbotConfigStep changes.
@@ -354,6 +792,11 @@ model ChatbotConfigStep {
 model ChatbotConfigStepAudit {
   id        String   @id @default(cuid())
   stepId    String
+  // KAIA-4258: tenant isolation FK (denormalized from the parent
+  // ChatbotConfigStep so audit-list queries can filter by tenant_id
+  // without joining the config step). NULL for pre-multi-tenant rows;
+  // the backfill migration sets it.
+  tenantId  String?  @map("tenant_id") @db.Uuid
   // Denormalized version at the time of the event so the audit trail is
   // meaningful even if versions are later cleaned up.
   version   Int
@@ -368,12 +811,14 @@ model ChatbotConfigStepAudit {
   comment   String?
   createdAt DateTime @default(now())
 
-  step ChatbotConfigStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  step   ChatbotConfigStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  tenant Tenant?           @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([stepId])
   @@index([stepId, createdAt])
   @@index([actor])
   @@index([action])
+  @@index([tenantId])
 }
 
 // =============================================================================
@@ -449,6 +894,51 @@ model OperatorSettingsAudit {
   @@index([settingsId])
   @@index([action])
   @@index([createdAt])
+}
+
+// =============================================================================
+// KAIA-13281 — Operator action audit log for the admin editor mode.
+//
+// One row per field-level change an operator makes to a ChatbotClient via
+// PATCH /api/admin/portal/clients/[clientId]. The route handler writes
+// the ChatbotClient update + one OperatorAction row per changed field in
+// a single Prisma `$transaction` so the audit trail and the live data
+// cannot drift.
+//
+// Append-only at the application layer: the route only ever issues
+// INSERT against this table (same enforcement pattern as
+// ChatbotConfigStepAudit and OperatorSettingsAudit).
+//
+// actorId is the operator's email (or user id when the future
+// Operator identity model becomes required). actorType defaults to
+// 'operator' so future non-operator actors (e.g. system reaper) can be
+// tagged without a schema migration.
+// =============================================================================
+
+model OperatorAction {
+  id          String   @id @default(cuid())
+  clientId    String   @map("client_id")
+  // 'operator' (default). Free-form so future actor kinds can land
+  // without a migration; enforced at the route layer.
+  actorType   String   @default("operator") @map("actor_type")
+  // Operator email or user id. Free-form string — v1 reads from the
+  // NextAuth session; once Operator identity is required (KAIA-1082),
+  // this should switch to a FK to Operator.id.
+  actorId     String   @map("actor_id")
+  // Field name that changed (one of the route allowlist). Enforced
+  // server-side; not DB-constrained so future field names can land
+  // without a migration.
+  field       String
+  beforeValue String?  @map("before_value")
+  afterValue  String?  @map("after_value")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([clientId, createdAt(sort: Desc)])
+  @@index([actorId])
+  @@index([field])
 }
 
 // =============================================================================

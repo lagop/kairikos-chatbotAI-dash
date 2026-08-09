@@ -7,6 +7,8 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { MOCK_N8N_EXECUTIONS, MOCK_FLOW_HEALTH_ROWS } from '@/lib/flow-health';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Salud de los flujos · Operador',
   description:

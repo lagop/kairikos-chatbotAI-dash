@@ -1,0 +1,217 @@
+{
+  "name": "Operator Notify — execution-failed (KAIA-1061)",
+  "nodes": [
+    {
+      "id": "kairikos-notify-executionfailed-trigger",
+      "name": "execution-failed — Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "kairikos-notify-executionfailed-build-payload",
+      "name": "Build Notify Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Execution-failed payload builder.\n// Input: the n8n error trigger context, with `execution.id`,\n// `execution.name` (the workflow name), and the error stack. We\n// also try to resolve a clientId from the workflow context (most\n// T+N flows carry it in `clientId`); when it is missing we set\n// clientId: null so the route still accepts the notification as an\n// unassigned event.\nconst ctx = $json;\nconst exec = ctx.execution || {};\nconst wf = ctx.workflow || {};\nconst input = (ctx.input && ctx.input.first && ctx.input.first().json) || {};\nconst clientId = input.clientId || null;\nconst errorMessage = (ctx.error && (ctx.error.message || ctx.error.description))\n  || (exec.error && exec.error.message)\n  || 'unknown n8n error';\nreturn [{\n  json: {\n    payload: {\n      kind: 'execution-failed',\n      clientId,\n      executionId: String(exec.id || 'unknown'),\n      workflowName: String(exec.name || wf.name || 'unknown workflow'),\n      error: String(errorMessage).slice(0, 4000),\n    },\n  },\n}];"
+      }
+    },
+    {
+      "id": "kairikos-notify-executionfailed-send",
+      "name": "POST /api/internal/notify-operator",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        690,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/notify-operator",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "kairikos-notify-executionfailed-log",
+      "name": "Log Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Surface the dedup / sent state in the workflow logs so the\n// operator can confirm via n8n that the alert reached the\n// portal. The portal persists the row regardless.\nconst out = $input.first().json;\nconst log = {\n  kind: out.kind,\n  clientId: out.clientId,\n  deduped: Boolean(out.deduped),\n  skipped: out.skipped,\n  resendMessageId: out.resendMessageId,\n  sentAt: out.sentAt,\n};\nconsole.log(`[notify-operator] ${JSON.stringify(log)}`);\nreturn [{ json: log }];"
+      }
+    },
+    {
+      "id": "kairikos-notify-executionfailed-report-execution",
+      "name": "Report Execution to Portal (KAIA-1073)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1130,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/n8n-execution",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "body": "={{ JSON.stringify((() => { const exec = $execution; const startedAt = exec && exec.startedAt ? new Date(exec.startedAt).toISOString() : new Date().toISOString(); const finishedAt = new Date().toISOString(); const errObj = $json && $json.error; const isFailure = Boolean(errObj); const upstream = $('Build Notify Payload').item && $('Build Notify Payload').item.json; const payload = (upstream && upstream.payload) || {}; const clientId = payload.clientId || null; const code = isFailure ? (errObj.name || (errObj.httpCode ? 'HTTP_' + errObj.httpCode : 'WORKFLOW_ERROR')) : 'OK'; const message = isFailure ? String(errObj.message || errObj.description || 'unknown n8n error').slice(0, 4000) : null; return { id: String(exec.id), clientId, clientName: null, workflow: 'Operator Notify — execution-failed', milestone: null, status: isFailure ? 'failed' : 'success', startedAt, finishedAt, errorCode: isFailure ? String(code).slice(0, 100) : null, errorMessage: message }; })()) }}",
+        "options": {
+          "timeout": 15000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetween": 5000
+          },
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "kairikos-notify-executionfailed-trigger": {
+      "main": [
+        [
+          {
+            "node": "kairikos-notify-executionfailed-build-payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-notify-executionfailed-report-execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-notify-executionfailed-build-payload": {
+      "main": [
+        [
+          {
+            "node": "kairikos-notify-executionfailed-send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-notify-executionfailed-report-execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-notify-executionfailed-send": {
+      "main": [
+        [
+          {
+            "node": "kairikos-notify-executionfailed-log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-notify-executionfailed-report-execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-notify-executionfailed-log": {
+      "main": [
+        [
+          {
+            "node": "kairikos-notify-executionfailed-report-execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "kairikos"
+    },
+    {
+      "name": "operator-notify"
+    },
+    {
+      "name": "kind:execution-failed"
+    }
+  ],
+  "active": false,
+  "pinData": {},
+  "versionId": "1.1.0",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "executionCaptureIssue": "KAIA-1073",
+    "linkedIssue": "KAIA-1061"
+  }
+}

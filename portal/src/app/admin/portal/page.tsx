@@ -6,6 +6,8 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { MOCK_CLIENT, MOCK_SECONDARY_CLIENT } from '@/lib/portal-data';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Clientes · Operador',
   description: 'Listado de todos los clientes del portal y su estado (sólo lectura).',
@@ -36,7 +38,15 @@ const TIER_LABEL: Record<string, string> = {
 };
 
 export default async function AdminPortalIndexPage() {
-  const session = await getSession();
+  // KAIA-2857 — wrap getSession() in try/catch so a Prisma init or auth()
+  // crash falls back to the login redirect instead of the Vercel 500 page.
+  let session;
+  try {
+    session = await getSession();
+  } catch (err) {
+    console.error('[admin/portal] getSession() crashed, redirecting to login:', err);
+    redirect('/portal/login?next=/admin/portal');
+  }
   if (!session.isOperator) {
     redirect('/portal/login?next=/admin/portal');
   }

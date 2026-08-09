@@ -1,0 +1,214 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://kairikos.com/contracts/intake-v1.schema.json",
+  "title": "IntakePayload v1",
+  "description": "Canonical intake payload schema for POST /api/public/intake. Source of truth: tally-form-spec.json (webhook_payload_schema, v1.0.0). This schema is the single source of truth — backend Zod schema and frontend wizard must conform to it. Any change to this contract is a migration event requiring version bump + CEO approval.",
+  "version": "1.0.0",
+  "type": "object",
+  "required": [
+    "business_name",
+    "sector",
+    "short_description",
+    "voice_tone",
+    "pronoun",
+    "language",
+    "business_hours_weekday",
+    "business_hours_weekend",
+    "out_of_hours_behavior",
+    "faqs",
+    "channels_enabled",
+    "human_handoff_email",
+    "human_handoff_hours",
+    "escalation_triggers",
+    "gdpr_responsible_email",
+    "privacy_url"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "business_name": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 80,
+      "description": "Trading / display name of the business. Required."
+    },
+    "legal_name": {
+      "type": "string",
+      "maxLength": 120,
+      "description": "Legal entity name (optional).",
+      "default": null
+    },
+    "sector": {
+      "type": "string",
+      "enum": ["clínica dental", "restaurante/bar", "despacho jurídico/asesoría", "peluquería/estética", "inmobiliaria", "otro"],
+      "description": "Business vertical. Must match one of the 6 Tally options exactly."
+    },
+    "short_description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 280,
+      "description": "One-line description of the chatbot's role. Required."
+    },
+    "website_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Business website URL (optional). Must be a valid URI if provided.",
+      "default": null
+    },
+    "logo_upload": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL of the business logo image (optional).",
+      "default": null
+    },
+    "voice_tone": {
+      "type": "string",
+      "enum": ["formal", "cercano", "informal-divertido"],
+      "description": "Chatbot voice style. Required."
+    },
+    "pronoun": {
+      "type": "string",
+      "enum": ["tú", "usted", "nosotros"],
+      "description": "Pronoun / formality register for the chatbot. Required."
+    },
+    "language": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["español", "catalán", "inglés"] },
+      "minItems": 1,
+      "description": "Languages the chatbot should speak. At least one required."
+    },
+    "forbidden_words": {
+      "type": "string",
+      "description": "Comma-separated list of words the chatbot must never use (optional).",
+      "default": null
+    },
+    "business_hours_weekday": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Weekday hours as free text, e.g. 'L-V 9:00–14:00 / 16:00–20:00'. Required."
+    },
+    "business_hours_weekend": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Weekend hours as free text, e.g. 'Sáb 10:00–14:00'. Required."
+    },
+    "holidays_url_or_text": {
+      "type": "string",
+      "description": "Holiday schedule as URL or free text (optional).",
+      "default": null
+    },
+    "out_of_hours_behavior": {
+      "type": "string",
+      "enum": ["derivar a humano siguiente día", "dejar mensaje", "cita automática"],
+      "description": "What the chatbot should do outside business hours. Required."
+    },
+    "faqs": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 15,
+      "description": "List of FAQ Q&A pairs. Keys must be 'q' and 'a' (not 'question'/'answer'). 10–15 items required.",
+      "items": {
+        "type": "object",
+        "required": ["q", "a"],
+        "properties": {
+          "q": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "FAQ question text."
+          },
+          "a": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 800,
+            "description": "FAQ answer text."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "channels_enabled": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Enabled communication channels. At least one required. Values: 'web' | 'whatsapp' | 'instagram'.",
+      "items": {
+        "type": "string",
+        "enum": ["web", "whatsapp", "instagram"]
+      }
+    },
+    "whatsapp_business_number": {
+      "type": "string",
+      "pattern": "^\\+[1-9]\\d{6,14}$",
+      "description": "WhatsApp Business number in E.164 format (e.g. +34612345678). Required when 'whatsapp' is in channels_enabled. Must not include spaces or leading zeros."
+    },
+    "whatsapp_business_verified": {
+      "type": "string",
+      "enum": ["sí", "no"],
+      "description": "Whether the WhatsApp number is verified in Meta Business Manager. Required when 'whatsapp' is in channels_enabled."
+    },
+    "instagram_handle": {
+      "type": "string",
+      "maxLength": 80,
+      "description": "Instagram handle (without @). Required when 'instagram' is in channels_enabled."
+    },
+    "web_install_target": {
+      "type": "string",
+      "enum": ["WordPress", "Shopify", "otra", "no lo sé"],
+      "description": "Target platform for the web chat widget install. Optional but recommended when 'web' is in channels_enabled."
+    },
+    "human_handoff_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Email address for human handoff when chatbot can't resolve a query. Required."
+    },
+    "human_handoff_whatsapp": {
+      "type": "string",
+      "pattern": "^\\+[1-9]\\d{6,14}$",
+      "description": "WhatsApp number for human escalation in E.164 format (optional)."
+    },
+    "human_handoff_hours": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Hours when a human is available to take escalations. Required."
+    },
+    "escalation_triggers": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Description of what situations should trigger a human escalation. Required."
+    },
+    "gdpr_responsible_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Email of the person responsible for GDPR compliance at the business. Required."
+    },
+    "privacy_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL of the business's privacy policy / GDPR notice. Required."
+    }
+  },
+  "_meta": {
+    "backend_source": "agents/6d1963ba-5831-4dca-84cd-40acd7165b3c/instructions/kaia-710-chatbot-intake/tally-form-spec.json",
+    "backend_zod_module": "portal/src/lib/intake-schema.ts",
+    "backend_route": "portal/src/app/api/public/intake/route.ts",
+    "sector_to_vertical_map": {
+      "clínica dental": "clinica-dental",
+      "restaurante/bar": "restauracion",
+      "despacho jurídico/asesoría": "despacho",
+      "peluquería/estética": "estetica",
+      "inmobiliaria": "inmobiliaria",
+      "otro": "general"
+    },
+    "cross_field_rules": [
+      {
+        "description": "When 'whatsapp' is in channels_enabled, whatsapp_business_number (E.164) and whatsapp_business_verified are required.",
+        "fields": ["whatsapp_business_number", "whatsapp_business_verified"],
+        "condition": { "field": "channels_enabled", "contains": "whatsapp" }
+      },
+      {
+        "description": "When 'instagram' is in channels_enabled, instagram_handle is required.",
+        "fields": ["instagram_handle"],
+        "condition": { "field": "channels_enabled", "contains": "instagram" }
+      }
+    ]
+  }
+}

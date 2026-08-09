@@ -11,6 +11,7 @@ export interface PortalSession {
   email: string | null;
   accessToken: string | null;
   userId: string | null;
+  role: string | null;
   hasClientAccess: boolean;
   isOperator: boolean;
   clientSlug: string | null;
@@ -20,6 +21,7 @@ export interface PortalSession {
 
 const OPERATOR_COOKIE = 'kairikos-portal-operator';
 const DEV_SESSION_COOKIE = 'kairikos-portal-dev-session';
+const DEV_SESSION_ACTIVE_COOKIE = 'kairikos-portal-dev-session-active';
 
 // Resolves a session for the current request. In dev-mock mode (Supabase
 // env not configured), this auto-activates the mock session without
@@ -31,8 +33,9 @@ async function resolveDevMockSession(): Promise<PortalSession> {
     email: MOCK_CLIENT.primaryContactEmail,
     accessToken: 'dev-mock',
     userId: 'mock-user-001',
+    role: 'client',
     hasClientAccess: true,
-    isOperator: cookies().get(OPERATOR_COOKIE)?.value === '1',
+    isOperator: false,
     clientSlug: MOCK_CLIENT.slug,
     clientId: MOCK_CLIENT.id,
   };
@@ -72,15 +75,43 @@ export async function getSession(): Promise<PortalSession> {
   }
 
   if (isDevMock) {
-    return resolveDevMockSession();
+    // KAIA-4011 — dev-mock auto-login is gated on the
+    // `kairikos-portal-dev-session-active` flag cookie. The flag is set
+    // by an explicit dev-mock login action and cleared by the logout
+    // action. Without the flag, dev-mock returns the no-session shape
+    // so the layout redirects to /portal/login — restoring the
+    // unauth → 307 contract and the back-nav protection that the QA
+    // verdict flagged as missing.
+    const hasActiveDevSession = Boolean(cookies().get(DEV_SESSION_ACTIVE_COOKIE)?.value);
+    if (hasActiveDevSession) {
+      return resolveDevMockSession();
+    }
+    return {
+      email: null,
+      accessToken: null,
+      userId: null,
+      role: null,
+      hasClientAccess: false,
+      isOperator: false,
+      clientSlug: null,
+      clientId: null,
+      reason: 'no_session',
+    };
   }
 
-  const session = await auth();
+  let session;
+  try {
+    session = await auth();
+  } catch (err) {
+    console.error('[getSession] auth() failed:', err);
+    session = null;
+  }
   if (!session?.user?.email) {
     return {
       email: null,
       accessToken: null,
       userId: null,
+      role: null,
       hasClientAccess: false,
       isOperator: false,
       clientSlug: null,
@@ -89,22 +120,48 @@ export async function getSession(): Promise<PortalSession> {
     };
   }
   const email = session.user.email.toLowerCase();
-  const link = await prisma.chatbotClientUser.findUnique({
-    where: { nextAuthEmail: email },
-    select: {
-      clientId: true,
-      client: { select: { slug: true } },
-    },
-  });
+
+  // Resolve role from the User table; default to 'client' if not found.
+  let userRow;
+  let clientUser;
+  try {
+    userRow = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true, role: true },
+    });
+
+    // Resolve clientId from the linked ChatbotClientUser via userId
+    clientUser = userRow
+      ? await prisma.chatbotClientUser.findUnique({
+          where: { userId: userRow.id },
+          select: { clientId: true, client: { select: { email: true } } },
+        })
+      : null;
+  } catch (err) {
+    console.error('[getSession] Prisma query failed:', err);
+    return {
+      email,
+      accessToken: null,
+      userId: session.user.id ?? null,
+      role: null,
+      hasClientAccess: false,
+      isOperator: false,
+      clientSlug: null,
+      clientId: null,
+      reason: 'no_session',
+    };
+  }
+
   return {
     email,
     accessToken: null,
     userId: session.user.id ?? null,
-    hasClientAccess: Boolean(link?.clientId),
-    isOperator: cookies().get(OPERATOR_COOKIE)?.value === '1',
-    clientSlug: link?.client?.slug ?? null,
-    clientId: link?.clientId ?? session.user.clientId ?? null,
-    reason: link?.clientId ? undefined : 'no_client_access',
+    role: userRow?.role ?? (session.user as { role?: string }).role ?? null,
+    hasClientAccess: Boolean(clientUser?.clientId),
+    isOperator: (userRow?.role ?? (session.user as { role?: string }).role) === 'operator',
+    clientSlug: clientUser?.client?.email ?? null,
+    clientId: clientUser?.clientId ?? (session.user as { clientId?: string }).clientId ?? null,
+    reason: clientUser?.clientId ? undefined : 'no_client_access',
   };
 }
 
@@ -159,6 +216,7 @@ export function resolveOperatorKeyBypass(): PortalSession | null {
     email: 'operator-key-bypass@kairikos.local',
     accessToken: 'operator-key',
     userId: 'operator-key-bypass',
+    role: 'operator',
     hasClientAccess: true,
     isOperator: true,
     clientSlug: null,

@@ -1,0 +1,377 @@
+{
+  "name": "Wizard Lifecycle — wizard_abandoned (KAIA-1172)",
+  "nodes": [
+    {
+      "id": "kairikos-wizard-abandoned-trigger",
+      "name": "wizard-abandoned — Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */6 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "kairikos-wizard-abandoned-scan",
+      "name": "wizard-abandoned — Scan",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        470,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/wizard-abandoned/scan",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({}) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "kairikos-wizard-abandoned-split-batches",
+      "name": "Split Into Batches",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        690,
+        300
+      ],
+      "parameters": {
+        "fieldToSplitOut": "candidates",
+        "options": {}
+      }
+    },
+    {
+      "id": "kairikos-wizard-abandoned-skip-already-fired",
+      "name": "If (skip alreadyFiredInWindow=true)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [
+        910,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "uuid-o0ho8wuu7xi",
+              "name": "alreadyFiredInWindow is true",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              },
+              "value1": "={{ $json.alreadyFiredInWindow }}",
+              "value2": [
+                true
+              ]
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "kairikos-wizard-abandoned-build-payload",
+      "name": "Build Fire Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1130,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Wizard-abandoned fire payload builder.\n// Input: one scan-candidate item (already split out of the\n// scan response and pre-filtered for alreadyFiredInWindow).\n// Output: the body shape the /api/internal/wizard-abandoned/fire\n// route expects. The route is the only writer — it does the\n// dedup on @@unique([clientId, milestone='wizard_abandoned'])\n// and the Resend send.\nconst input = $input.first().json;\nreturn [{\n  json: {\n    payload: {\n      clientId: input.clientId,\n      lastDraftAt: input.lastDraftAt,\n      lastStepKey: input.lastStepKey,\n      hoursSinceLastDraft: Math.max(0, Math.round(Number(input.hoursSinceLastDraft) || 0)),\n    },\n  },\n}];"
+      }
+    },
+    {
+      "id": "kairikos-wizard-abandoned-fire",
+      "name": "POST /api/internal/wizard-abandoned/fire",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1350,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/wizard-abandoned/fire",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "timeout": 15000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetween": 5000
+          },
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "kairikos-wizard-abandoned-log",
+      "name": "Log Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1570,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Surface the dedup / sent state in the workflow logs so the\n// operator can confirm via n8n that the alert reached the\n// portal. The portal persists the row regardless.\nconst out = $input.first().json;\nconst log = {\n  kind: \"wizard-abandoned\",\n  ok: Boolean(out.ok),\n  deduped: Boolean(out.deduped),\n  resendMessageId: out.resendMessageId,\n  ceoCopied: out.ceoCopied,\n  sentAt: out.sentAt,\n};\nconsole.log(`[wizard-lifecycle] wizard-abandoned ${JSON.stringify(log)}`);\nreturn [{ json: log }];"
+      }
+    },
+    {
+      "id": "kairikos-wizard-abandoned-report-execution",
+      "name": "Report Execution to Portal (KAIA-1073)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1790,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/n8n-execution",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "body": "={{ JSON.stringify((() => { const exec = $execution; const startedAt = exec && exec.startedAt ? new Date(exec.startedAt).toISOString() : new Date().toISOString(); const finishedAt = new Date().toISOString(); const errObj = $json && $json.error; const isFailure = Boolean(errObj); const upstream = $('Build Fire Payload').item && $('Build Fire Payload').item.json; const payload = (upstream && upstream.payload) || {}; const clientId = payload.clientId || null; const code = isFailure ? (errObj.name || (errObj.httpCode ? 'HTTP_' + errObj.httpCode : 'WORKFLOW_ERROR')) : 'OK'; const message = isFailure ? String(errObj.message || errObj.description || 'unknown n8n error').slice(0, 4000) : null; return { id: String(exec.id), clientId, clientName: null, workflow: \"Wizard Lifecycle — wizard_abandoned (KAIA-1172)\", milestone: 'wizard_abandoned', status: isFailure ? 'failed' : 'success', startedAt, finishedAt, errorCode: isFailure ? String(code).slice(0, 100) : null, errorMessage: message }; })()) }}",
+        "options": {
+          "timeout": 15000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetween": 5000
+          },
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "kairikos-wizard-abandoned-trigger": {
+      "main": [
+        [
+          {
+            "node": "kairikos-wizard-abandoned-scan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-wizard-abandoned-report-execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-wizard-abandoned-scan": {
+      "main": [
+        [
+          {
+            "node": "kairikos-wizard-abandoned-split-batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-wizard-abandoned-report-execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-wizard-abandoned-split-batches": {
+      "main": [
+        [
+          {
+            "node": "kairikos-wizard-abandoned-skip-already-fired",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-wizard-abandoned-report-execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-wizard-abandoned-skip-already-fired": {
+      "main": [
+        [],
+        [
+          {
+            "node": "kairikos-wizard-abandoned-build-payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-wizard-abandoned-report-execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-wizard-abandoned-build-payload": {
+      "main": [
+        [
+          {
+            "node": "kairikos-wizard-abandoned-fire",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-wizard-abandoned-report-execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-wizard-abandoned-fire": {
+      "main": [
+        [
+          {
+            "node": "kairikos-wizard-abandoned-log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "kairikos-wizard-abandoned-report-execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "kairikos-wizard-abandoned-log": {
+      "main": [
+        [
+          {
+            "node": "kairikos-wizard-abandoned-report-execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "kairikos"
+    },
+    {
+      "name": "wizard-lifecycle"
+    },
+    {
+      "name": "kind:wizard-abandoned"
+    }
+  ],
+  "active": false,
+  "pinData": {},
+  "versionId": "1.0.0",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "executionCaptureIssue": "KAIA-1073",
+    "linkedIssue": "KAIA-1172"
+  }
+}

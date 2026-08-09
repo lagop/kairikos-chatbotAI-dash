@@ -1,8 +1,6 @@
-import { test, expect } from '@playwright/test';
-import { PortalTestFixtures } from '../fixtures/portal';
+import { expect } from '@playwright/test';
+import { portalFixture as test } from '../fixtures/portal';
 import { AdminClientListPage } from '../pages/portal';
-
-const T = test.extend<PortalTestFixtures>;
 
 test.describe('Admin Support View', () => {
   test('operator account at /admin/portal/clients sees all clients', async ({ page }) => {
@@ -28,8 +26,8 @@ test.describe('Admin Support View', () => {
   test('unauthenticated request to admin gets redirect to login', async ({ page }) => {
     await page.context().clearCookies();
     await page.goto('/admin/portal/clients');
-    
-    await expect(page).toHaveURL(/\/portal\/login/);
+
+    await expect(page).toHaveURL(/\/admin\/login/);
   });
 
   test('admin page shows client onboarding status', async ({ page }) => {

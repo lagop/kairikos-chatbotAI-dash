@@ -26,7 +26,15 @@ export async function authenticateRequest(req: NextRequest): Promise<AuthResult>
   const operatorHeader = req.headers.get('x-kairikos-operator');
   if (isBackendConfigured) {
     try {
-      const res = await fetch(`${PORTAL_API_BASE_URL}/portal/me`, {
+      // KAIA-11955 — production PORTAL_API_BASE_URL ends in `/portal`
+      // (the SPA path) but the route handlers live at `/api/portal/...`.
+      // Build the API URL by stripping the trailing `/portal` and
+      // prepending `/api` so the request actually hits the route.
+      let base = PORTAL_API_BASE_URL.replace(/\/$/, '');
+      if (base.endsWith('/portal')) {
+        base = base.slice(0, -'/portal'.length);
+      }
+      const res = await fetch(`${base}/api/portal/me`, {
         headers: { Authorization: `Bearer ${token}` },
         cache: 'no-store',
       });

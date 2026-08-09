@@ -1,0 +1,8 @@
+HTTP 401
+{"success":false,"scenario":"bad-sig","expected":"0bda99887543fe12b92a7390e1ba996603849c269a5ceacb20ea8b6f4c8892e6","provided":"0000000000000000000000000000000000000000000000000000000000000000","payload_len":128}
+HTTP 202
+{"success":true,"scenario":"hmac-ok","hmac":"0bda99887543fe12b92a7390e1ba996603849c269a5ceacb20ea8b6f4c8892e6","payload_len":128}
+HTTP 202
+{"success":true,"scenario":"hmac-ok","hmac":"f8bb659a7bb9c430a1d3f61befe0341035217e49fc93bd6c8ae88397b5044821","payload_len":108}
+
+Endpoint: https://n8n.srv1170607.hstgr.cloud/webhook/ds-rev-request-schedule

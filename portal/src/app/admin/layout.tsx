@@ -26,8 +26,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </span>
           </Link>
           <nav aria-label="Acciones" className="flex items-center gap-2 text-sm">
-            <form action="/api/portal/operator" method="post" className="inline">
-              <input type="hidden" name="mode" value="disable" />
+<form action="/admin/logout" method="post" className="inline">
               <button type="submit" className="text-kairikos-muted hover:text-kairikos-text">
                 Salir del modo soporte
               </button>

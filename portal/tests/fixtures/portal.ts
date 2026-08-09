@@ -1,5 +1,6 @@
 import { test as base } from '@playwright/test';
 import type { ChatbotClient, ChatbotClientUser } from '../src/types/portal';
+import { createStagingMagicLinkClient } from '../helpers/staging-magic-link';
 
 export type TestClient = {
   id: string;
@@ -106,4 +107,17 @@ export const portalFixture = base.extend<PortalTestFixtures>({
   userA: testUsers.clientA,
   userB: testUsers.clientB,
   nonPortalUser: testUsers.nonPortalEmail,
+});
+
+export const authedPortalFixture = portalFixture.extend({
+  clientA: async ({ clientA, page, context }, use) => {
+    const portalUrl = process.env.PORTAL_URL ?? 'https://project-fxidg.vercel.app';
+    const client = createStagingMagicLinkClient(process.env as NodeJS.ProcessEnv);
+    const link = await client.generateMagicLink(clientA.users[0].email, {
+      redirectTo: `${portalUrl}/portal/dashboard`,
+    });
+    await context.clearCookies();
+    await page.goto(link, { waitUntil: 'networkidle' });
+    await use(clientA);
+  },
 });
