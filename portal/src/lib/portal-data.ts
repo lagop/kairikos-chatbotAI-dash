@@ -10,6 +10,7 @@ import type {
   SupportLink,
 } from '@/types/portal';
 import { isBackendConfigured, PORTAL_API_BASE_URL, SUPABASE_ANON_KEY } from './supabase';
+import { prisma, isDatabaseConfigured } from './prisma';
 
 const TIER_LABEL: Record<BillingSummary['tier'], string> = {
   starter: 'Web Starter',
@@ -332,8 +333,88 @@ export const MOCK_STARTER_CLIENT: ChatbotClient = {
   chatbotSpaceId: null,
 };
 
-export async function listAdminClients(): Promise<ChatbotClient[]> {
-  return [MOCK_CLIENT, MOCK_SECONDARY_CLIENT, MOCK_STARTER_CLIENT];
+// KAIA-13114 — listAdminClients() used to return three hard-coded mock
+// fixtures, which leaked mock data into the live /admin/portal/clients
+// support view and made the operator UI inconsistent with /admin/portal
+// (which already read prisma.chatbotClient.findMany and rendered 95 real
+// rows). Wire it to the live Prisma client when the DB is configured;
+// fall back to the 3 dev-mock fixtures ONLY when the DB is genuinely not
+// configured (KAIA-1519 dev-mock mode). Accept an optional `search` arg
+// that filters by companyName or email (case-insensitive contains).
+const ONBOARDING_STATUSES: ReadonlyArray<ChatbotClient['onboardingStatus']> = [
+  'pending',
+  'in_progress',
+  'live',
+  'paused',
+  'cancelled',
+];
+
+function toOnboardingStatus(value: string | null | undefined): ChatbotClient['onboardingStatus'] {
+  if (value && (ONBOARDING_STATUSES as readonly string[]).includes(value)) {
+    return value as ChatbotClient['onboardingStatus'];
+  }
+  return 'in_progress';
+}
+
+export async function listAdminClients(search?: string | null): Promise<ChatbotClient[]> {
+  if (!isDatabaseConfigured) {
+    // Dev-mock mode (KAIA-1519): no DB at all. Still return the three
+    // fixtures so the local dev server renders something.
+    return [MOCK_CLIENT, MOCK_SECONDARY_CLIENT, MOCK_STARTER_CLIENT];
+  }
+  const trimmed = (search ?? '').trim();
+  try {
+    const dbRows = await prisma.chatbotClient.findMany({
+      orderBy: { createdAt: 'desc' },
+      where: trimmed
+        ? {
+            OR: [
+              { companyName: { contains: trimmed, mode: 'insensitive' } },
+              { email: { contains: trimmed, mode: 'insensitive' } },
+            ],
+          }
+        : undefined,
+      select: {
+        id: true,
+        companyName: true,
+        name: true,
+        email: true,
+        tier: true,
+        stripeCustomerId: true,
+        state: true,
+        goLiveAt: true,
+        createdAt: true,
+      },
+    });
+    return dbRows.map((r): ChatbotClient => {
+      const companyName = r.companyName ?? r.name;
+      // KAIA-13114 — schema has no slug column; expose the cuid id as the
+      // slug-shaped display value the AdminClientsPage expects. The id is
+      // unique and stable, and the page only renders it under the
+      // company name — it never builds a /c/<slug> link against it.
+      return {
+        id: r.id,
+        slug: r.id,
+        companyName,
+        primaryContactEmail: r.email,
+        stripeCustomerId: r.stripeCustomerId ?? null,
+        tier: (r.tier as ChatbotClient['tier']) ?? 'starter',
+        onboardingStatus: toOnboardingStatus(r.state),
+        createdAt: r.createdAt.toISOString(),
+        goLiveDate: r.goLiveAt ? r.goLiveAt.toISOString() : null,
+        // KAIA-13114 — schema has no chatbotSpaceId column on
+        // ChatbotClient; the operator clients view does not render it,
+        // but the ChatbotClient type requires the field. Surface null
+        // until KAIA-xxxx wires the Supabase space id here.
+        chatbotSpaceId: null,
+      };
+    });
+  } catch {
+    // Never throw from a page data fetcher — surface an empty list so
+    // the page renders the existing "Sin clientes" empty state instead
+    // of crashing the operator session.
+    return [];
+  }
 }
 
 // KAIA-1519 — dev-mock lookup table. Maps an email to its dev-mock client

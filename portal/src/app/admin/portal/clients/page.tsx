@@ -30,18 +30,28 @@ const STATUS_PILL: Record<string, string> = {
   cancelled: 'pill-danger',
 };
 
-export default async function AdminClientsPage() {
+export default async function AdminClientsPage({
+  searchParams,
+}: {
+  searchParams?: { search?: string | string[] };
+}) {
   const session = await getSession();
   if (!session.isOperator) {
     redirect('/portal/login?next=/admin/portal/clients');
   }
-  const clients = await listAdminClients();
+  const rawSearch = Array.isArray(searchParams?.search) ? searchParams?.search[0] : searchParams?.search;
+  const search = (rawSearch ?? '').trim();
+  const clients = await listAdminClients(search);
   return (
     <div className="space-y-6">
       <PageHeading
         eyebrow="Operador"
         title="Clientes del portal"
-        description="Vista de soporte de sólo lectura. Selecciona un cliente para ver el detalle en su portal."
+        description={
+          search
+            ? `Vista de soporte de sólo lectura. Filtrando por “${search}”.`
+            : 'Vista de soporte de sólo lectura. Selecciona un cliente para ver el detalle en su portal.'
+        }
       />
       <form action="/admin/portal/clients" method="get" className="card flex items-center gap-3 p-3">
         <label htmlFor="search" className="sr-only">
@@ -52,6 +62,7 @@ export default async function AdminClientsPage() {
           type="search"
           name="search"
           placeholder="Buscar por nombre…"
+          defaultValue={search}
           className="input"
         />
         <button type="submit" className="btn-ghost">
