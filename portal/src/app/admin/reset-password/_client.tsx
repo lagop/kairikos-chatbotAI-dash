@@ -36,7 +36,7 @@ export default function AdminResetPasswordForm() {
 
     setSubmitting(true);
     try {
-      const res = await fetch('/api/portal/reset-password', {
+      const res = await fetch('/api/operator/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, token, password }),

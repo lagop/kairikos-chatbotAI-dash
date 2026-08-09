@@ -19,7 +19,7 @@ export default function AdminForgotPasswordForm() {
 
     setSubmitting(true);
     try {
-      const res = await fetch('/api/portal/forgot-password', {
+      const res = await fetch('/api/operator/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
