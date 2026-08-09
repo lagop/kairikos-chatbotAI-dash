@@ -118,6 +118,47 @@ export function buildResetAdminEmailHtml(resetUrl: string, expiryHours: number):
 </html>`;
 }
 
+export const SETUP_EMAIL_LINK_EXPIRY_DAYS = 7;
+
+// KAIA-13282 — canonical "send setup-password" helper.
+//
+// Shared by the admin "send-setup-email" route (existing) and the new
+// PATCH /api/admin/portal/clients/[id] path that fires when the operator
+// edits a client's email. The setup URL is the `/portal/setup-password?email=…&token=…`
+// page — the secure (KAIA-11500) flow, where the `token` is a 64-char hex
+// secret backed by a PasswordResetToken row.
+//
+// Why this lives in auth-email.ts: the template + subject + body live
+// next to the other auth templates, and the email-transport wrapper
+// (`sendEmail`) is already here. Callers that mint the token + generate
+// the URL are still responsible for that — the helper just owns the
+// "render the email + push it through Resend" half of the flow.
+export async function sendSetupPassword(params: {
+  to: string;
+  setupUrl: string;
+}): Promise<void> {
+  const subject = 'Activa tu acceso al portal — Kairikos';
+  const text = [
+    'Hola,',
+    '',
+    'El equipo de Kairikos te ha dado acceso al portal de cliente.',
+    '',
+    'Haz clic en el siguiente enlace para crear tu contraseña y acceder al portal:',
+    params.setupUrl,
+    '',
+    `Este enlace es personal y caduca en ${SETUP_EMAIL_LINK_EXPIRY_DAYS} días.`,
+    '',
+    '— Equipo Kairikos',
+  ].join('\n');
+
+  await sendEmail({
+    to: params.to,
+    subject,
+    text,
+    html: buildSetupEmailHtml(params.setupUrl),
+  });
+}
+
 export {
   FROM_ADDRESS,
   SUPPORT_EMAIL,

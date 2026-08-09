@@ -5,6 +5,15 @@
 // $transaction. The transaction guarantees the audit log cannot drift
 // from the live row (either both commits or neither does).
 //
+// KAIA-13282 — When `email` is in the diff, AFTER the transaction
+// commits, the route mints a fresh PasswordResetToken for the new
+// email and fires the shared `sendSetupPassword` helper so the new
+// contact can set their initial password and log in. Idempotency is
+// enforced by an OperatorAction-history check: if the same final
+// email was set on this client within the last 5 minutes, the email
+// is skipped. The route reports the email outcome via `emailSent`
+// in the response so the UI can confirm in a toast.
+//
 // Allowlist:
 //   companyName | email | tier | goLiveAt | state | notes
 //
@@ -30,10 +39,12 @@
 //   * 500 — DB / transaction failure (audited via console.error)
 
 import { NextResponse, type NextRequest } from 'next/server';
+import * as crypto from 'node:crypto';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { authenticateAdminRequest } from '@/lib/operator-session';
 import { constantTimeEqual } from '@/lib/operator-crypto';
+import { sendSetupPassword, SETUP_EMAIL_LINK_EXPIRY_DAYS } from '@/lib/auth-email';
 
 const ALLOWED_FIELDS = new Set([
   'companyName',
@@ -56,6 +67,19 @@ const ALLOWED_STATES = new Set([
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NOTES_MAX = 4000;
 const COMPANY_NAME_MAX = 200;
+
+// KAIA-13282 — re-fire window for the setup-password email. Two operator
+// edits to the same final email inside this window collapse to a single
+// send. The window is short enough that a real "typo and fix" cycle is
+// unaffected, and long enough that a double-click on Save doesn't spam
+// the customer. Mirrors the route contract spelled out in the issue
+// description.
+const EMAIL_RESEND_DEDUP_WINDOW_MS = 5 * 60 * 1000;
+
+// KAIA-13282 — base URL the customer lands on from the setup-password
+// email. Defaults to the local dev portal so the smoke can run without
+// Vercel env wiring. Production uses NEXT_PUBLIC_PORTAL_URL.
+const PORTAL_BASE_URL = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'http://localhost:3001';
 
 // KAIA-1909 — operator-key bypass used by sibling admin routes so QA
 // can curl against staging without a NextAuth cookie. Mirrors the
@@ -294,6 +318,71 @@ function buildPrismaPatch(changes: FieldChange[]): Record<string, unknown> {
   return patch;
 }
 
+// KAIA-13282 — mint a fresh PasswordResetToken for `email` so the
+// customer can complete the setup-password flow. The plaintext token is
+// returned to the caller (the caller embeds it in the setup URL); only
+// the SHA-256 hash is stored. Stale unused tokens for the same email
+// are burned first so a single active link exists at a time.
+//
+// Mirrors the same shape used by
+// src/app/api/admin/portal/clients/[id]/trigger-password-reset/route.ts
+// and src/app/api/portal/forgot-password/route.ts so the three flows
+// behave identically against the same table.
+function generateSetupToken(): { raw: string; hash: string } {
+  const raw = crypto.randomBytes(32).toString('hex');
+  const hash = crypto.createHash('sha256').update(raw).digest('hex');
+  return { raw, hash };
+}
+
+async function mintSetupPasswordToken(email: string): Promise<string> {
+  // Invalidate any unused tokens for this email so a single active link
+  // exists at a time. This prevents a leak of an earlier link from
+  // re-authenticating as the customer after the operator rotates the
+  // email.
+  await prisma.passwordResetToken.updateMany({
+    where: { email, usedAt: null },
+    data: { usedAt: new Date() },
+  });
+
+  const { raw, hash } = generateSetupToken();
+  const expiresAt = new Date(
+    Date.now() + SETUP_EMAIL_LINK_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
+  );
+  await prisma.passwordResetToken.create({
+    data: { email, tokenHash: hash, expiresAt },
+  });
+  return raw;
+}
+
+async function shouldSkipSetupEmail(
+  clientId: string,
+  nextEmail: string,
+  excludeActionIds: string[],
+): Promise<boolean> {
+  // KAIA-13282 — dedup: don't re-send the setup-password email if the
+  // SAME `afterValue` was written by an OperatorAction row inside the
+  // last 5 minutes (excluding the audit row we just wrote in this
+  // request — otherwise the first PATCH would always skip itself).
+  //
+  // The filter `id NOT IN excludeActionIds` is the cleanest way to
+  // exclude the current request's audit rows. We pass the IDs from
+  // `result.actions` because the transaction just committed them and
+  // they're visible at the post-commit side-effect site.
+  const cutoff = new Date(Date.now() - EMAIL_RESEND_DEDUP_WINDOW_MS);
+  const recent = await prisma.operatorAction.findFirst({
+    where: {
+      clientId,
+      field: 'email',
+      afterValue: nextEmail,
+      createdAt: { gt: cutoff },
+      id: excludeActionIds.length > 0 ? { notIn: excludeActionIds } : undefined,
+    },
+    select: { id: true, createdAt: true },
+    orderBy: { createdAt: 'desc' },
+  });
+  return recent !== null;
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } },
@@ -374,7 +463,8 @@ export async function PATCH(
     // No-op: the caller submitted fields whose values already match the
     // current row. Surface the current row + an empty actions array so
     // the caller knows the request was accepted but no audit rows were
-    // emitted.
+    // emitted. `emailSent: false` because no email change took place
+    // (the diff was empty) — no setup-password email is warranted.
     const fresh = await prisma.chatbotClient.findUnique({
       where: { id: clientId },
       select: {
@@ -393,6 +483,7 @@ export async function PATCH(
       ok: true,
       client: fresh ? { ...fresh, goLiveAt: fresh.goLiveAt?.toISOString() ?? null } : null,
       actions: [],
+      emailSent: false,
     });
   }
 
@@ -434,6 +525,43 @@ export async function PATCH(
       return { updated, actions: created };
     });
 
+    // KAIA-13282 — side effect: when the operator edits `email`, the
+    // new contact must be able to log in. We mint a setup-password
+    // token and email them a link AFTER the transaction commits so a
+    // rollback can't leave an orphan token / sent email behind.
+    let emailSent = false;
+    const emailChange = parsed.changes.find((c) => c.field === 'email');
+    if (emailChange && emailChange.afterValue) {
+      const newEmail = emailChange.afterValue;
+      // Exclude the audit rows we just wrote from the dedup check —
+      // otherwise the FIRST PATCH for this email would always see its
+      // own row as "recent" and skip sending the email.
+      const actionIdsThisRequest = result.actions.map((a) => a.id);
+      try {
+        const skip = await shouldSkipSetupEmail(clientId, newEmail, actionIdsThisRequest);
+        if (skip) {
+          console.log(
+            `[PATCH /api/admin/portal/clients/[id]] setup-password email skipped for ${newEmail} (recent send within ${EMAIL_RESEND_DEDUP_WINDOW_MS}ms)`,
+          );
+        } else {
+          const rawToken = await mintSetupPasswordToken(newEmail);
+          const setupUrl = `${PORTAL_BASE_URL}/portal/setup-password?email=${encodeURIComponent(newEmail)}&token=${encodeURIComponent(rawToken)}`;
+          await sendSetupPassword({ to: newEmail, setupUrl });
+          emailSent = true;
+        }
+      } catch (emailErr) {
+        // Do not fail the whole PATCH if the email path breaks — the
+        // ChatbotClient.email update + audit row already committed and
+        // the operator needs to see what happened. Surface the failure
+        // via console and via `emailSent: false` in the response so the
+        // UI can flag it.
+        console.error(
+          '[PATCH /api/admin/portal/clients/[id]] setup-password email send failed',
+          emailErr,
+        );
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       client: { ...result.updated, goLiveAt: result.updated.goLiveAt?.toISOString() ?? null },
@@ -444,6 +572,7 @@ export async function PATCH(
         afterValue: a.afterValue,
         createdAt: a.createdAt.toISOString(),
       })),
+      emailSent,
     });
   } catch (err) {
     console.error('[PATCH /api/admin/portal/clients/[id]] transaction failed', err);

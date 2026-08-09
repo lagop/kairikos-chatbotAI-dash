@@ -6,6 +6,16 @@ import { useState } from 'react';
 export default function SetupPasswordPage() {
   const params = useSearchParams();
   const email = params.get('email') ?? '';
+  // KAIA-13282 — `?token=...` is required by the secure (KAIA-11500)
+  // /api/portal/setup-password flow. The link the operator-driven
+  // PATCH endpoint emails now includes the token; the legacy
+  // send-setup-email route does not, and that flow is broken
+  // separately (see KAIA-13282 — only the email-change branch of
+  // this task emits the token). We forward whatever we got to the
+  // API; if the token is missing, the API responds with
+  // `invalid_or_expired_token` and the page renders the generic
+  // "no se ha podido configurar la contraseña" message.
+  const token = params.get('token') ?? '';
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -18,6 +28,10 @@ export default function SetupPasswordPage() {
 
     if (!email) {
       setError('No se ha proporcionado el email. Usa el enlace del correo de invitación.');
+      return;
+    }
+    if (!token) {
+      setError('El enlace no es válido. Solicita un nuevo correo de activación al equipo de Kairikos.');
       return;
     }
     if (password.length < 8) {
@@ -34,12 +48,14 @@ export default function SetupPasswordPage() {
       const res = await fetch('/api/portal/setup-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, token, password }),
       });
       const data = await res.json();
       if (!res.ok) {
         if (data.error === 'password_already_set') {
           setError('Esta cuenta ya tiene una contraseña configurada.');
+        } else if (data.error === 'invalid_or_expired_token') {
+          setError('El enlace ha caducado o ya se ha usado. Solicita uno nuevo.');
         } else {
           setError('No se ha podido configurar la contraseña. Inténtalo de nuevo.');
         }

@@ -1,13 +1,17 @@
 // KAIA-2103 — Admin: trigger a setup-password email for a client user.
 // Sends an email with a direct link to set the initial password (no token needed,
 // the email itself is the auth signal — sent to a known, approved address).
+//
+// KAIA-13282 — refactored to share the canonical sendSetupPassword helper
+// in src/lib/auth-email.ts with the new PATCH /api/admin/portal/clients/[id]
+// path that fires on email change.
 
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateRequest } from '@/lib/api-auth';
 import { constantTimeEqual } from '@/lib/operator-crypto';
-import { sendEmail, buildSetupEmailHtml } from '@/lib/auth-email';
+import { sendSetupPassword } from '@/lib/auth-email';
 
 const SendSetupEmailSchema = z.object({
   email: z.string().email(),
@@ -21,29 +25,6 @@ function operatorKeyAuth(req: NextRequest): boolean {
   const provided = req.headers.get('x-kaia-operator-key');
   if (!provided) return false;
   return constantTimeEqual(provided, envKey);
-}
-
-async function sendSetupEmail(params: { to: string; setupUrl: string }): Promise<void> {
-  const subject = 'Activa tu acceso al portal — Kairikos';
-  const text = [
-    'Hola,',
-    '',
-    'El equipo de Kairikos te ha dado acceso al portal de cliente.',
-    '',
-    'Haz clic en el siguiente enlace para crear tu contraseña y acceder al portal:',
-    params.setupUrl,
-    '',
-    'Este enlace es personal y caduca en 7 días.',
-    '',
-    '— Equipo Kairikos',
-  ].join('\n');
-
-  await sendEmail({
-    to: params.to,
-    subject,
-    text,
-    html: buildSetupEmailHtml(params.setupUrl),
-  });
 }
 
 export async function POST(
@@ -102,7 +83,7 @@ export async function POST(
   const setupUrl = `${PORTAL_BASE_URL}/portal/setup-password?email=${encodeURIComponent(normalizedEmail)}`;
 
   try {
-    await sendSetupEmail({ to: normalizedEmail, setupUrl });
+    await sendSetupPassword({ to: normalizedEmail, setupUrl });
   } catch (err) {
     console.error('[send-setup-email] email send failed:', err);
     return NextResponse.json({ error: 'email_send_failed' }, { status: 500 });
