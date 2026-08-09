@@ -9,10 +9,18 @@
 //   companyName | email | tier | goLiveAt | state | notes
 //
 // Auth:
-//   * Operator session via getSession().isOperator (cookie path), OR
-//   * x-kaia-operator-key header matching KAIA_OPERATOR_API_KEY (the
+//   * `kairikos_operator_session` cookie (DB-backed OperatorSession row,
+//     set by /api/operator/login) — this is the path the admin UI uses
+//     after the operator signs in. Resolved by authenticateAdminRequest
+//     in src/lib/operator-session.ts.
+//   * `x-kaia-operator-key` header matching KAIA_OPERATOR_API_KEY (the
 //     same bypass the sibling admin routes already honor — see
 //     src/app/api/admin/portal/clients/[id]/password/route.ts).
+//   * NextAuth session with role='operator' — kept as a final fallback
+//     for the legacy operator context that flows through the client
+//     portal's NextAuth sign-in.
+//     getSession().isOperator, but the operator session cookie is the
+//     primary path. See KAIA-1107 / KAIA-1166.
 //
 // Failure modes:
 //   * 401 — not authenticated, or session is not an operator
@@ -24,6 +32,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
+import { authenticateAdminRequest } from '@/lib/operator-session';
 import { constantTimeEqual } from '@/lib/operator-crypto';
 
 const ALLOWED_FIELDS = new Set([
@@ -264,6 +273,11 @@ async function resolveActorId(req: NextRequest): Promise<string> {
   if (operatorKeyAuth(req)) {
     return 'operator-key-bypass@kairikos.local';
   }
+  // Prefer the operator session cookie (admin-portal login path).
+  const adminAuth = await authenticateAdminRequest(req);
+  if (adminAuth.ok) {
+    return adminAuth.operatorId;
+  }
   try {
     const session = await getSession();
     return session.email ?? 'unknown-operator';
@@ -288,18 +302,30 @@ export async function PATCH(
     return jsonError(503, 'service_unavailable', 'DATABASE_URL is not configured');
   }
 
-  // Two parallel auth paths: NextAuth session (cookie) OR the operator
-  // key header. Either passing is sufficient for operator authority.
+  // Three parallel auth paths, in priority order:
+  //   1. kairikos_operator_session cookie (admin-portal login flow,
+  //      resolved by authenticateAdminRequest). This is the path the
+  //      admin UI uses after the operator signs in via
+  //      /api/operator/login.
+  //   2. x-kaia-operator-key header matching KAIA_OPERATOR_API_KEY
+  //      (service-account / CI bypass).
+  //   3. NextAuth session with role='operator' (legacy fallback).
+  // Any one of these passing is sufficient for operator authority.
   let operatorAuthorized = false;
   if (operatorKeyAuth(req)) {
     operatorAuthorized = true;
   } else {
-    try {
-      const session = await getSession();
-      operatorAuthorized = session.isOperator;
-    } catch (err) {
-      console.error('[PATCH /api/admin/portal/clients/[id]] getSession failed', err);
-      operatorAuthorized = false;
+    const adminAuth = await authenticateAdminRequest(req);
+    if (adminAuth.ok) {
+      operatorAuthorized = true;
+    } else {
+      try {
+        const session = await getSession();
+        operatorAuthorized = session.isOperator;
+      } catch (err) {
+        console.error('[PATCH /api/admin/portal/clients/[id]] getSession failed', err);
+        operatorAuthorized = false;
+      }
     }
   }
   if (!operatorAuthorized) {
