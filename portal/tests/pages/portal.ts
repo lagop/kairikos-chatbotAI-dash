@@ -212,3 +212,32 @@ export class AdminClientListPage {
     await this.page.waitForTimeout(500);
   }
 }
+
+export class AdminClientDetailPage {
+  readonly page: Page;
+  readonly operatorEditor: Locator;
+  readonly toast: Locator;
+  readonly confirmModalEmail: Locator;
+  readonly confirmModalTier: Locator;
+
+  constructor(page: Page) {
+    this.page = page;
+    this.operatorEditor = page.locator('[data-testid="operator-editor"]');
+    this.toast = page.locator('[data-testid="operator-editor-toast"]');
+    this.confirmModalEmail = page.locator('[data-testid="operator-confirm-modal-email"]');
+    this.confirmModalTier = page.locator('[data-testid="operator-confirm-modal-tier"]');
+  }
+
+  async goto(clientId: string) {
+    await this.page.goto(`/admin/portal/${clientId}`);
+  }
+
+  async expectEditorVisible() {
+    await expect(this.operatorEditor).toBeVisible();
+  }
+
+  async expectToast(kind: 'success' | 'info' | 'error', timeout = 5000) {
+    await expect(this.toast).toBeVisible({ timeout });
+    await expect(this.toast).toHaveAttribute('data-toast-kind', kind);
+  }
+}
