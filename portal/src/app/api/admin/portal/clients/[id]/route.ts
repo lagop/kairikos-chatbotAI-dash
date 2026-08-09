@@ -5,14 +5,21 @@
 // $transaction. The transaction guarantees the audit log cannot drift
 // from the live row (either both commits or neither does).
 //
-// KAIA-13282 — When `email` is in the diff, AFTER the transaction
-// commits, the route mints a fresh PasswordResetToken for the new
-// email and fires the shared `sendSetupPassword` helper so the new
-// contact can set their initial password and log in. Idempotency is
-// enforced by an OperatorAction-history check: if the same final
-// email was set on this client within the last 5 minutes, the email
-// is skipped. The route reports the email outcome via `emailSent`
-// in the response so the UI can confirm in a toast.
+// KAIA-13370 — When `email` is in the diff, the route also rewrites
+// ChatbotClientUser.nextAuthEmail to the new email AND rotates
+// User.passwordHash to __must_reset__ (KAIA-11491 marker) so the
+// customer is forced through the setup-password flow. Both writes
+// are inside the same Prisma transaction as the ChatbotClient update
+// so they are atomic.
+//
+// KAIA-13282 — AFTER the transaction commits, the route also mints a
+// fresh PasswordResetToken for the new email and fires the shared
+// `sendSetupPassword` helper so the new contact can set their initial
+// password and log in. Idempotency is enforced by an OperatorAction-
+// history check: if the same final email was set on this client within
+// the last 5 minutes, the email is skipped. The route reports the
+// email outcome via `emailSent` in the response so the UI can confirm
+// in a toast.
 //
 // Allowlist:
 //   companyName | email | tier | goLiveAt | state | notes
@@ -490,6 +497,8 @@ export async function PATCH(
   const actorId = await resolveActorId(req);
   const patch = buildPrismaPatch(parsed.changes);
 
+  const emailChange = parsed.changes.find((c) => c.field === 'email');
+
   try {
     const result = await prisma.$transaction(async (tx) => {
       const updated = await tx.chatbotClient.update({
@@ -522,6 +531,31 @@ export async function PATCH(
           }),
         ),
       );
+
+      // KAIA-13370 — When email changes, rewrite ChatbotClientUser.nextAuthEmail
+      // to the new address and rotate User.passwordHash to __must_reset__ so
+      // the customer is forced through the setup-password flow with the new email.
+      // Both writes are atomic with the ChatbotClient.email update.
+      if (emailChange?.afterValue) {
+        const newEmail = emailChange.afterValue;
+        const clientUsers = await tx.chatbotClientUser.findMany({
+          where: { clientId },
+          select: { id: true, userId: true },
+        });
+        for (const cu of clientUsers) {
+          await tx.chatbotClientUser.update({
+            where: { id: cu.id },
+            data: { nextAuthEmail: newEmail },
+          });
+          if (cu.userId) {
+            await tx.user.update({
+              where: { id: cu.userId },
+              data: { passwordHash: '__must_reset__' },
+            });
+          }
+        }
+      }
+
       return { updated, actions: created };
     });
 
@@ -530,7 +564,6 @@ export async function PATCH(
     // token and email them a link AFTER the transaction commits so a
     // rollback can't leave an orphan token / sent email behind.
     let emailSent = false;
-    const emailChange = parsed.changes.find((c) => c.field === 'email');
     if (emailChange && emailChange.afterValue) {
       const newEmail = emailChange.afterValue;
       // Exclude the audit rows we just wrote from the dedup check —
