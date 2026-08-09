@@ -125,7 +125,6 @@ export class InMemoryRateLimiter {
 
 export function constantTimeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) {
-    crypto.timingSafeEqual(Buffer.from(a), Buffer.from(a));
     return false;
   }
   return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
