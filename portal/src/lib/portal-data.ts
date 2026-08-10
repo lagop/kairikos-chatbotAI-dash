@@ -333,6 +333,71 @@ export const MOCK_STARTER_CLIENT: ChatbotClient = {
 };
 
 export async function listAdminClients(): Promise<ChatbotClient[]> {
+  // KAIA-13680 — listAdminClients() must follow the same
+  // backend-configured gate as the sibling admin API route at
+  // `portal/src/app/api/admin/portal/clients/route.ts:11` and the auth
+  // helper at `portal/src/lib/api-auth.ts:27`. The previous version
+  // returned the three dev-mock fixtures unconditionally, so the page at
+  // `/admin/portal/clients` rendered only the Acme/Globex/Starter mocks
+  // even on a real Prisma-backed deployment (e.g. staging seeded with
+  // `clinica dental orly`). Now:
+  //
+  //   * When `PORTAL_API_BASE_URL` is set (`isBackendConfigured`), fetch
+  //     the local Next.js route `/api/admin/portal/clients` (which itself
+  //     proxies upstream to the NestJS API + Prisma — single source of
+  //     truth), forwarding the inbound cookies and an operator Bearer
+  //     token from the current session. Any non-2xx or parse failure
+  //     falls back to the mocks so a stale stage mirror can't 500 the
+  //     page.
+  //   * When `PORTAL_API_BASE_URL` is unset (`!isBackendConfigured`,
+  //     local `next dev` without a backend), keep the original
+  //     dev-mock fallback so unit / smoke tests still render the three
+  //     fixtures.
+  if (isBackendConfigured) {
+    try {
+      const { headers } = await import('next/headers');
+      const reqHeaders = headers();
+      const cookieHeader = reqHeaders
+        .get('cookie')
+        ?? reqHeaders.get('Cookie')
+        ?? '';
+      const inboundAuth = reqHeaders.get('authorization') ?? reqHeaders.get('Authorization') ?? '';
+      const { getSession } = await import('./session');
+      const session = await getSession();
+      const operatorHeader = reqHeaders.get('x-kairikos-operator') ?? reqHeaders.get('X-Kairikos-Operator') ?? '';
+      const bearer =
+        (session.accessToken && session.accessToken.length > 0 ? session.accessToken : null) ??
+        (inboundAuth.toLowerCase().startsWith('bearer ') ? inboundAuth.slice(7).trim() : null) ??
+        (session.isOperator ? 'operator-dev' : null) ??
+        'dev-mock';
+      const fetchHeaders: Record<string, string> = {
+        Accept: 'application/json',
+        'X-Kairikos-Client': 'portal-web',
+        Authorization: `Bearer ${bearer}`,
+      };
+      if (operatorHeader) fetchHeaders['X-Kairikos-Operator'] = operatorHeader;
+      else if (session.isOperator) fetchHeaders['X-Kairikos-Operator'] = '1';
+      if (cookieHeader) fetchHeaders.cookie = cookieHeader;
+      const origin =
+        reqHeaders.get('origin') ??
+        reqHeaders.get('Origin') ??
+        (process.env.NEXTAUTH_URL ?? '').replace(/\/$/, '') ??
+        `http://${reqHeaders.get('host') ?? reqHeaders.get('Host') ?? 'localhost:3001'}`;
+      const res = await fetch(`${origin}/api/admin/portal/clients`, {
+        headers: fetchHeaders,
+        cache: 'no-store',
+      });
+      if (res.ok) {
+        const data = (await res.json()) as ChatbotClient[] | { clients: ChatbotClient[] };
+        const list = Array.isArray(data) ? data : data.clients ?? [];
+        if (list.length > 0 || res.status === 200) return list;
+      }
+    } catch {
+      // Swallow and fall back to mocks below — never 500 the
+      // /admin/portal/clients page because the upstream is unreachable.
+    }
+    return [MOCK_CLIENT, MOCK_SECONDARY_CLIENT, MOCK_STARTER_CLIENT];
+  }
   return [MOCK_CLIENT, MOCK_SECONDARY_CLIENT, MOCK_STARTER_CLIENT];
 }
 
