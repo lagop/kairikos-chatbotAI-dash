@@ -66,13 +66,19 @@ const STAGING_BRISA_BEACH = {
 };
 
 describe('listAdminClients (KAIA-13702, prisma read when DB configured)', () => {
-  afterEach(() => {
-    findMany.mockReset();
-    vi.resetModules();
-  });
+  let consoleSpy: ReturnType<typeof vi.spyOn> | null = null;
 
   beforeEach(() => {
+    // Silence the [listAdminClients] DEBUG diagnostic per QA request —
+    // spy and discard instead of removing the log line from production.
+    consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    findMany.mockReset();
     findMany.mockResolvedValue([STAGING_CLINICA_DENTAL_ORLY]);
+  });
+
+  afterEach(() => {
+    findMany.mockReset();
+    consoleSpy?.mockRestore();
   });
 
   it('returns the live Prisma rows when the DB is configured (clinica dental orly)', async () => {
@@ -168,7 +174,9 @@ describe('listAdminClients (KAIA-13702, prisma read when DB configured)', () => 
   });
 });
 
-describe('listAdminClients dev-mock mode (DATABASE_URL unset, KAIA-13702)', () => {
+describe('listAdminClients dev-mock mode (DATABASE_URL unset, KAIA-13715)', () => {
+  let consoleSpy: ReturnType<typeof vi.spyOn> | null = null;
+
   beforeEach(() => {
     vi.resetModules();
     vi.doMock('@/lib/prisma', () => ({
@@ -180,21 +188,59 @@ describe('listAdminClients dev-mock mode (DATABASE_URL unset, KAIA-13702)', () =
       isDatabaseConfigured: false,
     }));
     findMany.mockReset();
+    consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
   });
 
-  it('returns the three dev-mock fixtures without querying Prisma', async () => {
+  afterEach(() => {
+    consoleSpy?.mockRestore();
+  });
+
+  it('returns the three dev-mock fixtures when Prisma throws (no DB available)', async () => {
+    // KAIA-13715 — the previous contract early-returned on
+    // `!isDatabaseConfigured` BEFORE calling Prisma. That gate was
+    // unreliable on Vercel production where `isDatabaseConfigured`
+    // flipped per chunk. New contract: ALWAYS try Prisma first;
+    // fall back to the mocks ONLY when the catch hits AND
+    // `!isDatabaseConfigured` is true. With no DB available,
+    // Prisma throws → catch fires → mocks returned.
+    findMany.mockRejectedValueOnce(new Error('PrismaClientInitializationError'));
     const { listAdminClients: listMock } = await import('@/lib/portal-data');
     const result = await listMock();
     expect(result).toHaveLength(3);
     expect(result.map((c) => c.slug).sort()).toEqual(['acme-corp', 'globex-inc', 'starter-sl']);
-    expect(findMany).not.toHaveBeenCalled();
+    expect(findMany).toHaveBeenCalledTimes(1);
   });
 
-  it('still returns the three dev-mock fixtures even when a search arg is passed', async () => {
+  it('still returns the three dev-mock fixtures when Prisma throws AND a search arg is passed', async () => {
+    findMany.mockRejectedValueOnce(new Error('PrismaClientInitializationError'));
     const { listAdminClients: listMock } = await import('@/lib/portal-data');
     const result = await listMock('orly');
     expect(result).toHaveLength(3);
     expect(result).toContainEqual(expect.objectContaining({ slug: MOCK_STARTER_CLIENT.slug }));
-    expect(findMany).not.toHaveBeenCalled();
+    expect(findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns an empty list (not mocks) when Prisma throws on a configured DB — page renders EmptyState', async () => {
+    // KAIA-13715 — production DB read errors must NOT silently swap to
+    // mocks. The page already renders an explicit "Sin clientes"
+    // empty state; that's the correct signal. This test re-runs under
+    // the default `isDatabaseConfigured: true` mock above.
+    vi.doUnmock('@/lib/prisma');
+    vi.resetModules();
+    const freshFindMany = vi.fn().mockRejectedValueOnce(new Error('connection refused'));
+    vi.doMock('@/lib/prisma', () => ({
+      prisma: {
+        chatbotClient: {
+          findMany: (...args: unknown[]) => freshFindMany(...args),
+        },
+      },
+      isDatabaseConfigured: true,
+    }));
+    const { listAdminClients: listErr } = await import('@/lib/portal-data');
+    const result = await listErr();
+    expect(result).toEqual([]);
+    expect(freshFindMany).toHaveBeenCalledTimes(1);
+    vi.doUnmock('@/lib/prisma');
+    vi.resetModules();
   });
 });
