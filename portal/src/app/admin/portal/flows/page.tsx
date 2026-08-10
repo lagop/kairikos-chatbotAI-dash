@@ -5,7 +5,11 @@ import { PageHeading } from '@/components/portal/PageHeading';
 import { EmptyState } from '@/components/portal/EmptyState';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
-import { MOCK_N8N_EXECUTIONS, MOCK_FLOW_HEALTH_ROWS } from '@/lib/flow-health';
+import {
+  MOCK_N8N_EXECUTIONS,
+  MOCK_FLOW_HEALTH_ROWS,
+  type N8nExecutionSummary,
+} from '@/lib/flow-health';
 
 export const dynamic = 'force-dynamic';
 
@@ -134,6 +138,61 @@ export default async function AdminFlowsPage({ searchParams }: PageProps) {
 
   const stuckCount = rows.filter((r) => r.stuck).length;
   n8nFailureCount = rows.filter((r) => r.lastN8nStatus === 'failed').length;
+
+  // KAIA-13756 — surface the "Ejecuciones fallidas recientes" panel from
+  // real n8n execution capture when the DB is configured. The previous
+  // implementation read the n8n-execution fixture unconditionally, which
+  // is the same regression class as KAIA-13680 / KAIA-13744 (production
+  // shows dev-mock `Acme Corp` / `Globex Inc` / `Hooli Iberia` /
+  // `Initech S.L.` rows). The dev-mock branch below keeps `next dev`
+  // working when DATABASE_URL is unset.
+  let failedExecutions: N8nExecutionSummary[] = [];
+  if (!isDatabaseConfigured) {
+    // Dev-mock fallback: render MOCK_N8N_EXECUTIONS so `next dev`
+    // without DATABASE_URL stays exercisable. Guarded by
+    // `!isDatabaseConfigured` — the structural test (KAIA-13745) marks
+    // this branch as gated.
+    failedExecutions = MOCK_N8N_EXECUTIONS.filter((e) => e.status === 'failed').slice(0, 5);
+  } else if (isDatabaseConfigured) {
+    try {
+      const dbRows = await prisma.n8nExecution.findMany({
+        where: { status: 'failed' },
+        orderBy: { startedAt: 'desc' },
+        take: 5,
+        select: {
+          id: true,
+          clientId: true,
+          clientName: true,
+          workflow: true,
+          milestone: true,
+          status: true,
+          startedAt: true,
+          finishedAt: true,
+          errorCode: true,
+          errorMessage: true,
+        },
+      });
+      failedExecutions = dbRows.map((e) => ({
+        id: e.id,
+        clientId: e.clientId ?? '',
+        clientName: e.clientName ?? '—',
+        workflow: e.workflow,
+        milestone: e.milestone,
+        status: 'failed',
+        startedAt: e.startedAt.toISOString(),
+        finishedAt: e.finishedAt?.toISOString() ?? null,
+        errorCode: e.errorCode,
+        errorMessage: e.errorMessage,
+      }));
+    } catch (err) {
+      // Surface the error in server logs but keep the panel empty — a
+      // throw would blank the rest of the operator dashboard. The
+      // operator can still navigate to the per-client flow view for
+      // diagnostics.
+      console.error('[flows] failed to load n8n failures', err);
+      failedExecutions = [];
+    }
+  }
 
   const visibleRows = rows.filter((r) => {
     if (filter === 'stuck') return r.stuck;
@@ -302,7 +361,7 @@ export default async function AdminFlowsPage({ searchParams }: PageProps) {
         </section>
       )}
 
-      {n8nFailureCount > 0 ? (
+      {failedExecutions.length > 0 ? (
         <section
           className="card"
           aria-label="Ejecuciones fallidas recientes de n8n"
@@ -310,26 +369,24 @@ export default async function AdminFlowsPage({ searchParams }: PageProps) {
         >
           <header className="mb-4 flex items-center justify-between">
             <h2 className="text-lg font-semibold">Ejecuciones fallidas recientes</h2>
-            <span className="pill-danger">{MOCK_N8N_EXECUTIONS.filter((e) => e.status === 'failed').length}</span>
+            <span className="pill-danger">{failedExecutions.length}</span>
           </header>
           <ul className="space-y-2 text-sm">
-            {MOCK_N8N_EXECUTIONS.filter((e) => e.status === 'failed')
-              .slice(0, 5)
-              .map((exec) => (
-                <li
-                  key={exec.id}
-                  className="flex flex-wrap items-center justify-between gap-2 border-b border-kairikos-border pb-2 last:border-0"
-                  data-testid="flow-n8n-failure"
-                >
-                  <div>
-                    <span className="font-medium">{exec.workflow}</span>
-                    <span className="ml-2 text-kairikos-muted">{exec.clientName}</span>
-                  </div>
-                  <div className="text-xs text-kairikos-muted">
-                    {formatRelative(exec.finishedAt)} · {exec.errorCode ?? 'sin código'}
-                  </div>
-                </li>
-              ))}
+            {failedExecutions.map((exec) => (
+              <li
+                key={exec.id}
+                className="flex flex-wrap items-center justify-between gap-2 border-b border-kairikos-border pb-2 last:border-0"
+                data-testid="flow-n8n-failure"
+              >
+                <div>
+                  <span className="font-medium">{exec.workflow}</span>
+                  <span className="ml-2 text-kairikos-muted">{exec.clientName}</span>
+                </div>
+                <div className="text-xs text-kairikos-muted">
+                  {formatRelative(exec.finishedAt)} · {exec.errorCode ?? 'sin código'}
+                </div>
+              </li>
+            ))}
           </ul>
         </section>
       ) : null}
