@@ -8,8 +8,9 @@ import { EmptyState } from '@/components/portal/EmptyState';
 import { OperatorEditor } from '@/components/portal/OperatorEditor';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
-import { MOCK_CLIENT, MOCK_SECONDARY_CLIENT, MOCK_CHATBOT, MOCK_TIMELINE } from '@/lib/portal-data';
+import { MOCK_CLIENT, MOCK_SECONDARY_CLIENT, MOCK_TIMELINE } from '@/lib/portal-data';
 import { MOCK_FLOW_ACTIVITY, MOCK_N8N_EXECUTIONS, type FlowActivityEntry } from '@/lib/flow-health';
+import { buildAdminClientChatbotStatus } from '@/lib/chatbot-status';
 
 export const dynamic = 'force-dynamic';
 
@@ -139,6 +140,15 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
   let conversationCount = 0;
   let timeline = MOCK_TIMELINE;
   let flowHistory: FlowActivityEntry[] = [];
+  // KAIA-13744 — when isDatabaseConfigured is true and the real client row
+  // resolves, we surface a ChatbotStatusSummary built from the DB (not
+  // MOCK_CHATBOT). The 7-day window drives the fallback / escalation rates
+  // shown on the card; the page-level total `conversationCount` is also
+  // carried so the helper can fall back to it when the 7-day window is
+  // not supplied.
+  let resolvedClientId: string | null = null;
+  let resolvedGoLiveAt: string | null = null;
+  let last7DaysCounts = { conversations: 0, fallback: 0, escalation: 0 };
   if (isDatabaseConfigured) {
     try {
       const client = await prisma.chatbotClient.findUnique({
@@ -161,14 +171,43 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
         state = client.state;
         notes = client.notes;
         goLiveAt = client.goLiveAt?.toISOString() ?? null;
-        const [count, activities] = await Promise.all([
+        resolvedClientId = client.id;
+        resolvedGoLiveAt = goLiveAt;
+        // KAIA-13744 — the ChatbotStatusCard needs a real 7-day conversation
+        // window. The total `count` is used by the activity loop, and a
+        // separate `groupBy` over the last 7 days drives the fallback and
+        // escalation rates on the card.
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const [count, recentGroups, activities] = await Promise.all([
           prisma.chatbotConversation.count({ where: { clientId: client.id } }),
+          prisma.chatbotConversation.groupBy({
+            by: ['outcome'],
+            where: {
+              clientId: client.id,
+              startedAt: { gte: sevenDaysAgo },
+            },
+            _count: { _all: true },
+          }),
           prisma.chatbotActivity.findMany({
             where: { clientId: client.id },
             orderBy: { completedAt: 'asc' },
           }),
         ]);
         conversationCount = count;
+        let sevenDayConversations = 0;
+        let sevenDayFallback = 0;
+        let sevenDayEscalation = 0;
+        for (const group of recentGroups) {
+          const n = group._count._all;
+          sevenDayConversations += n;
+          if (group.outcome === 'fallback') sevenDayFallback += n;
+          else if (group.outcome === 'escalated') sevenDayEscalation += n;
+        }
+        last7DaysCounts = {
+          conversations: sevenDayConversations,
+          fallback: sevenDayFallback,
+          escalation: sevenDayEscalation,
+        };
         if (activities.length > 0) {
           timeline = activities.map((a, i, arr) => {
             const isFirstPending = !a.completedAt && arr.findIndex((x) => !x.completedAt) === i;
@@ -270,16 +309,15 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
               </span>
             </header>
             <ChatbotStatusCard
-              summary={{
-                spaceId: MOCK_CHATBOT.spaceId,
-                status,
-                goLiveDate: goLiveAt ?? MOCK_CHATBOT.goLiveDate,
-                last7Days: {
-                  conversations: conversationCount || MOCK_CHATBOT.last7Days.conversations,
-                  fallbackRate: MOCK_CHATBOT.last7Days.fallbackRate,
-                  escalationRate: MOCK_CHATBOT.last7Days.escalationRate,
-                },
-              }}
+              summary={buildAdminClientChatbotStatus({
+                isDatabaseConfigured,
+                client:
+                  resolvedClientId !== null
+                    ? { id: resolvedClientId, goLiveAt: resolvedGoLiveAt }
+                    : null,
+                last7DaysCounts,
+                conversationCount,
+              })}
             />
           </section>
 
