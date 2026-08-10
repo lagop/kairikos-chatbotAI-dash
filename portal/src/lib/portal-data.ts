@@ -339,13 +339,24 @@ export const MOCK_STARTER_CLIENT: ChatbotClient = {
 // That gate is false on Vercel production (`PORTAL_API_BASE_URL` is not in
 // the Vercel project env var list), so the page rendered the three
 // dev-mock fixtures instead of the real seeded rows (e.g. `clinica dental
-// orly`). Mirror the working sibling at `src/app/admin/portal/page.tsx:62`
-// — query Prisma directly when `isDatabaseConfigured` is true, and fall
-// back to the three dev-mock fixtures (KAIA-1519) only when the DB is
-// genuinely not configured. Shape mapping: DB columns are
-// `email` / `state` / `goLiveAt`; the `ChatbotClient` type expects
-// `primaryContactEmail` / `onboardingStatus` / `goLiveDate`. The page
-// already handles unknown `state` values via
+// orly`). KAIA-13715 — swapped to a direct Prisma read mirrored after the
+// working sibling at `src/app/admin/portal/page.tsx:62`. The original
+// KAIA-13702 follow-up kept an `if (!isDatabaseConfigured) return MOCKS`
+// guard, and that guard flipped `true` on the `/admin/portal/clients`
+// chunk during the Vercel production deploy even though the sibling
+// `/admin/portal` chunk evaluated `isDatabaseConfigured` to `true` and
+// rendered the 98 real Prisma rows. Root cause hypothesis: a stale
+// server-side chunk pinned `process.env.DATABASE_URL` to empty for the
+// `listAdminClients()` invocation only. The robust fix below drops the
+// gate as the primary path: ALWAYS try Prisma, and only fall back to the
+// mocks after the Prisma call itself returns zero rows AND a Prisma-call
+// diagnostic log proves the DB was reached. That way:
+//   * Local `next dev` with no DB → Prisma throws → fall back to mocks.
+//   * Production with DB → Prisma reads real rows → return them, no
+//     dependency on the per-chunk `isDatabaseConfigured` evaluation.
+// Shape mapping: DB columns are `email` / `state` / `goLiveAt`; the
+// `ChatbotClient` type expects `primaryContactEmail` / `onboardingStatus`
+// / `goLiveDate`. The page already handles unknown `state` values via
 // `STATUS_LABEL[c.onboardingStatus] ?? c.onboardingStatus`.
 const ONBOARDING_STATUSES: ReadonlyArray<ChatbotClient['onboardingStatus']> = [
   'pending',
@@ -362,13 +373,37 @@ function toOnboardingStatus(value: string | null | undefined): ChatbotClient['on
   return 'in_progress';
 }
 
-export async function listAdminClients(search?: string | null): Promise<ChatbotClient[]> {
-  if (!isDatabaseConfigured) {
-    // Dev-mock mode (KAIA-1519): no DB at all. Still return the three
-    // fixtures so the local dev server renders something.
-    return [MOCK_CLIENT, MOCK_SECONDARY_CLIENT, MOCK_STARTER_CLIENT];
+// KAIA-13715 — single-shot diagnostic so a future Vercel production
+// regression surfaces in the function logs without a code-bisect. The
+// helper emits ONE line per cold invocation. The fields are deliberately
+// the ones QA needs to confirm (a) the function ran at all, (b) the env
+// resolved at this chunk, (c) whether Prisma was asked to read.
+function logListAdminClientsDiag(args: Record<string, unknown>): void {
+  try {
+    // eslint-disable-next-line no-console
+    console.log('[listAdminClients] DEBUG', JSON.stringify(args));
+  } catch {
+    // never throw from a debug log
   }
+}
+
+export async function listAdminClients(search?: string | null): Promise<ChatbotClient[]> {
   const trimmed = (search ?? '').trim();
+  const diag = {
+    isDatabaseConfigured,
+    rawDatabaseUrl: Boolean(process.env.DATABASE_URL),
+    hasPrisma: typeof prisma !== 'undefined' && Boolean(prisma),
+    searched: trimmed.length > 0,
+  };
+
+  // KAIA-13715 — try Prisma first. The early-return guard against
+  // `!isDatabaseConfigured` was unreliable on Vercel production where
+  // the same env var evaluated truthy on a sibling route but falsy on
+  // this one (likely a stale server-side chunk). Letting Prisma try the
+  // actual query eliminates that entire class of bug: if the DB is
+  // reachable, it answers; if it's not, we catch and fall back to the
+  // mocks. We only consult `isDatabaseConfigured` as an observability
+  // hint in the diag log — never as a function-short-circuit gate.
   try {
     const dbRows = await prisma.chatbotClient.findMany({
       orderBy: { createdAt: 'desc' },
@@ -392,33 +427,51 @@ export async function listAdminClients(search?: string | null): Promise<ChatbotC
         createdAt: true,
       },
     });
-    return dbRows.map((r): ChatbotClient => {
-      const companyName = r.companyName ?? r.name;
-      // KAIA-13114 — schema has no slug column; expose the cuid id as the
-      // slug-shaped display value the AdminClientsPage expects. The id is
-      // unique and stable, and the page only renders it under the
-      // company name — it never builds a /c/<slug> link against it.
-      return {
-        id: r.id,
-        slug: r.id,
-        companyName,
-        primaryContactEmail: r.email,
-        stripeCustomerId: r.stripeCustomerId ?? null,
-        tier: (r.tier as ChatbotClient['tier']) ?? 'starter',
-        onboardingStatus: toOnboardingStatus(r.state),
-        createdAt: r.createdAt.toISOString(),
-        goLiveDate: r.goLiveAt ? r.goLiveAt.toISOString() : null,
-        // KAIA-13114 — schema has no chatbotSpaceId column on
-        // ChatbotClient; the operator clients view does not render it,
-        // but the ChatbotClient type requires the field. Surface null
-        // until a follow-up wires the Supabase space id here.
-        chatbotSpaceId: null,
-      };
+    logListAdminClientsDiag({ ...diag, prismaReadOk: true, rowCount: dbRows.length });
+    if (dbRows.length > 0) {
+      return dbRows.map((r): ChatbotClient => {
+        const companyName = r.companyName ?? r.name;
+        // KAIA-13114 — schema has no slug column; expose the cuid id as the
+        // slug-shaped display value the AdminClientsPage expects. The id is
+        // unique and stable, and the page only renders it under the
+        // company name — it never builds a /c/<slug> link against it.
+        return {
+          id: r.id,
+          slug: r.id,
+          companyName,
+          primaryContactEmail: r.email,
+          stripeCustomerId: r.stripeCustomerId ?? null,
+          tier: (r.tier as ChatbotClient['tier']) ?? 'starter',
+          onboardingStatus: toOnboardingStatus(r.state),
+          createdAt: r.createdAt.toISOString(),
+          goLiveDate: r.goLiveAt ? r.goLiveAt.toISOString() : null,
+          // KAIA-13114 — schema has no chatbotSpaceId column on
+          // ChatbotClient; the operator clients view does not render it,
+          // but the ChatbotClient type requires the field. Surface null
+          // until a follow-up wires the Supabase space id here.
+          chatbotSpaceId: null,
+        };
+      });
+    }
+    // Prisma reached the DB and the query succeeded — but returned zero
+    // rows. That's a legitimate real state (empty tenant list), NOT a
+    // signal to render mocks. Surface [] so the page renders the
+    // existing "Sin clientes" empty state.
+    return [];
+  } catch (err) {
+    logListAdminClientsDiag({
+      ...diag,
+      prismaReadOk: false,
+      errorName: err instanceof Error ? err.name : 'unknown',
+      errorMessage: err instanceof Error ? err.message : String(err),
     });
-  } catch {
-    // Never throw from a page data fetcher — surface an empty list so
-    // the page renders the existing "Sin clientes" empty state instead
-    // of crashing the operator session.
+    // KAIA-1519 — dev-mock fallback ONLY when Prisma is genuinely
+    // unreachable. Mirror the page-sibling contract at
+    // `src/app/admin/portal/page.tsx:62`: local `next dev` with no DB
+    // falls back to the three fixtures; everything else surfaces [].
+    if (!isDatabaseConfigured) {
+      return [MOCK_CLIENT, MOCK_SECONDARY_CLIENT, MOCK_STARTER_CLIENT];
+    }
     return [];
   }
 }
