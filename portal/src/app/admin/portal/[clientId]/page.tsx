@@ -9,7 +9,7 @@ import { OperatorEditor } from '@/components/portal/OperatorEditor';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { MOCK_CLIENT, MOCK_SECONDARY_CLIENT, MOCK_TIMELINE } from '@/lib/portal-data';
-import { MOCK_FLOW_ACTIVITY, MOCK_N8N_EXECUTIONS, type FlowActivityEntry } from '@/lib/flow-health';
+import { MOCK_FLOW_ACTIVITY, MOCK_N8N_EXECUTIONS, type FlowActivityEntry, type N8nExecutionSummary } from '@/lib/flow-health';
 import { buildAdminClientChatbotStatus } from '@/lib/chatbot-status';
 
 export const dynamic = 'force-dynamic';
@@ -238,9 +238,17 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
       // fall back to mock lookup
     }
   }
-  // Mock fallback: match by id from the two seeded mock clients
-  if (companyName === 'Cliente') {
-    const mockMatch = [MOCK_CLIENT, MOCK_SECONDARY_CLIENT].find((m) => m.id === params.clientId);
+  // KAIA-13753 hardening (mirrors [clientId]/wizard) — gate every dev-mock
+  // fallback on !isDatabaseConfigured. A `companyName === 'Cliente'` /
+  // `flowHistory.length === 0` post-DB gate would mask legitimate real
+  // states (a tenant with NULL companyName; a fresh tenant with no
+  // Activity rows; a tenant with no n8n executions) behind the
+  // Acme Corp / Globex Inc fixture. Only `!isDatabaseConfigured`
+  // (local `next dev` without DATABASE_URL) surfaces mocks.
+  if (!isDatabaseConfigured) {
+    const mockMatch = [MOCK_CLIENT, MOCK_SECONDARY_CLIENT].find(
+      (m) => m.id === params.clientId,
+    );
     if (mockMatch) {
       companyName = mockMatch.companyName;
       email = mockMatch.primaryContactEmail;
@@ -250,12 +258,59 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
     } else {
       notFound();
     }
-  }
-
-  if (flowHistory.length === 0) {
     flowHistory = MOCK_FLOW_ACTIVITY[params.clientId] ?? [];
   }
-  const n8nExecutions = MOCK_N8N_EXECUTIONS.filter((e) => e.clientId === params.clientId);
+
+  // KAIA-13753 hardening — n8n executions: try Prisma first, fall back to
+  // dev-mock fixtures only when !isDatabaseConfigured. Mirrors the
+  // /admin/portal/flows panel pattern from KAIA-13756.
+  let n8nExecutions: N8nExecutionSummary[] = [];
+  if (!isDatabaseConfigured) {
+    n8nExecutions = MOCK_N8N_EXECUTIONS.filter(
+      (e) => e.clientId === params.clientId,
+    );
+  } else {
+    try {
+      const dbRows = await prisma.n8nExecution.findMany({
+        where: { clientId: params.clientId },
+        orderBy: { startedAt: 'desc' },
+        select: {
+          id: true,
+          clientId: true,
+          clientName: true,
+          workflow: true,
+          milestone: true,
+          status: true,
+          startedAt: true,
+          finishedAt: true,
+          errorCode: true,
+          errorMessage: true,
+        },
+      });
+      n8nExecutions = dbRows.map((e) => ({
+        id: e.id,
+        clientId: e.clientId ?? '',
+        clientName: e.clientName ?? '—',
+        workflow: e.workflow,
+        milestone: e.milestone,
+        status:
+          e.status === 'failed' || e.status === 'success' || e.status === 'running'
+            ? e.status
+            : 'running',
+        startedAt: e.startedAt.toISOString(),
+        finishedAt: e.finishedAt?.toISOString() ?? null,
+        errorCode: e.errorCode,
+        errorMessage: e.errorMessage,
+      }));
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(
+        '[admin/portal/[clientId]] failed to load n8n executions:',
+        err,
+      );
+      n8nExecutions = [];
+    }
+  }
 
   const status: 'live' | 'in_progress' = goLiveAt ? 'live' : 'in_progress';
 
