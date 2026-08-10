@@ -6,7 +6,7 @@ const test = portalFixture;
 const PORTAL_URL = process.env.PORTAL_URL || 'https://project-fxidg.vercel.app';
 const ACME_ID = '00000000-0000-0000-0000-000000000001';
 
-async function loginAsOperator(page: import('@playwright/test').Page): Promise<void> {
+async function gotoFirstClient(page: import('@playwright/test').Page): Promise<string> {
   await page.context().clearCookies();
   await page.goto(`${PORTAL_URL}/admin/login`);
   await page.waitForLoadState('networkidle');
@@ -14,14 +14,23 @@ async function loginAsOperator(page: import('@playwright/test').Page): Promise<v
   const passwordInput = page.locator('input[name="password"]');
   await emailInput.fill(process.env.OPS_STAGING_OPERATOR_EMAIL ?? 'ops-staging@kairikos.com');
   await passwordInput.fill(process.env.OPS_STAGING_OPERATOR_PASSWORD ?? '');
-  await page.locator('button[type="submit"]').click();
+  await page.locator('[data-testid="login-submit"]').click();
   await page.waitForURL(/\/admin\/portal/, { timeout: 10000 });
+
+  const firstClientLink = page.locator('table a[href^="/admin/portal/"]').first();
+  const href = await firstClientLink.getAttribute('href');
+  if (!href) {
+    throw new Error('no client rows in /admin/portal/clients table');
+  }
+  const clientId = href.replace('/admin/portal/', '').split('?')[0];
+  await page.goto(`${PORTAL_URL}/admin/portal/${clientId}`);
   await page.waitForLoadState('networkidle');
+  return clientId;
 }
 
 test.describe('Admin Editor — tier', () => {
   test.beforeEach(async ({ page }) => {
-    await loginAsOperator(page);
+    await gotoFirstClient(page);
   });
 
   test('changing tier shows confirmation modal before submit', async ({ page }) => {
