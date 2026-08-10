@@ -10,6 +10,7 @@ import type {
   SupportLink,
 } from '@/types/portal';
 import { isBackendConfigured, PORTAL_API_BASE_URL, SUPABASE_ANON_KEY } from './supabase';
+import { prisma, isDatabaseConfigured } from './prisma';
 
 const TIER_LABEL: Record<BillingSummary['tier'], string> = {
   starter: 'Web Starter',
@@ -332,72 +333,94 @@ export const MOCK_STARTER_CLIENT: ChatbotClient = {
   chatbotSpaceId: null,
 };
 
-export async function listAdminClients(): Promise<ChatbotClient[]> {
-  // KAIA-13680 — listAdminClients() must follow the same
-  // backend-configured gate as the sibling admin API route at
-  // `portal/src/app/api/admin/portal/clients/route.ts:11` and the auth
-  // helper at `portal/src/lib/api-auth.ts:27`. The previous version
-  // returned the three dev-mock fixtures unconditionally, so the page at
-  // `/admin/portal/clients` rendered only the Acme/Globex/Starter mocks
-  // even on a real Prisma-backed deployment (e.g. staging seeded with
-  // `clinica dental orly`). Now:
-  //
-  //   * When `PORTAL_API_BASE_URL` is set (`isBackendConfigured`), fetch
-  //     the local Next.js route `/api/admin/portal/clients` (which itself
-  //     proxies upstream to the NestJS API + Prisma — single source of
-  //     truth), forwarding the inbound cookies and an operator Bearer
-  //     token from the current session. Any non-2xx or parse failure
-  //     falls back to the mocks so a stale stage mirror can't 500 the
-  //     page.
-  //   * When `PORTAL_API_BASE_URL` is unset (`!isBackendConfigured`,
-  //     local `next dev` without a backend), keep the original
-  //     dev-mock fallback so unit / smoke tests still render the three
-  //     fixtures.
-  if (isBackendConfigured) {
-    try {
-      const { headers } = await import('next/headers');
-      const reqHeaders = headers();
-      const cookieHeader = reqHeaders
-        .get('cookie')
-        ?? reqHeaders.get('Cookie')
-        ?? '';
-      const inboundAuth = reqHeaders.get('authorization') ?? reqHeaders.get('Authorization') ?? '';
-      const { getSession } = await import('./session');
-      const session = await getSession();
-      const operatorHeader = reqHeaders.get('x-kairikos-operator') ?? reqHeaders.get('X-Kairikos-Operator') ?? '';
-      const bearer =
-        (session.accessToken && session.accessToken.length > 0 ? session.accessToken : null) ??
-        (inboundAuth.toLowerCase().startsWith('bearer ') ? inboundAuth.slice(7).trim() : null) ??
-        (session.isOperator ? 'operator-dev' : null) ??
-        'dev-mock';
-      const fetchHeaders: Record<string, string> = {
-        Accept: 'application/json',
-        'X-Kairikos-Client': 'portal-web',
-        Authorization: `Bearer ${bearer}`,
-      };
-      if (operatorHeader) fetchHeaders['X-Kairikos-Operator'] = operatorHeader;
-      else if (session.isOperator) fetchHeaders['X-Kairikos-Operator'] = '1';
-      if (cookieHeader) fetchHeaders.cookie = cookieHeader;
-      const hostHeader = reqHeaders.get('host') ?? reqHeaders.get('Host') ?? '';
-      const originHeader = reqHeaders.get('origin') ?? reqHeaders.get('Origin') ?? '';
-      const nextauth = (process.env.NEXTAUTH_URL ?? '').replace(/\/$/, '');
-      const origin = originHeader || nextauth || (hostHeader ? `http://${hostHeader}` : 'http://localhost:3001');
-      const res = await fetch(`${origin}/api/admin/portal/clients`, {
-        headers: fetchHeaders,
-        cache: 'no-store',
-      });
-      if (res.ok) {
-        const data = (await res.json()) as ChatbotClient[] | { clients: ChatbotClient[] };
-        const list = Array.isArray(data) ? data : data.clients ?? [];
-        if (list.length > 0 || res.status === 200) return list;
-      }
-    } catch {
-      // Swallow and fall back to mocks below — never 500 the
-      // /admin/portal/clients page because the upstream is unreachable.
-    }
+// KAIA-13702 — listAdminClients() used to go through the local
+// `/api/admin/portal/clients` route (which itself proxies to the NestJS
+// backend), gated on `isBackendConfigured = Boolean(PORTAL_API_BASE_URL)`.
+// That gate is false on Vercel production (`PORTAL_API_BASE_URL` is not in
+// the Vercel project env var list), so the page rendered the three
+// dev-mock fixtures instead of the real seeded rows (e.g. `clinica dental
+// orly`). Mirror the working sibling at `src/app/admin/portal/page.tsx:62`
+// — query Prisma directly when `isDatabaseConfigured` is true, and fall
+// back to the three dev-mock fixtures (KAIA-1519) only when the DB is
+// genuinely not configured. Shape mapping: DB columns are
+// `email` / `state` / `goLiveAt`; the `ChatbotClient` type expects
+// `primaryContactEmail` / `onboardingStatus` / `goLiveDate`. The page
+// already handles unknown `state` values via
+// `STATUS_LABEL[c.onboardingStatus] ?? c.onboardingStatus`.
+const ONBOARDING_STATUSES: ReadonlyArray<ChatbotClient['onboardingStatus']> = [
+  'pending',
+  'in_progress',
+  'live',
+  'paused',
+  'cancelled',
+];
+
+function toOnboardingStatus(value: string | null | undefined): ChatbotClient['onboardingStatus'] {
+  if (value && (ONBOARDING_STATUSES as readonly string[]).includes(value)) {
+    return value as ChatbotClient['onboardingStatus'];
+  }
+  return 'in_progress';
+}
+
+export async function listAdminClients(search?: string | null): Promise<ChatbotClient[]> {
+  if (!isDatabaseConfigured) {
+    // Dev-mock mode (KAIA-1519): no DB at all. Still return the three
+    // fixtures so the local dev server renders something.
     return [MOCK_CLIENT, MOCK_SECONDARY_CLIENT, MOCK_STARTER_CLIENT];
   }
-  return [MOCK_CLIENT, MOCK_SECONDARY_CLIENT, MOCK_STARTER_CLIENT];
+  const trimmed = (search ?? '').trim();
+  try {
+    const dbRows = await prisma.chatbotClient.findMany({
+      orderBy: { createdAt: 'desc' },
+      where: trimmed
+        ? {
+            OR: [
+              { companyName: { contains: trimmed, mode: 'insensitive' } },
+              { email: { contains: trimmed, mode: 'insensitive' } },
+            ],
+          }
+        : undefined,
+      select: {
+        id: true,
+        companyName: true,
+        name: true,
+        email: true,
+        tier: true,
+        stripeCustomerId: true,
+        state: true,
+        goLiveAt: true,
+        createdAt: true,
+      },
+    });
+    return dbRows.map((r): ChatbotClient => {
+      const companyName = r.companyName ?? r.name;
+      // KAIA-13114 — schema has no slug column; expose the cuid id as the
+      // slug-shaped display value the AdminClientsPage expects. The id is
+      // unique and stable, and the page only renders it under the
+      // company name — it never builds a /c/<slug> link against it.
+      return {
+        id: r.id,
+        slug: r.id,
+        companyName,
+        primaryContactEmail: r.email,
+        stripeCustomerId: r.stripeCustomerId ?? null,
+        tier: (r.tier as ChatbotClient['tier']) ?? 'starter',
+        onboardingStatus: toOnboardingStatus(r.state),
+        createdAt: r.createdAt.toISOString(),
+        goLiveDate: r.goLiveAt ? r.goLiveAt.toISOString() : null,
+        // KAIA-13114 — schema has no chatbotSpaceId column on
+        // ChatbotClient; the operator clients view does not render it,
+        // but the ChatbotClient type requires the field. Surface null
+        // until a follow-up wires the Supabase space id here.
+        chatbotSpaceId: null,
+      };
+    });
+  } catch {
+    // Never throw from a page data fetcher — surface an empty list so
+    // the page renders the existing "Sin clientes" empty state instead
+    // of crashing the operator session.
+    return [];
+  }
 }
 
 // KAIA-1519 — dev-mock lookup table. Maps an email to its dev-mock client
