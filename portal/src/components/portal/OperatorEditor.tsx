@@ -167,7 +167,14 @@ export function OperatorEditor({ clientId, initial }: OperatorEditorProps) {
     void sendPatch('notes', { notes: next || null }, 'Notas internas guardadas.');
   };
 
-  const cancelConfirm = () => setPendingConfirm(null);
+  const cancelConfirm = () => {
+    if (pendingConfirm?.field === 'email') {
+      setEmail(initial.email);
+    } else if (pendingConfirm?.field === 'tier') {
+      setTier(initial.tier);
+    }
+    setPendingConfirm(null);
+  };
 
   const onConfirmPending = async () => {
     if (!pendingConfirm) return;
