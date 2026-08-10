@@ -378,11 +378,10 @@ export async function listAdminClients(): Promise<ChatbotClient[]> {
       if (operatorHeader) fetchHeaders['X-Kairikos-Operator'] = operatorHeader;
       else if (session.isOperator) fetchHeaders['X-Kairikos-Operator'] = '1';
       if (cookieHeader) fetchHeaders.cookie = cookieHeader;
-      const origin =
-        reqHeaders.get('origin') ??
-        reqHeaders.get('Origin') ??
-        (process.env.NEXTAUTH_URL ?? '').replace(/\/$/, '') ??
-        `http://${reqHeaders.get('host') ?? reqHeaders.get('Host') ?? 'localhost:3001'}`;
+      const hostHeader = reqHeaders.get('host') ?? reqHeaders.get('Host') ?? '';
+      const originHeader = reqHeaders.get('origin') ?? reqHeaders.get('Origin') ?? '';
+      const nextauth = (process.env.NEXTAUTH_URL ?? '').replace(/\/$/, '');
+      const origin = originHeader || nextauth || (hostHeader ? `http://${hostHeader}` : 'http://localhost:3001');
       const res = await fetch(`${origin}/api/admin/portal/clients`, {
         headers: fetchHeaders,
         cache: 'no-store',
