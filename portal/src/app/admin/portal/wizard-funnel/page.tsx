@@ -201,17 +201,27 @@ export default async function AdminWizardFunnelPage() {
     redirect('/portal/sin-acceso');
   }
 
+  // KAIA-13758 — mirror the `listAdminClients` (KAIA-13715) hardening: try
+  // Prisma unconditionally, surface a real empty state when Prisma returns
+  // zero rows, and only fall back to dev-mock fixtures when Prisma itself
+  // throws AND the DB is not configured (i.e. local `next dev` without
+  // DATABASE_URL). A `rows.length === 0` post-DB gate would mask legitimate
+  // empty tenant lists and a transient Prisma outage behind the same
+  // Acme Corp / Globex Inc fixture.
   let rows: ClientFunnelRow[] = [];
-  if (isDatabaseConfigured) {
-    try {
-      rows = await loadRowsFromDb();
-    } catch {
-      rows = [];
+  try {
+    rows = await loadRowsFromDb();
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[admin/portal/wizard-funnel] Prisma read failed:', err);
+    if (!isDatabaseConfigured) {
+      rows = loadMockRows();
     }
   }
-  if (rows.length === 0) {
-    rows = loadMockRows();
-  }
+  // KAIA-13758 — when Prisma returned successfully with zero rows we
+  // intentionally render the 'Sin clientes' empty state below, NOT the
+  // MOCK_* fallback. The previous `rows.length === 0` gate here was the bug
+  // the audit flagged.
 
   const stuckCount = rows.filter((r) => r.stuck).length;
   const liveCount = rows.filter((r) => r.goLiveAt !== null).length;

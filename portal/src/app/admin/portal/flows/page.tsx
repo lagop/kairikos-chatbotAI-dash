@@ -91,50 +91,59 @@ export default async function AdminFlowsPage({ searchParams }: PageProps) {
   // page falls back to the mock data in MOCK_FLOW_HEALTH_ROWS. The
   // "Falló" filter is still exercised against the mock data so the
   // operator UI is verifiable end-to-end.
+  // KAIA-13758 — mirror the `listAdminClients` (KAIA-13715) hardening: try
+  // Prisma unconditionally, surface a real empty state when Prisma returns
+  // zero rows, and only fall back to dev-mock fixtures when Prisma itself
+  // throws AND the DB is not configured (i.e. local `next dev` without
+  // DATABASE_URL). A `rows.length === 0` post-DB gate would mask legitimate
+  // empty tenant lists and a transient Prisma outage behind the same
+  // MOCK_FLOW_HEALTH_ROWS fixture the audit flagged in KAIA-13753.
   let rows: FlowHealthRow[] = [];
   let n8nFailureCount = 0;
-  if (isDatabaseConfigured) {
-    try {
-      const clients = await prisma.chatbotClient.findMany({
-        orderBy: { createdAt: 'desc' },
-        select: {
-          id: true,
-          companyName: true,
-          name: true,
-          tier: true,
-          goLiveAt: true,
-          activities: {
-            orderBy: { completedAt: 'desc' },
-            take: 1,
-            select: { completedAt: true, milestone: true },
-          },
+  try {
+    const clients = await prisma.chatbotClient.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        companyName: true,
+        name: true,
+        tier: true,
+        goLiveAt: true,
+        activities: {
+          orderBy: { completedAt: 'desc' },
+          take: 1,
+          select: { completedAt: true, milestone: true },
         },
-      });
-      rows = clients.map((c) => {
-        const lastActivity = c.activities[0]?.completedAt ?? null;
-        const lastMilestone = c.activities[0]?.milestone ?? null;
-        const days = lastActivity
-          ? Math.floor((Date.now() - lastActivity.getTime()) / (1000 * 60 * 60 * 24))
-          : null;
-        return {
-          id: c.id,
-          companyName: c.companyName ?? c.name,
-          tier: c.tier,
-          currentMilestone: lastMilestone,
-          daysInMilestone: days,
-          lastActivityAt: lastActivity?.toISOString() ?? null,
-          stuck: isStuck(days, lastActivity?.toISOString() ?? null),
-          lastN8nStatus: 'unknown' as const,
-          lastN8nAt: null,
-        };
-      });
-    } catch {
-      rows = [];
+      },
+    });
+    rows = clients.map((c) => {
+      const lastActivity = c.activities[0]?.completedAt ?? null;
+      const lastMilestone = c.activities[0]?.milestone ?? null;
+      const days = lastActivity
+        ? Math.floor((Date.now() - lastActivity.getTime()) / (1000 * 60 * 60 * 24))
+        : null;
+      return {
+        id: c.id,
+        companyName: c.companyName ?? c.name,
+        tier: c.tier,
+        currentMilestone: lastMilestone,
+        daysInMilestone: days,
+        lastActivityAt: lastActivity?.toISOString() ?? null,
+        stuck: isStuck(days, lastActivity?.toISOString() ?? null),
+        lastN8nStatus: 'unknown' as const,
+        lastN8nAt: null,
+      };
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[admin/portal/flows] Prisma read failed:', err);
+    if (!isDatabaseConfigured) {
+      rows = MOCK_FLOW_HEALTH_ROWS;
     }
   }
-  if (rows.length === 0) {
-    rows = MOCK_FLOW_HEALTH_ROWS;
-  }
+  // KAIA-13758 — when Prisma returned successfully with zero rows we
+  // intentionally render an empty state below, NOT the MOCK_* fallback. The
+  // previous `rows.length === 0` gate here was the bug the audit flagged.
 
   const stuckCount = rows.filter((r) => r.stuck).length;
   n8nFailureCount = rows.filter((r) => r.lastN8nStatus === 'failed').length;

@@ -110,30 +110,46 @@ export default async function AdminClientWizardPage({ params }: PageProps) {
   let latestByStep: Map<string, { status: string; submittedAt: string | null; approvedAt: string | null; activeForBot: boolean; createdAt: string; updatedAt: string }> = new Map();
 
   let foundInDb = false;
-  if (isDatabaseConfigured) {
-    try {
-      const client = await resolveClientTier(prisma, params.clientId);
-      if (client) {
-        const fullClient = await prisma.chatbotClient.findUnique({
-          where: { id: client.clientId },
-          select: { companyName: true, name: true, email: true, tier: true, goLiveAt: true },
-        });
-        if (fullClient) {
-          foundInDb = true;
-          companyName = fullClient.companyName ?? fullClient.name ?? 'Cliente';
-          email = fullClient.email ?? client.email;
-          tier = fullClient.tier ?? 'starter';
-          goLiveAt = fullClient.goLiveAt;
-        }
-      } else {
-        notFound();
+  // KAIA-13758 — mirror the `listAdminClients` (KAIA-13715) hardening: try
+  // Prisma unconditionally, surface a real empty state when Prisma returns
+  // zero rows, and only fall back to dev-mock fixtures when Prisma itself
+  // throws AND the DB is not configured (i.e. local `next dev` without
+  // DATABASE_URL). A `stepSummaries.length === 0` post-DB gate would mask
+  // a legitimate client with no saved wizard steps AND a transient Prisma
+  // outage behind the same MOCK_CLIENT fixture.
+  try {
+    const client = await resolveClientTier(prisma, params.clientId);
+    if (client) {
+      const fullClient = await prisma.chatbotClient.findUnique({
+        where: { id: client.clientId },
+        select: { companyName: true, name: true, email: true, tier: true, goLiveAt: true },
+      });
+      if (fullClient) {
+        foundInDb = true;
+        companyName = fullClient.companyName ?? fullClient.name ?? 'Cliente';
+        email = fullClient.email ?? client.email;
+        tier = fullClient.tier ?? 'starter';
+        goLiveAt = fullClient.goLiveAt;
       }
-    } catch {
-      // fall through to mock fallback below
+    } else {
+      notFound();
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[admin/portal/[clientId]/wizard] client Prisma read failed:', err);
+    if (!isDatabaseConfigured) {
+      // dev-mock fallback below — populate from the matching mock fixture
+      const mockMatch =
+        [MOCK_CLIENT, MOCK_SECONDARY_CLIENT].find((m) => m.id === params.clientId) ??
+        MOCK_CLIENT;
+      companyName = mockMatch.companyName;
+      email = mockMatch.primaryContactEmail;
+      tier = mockMatch.tier;
+      goLiveAt = mockMatch.goLiveDate ? new Date(mockMatch.goLiveDate) : null;
     }
   }
 
-  if (isDatabaseConfigured) {
+  if (foundInDb) {
     try {
       const savedRows = await readLatestStepsForClient(prisma, params.clientId);
       const savedMap = buildSavedStateMap(
@@ -209,54 +225,58 @@ export default async function AdminClientWizardPage({ params }: PageProps) {
           lastUpdatedAt: latest?.updatedAt ?? null,
         };
       });
-    } catch {
-      // Database configured but unreachable (e.g. dev-mock with a stale
-      // DATABASE_URL). Fall through to a mock fallback so the operator UI
-      // is still verifiable in dev-mock mode.
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[admin/portal/[clientId]/wizard] steps Prisma read failed:', err);
+      // KAIA-13758 — Prisma reached the client row but the step read
+      // failed. Fall through to a dev-mock empty-state so the operator
+      // sees the same EmptyState surface they would for a fresh tenant.
     }
   }
 
   if (stepSummaries.length === 0) {
-    // Mock fallback: match the URL clientId against the dev-mock fixtures
-    // so the operator sees a populated 12-step matrix in dev-mock mode.
-    const mockMatch =
-      [MOCK_CLIENT, MOCK_SECONDARY_CLIENT].find((m) => m.id === params.clientId) ??
-      MOCK_CLIENT;
-    if (!foundInDb) {
-      companyName = mockMatch.companyName;
-      email = mockMatch.primaryContactEmail;
-      tier = mockMatch.tier;
-      goLiveAt = mockMatch.goLiveDate ? new Date(mockMatch.goLiveDate) : null;
+    if (!isDatabaseConfigured) {
+      // Mock fallback: match the URL clientId against the dev-mock
+      // fixtures so the operator sees a populated 12-step matrix in
+      // dev-mock mode.
+      const mockMatch =
+        [MOCK_CLIENT, MOCK_SECONDARY_CLIENT].find((m) => m.id === params.clientId) ??
+        MOCK_CLIENT;
+      const now = Date.now();
+      const mockLast = new Date(now - 1 * 24 * 60 * 60 * 1000).toISOString();
+      progressSteps = WIZARD_STEP_NUMBERS.map((n) => {
+        const def = getStepDefinition(n as WizardStepNumber);
+        return {
+          number: def.number,
+          key: def.key,
+          label: def.label,
+          visible: !def.v11Deferred,
+          autoConfigured: def.v11Deferred,
+          v11Deferred: def.v11Deferred,
+        };
+      });
+      stepSummaries = WIZARD_STEP_NUMBERS.map((n) => {
+        const def = getStepDefinition(n as WizardStepNumber);
+        return {
+          key: def.key,
+          number: def.number,
+          label: def.label,
+          block: def.block,
+          v11Deferred: def.v11Deferred,
+          status: def.v11Deferred ? null : 'approved',
+          submittedAt: def.v11Deferred ? null : mockLast,
+          approvedAt: def.v11Deferred ? null : mockLast,
+          activeForBot: !def.v11Deferred,
+          lastUpdatedAt: def.v11Deferred ? null : mockLast,
+        };
+      });
+      lastUpdated = mockLast;
     }
-    const now = Date.now();
-    const mockLast = new Date(now - 1 * 24 * 60 * 60 * 1000).toISOString();
-    progressSteps = WIZARD_STEP_NUMBERS.map((n) => {
-      const def = getStepDefinition(n as WizardStepNumber);
-      return {
-        number: def.number,
-        key: def.key,
-        label: def.label,
-        visible: !def.v11Deferred,
-        autoConfigured: def.v11Deferred,
-        v11Deferred: def.v11Deferred,
-      };
-    });
-    stepSummaries = WIZARD_STEP_NUMBERS.map((n) => {
-      const def = getStepDefinition(n as WizardStepNumber);
-      return {
-        key: def.key,
-        number: def.number,
-        label: def.label,
-        block: def.block,
-        v11Deferred: def.v11Deferred,
-        status: def.v11Deferred ? null : 'approved',
-        submittedAt: def.v11Deferred ? null : mockLast,
-        approvedAt: def.v11Deferred ? null : mockLast,
-        activeForBot: !def.v11Deferred,
-        lastUpdatedAt: def.v11Deferred ? null : mockLast,
-      };
-    });
-    lastUpdated = mockLast;
+    // KAIA-13758 — when Prisma returned successfully with zero steps we
+    // intentionally render the existing 'Sin datos de pasos' empty state
+    // (see render block below), NOT the MOCK_* fallback. The previous
+    // `stepSummaries.length === 0` gate here was the bug the audit
+    // flagged in KAIA-13753.
   }
 
   const completedSteps = stepSummaries.filter(
