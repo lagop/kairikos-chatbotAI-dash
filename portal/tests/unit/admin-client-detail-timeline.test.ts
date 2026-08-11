@@ -235,10 +235,11 @@ describe('KAIA-14345 — operator-side onboarding advance controls (source check
   it('server action gates on session.isOperator and isDatabaseConfigured before any DB write', () => {
     const source = fs.readFileSync(ACTIONS_FILE, 'utf8');
     const guardIndex = source.search(/session\.isOperator[\s\S]{0,40}isDatabaseConfigured/);
-    // KAIA-14388 — the write now goes through `writeClient.chatbotActivity.upsert`
-    // (the direct-connection client). Match either the pre-fix bare
-    // `prisma.chatbotActivity.upsert` or the new `writeClient.chatbotActivity.upsert`.
-    const writeIndex = source.search(/(?:prisma|writeClient)\.chatbotActivity\.upsert/);
+    // KAIA-14409 — write goes through the regular pooled `prisma` client.
+    // The earlier `writeClient` (direct-connection) split was inert on
+    // prod because Supabase's true direct host is IPv6-only and Vercel
+    // has no IPv6 egress.
+    const writeIndex = source.search(/prisma\.chatbotActivity\.upsert/);
     expect(guardIndex).toBeGreaterThan(-1);
     expect(writeIndex).toBeGreaterThan(-1);
     expect(guardIndex).toBeLessThan(writeIndex);
@@ -271,14 +272,16 @@ describe('KAIA-14345 — operator-side onboarding advance controls (source check
   });
 });
 
-describe('KAIA-14388 — direct-connection client wiring (source check)', () => {
-  // The operator-side onboarding advance flow has a write+read pattern that
-  // races on Supabase transaction-mode PgBouncer: the upsert commits on
-  // backend A and the page re-render's findMany lands on backend B (the row
-  // is invisible to the operator). The fix routes BOTH through a direct
-  // (port 5432) Prisma client so they share the same physical connection.
-  // These source-pattern checks guard against a refactor silently dropping
-  // the new wiring.
+describe('KAIA-14409 Path B — prismaDirect split reverted, pooled `prisma` is the only client (source check)', () => {
+  // Path B (operator decision on KAIA-14440 interaction 99014192) reverts
+  // the direct-connection Prisma client split introduced by KAIA-14388.
+  // The pooled `prisma` client demonstrably returns the T+0 row at
+  // `/api/admin/portal/flows`, so we trust it for the matching read path
+  // too. The IPv6-only Supabase direct host makes any `prismaDirect` route
+  // unreachable from Vercel Lambda.
+  //
+  // These source-pattern checks guard against a refactor silently
+  // re-introducing the prismaDirect split.
   const ACTIONS_FILE = path.join(
     REPO_ROOT,
     'src',
@@ -295,58 +298,35 @@ describe('KAIA-14388 — direct-connection client wiring (source check)', () => 
     'prisma-direct.ts',
   );
 
-  it('declares a direct-connection Prisma client module', () => {
-    expect(fs.existsSync(DIRECT_FILE)).toBe(true);
+  it('does not declare a direct-connection Prisma client module', () => {
+    expect(fs.existsSync(DIRECT_FILE)).toBe(false);
   });
 
-  it('server action imports `prismaDirect` from @/lib/prisma-direct', () => {
+  it('server action does NOT import `@/lib/prisma-direct`', () => {
     const source = fs.readFileSync(ACTIONS_FILE, 'utf8');
-    expect(source).toContain("from '@/lib/prisma-direct'");
-    expect(source).toContain('prismaDirect');
-    expect(source).toContain('isDatabaseDirectConfigured');
+    expect(source).not.toContain("from '@/lib/prisma-direct'");
+    // Match a code-level identifier, not a comment reference.
+    expect(source).not.toMatch(/\bprismaDirect\b/);
+    expect(source).not.toMatch(/\bisDatabaseDirectConfigured\b/);
   });
 
-  it('server action write goes through the direct client (writeClient.chatbotActivity.upsert)', () => {
+  it('server action write goes through the regular pooled `prisma` client', () => {
     const source = fs.readFileSync(ACTIONS_FILE, 'utf8');
-    // The fix replaces the bare `prisma.chatbotActivity.upsert(...)` with
-    // `writeClient.chatbotActivity.upsert(...)`. Guard against a regression
-    // that re-introduces the pooler-bound write.
-    expect(source).not.toMatch(/^\s*await\s+prisma\.chatbotActivity\.upsert/m);
-    expect(source).toContain('writeClient.chatbotActivity.upsert');
+    expect(source).toContain('prisma.chatbotActivity.upsert');
+    expect(source).not.toContain('writeClient.chatbotActivity.upsert');
   });
 
-  it('page imports `prismaDirect` from @/lib/prisma-direct', () => {
-    expect(pageSource).toContain("from '@/lib/prisma-direct'");
-    expect(pageSource).toContain('prismaDirect');
-    expect(pageSource).toContain('isDatabaseDirectConfigured');
+  it('page does NOT import `@/lib/prisma-direct`', () => {
+    expect(pageSource).not.toContain("from '@/lib/prisma-direct'");
+    expect(pageSource).not.toMatch(/\bprismaDirect\b/);
+    expect(pageSource).not.toMatch(/\bisDatabaseDirectConfigured\b/);
   });
 
-  it('page routes the chatbotActivity.findMany read through the direct client', () => {
-    // The fix introduces an `activityClient = isDatabaseDirectConfigured ? prismaDirect : prisma`
-    // binding and uses `activityClient.chatbotActivity.findMany(...)` for the read.
-    //
-    // KAIA-14409 v3 — the call is now formatted across multiple lines
-    // because a `.catch()` fallback was chained onto it (an IPv6-only
-    // DIRECT_URL throws ENOTFOUND on Vercel; we recover through the pooled
-    // client instead of silently rendering an empty timeline). Match on
-    // the receiver + method with flexible whitespace rather than the exact
-    // one-line call text.
-    expect(pageSource).toContain('activityClient');
-    expect(pageSource).toMatch(
-      /activityClient\s*\r?\n?\s*\.?\s*chatbotActivity\s*\r?\n?\s*\.?\s*findMany/,
-    );
-    // Guard against a regression that reverts the read to the bare pooler
-    // `prisma.chatbotActivity.findMany` as the PRIMARY read. The v3
-    // fallback inside `.catch(...)` is intentional and is indented well
-    // past column 0, so the original start-of-line check still isolates
-    // the primary-read regression we care about.
-    const offenders: string[] = [];
-    for (const line of pageLines) {
-      if (/^\s{0,10}prisma\.chatbotActivity\.findMany/.test(line)) {
-        offenders.push(line.trim());
-      }
-    }
-    expect(offenders).toEqual([]);
+  it('page chatbotActivity.findMany read goes through the regular pooled `prisma` client', () => {
+    // No `activityClient` indirection; the read is a direct
+    // `prisma.chatbotActivity.findMany(...)` call.
+    expect(pageSource).not.toMatch(/activityClient\s*\.\s*chatbotActivity/);
+    expect(pageSource).toContain('prisma.chatbotActivity.findMany');
   });
 });
 
