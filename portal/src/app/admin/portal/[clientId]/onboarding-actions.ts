@@ -30,10 +30,19 @@
 // `(clientId, milestone)` key guarantees a re-click on the same milestone
 // is a no-op-ish (the row already exists, `completedAt` is re-stamped
 // to `now()`).
+//
+// KAIA-14388 — write goes through the direct-connection client
+// (`@/lib/prisma-direct`, port 5432) so the matching read on the page does
+// not land on a different PgBouncer backend than the write. Mirrors what
+// `prisma migrate deploy` already does. We fall back to the pooler-bound
+// `prisma` from `@/lib/prisma` only when no direct URL is configured (e.g.
+// unit tests with `DATABASE_URL` unset).
 // =============================================================================
 
 import { revalidatePath } from 'next/cache';
-import { prisma, isDatabaseConfigured } from '@/lib/prisma';
+import { isDatabaseConfigured } from '@/lib/prisma';
+import { prismaDirect, isDatabaseDirectConfigured } from '@/lib/prisma-direct';
+import { prisma as prismaPooler } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { isAllowedMilestone } from './onboarding-constants';
 
@@ -58,7 +67,9 @@ export async function advanceOnboardingMilestone(
     return;
   }
 
-  const client = await prisma.chatbotClient.findUnique({
+  const writeClient = isDatabaseDirectConfigured ? prismaDirect : prismaPooler;
+
+  const client = await writeClient.chatbotClient.findUnique({
     where: { id: clientId },
     select: { id: true },
   });
@@ -68,7 +79,7 @@ export async function advanceOnboardingMilestone(
 
   const now = new Date();
   const note = `Marcado por el operador (${session.email ?? 'operador'}) el ${now.toISOString()}`;
-  await prisma.chatbotActivity.upsert({
+  await writeClient.chatbotActivity.upsert({
     where: { clientId_milestone: { clientId, milestone } },
     create: {
       clientId,
