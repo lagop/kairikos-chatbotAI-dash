@@ -63,13 +63,35 @@ declare global {
   var __kairikosPortalPrismaDirect: PrismaClient | undefined;
 }
 
-function isPooledDirectUrl(url: string | undefined): boolean {
+// KAIA-14409 follow-up — detect the pooler by TOPOLOGY (host / port), not by
+// the `pgbouncer` query flag.
+//
+// The flag is not evidence of a pooler: `@/lib/prisma` rewrites
+// `process.env.DATABASE_URL` in place to append
+// `?pgbouncer=true&connection_limit=1` (KAIA-2872) to whatever it finds —
+// including a perfectly direct `localhost:5432` dev URL. Because
+// `onboarding-actions.ts` imports `@/lib/prisma` BEFORE `@/lib/prisma-direct`,
+// that mutation has already happened by the time we resolve here. Keying off
+// the flag therefore turned the dev fallback into a false NEGATIVE: local and
+// CI runs reported `isDatabaseDirectConfigured === false` and quietly routed
+// the onboarding flow back through the pooler client, so the read-after-write
+// path the fix exists to exercise was never actually exercised outside prod.
+//
+// Port 6543 and the `*.pooler.supabase.com` hostname are topology facts and
+// cannot be introduced by our own flag-appending, so we key off those instead.
+export function isPooledDirectUrl(url: string | undefined): boolean {
   if (!url) return true;
-  return (
-    url.includes(':6543') ||
-    url.includes('pgbouncer=true') ||
-    url.includes('pgbouncer=1')
-  );
+  if (!/^postgres(?:ql)?:\/\//i.test(url)) return true;
+  try {
+    const parsed = new URL(url);
+    if (parsed.port === '6543') return true;
+    if (/(^|\.)pooler\.supabase\.com$/i.test(parsed.hostname)) return true;
+    return false;
+  } catch {
+    // Unparseable — stay conservative so a malformed pooler URL still
+    // cannot masquerade as direct.
+    return /:6543(?:\/|\?|$)/.test(url) || /pooler\.supabase\.com/i.test(url);
+  }
 }
 
 function resolveDirectUrl(): string | undefined {
@@ -98,3 +120,29 @@ if (process.env.NODE_ENV !== 'production') {
 export const isDatabaseDirectConfigured = Boolean(
   _directUrl && !isPooledDirectUrl(_directUrl),
 );
+
+/**
+ * Which env var supplied the direct URL, or why none did. Safe to log — it
+ * never contains the URL itself (which carries the DB password).
+ */
+export const directUrlSource: 'DIRECT_URL' | 'SUPABASE_DB_URL' | 'DATABASE_URL' | 'none' =
+  !isDatabaseDirectConfigured
+    ? 'none'
+    : process.env.DIRECT_URL
+      ? 'DIRECT_URL'
+      : process.env.SUPABASE_DB_URL
+        ? 'SUPABASE_DB_URL'
+        : 'DATABASE_URL';
+
+if (!isDatabaseDirectConfigured && _directUrl) {
+  // KAIA-14409 was invisible precisely because the misconfiguration was
+  // silent — the fix looked deployed while being inert. Say so once at
+  // module load so the condition is greppable in Vercel logs instead of
+  // only observable as a stale timeline in the UI.
+  console.error(
+    '[prisma-direct] KAIA-14409: resolved Postgres URL is pooler-bound ' +
+      '(port 6543 / *.pooler.supabase.com). Operator onboarding ' +
+      'read-after-write WILL be stale. Set DIRECT_URL to the port-5432 ' +
+      'direct connection string.',
+  );
+}

@@ -182,3 +182,85 @@ describe('KAIA-14388 / KAIA-14409 — prismaDirect singleton', () => {
     expect(a.prismaDirect).toBe(b.prismaDirect);
   });
 });
+
+// =============================================================================
+// KAIA-14409 follow-up — topology-based pooler detection.
+//
+// The first KAIA-14409 cut detected the pooler via the `pgbouncer` query
+// flag. That flag is not evidence of a pooler: `@/lib/prisma` appends
+// `?pgbouncer=true&connection_limit=1` to whatever `DATABASE_URL` holds
+// (KAIA-2872) — including a direct `localhost:5432` dev URL — and
+// `onboarding-actions.ts` imports `@/lib/prisma` BEFORE `@/lib/prisma-direct`,
+// so the mutation lands first. Result: a false NEGATIVE in dev/CI that
+// silently routed the onboarding flow back through the pooler client.
+// =============================================================================
+
+describe('KAIA-14409 follow-up — isPooledDirectUrl detects topology, not flags', () => {
+  it('flags port 6543 and *.pooler.supabase.com', async () => {
+    const { isPooledDirectUrl } = await import('@/lib/prisma-direct');
+    expect(
+      isPooledDirectUrl(
+        'postgres://postgres:pw@aws-0-eu-west-3.pooler.supabase.com:6543/postgres?pgbouncer=true',
+      ),
+    ).toBe(true);
+    expect(
+      isPooledDirectUrl(
+        'postgres://postgres:pw@aws-0-eu-west-3.pooler.supabase.com:5432/postgres',
+      ),
+    ).toBe(true);
+    expect(isPooledDirectUrl(undefined)).toBe(true);
+  });
+
+  it('does NOT flag a direct URL merely because it carries pgbouncer flags', async () => {
+    const { isPooledDirectUrl } = await import('@/lib/prisma-direct');
+    expect(
+      isPooledDirectUrl(
+        'postgresql://kairikos:dev@localhost:5432/kairikos_portal?schema=public&pgbouncer=true&connection_limit=1',
+      ),
+    ).toBe(false);
+    expect(
+      isPooledDirectUrl(
+        'postgres://postgres:pw@db.example-ref.supabase.co:5432/postgres',
+      ),
+    ).toBe(false);
+  });
+
+  it('stays direct in dev after @/lib/prisma mutates DATABASE_URL (real import order)', async () => {
+    // Reproduces the app's own import order in
+    // src/app/admin/portal/[clientId]/onboarding-actions.ts.
+    process.env.DATABASE_URL =
+      'postgresql://kairikos:dev@localhost:5432/kairikos_portal?schema=public';
+
+    await import('@/lib/prisma');
+    // @/lib/prisma has now rewritten DATABASE_URL in place.
+    expect(process.env.DATABASE_URL).toContain('pgbouncer=true');
+
+    const mod = await import('@/lib/prisma-direct');
+    expect(mod.isDatabaseDirectConfigured).toBe(true);
+    expect(mod.directUrlSource).toBe('DATABASE_URL');
+  });
+
+  it('reports directUrlSource for each resolution tier', async () => {
+    process.env.DIRECT_URL =
+      'postgres://postgres:pw@db.prod.supabase.co:5432/postgres';
+    const a = await import('@/lib/prisma-direct');
+    expect(a.directUrlSource).toBe('DIRECT_URL');
+
+    vi.resetModules();
+    clearDirectEnv();
+    process.env.SUPABASE_DB_URL =
+      'postgres://postgres:pw@db.staging.supabase.co:5432/postgres';
+    const b = await import('@/lib/prisma-direct');
+    expect(b.directUrlSource).toBe('SUPABASE_DB_URL');
+  });
+
+  it('reports directUrlSource "none" when only a pooled URL is present', async () => {
+    process.env.DATABASE_URL =
+      'postgres://postgres:pw@aws-0-eu-west-3.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1';
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const mod = await import('@/lib/prisma-direct');
+    expect(mod.isDatabaseDirectConfigured).toBe(false);
+    expect(mod.directUrlSource).toBe('none');
+    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('KAIA-14409'));
+  });
+});
