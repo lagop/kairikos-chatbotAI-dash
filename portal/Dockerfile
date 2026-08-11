@@ -31,6 +31,11 @@ COPY portal/ ./
 # Prisma needs DATABASE_URL at generate time; a placeholder is fine because
 # the schema doesn't introspect the database — it just generates the client.
 ENV DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder
+# KAIA-14440 — schema.prisma declares `directUrl = env("DIRECT_URL")`, and
+# `prisma generate` resolves every datasource env var even though it never
+# connects. Without this placeholder the image build fails with P1012
+# "Environment variable not found: DIRECT_URL". Real value injected at deploy.
+ENV DIRECT_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder
 ENV NEXT_TELEMETRY_DISABLED=1
 # Ensure /app/public exists in the builder stage. The Next.js app
 # doesn't ship a public/ dir today, but the runner stage's COPY of

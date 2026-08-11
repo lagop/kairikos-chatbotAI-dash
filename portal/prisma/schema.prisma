@@ -34,6 +34,14 @@ datasource db {
   // commit 3453364 runs `prisma migrate deploy` and reads this
   // env var through the schema's directUrl. Do not remove without
   // first re-routing the build script to a direct URL.
+  //
+  // KAIA-14440 — DIRECT_URL must be the Supabase *session-mode pooler*
+  // (aws-0-<region>.pooler.supabase.com:5432), NOT db.<project-ref>.supabase.co:5432.
+  // The db.<ref> host is IPv6-only; Vercel and most CI build containers are
+  // IPv4-only, so pointing DIRECT_URL there makes every build-time migration
+  // fail with "Network is unreachable" while still looking correctly
+  // configured. The pooler host resolves to IPv4 and speaks session mode, so
+  // it can hold the advisory locks DDL requires.
   directUrl = env("DIRECT_URL")
 }
 
