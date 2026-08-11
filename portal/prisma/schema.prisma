@@ -25,8 +25,16 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // KAIA-14409 — `prisma migrate deploy` cannot run DDL through the
+  // transaction-mode PgBouncer pool (port 6543). It needs a direct
+  // connection (port 5432). Vercel project already exposes `DIRECT_URL`
+  // for production + preview targets; the build script added on
+  // commit 3453364 runs `prisma migrate deploy` and reads this
+  // env var through the schema's directUrl. Do not remove without
+  // first re-routing the build script to a direct URL.
+  directUrl = env("DIRECT_URL")
 }
 
 // One row per paying client. Source of truth for billing + onboarding state.
