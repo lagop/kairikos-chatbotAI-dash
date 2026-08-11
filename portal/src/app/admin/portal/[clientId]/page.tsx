@@ -11,6 +11,7 @@ import { getSession } from '@/lib/session';
 import { MOCK_CLIENT, MOCK_SECONDARY_CLIENT, MOCK_TIMELINE } from '@/lib/portal-data';
 import { MOCK_FLOW_ACTIVITY, MOCK_N8N_EXECUTIONS, type FlowActivityEntry, type N8nExecutionSummary } from '@/lib/flow-health';
 import { buildAdminClientChatbotStatus } from '@/lib/chatbot-status';
+import type { OnboardingTimelineRow } from '@/types/portal';
 
 export const dynamic = 'force-dynamic';
 
@@ -138,7 +139,15 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
   let notes: string | null = null;
   let goLiveAt: string | null = null;
   let conversationCount = 0;
-  let timeline = MOCK_TIMELINE;
+  // KAIA-14318 — do NOT seed `timeline` with MOCK_TIMELINE. Brand-new
+  // clients (e.g. Clínica dental Orly) have zero `chatbotActivity` rows
+  // so the override inside `if (isDatabaseConfigured)` does not fire and
+  // the page renders the Acme fixture verbatim. Mirror the
+  // `portal/dashboard/page.tsx` pattern: start with an empty array and
+  // only fall back to MOCK_TIMELINE when the backend is NOT configured
+  // (local `next dev` without DATABASE_URL). The OnboardingTimeline
+  // component renders an honest empty-state copy when `rows.length === 0`.
+  let timeline: OnboardingTimelineRow[] = [];
   let flowHistory: FlowActivityEntry[] = [];
   // KAIA-13744 — when isDatabaseConfigured is true and the real client row
   // resolves, we surface a ChatbotStatusSummary built from the DB (not
@@ -259,6 +268,12 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
       notFound();
     }
     flowHistory = MOCK_FLOW_ACTIVITY[params.clientId] ?? [];
+    // KAIA-14318 — only seed the timeline with the dev-mock fixture when
+    // the backend is NOT configured. In production the timeline must
+    // come from `chatbotActivity` (already populated above for clients
+    // with rows) or render empty (the OnboardingTimeline empty-state
+    // copy) for brand-new clients with zero activity rows.
+    timeline = MOCK_TIMELINE;
   }
 
   // KAIA-13753 hardening — n8n executions: try Prisma first, fall back to

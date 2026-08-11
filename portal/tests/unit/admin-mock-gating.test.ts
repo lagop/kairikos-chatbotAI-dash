@@ -275,3 +275,108 @@ describe('KAIA-13745 — structural guardrail: MOCK_* in admin/portal pages', ()
     }
   });
 });
+
+// =============================================================================
+// KAIA-14318 — Structural guardrail against the
+// `let <var> = MOCK_*;` default-initializer regression.
+//
+// The KAIA-13745 guardrail above catches `MOCK_*` symbols consumed in JSX
+// or inside `if (rows.length === 0)` branches, but it does NOT catch the
+// "default initializer" pattern where a `let` variable is seeded with a
+// `MOCK_*` fixture at declaration time and later overwritten by the real
+// DB path. The page-by-page fix in [clientId]/page.tsx (line 141) was
+// the regression that escaped that guardrail.
+//
+// Pattern to forbid inside `src/app/admin/portal/**`:
+//
+//     let <ident> = MOCK_<something>;
+//     let <ident>: SomeType = MOCK_<something>;   (less common, same risk)
+//
+// The fixture is reachable by `let` *before* any `if (isDatabaseConfigured)`
+// or `if (!isDatabaseConfigured)` block runs. If the DB branch returns
+// zero rows, the page renders the dev-mock fixture verbatim — which is
+// exactly the brand-new-client regression from KAIA-13259 / KAIA-14318.
+//
+// Allowed patterns (the page must do ONE of these):
+//
+//   1. `let <ident>: SomeType = [];` + assign MOCK_* inside the
+//      `if (!isDatabaseConfigured)` branch.
+//   2. `let <ident>: SomeType = [];` only — never assign MOCK_* at all
+//      (the production-only render path).
+//   3. `const <ident> = MOCK_*` inside an `if (!isDatabaseConfigured)`
+//      block, or inside a `try { db } catch { const mock = MOCK_*; }`
+//      catch branch.
+//
+// We scan the same `src/app/admin/portal/**` set as KAIA-13745 but only
+// flag `let` defaults — `const` defaults inside the gated branch are
+// allowed by the KAIA-13745 guardrail already.
+// =============================================================================
+
+describe('KAIA-14318 — structural guardrail: `let <var> = MOCK_*;` default-initializer in admin/portal/**', () => {
+  const adminFiles = listTsxFiles(ADMIN_PORTAL_DIR);
+
+  type InitRef = { file: string; line: number; symbol: string; text: string };
+
+  function scanDefaultInitializers(file: string): InitRef[] {
+    const content = fs.readFileSync(file, 'utf8');
+    const lines = content.split('\n');
+    const refs: InitRef[] = [];
+    // `let <ident> = MOCK_<Sym>;` — also tolerate a `: Type` annotation
+    // before the `=`. We intentionally do NOT match `const MOCK_* = …`
+    // (those are exports/definitions) and do NOT match `let MOCK_*` as
+    // the LEFT side (which would be a destructuring rename, not a
+    // default-initializer).
+    const re = /^\s*let\s+[A-Za-z_$][\w$]*\s*(?::\s*[^=]+)?=\s*([A-Za-z_$][\w$]*)\s*[;,]/;
+    for (let i = 0; i < lines.length; i++) {
+      const m = lines[i].match(re);
+      if (!m) continue;
+      const sym = m[1];
+      if (!TRACKED_MOCK_SYMBOLS.includes(sym)) continue;
+      refs.push({
+        file: path.relative(REPO_ROOT, file),
+        line: i + 1,
+        symbol: sym,
+        text: lines[i].trim(),
+      });
+    }
+    return refs;
+  }
+
+  it('finds at least the admin/portal pages (sanity check)', () => {
+    expect(adminFiles.length).toBeGreaterThan(0);
+  });
+
+  it('no `let <var> = MOCK_*;` default initializer appears in src/app/admin/portal/**', () => {
+    const offenders: InitRef[] = [];
+    let scannedFiles = 0;
+    for (const file of adminFiles) {
+      scannedFiles++;
+      offenders.push(...scanDefaultInitializers(file));
+    }
+
+    if (offenders.length === 0) {
+      // The regression would re-introduce one of these lines. We also
+      // bail if the file scan returned zero files (so a future rename
+      // of the admin/portal dir surfaces as a failing test, not a
+      // silent pass).
+      if (scannedFiles === 0) {
+        throw new Error(
+          '[KAIA-14318] admin/portal scan returned zero files. Re-baseline the test paths.',
+        );
+      }
+      return;
+    }
+
+    const banner =
+      `[KAIA-14318] ${offenders.length} default-initializer regression(s) found in admin/portal/**. ` +
+      'A `let <var> = MOCK_*` assignment is reachable by the JSX render ' +
+      'path BEFORE the `if (!isDatabaseConfigured)` branch fires, so a ' +
+      'real client with zero rows will render the Acme fixture verbatim. ' +
+      'Replace with `let <var>: Type[] = [];` and assign MOCK_* inside ' +
+      'the `if (!isDatabaseConfigured)` block.';
+    const detail = offenders
+      .map((o) => `  ${o.file}:${o.line}  ${o.symbol}\n    text: ${o.text}`)
+      .join('\n\n');
+    throw new Error(`${banner}\n\n${detail}`);
+  });
+});
