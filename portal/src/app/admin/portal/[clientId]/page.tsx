@@ -7,7 +7,6 @@ import { OnboardingTimeline } from '@/components/portal/OnboardingTimeline';
 import { EmptyState } from '@/components/portal/EmptyState';
 import { OperatorEditor } from '@/components/portal/OperatorEditor';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
-import { prismaDirect, isDatabaseDirectConfigured } from '@/lib/prisma-direct';
 import { getSession } from '@/lib/session';
 import { MOCK_CLIENT, MOCK_SECONDARY_CLIENT, MOCK_TIMELINE } from '@/lib/portal-data';
 import type { OnboardingTimelineRow } from '@/types/portal';
@@ -282,13 +281,6 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
         // separate `groupBy` over the last 7 days drives the fallback and
         // escalation rates on the card.
         const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-        // KAIA-14388 — `chatbotActivity.findMany` is the read that immediately
-        // follows `advanceOnboardingMilestone`. We route it through the
-        // direct-connection client (`@/lib/prisma-direct`, port 5432) so it
-        // shares the same physical connection as the action's write. Falls
-        // back to the pooler-bound `prisma` when no direct URL is configured
-        // (unit tests with DATABASE_URL unset).
-        const activityClient = isDatabaseDirectConfigured ? prismaDirect : prisma;
         const [count, recentGroups, activities] = await Promise.all([
           prisma.chatbotConversation.count({ where: { clientId: client.id } }),
           prisma.chatbotConversation.groupBy({
@@ -299,34 +291,10 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
             },
             _count: { _all: true },
           }),
-          // KAIA-14409 v3 — never let a prismaDirect transport failure
-          // blank the timeline. If DIRECT_URL points at the IPv6-only
-          // `db.<ref>.supabase.co` host, this throws ENOTFOUND on Vercel
-          // (no IPv6 egress) and the outer `catch` below used to swallow it
-          // into the empty state — indistinguishable from "no rows yet".
-          // Fall back to the pooled client, which is always reachable, and
-          // log loudly so the misconfiguration is visible in Vercel logs.
-          activityClient.chatbotActivity
-            .findMany({
-              where: { clientId: client.id },
-              orderBy: { completedAt: 'asc' },
-            })
-            .catch(async (err: unknown) => {
-              if (activityClient === prisma) throw err;
-              // eslint-disable-next-line no-console
-              console.error(
-                '[admin/portal/[clientId]] KAIA-14409: prismaDirect ' +
-                  'chatbotActivity read failed; falling back to the pooled ' +
-                  'client. Check that DIRECT_URL is IPv4-reachable (Supabase ' +
-                  'session-mode pooler :5432, NOT db.<ref>.supabase.co:5432 ' +
-                  'which is IPv6-only).',
-                err,
-              );
-              return prisma.chatbotActivity.findMany({
-                where: { clientId: client.id },
-                orderBy: { completedAt: 'asc' },
-              });
-            }),
+          prisma.chatbotActivity.findMany({
+            where: { clientId: client.id },
+            orderBy: { completedAt: 'asc' },
+          }),
         ]);
         conversationCount = count;
         let sevenDayConversations = 0;
@@ -370,14 +338,15 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
         notFound();
       }
     } catch (err) {
-      // KAIA-14409 v3 — this used to be a bare `catch {}` with a
+      // KAIA-14409 — this used to be a bare `catch {}` with a
       // "fall back to mock lookup" comment. With isDatabaseConfigured true
       // there is no mock fallback below (KAIA-13753 gated them all on
       // !isDatabaseConfigured), so a throw here silently rendered the
-      // empty-state timeline — which is exactly how the IPv6-only
-      // DIRECT_URL failure masqueraded as "no onboarding rows yet" through
-      // two QA cycles. `notFound()` throws a Next.js control-flow signal,
-      // so it must be re-thrown rather than swallowed.
+      // empty-state timeline — indistinguishable from "no rows yet".
+      // `notFound()` throws a Next.js control-flow signal, so it must be
+      // re-thrown rather than swallowed. All other errors are logged so
+      // any future regression is observable in Vercel logs instead of
+      // only as a stale UI.
       if (
         err &&
         typeof err === 'object' &&

@@ -31,18 +31,16 @@
 // is a no-op-ish (the row already exists, `completedAt` is re-stamped
 // to `now()`).
 //
-// KAIA-14388 — write goes through the direct-connection client
-// (`@/lib/prisma-direct`, port 5432) so the matching read on the page does
-// not land on a different PgBouncer backend than the write. Mirrors what
-// `prisma migrate deploy` already does. We fall back to the pooler-bound
-// `prisma` from `@/lib/prisma` only when no direct URL is configured (e.g.
-// unit tests with `DATABASE_URL` unset).
+// KAIA-14409 — write goes through the regular pooled `prisma` client. The
+// earlier direct-connection split (KAIA-14388) was inert on prod because
+// Supabase's true direct host is IPv6-only and Vercel has no IPv6 egress.
+// The pooled client demonstrably returns the T+0 row at
+// `/api/admin/portal/flows`, so we trust it for the matching read path
+// too. See KAIA-14409 comment `3510e67a` for the full diagnosis.
 // =============================================================================
 
 import { revalidatePath } from 'next/cache';
-import { isDatabaseConfigured } from '@/lib/prisma';
-import { prismaDirect, isDatabaseDirectConfigured } from '@/lib/prisma-direct';
-import { prisma as prismaPooler } from '@/lib/prisma';
+import { isDatabaseConfigured, prisma } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { isAllowedMilestone } from './onboarding-constants';
 
@@ -67,9 +65,7 @@ export async function advanceOnboardingMilestone(
     return;
   }
 
-  const writeClient = isDatabaseDirectConfigured ? prismaDirect : prismaPooler;
-
-  const client = await writeClient.chatbotClient.findUnique({
+  const client = await prisma.chatbotClient.findUnique({
     where: { id: clientId },
     select: { id: true },
   });
@@ -79,7 +75,7 @@ export async function advanceOnboardingMilestone(
 
   const now = new Date();
   const note = `Marcado por el operador (${session.email ?? 'operador'}) el ${now.toISOString()}`;
-  await writeClient.chatbotActivity.upsert({
+  await prisma.chatbotActivity.upsert({
     where: { clientId_milestone: { clientId, milestone } },
     create: {
       clientId,
