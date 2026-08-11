@@ -1,7 +1,7 @@
 # KAIA-1452 — v1 Wizard Portal Staging Runbook
 
 **Audience:** QA Engineer (and any operator reviewing the deploy)
-**Last updated:** 2026-07-01
+**Last updated:** 2026-08-11
 **Owner:** CTO ([2f1efc73-463d-478c-98db-e2af8746f170](https://www.paperclip.local/KAIA/agents/cto))
 **Status:** staging live ✅
 
@@ -13,9 +13,9 @@
 | --- | --- |
 | **Staging URL** | <https://project-fxidg.vercel.app/> |
 | **Vercel project** | `project-fxidg` (`prj_jqrcSfG9rvpatumLnyZijk0m5b3s`) |
-| **GitHub repo** | `lagop/kairikos-chatbotAI-dash` (branch `kaia-743-staging-runner`, last prod commit `8355b79`) |
+| **GitHub repo** | `lagop/kairikos-chatbotAI-dash` (branch `kaia-743-staging-runner`, last prod commit `0cf9a4ac`) |
 | **Supabase project** | `ikexqreuvoqwvwopftkt` (host `aws-0-eu-west-3.pooler.supabase.com`) |
-| **Production deploy** | `dpl_3oycyywJQVtpmaKyXDUyNp2FWSXE` (READY) |
+| **Production deploy** | `dpl_34vwVPATkk7jKmPhipuMTwYC3gXi` (READY, PROMOTED) |
 | **Wizard entry point** | <https://project-fxidg.vercel.app/portal/wizard> (requires auth) |
 | **Login route** | <https://project-fxidg.vercel.app/portal/login> (credentials — email + password, since KAIA-2103) |
 
@@ -168,6 +168,7 @@ PORTAL_URL="https://project-fxidg.vercel.app" npx playwright test --reporter=lin
 
 ## Change log
 
+- **2026-08-11** — CEO reconciled [KAIA-13765](/KAI/issues/KAIA-13765) and [KAIA-14024](/KAI/issues/KAIA-14024): discovered that `link.productionBranch` was still set to `main` in the Vercel Git-link config (STAGING.md always claimed `kaia-743-staging-runner`, and the actual `targets.production` was already serving a recent `kaia-743-staging-runner` HEAD `0cf9a4ac` — so the visible portal was correct, but the auto-deploy target for future pushes was wrong). The current production deploy `dpl_3oycyywJQVtpmaKyXDUyNp2FWSXE` (KAIA-2790) was superseded by `dpl_34vwVPATkk7jKmPhipuMTwYC3gXi` (KAIA-13797 deploy). Production-branch flip on the Vercel side requires the Vercel dashboard — the Vercel REST API does not expose `link.productionBranch` as a writable field. Operator (or, with explicit approval, a future CTO run) must complete that dashboard edit; the production target is already correct in the meantime.
 - **2026-07-01** — CTO scrubbed `VERCEL_TOKEN` from CTO adapter (Option A — provider-native secret store; no agent holds the token). Updated deploy wiring description from `vercel` CLI to Git-driven with explicit Vercel Production Branch change + mandatory post-Save Redeploy verification step (KAIA-2790/KAIA-2788).
 - **2026-06-16 16:05Z** — CTO wired 4 missing env vars (`NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `DIRECT_URL`, `SUPABASE_DB_PASSWORD`) to the Vercel project on production + preview. Triggered a fresh production deploy (`dpl_3oycyywJQVtpmaKyXDUyNp2FWSXE`, READY).
 - **2026-06-16 16:03Z** — CTO confirmed Vercel project `project-fxidg` is the real portal (not the `kairikos-wizard-portal-staging` project, which is the marketing site). Cancelled wrong-target child [KAIA-1544](https://www.paperclip.local/KAIA/issues/KAIA-1544).
