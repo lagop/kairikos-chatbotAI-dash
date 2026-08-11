@@ -7,6 +7,7 @@ import { OnboardingTimeline } from '@/components/portal/OnboardingTimeline';
 import { EmptyState } from '@/components/portal/EmptyState';
 import { OperatorEditor } from '@/components/portal/OperatorEditor';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
+import { prismaDirect, isDatabaseDirectConfigured } from '@/lib/prisma-direct';
 import { getSession } from '@/lib/session';
 import { MOCK_CLIENT, MOCK_SECONDARY_CLIENT, MOCK_TIMELINE } from '@/lib/portal-data';
 import type { OnboardingTimelineRow } from '@/types/portal';
@@ -281,6 +282,13 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
         // separate `groupBy` over the last 7 days drives the fallback and
         // escalation rates on the card.
         const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        // KAIA-14388 — `chatbotActivity.findMany` is the read that immediately
+        // follows `advanceOnboardingMilestone`. We route it through the
+        // direct-connection client (`@/lib/prisma-direct`, port 5432) so it
+        // shares the same physical connection as the action's write. Falls
+        // back to the pooler-bound `prisma` when no direct URL is configured
+        // (unit tests with DATABASE_URL unset).
+        const activityClient = isDatabaseDirectConfigured ? prismaDirect : prisma;
         const [count, recentGroups, activities] = await Promise.all([
           prisma.chatbotConversation.count({ where: { clientId: client.id } }),
           prisma.chatbotConversation.groupBy({
@@ -291,7 +299,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
             },
             _count: { _all: true },
           }),
-          prisma.chatbotActivity.findMany({
+          activityClient.chatbotActivity.findMany({
             where: { clientId: client.id },
             orderBy: { completedAt: 'asc' },
           }),

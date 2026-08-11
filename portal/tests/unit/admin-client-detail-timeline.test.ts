@@ -235,7 +235,10 @@ describe('KAIA-14345 — operator-side onboarding advance controls (source check
   it('server action gates on session.isOperator and isDatabaseConfigured before any DB write', () => {
     const source = fs.readFileSync(ACTIONS_FILE, 'utf8');
     const guardIndex = source.search(/session\.isOperator[\s\S]{0,40}isDatabaseConfigured/);
-    const writeIndex = source.search(/prisma\.chatbotActivity\.upsert/);
+    // KAIA-14388 — the write now goes through `writeClient.chatbotActivity.upsert`
+    // (the direct-connection client). Match either the pre-fix bare
+    // `prisma.chatbotActivity.upsert` or the new `writeClient.chatbotActivity.upsert`.
+    const writeIndex = source.search(/(?:prisma|writeClient)\.chatbotActivity\.upsert/);
     expect(guardIndex).toBeGreaterThan(-1);
     expect(writeIndex).toBeGreaterThan(-1);
     expect(guardIndex).toBeLessThan(writeIndex);
@@ -265,6 +268,72 @@ describe('KAIA-14345 — operator-side onboarding advance controls (source check
     expect(source).toContain('revalidatePath');
     expect(source).toContain('/admin/portal/');
     expect(source).toContain('/portal/onboarding');
+  });
+});
+
+describe('KAIA-14388 — direct-connection client wiring (source check)', () => {
+  // The operator-side onboarding advance flow has a write+read pattern that
+  // races on Supabase transaction-mode PgBouncer: the upsert commits on
+  // backend A and the page re-render's findMany lands on backend B (the row
+  // is invisible to the operator). The fix routes BOTH through a direct
+  // (port 5432) Prisma client so they share the same physical connection.
+  // These source-pattern checks guard against a refactor silently dropping
+  // the new wiring.
+  const ACTIONS_FILE = path.join(
+    REPO_ROOT,
+    'src',
+    'app',
+    'admin',
+    'portal',
+    '[clientId]',
+    'onboarding-actions.ts',
+  );
+  const DIRECT_FILE = path.join(
+    REPO_ROOT,
+    'src',
+    'lib',
+    'prisma-direct.ts',
+  );
+
+  it('declares a direct-connection Prisma client module', () => {
+    expect(fs.existsSync(DIRECT_FILE)).toBe(true);
+  });
+
+  it('server action imports `prismaDirect` from @/lib/prisma-direct', () => {
+    const source = fs.readFileSync(ACTIONS_FILE, 'utf8');
+    expect(source).toContain("from '@/lib/prisma-direct'");
+    expect(source).toContain('prismaDirect');
+    expect(source).toContain('isDatabaseDirectConfigured');
+  });
+
+  it('server action write goes through the direct client (writeClient.chatbotActivity.upsert)', () => {
+    const source = fs.readFileSync(ACTIONS_FILE, 'utf8');
+    // The fix replaces the bare `prisma.chatbotActivity.upsert(...)` with
+    // `writeClient.chatbotActivity.upsert(...)`. Guard against a regression
+    // that re-introduces the pooler-bound write.
+    expect(source).not.toMatch(/^\s*await\s+prisma\.chatbotActivity\.upsert/m);
+    expect(source).toContain('writeClient.chatbotActivity.upsert');
+  });
+
+  it('page imports `prismaDirect` from @/lib/prisma-direct', () => {
+    expect(pageSource).toContain("from '@/lib/prisma-direct'");
+    expect(pageSource).toContain('prismaDirect');
+    expect(pageSource).toContain('isDatabaseDirectConfigured');
+  });
+
+  it('page routes the chatbotActivity.findMany read through the direct client', () => {
+    // The fix introduces an `activityClient = isDatabaseDirectConfigured ? prismaDirect : prisma`
+    // binding and uses `activityClient.chatbotActivity.findMany(...)` for the read.
+    expect(pageSource).toContain('activityClient');
+    expect(pageSource).toContain('activityClient.chatbotActivity.findMany');
+    // Guard against a regression that reverts the read to the bare pooler `prisma.chatbotActivity.findMany`.
+    const offenders: string[] = [];
+    for (const line of pageLines) {
+      if (/^\s*prisma\.chatbotActivity\.findMany/.test(line)) {
+        offenders.push(line.trim());
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 });
 
