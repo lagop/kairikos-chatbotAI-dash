@@ -1,12 +1,13 @@
 // =============================================================================
-// Kairikos portal — direct-connection Prisma client singleton (KAIA-14388).
+// Kairikos portal — direct-connection Prisma client singleton (KAIA-14388 /
+// KAIA-14409).
 //
-// QA smoke (2026-08-11) showed the operator-side `Iniciar onboarding` server
-// action upserts a `chatbotActivity` row (verified live via
-// `/api/admin/portal/flows: currentMilestone=T+0`, `lastActivityAt` matches the
-// click) but the admin overview page read never sees the write. The row stays
-// invisible after a fresh `page.goto`, so it is not a React cache problem — it
-// is a Prisma × Supabase transaction-mode PgBouncer staleness problem.
+// QA smoke (2026-08-11) on the KAIA-14345 operator-side `Iniciar onboarding`
+// flow showed the upsert write is committed (verified via
+// `/api/admin/portal/flows: currentMilestone=T+0`, `lastActivityAt` matches
+// the click) but the matching page read never sees it. The row stays
+// invisible after a fresh `page.goto`, so it is not a React cache problem —
+// it is a Prisma × Supabase transaction-mode PgBouncer staleness problem.
 //
 // Root cause (see KAIA-2872 history for the prior 42P05 hardening):
 //
@@ -21,28 +22,38 @@
 //     `prisma.chatbotActivity.findMany(...)` after `revalidatePath` — read
 //     lands on PgBouncer pool slot B and cannot see A's just-committed write.
 //
-// Fix path chosen (KAIA-14388, Backend Developer, A from the issue's
-// suggested-fix list):
+// Fix path (KAIA-14388 + KAIA-14409): route the operator-side onboarding
+// advance flow through a DIRECT (port 5432, no pooler) Prisma client. The
+// action's write AND the page's matching read both bypass the pooler so
+// they share the same physical connection — mirroring the topology
+// `prisma migrate deploy` already uses.
 //
-//   Use a DIRECT (port 5432) Prisma client for the operator-side onboarding
-//   advance flow only. The action's write AND the page's matching read both
-//   bypass the pooler so they share the same physical connection. This
-//   mirrors the topology `prisma migrate deploy` already uses
-//   (`SUPABASE_DB_URL` at port 5432).
+// Scope is deliberately narrow: ONLY the `chatbotActivity` write/read in
+// the operator-side onboarding flow. Everything else in the portal keeps
+// using the pooler-friendly `prisma` client from `@/lib/prisma`.
 //
-//   Scope is deliberately narrow: ONLY the `chatbotActivity` write/read in
-//   the operator-side onboarding flow. Everything else in the portal keeps
-//   using the pooler-friendly `prisma` client from `@/lib/prisma`.
+// Resolution order (KAIA-14409 update — `DIRECT_URL` is the conventional
+// Prisma / Supabase name and is what the Vercel project ships configured;
+// `SUPABASE_DB_URL` is preserved as a secondary alias for environments
+// that prefer it; `DATABASE_URL` is the pooler URL and must NOT be picked
+// up here because it is the source of the staleness bug):
 //
-// Resolution order (same as `@/lib/prisma`):
+//   1. `DIRECT_URL`        — Vercel project-fxidg production + preview
+//                            (also used by Prisma's `directUrl` convention).
+//   2. `SUPABASE_DB_URL`   — secondary alias (e.g. self-hosted supabase /
+//                            older deploy scripts that exported this name).
+//   3. `DATABASE_URL`      — local Docker / dev fallback. Already
+//                            `localhost:5432` in dev, so it is direct in
+//                            dev too.
 //
-//   1. `SUPABASE_DB_URL` — staging/production direct URL (port 5432).
-//   2. `DATABASE_URL`     — local Docker / dev fallback. Already
-//                            `localhost:5432`, so the direct path is the
-//                            default in dev too.
-//
-// `isDatabaseDirectConfigured` is exported so callers can decide whether the
-// fix is in effect (mirrors `isDatabaseConfigured` from `@/lib/prisma`).
+// `isDatabaseDirectConfigured` is exported so callers can decide whether
+// the fix is in effect (mirrors `isDatabaseConfigured` from `@/lib/prisma`).
+// It deliberately **rejects** pooled URLs: if the resolution above fell
+// through to `DATABASE_URL` and that URL still carries `:6543` or
+// `pgbouncer=true`, the flag is `false`, so callers fall back to the
+// pooler-bound `prisma` and don't pretend the fix is active. Without this
+// guard the false-positive from KAIA-14409 recurs anywhere the pooled URL
+// is the only one configured.
 // =============================================================================
 
 import { PrismaClient } from '@prisma/client';
@@ -52,10 +63,21 @@ declare global {
   var __kairikosPortalPrismaDirect: PrismaClient | undefined;
 }
 
+function isPooledDirectUrl(url: string | undefined): boolean {
+  if (!url) return true;
+  return (
+    url.includes(':6543') ||
+    url.includes('pgbouncer=true') ||
+    url.includes('pgbouncer=1')
+  );
+}
+
 function resolveDirectUrl(): string | undefined {
-  const direct = process.env.SUPABASE_DB_URL ?? process.env.DATABASE_URL;
-  if (!direct) return undefined;
-  return direct;
+  return (
+    process.env.DIRECT_URL ??
+    process.env.SUPABASE_DB_URL ??
+    process.env.DATABASE_URL
+  );
 }
 
 const _directUrl = resolveDirectUrl();
@@ -71,4 +93,8 @@ if (process.env.NODE_ENV !== 'production') {
   globalThis.__kairikosPortalPrismaDirect = prismaDirect;
 }
 
-export const isDatabaseDirectConfigured = Boolean(_directUrl);
+// Genuine-direct only: a pooled URL is the source of the staleness bug and
+// must NOT be advertised as a working direct connection (KAIA-14409).
+export const isDatabaseDirectConfigured = Boolean(
+  _directUrl && !isPooledDirectUrl(_directUrl),
+);
