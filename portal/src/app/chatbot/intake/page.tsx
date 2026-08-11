@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useForm, useFieldArray, useWatch, type SubmitHandler } from "react-hook-form";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useForm, useFieldArray, useWatch, type SubmitHandler, type Path } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   intakeSchema,
@@ -61,6 +61,14 @@ function loadSaved(): Partial<IntakeFormData> {
   } catch {
     return {};
   }
+}
+
+function normalizePrivacyUrl(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed) return trimmed;
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
 }
 
 function trackEvent(event: string, properties?: Record<string, unknown>) {
@@ -134,6 +142,8 @@ function IntakePage() {
   const [currentStep, setCurrentStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const formCardRef = useRef<HTMLDivElement | null>(null);
 
   const {
     register,
@@ -158,6 +168,26 @@ function IntakePage() {
   const watchedChannels = useWatch({ control, name: "channels_enabled" });
   const watchedLanguage = useWatch({ control, name: "language" });
 
+  const reg = useCallback(
+    (name: keyof IntakeFormData) => {
+      const hasError = Boolean((errors as Record<string, unknown>)[name as string]);
+      return {
+        ...register(name),
+        "aria-invalid": hasError ? ("true" as const) : undefined,
+      };
+    },
+    [register, errors]
+  );
+
+  // Normalize privacy_url on blur so users typing "kairikos.com" pass validation.
+  const handlePrivacyUrlBlur = useCallback(() => {
+    const raw = getValues("privacy_url");
+    const normalized = normalizePrivacyUrl(raw);
+    if (typeof normalized === "string" && normalized !== raw) {
+      setValue("privacy_url", normalized, { shouldValidate: true });
+    }
+  }, [getValues, setValue]);
+
   useEffect(() => {
     const timeout = setTimeout(() => {
       try {
@@ -167,23 +197,52 @@ function IntakePage() {
     return () => clearTimeout(timeout);
   }, [watchedSector, getValues]);
 
+  const focusFirstError = useCallback(() => {
+    if (typeof window === "undefined") return;
+    requestAnimationFrame(() => {
+      const card = formCardRef.current;
+      const firstInvalid = card?.querySelector<HTMLElement>(
+        ".intake-input[aria-invalid='true'], .intake-select[aria-invalid='true'], .intake-textarea[aria-invalid='true']"
+      );
+      if (firstInvalid) {
+        firstInvalid.scrollIntoView({ behavior: "smooth", block: "center" });
+        firstInvalid.focus({ preventScroll: true });
+      } else {
+        card?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+  }, []);
+
   const goNext = useCallback(async () => {
-    const stepFields: (keyof IntakeFormData)[] = [
-      "business_name",
-      "faqs",
-      "channels_enabled",
-      "voice_tone",
-      "business_hours_weekday",
-      "human_handoff_email",
+    setSummaryError(null);
+    const stepFields: Path<IntakeFormData>[][] = [
+      // P1 — Identidad
+      ["business_name", "sector", "short_description"],
+      // P2 — FAQs
+      ["faqs"],
+      // P3 — Canales
+      ["channels_enabled"],
+      // P4 — Tono y estilo
+      ["voice_tone", "pronoun", "language"],
+      // P5 — Horario
+      ["business_hours_weekday", "business_hours_weekend", "out_of_hours_behavior"],
+      // P6 — Handoff
+      ["human_handoff_email", "human_handoff_hours", "escalation_triggers"],
+      // P7 — Privacidad
+      ["gdpr_responsible_email", "privacy_url"],
     ];
-    const fieldsToValidate = Array.isArray(stepFields[currentStep])
-      ? stepFields[currentStep]
-      : [stepFields[currentStep]];
-    const valid = await trigger(fieldsToValidate as (keyof IntakeFormData)[]);
-    if (!valid) return;
+    const fieldsToValidate = stepFields[currentStep] as readonly Path<IntakeFormData>[];
+    const valid = await trigger(fieldsToValidate as unknown as Parameters<typeof trigger>[0]);
+    if (!valid) {
+      setSummaryError(
+        "Faltan campos obligatorios en este paso. Revisa los marcados en rojo antes de continuar."
+      );
+      focusFirstError();
+      return;
+    }
     trackEvent("intake_step_complete", { step: currentStep + 1 });
     setCurrentStep((s) => Math.min(s + 1, STEPS.length - 1));
-  }, [currentStep, trigger]);
+  }, [currentStep, trigger, focusFirstError]);
 
   const goPrev = useCallback(() => {
     setCurrentStep((s) => Math.max(s - 1, 0));
@@ -212,6 +271,14 @@ function IntakePage() {
       setSubmitting(false);
     }
   };
+
+  const onInvalid = useCallback(() => {
+    const errorCount = Object.keys(errors).length;
+    setSummaryError(
+      `No se puede enviar el formulario: ${errorCount} ${errorCount === 1 ? "campo obligatorio" : "campos obligatorios"} sin completar. Revisa los pasos anteriores.`
+    );
+    focusFirstError();
+  }, [errors, focusFirstError]);
 
   const toggleLanguage = (lang: string) => {
     const current = getValues("language") || [];
@@ -253,10 +320,25 @@ function IntakePage() {
         </p>
       </div>
 
-      <div className="intake-card">
+      <div className="intake-card" ref={formCardRef}>
         <ProgressBar steps={STEPS} currentStep={currentStep} />
 
-        <form onSubmit={handleSubmit(onSubmit)} noValidate>
+        {summaryError && (
+          <div className="intake-summary-error" role="alert" aria-live="assertive">
+            <span className="intake-summary-error-icon" aria-hidden="true">!</span>
+            <span>{summaryError}</span>
+            <button
+              type="button"
+              className="intake-summary-error-close"
+              onClick={() => setSummaryError(null)}
+              aria-label="Cerrar aviso"
+            >
+              ×
+            </button>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit(onSubmit, onInvalid)} noValidate>
           {currentStep === 0 && (
             <div className="intake-step">
               <h2 className="intake-step-title">Identidad del negocio</h2>
@@ -266,7 +348,7 @@ function IntakePage() {
                   type="text"
                   className="intake-input"
                   placeholder="Ej: Clínica Dental Martínez"
-                  {...register("business_name")}
+                  {...reg("business_name")}
                   aria-required="true"
                 />
               </StepField>
@@ -283,7 +365,7 @@ function IntakePage() {
                 <select
                   id="sector"
                   className="intake-select"
-                  {...register("sector")}
+                  {...reg("sector")}
                   aria-required="true"
                 >
                   <option value="">Selecciona tu sector</option>
@@ -301,7 +383,7 @@ function IntakePage() {
                   placeholder="Ej: Somos una clínica dental familiar en el centro de Madrid, especializada en ortodoncia y estética dental."
                   rows={3}
                   maxLength={280}
-                  {...register("short_description")}
+                  {...reg("short_description")}
                   aria-required="true"
                 />
                 <small className="intake-hint">Máx. 280 caracteres</small>
@@ -525,7 +607,7 @@ function IntakePage() {
                   type="text"
                   className="intake-input"
                   placeholder="Ej: 9:00 - 18:00"
-                  {...register("business_hours_weekday")}
+                  {...reg("business_hours_weekday")}
                   aria-required="true"
                 />
               </StepField>
@@ -535,7 +617,7 @@ function IntakePage() {
                   type="text"
                   className="intake-input"
                   placeholder="Ej: 10:00 - 14:00 o cerrado"
-                  {...register("business_hours_weekend")}
+                  {...reg("business_hours_weekend")}
                   aria-required="true"
                 />
               </StepField>
@@ -552,7 +634,7 @@ function IntakePage() {
               <StepField label="Comportamiento fuera de horario" required error={errors.out_of_hours_behavior?.message}>
                 <select
                   className="intake-select"
-                  {...register("out_of_hours_behavior")}
+                  {...reg("out_of_hours_behavior")}
                   aria-required="true"
                 >
                   <option value="">Selecciona una opción</option>
@@ -576,7 +658,7 @@ function IntakePage() {
                   type="email"
                   className="intake-input"
                   placeholder="humano@tuempresa.com"
-                  {...register("human_handoff_email")}
+                  {...reg("human_handoff_email")}
                   aria-required="true"
                 />
               </StepField>
@@ -596,7 +678,7 @@ function IntakePage() {
                   type="text"
                   className="intake-input"
                   placeholder="Ej: L-V 9:00-18:00"
-                  {...register("human_handoff_hours")}
+                  {...reg("human_handoff_hours")}
                   aria-required="true"
                 />
               </StepField>
@@ -606,7 +688,7 @@ function IntakePage() {
                   className="intake-input intake-textarea"
                   placeholder="Ej: Quejas, devoluciones, presupuestos personalizados, citas canceladas"
                   rows={3}
-                  {...register("escalation_triggers")}
+                  {...reg("escalation_triggers")}
                   aria-required="true"
                 />
               </StepField>
@@ -636,7 +718,7 @@ function IntakePage() {
                   type="email"
                   className="intake-input"
                   placeholder="dpo@tuempresa.com"
-                  {...register("gdpr_responsible_email")}
+                  {...reg("gdpr_responsible_email")}
                   aria-required="true"
                 />
               </StepField>
@@ -646,9 +728,15 @@ function IntakePage() {
                   type="url"
                   className="intake-input"
                   placeholder="https://www.tuempresa.com/politica-privacidad"
-                  {...register("privacy_url")}
+                  {...reg("privacy_url")}
+                  onBlur={() => {
+                    handlePrivacyUrlBlur();
+                  }}
                   aria-required="true"
                 />
+                <small className="intake-hint">
+                  Si no incluye esquema (https://) lo añadimos automáticamente.
+                </small>
               </StepField>
 
               <div className="intake-review">
@@ -1154,6 +1242,60 @@ function IntakePage() {
 
         .intake-progress-step.done .intake-progress-dot {
           background: #48bb78;
+        }
+
+        .intake-summary-error {
+          display: flex;
+          align-items: flex-start;
+          gap: 0.75rem;
+          background: #fff5f5;
+          border: 1px solid var(--color-accent, #e53e3e);
+          border-left: 4px solid var(--color-accent, #e53e3e);
+          color: #742a2a;
+          border-radius: 0.5rem;
+          padding: 0.875rem 1rem;
+          margin-bottom: 1.5rem;
+          font-size: 0.9375rem;
+          line-height: 1.4;
+        }
+
+        .intake-summary-error-icon {
+          flex-shrink: 0;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 22px;
+          height: 22px;
+          border-radius: 50%;
+          background: var(--color-accent, #e53e3e);
+          color: #ffffff;
+          font-weight: 700;
+          font-size: 0.875rem;
+        }
+
+        .intake-summary-error-close {
+          margin-left: auto;
+          background: transparent;
+          border: none;
+          color: #742a2a;
+          font-size: 1.25rem;
+          font-weight: 700;
+          cursor: pointer;
+          line-height: 1;
+          padding: 0 0.25rem;
+        }
+
+        .intake-input[aria-invalid="true"],
+        .intake-select[aria-invalid="true"],
+        .intake-textarea[aria-invalid="true"] {
+          border-color: var(--color-accent, #e53e3e);
+          background: #fff5f5;
+        }
+
+        .intake-input[aria-invalid="true"]:focus,
+        .intake-select[aria-invalid="true"]:focus,
+        .intake-textarea[aria-invalid="true"]:focus {
+          box-shadow: 0 0 0 3px rgba(229, 62, 62, 0.18);
         }
 
         .intake-progress-label {
