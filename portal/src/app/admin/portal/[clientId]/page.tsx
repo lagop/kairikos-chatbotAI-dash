@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { ChatbotStatusCard } from '@/components/portal/ChatbotStatusCard';
 import { OnboardingTimeline } from '@/components/portal/OnboardingTimeline';
+import { OnboardingOperatorActions } from '@/components/portal/OnboardingOperatorActions';
 import { EmptyState } from '@/components/portal/EmptyState';
 import { OperatorEditor } from '@/components/portal/OperatorEditor';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
@@ -12,6 +13,7 @@ import { MOCK_CLIENT, MOCK_SECONDARY_CLIENT, MOCK_TIMELINE } from '@/lib/portal-
 import { MOCK_FLOW_ACTIVITY, MOCK_N8N_EXECUTIONS, type FlowActivityEntry, type N8nExecutionSummary } from '@/lib/flow-health';
 import { buildAdminClientChatbotStatus } from '@/lib/chatbot-status';
 import type { OnboardingTimelineRow } from '@/types/portal';
+import type { OnboardingMilestoneId } from '@/app/admin/portal/[clientId]/onboarding-actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -329,6 +331,26 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
 
   const status: 'live' | 'in_progress' = goLiveAt ? 'live' : 'in_progress';
 
+  // KAIA-14345 / KAIA-14368 — derive the operator-side advance-control
+  // "done" set from the same `timeline` shape the page renders above, so
+  // the operator actions and the timeline always agree on what is done.
+  // T+0/T+3/T+7/T+14 milestones are pulled from any source (DB rows or
+  // the dev-mock MOCK_TIMELINE fallback) and filtered to those the
+  // timeline component marked `status === 'done'`.
+  const doneMilestones: OnboardingMilestoneId[] = (() => {
+    if (!timeline.length) return [];
+    const doneIds = new Set<OnboardingMilestoneId>();
+    for (const row of timeline) {
+      if (row.status !== 'done') continue;
+      const reverse = (Object.entries(MILESTONE_STEP) as Array<[
+        OnboardingMilestoneId,
+        't_plus_0' | 't_plus_3' | 't_plus_7' | 't_plus_14',
+      ]>).find(([, stepKey]) => stepKey === row.step);
+      if (reverse) doneIds.add(reverse[0]);
+    }
+    return [...doneIds];
+  })();
+
   return (
     <div className="space-y-6">
       <div className="text-sm text-kairikos-muted">
@@ -396,6 +418,19 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
               <h2 className="text-lg font-semibold">Onboarding</h2>
             </header>
             <OnboardingTimeline rows={timeline} />
+            {/*
+              KAIA-14345 / KAIA-14368 — operator-side advance controls.
+              Gated on `isDatabaseConfigured` because the server actions
+              rely on Prisma to upsert `chatbotActivity` rows. The page
+              has already redirected non-operator sessions at the top, so
+              this block only renders for an authenticated operator.
+            */}
+            {isDatabaseConfigured ? (
+              <OnboardingOperatorActions
+                clientId={params.clientId}
+                doneMilestones={doneMilestones}
+              />
+            ) : null}
           </section>
 
           <p className="text-xs text-kairikos-muted">
