@@ -63,10 +63,19 @@ const ALLOWED_FIELDS = new Set([
 ] as const);
 
 const ALLOWED_TIERS = new Set(['starter', 'pro', 'premium'] as const);
+// KAIA-14519 — extended to include the wizard v1 transitions
+// ('ready', 'updating') so the operator PATCH can write them via the
+// admin client editor. The route does not transition the state itself;
+// wizard-review.ts owns the approve/request_revision transitions. The
+// admin editor only validates the value against this allowlist so the
+// operator can also seed the column by hand when necessary.
 const ALLOWED_STATES = new Set([
   'pending',
   'in-progress',
+  'go-live-pending',
+  'ready',
   'live',
+  'updating',
   'paused',
   'cancelled',
 ] as const);

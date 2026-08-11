@@ -23,10 +23,18 @@ import {
 
 export const ALLOWED_MILESTONES: ReadonlySet<string> = new Set(['T+0', 'T+3', 'T+7', 'T+14']);
 
+// KAIA-14519 — extended for the wizard v1 state machine. The
+// handleGoLiveReady flow only legitimately transitions from 'in-progress'
+// to 'go-live-pending' (or dedupes when already pending), so the value
+// is still useful for the early check below. The wider set lets future
+// flows (config_complete → ready, request_revision while live →
+// updating) share the same allowlist without a follow-up patch.
 const ALLOWED_CLIENT_STATES: ReadonlySet<string> = new Set([
   'in-progress',
   'go-live-pending',
   'live',
+  'ready',
+  'updating',
 ]);
 
 export const GO_LIVE_READY_KIND = 'go-live-ready';
