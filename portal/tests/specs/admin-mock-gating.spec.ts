@@ -69,6 +69,38 @@ const ADMIN_ROUTES = [
   '/admin/portal/clients',
 ];
 
+// KAIA-14318 — the per-client detail route guards against the
+// `MOCK_TIMELINE` default-initializer regression on brand-new clients.
+// We probe three real clientIds: the operator-reported Clínica dental
+// Orly id (which has zero `chatbotActivity` rows), and the two seeded
+// Acme/Globex UUIDs that are real DB rows (used here as additional
+// probes — the regression leaked the Acme fixture into the Orly page,
+// but we extend coverage so a future regression on Acme/Globex also
+// fails the spec).
+const TIMELINE_FIXTURE_LITERALS = [
+  // The exact `Realizado el <date>` prefixes from MOCK_TIMELINE that
+  // were leaking into the rendered HTML for clients with no real rows.
+  'Realizado el 22 may',
+  'Realizado el 25 may',
+  'Realizado el 29 may',
+  // Belt-and-suspenders: also check the step labels. If any of these
+  // appear on a per-client page that should be empty, the regression
+  // is back.
+  'T+0 bienvenida',
+  'T+3 configuración inicial',
+  'T+7 go-live webhook',
+  'T+14 revisión',
+];
+
+// Per-client probes for the KAIA-14318 regression. The Orly id is the
+// operator-reported reproduction; the two UUIDs are real seeded DB rows
+// (Acme / Globex) that QA Engineer's spec extension also covered.
+const CLIENT_DETAIL_PROBES = [
+  '/admin/portal/cmsh9mzor00018zsgsfa97l6m',
+  '/admin/portal/00000000-0000-0000-0000-000000000001',
+  '/admin/portal/00000000-0000-0000-0000-000000000002',
+];
+
 async function gotoAsOperator(page: import('@playwright/test').Page, path: string) {
   await page.context().clearCookies();
   await page.context().addCookies([
@@ -102,6 +134,38 @@ test.describe('KAIA-13745 — SSR HTML must not contain dev-mock literals', () =
               'isDatabaseConfigured / isPortalDevMock.',
           );
         }
+      }
+    });
+  }
+});
+
+// KAIA-14318 — per-client [clientId] SSR HTML must not render the
+// MOCK_TIMELINE fixture for clients with no `chatbotActivity` rows.
+//
+// Before this fix, `let timeline = MOCK_TIMELINE;` at module-level scope
+// meant every per-client detail page rendered the May-22 / 25 / 29 mock
+// dates regardless of DB rows. The fix gates `MOCK_TIMELINE` behind
+// `!isDatabaseConfigured` so production (with DATABASE_URL) renders an
+// empty-state copy instead.
+test.describe('KAIA-14318 — per-client [clientId] SSR is free of MOCK_TIMELINE fixture', () => {
+  for (const clientPath of CLIENT_DETAIL_PROBES) {
+    test(`${clientPath} does not render the May-22/25/29 fixture`, async ({ page }) => {
+      await gotoAsOperator(page, clientPath);
+      await page.waitForLoadState('domcontentloaded');
+      const html = await page.content();
+      const offenders: string[] = [];
+      for (const literal of TIMELINE_FIXTURE_LITERALS) {
+        if (html.includes(literal)) {
+          offenders.push(literal);
+        }
+      }
+      if (offenders.length > 0) {
+        throw new Error(
+          `[KAIA-14318] MOCK_TIMELINE fixture leaked into SSR HTML for ${clientPath}: ` +
+            `${offenders.join(', ')}. The default-initializer ` +
+            '`let timeline = MOCK_TIMELINE;` regression is back. ' +
+            'See src/app/admin/portal/[clientId]/page.tsx.',
+        );
       }
     });
   }

@@ -9,6 +9,7 @@ import { OperatorEditor } from '@/components/portal/OperatorEditor';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { MOCK_CLIENT, MOCK_SECONDARY_CLIENT, MOCK_TIMELINE } from '@/lib/portal-data';
+import type { OnboardingTimelineRow } from '@/types/portal';
 import { MOCK_FLOW_ACTIVITY, MOCK_N8N_EXECUTIONS, type FlowActivityEntry, type N8nExecutionSummary } from '@/lib/flow-health';
 import { buildAdminClientChatbotStatus } from '@/lib/chatbot-status';
 
@@ -138,7 +139,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
   let notes: string | null = null;
   let goLiveAt: string | null = null;
   let conversationCount = 0;
-  let timeline = MOCK_TIMELINE;
+  let timeline: OnboardingTimelineRow[] = [];
   let flowHistory: FlowActivityEntry[] = [];
   // KAIA-13744 — when isDatabaseConfigured is true and the real client row
   // resolves, we surface a ChatbotStatusSummary built from the DB (not
@@ -259,6 +260,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
       notFound();
     }
     flowHistory = MOCK_FLOW_ACTIVITY[params.clientId] ?? [];
+    timeline = MOCK_TIMELINE;
   }
 
   // KAIA-13753 hardening — n8n executions: try Prisma first, fall back to
