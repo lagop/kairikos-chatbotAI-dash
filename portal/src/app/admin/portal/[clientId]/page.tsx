@@ -12,6 +12,8 @@ import { MOCK_CLIENT, MOCK_SECONDARY_CLIENT, MOCK_TIMELINE } from '@/lib/portal-
 import type { OnboardingTimelineRow } from '@/types/portal';
 import { MOCK_FLOW_ACTIVITY, MOCK_N8N_EXECUTIONS, type FlowActivityEntry, type N8nExecutionSummary } from '@/lib/flow-health';
 import { buildAdminClientChatbotStatus } from '@/lib/chatbot-status';
+import { advanceOnboardingMilestone } from './onboarding-actions';
+import { ALLOWED_MILESTONES } from './onboarding-constants';
 
 export const dynamic = 'force-dynamic';
 
@@ -124,6 +126,106 @@ function FlowHistoryTimeline({ entries }: { entries: FlowActivityEntry[] }) {
     </ol>
   );
 }
+
+function OnboardingOperatorControls({
+  clientId,
+  timeline,
+  advance,
+}: {
+  clientId: string;
+  timeline: OnboardingTimelineRow[];
+  advance: (formData: FormData) => Promise<void>;
+}) {
+  const doneSteps = new Set(
+    timeline.filter((row) => row.status === 'done').map((row) => row.step),
+  );
+  const pendingMilestones = ALLOWED_MILESTONES.filter((m) => {
+    const dbMilestone = MILESTONE_TO_DB[m];
+    return !doneSteps.has(dbMilestone);
+  });
+  const firstPending = pendingMilestones[0];
+
+  return (
+    <div
+      className="mt-5 border-t border-kairikos-border pt-4"
+      data-testid="onboarding-operator-controls"
+    >
+      <p className="mb-3 text-sm text-kairikos-muted">
+        Como operador, puedes registrar los hitos del onboarding para que el
+        cliente los vea activados en su portal. Esta acción escribe
+        directamente en la línea de tiempo del cliente.
+      </p>
+      {timeline.length === 0 ? (
+        firstPending ? (
+          <form action={advance}>
+            <input type="hidden" name="clientId" value={clientId} />
+            <input type="hidden" name="milestone" value={firstPending} />
+            <button
+              type="submit"
+              className="btn-primary"
+              data-testid="onboarding-operator-start"
+              data-milestone={firstPending}
+            >
+              Iniciar onboarding ({firstPending} · {MILESTONE_LABEL[firstPending]})
+            </button>
+          </form>
+        ) : null
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {ALLOWED_MILESTONES.map((m) => {
+            const dbMilestone = MILESTONE_TO_DB[m];
+            const isDone = doneSteps.has(dbMilestone);
+            return (
+              <li
+                key={m}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-kairikos-border bg-kairikos-surface2 px-3 py-2"
+                data-testid="onboarding-operator-row"
+                data-milestone={m}
+                data-done={isDone ? 'true' : 'false'}
+              >
+                <div className="flex flex-col">
+                  <span className="text-sm font-semibold">
+                    {m} · {MILESTONE_LABEL[m]}
+                  </span>
+                  <span className="text-xs text-kairikos-muted">
+                    {isDone
+                      ? 'Marcado como completado.'
+                      : 'Pendiente de registrar.'}
+                  </span>
+                </div>
+                {isDone ? (
+                  <span className="pill-success" data-testid="onboarding-operator-done-pill">
+                    Completado
+                  </span>
+                ) : (
+                  <form action={advance}>
+                    <input type="hidden" name="clientId" value={clientId} />
+                    <input type="hidden" name="milestone" value={m} />
+                    <button
+                      type="submit"
+                      className="btn-ghost"
+                      data-testid="onboarding-operator-mark"
+                      data-milestone={m}
+                    >
+                      Marcar como completado
+                    </button>
+                  </form>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+const MILESTONE_TO_DB: Record<string, OnboardingTimelineRow['step']> = {
+  'T+0': 't_plus_0',
+  'T+3': 't_plus_3',
+  'T+7': 't_plus_7',
+  'T+14': 't_plus_14',
+};
 
 export default async function AdminClientDetailPage({ params, searchParams }: PageProps) {
   const session = await getSession();
@@ -381,8 +483,23 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
           <section className="card" aria-label="Onboarding del cliente">
             <header className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold">Onboarding</h2>
+              {session.isOperator && isDatabaseConfigured ? (
+                <span
+                  data-testid="onboarding-operator-badge"
+                  className="pill-muted"
+                >
+                  Controles de operador activos
+                </span>
+              ) : null}
             </header>
             <OnboardingTimeline rows={timeline} />
+            {session.isOperator && isDatabaseConfigured ? (
+              <OnboardingOperatorControls
+                clientId={params.clientId}
+                timeline={timeline}
+                advance={advanceOnboardingMilestone}
+              />
+            ) : null}
           </section>
 
           <p className="text-xs text-kairikos-muted">

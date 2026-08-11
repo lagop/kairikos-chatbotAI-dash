@@ -188,3 +188,117 @@ describe('KAIA-14318 — OnboardingTimeline component empty-state (source check)
     expect(rows[0].status).toBe('done');
   });
 });
+
+describe('KAIA-14345 — operator-side onboarding advance controls (source check)', () => {
+  // The fix lives on the page + a new server action file. We assert the
+  // structural shape so a future refactor cannot silently drop the
+  // operator-side controls (the regression class that broke brand-new
+  // clients in the field — see KAIA-14318 operator feedback for 2026-08-11).
+  const ACTIONS_FILE = path.join(
+    REPO_ROOT,
+    'src',
+    'app',
+    'admin',
+    'portal',
+    '[clientId]',
+    'onboarding-actions.ts',
+  );
+
+  it('declares a server action file at the admin client-detail route', () => {
+    expect(fs.existsSync(ACTIONS_FILE)).toBe(true);
+  });
+
+  it('server action file uses the "use server" directive', () => {
+    const source = fs.readFileSync(ACTIONS_FILE, 'utf8');
+    expect(source).toMatch(/^'use server';/);
+  });
+
+  it('page imports the operator advance server action and the milestone allowlist', () => {
+    expect(pageSource).toContain("from './onboarding-actions'");
+    expect(pageSource).toContain('advanceOnboardingMilestone');
+    expect(pageSource).toContain('ALLOWED_MILESTONES');
+  });
+
+  it('page renders the operator controls block gated on isOperator && isDatabaseConfigured', () => {
+    const block = pageSource.match(
+      /session\.isOperator\s*&&\s*isDatabaseConfigured[\s\S]*?<\/section>/,
+    );
+    expect(block).not.toBeNull();
+  });
+
+  it('page exposes a data-testid hook for the operator controls region', () => {
+    expect(pageSource).toContain('onboarding-operator-controls');
+    expect(pageSource).toContain('onboarding-operator-start');
+    expect(pageSource).toContain('onboarding-operator-mark');
+  });
+
+  it('server action gates on session.isOperator and isDatabaseConfigured before any DB write', () => {
+    const source = fs.readFileSync(ACTIONS_FILE, 'utf8');
+    const guardIndex = source.search(/session\.isOperator[\s\S]{0,40}isDatabaseConfigured/);
+    const writeIndex = source.search(/prisma\.chatbotActivity\.upsert/);
+    expect(guardIndex).toBeGreaterThan(-1);
+    expect(writeIndex).toBeGreaterThan(-1);
+    expect(guardIndex).toBeLessThan(writeIndex);
+  });
+
+  it('server action allowlist restricts milestone values to T+0/3/7/14', () => {
+    const source = fs.readFileSync(ACTIONS_FILE, 'utf8');
+    expect(source).toContain('isAllowedMilestone');
+    const constantsFile = path.join(
+      REPO_ROOT,
+      'src',
+      'app',
+      'admin',
+      'portal',
+      '[clientId]',
+      'onboarding-constants.ts',
+    );
+    const constants = fs.readFileSync(constantsFile, 'utf8');
+    expect(constants).toContain('T+0');
+    expect(constants).toContain('T+3');
+    expect(constants).toContain('T+7');
+    expect(constants).toContain('T+14');
+  });
+
+  it('server action revalidates the operator overview path so the timeline re-renders', () => {
+    const source = fs.readFileSync(ACTIONS_FILE, 'utf8');
+    expect(source).toContain('revalidatePath');
+    expect(source).toContain('/admin/portal/');
+    expect(source).toContain('/portal/onboarding');
+  });
+});
+
+describe('KAIA-14345 — admin mock gating guardrail still passes after the new block', () => {
+  // The structural guardrail test (KAIA-13745) scans every admin/portal
+  // page for ungated MOCK_* references. Adding a new file + new block
+  // must not introduce an ungated reference. We re-run the scanner here
+  // so a regression in this slice trips THIS file's tests, not just the
+  // shared guardrail.
+
+  const ADMIN_DIR = path.join(REPO_ROOT, 'src', 'app', 'admin', 'portal');
+  const NEW_FILE = path.join(ADMIN_DIR, '[clientId]', 'onboarding-actions.ts');
+
+  const TRACKED = [
+    'MOCK_CLIENT',
+    'MOCK_SECONDARY_CLIENT',
+    'MOCK_STARTER_CLIENT',
+    'MOCK_CHATBOT',
+    'MOCK_CHATBOT_FROM_DATA',
+    'MOCK_TIMELINE',
+    'MOCK_CONVERSATIONS',
+    'MOCK_BILLING',
+    'MOCK_BILLING_EXPORT',
+    'MOCK_FLOW_ACTIVITY',
+    'MOCK_N8N_EXECUTIONS',
+    'MOCK_FLOW_HEALTH_ROWS',
+  ];
+
+  it('onboarding-actions.ts does not reference any tracked MOCK_* symbol', () => {
+    if (!fs.existsSync(NEW_FILE)) {
+      throw new Error(`expected new file at ${NEW_FILE}`);
+    }
+    const source = fs.readFileSync(NEW_FILE, 'utf8');
+    const offenders = TRACKED.filter((sym) => new RegExp(`\\b${sym}\\b`).test(source));
+    expect(offenders).toEqual([]);
+  });
+});
