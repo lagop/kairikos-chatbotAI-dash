@@ -49,7 +49,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- =============================================================================
 -- 1. Tenant
 -- =============================================================================
-CREATE TABLE "Tenant" (
+CREATE TABLE IF NOT EXISTS "Tenant" (
     "id"         UUID        NOT NULL,
     "name"       TEXT        NOT NULL,
     "slug"       TEXT        NOT NULL UNIQUE,
@@ -64,11 +64,40 @@ CREATE TABLE "Tenant" (
     CONSTRAINT "Tenant_pkey" PRIMARY KEY ("id")
 );
 
-CREATE INDEX "Tenant_slug_idx"   ON "Tenant" ("slug");
-CREATE INDEX "Tenant_status_idx" ON "Tenant" ("status");
+CREATE INDEX IF NOT EXISTS "Tenant_slug_idx"   ON "Tenant" ("slug");
+CREATE INDEX IF NOT EXISTS "Tenant_status_idx" ON "Tenant" ("status");
 
--- Insert the default tenant that every existing row will be backfilled to.
--- Idempotent: ON CONFLICT DO NOTHING so re-running this migration is safe.
+-- KAIA-14440: production drift reconciliation.
+-- A parallel snake_case `tenants` registry was created out-of-band (Supabase
+-- side) and `ChatbotClient.tenant_id` was already populated with ids that
+-- reference `tenants`, NOT this `Tenant` table. Adding the FK below without
+-- reconciling first fails with:
+--   insert or update on table "ChatbotClient" violates foreign key constraint
+--   Key (tenant_id)=(a3fb7a1c-…) is not present in table "Tenant".
+-- Mirror every existing `tenants` row into `Tenant` (same ids) so the FK
+-- resolves and no existing tenant assignment is rewritten or lost. Purely
+-- additive: no row in `tenants` is modified or deleted.
+--
+-- Order matters: mirror `tenants` FIRST, then seed the fallback default only
+-- if no 'default' slug arrived from the mirror. Production already has
+-- slug='default' at a different id (a3fb7a1c-…), so seeding the hardcoded
+-- 00000000-…-0001 first would take the slug and make the mirror's ON CONFLICT
+-- ("id") DO NOTHING silently skip the real default tenant, leaving 65
+-- ChatbotClient rows orphaned against the FK.
+DO $do$ BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'tenants'
+    ) THEN
+        INSERT INTO "Tenant" ("id", "name", "slug", "status", "features", "created_at", "updated_at")
+        SELECT t."id", t."name", t."slug", t."status", t."features", t."created_at", t."updated_at"
+        FROM "tenants" t
+        ON CONFLICT ("id") DO NOTHING;
+    END IF;
+END $do$;
+
+-- Fallback default tenant for a virgin database (no `tenants` registry).
+-- Idempotent: skipped when a 'default' slug already exists.
 INSERT INTO "Tenant" ("id", "name", "slug", "status")
 VALUES ('00000000-0000-0000-0000-000000000001', 'Default Tenant', 'default', 'active')
 ON CONFLICT ("slug") DO NOTHING;
@@ -76,7 +105,7 @@ ON CONFLICT ("slug") DO NOTHING;
 -- =============================================================================
 -- 2. Profile (1:1 with User)
 -- =============================================================================
-CREATE TABLE "Profile" (
+CREATE TABLE IF NOT EXISTS "Profile" (
     "id"         TEXT        NOT NULL,
     -- FK to User — 1:1. UNIQUE so the canonical identity row is unambiguous.
     "user_id"    TEXT        NOT NULL UNIQUE,
@@ -95,13 +124,13 @@ CREATE TABLE "Profile" (
         ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
-CREATE INDEX "Profile_tenant_id_idx" ON "Profile" ("tenant_id");
-CREATE INDEX "Profile_role_idx"      ON "Profile" ("role");
+CREATE INDEX IF NOT EXISTS "Profile_tenant_id_idx" ON "Profile" ("tenant_id");
+CREATE INDEX IF NOT EXISTS "Profile_role_idx"      ON "Profile" ("role");
 
 -- =============================================================================
 -- 3. Product (service tiers)
 -- =============================================================================
-CREATE TABLE "Product" (
+CREATE TABLE IF NOT EXISTS "Product" (
     "id"              UUID        NOT NULL,
     -- Stripe price id (populated by the Stripe webhook handler in
     -- kira-studio-billing-backend). NULL for unsynced or grandfathered rows.
@@ -118,8 +147,8 @@ CREATE TABLE "Product" (
     CONSTRAINT "Product_pkey" PRIMARY KEY ("id")
 );
 
-CREATE INDEX "Product_tier_idx"      ON "Product" ("tier");
-CREATE INDEX "Product_is_active_idx" ON "Product" ("is_active") WHERE "is_active" = TRUE;
+CREATE INDEX IF NOT EXISTS "Product_tier_idx"      ON "Product" ("tier");
+CREATE INDEX IF NOT EXISTS "Product_is_active_idx" ON "Product" ("is_active") WHERE "is_active" = TRUE;
 
 -- Seed the three tiers (idempotent — Stripe webhook will overwrite stripe_price_id).
 INSERT INTO "Product" ("id", "stripe_price_id", "name", "tier", "price_cents", "features")
@@ -139,7 +168,7 @@ ON CONFLICT ("tier") DO UPDATE SET
 -- =============================================================================
 -- 4. ClientProduct (chatbot_clients <-> products many-to-many)
 -- =============================================================================
-CREATE TABLE "ClientProduct" (
+CREATE TABLE IF NOT EXISTS "ClientProduct" (
     "id"            UUID        NOT NULL,
     "client_id"     TEXT        NOT NULL,
     "product_id"    UUID        NOT NULL,
@@ -163,10 +192,10 @@ CREATE TABLE "ClientProduct" (
         UNIQUE ("client_id", "product_id")
 );
 
-CREATE INDEX "ClientProduct_client_id_idx"  ON "ClientProduct" ("client_id");
-CREATE INDEX "ClientProduct_product_id_idx" ON "ClientProduct" ("product_id");
-CREATE INDEX "ClientProduct_tenant_id_idx"  ON "ClientProduct" ("tenant_id");
-CREATE INDEX "ClientProduct_status_idx"     ON "ClientProduct" ("status") WHERE "status" = 'active';
+CREATE INDEX IF NOT EXISTS "ClientProduct_client_id_idx"  ON "ClientProduct" ("client_id");
+CREATE INDEX IF NOT EXISTS "ClientProduct_product_id_idx" ON "ClientProduct" ("product_id");
+CREATE INDEX IF NOT EXISTS "ClientProduct_tenant_id_idx"  ON "ClientProduct" ("tenant_id");
+CREATE INDEX IF NOT EXISTS "ClientProduct_status_idx"     ON "ClientProduct" ("status") WHERE "status" = 'active';
 
 -- =============================================================================
 -- 5. Add tenant_id to existing chatbot tables
@@ -179,102 +208,138 @@ CREATE INDEX "ClientProduct_status_idx"     ON "ClientProduct" ("status") WHERE 
 
 -- 5.1 ChatbotClient
 ALTER TABLE "ChatbotClient"
-    ADD COLUMN "tenant_id" UUID;
+    ADD COLUMN IF NOT EXISTS "tenant_id" UUID;
 
-ALTER TABLE "ChatbotClient"
-    ADD CONSTRAINT "ChatbotClient_tenant_id_fkey"
-    FOREIGN KEY ("tenant_id") REFERENCES "Tenant"("id")
-    ON DELETE SET NULL ON UPDATE CASCADE;
+DO $do$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ChatbotClient_tenant_id_fkey') THEN
+        ALTER TABLE "ChatbotClient"
+            ADD CONSTRAINT "ChatbotClient_tenant_id_fkey"
+            FOREIGN KEY ("tenant_id") REFERENCES "Tenant"("id")
+            ON DELETE SET NULL ON UPDATE CASCADE;
+    END IF;
+END $do$;
 
-CREATE INDEX "ChatbotClient_tenant_id_idx" ON "ChatbotClient" ("tenant_id");
+CREATE INDEX IF NOT EXISTS "ChatbotClient_tenant_id_idx" ON "ChatbotClient" ("tenant_id");
 
 -- 5.2 ChatbotClientUser
 ALTER TABLE "ChatbotClientUser"
-    ADD COLUMN "tenant_id" UUID;
+    ADD COLUMN IF NOT EXISTS "tenant_id" UUID;
 
-ALTER TABLE "ChatbotClientUser"
-    ADD CONSTRAINT "ChatbotClientUser_tenant_id_fkey"
-    FOREIGN KEY ("tenant_id") REFERENCES "Tenant"("id")
-    ON DELETE SET NULL ON UPDATE CASCADE;
+DO $do$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ChatbotClientUser_tenant_id_fkey') THEN
+        ALTER TABLE "ChatbotClientUser"
+            ADD CONSTRAINT "ChatbotClientUser_tenant_id_fkey"
+            FOREIGN KEY ("tenant_id") REFERENCES "Tenant"("id")
+            ON DELETE SET NULL ON UPDATE CASCADE;
+    END IF;
+END $do$;
 
-CREATE INDEX "ChatbotClientUser_tenant_id_idx" ON "ChatbotClientUser" ("tenant_id");
+CREATE INDEX IF NOT EXISTS "ChatbotClientUser_tenant_id_idx" ON "ChatbotClientUser" ("tenant_id");
 
 -- 5.3 ChatbotActivity
 ALTER TABLE "ChatbotActivity"
-    ADD COLUMN "tenant_id" UUID;
+    ADD COLUMN IF NOT EXISTS "tenant_id" UUID;
 
-ALTER TABLE "ChatbotActivity"
-    ADD CONSTRAINT "ChatbotActivity_tenant_id_fkey"
-    FOREIGN KEY ("tenant_id") REFERENCES "Tenant"("id")
-    ON DELETE SET NULL ON UPDATE CASCADE;
+DO $do$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ChatbotActivity_tenant_id_fkey') THEN
+        ALTER TABLE "ChatbotActivity"
+            ADD CONSTRAINT "ChatbotActivity_tenant_id_fkey"
+            FOREIGN KEY ("tenant_id") REFERENCES "Tenant"("id")
+            ON DELETE SET NULL ON UPDATE CASCADE;
+    END IF;
+END $do$;
 
-CREATE INDEX "ChatbotActivity_tenant_id_idx" ON "ChatbotActivity" ("tenant_id");
+CREATE INDEX IF NOT EXISTS "ChatbotActivity_tenant_id_idx" ON "ChatbotActivity" ("tenant_id");
 
 -- 5.4 ChatbotConversation
 ALTER TABLE "ChatbotConversation"
-    ADD COLUMN "tenant_id" UUID;
+    ADD COLUMN IF NOT EXISTS "tenant_id" UUID;
 
-ALTER TABLE "ChatbotConversation"
-    ADD CONSTRAINT "ChatbotConversation_tenant_id_fkey"
-    FOREIGN KEY ("tenant_id") REFERENCES "Tenant"("id")
-    ON DELETE SET NULL ON UPDATE CASCADE;
+DO $do$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ChatbotConversation_tenant_id_fkey') THEN
+        ALTER TABLE "ChatbotConversation"
+            ADD CONSTRAINT "ChatbotConversation_tenant_id_fkey"
+            FOREIGN KEY ("tenant_id") REFERENCES "Tenant"("id")
+            ON DELETE SET NULL ON UPDATE CASCADE;
+    END IF;
+END $do$;
 
-CREATE INDEX "ChatbotConversation_tenant_id_idx" ON "ChatbotConversation" ("tenant_id");
+CREATE INDEX IF NOT EXISTS "ChatbotConversation_tenant_id_idx" ON "ChatbotConversation" ("tenant_id");
 
 -- 5.5 ChatbotConfigStep
 ALTER TABLE "ChatbotConfigStep"
-    ADD COLUMN "tenant_id" UUID;
+    ADD COLUMN IF NOT EXISTS "tenant_id" UUID;
 
-ALTER TABLE "ChatbotConfigStep"
-    ADD CONSTRAINT "ChatbotConfigStep_tenant_id_fkey"
-    FOREIGN KEY ("tenant_id") REFERENCES "Tenant"("id")
-    ON DELETE SET NULL ON UPDATE CASCADE;
+DO $do$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ChatbotConfigStep_tenant_id_fkey') THEN
+        ALTER TABLE "ChatbotConfigStep"
+            ADD CONSTRAINT "ChatbotConfigStep_tenant_id_fkey"
+            FOREIGN KEY ("tenant_id") REFERENCES "Tenant"("id")
+            ON DELETE SET NULL ON UPDATE CASCADE;
+    END IF;
+END $do$;
 
-CREATE INDEX "ChatbotConfigStep_tenant_id_idx" ON "ChatbotConfigStep" ("tenant_id");
+CREATE INDEX IF NOT EXISTS "ChatbotConfigStep_tenant_id_idx" ON "ChatbotConfigStep" ("tenant_id");
 
 -- 5.6 ChatbotConfigStepAudit
 ALTER TABLE "ChatbotConfigStepAudit"
-    ADD COLUMN "tenant_id" UUID;
+    ADD COLUMN IF NOT EXISTS "tenant_id" UUID;
 
-ALTER TABLE "ChatbotConfigStepAudit"
-    ADD CONSTRAINT "ChatbotConfigStepAudit_tenant_id_fkey"
-    FOREIGN KEY ("tenant_id") REFERENCES "Tenant"("id")
-    ON DELETE SET NULL ON UPDATE CASCADE;
+DO $do$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ChatbotConfigStepAudit_tenant_id_fkey') THEN
+        ALTER TABLE "ChatbotConfigStepAudit"
+            ADD CONSTRAINT "ChatbotConfigStepAudit_tenant_id_fkey"
+            FOREIGN KEY ("tenant_id") REFERENCES "Tenant"("id")
+            ON DELETE SET NULL ON UPDATE CASCADE;
+    END IF;
+END $do$;
 
-CREATE INDEX "ChatbotConfigStepAudit_tenant_id_idx" ON "ChatbotConfigStepAudit" ("tenant_id");
+CREATE INDEX IF NOT EXISTS "ChatbotConfigStepAudit_tenant_id_idx" ON "ChatbotConfigStepAudit" ("tenant_id");
 
 -- 5.7 IntakeSubmission
 ALTER TABLE "IntakeSubmission"
-    ADD COLUMN "tenant_id" UUID;
+    ADD COLUMN IF NOT EXISTS "tenant_id" UUID;
 
-ALTER TABLE "IntakeSubmission"
-    ADD CONSTRAINT "IntakeSubmission_tenant_id_fkey"
-    FOREIGN KEY ("tenant_id") REFERENCES "Tenant"("id")
-    ON DELETE SET NULL ON UPDATE CASCADE;
+DO $do$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'IntakeSubmission_tenant_id_fkey') THEN
+        ALTER TABLE "IntakeSubmission"
+            ADD CONSTRAINT "IntakeSubmission_tenant_id_fkey"
+            FOREIGN KEY ("tenant_id") REFERENCES "Tenant"("id")
+            ON DELETE SET NULL ON UPDATE CASCADE;
+    END IF;
+END $do$;
 
-CREATE INDEX "IntakeSubmission_tenant_id_idx" ON "IntakeSubmission" ("tenant_id");
+CREATE INDEX IF NOT EXISTS "IntakeSubmission_tenant_id_idx" ON "IntakeSubmission" ("tenant_id");
 
 -- 5.8 OperatorNotification
 ALTER TABLE "OperatorNotification"
-    ADD COLUMN "tenant_id" UUID;
+    ADD COLUMN IF NOT EXISTS "tenant_id" UUID;
 
-ALTER TABLE "OperatorNotification"
-    ADD CONSTRAINT "OperatorNotification_tenant_id_fkey"
-    FOREIGN KEY ("tenant_id") REFERENCES "Tenant"("id")
-    ON DELETE SET NULL ON UPDATE CASCADE;
+DO $do$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OperatorNotification_tenant_id_fkey') THEN
+        ALTER TABLE "OperatorNotification"
+            ADD CONSTRAINT "OperatorNotification_tenant_id_fkey"
+            FOREIGN KEY ("tenant_id") REFERENCES "Tenant"("id")
+            ON DELETE SET NULL ON UPDATE CASCADE;
+    END IF;
+END $do$;
 
-CREATE INDEX "OperatorNotification_tenant_id_idx" ON "OperatorNotification" ("tenant_id");
+CREATE INDEX IF NOT EXISTS "OperatorNotification_tenant_id_idx" ON "OperatorNotification" ("tenant_id");
 
 -- 5.9 N8nExecution
 ALTER TABLE "N8nExecution"
-    ADD COLUMN "tenant_id" UUID;
+    ADD COLUMN IF NOT EXISTS "tenant_id" UUID;
 
-ALTER TABLE "N8nExecution"
-    ADD CONSTRAINT "N8nExecution_tenant_id_fkey"
-    FOREIGN KEY ("tenant_id") REFERENCES "Tenant"("id")
-    ON DELETE SET NULL ON UPDATE CASCADE;
+DO $do$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'N8nExecution_tenant_id_fkey') THEN
+        ALTER TABLE "N8nExecution"
+            ADD CONSTRAINT "N8nExecution_tenant_id_fkey"
+            FOREIGN KEY ("tenant_id") REFERENCES "Tenant"("id")
+            ON DELETE SET NULL ON UPDATE CASCADE;
+    END IF;
+END $do$;
 
-CREATE INDEX "N8nExecution_tenant_id_idx" ON "N8nExecution" ("tenant_id");
+CREATE INDEX IF NOT EXISTS "N8nExecution_tenant_id_idx" ON "N8nExecution" ("tenant_id");
 
 -- =============================================================================
 -- 6. Backfill tenant_id on every existing row
