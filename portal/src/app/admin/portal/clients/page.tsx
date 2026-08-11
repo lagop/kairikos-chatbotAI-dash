@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { EmptyState } from '@/components/portal/EmptyState';
 import { PageHeading } from '@/components/portal/PageHeading';
@@ -70,6 +71,7 @@ export default async function AdminClientsPage() {
                   <th scope="col" className="px-4 py-3">Email</th>
                   <th scope="col" className="px-4 py-3">Plan</th>
                   <th scope="col" className="px-4 py-3">Estado</th>
+                  <th scope="col" className="px-4 py-3 text-right">Acción</th>
                 </tr>
               </thead>
               <tbody>
@@ -96,6 +98,15 @@ export default async function AdminClientsPage() {
                       >
                         {STATUS_LABEL[c.onboardingStatus] ?? c.onboardingStatus}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 align-middle text-right">
+                      <Link
+                        href={`/admin/portal/${c.id}`}
+                        className="text-kairikos-accent2 underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kairikos-accent2 focus-visible:rounded-sm"
+                        data-testid="client-row-action"
+                      >
+                        Abrir →
+                      </Link>
                     </td>
                   </tr>
                 ))}
