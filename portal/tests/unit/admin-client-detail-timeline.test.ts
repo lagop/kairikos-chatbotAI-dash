@@ -324,12 +324,25 @@ describe('KAIA-14388 — direct-connection client wiring (source check)', () => 
   it('page routes the chatbotActivity.findMany read through the direct client', () => {
     // The fix introduces an `activityClient = isDatabaseDirectConfigured ? prismaDirect : prisma`
     // binding and uses `activityClient.chatbotActivity.findMany(...)` for the read.
+    //
+    // KAIA-14409 v3 — the call is now formatted across multiple lines
+    // because a `.catch()` fallback was chained onto it (an IPv6-only
+    // DIRECT_URL throws ENOTFOUND on Vercel; we recover through the pooled
+    // client instead of silently rendering an empty timeline). Match on
+    // the receiver + method with flexible whitespace rather than the exact
+    // one-line call text.
     expect(pageSource).toContain('activityClient');
-    expect(pageSource).toContain('activityClient.chatbotActivity.findMany');
-    // Guard against a regression that reverts the read to the bare pooler `prisma.chatbotActivity.findMany`.
+    expect(pageSource).toMatch(
+      /activityClient\s*\r?\n?\s*\.?\s*chatbotActivity\s*\r?\n?\s*\.?\s*findMany/,
+    );
+    // Guard against a regression that reverts the read to the bare pooler
+    // `prisma.chatbotActivity.findMany` as the PRIMARY read. The v3
+    // fallback inside `.catch(...)` is intentional and is indented well
+    // past column 0, so the original start-of-line check still isolates
+    // the primary-read regression we care about.
     const offenders: string[] = [];
     for (const line of pageLines) {
-      if (/^\s*prisma\.chatbotActivity\.findMany/.test(line)) {
+      if (/^\s{0,10}prisma\.chatbotActivity\.findMany/.test(line)) {
         offenders.push(line.trim());
       }
     }

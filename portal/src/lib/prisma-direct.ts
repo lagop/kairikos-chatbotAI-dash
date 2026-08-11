@@ -63,34 +63,52 @@ declare global {
   var __kairikosPortalPrismaDirect: PrismaClient | undefined;
 }
 
-// KAIA-14409 follow-up — detect the pooler by TOPOLOGY (host / port), not by
-// the `pgbouncer` query flag.
+// KAIA-14409 v3 — reject TRANSACTION-mode pooling (port 6543), not the
+// pooler host.
 //
-// The flag is not evidence of a pooler: `@/lib/prisma` rewrites
-// `process.env.DATABASE_URL` in place to append
-// `?pgbouncer=true&connection_limit=1` (KAIA-2872) to whatever it finds —
-// including a perfectly direct `localhost:5432` dev URL. Because
-// `onboarding-actions.ts` imports `@/lib/prisma` BEFORE `@/lib/prisma-direct`,
-// that mutation has already happened by the time we resolve here. Keying off
-// the flag therefore turned the dev fallback into a false NEGATIVE: local and
-// CI runs reported `isDatabaseDirectConfigured === false` and quietly routed
-// the onboarding flow back through the pooler client, so the read-after-write
-// path the fix exists to exercise was never actually exercised outside prod.
+// The v2 guard rejected any `*.pooler.supabase.com` host. That was wrong,
+// and it made the only workable production topology unreachable.
 //
-// Port 6543 and the `*.pooler.supabase.com` hostname are topology facts and
-// cannot be introduced by our own flag-appending, so we key off those instead.
+// Supabase exposes two things on the pooler host:
+//   - :6543 → TRANSACTION mode. Each statement may land on a different
+//             backend. This is what breaks read-after-write. Reject.
+//   - :5432 → SESSION mode. The connection is pinned to one backend for
+//             its lifetime, which is exactly the guarantee we need. Accept.
+//
+// And the true direct host (`db.<ref>.supabase.co:5432`) is IPv6-ONLY:
+//
+//   dns.resolve4('db.<ref>.supabase.co') → ENODATA
+//   dns.resolve6('db.<ref>.supabase.co') → 2a05:d012:...
+//   net.connect({ family: 4 }) → ENOTFOUND
+//
+// Vercel's Lambda runtime has no IPv6 egress, so a `DIRECT_URL` pointing at
+// that host can NEVER connect from production — it throws at query time and
+// the caller's `catch` renders an empty timeline. That is the actual
+// KAIA-14388 / KAIA-14409 production symptom.
+//
+// So "direct" here means "session-scoped", not "not behind a pooler". Port
+// 6543 is the only real disqualifier.
 export function isPooledDirectUrl(url: string | undefined): boolean {
   if (!url) return true;
   if (!/^postgres(?:ql)?:\/\//i.test(url)) return true;
   try {
     const parsed = new URL(url);
+    // Transaction-mode pooling is the disqualifier, whatever the host.
     if (parsed.port === '6543') return true;
-    if (/(^|\.)pooler\.supabase\.com$/i.test(parsed.hostname)) return true;
+    // An explicit pgbouncer=true on the *pooler* host means the caller is
+    // asking for transaction-mode semantics even on :5432.
+    if (
+      /(^|\.)pooler\.supabase\.com$/i.test(parsed.hostname) &&
+      parsed.searchParams.get('pgbouncer') === 'true' &&
+      parsed.port !== '5432'
+    ) {
+      return true;
+    }
     return false;
   } catch {
-    // Unparseable — stay conservative so a malformed pooler URL still
-    // cannot masquerade as direct.
-    return /:6543(?:\/|\?|$)/.test(url) || /pooler\.supabase\.com/i.test(url);
+    // Unparseable — stay conservative about the one topology we know is
+    // fatal (transaction-mode port).
+    return /:6543(?:\/|\?|$)/.test(url);
   }
 }
 

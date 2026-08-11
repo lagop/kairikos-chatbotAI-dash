@@ -196,19 +196,29 @@ describe('KAIA-14388 / KAIA-14409 — prismaDirect singleton', () => {
 // =============================================================================
 
 describe('KAIA-14409 follow-up — isPooledDirectUrl detects topology, not flags', () => {
-  it('flags port 6543 and *.pooler.supabase.com', async () => {
+  it('flags port 6543 (transaction mode) wherever it appears', async () => {
     const { isPooledDirectUrl } = await import('@/lib/prisma-direct');
     expect(
       isPooledDirectUrl(
         'postgres://postgres:pw@aws-0-eu-west-3.pooler.supabase.com:6543/postgres?pgbouncer=true',
       ),
     ).toBe(true);
+    expect(isPooledDirectUrl(undefined)).toBe(true);
+  });
+
+  it('ACCEPTS the session-mode pooler on :5432 (KAIA-14409 v3)', async () => {
+    // The v2 guard rejected any *.pooler.supabase.com host, which ruled out
+    // the ONLY topology that actually works on Vercel. The true direct host
+    // (db.<ref>.supabase.co:5432) is IPv6-only and Vercel Lambda has no IPv6
+    // egress, so it can never connect. Session mode on :5432 pins one
+    // backend per connection — the guarantee read-after-write needs — and
+    // is IPv4-reachable.
+    const { isPooledDirectUrl } = await import('@/lib/prisma-direct');
     expect(
       isPooledDirectUrl(
         'postgres://postgres:pw@aws-0-eu-west-3.pooler.supabase.com:5432/postgres',
       ),
-    ).toBe(true);
-    expect(isPooledDirectUrl(undefined)).toBe(true);
+    ).toBe(false);
   });
 
   it('does NOT flag a direct URL merely because it carries pgbouncer flags', async () => {
@@ -262,5 +272,50 @@ describe('KAIA-14409 follow-up — isPooledDirectUrl detects topology, not flags
     expect(mod.isDatabaseDirectConfigured).toBe(false);
     expect(mod.directUrlSource).toBe('none');
     expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('KAIA-14409'));
+  });
+});
+
+// =============================================================================
+// KAIA-14409 v3 — the production topology that actually works.
+//
+// Proven from this container (see issue comment for full output):
+//
+//   dns.resolve4('db.<ref>.supabase.co')          -> ENODATA
+//   dns.resolve6('db.<ref>.supabase.co')          -> 2a05:d012:...
+//   net.connect(db.<ref>...:5432,  family: 4)     -> ENOTFOUND
+//   net.connect(pooler...:5432,    family: 4)     -> CONNECTED
+//   net.connect(pooler...:6543,    family: 4)     -> CONNECTED
+//
+// Vercel Lambda has no IPv6 egress, so DIRECT_URL must point at the
+// session-mode pooler (:5432), never at db.<ref>.supabase.co.
+// =============================================================================
+
+describe('KAIA-14409 v3 — session-mode pooler is a valid direct URL', () => {
+  it('treats the session-mode pooler URL as direct and configured', async () => {
+    process.env.DIRECT_URL =
+      'postgres://postgres.ref:pw@aws-0-eu-west-3.pooler.supabase.com:5432/postgres';
+    const mod = await import('@/lib/prisma-direct');
+    expect(mod.isDatabaseDirectConfigured).toBe(true);
+    expect(mod.directUrlSource).toBe('DIRECT_URL');
+  });
+
+  it('still rejects the transaction-mode pooler URL', async () => {
+    process.env.DIRECT_URL =
+      'postgres://postgres.ref:pw@aws-0-eu-west-3.pooler.supabase.com:6543/postgres?pgbouncer=true';
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const mod = await import('@/lib/prisma-direct');
+    expect(mod.isDatabaseDirectConfigured).toBe(false);
+    expect(mod.directUrlSource).toBe('none');
+  });
+
+  it('accepts the IPv6-only direct host as a URL (transport failure is caught at query time)', async () => {
+    // The guard is about pooling semantics, not reachability — we cannot
+    // resolve DNS at module load. Reachability is handled by the runtime
+    // fallback in [clientId]/page.tsx, which catches the ENOTFOUND and
+    // re-reads through the pooled client instead of rendering empty.
+    process.env.DIRECT_URL =
+      'postgres://postgres:pw@db.example-ref.supabase.co:5432/postgres';
+    const mod = await import('@/lib/prisma-direct');
+    expect(mod.isDatabaseDirectConfigured).toBe(true);
   });
 });
