@@ -21,6 +21,24 @@
 // not break this guard. (KAIA-13797 — replaces the previous
 // `KAIA_OPERATOR_API_KEY` gate so the harness can replay this guard on
 // staging without burning a per-ticket 10-min TTL.)
+//
+// WP-02 — this file had no `import { test, expect } from '@playwright/test'`
+// and no top-level PORTAL_URL/QA_PROBE_TOKEN/OPERATOR_KEY declarations, so
+// any Playwright command that collected it (including ones scoped to other
+// files, since Playwright parses the whole testDir before filtering)
+// crashed with a ReferenceError before ever reaching the skip check the
+// comment above describes. Restored the same env-var pattern
+// admin-flows.spec.ts already uses. Not restored: REAL_CLIENT_ID and
+// MOCK_LITERALS, referenced only inside test bodies that this file's own
+// `test.skip(shouldSkip(), ...)` gate never reaches without QA_PROBE_TOKEN
+// set — reconstructing those from a comment alone risked asserting against
+// the wrong client or the wrong mock strings.
+
+import { test, expect } from '@playwright/test';
+
+const PORTAL_URL = process.env.PORTAL_URL || 'http://localhost:3001';
+const QA_PROBE_TOKEN = process.env.QA_PROBE_TOKEN ?? '';
+const OPERATOR_KEY = process.env.KAIA_OPERATOR_API_KEY ?? '';
 
 function shouldSkip(): boolean {
   if (!QA_PROBE_TOKEN) return true;
@@ -84,7 +102,7 @@ function assertNoMockLiterals(name: string, body: string): void {
   }
 }
 
-test.describe('Admin portal SSR is free of MOCK_* fixtures (KAIA-13753)', () => {
+test.describe('@staging Admin portal SSR is free of MOCK_* fixtures (KAIA-13753)', () => {
   test.skip(shouldSkip(), SKIP_REASON);
 
   test('/admin/portal (list) renders no MOCK_* literals', async ({ request }) => {
