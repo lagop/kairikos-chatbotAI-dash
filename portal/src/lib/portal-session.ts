@@ -7,10 +7,8 @@ import { MOCK_CLIENT, DEV_MOCK_CLIENT_BY_EMAIL } from './portal-data';
 export interface ResolvedClient {
   clientId: string;
   email: string;
-  source: 'database' | 'mock_dev' | 'header_dev';
+  source: 'database' | 'mock_dev';
 }
-
-const DEV_EMAIL_HEADER = 'x-kairikos-dev-email';
 
 // KAIA-1519 — mirrors the dev-mock detection in `session.ts:42` so the
 // portal-side session and the wizard-side client resolver agree on what
@@ -81,6 +79,3 @@ export async function resolveClientFromSession(): Promise<ResolvedClient | null>
   return { clientId: MOCK_CLIENT.id, email: MOCK_CLIENT.primaryContactEmail, source: 'mock_dev' };
 }
 
-export function readDevEmailHeader(req: Request): string | null {
-  return req.headers.get(DEV_EMAIL_HEADER);
-}

@@ -1,5 +1,5 @@
-import { timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
+import { constantTimeEqual } from './operator-crypto';
 import 'server-only';
 
 // =============================================================================
@@ -47,7 +47,7 @@ export function authenticateActivityKeyRequest(req: Request): ActivityKeyAuthRes
     return { ok: false, reason: 'missing_key_header' };
   }
 
-  return constantTimeEquals(provided, expected)
+  return constantTimeEqual(provided, expected)
     ? { ok: true }
     : { ok: false, reason: 'invalid_key' };
 }
@@ -80,19 +80,4 @@ export function activityKeyAuthFailureResponse(
     { error: 'missing_or_invalid_key' },
     { status: 401 },
   );
-}
-
-function constantTimeEquals(provided: string, expected: string): boolean {
-  // Same length-mismatch + constant-time pattern as src/lib/internal-auth.ts
-  // so the byte loop always runs against a same-length buffer and the length
-  // check does not become a fast-path signal.
-  const a = Buffer.from(provided, 'utf8');
-  const b = Buffer.from(expected, 'utf8');
-  if (a.length !== b.length) {
-    const padded = Buffer.alloc(b.length, 0);
-    a.copy(padded);
-    timingSafeEqual(padded, b);
-    return false;
-  }
-  return timingSafeEqual(a, b);
 }
