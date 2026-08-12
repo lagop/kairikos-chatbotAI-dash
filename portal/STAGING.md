@@ -19,6 +19,17 @@
 | **Wizard entry point** | <https://project-fxidg.vercel.app/portal/wizard> (requires auth) |
 | **Login route** | <https://project-fxidg.vercel.app/portal/login> (credentials — email + password, since KAIA-2103) |
 
+> **WP-03 (2026-08-12):** `npm run build` no longer runs `prisma migrate
+> deploy` — that used to be gated behind `$VERCEL=1`, which is exactly
+> the condition true on every Vercel build of this branch, so this
+> environment was the one place that coupling actually fired. Migrations
+> now have to be applied explicitly before a push that depends on them:
+> `npm run prisma:migrate:deploy` against this project's `DIRECT_URL`
+> (see `README.md`'s Deploy section). **Before the first deploy after
+> this change lands, confirm `npx prisma migrate status` is clean
+> against this database** — otherwise a migration that used to apply
+> itself on build will silently stop applying.
+
 ---
 
 ## How the deploy is wired (lens: separation of concerns)

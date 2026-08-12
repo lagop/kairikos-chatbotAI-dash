@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "NODE_ENV=development next dev -p 3001",
-    "build": "if [ \"$VERCEL\" = \"1\" ]; then echo '>>> KAIA-14409: applying pending prisma migrations to $DIRECT_URL' && prisma migrate deploy && echo '>>> KAIA-14409: prisma migrations applied'; fi && prisma generate && next build",
+    "build": "prisma generate && next build",
     "start": "next start -p 3001",
     "lint": "next lint",
     "test": "playwright test",
