@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
-import { authenticateRequest } from '@/lib/api-auth';
+import { authenticateAdminRequest } from '@/lib/operator-session';
 import {
   MOCK_FLOW_ACTIVITY,
   MOCK_N8N_EXECUTIONS,
@@ -11,15 +11,10 @@ import {
 
 // GET /api/admin/portal/clients/[id]/flow
 // Returns per-client flow history for the operator detail view (KAIA-1060 / KAIA-1072).
+// Auth: operator session OR x-kaia-operator-key header matching KAIA_OPERATOR_API_KEY
+// (both paths handled by authenticateAdminRequest).
 
 const STUCK_DAYS = 3;
-
-function operatorKeyAuth(req: NextRequest): boolean {
-  const envKey = process.env.KAIA_OPERATOR_API_KEY;
-  if (!envKey) return false;
-  const provided = req.headers.get('x-kaia-operator-key');
-  return provided === envKey;
-}
 
 interface FlowDetailResponse {
   client: Pick<FlowHealthRow, 'id' | 'companyName' | 'tier' | 'currentMilestone' | 'daysInMilestone' | 'lastActivityAt' | 'stuck'>;
@@ -31,12 +26,9 @@ export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } },
 ) {
-  const keyOk = operatorKeyAuth(req);
-  if (!keyOk) {
-    const auth = await authenticateRequest(req);
-    if (!auth.ok || !auth.isOperator) {
-      return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-    }
+  const auth = await authenticateAdminRequest(req);
+  if (!auth.ok) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
   const clientId = params.id;

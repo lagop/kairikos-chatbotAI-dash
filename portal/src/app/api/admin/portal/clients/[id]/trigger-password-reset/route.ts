@@ -5,8 +5,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
-import { authenticateRequest } from '@/lib/api-auth';
-import { constantTimeEqual } from '@/lib/operator-crypto';
+import { authenticateAdminRequest } from '@/lib/operator-session';
 import { sendEmail, buildResetAdminEmailHtml } from '@/lib/auth-email';
 import * as crypto from 'node:crypto';
 
@@ -16,14 +15,6 @@ const TriggerResetSchema = z.object({
 
 const TOKEN_EXPIRY_HOURS = 2;
 const PORTAL_BASE_URL = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'http://localhost:3001';
-
-function operatorKeyAuth(req: NextRequest): boolean {
-  const envKey = process.env.KAIA_OPERATOR_API_KEY;
-  if (!envKey) return false;
-  const provided = req.headers.get('x-kaia-operator-key');
-  if (!provided) return false;
-  return constantTimeEqual(provided, envKey);
-}
 
 function generateToken(): { raw: string; hash: string } {
   const raw = crypto.randomBytes(32).toString('hex');
@@ -64,12 +55,9 @@ export async function POST(
     return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
   }
 
-  const keyOk = operatorKeyAuth(req);
-  if (!keyOk) {
-    const auth = await authenticateRequest(req);
-    if (!auth.ok || !auth.isOperator) {
-      return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-    }
+  const auth = await authenticateAdminRequest(req);
+  if (!auth.ok) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
   const clientId = params.id;

@@ -4,8 +4,8 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
-import { authenticateRequest } from '@/lib/api-auth';
-import { hashPassword, constantTimeEqual, InMemoryRateLimiter } from '@/lib/operator-crypto';
+import { authenticateAdminRequest } from '@/lib/operator-session';
+import { hashPassword, InMemoryRateLimiter } from '@/lib/operator-crypto';
 
 const SetPasswordSchema = z.object({
   email: z.string().email(),
@@ -13,14 +13,6 @@ const SetPasswordSchema = z.object({
 });
 
 const ipRateLimiter = new InMemoryRateLimiter(15 * 60 * 1000);
-
-function operatorKeyAuth(req: NextRequest): boolean {
-  const envKey = process.env.KAIA_OPERATOR_API_KEY;
-  if (!envKey) return false;
-  const provided = req.headers.get('x-kaia-operator-key');
-  if (!provided) return false;
-  return constantTimeEqual(provided, envKey);
-}
 
 export async function POST(
   req: NextRequest,
@@ -30,12 +22,9 @@ export async function POST(
     return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
   }
 
-  const keyOk = operatorKeyAuth(req);
-  if (!keyOk) {
-    const auth = await authenticateRequest(req);
-    if (!auth.ok || !auth.isOperator) {
-      return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-    }
+  const auth = await authenticateAdminRequest(req);
+  if (!auth.ok) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
   const forwardedFor = req.headers.get('x-forwarded-for') ?? null;
