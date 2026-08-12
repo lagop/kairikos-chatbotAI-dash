@@ -98,3 +98,32 @@ Env vars for the VPS deploy come from the deployment secret store, not
 Vercel. See `../.env.example` and `portal/.env.example` for the full
 list (DATABASE_URL, AUTH_SECRET, RESEND_API_KEY, NEXTAUTH_URL,
 PORTAL_API_KEY, etc.).
+
+### Migrations are a separate, explicit step (WP-03)
+
+`npm run build` no longer runs `prisma migrate deploy`. It used to,
+gated behind a `$VERCEL` check — which meant a broken migration was
+discovered at the exact moment it was applied to the target database,
+and a deploy rollback did not roll back the schema with it.
+
+Migrate first (the migration must be backward compatible with the
+currently-running code), then deploy the new build:
+
+```bash
+# 1. Apply pending migrations — run this against the target environment's
+#    DIRECT_URL before deploying the build that depends on them.
+npm run prisma:migrate:deploy
+
+# 2. Build and deploy as usual (build no longer touches the database).
+npm run build
+```
+
+This applies to **any** environment that has `DATABASE_URL`/`DIRECT_URL`
+pointed at a real Postgres — including the Vercel-hosted staging
+environment described in `STAGING.md`, which is the one environment
+where the old `$VERCEL`-gated `prisma migrate deploy` was actually
+running today. Before merging a branch that removes it, confirm there
+is no migration already pending against that database that was relying
+on the build step to apply it (`npx prisma migrate status` against its
+`DIRECT_URL`) — otherwise the next deploy would silently stop applying
+a change it used to apply automatically.
