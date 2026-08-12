@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react';
-import { cookies } from 'next/headers';
 import { PortalFooter } from '@/components/portal/PortalFooter';
 import { PortalHeader } from '@/components/portal/PortalHeader';
+import { PortalSidebarMount } from '@/components/portal/PortalSidebarMount';
 import { PageViewTracker } from '@/components/portal/PageViewTracker';
-import { LogoutButton } from '@/components/portal/LogoutButton';
 import { auth } from '../../../auth';
-import { prisma } from '@/lib/prisma';
+import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
+import { resolveClientFromSession } from '@/lib/portal-session';
+import { MOCK_CLIENT, DEV_MOCK_CLIENT_BY_EMAIL } from '@/lib/portal-data';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,14 +20,20 @@ export const dynamic = 'force-dynamic';
 //
 // KAIA-3921 — we now call `getSession()` (the safe variant that
 // returns `{ hasClientAccess: false }` on any throw) to enrich the
-// chrome with the user's email and a logout button. We catch every
-// error and fall back to an anonymous chrome so a misconfigured
-// Supabase env cannot 500 the layout. Public auth pages still render
-// without a session — the page-level guard handles the redirect.
+// chrome with the user's email. We catch every error and fall back to
+// an anonymous chrome so a misconfigured Supabase env cannot 500 the
+// layout. Public auth pages still render without a session — the
+// page-level guard handles the redirect. The `auth()` fallback below
+// covers a signed-in NextAuth session that isn't linked to a
+// ChatbotClientUser row (e.g. an operator) — getSession() reports
+// hasClientAccess: false for that case, but the chrome should still
+// show who's signed in.
 //
-// KAIA-4011 (production promotion) — also resolve `businessName` via the
-// operator-cookie access-token path that main carried so the operator
-// portal chrome still surfaces the company name on the dashboard.
+// WP-04 — businessName used to come from `prisma.portalContext`, a
+// model that doesn't exist in schema.prisma (any lookup always threw
+// and was silently swallowed, so the company name never rendered for
+// anyone). Resolved through the same `resolveClientFromSession()` path
+// the client-facing dashboard pages already use instead.
 export default async function PortalLayout({ children }: { children: ReactNode }) {
   let email: string | null = null;
   let businessName: string | undefined;
@@ -43,23 +50,17 @@ export default async function PortalLayout({ children }: { children: ReactNode }
     }
 
     if (email) {
-      const cookieStore = cookies();
-      const operatorCookie = cookieStore.get('kairikos-portal-operator');
-      const accessToken = operatorCookie?.value;
-
-      if (accessToken) {
-        try {
-          // @ts-expect-error WP-01/WP-04 — no PortalContext model exists in
-          // schema.prisma; this call always throws and is swallowed below.
-          // WP-04 decides whether to resolve businessName from
-          // ChatbotClient.companyName or remove this block entirely.
-          const ctx = await prisma.portalContext.findFirst({
-            where: { accessToken },
-            include: { client: { select: { companyName: true } } },
+      const resolved = await resolveClientFromSession();
+      if (resolved) {
+        if (isDatabaseConfigured && resolved.source !== 'mock_dev') {
+          const client = await prisma.chatbotClient.findUnique({
+            where: { id: resolved.clientId },
+            select: { companyName: true },
           });
-          businessName = ctx?.client?.companyName ?? undefined;
-        } catch {
-          businessName = undefined;
+          businessName = client?.companyName ?? undefined;
+        } else {
+          const mock = DEV_MOCK_CLIENT_BY_EMAIL.get(resolved.email.toLowerCase()) ?? MOCK_CLIENT;
+          businessName = mock.companyName ?? undefined;
         }
       }
     }
@@ -69,25 +70,13 @@ export default async function PortalLayout({ children }: { children: ReactNode }
 
   return (
     <div className="flex min-h-screen flex-col">
-      <PortalHeader
-        email={email}
-        businessName={businessName}
-        // @ts-expect-error WP-01/WP-04 — PortalHeader doesn't declare a
-        // userMenu prop; WP-04 either wires it up for real or drops it.
-        userMenu={
-          email ? (
-            <LogoutButton
-              className="btn-ghost hidden text-xs sm:inline-flex"
-              label="Cerrar sesión"
-              pendingLabel="Cerrando…"
-              testId="header-logout"
-            />
-          ) : null
-        }
-      />
-      <main id="contenido" className="mx-auto w-full max-w-page flex-1 px-4 py-6 sm:px-6 sm:py-8">
-        {children}
-      </main>
+      <PortalHeader email={email} businessName={businessName} />
+      <div className="mx-auto flex w-full max-w-page flex-1">
+        <PortalSidebarMount />
+        <main id="contenido" className="w-full flex-1 px-4 py-6 sm:px-6 sm:py-8">
+          {children}
+        </main>
+      </div>
       <PortalFooter />
       <PageViewTracker />
     </div>

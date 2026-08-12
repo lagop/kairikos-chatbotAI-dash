@@ -4,7 +4,6 @@ import { redirect } from 'next/navigation';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { ProfileForm } from '@/components/portal/ProfileForm';
 import { PasswordChangeForm } from '@/components/portal/PasswordChangeForm';
-import { LogoutButton } from '@/components/portal/LogoutButton';
 import { getSession } from '@/lib/session';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { DEV_MOCK_CLIENT_BY_EMAIL } from '@/lib/portal-data';
@@ -233,7 +232,20 @@ export default async function ProfilePage() {
           </p>
         </header>
         <div className="flex flex-wrap gap-2">
-          <LogoutButton />
+          {/* WP-04 — one logout mechanism for the whole portal: POST
+              /api/portal/logout (now clears all 5 session cookies and
+              redirects by role). Previously this button called a
+              separate logoutAction() server action with its own,
+              slightly different cookie-clearing list. */}
+          <form action="/api/portal/logout" method="post">
+            <button
+              type="submit"
+              className="btn-ghost w-full justify-center sm:w-auto"
+              data-testid="profile-logout"
+            >
+              Cerrar sesión
+            </button>
+          </form>
           <a className="btn-ghost w-full justify-center sm:w-auto" href="/portal/support">
             Necesito ayuda
           </a>

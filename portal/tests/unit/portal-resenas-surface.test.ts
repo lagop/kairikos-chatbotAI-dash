@@ -30,6 +30,10 @@ const PORTAL_HEADER = resolve(
   __dirname,
   '../../src/components/portal/PortalHeader.tsx'
 );
+// WP-04 — the NAV array PortalHeader used to declare inline moved to a
+// module both PortalHeader and PortalSidebar import, so the header no
+// longer has literal `href: '...'` entries in its own source.
+const PORTAL_NAV_MODULE = resolve(__dirname, '../../src/lib/portal-nav.ts');
 const PORTAL_HOME = resolve(__dirname, '../../src/app/portal/page.tsx');
 const RESENAS_PAGE = resolve(
   __dirname,
@@ -37,16 +41,17 @@ const RESENAS_PAGE = resolve(
 );
 
 const headerSrc = readFileSync(PORTAL_HEADER, 'utf8');
+const navSrc = readFileSync(PORTAL_NAV_MODULE, 'utf8');
 const homeSrc = readFileSync(PORTAL_HOME, 'utf8');
 const resenasSrc = readFileSync(RESENAS_PAGE, 'utf8');
 
 describe('Portal chrome — Reseñas surface (KAIA-11956)', () => {
-  it('PortalHeader lists /portal/resenas in the top nav without a "Pronto" badge', () => {
-    expect(headerSrc).toMatch(
+  it('PORTAL_NAV lists /portal/resenas in the top nav without a "Pronto" badge', () => {
+    expect(navSrc).toMatch(
       /\{[^}]*href:\s*'\/portal\/resenas'[^}]*label:\s*'Reseñas'[^}]*\}/
     );
     // The NAV entry must not promise the feature is coming soon.
-    expect(headerSrc).not.toMatch(/href:\s*'\/portal\/resenas'[\s\S]*?badge:\s*'Pronto'/);
+    expect(navSrc).not.toMatch(/href:\s*'\/portal\/resenas'[\s\S]*?badge:\s*'Pronto'/);
   });
 
   it('PortalHeader nav links carry header-nav-* data-testid for QA', () => {
@@ -87,8 +92,8 @@ describe('Portal chrome — Reseñas surface (KAIA-11956)', () => {
       '/portal/support',
     ]) {
       expect(
-        headerSrc,
-        `expected PortalHeader NAV entry for ${href}`
+        navSrc,
+        `expected PORTAL_NAV entry for ${href}`
       ).toContain(`href: '${href}'`);
     }
   });

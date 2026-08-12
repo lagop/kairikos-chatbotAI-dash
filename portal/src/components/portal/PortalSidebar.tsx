@@ -1,15 +1,6 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-
-export type PortalSidebarItem = {
-  href: string;
-  label: string;
-  icon: ReactNode;
-  /** When true the item renders as a placeholder that points to a "coming soon" page. */
-  placeholder?: boolean;
-  /** Optional badge text rendered to the right of the label (e.g. "Pronto"). */
-  badge?: string;
-};
+import { PORTAL_NAV, PORTAL_PROFILE_ITEM, type PortalNavItem } from '@/lib/portal-nav';
 
 const ICON_PROPS = {
   width: 20,
@@ -23,14 +14,24 @@ const ICON_PROPS = {
   'aria-hidden': true,
 };
 
-const ICONS = {
-  home: (
+// WP-04 — keyed by href (not an arbitrary name) so it stays aligned with
+// PORTAL_NAV by construction: a missing entry falls back to a neutral dot
+// instead of silently rendering nothing.
+const ICON_BY_HREF: Record<string, ReactNode> = {
+  '/portal': (
     <svg {...ICON_PROPS}>
       <path d="M3 11.5 12 4l9 7.5" />
       <path d="M5 10.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9.5" />
     </svg>
   ),
-  chatbot: (
+  '/portal/onboarding': (
+    <svg {...ICON_PROPS}>
+      <rect x="6" y="4" width="12" height="17" rx="2" />
+      <path d="M9 3.2h6a1 1 0 0 1 1 1V6H8V4.2a1 1 0 0 1 1-1z" />
+      <path d="M9 12.5l1.8 1.8L15 10.5" />
+    </svg>
+  ),
+  '/portal/status': (
     <svg {...ICON_PROPS}>
       <rect x="3" y="6" width="18" height="13" rx="3" />
       <path d="M8 6V4.5A1.5 1.5 0 0 1 9.5 3h5A1.5 1.5 0 0 1 16 4.5V6" />
@@ -38,52 +39,48 @@ const ICONS = {
       <circle cx="15" cy="13" r="1" fill="currentColor" />
     </svg>
   ),
-  reviews: (
+  '/portal/conversations': (
+    <svg {...ICON_PROPS}>
+      <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 4v-4H6.5A2.5 2.5 0 0 1 4 13.5v-7z" />
+    </svg>
+  ),
+  '/portal/resenas': (
     <svg {...ICON_PROPS}>
       <path d="M12 3.5l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.9l6-.9L12 3.5z" />
     </svg>
   ),
-  billing: (
+  '/portal/billing': (
     <svg {...ICON_PROPS}>
       <rect x="3" y="6" width="18" height="13" rx="3" />
       <path d="M3 10h18" />
       <path d="M7 15h4" />
     </svg>
   ),
-  account: (
-    <svg {...ICON_PROPS}>
-      <circle cx="12" cy="8.5" r="3.5" />
-      <path d="M5 20a7 7 0 0 1 14 0" />
-    </svg>
-  ),
-  support: (
+  '/portal/support': (
     <svg {...ICON_PROPS}>
       <path d="M21 12a9 9 0 1 0-3.5 7.1" />
       <path d="M21 21v-5h-5" />
     </svg>
   ),
+  '/portal/perfil': (
+    <svg {...ICON_PROPS}>
+      <circle cx="12" cy="8.5" r="3.5" />
+      <path d="M5 20a7 7 0 0 1 14 0" />
+    </svg>
+  ),
 };
 
-export const PORTAL_SIDEBAR_ITEMS: PortalSidebarItem[] = [
-  { href: '/portal', label: 'Inicio', icon: ICONS.home },
-  { href: '/portal/status', label: 'Chatbot', icon: ICONS.chatbot },
-  {
-    href: '/portal/resenas',
-    label: 'Reseñas',
-    icon: ICONS.reviews,
-    placeholder: true,
-    badge: 'Pronto',
-  },
-  {
-    href: '/portal/facturacion',
-    label: 'Facturación',
-    icon: ICONS.billing,
-    placeholder: true,
-    badge: 'Pronto',
-  },
-  { href: '/portal/perfil', label: 'Mi cuenta', icon: ICONS.account },
-  { href: '/portal/support', label: 'Soporte', icon: ICONS.support },
-];
+const FALLBACK_ICON = (
+  <svg {...ICON_PROPS}>
+    <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none" />
+  </svg>
+);
+
+// The profile item is a separate account-level link, not a portal
+// "section" — appended after PORTAL_NAV rather than folded into it, same
+// way the header treats it (its own dropdown/mobile entry, not one of the
+// main nav pills).
+const SIDEBAR_ITEMS: readonly PortalNavItem[] = [...PORTAL_NAV, PORTAL_PROFILE_ITEM];
 
 export function PortalSidebar({ pathname }: { pathname: string }) {
   return (
@@ -93,7 +90,7 @@ export function PortalSidebar({ pathname }: { pathname: string }) {
       data-testid="portal-sidebar"
     >
       <ul className="space-y-1">
-        {PORTAL_SIDEBAR_ITEMS.map((item) => {
+        {SIDEBAR_ITEMS.map((item) => {
           const isActive =
             item.href === '/portal'
               ? pathname === '/portal'
@@ -126,7 +123,7 @@ export function PortalSidebar({ pathname }: { pathname: string }) {
                       : 'border-kairikos-border bg-kairikos-surface2 text-kairikos-muted group-hover:text-kairikos-text',
                   ].join(' ')}
                 >
-                  {item.icon}
+                  {ICON_BY_HREF[item.href] ?? FALLBACK_ICON}
                 </span>
                 <span className="flex-1 truncate">{item.label}</span>
                 {item.badge ? (
@@ -139,10 +136,12 @@ export function PortalSidebar({ pathname }: { pathname: string }) {
           );
         })}
       </ul>
-      <p className="mt-6 px-3 text-[11px] leading-relaxed text-kairikos-muted">
-        Las secciones marcadas como <span className="font-semibold text-kairikos-text">Pronto</span> forman parte del Dashboard v2 y se
-        activarán en las próximas fases.
-      </p>
+      {SIDEBAR_ITEMS.some((item) => item.badge) ? (
+        <p className="mt-6 px-3 text-[11px] leading-relaxed text-kairikos-muted">
+          Las secciones marcadas como <span className="font-semibold text-kairikos-text">Pronto</span> forman parte del Dashboard v2 y se
+          activarán en las próximas fases.
+        </p>
+      ) : null}
     </nav>
   );
 }
