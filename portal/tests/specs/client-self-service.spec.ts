@@ -1,7 +1,4 @@
 import { test, expect, type Page } from '@playwright/test';
-import { PortalTestFixtures } from '../fixtures/portal';
-
-const T = test.extend<PortalTestFixtures>;
 
 // =============================================================================
 // KAIA-1062 — client self-service UI smoke tests.
@@ -20,7 +17,21 @@ const T = test.extend<PortalTestFixtures>;
 // the UI flow is end-to-end exercisable. The test does not assert on
 // the database directly; it asserts on the user-visible behaviour the
 // issue's acceptance criteria describe.
+//
+// WP-02 — this file previously declared `const T = test.extend<...>()`
+// but never used `T`, and never established any session, so every test
+// hit the unauthenticated /portal/login redirect instead of the page
+// under test. `/api/portal/dev-session` (dev-mock only, see KAIA-4011)
+// is the same mock-session seed the manual QA flow uses; POSTing it
+// through `page.request` shares its Set-Cookie with `page`'s own
+// context, so the subsequent `page.goto()` calls are authenticated.
 // =============================================================================
+
+test.beforeEach(async ({ page }) => {
+  await page.request.post('/api/portal/dev-session', {
+    form: { email: 'qa-test-client-a@kairikos.com' },
+  });
+});
 
 async function openOnboardingPage(page: Page) {
   await page.goto('/portal/onboarding');

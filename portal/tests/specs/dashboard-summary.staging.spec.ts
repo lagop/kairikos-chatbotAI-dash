@@ -1,9 +1,7 @@
-import { test, expect } from '@playwright/test';
-import { PortalTestFixtures } from '../fixtures/portal';
+import { expect } from '@playwright/test';
+import { authedPortalFixture as test } from '../fixtures/portal';
 
-const T = test.extend<PortalTestFixtures>();
-
-test.describe('Dashboard', () => {
+test.describe('@staging Dashboard', () => {
   test('dashboard renders without console errors', async ({ page }) => {
     const errors: string[] = [];
     page.on('console', (msg) => {

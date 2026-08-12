@@ -1,10 +1,8 @@
-import { test, expect } from '@playwright/test';
-import { PortalTestFixtures } from '../fixtures/portal';
+import { expect } from '@playwright/test';
+import { authedPortalFixture as test } from '../fixtures/portal';
 import { BillingPage } from '../pages/portal';
 
-const T = test.extend<PortalTestFixtures>;
-
-test.describe('Billing', () => {
+test.describe('@staging Billing', () => {
   test('Stripe Customer Portal link opens in new tab', async ({ page, clientA }) => {
     const billingPage = new BillingPage(page);
     

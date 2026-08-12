@@ -1,0 +1,147 @@
+name: CI
+
+# WP-02 — required check before merge. Two blocking jobs (typecheck/lint/unit
+# tests, and a small auth-free Playwright smoke) plus a third, deliberately
+# non-blocking job that surfaces the rest of the Playwright suite without
+# gating the PR on it. See the `playwright-non-staging` job below for why.
+
+on:
+  pull_request:
+    branches: [kaia-743-staging-runner, main]
+
+defaults:
+  run:
+    working-directory: portal
+
+jobs:
+  check:
+    name: Typecheck, lint, unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: portal/package-lock.json
+
+      - run: npm ci
+
+      - run: npx prisma generate
+
+      - run: npx tsc --noEmit
+
+      - run: npm run lint
+
+      - run: npx vitest run
+
+  playwright-smoke:
+    name: Playwright smoke (auth-free, required)
+    runs-on: ubuntu-latest
+    env:
+      # prisma generate only needs a syntactically valid URL — it never
+      # connects. Same placeholder pattern the Dockerfile already uses
+      # (see portal/Dockerfile, KAIA-14440).
+      DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+      DIRECT_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+      PORTAL_URL: http://localhost:3001
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: portal/package-lock.json
+
+      - run: npm ci
+
+      - name: Install Chromium only
+        run: npx playwright install --with-deps chromium
+
+      - run: npx prisma generate
+
+      - run: npm run build
+
+      - name: Start the app (dev-mock — no DATABASE_URL at runtime)
+        run: |
+          DATABASE_URL= DIRECT_URL= npm start &
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/api/health || true)
+            if [ "$code" = "200" ]; then echo "app is up"; exit 0; fi
+            sleep 2
+          done
+          echo "app never became healthy" >&2
+          exit 1
+
+      # Deliberately scoped to smoke.spec.ts only — see the
+      # playwright-non-staging job below for why the rest of the
+      # non-@staging suite isn't required yet.
+      - run: npx playwright test tests/specs/smoke.spec.ts --project=chromium
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-smoke-report
+          path: portal/playwright-report/
+          retention-days: 7
+
+  playwright-non-staging:
+    name: Playwright non-staging (informational — not required)
+    runs-on: ubuntu-latest
+    # WP-02 found the broader non-@staging Playwright suite is not green
+    # today independent of this CI change: as of 2026-08-12, 42/74 @smoke
+    # tests pass against a fresh dev-mock server (admin-flows.spec.ts and
+    # wizard-admin.spec.ts fail — likely missing operator dev-session
+    # seeding for /admin/portal/**, not yet investigated; client-self-
+    # service.spec.ts has 4 tests hitting real 500s from
+    # /api/portal/onboarding/snooze and /api/portal/operator in dev-mock
+    # mode). Making this job required today would mean the very first PR
+    # after this lands is red through no fault of its own. It runs here so
+    # the trend is visible in every PR without blocking merges on
+    # pre-existing failures this WP didn't introduce and didn't have the
+    # scope to fix. Promote individual spec files to playwright-smoke's
+    # job (or their own required job) as they're fixed.
+    continue-on-error: true
+    env:
+      DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+      DIRECT_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+      PORTAL_URL: http://localhost:3001
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: portal/package-lock.json
+
+      - run: npm ci
+
+      - run: npx playwright install --with-deps chromium
+
+      - run: npx prisma generate
+
+      - run: npm run build
+
+      - name: Start the app (dev-mock — no DATABASE_URL at runtime)
+        run: |
+          DATABASE_URL= DIRECT_URL= npm start &
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/api/health || true)
+            if [ "$code" = "200" ]; then echo "app is up"; exit 0; fi
+            sleep 2
+          done
+          echo "app never became healthy" >&2
+          exit 1
+
+      - run: npx playwright test --grep-invert @staging --project=chromium
+        continue-on-error: true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-non-staging-report
+          path: portal/playwright-report/
+          retention-days: 7
