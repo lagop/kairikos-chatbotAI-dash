@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { PORTAL_NAV, PORTAL_PROFILE_ITEM, type PortalNavItem } from '@/lib/portal-nav';
+import { ThemeToggle } from '@/components/portal/ThemeToggle';
 
 const ICON_PROPS = {
   width: 20,
@@ -136,6 +137,10 @@ export function PortalSidebar({ pathname }: { pathname: string }) {
           );
         })}
       </ul>
+      <div className="mt-4 flex items-center justify-between border-t border-kairikos-border/60 px-3 pt-4">
+        <span className="text-xs font-medium text-kairikos-muted">Tema</span>
+        <ThemeToggle className="grid h-8 w-8 place-items-center rounded-lg border border-kairikos-border text-kairikos-muted transition hover:bg-kairikos-surface hover:text-kairikos-text" />
+      </div>
       {SIDEBAR_ITEMS.some((item) => item.badge) ? (
         <p className="mt-6 px-3 text-[11px] leading-relaxed text-kairikos-muted">
           Las secciones marcadas como <span className="font-semibold text-kairikos-text">Pronto</span> forman parte del Dashboard v2 y se

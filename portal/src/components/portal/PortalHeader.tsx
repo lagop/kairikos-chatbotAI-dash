@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { PORTAL_NAV, PORTAL_PROFILE_ITEM } from '@/lib/portal-nav';
+import { ThemeToggle } from '@/components/portal/ThemeToggle';
 
 export function PortalHeader({
   email,
@@ -44,7 +45,10 @@ export function PortalHeader({
             </Link>
           ))}
         </nav>
-        {email ? <UserMenu email={email} businessName={businessName} /> : null}
+        <div className="flex items-center gap-1">
+          <ThemeToggle />
+          {email ? <UserMenu email={email} businessName={businessName} /> : null}
+        </div>
       </div>
       <nav aria-label="Navegación móvil" className="border-t border-kairikos-border/60 sm:hidden">
         <ul className="mx-auto flex max-w-page gap-1 overflow-x-auto px-4 py-2 text-sm">
