@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { auth } from '../../auth';
 import { prisma } from './prisma';
 import { MOCK_CLIENT, MOCK_SECONDARY_CLIENT } from './portal-data';
+import { constantTimeEqual } from './operator-crypto';
 
 export type SessionReason = 'no_session' | 'no_client_access' | 'cross_tenant';
 
@@ -211,7 +212,7 @@ export function resolveOperatorKeyBypass(): PortalSession | null {
     provided = null;
   }
   if (!provided) return null;
-  if (!timingSafeEqualStrings(provided, envKey)) return null;
+  if (!constantTimeEqual(provided, envKey)) return null;
   return {
     email: 'operator-key-bypass@kairikos.local',
     accessToken: 'operator-key',
@@ -224,11 +225,3 @@ export function resolveOperatorKeyBypass(): PortalSession | null {
   };
 }
 
-function timingSafeEqualStrings(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < a.length; i++) {
-    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return mismatch === 0;
-}

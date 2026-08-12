@@ -168,6 +168,8 @@ async function handleHelpRequest(req: NextRequest): Promise<NextResponse> {
 </html>`;
 
   const sent = await sendOperatorNotification({
+    // @ts-expect-error WP-01/WP-11 — 'help-request' isn't in NotificationKind
+    // yet; WP-11 adds it to the union and to ALLOWED_KINDS.
     kind: HELP_REQUEST_KIND,
     to: recipients,
     subject: fullSubject,

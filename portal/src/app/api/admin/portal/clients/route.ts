@@ -1,11 +1,10 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { isBackendConfigured, PORTAL_API_BASE_URL } from '@/lib/supabase';
-import { authenticateRequest } from '@/lib/api-auth';
+import { authenticateAdminRequest } from '@/lib/operator-session';
 
 export async function GET(req: NextRequest) {
-  const auth = await authenticateRequest(req);
-  if (!auth.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  if (!auth.isOperator) {
+  const auth = await authenticateAdminRequest(req);
+  if (!auth.ok) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
   if (isBackendConfigured) {

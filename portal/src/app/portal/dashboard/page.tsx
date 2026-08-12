@@ -11,7 +11,7 @@ import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { MOCK_CLIENT, MOCK_CHATBOT, MOCK_TIMELINE } from '@/lib/portal-data';
-import type { ClientProfile } from '@/types/portal';
+import type { ClientProfile, ChatbotStatusSummary } from '@/types/portal';
 import { loadClientProfileViaPortalApi } from '@/lib/dashboard-fallback';
 
 export const metadata: Metadata = {
@@ -170,7 +170,7 @@ export default async function PortalDashboardPage() {
   // (possibly zero) conversation count, and null goLiveDate when
   // the chatbot is not live yet. The Acme fixture must NEVER bleed
   // into a real signed-in customer's view.
-  const chatbotSummary =
+  const chatbotSummary: ChatbotStatusSummary =
     dataSource === 'mock_dev'
       ? MOCK_CHATBOT
       : {

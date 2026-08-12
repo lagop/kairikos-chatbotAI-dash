@@ -49,6 +49,10 @@ export default async function PortalLayout({ children }: { children: ReactNode }
 
       if (accessToken) {
         try {
+          // @ts-expect-error WP-01/WP-04 — no PortalContext model exists in
+          // schema.prisma; this call always throws and is swallowed below.
+          // WP-04 decides whether to resolve businessName from
+          // ChatbotClient.companyName or remove this block entirely.
           const ctx = await prisma.portalContext.findFirst({
             where: { accessToken },
             include: { client: { select: { companyName: true } } },
@@ -68,6 +72,8 @@ export default async function PortalLayout({ children }: { children: ReactNode }
       <PortalHeader
         email={email}
         businessName={businessName}
+        // @ts-expect-error WP-01/WP-04 — PortalHeader doesn't declare a
+        // userMenu prop; WP-04 either wires it up for real or drops it.
         userMenu={
           email ? (
             <LogoutButton

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 
 const NAV = [
   { href: '/portal', label: 'Resumen' },
@@ -11,6 +12,16 @@ const NAV = [
 ] as const;
 
 const PROFILE_HREF = '/portal/perfil';
+
+// WP-01/WP-04 — no NAV item declares a `badge` field today, so `item.badge`
+// types as `{}`, not `ReactNode`. `@ts-expect-error` can't target a JSX
+// child expression directly (a known TS limitation), so the suppression
+// lives here instead. Dead branch — WP-04's nav consolidation resolves it
+// for real once a NAV item actually needs a badge.
+function navItemBadge(item: (typeof NAV)[number]): ReactNode | null {
+  // @ts-expect-error WP-01/WP-04 — see the note above this function.
+  return 'badge' in item && item.badge ? item.badge : null;
+}
 
 export function PortalHeader({
   email,
@@ -47,9 +58,9 @@ export function PortalHeader({
               className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-kairikos-muted transition hover:bg-kairikos-surface hover:text-kairikos-text"
             >
               <span>{item.label}</span>
-              {'badge' in item && item.badge ? (
+              {navItemBadge(item) ? (
                 <span className="rounded-full border border-kairikos-border bg-kairikos-surface2 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-kairikos-muted">
-                  {item.badge}
+                  {navItemBadge(item)}
                 </span>
               ) : null}
             </Link>
@@ -67,9 +78,9 @@ export function PortalHeader({
                 className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-kairikos-muted hover:bg-kairikos-surface hover:text-kairikos-text"
               >
                 <span>{item.label}</span>
-                {'badge' in item && item.badge ? (
+                {navItemBadge(item) ? (
                   <span className="rounded-full border border-kairikos-border bg-kairikos-surface2 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-kairikos-muted">
-                    {item.badge}
+                    {navItemBadge(item)}
                   </span>
                 ) : null}
               </Link>

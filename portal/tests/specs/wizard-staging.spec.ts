@@ -13,7 +13,7 @@ test.beforeEach(() => {
   );
 });
 
-test.describe('Wizard staging — Starter tier (abogado)', () => {
+test.describe('@staging Wizard staging — Starter tier (abogado)', () => {
 
   test('@smoke Step 1 loads with form', async ({ page, context }) => {
     await loginAndNavigate(page, context, CLIENT_A, '/portal/wizard/1');
@@ -89,7 +89,7 @@ test.describe('Wizard staging — Starter tier (abogado)', () => {
   });
 });
 
-test.describe('Wizard staging — Pro tier (clínica)', () => {
+test.describe('@staging Wizard staging — Pro tier (clínica)', () => {
 
   test('@smoke Pro Step 3 is visible (not auto-configured)', async ({ page, context }) => {
     await loginAndNavigate(page, context, CLIENT_B, '/portal/wizard/3');

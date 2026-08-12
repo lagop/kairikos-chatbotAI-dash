@@ -1,4 +1,5 @@
 import { prisma } from './prisma';
+import { constantTimeEqual } from './operator-crypto';
 import type { NextRequest } from 'next/server';
 
 const SESSION_COOKIE_NAME = 'kairikos_operator_session';
@@ -123,7 +124,7 @@ export async function authenticateAdminRequest(req: NextRequest): Promise<{
   const envKey = process.env.KAIA_OPERATOR_API_KEY;
   if (envKey) {
     const provided = req.headers.get('x-kaia-operator-key');
-    if (provided && provided === envKey) {
+    if (provided && constantTimeEqual(provided, envKey)) {
       const ip = req.headers.get('x-forwarded-for') ?? 'unknown';
       console.warn(
         `[WARN] Legacy KAIA_OPERATOR_API_KEY auth used from IP ${ip} for ${req.nextUrl.pathname}`,

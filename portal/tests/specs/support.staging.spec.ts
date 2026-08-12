@@ -1,10 +1,8 @@
-import { test, expect } from '@playwright/test';
-import { PortalTestFixtures } from '../fixtures/portal';
+import { expect } from '@playwright/test';
+import { authedPortalFixture as test } from '../fixtures/portal';
 import { SupportPage } from '../pages/portal';
 
-const T = test.extend<PortalTestFixtures>();
-
-test.describe('Support Page', () => {
+test.describe('@staging Support Page', () => {
   test('support page renders WhatsApp link', async ({ page }) => {
     const supportPage = new SupportPage(page);
 

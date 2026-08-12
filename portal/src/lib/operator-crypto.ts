@@ -1,4 +1,5 @@
-import { hash as argon2Hash, verify as argon2Verify, Algorithm } from '@node-rs/argon2';
+import { hash as argon2Hash, verify as argon2Verify } from '@node-rs/argon2';
+import type { Algorithm } from '@node-rs/argon2';
 import * as crypto from 'node:crypto';
 import { authenticator } from '@otplib/preset-default';
 
@@ -6,6 +7,14 @@ const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
 const TAG_LENGTH = 16;
 const KEY_LENGTH = 32;
+
+// WP-01 — `Algorithm` is an ambient `const enum` in @node-rs/argon2's type
+// declarations. Next.js transpiles each file independently (isolatedModules),
+// which cannot inline const-enum member access, so `Algorithm.Argon2id`
+// doesn't type-check under that mode. Argon2id = 2 in the upstream
+// declaration (node_modules/@node-rs/argon2/index.d.ts); mirror the value
+// directly instead of importing the enum as a value.
+const ARGON2ID: Algorithm = 2 as Algorithm;
 
 function getEncryptionKey(): Buffer {
   const raw = process.env.OPERATOR_TOTP_ENCRYPTION_KEY;
@@ -39,7 +48,7 @@ export function decryptTotpSecret(encrypted: string): string {
 }
 
 export async function hashPassword(password: string): Promise<string> {
-  return argon2Hash(password, { algorithm: Algorithm.Argon2id });
+  return argon2Hash(password, { algorithm: ARGON2ID });
 }
 
 export async function verifyPassword(hash: string, password: string): Promise<boolean> {
@@ -77,7 +86,7 @@ export function generateRecoveryCodes(count = 8): string[] {
 }
 
 export async function hashRecoveryCode(code: string): Promise<string> {
-  return argon2Hash(code, { algorithm: Algorithm.Argon2id });
+  return argon2Hash(code, { algorithm: ARGON2ID });
 }
 
 export async function verifyRecoveryCode(hash: string, code: string): Promise<boolean> {
@@ -123,9 +132,26 @@ export class InMemoryRateLimiter {
   }
 }
 
+// WP-25 — the canonical constant-time comparison for every shared-secret
+// header check in this repo (x-kaia-operator-key, x-qa-probe-token,
+// x-qa-seed-token, x-internal-activity-key, PORTAL_API_KEY). Previously
+// this returned early on a length mismatch, which leaks the expected
+// secret's length through response timing — a real (if minor) side
+// channel, and the exact same class of bug the early-return variants in
+// internal-auth.ts / activity-key-auth.ts / qa-probe/route.ts /
+// qa/seed-test-passwords/route.ts had each independently worked around
+// or, in two cases, not worked around at all. One correct implementation
+// instead of five near-identical ones of varying quality.
 export function constantTimeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) {
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
+  if (bufA.length !== bufB.length) {
+    // Still run timingSafeEqual against a same-length buffer so the
+    // length check itself does not become a fast-path timing signal.
+    const padded = Buffer.alloc(bufB.length, 0);
+    bufA.copy(padded);
+    crypto.timingSafeEqual(padded, bufB);
     return false;
   }
-  return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+  return crypto.timingSafeEqual(bufA, bufB);
 }
