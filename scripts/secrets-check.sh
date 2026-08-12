@@ -40,10 +40,6 @@ cd "$REPO_ROOT"
 
 # Files to scan: tracked files only, minus binaries and .gitignore'd files.
 ALLOWLIST="$(dirname "$0")/secrets-allowlist.txt"
-ALLOWLIST_GREP=""
-if [ -f "$ALLOWLIST" ]; then
-  ALLOWLIST_GREP="-v"
-fi
 
 mapfile -t FILES < <(git ls-files \
   | grep -vE '^\.git/' \
@@ -52,7 +48,9 @@ mapfile -t FILES < <(git ls-files \
   | grep -vE '^(portal/tests/fixtures/.*\.(json|ts|sql))$' \
   | grep -vE '/(\.env\.example|\.env\.production\.example)$' \
   | grep -vE '^(portal/Dockerfile|scripts/secrets-(check|patterns|allowlist))' \
-  | { if [ -f "$ALLOWLIST" ]; then grep -v -F -f "$ALLOWLIST"; else cat; fi; } \
+  | { if [ -f "$ALLOWLIST" ]; then \
+        grep -v -F -f <(sed -E 's/[[:space:]]*#.*$//' "$ALLOWLIST" | grep -v '^[[:space:]]*$'); \
+      else cat; fi; } \
 )
 
 if [ "${#FILES[@]}" -eq 0 ]; then
