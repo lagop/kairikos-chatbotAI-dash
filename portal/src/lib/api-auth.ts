@@ -19,11 +19,19 @@ export function isKnownClientId(id: string | null | undefined) {
   return Boolean(id && KNOWN_DEV_CLIENT_IDS.has(id));
 }
 
+// WP-00 (P0 hotfix) — the `operator-dev` bearer token is a dev-only shortcut
+// so local/staging tooling can exercise operator-only client routes without
+// a real operator session. Both conditions are required so it stays
+// unreachable in production even if `isBackendConfigured` were ever wrong;
+// it must not rely on being nested under a single gate.
+function isOperatorDevBackdoorAllowed(): boolean {
+  return process.env.NODE_ENV !== 'production' && !isBackendConfigured;
+}
+
 export async function authenticateRequest(req: NextRequest): Promise<AuthResult> {
   const auth = req.headers.get('authorization') ?? '';
   const token = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';
   if (!token) return { ok: false, reason: 'unauthorized' };
-  const operatorHeader = req.headers.get('x-kairikos-operator');
   if (isBackendConfigured) {
     try {
       // KAIA-11955 — production PORTAL_API_BASE_URL ends in `/portal`
@@ -40,7 +48,7 @@ export async function authenticateRequest(req: NextRequest): Promise<AuthResult>
       });
       if (!res.ok) return { ok: false, reason: 'unauthorized' };
       const data = (await res.json()) as { id: string; slug: string };
-      return { ok: true, clientId: data.id, slug: data.slug, isOperator: operatorHeader === '1' };
+      return { ok: true, clientId: data.id, slug: data.slug };
     } catch {
       return { ok: false, reason: 'unauthorized' };
     }
@@ -51,7 +59,7 @@ export async function authenticateRequest(req: NextRequest): Promise<AuthResult>
       ok: true,
       clientId: isMock ? MOCK_CLIENT.id : token,
       slug: isMock ? MOCK_CLIENT.slug : 'unknown',
-      isOperator: operatorHeader === '1' || token === 'operator-dev',
+      isOperator: token === 'operator-dev' && isOperatorDevBackdoorAllowed(),
     };
   }
   return { ok: false, reason: 'unauthorized' };
