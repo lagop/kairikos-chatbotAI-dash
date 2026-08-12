@@ -24,14 +24,27 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#0B1020',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#F3F4FA' },
+    { media: '(prefers-color-scheme: dark)', color: '#0B1020' },
+  ],
   width: 'device-width',
   initialScale: 1,
 };
 
+// WP-27 — runs before hydration so a returning visitor who chose "light"
+// never sees a flash of the dark default. Deliberately does nothing when
+// no preference is stored: the @media(prefers-color-scheme) rule in
+// globals.css already renders the OS-appropriate theme for a first-time
+// visitor without any JS involved.
+const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('kairikos-theme');if(t==='light'||t==='dark'){document.documentElement.dataset.theme=t;}}catch(e){}})();`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body className="min-h-screen bg-kairikos-bg text-kairikos-text">{children}</body>
     </html>
   );

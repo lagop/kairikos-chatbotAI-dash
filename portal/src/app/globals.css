@@ -2,14 +2,89 @@
 @tailwind components;
 @tailwind utilities;
 
+/* =============================================================================
+ * WP-27 — design tokens.
+ *
+ * Every kairikos.* color in tailwind.config.ts resolves to one of these
+ * custom properties (RGB triplets, so Tailwind's `/<alpha>` opacity
+ * modifiers keep working). Dark is the values the portal shipped with —
+ * :root is the hard fallback for a pre-hydration paint. A visitor who has
+ * never chosen a theme gets the OS preference via the media query below;
+ * ThemeToggle.tsx only ever writes an explicit `data-theme` attribute,
+ * which — in either direction — wins over both the fallback and the media
+ * query.
+ *
+ * accent/accent2 are brand identity (violet + cyan); success/warning/danger
+ * are semantic state colors and are never reused as the brand accent, so
+ * the Fase 3 catalogs can key status color off `success|warning|danger`
+ * without inheriting an unrelated brand-identity choice.
+ * ========================================================================== */
 :root {
   color-scheme: dark;
+  --kairikos-bg: 11 16 32;
+  --kairikos-surface: 18 25 51;
+  --kairikos-surface2: 26 33 71;
+  --kairikos-border: 42 53 101;
+  --kairikos-text: 230 235 255;
+  --kairikos-muted: 154 163 199;
+  --kairikos-accent: 124 92 255;
+  --kairikos-accent2: 61 199 246;
+  --kairikos-success: 52 211 153;
+  --kairikos-warning: 245 158 11;
+  --kairikos-danger: 248 113 113;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+    --kairikos-bg: 243 244 250;
+    --kairikos-surface: 255 255 255;
+    --kairikos-surface2: 236 238 247;
+    --kairikos-border: 215 218 234;
+    --kairikos-text: 18 22 43;
+    --kairikos-muted: 91 97 120;
+    --kairikos-accent: 109 63 242;
+    --kairikos-accent2: 11 111 140;
+    --kairikos-success: 13 122 77;
+    --kairikos-warning: 154 91 0;
+    --kairikos-danger: 214 41 28;
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --kairikos-bg: 11 16 32;
+  --kairikos-surface: 18 25 51;
+  --kairikos-surface2: 26 33 71;
+  --kairikos-border: 42 53 101;
+  --kairikos-text: 230 235 255;
+  --kairikos-muted: 154 163 199;
+  --kairikos-accent: 124 92 255;
+  --kairikos-accent2: 61 199 246;
+  --kairikos-success: 52 211 153;
+  --kairikos-warning: 245 158 11;
+  --kairikos-danger: 248 113 113;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --kairikos-bg: 243 244 250;
+  --kairikos-surface: 255 255 255;
+  --kairikos-surface2: 236 238 247;
+  --kairikos-border: 215 218 234;
+  --kairikos-text: 18 22 43;
+  --kairikos-muted: 91 97 120;
+  --kairikos-accent: 109 63 242;
+  --kairikos-accent2: 11 111 140;
+  --kairikos-success: 13 122 77;
+  --kairikos-warning: 154 91 0;
+  --kairikos-danger: 214 41 28;
 }
 
 html,
 body {
-  background: #0b1020;
-  color: #e6ebff;
+  background: rgb(var(--kairikos-bg));
+  color: rgb(var(--kairikos-text));
   min-height: 100%;
 }
 

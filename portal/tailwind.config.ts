@@ -5,18 +5,23 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // WP-27 — each token reads from the CSS custom property defined in
+        // globals.css (RGB triplet), not a fixed hex, so ThemeToggle can
+        // switch the whole palette at runtime. The `<alpha-value>`
+        // placeholder is filled in by Tailwind for opacity modifiers like
+        // `bg-kairikos-accent/90`.
         kairikos: {
-          bg: '#0B1020',
-          surface: '#121933',
-          surface2: '#1A2147',
-          border: '#2A3565',
-          text: '#E6EBFF',
-          muted: '#9AA3C7',
-          accent: '#7C5CFF',
-          accent2: '#3DC7F6',
-          success: '#34D399',
-          warning: '#F59E0B',
-          danger: '#F87171',
+          bg: 'rgb(var(--kairikos-bg) / <alpha-value>)',
+          surface: 'rgb(var(--kairikos-surface) / <alpha-value>)',
+          surface2: 'rgb(var(--kairikos-surface2) / <alpha-value>)',
+          border: 'rgb(var(--kairikos-border) / <alpha-value>)',
+          text: 'rgb(var(--kairikos-text) / <alpha-value>)',
+          muted: 'rgb(var(--kairikos-muted) / <alpha-value>)',
+          accent: 'rgb(var(--kairikos-accent) / <alpha-value>)',
+          accent2: 'rgb(var(--kairikos-accent2) / <alpha-value>)',
+          success: 'rgb(var(--kairikos-success) / <alpha-value>)',
+          warning: 'rgb(var(--kairikos-warning) / <alpha-value>)',
+          danger: 'rgb(var(--kairikos-danger) / <alpha-value>)',
         },
       },
       fontFamily: {
