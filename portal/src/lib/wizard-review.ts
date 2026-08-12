@@ -291,7 +291,6 @@ async function fireConfigCompleteNotification(
   // identically. The pre-existing onboarding-actions path for
   // 'go-live-ready' uses the same widening.
   const sent = await sendOperatorNotification({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     kind: kind as any,
     to: recipients,
     subject,
