@@ -14,12 +14,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock @/lib/prisma so auth.ts can load without a real DB connection.
+// authorize() does two lookups: prisma.user.findUnique() by email, then
+// prisma.chatbotClientUser.findUnique() by userId to resolve clientId.
 const findUnique = vi.fn();
+const findUniqueClientUser = vi.fn();
 
 vi.mock('@/lib/prisma', () => ({
   prisma: {
-    chatbotClientUser: {
+    user: {
       findUnique: (...args: unknown[]) => findUnique(...args),
+    },
+    chatbotClientUser: {
+      findUnique: (...args: unknown[]) => findUniqueClientUser(...args),
     },
   },
 }));
@@ -42,6 +48,7 @@ const WRONG_PASSWORD = 'wrongpassword';
 
 beforeEach(() => {
   findUnique.mockReset();
+  findUniqueClientUser.mockReset();
   verifyPassword.mockReset();
 });
 
@@ -49,81 +56,100 @@ function buildCredentials(email: string, password: string) {
   return { email, password };
 }
 
+// `Credentials(config)` from @auth/core hardcodes `.authorize` to a stub
+// that always returns null — the real function you pass in is stashed
+// under `.options.authorize`. NextAuth resolves this indirection
+// internally when building the request handler, but a unit test that
+// imports the raw `authConfig` has to reach through `.options` itself.
+function getAuthorize() {
+  const provider = authConfig.providers[0] as unknown as {
+    options: { authorize: (c: unknown) => Promise<unknown> };
+  };
+  return provider.options.authorize;
+}
+
 describe('authConfig.providers[0].authorize (Credentials)', () => {
   it('returns null when email is missing', async () => {
-    const provider = authConfig.providers[0] as { authorize: (c: unknown) => Promise<unknown> };
-    const result = await provider.authorize({ password: { value: CORRECT_PASSWORD } });
+    const authorize = getAuthorize();
+    const result = await authorize({ password: CORRECT_PASSWORD });
     expect(result).toBeNull();
     expect(findUnique).not.toHaveBeenCalled();
   });
 
   it('returns null when password is missing', async () => {
-    const provider = authConfig.providers[0] as { authorize: (c: unknown) => Promise<unknown> };
-    const result = await provider.authorize({ email: { value: KNOWN_EMAIL } });
+    const authorize = getAuthorize();
+    const result = await authorize({ email: KNOWN_EMAIL });
     expect(result).toBeNull();
     expect(findUnique).not.toHaveBeenCalled();
   });
 
   it('returns null for unknown email', async () => {
     findUnique.mockResolvedValueOnce(null);
-    const provider = authConfig.providers[0] as { authorize: (c: unknown) => Promise<unknown> };
-    const result = await provider.authorize(buildCredentials('unknown@example.com', CORRECT_PASSWORD));
+    const authorize = getAuthorize();
+    const result = await authorize(buildCredentials('unknown@example.com', CORRECT_PASSWORD));
     expect(result).toBeNull();
     expect(findUnique).toHaveBeenCalledWith({
-      where: { nextAuthEmail: 'unknown@example.com' },
-      select: { id: true, clientId: true, passwordHash: true },
+      where: { email: 'unknown@example.com' },
+      select: { id: true, role: true, passwordHash: true },
     });
   });
 
   it('returns null when user has no passwordHash set', async () => {
-    findUnique.mockResolvedValueOnce({ id: KNOWN_USER_ID, clientId: KNOWN_CLIENT_ID, passwordHash: null });
-    const provider = authConfig.providers[0] as { authorize: (c: unknown) => Promise<unknown> };
-    const result = await provider.authorize(buildCredentials(KNOWN_EMAIL, CORRECT_PASSWORD));
+    findUnique.mockResolvedValueOnce({ id: KNOWN_USER_ID, role: 'client', passwordHash: null });
+    const authorize = getAuthorize();
+    const result = await authorize(buildCredentials(KNOWN_EMAIL, CORRECT_PASSWORD));
     expect(result).toBeNull();
     expect(verifyPassword).not.toHaveBeenCalled();
   });
 
   it('returns null for wrong password', async () => {
-    findUnique.mockResolvedValueOnce({ id: KNOWN_USER_ID, clientId: KNOWN_CLIENT_ID, passwordHash: 'argon2hash' });
+    findUnique.mockResolvedValueOnce({ id: KNOWN_USER_ID, role: 'client', passwordHash: 'argon2hash' });
     verifyPassword.mockResolvedValueOnce(false);
-    const provider = authConfig.providers[0] as { authorize: (c: unknown) => Promise<unknown> };
-    const result = await provider.authorize(buildCredentials(KNOWN_EMAIL, WRONG_PASSWORD));
+    const authorize = getAuthorize();
+    const result = await authorize(buildCredentials(KNOWN_EMAIL, WRONG_PASSWORD));
     expect(result).toBeNull();
     expect(verifyPassword).toHaveBeenCalledWith('argon2hash', WRONG_PASSWORD);
   });
 
   it('returns user object for correct credentials', async () => {
-    findUnique.mockResolvedValueOnce({ id: KNOWN_USER_ID, clientId: KNOWN_CLIENT_ID, passwordHash: 'argon2hash' });
+    findUnique.mockResolvedValueOnce({ id: KNOWN_USER_ID, role: 'client', passwordHash: 'argon2hash' });
     verifyPassword.mockResolvedValueOnce(true);
-    const provider = authConfig.providers[0] as { authorize: (c: unknown) => Promise<unknown> };
-    const result = await provider.authorize(buildCredentials(KNOWN_EMAIL, CORRECT_PASSWORD));
+    findUniqueClientUser.mockResolvedValueOnce({ clientId: KNOWN_CLIENT_ID });
+    const authorize = getAuthorize();
+    const result = await authorize(buildCredentials(KNOWN_EMAIL, CORRECT_PASSWORD));
     expect(result).toEqual({
       id: KNOWN_USER_ID,
       email: KNOWN_EMAIL,
       clientId: KNOWN_CLIENT_ID,
       role: 'client',
     });
+    expect(findUniqueClientUser).toHaveBeenCalledWith({
+      where: { userId: KNOWN_USER_ID },
+      select: { clientId: true },
+    });
   });
 
   it('normalises email to lower-case before lookup', async () => {
-    findUnique.mockResolvedValueOnce({ id: KNOWN_USER_ID, clientId: KNOWN_CLIENT_ID, passwordHash: 'argon2hash' });
+    findUnique.mockResolvedValueOnce({ id: KNOWN_USER_ID, role: 'client', passwordHash: 'argon2hash' });
     verifyPassword.mockResolvedValueOnce(true);
-    const provider = authConfig.providers[0] as { authorize: (c: unknown) => Promise<unknown> };
-    await provider.authorize(buildCredentials('AURORA@EXAMPLE.COM', CORRECT_PASSWORD));
+    findUniqueClientUser.mockResolvedValueOnce({ clientId: KNOWN_CLIENT_ID });
+    const authorize = getAuthorize();
+    await authorize(buildCredentials('AURORA@EXAMPLE.COM', CORRECT_PASSWORD));
     expect(findUnique).toHaveBeenCalledWith({
-      where: { nextAuthEmail: KNOWN_EMAIL },
-      select: { id: true, clientId: true, passwordHash: true },
+      where: { email: KNOWN_EMAIL },
+      select: { id: true, role: true, passwordHash: true },
     });
   });
 
   it('trims whitespace from email before lookup', async () => {
-    findUnique.mockResolvedValueOnce({ id: KNOWN_USER_ID, clientId: KNOWN_CLIENT_ID, passwordHash: 'argon2hash' });
+    findUnique.mockResolvedValueOnce({ id: KNOWN_USER_ID, role: 'client', passwordHash: 'argon2hash' });
     verifyPassword.mockResolvedValueOnce(true);
-    const provider = authConfig.providers[0] as { authorize: (c: unknown) => Promise<unknown> };
-    await provider.authorize(buildCredentials(`  ${KNOWN_EMAIL}  `, CORRECT_PASSWORD));
+    findUniqueClientUser.mockResolvedValueOnce({ clientId: KNOWN_CLIENT_ID });
+    const authorize = getAuthorize();
+    await authorize(buildCredentials(`  ${KNOWN_EMAIL}  `, CORRECT_PASSWORD));
     expect(findUnique).toHaveBeenCalledWith({
-      where: { nextAuthEmail: KNOWN_EMAIL },
-      select: { id: true, clientId: true, passwordHash: true },
+      where: { email: KNOWN_EMAIL },
+      select: { id: true, role: true, passwordHash: true },
     });
   });
 });

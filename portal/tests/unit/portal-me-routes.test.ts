@@ -42,6 +42,9 @@ const hashPassword = vi.fn();
 
 vi.mock('@/lib/portal-session', () => ({
   resolveClientFromSession: (...args: unknown[]) => resolveClientFromSession(...args),
+  // KAIA-4011 added an isPortalDevMock()-gated branch to the password
+  // route; false keeps these tests on the real-session code path.
+  isPortalDevMock: () => false,
 }));
 
 vi.mock('@/lib/prisma', () => ({
