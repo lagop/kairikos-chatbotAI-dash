@@ -15,12 +15,24 @@ import { getSession } from '@/lib/session';
 const PORTAL_LOGIN = '/portal/login';
 const ADMIN_LOGIN = '/admin/login';
 
-const DEV_SESSION_COOKIE = 'kairikos-portal-dev-session';
-const OPERATOR_COOKIE = 'kairikos-portal-operator';
+// WP-04 — this used to clear only 2 of the 5 cookies a session can carry.
+// Missing kairikos-portal-dev-session-active in particular meant logout
+// didn't actually work in dev-mock: middleware.ts re-seeds
+// kairikos-portal-dev-session from the still-set active flag on the very
+// next request to /portal/* or /admin/portal/*. Matches the full list
+// portal/perfil/actions.ts's logoutAction() already cleared.
+const COOKIES_TO_CLEAR = [
+  'kairikos-portal-dev-session',
+  'kairikos-portal-dev-session-active',
+  'kairikos-portal-dev-email',
+  'kairikos-portal-operator',
+  'kairikos-portal-session',
+];
 
 function clearAuthCookies(res: NextResponse) {
-  res.cookies.set(DEV_SESSION_COOKIE, '', { path: '/', maxAge: 0 });
-  res.cookies.set(OPERATOR_COOKIE, '', { path: '/', maxAge: 0 });
+  for (const name of COOKIES_TO_CLEAR) {
+    res.cookies.set(name, '', { path: '/', maxAge: 0 });
+  }
 }
 
 export async function POST(req: NextRequest) {

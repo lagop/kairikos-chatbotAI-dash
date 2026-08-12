@@ -1,27 +1,5 @@
 import Link from 'next/link';
-import type { ReactNode } from 'react';
-
-const NAV = [
-  { href: '/portal', label: 'Resumen' },
-  { href: '/portal/onboarding', label: 'Onboarding' },
-  { href: '/portal/status', label: 'Chatbot' },
-  { href: '/portal/conversations', label: 'Conversaciones' },
-  { href: '/portal/resenas', label: 'Reseñas' },
-  { href: '/portal/billing', label: 'Facturación' },
-  { href: '/portal/support', label: 'Soporte' },
-] as const;
-
-const PROFILE_HREF = '/portal/perfil';
-
-// WP-01/WP-04 — no NAV item declares a `badge` field today, so `item.badge`
-// types as `{}`, not `ReactNode`. `@ts-expect-error` can't target a JSX
-// child expression directly (a known TS limitation), so the suppression
-// lives here instead. Dead branch — WP-04's nav consolidation resolves it
-// for real once a NAV item actually needs a badge.
-function navItemBadge(item: (typeof NAV)[number]): ReactNode | null {
-  // @ts-expect-error WP-01/WP-04 — see the note above this function.
-  return 'badge' in item && item.badge ? item.badge : null;
-}
+import { PORTAL_NAV, PORTAL_PROFILE_ITEM } from '@/lib/portal-nav';
 
 export function PortalHeader({
   email,
@@ -50,7 +28,7 @@ export function PortalHeader({
           ) : null}
         </div>
         <nav aria-label="Navegación principal" className="hidden gap-1 sm:flex">
-          {NAV.map((item) => (
+          {PORTAL_NAV.map((item) => (
             <Link
               key={item.href}
               href={item.href}
@@ -58,9 +36,9 @@ export function PortalHeader({
               className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-kairikos-muted transition hover:bg-kairikos-surface hover:text-kairikos-text"
             >
               <span>{item.label}</span>
-              {navItemBadge(item) ? (
+              {item.badge ? (
                 <span className="rounded-full border border-kairikos-border bg-kairikos-surface2 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-kairikos-muted">
-                  {navItemBadge(item)}
+                  {item.badge}
                 </span>
               ) : null}
             </Link>
@@ -70,7 +48,7 @@ export function PortalHeader({
       </div>
       <nav aria-label="Navegación móvil" className="border-t border-kairikos-border/60 sm:hidden">
         <ul className="mx-auto flex max-w-page gap-1 overflow-x-auto px-4 py-2 text-sm">
-          {NAV.map((item) => (
+          {PORTAL_NAV.map((item) => (
             <li key={item.href}>
               <Link
                 href={item.href}
@@ -78,9 +56,9 @@ export function PortalHeader({
                 className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-kairikos-muted hover:bg-kairikos-surface hover:text-kairikos-text"
               >
                 <span>{item.label}</span>
-                {navItemBadge(item) ? (
+                {item.badge ? (
                   <span className="rounded-full border border-kairikos-border bg-kairikos-surface2 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-kairikos-muted">
-                    {navItemBadge(item)}
+                    {item.badge}
                   </span>
                 ) : null}
               </Link>
@@ -88,7 +66,7 @@ export function PortalHeader({
           ))}
           <li>
             <Link
-              href={PROFILE_HREF}
+              href={PORTAL_PROFILE_ITEM.href}
               className="block whitespace-nowrap rounded-lg px-3 py-1.5 text-kairikos-muted hover:bg-kairikos-surface hover:text-kairikos-text"
               data-testid="header-profile-link-mobile"
             >
@@ -141,7 +119,7 @@ function UserMenu({ email, businessName }: { email: string; businessName?: strin
         </div>
         <div className="space-y-1 pt-2">
           <Link
-            href={PROFILE_HREF}
+            href={PORTAL_PROFILE_ITEM.href}
             className="block rounded-lg px-3 py-2 text-sm text-kairikos-muted transition hover:bg-kairikos-surface2 hover:text-kairikos-text"
             data-testid="header-profile-link"
             role="menuitem"
