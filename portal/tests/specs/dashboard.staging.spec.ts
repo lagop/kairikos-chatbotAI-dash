@@ -51,7 +51,7 @@ function shouldSkip(): boolean {
 const REPRO_EMAIL = process.env.KAIA_11641_TEST_EMAIL ?? 'orly.nityananda@gmail.com';
 const REPRO_NAME_ENV = process.env.KAIA_11641_TEST_NAME;
 
-test.describe('Dashboard renders real customer data (KAIA-11641)', () => {
+test.describe('@staging Dashboard renders real customer data (KAIA-11641)', () => {
   test.skip(shouldSkip(), SKIP_REASON);
 
   test('authenticated customer sees their own name, not Acme Corp', async ({ page, context }) => {

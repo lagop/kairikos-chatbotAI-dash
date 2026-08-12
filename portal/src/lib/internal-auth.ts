@@ -1,5 +1,5 @@
-import { timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
+import { constantTimeEqual } from './operator-crypto';
 import 'server-only';
 
 const ENV_KEY = 'PORTAL_API_KEY';
@@ -38,7 +38,7 @@ export function authenticateInternalRequest(req: Request): InternalAuthResult {
     return { ok: false, reason: 'missing_key_header' };
   }
 
-  return constantTimeEquals(provided, expected)
+  return constantTimeEqual(provided, expected)
     ? { ok: true }
     : { ok: false, reason: 'invalid_key' };
 }
@@ -79,22 +79,4 @@ function pickHeader(req: Request, names: readonly string[]): string | null {
     if (v) return v;
   }
   return null;
-}
-
-function constantTimeEquals(provided: string, expected: string): boolean {
-  // timingSafeEqual requires equal-length Buffers; we pad / truncate the
-  // provided value to the expected length so an attacker cannot use length
-  // as a side channel. The constant-time guard remains meaningful for the
-  // byte-level comparison.
-  const a = Buffer.from(provided, 'utf8');
-  const b = Buffer.from(expected, 'utf8');
-  if (a.length !== b.length) {
-    // Still perform a constant-time op against a same-length buffer so the
-    // length check does not become a fast-path signal.
-    const padded = Buffer.alloc(b.length, 0);
-    a.copy(padded);
-    timingSafeEqual(padded, b);
-    return false;
-  }
-  return timingSafeEqual(a, b);
 }

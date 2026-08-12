@@ -1,10 +1,8 @@
-import { test, expect } from '@playwright/test';
-import { PortalTestFixtures } from '../fixtures/portal';
+import { expect } from '@playwright/test';
+import { authedPortalFixture as test } from '../fixtures/portal';
 import { ConversationsPage } from '../pages/portal';
 
-const T = test.extend<PortalTestFixtures>;
-
-test.describe('Conversations List', () => {
+test.describe('@staging Conversations List', () => {
   test('client-A sees only their conversations', async ({ page, clientA }) => {
     const conversationsPage = new ConversationsPage(page);
     

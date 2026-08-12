@@ -5,6 +5,15 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),
+      // `server-only` is not an installed package: Next aliases the bare
+      // specifier to its own vendored stub during the server build, so the
+      // ten `src/lib/*` modules that import it resolve fine under `next
+      // build` but fail to collect under vitest. Point the resolver at the
+      // same empty stub Next uses on the server side.
+      'server-only': path.resolve(
+        __dirname,
+        'node_modules/next/dist/compiled/server-only/empty.js',
+      ),
     },
   },
   test: {

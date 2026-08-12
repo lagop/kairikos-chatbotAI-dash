@@ -184,7 +184,7 @@ async function main(): Promise<void> {
   console.log('[seed-test-passwords] next step:');
   console.log('  - Set STAGING_TEST_USER_PASSWORD in the same .env the Playwright');
   console.log('    fixture sources (see portal/STAGING.md §"Test logins"), then run');
-  console.log('    tests/specs/header.spec.ts against the staging portal.');
+  console.log('    tests/specs/header.staging.spec.ts against the staging portal.');
 }
 
 main().catch((err) => {

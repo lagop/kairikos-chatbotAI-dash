@@ -25,6 +25,7 @@
 // =============================================================================
 
 import { NextResponse, type NextRequest } from 'next/server';
+import { constantTimeEqual } from '@/lib/operator-crypto';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -35,15 +36,6 @@ const TAB_WHITELIST = new Set(['overview', 'flow']);
 // handlers stream the body; this keeps a malicious caller from asking us
 // to materialise an arbitrarily large response.
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
-
-function timingSafeEqualStrings(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < a.length; i += 1) {
-    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return mismatch === 0;
-}
 
 function buildSelfUrl(req: NextRequest, pathname: string, tab: string | null): string {
   // Prefer VERCEL_URL (always set on Vercel) and fall back to the incoming
@@ -75,7 +67,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   }
 
   const provided = req.headers.get('x-qa-probe-token');
-  if (!provided || !timingSafeEqualStrings(provided, envToken)) {
+  if (!provided || !constantTimeEqual(provided, envToken)) {
     return new NextResponse('Unauthorized', { status: 401 });
   }
 

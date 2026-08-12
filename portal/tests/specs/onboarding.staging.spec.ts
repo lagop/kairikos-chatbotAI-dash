@@ -1,10 +1,8 @@
-import { test, expect } from '@playwright/test';
-import { PortalTestFixtures } from '../fixtures/portal';
+import { expect } from '@playwright/test';
+import { authedPortalFixture as test } from '../fixtures/portal';
 import { OnboardingPage } from '../pages/portal';
 
-const T = test.extend<PortalTestFixtures>;
-
-test.describe('Onboarding Timeline', () => {
+test.describe('@staging Onboarding Timeline', () => {
   test('fully onboarded client sees 4 timeline events (T+0, T+3, T+7, T+14)', async ({ page, clientA }) => {
     const onboardingPage = new OnboardingPage(page);
     
