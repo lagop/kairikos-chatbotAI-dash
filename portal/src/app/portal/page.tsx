@@ -9,6 +9,7 @@ import { assertSameClient, getSession } from '@/lib/session';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { loadClientProfileViaPortalApi } from '@/lib/dashboard-fallback';
+import type { ChatbotStatusSummary } from '@/types/portal';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,6 +63,9 @@ export default async function PortalHome({
   let client = {
     id: resolved.clientId,
     companyName: MOCK_CLIENT.companyName,
+    // @ts-expect-error WP-01/WP-08 — the UI's client shape wants `name`, the
+    // Prisma-backed ChatbotClient type doesn't have it. WP-08's single
+    // dashboard-data function resolves this properly.
     name: MOCK_CLIENT.name,
     tier: 'starter' as string,
     createdAt: new Date(0).toISOString(),
@@ -95,6 +99,8 @@ export default async function PortalHome({
         client = {
           id: clientRow.id,
           companyName: clientRow.companyName ?? MOCK_CLIENT.companyName,
+          // @ts-expect-error WP-01/WP-08 — see the `name` note above; same
+          // ChatbotClient/UI shape mismatch, resolved by WP-08.
           name: clientRow.name ?? MOCK_CLIENT.name,
           tier: clientRow.tier,
           createdAt: clientRow.createdAt.toISOString(),
@@ -137,6 +143,8 @@ export default async function PortalHome({
         client = {
           id: resolved.clientId,
           companyName: profile.companyName ?? MOCK_CLIENT.companyName,
+          // @ts-expect-error WP-01/WP-08 — see the `name` note above; same
+          // ChatbotClient/UI shape mismatch, resolved by WP-08.
           name: profile.contactName ?? MOCK_CLIENT.name,
           tier: profile.tier,
           createdAt: profile.createdAt,
@@ -150,6 +158,8 @@ export default async function PortalHome({
     client = {
       id: MOCK_CLIENT.id,
       companyName: MOCK_CLIENT.companyName,
+      // @ts-expect-error WP-01/WP-08 — see the `name` note above; same
+      // ChatbotClient/UI shape mismatch, resolved by WP-08.
       name: MOCK_CLIENT.name,
       tier: MOCK_CLIENT.tier,
       createdAt: MOCK_CLIENT.createdAt,
@@ -157,7 +167,7 @@ export default async function PortalHome({
     timeline = MOCK_TIMELINE;
   }
 
-  const chatbotSummary = isDevMockMode
+  const chatbotSummary: ChatbotStatusSummary = isDevMockMode
     ? MOCK_CHATBOT
     : {
         spaceId: `spc_${client.id}`,

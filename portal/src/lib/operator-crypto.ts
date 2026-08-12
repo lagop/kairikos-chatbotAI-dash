@@ -1,4 +1,5 @@
-import { hash as argon2Hash, verify as argon2Verify, Algorithm } from '@node-rs/argon2';
+import { hash as argon2Hash, verify as argon2Verify } from '@node-rs/argon2';
+import type { Algorithm } from '@node-rs/argon2';
 import * as crypto from 'node:crypto';
 import { authenticator } from '@otplib/preset-default';
 
@@ -6,6 +7,14 @@ const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
 const TAG_LENGTH = 16;
 const KEY_LENGTH = 32;
+
+// WP-01 — `Algorithm` is an ambient `const enum` in @node-rs/argon2's type
+// declarations. Next.js transpiles each file independently (isolatedModules),
+// which cannot inline const-enum member access, so `Algorithm.Argon2id`
+// doesn't type-check under that mode. Argon2id = 2 in the upstream
+// declaration (node_modules/@node-rs/argon2/index.d.ts); mirror the value
+// directly instead of importing the enum as a value.
+const ARGON2ID: Algorithm = 2 as Algorithm;
 
 function getEncryptionKey(): Buffer {
   const raw = process.env.OPERATOR_TOTP_ENCRYPTION_KEY;
@@ -39,7 +48,7 @@ export function decryptTotpSecret(encrypted: string): string {
 }
 
 export async function hashPassword(password: string): Promise<string> {
-  return argon2Hash(password, { algorithm: Algorithm.Argon2id });
+  return argon2Hash(password, { algorithm: ARGON2ID });
 }
 
 export async function verifyPassword(hash: string, password: string): Promise<boolean> {
@@ -77,7 +86,7 @@ export function generateRecoveryCodes(count = 8): string[] {
 }
 
 export async function hashRecoveryCode(code: string): Promise<string> {
-  return argon2Hash(code, { algorithm: Algorithm.Argon2id });
+  return argon2Hash(code, { algorithm: ARGON2ID });
 }
 
 export async function verifyRecoveryCode(hash: string, code: string): Promise<boolean> {
