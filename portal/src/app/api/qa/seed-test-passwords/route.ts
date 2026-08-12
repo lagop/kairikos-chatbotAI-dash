@@ -1,18 +1,9 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { spawn } from 'child_process';
-import { createHash, timingSafeEqual } from 'crypto';
+import { constantTimeEqual } from '@/lib/operator-crypto';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-function constantTimeCompare(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  try {
-    return timingSafeEqual(Buffer.from(a), Buffer.from(b));
-  } catch {
-    return false;
-  }
-}
 
 function parseSummary(stdout: string): { updated: number; created: number; summary: string[] } {
   const lines = stdout.split('\n').filter((l) => l.startsWith('[seed-test-passwords]'));
@@ -67,6 +58,18 @@ async function runSeedScript(): Promise<{ updated: number; created: number; summ
 }
 
 export async function POST(req: NextRequest) {
+  // WP-25 — flagged, not fixed: this route spawns a local script gated
+  // only by a bearer-style header token, with no environment check at
+  // all — a leaked QA_SEED_TOKEN lets anyone shell out on whatever
+  // deploy this is reachable from. Didn't add a NODE_ENV/VERCEL_ENV
+  // guard here the way WP-00 did for the operator-dev backdoor because,
+  // unlike that one, nothing in this repo references this route or
+  // QA_SEED_TOKEN (grepped: no docs, no scripts, no CI config) — I can't
+  // tell whether an external QA harness depends on it reaching the
+  // staging Vercel deploy, and that deploy is itself Vercel-Production-
+  // typed (see STAGING.md), so NODE_ENV/VERCEL_ENV can't distinguish
+  // "real prod" from "staging" here anyway. Needs a decision from
+  // whoever knows if anything external still calls this.
   const token = req.headers.get('x-qa-seed-token');
 
   if (!token || !process.env.QA_SEED_TOKEN) {
@@ -76,7 +79,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!constantTimeCompare(token, process.env.QA_SEED_TOKEN)) {
+  if (!constantTimeEqual(token, process.env.QA_SEED_TOKEN)) {
     return NextResponse.json(
       { error: 'missing_or_bad_seed_token' },
       { status: 422 }
