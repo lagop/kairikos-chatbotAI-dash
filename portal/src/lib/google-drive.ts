@@ -1,4 +1,5 @@
 import 'server-only';
+import { logError } from './observability';
 
 // =============================================================================
 // KAIA-2913 — Google Drive folder provisioning for new client onboarding.
@@ -103,7 +104,8 @@ async function fetchAccessToken(env: DriveEnvSnapshot): Promise<string | null> {
       expiresAtMs: Date.now() + (json.expires_in ?? 3600) * 1000,
     };
     return cachedToken.token;
-  } catch {
+  } catch (err) {
+    logError('google_drive.fetch_access_token', err, { route: 'lib/google-drive.ts' }, 'warn');
     return null;
   }
 }
@@ -216,8 +218,17 @@ export async function createClientFolderAndUploadKit(
         });
         if (kitUpload) uploaded.push(kitUpload);
       }
-    } catch {
-      // Soft-fail: log only; do not break the intake.
+    } catch (err) {
+      // Soft-fail: the folder + intake JSON already succeeded, so this
+      // doesn't flip the function's own ok/skipped result — but the
+      // comment here used to claim "log only" without an actual log
+      // call, so a kit-PDF failure was invisible everywhere.
+      logError(
+        'google_drive.kit_pdf_upload',
+        err,
+        { route: 'lib/google-drive.ts', driveFolderId: folder.id, businessName: input.businessName },
+        'warn',
+      );
     }
   }
 

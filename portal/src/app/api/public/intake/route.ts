@@ -9,6 +9,7 @@ import {
 } from '@/lib/intake-schema';
 import { createClientFolderAndUploadKit } from '@/lib/google-drive';
 import { createDay2OnboardingIssue } from '@/lib/paperclip-day2';
+import { notifyOperatorOfExecutionFailure } from '@/lib/operator-notify';
 
 // =============================================================================
 // POST /api/public/intake — KAIA-2913
@@ -299,6 +300,23 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       submissionId: client.submissionId,
       error: driveResult.error,
     });
+    // WP-26 — "sincronización de Google fallida" is one of the three
+    // named critical flows for the alert requirement. logIntake() above
+    // already put this in the structured log stream; this is the part
+    // that actually reaches a human instead of waiting for one to go
+    // looking. `skipped: 'not_configured'` is the expected shape in any
+    // env without Drive OAuth set up (e.g. most non-prod deploys) — that
+    // one case is deliberately not alerted on, everything else is.
+    if (driveResult.skipped !== 'not_configured') {
+      void notifyOperatorOfExecutionFailure({
+        executionId: client.submissionId,
+        workflowName: 'intake_drive_provisioning',
+        error: driveResult.error ?? `skipped: ${driveResult.skipped ?? 'unknown'}`,
+        clientId: client.clientId,
+      }).catch(() => {
+        // Best-effort — logIntake above already guarantees this isn't silent.
+      });
+    }
   }
   if (!notify.ok) {
     logIntake('intake.notify.failed', {

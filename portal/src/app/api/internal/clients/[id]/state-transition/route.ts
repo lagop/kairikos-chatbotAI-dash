@@ -5,6 +5,7 @@ import {
   authenticateActivityKeyRequest,
   activityKeyAuthFailureResponse,
 } from '@/lib/activity-key-auth';
+import { logError } from '@/lib/observability';
 
 // =============================================================================
 // POST /api/internal/clients/[id]/state-transition
@@ -165,6 +166,12 @@ export async function POST(
       { status: 200 },
     );
   } catch (err) {
+    logError('internal.state_transition', err, {
+      route: `POST /api/internal/clients/${existing.id}/state-transition`,
+      clientId: existing.id,
+      fromState: existing.state,
+      toState: parsed.value.state,
+    });
     if (err instanceof Prisma.PrismaClientKnownRequestError) {
       return NextResponse.json(
         {

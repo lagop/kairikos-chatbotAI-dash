@@ -4,6 +4,8 @@ import type Stripe from 'stripe';
 import { prisma } from './prisma';
 import { isStripeConfigured, getStripe } from './stripe';
 import { syncSubscriptionFromStripe, syncInvoiceFromStripe, deleteSubscriptionFromStripe } from './stripe-billing';
+import { logError } from './observability';
+import { notifyOperatorOfExecutionFailure } from './operator-notify';
 
 /**
  * KAIA-4262 — Stripe webhook event handler.
@@ -99,11 +101,28 @@ export async function handleStripeEvent(
       where: { eventId: event.id },
       data: { status: 'failed', processedAt: new Date(), errorMessage: message.slice(0, 2000) },
     });
+    // WP-26 — this used to write the failure to StripeWebhookEvent and
+    // stop there; the comment above this block already said "then alert
+    // on StripeWebhookEvent rows with status='failed'" as a TODO that
+    // never happened. A failed webhook means a subscription or invoice
+    // fell out of sync with what the customer is actually paying for —
+    // exactly the "pago no conciliado" case the WP-26 spec names.
+    logError('stripe.webhook_handler', err, {
+      route: 'POST /api/stripe/webhook',
+      stripeEventId: event.id,
+      stripeEventType: event.type,
+    });
+    void notifyOperatorOfExecutionFailure({
+      executionId: event.id,
+      workflowName: `stripe_webhook:${event.type}`,
+      error: message,
+    }).catch(() => {
+      // Best-effort — logError above already guarantees this isn't silent.
+    });
     // Return 500 so Stripe retries. The idempotency row keeps future
     // retries of the SAME delivery no-op, but a new delivery of the
     // SAME event id is impossible (it's the PK) — so we rely on
-    // Stripe to eventually give up, then alert on StripeWebhookEvent
-    // rows with status='failed' older than N hours.
+    // Stripe to eventually give up.
     return { statusCode: 500, body: { status: 'ok', eventId: event.id, eventType: event.type, detail: `handler_error:${message}` } };
   }
 }
