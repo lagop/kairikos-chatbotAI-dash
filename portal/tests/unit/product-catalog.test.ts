@@ -12,7 +12,7 @@ import { PRODUCT_CATALOG } from '../../prisma/seed';
 describe('PRODUCT_CATALOG', () => {
   it('has exactly five distinct product codes', () => {
     const codes = new Set(PRODUCT_CATALOG.map((p) => p.code));
-    expect(codes).toEqual(new Set(['chatbot', 'web', 'captacion', 'seo', 'resenas']));
+    expect(codes).toEqual(new Set(['chatbot', 'web', 'leads', 'seo', 'reviews']));
   });
 
   it('every (code, tier) pair is unique — matches the Product.@@unique([code, tier]) constraint', () => {
@@ -36,15 +36,15 @@ describe('PRODUCT_CATALOG', () => {
     expect(web!.setupFeeCents).toBeGreaterThan(0);
   });
 
-  it('resenas (Google reviews) is not active — pricing not published yet', () => {
-    const resenas = PRODUCT_CATALOG.find((p) => p.code === 'resenas');
-    expect(resenas).toBeDefined();
-    expect(resenas!.isActive).toBe(false);
+  it('reviews (Google reviews) is not active — pricing not published yet', () => {
+    const reviews = PRODUCT_CATALOG.find((p) => p.code === 'reviews');
+    expect(reviews).toBeDefined();
+    expect(reviews!.isActive).toBe(false);
   });
 
-  it('every product but resenas is active and has a positive price component', () => {
+  it('every product but reviews is active and has a positive price component', () => {
     for (const p of PRODUCT_CATALOG) {
-      if (p.code === 'resenas') continue;
+      if (p.code === 'reviews') continue;
       expect(p.isActive).toBe(true);
       expect(p.priceCents + p.setupFeeCents).toBeGreaterThan(0);
     }

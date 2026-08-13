@@ -84,8 +84,13 @@ export const PRODUCT_CATALOG: ProductCatalogEntry[] = [
     stripeRecurringPriceId: null, stripeSetupPriceId: null,
   },
   // AI lead capture — setup fee + monthly, both fixed on the site.
+  // WP-15 — code renamed from 'captacion' to 'leads' to match the
+  // ProductCode union src/lib/catalogs/index.ts introduces. Nothing else
+  // referenced 'captacion' as a string literal (grepped before renaming;
+  // Product.code is a free-form DB column, not FK-constrained), so this
+  // is a same-PR rename, not a migration.
   {
-    code: 'captacion', tier: 'standard', name: 'Sistema IA de captación',
+    code: 'leads', tier: 'standard', name: 'Sistema IA de captación',
     priceCents: 14900, setupFeeCents: 49900, currency: 'EUR', isActive: true,
     stripeRecurringPriceId: null, stripeSetupPriceId: null,
   },
@@ -97,8 +102,10 @@ export const PRODUCT_CATALOG: ProductCatalogEntry[] = [
   },
   // Google reviews — not sellable yet, no published price. See WP-20 /
   // the Sprint 0 risk register: blocked on Google API approval.
+  // WP-15 — code renamed from 'resenas' to 'reviews', same reason as
+  // 'leads' above.
   {
-    code: 'resenas', tier: 'standard', name: 'Reseñas en Google',
+    code: 'reviews', tier: 'standard', name: 'Reseñas en Google',
     priceCents: 0, setupFeeCents: 0, currency: 'EUR', isActive: false,
     stripeRecurringPriceId: null, stripeSetupPriceId: null,
   },
