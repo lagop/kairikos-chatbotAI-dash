@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import type { Prisma } from '@prisma/client';
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { PageHeading } from '@/components/portal/PageHeading';
@@ -252,6 +253,9 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
   let resolvedClientId: string | null = null;
   let resolvedGoLiveAt: string | null = null;
   let last7DaysCounts = { conversations: 0, fallback: 0, escalation: 0 };
+  // WP-24 — most recent intake submission for this client, so the operator
+  // can see exactly what the client answered before any wizard editing.
+  let latestIntake: { id: string; createdAt: string; payload: Prisma.JsonValue } | null = null;
   if (isDatabaseConfigured) {
     try {
       const client = await prisma.chatbotClient.findUnique({
@@ -297,6 +301,14 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
           }),
         ]);
         conversationCount = count;
+        const intakeRow = await prisma.intakeSubmission.findFirst({
+          where: { clientId: client.id },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true, createdAt: true, payload: true },
+        });
+        latestIntake = intakeRow
+          ? { id: intakeRow.id, createdAt: intakeRow.createdAt.toISOString(), payload: intakeRow.payload }
+          : null;
         let sevenDayConversations = 0;
         let sevenDayFallback = 0;
         let sevenDayEscalation = 0;
@@ -525,6 +537,30 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
               />
             ) : null}
           </section>
+
+          {latestIntake ? (
+            <section className="card" aria-label="Formulario inicial del cliente" data-testid="client-intake-section">
+              <header className="mb-4 flex items-center justify-between">
+                <h2 className="text-lg font-semibold">Formulario inicial (intake)</h2>
+                <span className="text-xs text-kairikos-muted">
+                  Enviado el {DATE_FORMAT.format(new Date(latestIntake.createdAt))}
+                </span>
+              </header>
+              <p className="mb-3 text-sm text-kairikos-muted">
+                Esto es lo que el cliente respondió antes de tener acceso al asistente de configuración.
+                Algunos de estos campos ya han precargado pasos del asistente — la ficha del cliente muestra
+                cuáles vienen de aquí sin editar todavía.
+              </p>
+              <details data-testid="client-intake-raw">
+                <summary className="cursor-pointer text-sm font-medium text-kairikos-accent2">
+                  Ver respuestas completas
+                </summary>
+                <pre className="mt-3 max-h-96 overflow-auto rounded-xl border border-kairikos-border bg-kairikos-surface2 p-4 text-xs">
+                  {JSON.stringify(latestIntake.payload, null, 2)}
+                </pre>
+              </details>
+            </section>
+          ) : null}
 
           <p className="text-xs text-kairikos-muted">
             Esta vista replica el portal del cliente sin posibilidad de modificar datos.

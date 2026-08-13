@@ -207,13 +207,28 @@ describe('readWizardStep', () => {
     mockState.chatbotConfigStep.findFirst
       .mockResolvedValueOnce({ id: 's2', version: 2, status: 'submitted', payload: { v: 2 }, submittedAt: null, approvedAt: null, activeForBot: false, createdAt: new Date(), updatedAt: new Date() })
       .mockResolvedValueOnce({ id: 's1', version: 1, status: 'approved', payload: { v: 1 }, submittedAt: null, approvedAt: new Date(), activeForBot: true, createdAt: new Date(), updatedAt: new Date() });
+    const chatbotConfigStepAudit = { findFirst: vi.fn().mockResolvedValue({ actor: 'client' }) };
     const out = await readWizardStep(
-      { chatbotConfigStep: mockState.chatbotConfigStep } as never,
+      { chatbotConfigStep: mockState.chatbotConfigStep, chatbotConfigStepAudit } as never,
       'c1',
       '1',
     );
     expect(out?.latest?.id).toBe('s2');
     expect(out?.active?.id).toBe('s1');
     expect(out?.active?.activeForBot).toBe(true);
+    expect(out?.latest?.seededFromIntake).toBe(false);
+  });
+
+  it('marks seededFromIntake=true when the latest version\'s creation audit row was written by actor: system', async () => {
+    mockState.chatbotConfigStep.findFirst
+      .mockResolvedValueOnce({ id: 's1', version: 1, status: 'draft', payload: { v: 1 }, submittedAt: null, approvedAt: null, activeForBot: false, createdAt: new Date(), updatedAt: new Date() })
+      .mockResolvedValueOnce(null);
+    const chatbotConfigStepAudit = { findFirst: vi.fn().mockResolvedValue({ actor: 'system' }) };
+    const out = await readWizardStep(
+      { chatbotConfigStep: mockState.chatbotConfigStep, chatbotConfigStepAudit } as never,
+      'c1',
+      '1',
+    );
+    expect(out?.latest?.seededFromIntake).toBe(true);
   });
 });
