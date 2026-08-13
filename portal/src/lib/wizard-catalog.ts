@@ -28,6 +28,14 @@
 
 import type { Prisma } from '@prisma/client';
 
+// WP-13 — this catalog is entirely chatbot-shaped (a single fixed 12-step
+// list, no per-product variation). Every current wizard route/page passes
+// this constant as the `productCode` now required by wizard-client.ts /
+// wizard-tier-prisma.ts / wizard-review.ts — there is no multi-product
+// wizard routing yet (that's WP-16). When it lands, call sites resolve a
+// real productCode instead of importing this constant.
+export const CHATBOT_PRODUCT_CODE = 'chatbot';
+
 export type WizardTier = 'starter' | 'pro' | 'premium';
 export type WizardBlock = 'identidad' | 'comportamiento' | 'activacion';
 export type WizardStepNumber = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;

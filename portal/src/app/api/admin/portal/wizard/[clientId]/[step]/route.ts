@@ -11,6 +11,7 @@ import {
   parseStepNumber,
   getStepDefinition,
   normalizeTier,
+  CHATBOT_PRODUCT_CODE,
   type WizardStepNumber,
   type WizardTier,
 } from '@/lib/wizard-catalog';
@@ -90,7 +91,7 @@ export async function GET(
     return errorResponse('bad_request', 400, 'step must match [a-z0-9_-]{1,64}');
   }
 
-  const data = await getWizardStepReview(prisma, clientId, step);
+  const data = await getWizardStepReview(prisma, clientId, CHATBOT_PRODUCT_CODE, step);
   if (!data) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
@@ -254,7 +255,7 @@ export async function PATCH(
   try {
     const result = await applyWizardReview(
       prisma,
-      { clientId, stepKey: step, action, comment },
+      { clientId, productCode: CHATBOT_PRODUCT_CODE, stepKey: step, action, comment },
       { operatorId: operator.id, email: operator.email },
     );
     return NextResponse.json({

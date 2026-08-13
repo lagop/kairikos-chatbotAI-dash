@@ -51,6 +51,7 @@ import {
   saveWizardStep,
   WizardClientError,
 } from '@/lib/wizard-client';
+import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
 
 beforeEach(() => {
   Object.values(mockState).forEach((fn) => {
@@ -63,7 +64,7 @@ beforeEach(() => {
   mockState.$transaction.mockImplementation((fn: (tx: MockTx) => unknown) => fn(mockState.tx));
 });
 
-const CTX = { clientId: 'client-1', email: 'client@example.com' };
+const CTX = { clientId: 'client-1', email: 'client@example.com', productCode: CHATBOT_PRODUCT_CODE };
 
 describe('saveWizardStep', () => {
   it('rejects with invalid_step_key when stepKey is not in the allowlist', async () => {
@@ -122,6 +123,7 @@ describe('saveWizardStep', () => {
     expect(mockState.tx.chatbotConfigStep.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         clientId: 'client-1',
+        productCode: CHATBOT_PRODUCT_CODE,
         stepKey: '1',
         version: 1,
         status: 'draft',
@@ -153,6 +155,22 @@ describe('saveWizardStep', () => {
       { stepKey: '1', data: { x: 1 }, status: 'draft' },
     );
     expect(result.version).toBe(4);
+  });
+
+  it('WP-13: scopes the version lookup by productCode, not just clientId + stepKey', async () => {
+    mockState.tx.chatbotConfigStep.findFirst.mockResolvedValue(null);
+    mockState.tx.chatbotConfigStep.create.mockResolvedValue({ id: 's1', version: 1, status: 'draft' });
+    await saveWizardStep(
+      { $transaction: mockState.$transaction } as never,
+      { clientId: 'client-1', email: 'client@example.com', productCode: 'web' },
+      { stepKey: '1', data: { x: 1 }, status: 'draft' },
+    );
+    expect(mockState.tx.chatbotConfigStep.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { clientId: 'client-1', productCode: 'web', stepKey: '1' } }),
+    );
+    expect(mockState.tx.chatbotConfigStep.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ productCode: 'web' }) }),
+    );
   });
 
   it('sets submittedAt and writes a "submit" audit row on status=submitted', async () => {
@@ -190,6 +208,7 @@ describe('readWizardStep', () => {
       await readWizardStep(
         { chatbotConfigStep: mockState.chatbotConfigStep } as never,
         'c1',
+        CHATBOT_PRODUCT_CODE,
         'bogus',
       );
       throw new Error('expected throw');
@@ -203,6 +222,7 @@ describe('readWizardStep', () => {
     const out = await readWizardStep(
       { chatbotConfigStep: mockState.chatbotConfigStep } as never,
       'c1',
+      CHATBOT_PRODUCT_CODE,
       '1',
     );
     expect(out).toBeNull();
@@ -216,7 +236,11 @@ describe('readWizardStep', () => {
     const out = await readWizardStep(
       { chatbotConfigStep: mockState.chatbotConfigStep, chatbotConfigStepAudit } as never,
       'c1',
+      CHATBOT_PRODUCT_CODE,
       '1',
+    );
+    expect(mockState.chatbotConfigStep.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { clientId: 'c1', productCode: CHATBOT_PRODUCT_CODE, stepKey: '1' } }),
     );
     expect(out?.latest?.id).toBe('s2');
     expect(out?.active?.id).toBe('s1');
@@ -232,6 +256,7 @@ describe('readWizardStep', () => {
     const out = await readWizardStep(
       { chatbotConfigStep: mockState.chatbotConfigStep, chatbotConfigStepAudit } as never,
       'c1',
+      CHATBOT_PRODUCT_CODE,
       '1',
     );
     expect(out?.latest?.seededFromIntake).toBe(true);

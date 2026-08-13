@@ -97,6 +97,15 @@ export interface ReviewActor {
 
 export interface ReviewRequest {
   clientId: string;
+  // WP-13 — required, no default: which product's wizard this review is
+  // for. This file queries ChatbotConfigStep directly (it does not go
+  // through wizard-client.ts / wizard-tier-prisma.ts), so it must scope
+  // every query by productCode itself — otherwise approving one
+  // product's step would deactivate a DIFFERENT product's active row for
+  // the same stepKey (both used to share the same partial-unique
+  // "at most one active row" invariant before this WP repointed it to
+  // (clientId, productCode, stepKey)).
+  productCode: string;
   stepKey: string;
   action: WizardReviewAction;
   comment?: string;
@@ -135,13 +144,14 @@ export class WizardReviewError extends Error {
 
 interface FindStepOptions {
   clientId: string;
+  productCode: string;
   stepKey: string;
   tx: Prisma.TransactionClient;
 }
 
-async function findLatestStepVersion({ clientId, stepKey, tx }: FindStepOptions) {
+async function findLatestStepVersion({ clientId, productCode, stepKey, tx }: FindStepOptions) {
   return tx.chatbotConfigStep.findFirst({
-    where: { clientId, stepKey },
+    where: { clientId, productCode, stepKey },
     orderBy: { version: 'desc' },
   });
 }
@@ -206,10 +216,11 @@ async function loadClientForTransition(
  */
 async function findMandatoryStepsMissingActive(
   clientId: string,
+  productCode: string,
   tx: Prisma.TransactionClient,
 ): Promise<string[]> {
   const activeRows = await tx.chatbotConfigStep.findMany({
-    where: { clientId, activeForBot: true },
+    where: { clientId, productCode, activeForBot: true },
     select: { stepKey: true },
   });
   const activeKeys = new Set(activeRows.map((r) => r.stepKey));
@@ -395,6 +406,7 @@ async function maybeTransitionToReady(
   prisma: PrismaClient,
   tx: Prisma.TransactionClient,
   client: ClientStateRow,
+  productCode: string,
 ): Promise<WizardStateTransition> {
   // Only the transition from 'in-progress' → 'ready' fires on each
   // approval. Re-approving after the client is already 'ready' (or worse,
@@ -404,7 +416,7 @@ async function maybeTransitionToReady(
   if (client.state !== 'in-progress') {
     return EMPTY_TRANSITION;
   }
-  const missing = await findMandatoryStepsMissingActive(client.id, tx);
+  const missing = await findMandatoryStepsMissingActive(client.id, productCode, tx);
   if (missing.length > 0) {
     return EMPTY_TRANSITION;
   }
@@ -464,6 +476,7 @@ export async function applyWizardReview(
 
     const latest = await findLatestStepVersion({
       clientId: req.clientId,
+      productCode: req.productCode,
       stepKey: req.stepKey,
       tx,
     });
@@ -484,6 +497,7 @@ export async function applyWizardReview(
       const previousActive = await tx.chatbotConfigStep.findFirst({
         where: {
           clientId: req.clientId,
+          productCode: req.productCode,
           stepKey: req.stepKey,
           activeForBot: true,
           id: { not: latest.id },
@@ -559,7 +573,7 @@ export async function applyWizardReview(
       // we read the active set. The transition itself is best-effort: a
       // racing concurrent approval will be a no-op (UPDATE returns 0).
       const clientRow = await loadClientForTransition(req.clientId, tx);
-      const transition = await maybeTransitionToReady(prisma, tx, clientRow);
+      const transition = await maybeTransitionToReady(prisma, tx, clientRow, req.productCode);
 
       return {
         stepId: updated.id,
@@ -690,6 +704,7 @@ export async function applyWizardReview(
 export async function getWizardStepReview(
   prisma: PrismaClient,
   clientId: string,
+  productCode: string,
   stepKey: string,
 ) {
   const client = await prisma.chatbotClient.findUnique({
@@ -707,7 +722,7 @@ export async function getWizardStepReview(
   if (!client) return null;
 
   const versions = await prisma.chatbotConfigStep.findMany({
-    where: { clientId, stepKey },
+    where: { clientId, productCode, stepKey },
     orderBy: { version: 'desc' },
     select: {
       id: true,

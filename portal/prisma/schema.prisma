@@ -836,6 +836,18 @@ model ChatbotConfigStep {
   // query plans that filter by tenant_id directly). NULL for
   // pre-multi-tenant rows; the backfill migration sets it.
   tenantId             String?   @map("tenant_id") @db.Uuid
+  // WP-13 — which Kairikos product this step belongs to: 'chatbot' |
+  // 'web' | 'captacion' | 'seo' | 'resenas' (matches Product.code). The
+  // DB keeps a DEFAULT so a write that forgets to pass it lands on the
+  // right product instead of failing outright — but application code
+  // never relies on that default: every wizard-client.ts /
+  // wizard-tier-prisma.ts function takes productCode as a required
+  // parameter (no default value), so the compiler flags every call
+  // site. Today every real caller passes 'chatbot' — the wizard UI has
+  // no multi-product routing yet (that's WP-16) — but the (clientId,
+  // productCode, stepKey, version) key below is already correct for
+  // when it does.
+  productCode          String    @default("chatbot")
   // Step identifier: "1" through "12" (Steps 1-10 + 11 Pruebas + 12 Integraciones).
   // Enforced server-side via a per-step Zod schema registry.
   stepKey              String
@@ -853,12 +865,15 @@ model ChatbotConfigStep {
   approvedAt           DateTime?
   // Operator who approved this version (FK to Operator, nullable until approved).
   approvedByOperatorId String?   @db.Uuid
-  // Exactly one row per (clientId, stepKey) has activeForBot=true at any time.
-  // The bot's config-loader reads the active version when constructing prompts.
-  // The DB-level invariant is enforced by a partial UNIQUE index — see
-  // 20260615010000_chatbot_config_step_v1_addendum/migration.sql. Prisma
-  // cannot model partial uniques natively, so the @@index below is a query
-  // planning hint and the actual constraint lives in raw SQL.
+  // Exactly one row per (clientId, productCode, stepKey) has
+  // activeForBot=true at any time. The bot's config-loader reads the
+  // active version when constructing prompts. The DB-level invariant is
+  // enforced by a partial UNIQUE index — see
+  // 20260615010000_chatbot_config_step_v1_addendum/migration.sql
+  // (originally (clientId, stepKey); repointed to include productCode by
+  // 20260814100000_config_step_product_scope/migration.sql). Prisma
+  // cannot model partial uniques natively, so the @@index below is a
+  // query planning hint and the actual constraint lives in raw SQL.
   activeForBot         Boolean   @default(false)
   // Latest operator reason when the step was sent to needs_revision
   // (KAIA-1261 / BE-1 v1). Denormalized from the most recent
@@ -874,9 +889,10 @@ model ChatbotConfigStep {
   tenant     Tenant?                  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   auditLogs  ChatbotConfigStepAudit[]
 
-  @@unique([clientId, stepKey, version])
+  @@unique([clientId, productCode, stepKey, version])
   @@index([clientId, stepKey])
   @@index([clientId, stepKey, activeForBot])
+  @@index([clientId, productCode, stepKey])
   @@index([clientId, status])
   @@index([tenantId])
 }

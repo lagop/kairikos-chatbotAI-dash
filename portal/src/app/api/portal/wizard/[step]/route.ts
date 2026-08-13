@@ -11,6 +11,7 @@ import {
   parseStepNumber,
   getStepDefinition,
   normalizeTier,
+  CHATBOT_PRODUCT_CODE,
   type WizardStepNumber,
   type WizardTier,
 } from '@/lib/wizard-catalog';
@@ -101,9 +102,9 @@ export async function GET(
     // BE-4: additionally fetch the cliente's tier so we can compute
     // `effectivePayload` and `autoConfigured`.
     const [result, tierCtx, latestRow] = await Promise.all([
-      readWizardStep(prisma, resolved.clientId, params.step),
+      readWizardStep(prisma, resolved.clientId, CHATBOT_PRODUCT_CODE, params.step),
       loadClientTier(resolved.clientId),
-      readLatestStepForClient(prisma, resolved.clientId, params.step),
+      readLatestStepForClient(prisma, resolved.clientId, CHATBOT_PRODUCT_CODE, params.step),
     ]);
 
     if (!result) {
@@ -266,7 +267,7 @@ export async function PATCH(
   try {
     const result = await saveWizardStep(
       prisma,
-      { clientId: resolved.clientId, email: resolved.email },
+      { clientId: resolved.clientId, email: resolved.email, productCode: CHATBOT_PRODUCT_CODE },
       {
         stepKey: params.step,
         data: body.data as Record<string, unknown>,

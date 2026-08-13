@@ -5,6 +5,7 @@ import { listStepsForClient, buildSavedStateMap } from '@/lib/wizard-visibility'
 import {
   readLatestStepsForClient,
 } from '@/lib/wizard-tier-prisma';
+import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
 
 // =============================================================================
 // KAIA-1166 (BE-4) — Cliente-facing tier-filtered wizard step list.
@@ -42,7 +43,7 @@ export async function GET() {
       where: { id: resolved.clientId },
       select: { tier: true },
     }),
-    readLatestStepsForClient(prisma, resolved.clientId),
+    readLatestStepsForClient(prisma, resolved.clientId, CHATBOT_PRODUCT_CODE),
   ]);
 
   const tier = client?.tier ?? 'starter';

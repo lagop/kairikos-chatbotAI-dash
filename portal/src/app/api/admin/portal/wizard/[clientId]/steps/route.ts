@@ -6,6 +6,7 @@ import {
   readLatestStepsForClient,
   resolveClientTier,
 } from '@/lib/wizard-tier-prisma';
+import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
 
 // =============================================================================
 // KAIA-1166 (BE-4) — Operator-facing tier-agnostic wizard step list.
@@ -47,7 +48,7 @@ export async function GET(
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
 
-  const savedRows = await readLatestStepsForClient(prisma, clientId);
+  const savedRows = await readLatestStepsForClient(prisma, clientId, CHATBOT_PRODUCT_CODE);
   const savedMap = buildSavedStateMap(
     savedRows.map((r) => ({
       stepKey: r.stepKey,

@@ -24,6 +24,7 @@ import {
   ALLOWED_WIZARD_STEP_KEYS,
   type WizardStepStatus,
 } from '../src/lib/wizard-client';
+import { CHATBOT_PRODUCT_CODE } from '../src/lib/wizard-catalog';
 
 type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
 
@@ -91,7 +92,7 @@ async function handleGET(stepKey: string): Promise<{ status: number; body: unkno
   }
   try {
     const { prisma } = await import('../src/lib/prisma');
-    const result = await readWizardStep(prisma, resolved.clientId, stepKey);
+    const result = await readWizardStep(prisma, resolved.clientId, CHATBOT_PRODUCT_CODE, stepKey);
     if (!result) {
       return makeRouteResponse({ error: 'not_found' }, 404);
     }
@@ -155,7 +156,7 @@ async function handlePATCH(
     const { prisma } = await import('../src/lib/prisma');
     const result = await saveWizardStep(
       prisma,
-      { clientId: resolved.clientId, email: resolved.email },
+      { clientId: resolved.clientId, email: resolved.email, productCode: CHATBOT_PRODUCT_CODE },
       {
         stepKey,
         data: parsed.value.data as Record<string, unknown>,
@@ -244,7 +245,7 @@ async function main() {
   try {
     await saveWizardStep(
       { $transaction: () => undefined } as never,
-      { clientId: 'c1', email: sessionEmail },
+      { clientId: 'c1', email: sessionEmail, productCode: CHATBOT_PRODUCT_CODE },
       { stepKey: 'bogus', data: { x: 1 }, status: 'draft' },
     );
     assert('lib rejects invalid stepKey', false, 'expected throw');
