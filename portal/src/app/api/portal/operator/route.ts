@@ -6,6 +6,7 @@ import {
   sendOperatorNotification,
   utcDayKey,
 } from '@/lib/operator-notify';
+import { createSupportRequest } from '@/lib/support-requests';
 
 const OPERATOR_COOKIE = 'kairikos-portal-operator';
 const HELP_REQUEST_KIND = 'help-request';
@@ -105,15 +106,28 @@ async function handleHelpRequest(req: NextRequest): Promise<NextResponse> {
 
   const client = await prisma.chatbotClient.findUnique({
     where: { id: resolved.clientId },
-    select: { id: true, name: true, companyName: true },
+    select: { id: true, name: true, companyName: true, tenantId: true },
   });
   if (!client) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
   const clientDisplayName = client.companyName ?? client.name;
 
+  // WP-11 — persist the request unconditionally, before the email dedup
+  // check below. The (clientId, kind, day) dedup is correct for the
+  // EMAIL (the operator shouldn't get spammed by repeat clicks), but a
+  // second request the same day is still a real message from the client
+  // that the admin panel needs to show — it must not be silently dropped
+  // just because today's alert email already went out.
+  const supportRequest = await createSupportRequest(prisma, {
+    clientId: client.id,
+    tenantId: client.tenantId,
+    subject,
+    message,
+  });
+
   // Dedup: the (clientId, kind, day) unique constraint makes a repeat
-  // help-request from the same client on the same UTC day a no-op.
+  // help-request EMAIL from the same client on the same UTC day a no-op.
   // Help requests are time-sensitive and small in volume, so the
   // per-day cap matches the operator-notify dedup policy from KAIA-1061.
   const day = utcDayKey();
@@ -133,6 +147,7 @@ async function handleHelpRequest(req: NextRequest): Promise<NextResponse> {
       deduped: true,
       kind: HELP_REQUEST_KIND,
       clientId: client.id,
+      supportRequestId: supportRequest.id,
       day,
       sentAt: existing.sentAt.toISOString(),
       resendMessageId: existing.resendMessageId,
@@ -168,8 +183,6 @@ async function handleHelpRequest(req: NextRequest): Promise<NextResponse> {
 </html>`;
 
   const sent = await sendOperatorNotification({
-    // @ts-expect-error WP-01/WP-11 — 'help-request' isn't in NotificationKind
-    // yet; WP-11 adds it to the union and to ALLOWED_KINDS.
     kind: HELP_REQUEST_KIND,
     to: recipients,
     subject: fullSubject,
@@ -214,6 +227,7 @@ async function handleHelpRequest(req: NextRequest): Promise<NextResponse> {
     id: row.id,
     kind: HELP_REQUEST_KIND,
     clientId: client.id,
+    supportRequestId: supportRequest.id,
     day,
     sentAt: row.sentAt.toISOString(),
     resendMessageId: row.resendMessageId,

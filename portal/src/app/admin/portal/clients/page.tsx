@@ -37,11 +37,14 @@ export default async function AdminClientsPage({
         title="Clientes del portal"
         description="Vista de soporte de sólo lectura. Selecciona un cliente para ver el detalle en su portal."
         actions={
-          <form action="/api/portal/operator" method="post">
-            <input type="hidden" name="mode" value="disable" />
-            <input type="hidden" name="return_to" value="/admin/portal/clients" />
-            <button type="submit" className="btn-ghost">Salir del modo operador</button>
-          </form>
+          <>
+            <Link href="/admin/portal/support" className="btn-ghost">Solicitudes de ayuda</Link>
+            <form action="/api/portal/operator" method="post">
+              <input type="hidden" name="mode" value="disable" />
+              <input type="hidden" name="return_to" value="/admin/portal/clients" />
+              <button type="submit" className="btn-ghost">Salir del modo operador</button>
+            </form>
+          </>
         }
       />
       <form action="/admin/portal/clients" method="get" className="card flex items-center gap-3 p-3">
