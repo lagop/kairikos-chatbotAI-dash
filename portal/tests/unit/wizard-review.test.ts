@@ -302,6 +302,62 @@ describe('applyWizardReview — approve', () => {
     });
   });
 
+  it('WP-13: approving one product\'s step does not touch another product\'s active row for the same (client, stepKey) — every query is scoped by productCode', async () => {
+    // Client has an active chatbot Step 1 (s-chatbot-1) AND is now
+    // approving a submitted 'web' Step 1 (s-web-1). Before WP-13 these
+    // shared one partial-unique "at most one active row" slot per
+    // (clientId, stepKey); now they're independent per (clientId,
+    // productCode, stepKey). This test proves the approve flow queries
+    // with productCode: 'web' throughout, so it can never see — let alone
+    // deactivate — the chatbot row, even though it matches on
+    // (clientId, stepKey) alone.
+    mockState.tx.chatbotClient.findUnique
+      .mockResolvedValueOnce({ id: 'c1', tenantId: 'tenant-1' }) // ensureClientExists
+      .mockResolvedValueOnce({
+        id: 'c1',
+        state: 'in-progress',
+        name: 'Acme',
+        companyName: 'Acme Corp',
+        email: 'ops@acme.com',
+      });
+    mockState.tx.chatbotConfigStep.findFirst
+      .mockResolvedValueOnce({ id: 's-web-1', version: 1, status: 'submitted' }) // latest (web)
+      .mockResolvedValueOnce(null); // previousActive query for productCode='web' finds nothing —
+      // NOT the chatbot row, because the mock only returns what this test
+      // wires up; the assertion below is what actually proves the query
+      // was scoped correctly rather than the mock happening to agree.
+    mockState.tx.chatbotConfigStep.update.mockResolvedValue({
+      id: 's-web-1',
+      version: 1,
+      status: 'approved',
+      activeForBot: true,
+      approvedByOperatorId: OPERATOR.operatorId,
+      approvedAt: new Date('2026-06-13T10:00:00.000Z'),
+    });
+    mockState.tx.chatbotConfigStep.findMany.mockResolvedValue([{ stepKey: '1' }]);
+
+    const result = await applyWizardReview(
+      mockPrisma(),
+      { clientId: 'c1', productCode: 'web', stepKey: '1', action: 'approve', comment: 'ok' },
+      OPERATOR,
+    );
+
+    expect(result.deactivatedStepIds).toEqual([]);
+    // The "find the latest submitted version" query is scoped by productCode.
+    expect(mockState.tx.chatbotConfigStep.findFirst).toHaveBeenNthCalledWith(1, {
+      where: { clientId: 'c1', productCode: 'web', stepKey: '1' },
+      orderBy: { version: 'desc' },
+    });
+    // The "find the previous active row to deactivate" query is ALSO
+    // scoped by productCode — this is the exact query that used to be
+    // (clientId, stepKey) only, and would have matched the chatbot
+    // product's active Step 1 row before this WP.
+    expect(mockState.tx.chatbotConfigStep.findFirst).toHaveBeenNthCalledWith(2, {
+      where: { clientId: 'c1', productCode: 'web', stepKey: '1', activeForBot: true, id: { not: 's-web-1' } },
+      select: { id: true, version: true },
+    });
+  });
+
   it('deactivates the previous active row and writes a deactivate audit row', async () => {
     mockState.tx.chatbotClient.findUnique
       .mockResolvedValueOnce({ id: 'c1' }) // ensureClientExists
@@ -799,6 +855,7 @@ describe('getWizardStepReview', () => {
     const out = await getWizardStepReview(
       { chatbotClient: mockState.chatbotClient } as never,
       'c1',
+      'chatbot',
       '1',
     );
     expect(out).toBeNull();
@@ -814,6 +871,7 @@ describe('getWizardStepReview', () => {
         chatbotConfigStepAudit: mockState.chatbotConfigStepAudit,
       } as never,
       'c1',
+      'chatbot',
       '1',
     );
     expect(out).toBeNull();
@@ -834,9 +892,13 @@ describe('getWizardStepReview', () => {
         chatbotConfigStepAudit: mockState.chatbotConfigStepAudit,
       } as never,
       'c1',
+      'chatbot',
       '1',
     );
     expect(out?.versions).toHaveLength(1);
     expect(out?.auditLogs).toHaveLength(1);
+    expect(mockState.chatbotConfigStep.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { clientId: 'c1', productCode: 'chatbot', stepKey: '1' } }),
+    );
   });
 });

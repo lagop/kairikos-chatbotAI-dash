@@ -14,6 +14,7 @@ import { DEFAULT_TENANT_ID } from '@/lib/tenant';
 import { mapIntakeToWizardSteps } from '@/lib/intake-to-wizard';
 import { saveWizardStep } from '@/lib/wizard-client';
 import { logError } from '@/lib/observability';
+import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
 
 // =============================================================================
 // POST /api/public/intake — KAIA-2913
@@ -269,7 +270,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         if (!data) continue;
         await saveWizardStep(
           prisma,
-          { clientId: client.clientId, email: payload.human_handoff_email },
+          { clientId: client.clientId, email: payload.human_handoff_email, productCode: CHATBOT_PRODUCT_CODE },
           { stepKey, data: data as unknown as Record<string, unknown>, status: 'draft' },
           {
             actor: 'system',

@@ -3,7 +3,7 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession, isPortalDevMock } from '@/lib/portal-session';
 import { readLatestStepsForClient } from '@/lib/wizard-tier-prisma';
 import { listStepsForClient, buildSavedStateMap } from '@/lib/wizard-visibility';
-import { parseStepNumber } from '@/lib/wizard-catalog';
+import { parseStepNumber, CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,7 +36,7 @@ export default async function WizardIndexPage({
       where: { id: resolved.clientId },
       select: { tier: true },
     }),
-    readLatestStepsForClient(prisma, resolved.clientId),
+    readLatestStepsForClient(prisma, resolved.clientId, CHATBOT_PRODUCT_CODE),
   ]);
 
   const tier = client?.tier ?? 'starter';

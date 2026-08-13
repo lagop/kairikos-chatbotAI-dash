@@ -71,6 +71,10 @@ function assertValidData(data: unknown): Record<string, unknown> {
 interface SaveContext {
   clientId: string;
   email: string;
+  // WP-13 — required, no default: every call site must say which
+  // product's wizard this step belongs to. See CHATBOT_PRODUCT_CODE in
+  // wizard-catalog.ts for the constant every current caller passes.
+  productCode: string;
 }
 
 export interface SaveResult {
@@ -104,7 +108,7 @@ export async function saveWizardStep(
 
   return prisma.$transaction(async (tx) => {
     const latest = await tx.chatbotConfigStep.findFirst({
-      where: { clientId: ctx.clientId, stepKey: req.stepKey },
+      where: { clientId: ctx.clientId, productCode: ctx.productCode, stepKey: req.stepKey },
       orderBy: { version: 'desc' },
       select: { version: true },
     });
@@ -122,6 +126,7 @@ export async function saveWizardStep(
       data: {
         clientId: ctx.clientId,
         tenantId: client?.tenantId ?? null,
+        productCode: ctx.productCode,
         stepKey: req.stepKey,
         version: nextVersion,
         status,
@@ -185,13 +190,14 @@ export interface WizardClientReadResult {
 export async function readWizardStep(
   prisma: PrismaClient,
   clientId: string,
+  productCode: string,
   stepKey: string,
 ): Promise<WizardClientReadResult | null> {
   assertValidStepKey(stepKey);
 
   const [latest, active] = await Promise.all([
     prisma.chatbotConfigStep.findFirst({
-      where: { clientId, stepKey },
+      where: { clientId, productCode, stepKey },
       orderBy: { version: 'desc' },
       select: {
         id: true,
@@ -206,7 +212,7 @@ export async function readWizardStep(
       },
     }),
     prisma.chatbotConfigStep.findFirst({
-      where: { clientId, stepKey, activeForBot: true },
+      where: { clientId, productCode, stepKey, activeForBot: true },
       orderBy: { version: 'desc' },
       select: {
         id: true,

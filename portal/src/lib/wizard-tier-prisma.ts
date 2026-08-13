@@ -32,6 +32,12 @@ export interface ResolvedClientTier {
  * Resolve a client + tier from a `clientId`. Returns null when the
  * client doesn't exist. The caller is responsible for the auth check
  * (route layer).
+ *
+ * WP-13 — deliberately has no `productCode` parameter: it only reads
+ * `ChatbotClient` (tier is a client-level billing attribute, not a
+ * per-product one) and never touches `ChatbotConfigStep`. Forcing a
+ * product code through here would be ceremony with no behavior behind
+ * it — see `jsonToObject` below for the same reasoning.
  */
 export async function resolveClientTier(
   prisma: PrismaClient,
@@ -77,13 +83,14 @@ export interface SavedStepRow {
 export async function readLatestStepsForClient(
   prisma: PrismaClient,
   clientId: string,
+  productCode: string,
 ): Promise<SavedStepRow[]> {
-  // Pull every row for the client and reduce in app code. The volume is
-  // bounded by `version` count per step; in the happy path this is
-  // ~12 rows (one per step). We do not use `groupBy` because the
+  // Pull every row for the client + product and reduce in app code. The
+  // volume is bounded by `version` count per step; in the happy path
+  // this is ~12 rows (one per step). We do not use `groupBy` because the
   // columns we need aren't aggregate-friendly in a single Prisma call.
   const rows = await prisma.chatbotConfigStep.findMany({
-    where: { clientId },
+    where: { clientId, productCode },
     orderBy: [{ stepKey: 'asc' }, { version: 'desc' }],
     select: {
       stepKey: true,
@@ -121,10 +128,11 @@ export async function readLatestStepsForClient(
 export async function readLatestStepForClient(
   prisma: PrismaClient,
   clientId: string,
+  productCode: string,
   stepKey: string,
 ): Promise<{ latest: SavedStepRow['latest']; payload: Prisma.JsonValue | null } | null> {
   const row = await prisma.chatbotConfigStep.findFirst({
-    where: { clientId, stepKey },
+    where: { clientId, productCode, stepKey },
     orderBy: { version: 'desc' },
     select: {
       status: true,
@@ -154,6 +162,9 @@ export async function readLatestStepForClient(
  * Narrow a Prisma `JsonValue` to a plain object payload, or null when the
  * value is null / not an object (the cliente wizard only ever stores
  * JSON objects; the schema doesn't enforce it, so we narrow defensively).
+ *
+ * WP-13 — no `productCode` parameter: this is a pure value transform, no
+ * Prisma access at all. See the note on `resolveClientTier` above.
  */
 export function jsonToObject(value: Prisma.JsonValue | null): Record<string, unknown> | null {
   if (value === null || value === undefined) return null;

@@ -9,7 +9,7 @@ import { getSession } from '@/lib/session';
 import { MOCK_CLIENT, MOCK_SECONDARY_CLIENT } from '@/lib/portal-data';
 import { resolveClientTier, readLatestStepsForClient } from '@/lib/wizard-tier-prisma';
 import { buildSavedStateMap, listStepsForOperator } from '@/lib/wizard-visibility';
-import { getStepDefinition, WIZARD_STEP_NUMBERS, type WizardStepNumber } from '@/lib/wizard-catalog';
+import { getStepDefinition, WIZARD_STEP_NUMBERS, CHATBOT_PRODUCT_CODE, type WizardStepNumber } from '@/lib/wizard-catalog';
 import { TIER_LABEL } from '@/lib/billing-tier';
 
 export const dynamic = 'force-dynamic';
@@ -146,7 +146,7 @@ export default async function AdminClientWizardPage({ params }: PageProps) {
 
   if (foundInDb) {
     try {
-      const savedRows = await readLatestStepsForClient(prisma, params.clientId);
+      const savedRows = await readLatestStepsForClient(prisma, params.clientId, CHATBOT_PRODUCT_CODE);
       const savedMap = buildSavedStateMap(
         savedRows.map((r) => ({
           stepKey: r.stepKey,

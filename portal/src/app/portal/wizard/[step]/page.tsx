@@ -13,6 +13,7 @@ import {
   getStepDefinition,
   normalizeTier,
   WIZARD_STEP_CATALOG,
+  CHATBOT_PRODUCT_CODE,
   type WizardStepNumber,
   type WizardTier,
 } from '@/lib/wizard-catalog';
@@ -121,7 +122,7 @@ export default async function WizardStepPage({ params }: PageProps) {
       where: { id: resolved.clientId },
       select: { tier: true },
     }),
-    readLatestStepsForClient(prisma, resolved.clientId),
+    readLatestStepsForClient(prisma, resolved.clientId, CHATBOT_PRODUCT_CODE),
   ]);
 
   const tier = normalizeTier(client?.tier ?? null);
@@ -162,7 +163,7 @@ export default async function WizardStepPage({ params }: PageProps) {
     );
   }
 
-  const result = await readWizardStep(prisma, resolved.clientId, params.step);
+  const result = await readWizardStep(prisma, resolved.clientId, CHATBOT_PRODUCT_CODE, params.step);
   const latestPayload = jsonToObject(
     (result?.latest?.payload as Parameters<typeof jsonToObject>[0]) ?? null,
   );
