@@ -64,18 +64,27 @@ model ChatbotClient {
   // go-live" on the portal. The CTO flips it to 'live' and sets
   // `goLiveAt` in the same transaction. KAIA-1261 (BE-1 v1) extends
   // the allowlist with 'ready' and 'updating' for the wizard state
-  // machine. Allowed values (server-enforced in the route handler):
-  //   * 'in-progress'    — default; default applied at column add
+  // machine. WP-23 — this comment previously listed only 5 values;
+  // ALLOWED_STATES in api/admin/portal/clients/[id]/route.ts also lets
+  // the operator PATCH the column to 'pending' / 'paused' / 'cancelled'
+  // by hand (account-lifecycle overrides, not wizard transitions), so
+  // the real allowlist is 8. src/types/portal.ts's OnboardingStatus is
+  // the single canonical type for all 8 — keep it in sync with this list.
+  //   * 'in-progress'    — default; wizard in progress, not yet live
   //   * 'go-live-pending'— client requested go-live approval
-  //   * 'live'           — operator approved go-live (goLiveAt also set)
   //   * 'ready'          — wizard v1: every mandatory step reached
   //                        'approved' for the first time. n8n listens
   //                        for the config_complete trigger at this edge.
+  //   * 'live'           — operator approved go-live (goLiveAt also set)
   //   * 'updating'       — wizard v1: a step moved to needs_revision
   //                        (or a new draft was created) while the client
   //                        was 'live'. The bot keeps running on the last
   //                        approved version per step until the operator
   //                        approves the new one.
+  //   * 'pending'        — operator override; account-lifecycle state,
+  //                        not written by the wizard/self-service flows.
+  //   * 'paused'         — operator override; account-lifecycle state.
+  //   * 'cancelled'      — operator override; account-lifecycle state.
   state            String    @default("in-progress")
   // Set when the CTO marks the chatbot live in the operator flow.
   goLiveAt         DateTime?

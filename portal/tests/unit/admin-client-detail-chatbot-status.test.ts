@@ -119,13 +119,13 @@ describe('buildAdminClientChatbotStatus (KAIA-13744) — real data branch', () =
     expect(summary.status).toBe('live');
   });
 
-  it('derives status="in_progress" when goLiveAt is null', () => {
+  it('derives status="in-progress" when goLiveAt is null', () => {
     const summary = buildAdminClientChatbotStatus({
       isDatabaseConfigured: true,
       client: { id: 'cmsh9mzor00018zsgsfa97l6m', goLiveAt: null },
       last7DaysCounts: { conversations: 0, fallback: 0, escalation: 0 },
     });
-    expect(summary.status).toBe('in_progress');
+    expect(summary.status).toBe('in-progress');
     expect(summary.goLiveDate).toBeNull();
   });
 

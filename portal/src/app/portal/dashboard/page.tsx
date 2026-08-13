@@ -182,7 +182,7 @@ export default async function PortalDashboardPage() {
   const completedSteps = timeline.filter((s) => s.status === 'done').length;
   const totalSteps = timeline.length;
   const progressPct = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
-  const status = goLiveAt ? 'live' : 'in_progress';
+  const status = goLiveAt ? 'live' : 'in-progress';
 
   // KAIA-11955 — chatbot summary: dev-mock mode renders the Acme
   // MOCK_CHATBOT (spc_acme_corp, 142 conversaciones, 8% / 12%

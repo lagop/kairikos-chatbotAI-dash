@@ -21,7 +21,7 @@ const DATE_FMT = new Intl.DateTimeFormat('es-ES', {
 
 const ONBOARDING_LABEL: Record<string, string> = {
   pending: 'Pendiente',
-  in_progress: 'En curso',
+  'in-progress': 'En curso',
   live: 'En producción',
   paused: 'Pausado',
   cancelled: 'Cancelado',
@@ -96,7 +96,7 @@ async function loadProfile(
     primaryContactEmail: target.email,
     stripeCustomerId: target.stripeCustomerId,
     tier: target.tier as ClientProfile['tier'],
-    onboardingStatus: target.goLiveAt ? 'live' : 'in_progress',
+    onboardingStatus: target.goLiveAt ? 'live' : 'in-progress',
     createdAt: target.createdAt.toISOString(),
     goLiveDate: target.goLiveAt?.toISOString() ?? null,
     chatbotSpaceId: null,

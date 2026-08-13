@@ -75,7 +75,7 @@ function buildProfile(
     primaryContactEmail: row.email,
     stripeCustomerId: row.stripeCustomerId,
     tier: row.tier as ClientProfile['tier'],
-    onboardingStatus: row.goLiveAt ? 'live' : 'in_progress',
+    onboardingStatus: row.goLiveAt ? 'live' : 'in-progress',
     createdAt: row.createdAt.toISOString(),
     goLiveDate: row.goLiveAt?.toISOString() ?? null,
     chatbotSpaceId: null,

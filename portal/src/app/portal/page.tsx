@@ -171,7 +171,7 @@ export default async function PortalHome({
     ? MOCK_CHATBOT
     : {
         spaceId: `spc_${client.id}`,
-        status: goLiveAt ? 'live' : 'in_progress',
+        status: goLiveAt ? 'live' : 'in-progress',
         goLiveDate: goLiveAt,
         last7Days: {
           conversations: conversationCount,
