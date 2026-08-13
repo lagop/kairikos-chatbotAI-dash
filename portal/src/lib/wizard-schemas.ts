@@ -360,6 +360,17 @@ export const stepSchemas = {
 
 export type StepSchemaKey = keyof typeof stepSchemas;
 
+// WP-15 — product-keyed registry over the same `stepSchemas` map. Only
+// 'chatbot' has step schemas today (the other four products have no
+// wizard yet — see src/lib/catalogs/index.ts for the matching catalog
+// registry). Partial, not a full Record<ProductCode, ...>, so a product
+// without schemas is simply absent rather than mapped to an empty object
+// — `SCHEMA_REGISTRY.web` is `undefined`, not `{}`, which is the honest
+// "no schemas exist" signal for a caller to check.
+export const SCHEMA_REGISTRY: Partial<Record<'chatbot', typeof stepSchemas>> = {
+  chatbot: stepSchemas,
+};
+
 export type Step1Input = z.infer<typeof step1Schema>;
 export type Step2Input = z.infer<typeof step2Schema>;
 export type Step3Input = z.infer<typeof step3Schema>;
