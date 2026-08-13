@@ -227,7 +227,7 @@ describe('applyWizardReview — approve', () => {
 
   it('approves when latest is submitted and no previous active row exists', async () => {
     mockState.tx.chatbotClient.findUnique
-      .mockResolvedValueOnce({ id: 'c1' }) // ensureClientExists
+      .mockResolvedValueOnce({ id: 'c1', tenantId: 'tenant-1' }) // ensureClientExists
       .mockResolvedValueOnce({
         // loadClientForTransition
         id: 'c1',
@@ -282,6 +282,7 @@ describe('applyWizardReview — approve', () => {
       data: [
         expect.objectContaining({
           stepId: 's1',
+          tenantId: 'tenant-1',
           version: 1,
           actor: 'operator',
           actorId: OPERATOR.operatorId,
@@ -290,6 +291,7 @@ describe('applyWizardReview — approve', () => {
         }),
         expect.objectContaining({
           stepId: 's1',
+          tenantId: 'tenant-1',
           version: 1,
           actor: 'system',
           actorId: null,

@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
   // above (n8n-only).
   const client = await prisma.chatbotClient.findUnique({
     where: { id: parsed.value.clientId },
-    select: { id: true, email: true, name: true, companyName: true, state: true },
+    select: { id: true, email: true, name: true, companyName: true, state: true, tenantId: true },
   });
   if (!client) {
     return NextResponse.json(
@@ -191,6 +191,7 @@ export async function POST(req: NextRequest) {
       },
       create: {
         clientId: parsed.value.clientId,
+        tenantId: client.tenantId,
         milestone: 'wizard_abandoned',
         completedAt,
         notes,

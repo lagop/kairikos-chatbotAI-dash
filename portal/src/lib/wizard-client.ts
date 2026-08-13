@@ -96,9 +96,18 @@ export async function saveWizardStep(
     });
     const nextVersion = (latest?.version ?? 0) + 1;
 
+    // WP-09 — denormalize tenantId from the client onto every child row,
+    // same as the Phase 0 backfill did for existing rows (see
+    // src/lib/tenant.ts for why the client itself is always resolvable).
+    const client = await tx.chatbotClient.findUnique({
+      where: { id: ctx.clientId },
+      select: { tenantId: true },
+    });
+
     const created = await tx.chatbotConfigStep.create({
       data: {
         clientId: ctx.clientId,
+        tenantId: client?.tenantId ?? null,
         stepKey: req.stepKey,
         version: nextVersion,
         status,
@@ -111,6 +120,7 @@ export async function saveWizardStep(
     await tx.chatbotConfigStepAudit.create({
       data: {
         stepId: created.id,
+        tenantId: client?.tenantId ?? null,
         version: created.version,
         actor: 'client',
         actorId: ctx.email,

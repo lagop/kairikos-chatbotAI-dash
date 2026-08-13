@@ -10,6 +10,7 @@ import {
 import { createClientFolderAndUploadKit } from '@/lib/google-drive';
 import { createDay2OnboardingIssue } from '@/lib/paperclip-day2';
 import { notifyOperatorOfExecutionFailure } from '@/lib/operator-notify';
+import { DEFAULT_TENANT_ID } from '@/lib/tenant';
 
 // =============================================================================
 // POST /api/public/intake — KAIA-2913
@@ -156,7 +157,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // write reuses the row (same business owner).
     const existingClient = await tx.chatbotClient.findUnique({
       where: { email: payload.human_handoff_email },
-      select: { id: true, name: true, companyName: true },
+      select: { id: true, name: true, companyName: true, tenantId: true },
     });
 
     const clientRecord = existingClient
@@ -166,7 +167,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             companyName: payload.business_name,
             // Don't overwrite tier/state — Stripe webhook owns those.
           },
-          select: { id: true, name: true, companyName: true },
+          select: { id: true, name: true, companyName: true, tenantId: true },
         })
       : await tx.chatbotClient.create({
           data: {
@@ -175,17 +176,24 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             companyName: payload.business_name,
             tier: DEFAULT_TIER,
             state: DEFAULT_STATE,
+            // WP-09 — see src/lib/tenant.ts: no multi-tenant onboarding
+            // flow exists yet, so every new client belongs to the
+            // default tenant. Existing clients keep whatever tenantId
+            // they already have (the update branch above never touches
+            // it).
+            tenantId: DEFAULT_TENANT_ID,
           },
-          select: { id: true, name: true, companyName: true },
+          select: { id: true, name: true, companyName: true, tenantId: true },
         });
 
     // ChatbotClientUser.nextAuthEmail is UNIQUE — upsert.
     const clientUser = await tx.chatbotClientUser.upsert({
       where: { nextAuthEmail: payload.human_handoff_email },
-      update: { clientId: clientRecord.id },
+      update: { clientId: clientRecord.id, tenantId: clientRecord.tenantId },
       create: {
         nextAuthEmail: payload.human_handoff_email,
         clientId: clientRecord.id,
+        tenantId: clientRecord.tenantId,
       },
       select: { id: true },
     });
@@ -201,6 +209,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           intakeSlug: INTAKE_SLUG,
           payload: payload as unknown as object,
           clientId: clientRecord.id,
+          tenantId: clientRecord.tenantId,
           businessName: payload.business_name,
           humanHandoffEmail: payload.human_handoff_email,
           ipHash,

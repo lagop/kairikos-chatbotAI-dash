@@ -14,6 +14,7 @@ interface MockTx {
     create: ReturnType<typeof vi.fn>;
   };
   chatbotConfigStepAudit: { create: ReturnType<typeof vi.fn> };
+  chatbotClient: { findUnique: ReturnType<typeof vi.fn> };
 }
 
 const mockState = vi.hoisted(() => {
@@ -23,6 +24,9 @@ const mockState = vi.hoisted(() => {
       create: vi.fn(),
     },
     chatbotConfigStepAudit: { create: vi.fn() },
+    // WP-09 — saveWizardStep looks up the client's tenantId to stamp onto
+    // the new ChatbotConfigStep/ChatbotConfigStepAudit rows.
+    chatbotClient: { findUnique: vi.fn().mockResolvedValue({ tenantId: 'tenant-1' }) },
   });
   return {
     tx: makeTx(),
@@ -55,6 +59,7 @@ beforeEach(() => {
   mockState.tx.chatbotConfigStep.findFirst.mockReset();
   mockState.tx.chatbotConfigStep.create.mockReset();
   mockState.tx.chatbotConfigStepAudit.create.mockReset();
+  mockState.tx.chatbotClient.findUnique.mockReset().mockResolvedValue({ tenantId: 'tenant-1' });
   mockState.$transaction.mockImplementation((fn: (tx: MockTx) => unknown) => fn(mockState.tx));
 });
 

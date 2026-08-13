@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
   // PORTAL_API_KEY check above (n8n-only).
   const client = await prisma.chatbotClient.findUnique({
     where: { id: parsed.value.clientId },
-    select: { id: true },
+    select: { id: true, tenantId: true },
   });
   if (!client) {
     return NextResponse.json(
@@ -107,6 +107,7 @@ export async function POST(req: NextRequest) {
       },
       create: {
         clientId: parsed.value.clientId,
+        tenantId: client.tenantId,
         milestone: parsed.value.milestone,
         completedAt: parsed.value.completedAt,
         notes: parsed.value.notes,

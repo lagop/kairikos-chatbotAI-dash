@@ -169,6 +169,7 @@ describe('handleGoLiveReady', () => {
       companyName: 'Acme',
       state: 'in-progress',
       goLiveAt: null,
+      tenantId: 'tenant-1',
     });
     mockState.findManyActivity.mockResolvedValue([
       { milestone: 'T+0', completedAt: new Date() },
@@ -185,6 +186,12 @@ describe('handleGoLiveReady', () => {
     expect(body.deduped).toBe(false);
     expect(body.notify.sent).toBe(true);
     expect(mockState.sendOperatorNotification).toHaveBeenCalledTimes(1);
+    // WP-09 — the notification dedup row denormalizes tenantId from the client.
+    expect(mockState.upsertOperatorNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ clientId: 'c1', tenantId: 'tenant-1' }),
+      }),
+    );
   });
 
   it('dedupes a repeat click within the same UTC day', async () => {
@@ -230,12 +237,49 @@ describe('handleGoLiveReady', () => {
 });
 
 describe('handleAssetsUploaded', () => {
+  it('stamps tenantId from the client onto the created activity row (WP-09)', async () => {
+    mockState.findUniqueActivity.mockResolvedValueOnce(null);
+    mockState.findUniqueClient.mockResolvedValueOnce({ tenantId: 'tenant-1' });
+    mockState.upsertActivity.mockResolvedValueOnce({
+      id: 'a3',
+      milestone: 'T+3',
+      completedAt: new Date('2026-06-12T00:00:00.000Z'),
+      notes: 'Marcado por el cliente desde el portal.',
+    });
+
+    await handleAssetsUploaded('c1', {});
+
+    expect(mockState.upsertActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ clientId: 'c1', tenantId: 'tenant-1' }),
+      }),
+    );
+  });
+
+  it('falls back to a null tenantId when the client lookup finds nothing', async () => {
+    mockState.findUniqueActivity.mockResolvedValueOnce(null);
+    mockState.findUniqueClient.mockResolvedValueOnce(null);
+    mockState.upsertActivity.mockResolvedValueOnce({
+      id: 'a3',
+      milestone: 'T+3',
+      completedAt: new Date('2026-06-12T00:00:00.000Z'),
+      notes: 'Marcado por el cliente desde el portal.',
+    });
+
+    await handleAssetsUploaded('c1', {});
+
+    expect(mockState.upsertActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ create: expect.objectContaining({ tenantId: null }) }),
+    );
+  });
+
   it('is idempotent — second call returns deduped:true', async () => {
     mockState.findUniqueActivity.mockResolvedValueOnce({
       id: 'a3',
       completedAt: null,
       notes: null,
     });
+    mockState.findUniqueClient.mockResolvedValue({ tenantId: 'tenant-1' });
     mockState.upsertActivity.mockResolvedValueOnce({
       id: 'a3',
       milestone: 'T+3',
