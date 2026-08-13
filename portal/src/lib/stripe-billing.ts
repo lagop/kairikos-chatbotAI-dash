@@ -334,7 +334,11 @@ export async function getBillingForClient(clientId: string): Promise<ClientBilli
  * cancellations.
  */
 export interface OwnerBillingOverview {
-  mrrByProductCents: Record<string, { productName: string; tier: string; mrrCents: number; activeSubscriptions: number }>;
+  // WP-12 — keyed by Product.id, not by tier: tier is only unique WITHIN a
+  // product's code now (Product.@@unique([code, tier])), so two different
+  // products can share the same tier string (e.g. a hypothetical 'pro' on
+  // both chatbot and web) without their MRR silently merging under one key.
+  mrrByProductCents: Record<string, { productCode: string; productName: string; tier: string; mrrCents: number; activeSubscriptions: number }>;
   mrrTotalCents: number;
   expiringSoon: Array<{
     subscriptionId: string;
@@ -362,7 +366,7 @@ export async function getOwnerBillingOverview(): Promise<OwnerBillingOverview> {
     where: { status: { in: ['active', 'trialing'] } },
     include: {
       client: { select: { id: true, name: true, companyName: true } },
-      clientProduct: { include: { product: { select: { tier: true, name: true, priceCents: true } } } },
+      clientProduct: { include: { product: { select: { code: true, tier: true, name: true, priceCents: true } } } },
     },
   });
 
@@ -374,7 +378,7 @@ export async function getOwnerBillingOverview(): Promise<OwnerBillingOverview> {
     orderBy: { currentPeriodEnd: 'asc' },
     include: {
       client: { select: { id: true, name: true, companyName: true } },
-      clientProduct: { include: { product: { select: { tier: true, name: true, priceCents: true } } } },
+      clientProduct: { include: { product: { select: { code: true, tier: true, name: true, priceCents: true } } } },
     },
   });
 
@@ -384,20 +388,23 @@ export async function getOwnerBillingOverview(): Promise<OwnerBillingOverview> {
     take: 20,
     include: {
       client: { select: { id: true, name: true, companyName: true } },
-      clientProduct: { include: { product: { select: { tier: true, name: true } } } },
+      clientProduct: { include: { product: { select: { code: true, tier: true, name: true } } } },
     },
   });
 
   const mrrByProductCents: OwnerBillingOverview['mrrByProductCents'] = {};
   let mrrTotalCents = 0;
   for (const s of active) {
-    const tier = s.clientProduct.product.tier;
+    // Key by productId, not tier — WP-12 made tier unique only within a
+    // product's code, so two different products can share a tier string.
+    const key = s.clientProduct.productId;
+    const { code, tier, name } = s.clientProduct.product;
     const amount = s.amountCents ?? s.clientProduct.product.priceCents;
-    if (!mrrByProductCents[tier]) {
-      mrrByProductCents[tier] = { productName: s.clientProduct.product.name, tier, mrrCents: 0, activeSubscriptions: 0 };
+    if (!mrrByProductCents[key]) {
+      mrrByProductCents[key] = { productCode: code, productName: name, tier, mrrCents: 0, activeSubscriptions: 0 };
     }
-    mrrByProductCents[tier].mrrCents += amount;
-    mrrByProductCents[tier].activeSubscriptions += 1;
+    mrrByProductCents[key].mrrCents += amount;
+    mrrByProductCents[key].activeSubscriptions += 1;
     mrrTotalCents += amount;
   }
 

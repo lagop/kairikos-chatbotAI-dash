@@ -9,8 +9,24 @@ export async function GET(req: NextRequest) {
 
   const rows = await prisma.product.findMany({
     where: { isActive: true },
-    orderBy: { priceCents: 'asc' },
-    select: { id: true, stripePriceId: true, name: true, tier: true, priceCents: true, currency: true, features: true, isActive: true, createdAt: true },
+    // WP-12 — group by product first, then cheapest tier first within it,
+    // now that a single price-ascending sort would interleave rows from
+    // different products.
+    orderBy: [{ code: 'asc' }, { priceCents: 'asc' }],
+    select: {
+      id: true,
+      code: true,
+      stripeRecurringPriceId: true,
+      stripeSetupPriceId: true,
+      name: true,
+      tier: true,
+      priceCents: true,
+      setupFeeCents: true,
+      currency: true,
+      features: true,
+      isActive: true,
+      createdAt: true,
+    },
   });
   return NextResponse.json(rows);
 }

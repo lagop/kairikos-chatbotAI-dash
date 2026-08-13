@@ -69,8 +69,18 @@ export async function POST(req: NextRequest) {
     },
   });
   if (!cp) return NextResponse.json({ error: 'client_product_not_found' }, { status: 404 });
-  if (!cp.product.stripePriceId) {
+  if (!cp.product.stripeRecurringPriceId) {
     return NextResponse.json({ error: 'product_price_id_missing', productId: cp.product.id, tier: cp.product.tier }, { status: 404 });
+  }
+  // WP-12 — a product can now carry a one-time setup fee alongside its
+  // recurring price (e.g. chatbot: subscription + onboarding fee). If
+  // there's a fee to charge, its Stripe price must be provisioned too —
+  // otherwise the client is silently undercharged for a real cost.
+  if (cp.product.setupFeeCents > 0 && !cp.product.stripeSetupPriceId) {
+    return NextResponse.json(
+      { error: 'product_setup_price_id_missing', productId: cp.product.id, tier: cp.product.tier },
+      { status: 404 },
+    );
   }
   if (!cp.client.tenantId) {
     return NextResponse.json({ error: 'client_product_not_found', detail: 'client_has_no_tenant' }, { status: 404 });
@@ -84,7 +94,12 @@ export async function POST(req: NextRequest) {
   const stripe = getStripe();
   const subscription = await stripe.subscriptions.create({
     customer: customerId,
-    items: [{ price: cp.product.stripePriceId }],
+    items: [{ price: cp.product.stripeRecurringPriceId }],
+    // WP-12 — a one-time setup fee bills as an invoice item attached to
+    // the subscription's first invoice, alongside the recurring price.
+    ...(cp.product.stripeSetupPriceId
+      ? { add_invoice_items: [{ price: cp.product.stripeSetupPriceId }] }
+      : {}),
     // Payment is collected out-of-band for the operator flow; the
     // subscription starts incomplete and the webhook flips it to
     // active when Stripe confirms payment.
@@ -95,6 +110,7 @@ export async function POST(req: NextRequest) {
       kairikos_tenant_id: cp.client.tenantId,
       kairikos_client_id: cp.client.id,
       kairikos_client_product_id: cp.id,
+      kairikos_product_code: cp.product.code,
       kairikos_product_tier: cp.product.tier,
     },
   });
@@ -111,7 +127,7 @@ export async function POST(req: NextRequest) {
       clientProductId: cp.id,
       stripeId: subscription.id,
       stripeCustomerId: customerId,
-      stripePriceId: cp.product.stripePriceId,
+      stripePriceId: cp.product.stripeRecurringPriceId,
       status: subscription.status,
       currentPeriodStart: new Date(((subscription as unknown as { current_period_start?: number }).current_period_start ?? 0) * 1000),
       currentPeriodEnd: new Date(((subscription as unknown as { current_period_end?: number }).current_period_end ?? 0) * 1000),

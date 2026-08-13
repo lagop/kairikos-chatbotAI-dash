@@ -510,24 +510,47 @@ model Profile {
 // Kairikos service tiers. Source of truth is Stripe, but we store metadata
 // here for portal display and feature-gating. Mirrors the shape of the
 // Supabase products table so the same Stripe webhook can write both.
+//
+// WP-12 — this used to be "one row per chatbot tier" (`tier` was
+// @unique). Kairikos sells five products (chatbot, web platform, AI lead
+// capture, SEO, Google reviews), not one, so `tier` is now unique only
+// WITHIN a product's `code` (@@unique([code, tier])) — two different
+// products can each have their own 'standard'/'pro' tier without
+// colliding. The price model also changed: `priceCents` is the monthly
+// fee (0 for one-time-only products like the web platform) and
+// `setupFeeCents` is the one-time onboarding fee. Billing type is
+// derived from the two rather than stored as a third field: fee=0 +
+// setup>0 is one-time, both>0 is setup-plus-subscription. See
+// prisma/migrations/*_product_multi_service for the backfill.
 // =============================================================================
 model Product {
-  id            String   @id @default(uuid()) @db.Uuid
-  // Stripe price id (populated by the Stripe webhook handler in
-  // kira-studio-billing-backend). NULL for unsynced or grandfathered rows.
-  stripePriceId String?  @unique @map("stripe_price_id")
-  name          String
-  // 'starter' | 'pro' | 'premium'. UNIQUE — one row per tier.
-  tier          String   @unique
-  priceCents    Int      @map("price_cents")
-  currency      String   @default("EUR")
-  features      Json     @default("{}")
-  isActive      Boolean  @default(true) @map("is_active")
-  createdAt     DateTime @default(now()) @map("created_at")
+  id                     String   @id @default(uuid()) @db.Uuid
+  // 'chatbot' | 'web' | 'captacion' | 'seo' | 'resenas'. Free-form so a
+  // sixth product doesn't need a schema migration.
+  code                   String
+  // Stripe recurring-price id for the monthly fee (populated by the
+  // Stripe webhook handler). NULL for unsynced/grandfathered rows or
+  // products with no subscription component.
+  stripeRecurringPriceId String?  @unique @map("stripe_recurring_price_id")
+  // Stripe one-time-price id for the setup fee. NULL when setupFeeCents
+  // is 0, or when the fee hasn't been provisioned on Stripe yet.
+  stripeSetupPriceId     String?  @map("stripe_setup_price_id")
+  name                   String
+  // 'starter' | 'pro' | 'premium' for chatbot; 'standard' for the
+  // single-tier products. Unique per `code`, not globally.
+  tier                   String
+  priceCents             Int      @map("price_cents")
+  setupFeeCents          Int      @default(0) @map("setup_fee_cents")
+  currency               String   @default("EUR")
+  features               Json     @default("{}")
+  isActive               Boolean  @default(true) @map("is_active")
+  createdAt              DateTime @default(now()) @map("created_at")
 
   clientProducts ClientProduct[]
   auditLogs      ClientProductAudit[]
 
+  @@unique([code, tier])
+  @@index([code])
   @@index([tier])
   @@index([isActive])
 }

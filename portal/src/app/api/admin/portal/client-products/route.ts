@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
     orderBy: { changedAt: 'desc' },
     include: {
       client: { select: { id: true, name: true, companyName: true, email: true } },
-      product: { select: { id: true, name: true, tier: true, priceCents: true, currency: true, features: true, isActive: true } },
+      product: { select: { id: true, code: true, name: true, tier: true, priceCents: true, setupFeeCents: true, currency: true, features: true, isActive: true } },
       auditLogs: { orderBy: { changedAt: 'desc' }, take: 20 },
     },
   });
