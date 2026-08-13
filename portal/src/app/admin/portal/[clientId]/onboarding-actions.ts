@@ -67,7 +67,7 @@ export async function advanceOnboardingMilestone(
 
   const client = await prisma.chatbotClient.findUnique({
     where: { id: clientId },
-    select: { id: true },
+    select: { id: true, tenantId: true },
   });
   if (!client) {
     return;
@@ -79,6 +79,7 @@ export async function advanceOnboardingMilestone(
     where: { clientId_milestone: { clientId, milestone } },
     create: {
       clientId,
+      tenantId: client.tenantId,
       milestone,
       completedAt: now,
       notes: note,

@@ -136,7 +136,7 @@ export async function handleGoLiveReady(
   if (isDatabaseConfigured) {
     const client = await prisma.chatbotClient.findUnique({
       where: { id: clientId },
-      select: { id: true, name: true, companyName: true, state: true, goLiveAt: true },
+      select: { id: true, name: true, companyName: true, state: true, goLiveAt: true, tenantId: true },
     });
     if (!client) {
       return NextResponse.json(
@@ -261,6 +261,7 @@ async function fireGoLiveReadyNotification(client: {
   id: string;
   name: string;
   companyName: string | null;
+  tenantId: string | null;
 }): Promise<NotifyResult> {
   const recipients = resolveOperatorRecipients(process.env.KAIRIKOS_OPERATOR_EMAILS);
   if (recipients.length === 0) {
@@ -316,6 +317,7 @@ async function fireGoLiveReadyNotification(client: {
     },
     create: {
       clientId: client.id,
+      tenantId: client.tenantId,
       kind: GO_LIVE_READY_KIND,
       day,
       subject,
@@ -352,15 +354,20 @@ export async function handleAssetsUploaded(
   const notes = input.notes ?? 'Marcado por el cliente desde el portal.';
 
   if (isDatabaseConfigured) {
-    const existing = await prisma.chatbotActivity.findUnique({
-      where: { clientId_milestone: { clientId, milestone } },
-      select: { id: true, completedAt: true, notes: true },
-    });
+    const [existing, client] = await Promise.all([
+      prisma.chatbotActivity.findUnique({
+        where: { clientId_milestone: { clientId, milestone } },
+        select: { id: true, completedAt: true, notes: true },
+      }),
+      // WP-09 — denormalize tenantId from the client (see src/lib/tenant.ts).
+      prisma.chatbotClient.findUnique({ where: { id: clientId }, select: { tenantId: true } }),
+    ]);
 
     const row = await prisma.chatbotActivity.upsert({
       where: { clientId_milestone: { clientId, milestone } },
       create: {
         clientId,
+        tenantId: client?.tenantId ?? null,
         milestone,
         completedAt: new Date(),
         notes,

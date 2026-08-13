@@ -146,17 +146,22 @@ async function findLatestStepVersion({ clientId, stepKey, tx }: FindStepOptions)
   });
 }
 
+// WP-09 — returns the client's tenantId (rather than void) so callers can
+// stamp it onto the audit rows they write in the same transaction, without
+// a second round-trip to re-fetch the client they already just checked
+// exists.
 async function ensureClientExists(
   clientId: string,
   tx: Prisma.TransactionClient,
-): Promise<void> {
+): Promise<{ tenantId: string | null }> {
   const client = await tx.chatbotClient.findUnique({
     where: { id: clientId },
-    select: { id: true },
+    select: { id: true, tenantId: true },
   });
   if (!client) {
     throw new WizardReviewError({ code: 'client_not_found' });
   }
+  return { tenantId: client.tenantId };
 }
 
 interface ClientStateRow {
@@ -165,6 +170,7 @@ interface ClientStateRow {
   name: string;
   companyName: string | null;
   email: string;
+  tenantId: string | null;
 }
 
 async function loadClientForTransition(
@@ -179,6 +185,7 @@ async function loadClientForTransition(
       name: true,
       companyName: true,
       email: true,
+      tenantId: true,
     },
   });
   if (!row) {
@@ -242,7 +249,7 @@ function isMandatoryStep(stepKey: string): boolean {
  */
 async function fireConfigCompleteNotification(
   prisma: PrismaClient,
-  client: { id: string; state: string; name: string; companyName: string | null },
+  client: { id: string; state: string; name: string; companyName: string | null; tenantId: string | null },
   kind: typeof CONFIG_COMPLETE_KIND | typeof CONFIG_UPDATING_KIND,
 ): Promise<{ fired: boolean; resendMessageId: string | null; error: string | null }> {
   // Lazy import: avoids a static-import cycle between wizard-review and
@@ -315,6 +322,7 @@ async function fireConfigCompleteNotification(
     },
     create: {
       clientId: client.id,
+      tenantId: client.tenantId,
       kind,
       day,
       subject,
@@ -452,7 +460,7 @@ export async function applyWizardReview(
   actor: ReviewActor,
 ): Promise<ReviewResult> {
   const result = await prisma.$transaction(async (tx) => {
-    await ensureClientExists(req.clientId, tx);
+    const { tenantId } = await ensureClientExists(req.clientId, tx);
 
     const latest = await findLatestStepVersion({
       clientId: req.clientId,
@@ -491,6 +499,7 @@ export async function applyWizardReview(
         await tx.chatbotConfigStepAudit.create({
           data: {
             stepId: previousActive.id,
+            tenantId,
             version: previousActive.version,
             actor: 'system',
             actorId: null,
@@ -525,6 +534,7 @@ export async function applyWizardReview(
         data: [
           {
             stepId: updated.id,
+            tenantId,
             version: updated.version,
             actor: 'operator',
             actorId: actor.operatorId,
@@ -533,6 +543,7 @@ export async function applyWizardReview(
           },
           {
             stepId: updated.id,
+            tenantId,
             version: updated.version,
             actor: 'system',
             actorId: null,
@@ -589,6 +600,7 @@ export async function applyWizardReview(
     await tx.chatbotConfigStepAudit.create({
       data: {
         stepId: updated.id,
+        tenantId,
         version: updated.version,
         actor: 'operator',
         actorId: actor.operatorId,
