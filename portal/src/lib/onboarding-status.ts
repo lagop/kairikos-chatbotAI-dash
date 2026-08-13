@@ -25,6 +25,10 @@ export function onboardingStatusLabel(status: OnboardingStatus): string {
       return 'En pausa';
     case 'cancelled':
       return 'Cancelado';
+    case 'archived':
+      return 'Archivado';
+    case 'draft':
+      return 'Borrador';
     default: {
       const exhaustive: never = status;
       return exhaustive;
@@ -50,6 +54,10 @@ export function onboardingStatusPillClass(status: OnboardingStatus): string {
       return 'pill-warning';
     case 'cancelled':
       return 'pill-danger';
+    case 'archived':
+      return 'pill-danger';
+    case 'draft':
+      return 'pill-muted';
     default: {
       const exhaustive: never = status;
       return exhaustive;

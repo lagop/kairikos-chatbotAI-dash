@@ -26,10 +26,8 @@
 // =============================================================================
 
 import type { Prisma, PrismaClient } from '@prisma/client';
-import {
-  WIZARD_REQUIRED_STEP_NUMBERS,
-  getStepDefinition,
-} from './wizard-catalog';
+import { CHATBOT_PRODUCT_CODE } from './wizard-catalog';
+import { getProductCatalog } from './catalogs';
 
 export type WizardReviewAction = 'approve' | 'request_revision';
 
@@ -60,14 +58,6 @@ export type WizardReviewAction = 'approve' | 'request_revision';
 
 export const CONFIG_COMPLETE_KIND = 'config_complete';
 export const CONFIG_UPDATING_KIND = 'config-updating';
-
-/** Step keys (string form of WIZARD_REQUIRED_STEP_NUMBERS) used by the
- *  readiness check. Module-level so the catalog + readiness lockstep —
- *  any change to `requiredForReady` flips the readiness set automatically.
- */
-export const REQUIRED_STEP_KEYS_FOR_READY: ReadonlySet<string> = new Set(
-  WIZARD_REQUIRED_STEP_NUMBERS.map((n) => String(n)),
-);
 
 export interface WizardStateTransition {
   /** The state we wrote, or null when no transition fired. */
@@ -176,15 +166,28 @@ async function ensureClientExists(
 
 interface ClientStateRow {
   id: string;
+  /** ChatbotClient.state — COMPAT mirror of the chatbot product's
+   *  onboardingState (n8n + the Day-2 state-transition endpoint still
+   *  read/write this column directly; see the WP-14 migration notes). */
   state: string;
   name: string;
   companyName: string | null;
   email: string;
   tenantId: string | null;
+  /** ClientProduct.id for (clientId, productCode). Null when the client
+   *  has no ClientProduct row for this product yet (data drift — the
+   *  intake route creates one for 'chatbot' at signup as of WP-14, but a
+   *  pre-existing client or a not-yet-purchased product can still miss
+   *  one). */
+  clientProductId: string | null;
+  /** ClientProduct.onboardingState — the WP-14 source of truth for this
+   *  product's lifecycle. Null when clientProductId is null. */
+  onboardingState: string | null;
 }
 
 async function loadClientForTransition(
   clientId: string,
+  productCode: string,
   tx: Prisma.TransactionClient,
 ): Promise<ClientStateRow> {
   const row = await tx.chatbotClient.findUnique({
@@ -196,57 +199,59 @@ async function loadClientForTransition(
       companyName: true,
       email: true,
       tenantId: true,
+      clientProducts: {
+        where: { product: { code: productCode } },
+        orderBy: { changedAt: 'desc' },
+        take: 1,
+        select: { id: true, onboardingState: true },
+      },
     },
   });
   if (!row) {
     throw new WizardReviewError({ code: 'client_not_found' });
   }
-  return row;
+  const clientProduct = row.clientProducts[0];
+  return {
+    id: row.id,
+    state: row.state,
+    name: row.name,
+    companyName: row.companyName,
+    email: row.email,
+    tenantId: row.tenantId,
+    clientProductId: clientProduct?.id ?? null,
+    onboardingState: clientProduct?.onboardingState ?? null,
+  };
 }
 
 /**
- * Is every mandatory wizard step covered by an `approved` row with
- * `activeForBot=true`? Used to decide whether the approve branch should
- * flip the client to `ready`.
+ * Is every mandatory wizard step (per this product's catalog) covered by
+ * an `approved` row with `activeForBot=true`? Used to decide whether the
+ * approve branch should flip the product to `ready`.
  *
  * Returns the keys still missing so the test can produce a precise
- * assertion message instead of a boolean. Step 12 is excluded from the
- * readiness set via `WIZARD_REQUIRED_STEP_NUMBERS` (`requiredForReady`
- * is false in the catalog), so this helper naturally ignores it.
+ * assertion message instead of a boolean. WP-14 — the required set now
+ * comes from `getProductCatalog(productCode).requiredStepKeys` instead of
+ * a fixed chatbot-only constant, so a future product's catalog drives its
+ * own readiness check automatically.
  */
 async function findMandatoryStepsMissingActive(
   clientId: string,
   productCode: string,
   tx: Prisma.TransactionClient,
 ): Promise<string[]> {
+  const requiredStepKeys = getProductCatalog(productCode).requiredStepKeys;
   const activeRows = await tx.chatbotConfigStep.findMany({
     where: { clientId, productCode, activeForBot: true },
     select: { stepKey: true },
   });
   const activeKeys = new Set(activeRows.map((r) => r.stepKey));
-  const missing: string[] = [];
-  for (const key of REQUIRED_STEP_KEYS_FOR_READY) {
-    if (!activeKeys.has(key)) missing.push(key);
-  }
-  // Sanity: the set of `required` step keys must agree with the catalog's
-  // `requiredForReady` flag. If a future step gets flipped in the catalog
-  // the helper stays in lockstep because both go through the same export.
-  for (const key of activeKeys) {
-    if (!REQUIRED_STEP_KEYS_FOR_READY.has(key)) {
-      // Unexpected step that is active but NOT mandatory (e.g. an
-      // operator manually re-activated a non-required step). Treat as
-      // ready (it doesn't block the readiness check) but emit a stable
-      // missing marker for tests to assert against.
-      // No-op on purpose; the missing array already excludes it.
-    }
-  }
-  return missing;
+  return requiredStepKeys.filter((key) => !activeKeys.has(key));
 }
 
-/** Is the given stepKey a mandatory step per the wizard catalog? Defensive
- *  wrapper so call-sites read clearly. */
-function isMandatoryStep(stepKey: string): boolean {
-  return REQUIRED_STEP_KEYS_FOR_READY.has(stepKey);
+/** Is the given stepKey a mandatory step per this product's wizard
+ *  catalog? Defensive wrapper so call-sites read clearly. */
+function isMandatoryStep(productCode: string, stepKey: string): boolean {
+  return getProductCatalog(productCode).requiredStepKeys.includes(stepKey);
 }
 
 /** Notify the operator about the wizard state edge. Mirrors the
@@ -262,6 +267,7 @@ async function fireConfigCompleteNotification(
   prisma: PrismaClient,
   client: { id: string; state: string; name: string; companyName: string | null; tenantId: string | null },
   kind: typeof CONFIG_COMPLETE_KIND | typeof CONFIG_UPDATING_KIND,
+  productCode: string,
 ): Promise<{ fired: boolean; resendMessageId: string | null; error: string | null }> {
   // Lazy import: avoids a static-import cycle between wizard-review and
   // onboarding-actions. onboarding-actions re-uses lib/prisma directly.
@@ -337,7 +343,10 @@ async function fireConfigCompleteNotification(
       kind,
       day,
       subject,
-      context: JSON.stringify({ state: client.state }),
+      // WP-14 — the payload now carries productCode so an operator
+      // auditing OperatorNotification rows can tell which product's
+      // wizard fired the alert once more than 'chatbot' has one.
+      context: JSON.stringify({ state: client.state, productCode }),
       resendMessageId: sent.messageId,
       sentAt: new Date(),
     },
@@ -408,30 +417,44 @@ async function maybeTransitionToReady(
   client: ClientStateRow,
   productCode: string,
 ): Promise<WizardStateTransition> {
-  // Only the transition from 'in-progress' → 'ready' fires on each
-  // approval. Re-approving after the client is already 'ready' (or worse,
-  // 'live') must NEVER roll the state backwards. The catalog defines
-  // 'requiredForReady' on the steps; the check is over activeForBot rows
-  // only so a stale approved-but-deactivated row does not block readiness.
-  if (client.state !== 'in-progress') {
+  // WP-14 — ClientProduct.onboardingState is the source of truth. Only
+  // the transition from 'in-progress' → 'ready' fires on each approval.
+  // Re-approving after the product is already 'ready' (or worse, 'live')
+  // must NEVER roll the state backwards. `clientProductId` is null when
+  // the client has no ClientProduct row for this product yet (data
+  // drift) — there is nothing to flip, so bail out the same as a wrong
+  // state would.
+  if (!client.clientProductId || client.onboardingState !== 'in-progress') {
     return EMPTY_TRANSITION;
   }
   const missing = await findMandatoryStepsMissingActive(client.id, productCode, tx);
   if (missing.length > 0) {
     return EMPTY_TRANSITION;
   }
-  // Atomically flip to 'ready'. `where: { state: 'in-progress' }` makes
-  // a concurrent approval on a different request a no-op instead of a
-  // double-write — the second $transaction's updateMany returns 0 rows.
-  const updated = await tx.chatbotClient.updateMany({
-    where: { id: client.id, state: 'in-progress' },
-    data: { state: 'ready' },
+  // Atomically flip to 'ready'. `where: { onboardingState: 'in-progress' }`
+  // makes a concurrent approval on a different request a no-op instead of
+  // a double-write — the second $transaction's updateMany returns 0 rows.
+  const updated = await tx.clientProduct.updateMany({
+    where: { id: client.clientProductId, onboardingState: 'in-progress' },
+    data: { onboardingState: 'ready' },
   });
   if (updated.count === 0) {
-    // Lost the race; another approval already moved the client out of
+    // Lost the race; another approval already moved the product out of
     // 'in-progress'. Treat as a no-op transition (the OTHER request
     // will fire its own notify — deduped on (clientId, day)).
     return EMPTY_TRANSITION;
+  }
+  // COMPAT — mirror to ChatbotClient.state for the chatbot product only:
+  // n8n listens for this column's 'ready' transition to fire
+  // config_complete, and the Day-2 state-transition endpoint reads/writes
+  // it directly. Best-effort: if `state` already drifted off
+  // 'in-progress' the mirror silently no-ops, same behavior as before
+  // WP-14.
+  if (productCode === CHATBOT_PRODUCT_CODE) {
+    await tx.chatbotClient.updateMany({
+      where: { id: client.id, state: 'in-progress' },
+      data: { state: 'ready' },
+    });
   }
   return { ...EMPTY_TRANSITION, nextState: 'ready' };
 }
@@ -440,21 +463,29 @@ async function maybeTransitionToUpdating(
   prisma: PrismaClient,
   tx: Prisma.TransactionClient,
   client: ClientStateRow,
+  productCode: string,
 ): Promise<WizardStateTransition> {
   // Only the transition from 'live' → 'updating' fires. The wizard
-  // returns steps to needs_revision while the client is in production;
+  // returns steps to needs_revision while the product is in production;
   // the bot keeps running on the last approved version per step until
-  // the operator re-approves. A 'ready' client stays 'ready' — the
+  // the operator re-approves. A 'ready' product stays 'ready' — the
   // operator has not yet pressed go-live.
-  if (client.state !== 'live') {
+  if (!client.clientProductId || client.onboardingState !== 'live') {
     return EMPTY_TRANSITION;
   }
-  const updated = await tx.chatbotClient.updateMany({
-    where: { id: client.id, state: 'live' },
-    data: { state: 'updating' },
+  const updated = await tx.clientProduct.updateMany({
+    where: { id: client.clientProductId, onboardingState: 'live' },
+    data: { onboardingState: 'updating' },
   });
   if (updated.count === 0) {
     return EMPTY_TRANSITION;
+  }
+  // COMPAT — see the matching note in maybeTransitionToReady.
+  if (productCode === CHATBOT_PRODUCT_CODE) {
+    await tx.chatbotClient.updateMany({
+      where: { id: client.id, state: 'live' },
+      data: { state: 'updating' },
+    });
   }
   return { ...EMPTY_TRANSITION, nextState: 'updating' };
 }
@@ -572,7 +603,7 @@ export async function applyWizardReview(
       // (activeForBot = exactly one row per (client, step)) holds before
       // we read the active set. The transition itself is best-effort: a
       // racing concurrent approval will be a no-op (UPDATE returns 0).
-      const clientRow = await loadClientForTransition(req.clientId, tx);
+      const clientRow = await loadClientForTransition(req.clientId, req.productCode, tx);
       const transition = await maybeTransitionToReady(prisma, tx, clientRow, req.productCode);
 
       return {
@@ -630,9 +661,9 @@ export async function applyWizardReview(
     // trip the transition (Step 8 / Step 12 are explicitly exempt).
     let transition: WizardStateTransition = EMPTY_TRANSITION;
     let clientForNotify: ClientStateRow | null = null;
-    if (isMandatoryStep(req.stepKey)) {
-      const clientRow = await loadClientForTransition(req.clientId, tx);
-      transition = await maybeTransitionToUpdating(prisma, tx, clientRow);
+    if (isMandatoryStep(req.productCode, req.stepKey)) {
+      const clientRow = await loadClientForTransition(req.clientId, req.productCode, tx);
+      transition = await maybeTransitionToUpdating(prisma, tx, clientRow, req.productCode);
       if (transition.nextState) {
         clientForNotify = clientRow;
       }
@@ -664,6 +695,7 @@ export async function applyWizardReview(
       prisma,
       result.clientForNotify,
       CONFIG_COMPLETE_KIND,
+      req.productCode,
     );
     notifyFired = notifyResult.fired;
     resendMessageId = notifyResult.resendMessageId;
@@ -673,6 +705,7 @@ export async function applyWizardReview(
       prisma,
       result.clientForNotify,
       CONFIG_UPDATING_KIND,
+      req.productCode,
     );
     notifyFired = notifyResult.fired;
     resendMessageId = notifyResult.resendMessageId;

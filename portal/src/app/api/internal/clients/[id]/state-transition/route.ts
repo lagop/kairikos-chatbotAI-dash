@@ -6,6 +6,7 @@ import {
   activityKeyAuthFailureResponse,
 } from '@/lib/activity-key-auth';
 import { logError } from '@/lib/observability';
+import { mirrorChatbotStateToClientProduct } from '@/lib/client-product-lifecycle';
 
 // =============================================================================
 // POST /api/internal/clients/[id]/state-transition
@@ -47,6 +48,10 @@ import { logError } from '@/lib/observability';
 //      service contract: the operator's manual flip is the first time the
 //      chatbot is marked live.
 //   3. `updatedAt` is updated by Prisma's `@updatedAt`.
+//   4. WP-14 — the same transaction also mirrors the new state onto
+//      ClientProduct.onboardingState for the chatbot product (best-effort;
+//      see src/lib/client-product-lifecycle.ts), since that column is now
+//      the source of truth for per-product onboarding lifecycle.
 // =============================================================================
 
 const CUID_RE = /^c[a-z0-9]{20,40}$/;
@@ -147,10 +152,20 @@ export async function POST(
       data.goLiveAt = new Date();
     }
 
-    const updated = await prisma.chatbotClient.update({
-      where: { id: existing.id },
-      data,
-      select: { id: true, state: true, goLiveAt: true, updatedAt: true },
+    // WP-14 — the state write + its ClientProduct mirror commit atomically.
+    const updated = await prisma.$transaction(async (tx) => {
+      const row = await tx.chatbotClient.update({
+        where: { id: existing.id },
+        data,
+        select: { id: true, state: true, goLiveAt: true, updatedAt: true },
+      });
+      await mirrorChatbotStateToClientProduct(
+        tx,
+        existing.id,
+        row.state,
+        data.goLiveAt as Date | undefined,
+      );
+      return row;
     });
 
     return NextResponse.json(

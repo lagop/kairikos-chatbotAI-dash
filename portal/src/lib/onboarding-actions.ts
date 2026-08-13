@@ -20,6 +20,8 @@ import {
   sendOperatorNotification,
   utcDayKey,
 } from './operator-notify';
+import { CHATBOT_PRODUCT_CODE } from './wizard-catalog';
+import { mirrorChatbotStateToClientProduct } from './client-product-lifecycle';
 
 export const ALLOWED_MILESTONES: ReadonlySet<string> = new Set(['T+0', 'T+3', 'T+7', 'T+14']);
 
@@ -74,10 +76,18 @@ export async function handleSnooze(
   if (isDatabaseConfigured) {
     // Row isolation: read the row, confirm it belongs to this client,
     // then update. We do NOT use `update({ where: { id, clientId } })`
-    // because the unique key is `(clientId, milestone)` — findUnique
-    // on that compound key gives the same guarantee more clearly.
+    // because the unique key is `(clientId, productCode, milestone)` —
+    // findUnique on that compound key gives the same guarantee more
+    // clearly. WP-14 — this self-service flow only exists for the
+    // chatbot's T+0/3/7/14 timeline today, so productCode is fixed.
     const existing = await prisma.chatbotActivity.findUnique({
-      where: { clientId_milestone: { clientId, milestone: input.milestoneId } },
+      where: {
+        clientId_productCode_milestone: {
+          clientId,
+          productCode: CHATBOT_PRODUCT_CODE,
+          milestone: input.milestoneId,
+        },
+      },
       select: { id: true, completedAt: true, notes: true },
     });
     if (!existing) {
@@ -184,6 +194,10 @@ export async function handleGoLiveReady(
     const rows = await prisma.chatbotActivity.findMany({
       where: {
         clientId,
+        // WP-14 — scope by productCode now that milestone rows are no
+        // longer unique per (clientId, milestone) alone; this flow only
+        // ever cares about the chatbot's own timeline.
+        productCode: CHATBOT_PRODUCT_CODE,
         milestone: { in: [...requiredMilestones] },
       },
       select: { milestone: true, completedAt: true },
@@ -227,10 +241,15 @@ export async function handleGoLiveReady(
       });
     }
 
-    const updated = await prisma.chatbotClient.update({
-      where: { id: clientId },
-      data: { state: 'go-live-pending' },
-      select: { id: true, state: true },
+    // WP-14 — the state write + its ClientProduct mirror commit atomically.
+    const updated = await prisma.$transaction(async (tx) => {
+      const row = await tx.chatbotClient.update({
+        where: { id: clientId },
+        data: { state: 'go-live-pending' },
+        select: { id: true, state: true },
+      });
+      await mirrorChatbotStateToClientProduct(tx, clientId, row.state);
+      return row;
     });
 
     const notify = await fireGoLiveReadyNotification(client);
@@ -354,9 +373,17 @@ export async function handleAssetsUploaded(
   const notes = input.notes ?? 'Marcado por el cliente desde el portal.';
 
   if (isDatabaseConfigured) {
+    // WP-14 — this self-service flow only exists for the chatbot's
+    // T+0/3/7/14 timeline today, so productCode is fixed.
     const [existing, client] = await Promise.all([
       prisma.chatbotActivity.findUnique({
-        where: { clientId_milestone: { clientId, milestone } },
+        where: {
+          clientId_productCode_milestone: {
+            clientId,
+            productCode: CHATBOT_PRODUCT_CODE,
+            milestone,
+          },
+        },
         select: { id: true, completedAt: true, notes: true },
       }),
       // WP-09 — denormalize tenantId from the client (see src/lib/tenant.ts).
@@ -364,10 +391,17 @@ export async function handleAssetsUploaded(
     ]);
 
     const row = await prisma.chatbotActivity.upsert({
-      where: { clientId_milestone: { clientId, milestone } },
+      where: {
+        clientId_productCode_milestone: {
+          clientId,
+          productCode: CHATBOT_PRODUCT_CODE,
+          milestone,
+        },
+      },
       create: {
         clientId,
         tenantId: client?.tenantId ?? null,
+        productCode: CHATBOT_PRODUCT_CODE,
         milestone,
         completedAt: new Date(),
         notes,
