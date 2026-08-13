@@ -202,6 +202,14 @@ export function WizardStepShell(props: WizardStepShellProps) {
         </div>
       ) : visibleForTier ? (
         <div className="card space-y-6">
+          {props.saved.seededFromIntake ? (
+            <div className="rounded-xl border border-kairikos-accent/20 bg-kairikos-accent/5 p-4 text-sm text-kairikos-accent2">
+              <p className="font-semibold">Precargado desde tu formulario inicial</p>
+              <p className="mt-1 text-kairikos-muted">
+                Rellenamos este paso con lo que nos contaste al darte de alta. Revísalo y corrige lo que haga falta antes de continuar.
+              </p>
+            </div>
+          ) : null}
           <StepForm
             stepNumber={props.stepNumber}
             stepLabel={props.stepLabel}

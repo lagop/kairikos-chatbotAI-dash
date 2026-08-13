@@ -79,14 +79,28 @@ export interface SaveResult {
   status: WizardStepStatus;
 }
 
+// WP-24 — optional actor override. Every existing caller (the wizard
+// PATCH route) omits this and keeps getting actor: 'client' / actorId:
+// ctx.email, exactly as before. The intake-seeding path (WP-24) is the
+// first caller that isn't the client themselves — the audit trail should
+// say so rather than claiming the client typed something they never saw.
+export interface SaveWizardStepOptions {
+  actor?: 'client' | 'operator' | 'system';
+  actorId?: string | null;
+  comment?: string | null;
+}
+
 export async function saveWizardStep(
   prisma: PrismaClient,
   ctx: SaveContext,
   req: WizardClientWriteRequest,
+  options: SaveWizardStepOptions = {},
 ): Promise<SaveResult> {
   assertValidStepKey(req.stepKey);
   const status = assertValidStatus(req.status);
   const data = assertValidData(req.data);
+  const actor = options.actor ?? 'client';
+  const actorId = options.actor ? (options.actorId ?? null) : ctx.email;
 
   return prisma.$transaction(async (tx) => {
     const latest = await tx.chatbotConfigStep.findFirst({
@@ -112,10 +126,10 @@ export async function saveWizardStep(
       data: {
         stepId: created.id,
         version: created.version,
-        actor: 'client',
-        actorId: ctx.email,
+        actor,
+        actorId,
         action: status === 'submitted' ? 'submit' : 'edit',
-        comment: null,
+        comment: options.comment ?? null,
       },
     });
 
@@ -138,6 +152,12 @@ export interface WizardClientReadResult {
     activeForBot: boolean;
     createdAt: Date;
     updatedAt: Date;
+    // WP-24 — true when this exact version's ChatbotConfigStepAudit row
+    // was written with actor: 'system' (the intake-seeding job), not
+    // typed in by the client. Once the client edits and re-saves, the
+    // new version's own audit row is actor: 'client' and this flips
+    // false — the marker only ever describes the version being shown.
+    seededFromIntake: boolean;
   } | null;
   active: {
     id: string;
@@ -193,8 +213,19 @@ export async function readWizardStep(
   ]);
 
   if (!latest && !active) return null;
+
+  let seededFromIntake = false;
+  if (latest) {
+    const creationAudit = await prisma.chatbotConfigStepAudit.findFirst({
+      where: { stepId: latest.id, version: latest.version },
+      orderBy: { createdAt: 'asc' },
+      select: { actor: true },
+    });
+    seededFromIntake = creationAudit?.actor === 'system';
+  }
+
   return {
-    latest: latest as WizardClientReadResult['latest'],
+    latest: latest ? { ...latest, seededFromIntake } : null,
     active: active as WizardClientReadResult['active'],
   };
 }
