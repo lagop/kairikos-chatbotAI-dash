@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { WizardBlockProgress, type WizardBlockProgressStep } from '@/components/portal/WizardBlockProgress';
 import { StepForm, type WizardSavedState } from '@/components/portal/wizard-steps/StepForm';
+import { getProductCatalog } from '@/lib/catalogs';
 
 type ToastKind = 'success' | 'error' | 'info';
 type AutosaveStatus = 'idle' | 'saving' | 'saved';
@@ -24,6 +25,12 @@ interface WizardStepShellProps {
   saved: WizardSavedState;
   isDatabaseConfigured: boolean;
   steps: WizardBlockProgressStep[];
+  /** WP-29 — fields on this step whose value was pre-filled from another
+   *  contracted product's wizard, keyed by which product it came from.
+   *  Empty (the default) when nothing was inherited — either because
+   *  there's no correspondence for this step yet, or because the client
+   *  already has their own saved data here. */
+  inheritedFrom?: { field: string; fromProductCode: string }[];
 }
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
@@ -54,6 +61,9 @@ export function WizardStepShell(props: WizardStepShellProps) {
 
   const stepSaved = props.saved;
   const isSubmitted = stepSaved.status === 'submitted' || stepSaved.status === 'approved';
+  const inheritedSourceLabels = Array.from(
+    new Set((props.inheritedFrom ?? []).map((f) => getProductCatalog(f.fromProductCode).label)),
+  );
   const [latestPayload, setLatestPayload] = useState<Record<string, unknown> | null>(
     props.savedPayload ?? props.effectivePayload ?? null,
   );
@@ -209,6 +219,16 @@ export function WizardStepShell(props: WizardStepShellProps) {
               <p className="font-semibold">Precargado desde tu formulario inicial</p>
               <p className="mt-1 text-kairikos-muted">
                 Rellenamos este paso con lo que nos contaste al darte de alta. Revísalo y corrige lo que haga falta antes de continuar.
+              </p>
+            </div>
+          ) : null}
+          {inheritedSourceLabels.length > 0 ? (
+            <div className="rounded-xl border border-kairikos-accent/20 bg-kairikos-accent/5 p-4 text-sm text-kairikos-accent2">
+              <p className="font-semibold">
+                Heredado de {inheritedSourceLabels.join(', ')}
+              </p>
+              <p className="mt-1 text-kairikos-muted">
+                Ya nos diste esta información al configurar otro producto. Revísala y corrige lo que haga falta antes de continuar — los cambios aquí no afectan a la configuración original.
               </p>
             </div>
           ) : null}

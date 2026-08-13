@@ -21,6 +21,7 @@ import { PRODUCT_CODES } from '@/lib/catalogs';
 import { isProductContracted } from '@/lib/client-product-access';
 import { readWizardStep } from '@/lib/wizard-client';
 import { jsonToObject } from '@/lib/wizard-tier-prisma';
+import { getCrossProductSeed } from '@/lib/cross-product-seed';
 import { WizardStepShell } from '@/components/portal/WizardStepShell';
 import { getDevMockClientById } from '@/lib/portal-data';
 
@@ -226,6 +227,16 @@ export default async function WizardStepPage({ params }: PageProps) {
   const savedPayload = latestPayload ?? activePayload;
   const hasSaved = !!result?.latest;
 
+  // WP-29 — the client already answered this elsewhere. Only relevant
+  // when this step has no saved version of its own yet: the moment the
+  // client saves any version (even from the pre-filled inherited values
+  // below), `savedPayload` above stops being null and always wins, which
+  // is the entire mechanism behind "this product keeps its own copy from
+  // the moment it's touched".
+  const inheritedSeed = hasSaved
+    ? null
+    : await getCrossProductSeed(prisma, resolved.clientId, CHATBOT_PRODUCT_CODE, params.step);
+
   const resolvedStep = resolveClientStep(
     stepNumber,
     tier,
@@ -239,6 +250,10 @@ export default async function WizardStepPage({ params }: PageProps) {
     savedPayload,
   );
 
+  const effectivePayload = inheritedSeed?.inheritedFrom.length
+    ? { ...resolvedStep.effectivePayload, ...inheritedSeed.payload }
+    : resolvedStep.effectivePayload;
+
   return (
     <WizardStepShell
       productCode={CHATBOT_PRODUCT_CODE}
@@ -249,7 +264,7 @@ export default async function WizardStepPage({ params }: PageProps) {
       visibleForTier={stepVisible}
       autoConfigured={resolvedStep.autoConfigured}
       v11Deferred={def.v11Deferred}
-      effectivePayload={resolvedStep.effectivePayload}
+      effectivePayload={effectivePayload}
       savedPayload={resolvedStep.savedPayload}
       saved={{
         hasSavedVersion: hasSaved,
@@ -259,6 +274,7 @@ export default async function WizardStepPage({ params }: PageProps) {
         activeForBot: result?.latest?.activeForBot,
         seededFromIntake: result?.latest?.seededFromIntake,
       }}
+      inheritedFrom={inheritedSeed?.inheritedFrom ?? []}
       isDatabaseConfigured={true}
       steps={steps}
     />
