@@ -17,16 +17,34 @@ import {
   type WizardStepNumber,
   type WizardTier,
 } from '@/lib/wizard-catalog';
+import { PRODUCT_CODES } from '@/lib/catalogs';
+import { isProductContracted } from '@/lib/client-product-access';
 import { readWizardStep } from '@/lib/wizard-client';
 import { jsonToObject } from '@/lib/wizard-tier-prisma';
 import { WizardStepShell } from '@/components/portal/WizardStepShell';
 import { getDevMockClientById } from '@/lib/portal-data';
 
+// =============================================================================
+// WP-16 — product-scoped wizard step page. Adapted from the pre-WP-16
+// /portal/wizard/[step]/page.tsx (now a redirect shim — see that file).
+//
+// Only 'chatbot' has real step content today (see the API route's header
+// comment for the full rationale); this page's `product` gate exists so
+// the URL can't be used to reach a wizard that doesn't exist yet, or one
+// the client never bought.
+// =============================================================================
+
 interface PageProps {
-  params: { step: string };
+  params: { product: string; step: string };
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  if (params.product !== CHATBOT_PRODUCT_CODE) {
+    return {
+      title: 'Configurar producto · Kairikos',
+      robots: { index: false, follow: false },
+    };
+  }
   const stepNumber = tryParseStep(params.step);
   if (stepNumber === null) {
     return {
@@ -39,7 +57,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return {
     title: `${def.label} · Configurar chatbot · Kairikos`,
     description: `Paso ${def.number}: ${def.label}. Configura tu chatbot Kairikos.`,
-    alternates: { canonical: `/portal/wizard/${def.key}` },
+    alternates: { canonical: `/portal/wizard/${CHATBOT_PRODUCT_CODE}/${def.key}` },
     robots: { index: false, follow: false },
   };
 }
@@ -47,23 +65,33 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export default async function WizardStepPage({ params }: PageProps) {
   const resolved = await resolveClientFromSession();
   if (!resolved) {
-    redirect(`/portal/login?next=/portal/wizard/${encodeURIComponent(params.step)}`);
+    redirect(
+      `/portal/login?next=${encodeURIComponent(`/portal/wizard/${params.product}/${params.step}`)}`,
+    );
   }
 
-  let stepNumber: WizardStepNumber;
-  try {
-    stepNumber = parseStepNumber(params.step);
-  } catch {
+  if (!(PRODUCT_CODES as readonly string[]).includes(params.product)) {
     notFound();
   }
 
-  const def = getStepDefinition(stepNumber);
-
   if (!isDatabaseConfigured || isPortalDevMock()) {
+    // Dev-mock fixtures (src/lib/portal-data.ts) are chatbot-only — there
+    // is no ClientProduct concept in dev-mock mode, so any other product
+    // code has nothing to render.
+    if (params.product !== CHATBOT_PRODUCT_CODE) notFound();
+
+    let stepNumber: WizardStepNumber;
+    try {
+      stepNumber = parseStepNumber(params.step);
+    } catch {
+      notFound();
+    }
+    const def = getStepDefinition(stepNumber);
+
     // KAIA-1519 — keep all 12 catalog entries (including Step 12) so the
     // v11Deferred "Próximamente" notice can render for direct visits to
-    // `/portal/wizard/12`. The step list itself filters Step 12 out so it
-    // never appears in the block-progress nav.
+    // `/portal/wizard/chatbot/12`. The step list itself filters Step 12
+    // out so it never appears in the block-progress nav.
     const allCatalogSteps = Object.values(WIZARD_STEP_CATALOG);
     const mockStep = allCatalogSteps.find((s) => s.number === stepNumber);
     if (!mockStep) notFound();
@@ -92,6 +120,7 @@ export default async function WizardStepPage({ params }: PageProps) {
     const stepVisibleForTier = def.visibleFor(mockTier);
     return (
       <WizardStepShell
+        productCode={CHATBOT_PRODUCT_CODE}
         stepNumber={def.number}
         stepKey={def.key}
         stepLabel={def.label}
@@ -116,6 +145,29 @@ export default async function WizardStepPage({ params }: PageProps) {
       />
     );
   }
+
+  const contracted = await isProductContracted(prisma, resolved.clientId, params.product);
+  if (!contracted) {
+    // A known product the client hasn't bought — send them to the
+    // selector so they see what they actually have, rather than a bare
+    // 403/404 dead end.
+    redirect('/portal/wizard');
+  }
+
+  if (params.product !== CHATBOT_PRODUCT_CODE) {
+    // Real, contracted product with no wizard content yet (WP-15's
+    // registry has it as an empty catalog).
+    notFound();
+  }
+
+  let stepNumber: WizardStepNumber;
+  try {
+    stepNumber = parseStepNumber(params.step);
+  } catch {
+    notFound();
+  }
+
+  const def = getStepDefinition(stepNumber);
 
   const [client, savedRows] = await Promise.all([
     prisma.chatbotClient.findUnique({
@@ -147,6 +199,7 @@ export default async function WizardStepPage({ params }: PageProps) {
     const resolvedStep = resolveClientStep(stepNumber, tier, { hasSavedVersion: false }, null);
     return (
       <WizardStepShell
+        productCode={CHATBOT_PRODUCT_CODE}
         stepNumber={def.number}
         stepKey={def.key}
         stepLabel={def.label}
@@ -188,6 +241,7 @@ export default async function WizardStepPage({ params }: PageProps) {
 
   return (
     <WizardStepShell
+      productCode={CHATBOT_PRODUCT_CODE}
       stepNumber={def.number}
       stepKey={def.key}
       stepLabel={def.label}

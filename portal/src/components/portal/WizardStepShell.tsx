@@ -11,6 +11,7 @@ type ToastKind = 'success' | 'error' | 'info';
 type AutosaveStatus = 'idle' | 'saving' | 'saved';
 
 interface WizardStepShellProps {
+  productCode: string;
   stepNumber: number;
   stepKey: string;
   stepLabel: string;
@@ -37,6 +38,7 @@ export function WizardStepShell(props: WizardStepShellProps) {
   const isMountedRef = useRef(true);
 
   const {
+    productCode,
     stepNumber,
     stepKey,
     stepLabel,
@@ -67,7 +69,7 @@ export function WizardStepShell(props: WizardStepShellProps) {
       setIsSaving(true);
       if (status === 'draft') setAutosaveStatus('saving');
       try {
-        const res = await fetch(`/api/portal/wizard/${stepKey}`, {
+        const res = await fetch(`/api/portal/wizard/${productCode}/${stepKey}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ data: payload, status }),
@@ -102,7 +104,7 @@ export function WizardStepShell(props: WizardStepShellProps) {
         setIsSaving(false);
       }
     },
-    [stepKey, showToast, router],
+    [productCode, stepKey, showToast, router],
   );
 
   const handleFormChange = useCallback(
@@ -253,7 +255,7 @@ export function WizardStepShell(props: WizardStepShellProps) {
       >
         {prevStep ? (
           <Link
-            href={`/portal/wizard/${prevStep.key}`}
+            href={`/portal/wizard/${productCode}/${prevStep.key}`}
             className="btn-ghost w-full sm:w-auto"
           >
             ← {prevStep.label}
@@ -263,7 +265,7 @@ export function WizardStepShell(props: WizardStepShellProps) {
         )}
         {nextStep ? (
           <Link
-            href={`/portal/wizard/${nextStep.key}`}
+            href={`/portal/wizard/${productCode}/${nextStep.key}`}
             className="btn-primary w-full sm:w-auto"
           >
             {nextStep.label} →

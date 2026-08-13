@@ -29,6 +29,35 @@ const nextConfig = {
         destination: '/portal',
         permanent: false,
       },
+      // WP-16 — the client wizard's URLs used to be implicitly chatbot's
+      // (no product in the path). Now that /portal/wizard/[product] and
+      // /api/portal/wizard/[product] are real App Router segments, a
+      // sibling /portal/wizard/[step] folder using a DIFFERENT dynamic
+      // param name would conflict with [product] (Next.js requires every
+      // dynamic segment at the same route level to share one param name).
+      // These framework-level redirects are the compat shim instead:
+      // config-level rewrites run before route-tree resolution, so they
+      // sidestep the naming conflict entirely. The `(\\d{1,2})` regex
+      // constraint is what keeps a real product code like `chatbot` or
+      // `web` from ever matching — old wizard steps are always "1".."12".
+      // `permanent: true` emits a 308, which (unlike 301/302) preserves
+      // the request method and body — required for the wizard's PATCH
+      // autosave/submit calls, whose callers must keep working unchanged.
+      {
+        source: '/api/portal/wizard/steps',
+        destination: '/api/portal/wizard/chatbot/steps',
+        permanent: true,
+      },
+      {
+        source: '/api/portal/wizard/:step(\\d{1,2})',
+        destination: '/api/portal/wizard/chatbot/:step',
+        permanent: true,
+      },
+      {
+        source: '/portal/wizard/:step(\\d{1,2})',
+        destination: '/portal/wizard/chatbot/:step',
+        permanent: true,
+      },
     ];
   },
 };

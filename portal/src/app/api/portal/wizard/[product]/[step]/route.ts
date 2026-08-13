@@ -15,35 +15,43 @@ import {
   type WizardStepNumber,
   type WizardTier,
 } from '@/lib/wizard-catalog';
+import { getProductCatalog, ProductCatalogError } from '@/lib/catalogs';
 import { resolveClientStep } from '@/lib/wizard-visibility';
 import {
   readLatestStepForClient,
   jsonToObject,
 } from '@/lib/wizard-tier-prisma';
+import { isProductContracted } from '@/lib/client-product-access';
 
 // =============================================================================
-// KAIA-1164 (BE-2) + KAIA-1166 (BE-4) — Client wizard.
+// KAIA-1164 (BE-2) + KAIA-1166 (BE-4) + WP-16 — Client wizard, product-scoped.
 //
-//   GET  /api/portal/wizard/[step]   — latest + activeForBot row for the
-//                                       authenticated client + stepKey,
-//                                       tier-augmented with
-//                                       `effectivePayload` + `autoConfigured`
-//                                       (BE-4 layer). For hidden steps
-//                                       (3 / 7 for Starter; 12 always), the
-//                                       effective payload falls back to the
-//                                       catalog default so the bot can be
-//                                       constructed without a saved version.
-//   PATCH /api/portal/wizard/[step]  — save a new version
-//                                       (status='draft' for autosave,
-//                                        status='submitted' for explicit
-//                                        "Submit for review").
-//                                       Rejected with 403 when the step is
-//                                       hidden for the cliente's tier (the
-//                                       wizard frontend hides the form, but
-//                                       we still gate at the API).
+//   GET  /api/portal/wizard/[product]/[step]   — latest + activeForBot row
+//                                       for the authenticated client +
+//                                       (product, stepKey), tier-augmented
+//                                       with `effectivePayload` +
+//                                       `autoConfigured` (BE-4 layer).
+//   PATCH /api/portal/wizard/[product]/[step]  — save a new version.
 //
-// Auth: client session via resolveClientFromSession (NextAuth magic-link or
-// dev fallback).
+// WP-16 — every request first resolves `product` against the catalog
+// registry (@/lib/catalogs). Only 'chatbot' has real step content today
+// (the other four products' catalogs are empty per WP-15 — no wizard has
+// been built for them yet), so this route reuses the existing
+// chatbot-shaped read/write logic (wizard-catalog.ts's fixed 1-12
+// numbering) for 'chatbot' and returns 404 for any step on a product
+// whose catalog has no steps. A future product's wizard lands as its own
+// catalog content, not a routing change — this file's job is only to
+// gate "is `product` real" and "did this client buy it", not to render
+// per-product forms generically.
+//
+// Also new in WP-16: a 403 when the client hasn't actually contracted
+// `product` (no active ClientProduct row) — the URL alone used to be
+// enough to reach a chatbot-shaped route; now that the product is part
+// of the path, someone could otherwise type a product code they never
+// bought.
+//
+// Auth: client session via resolveClientFromSession (NextAuth magic-link
+// or dev fallback).
 // =============================================================================
 
 interface PatchBody {
@@ -76,9 +84,21 @@ async function loadClientTier(
   };
 }
 
+function resolveProduct(product: string): { ok: true } | { ok: false; response: NextResponse } {
+  try {
+    getProductCatalog(product);
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof ProductCatalogError) {
+      return { ok: false, response: errorResponse('not_found', 404, `unknown product: ${product}`) };
+    }
+    throw err;
+  }
+}
+
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { step: string } },
+  { params }: { params: { product: string; step: string } },
 ) {
   const resolved = await resolveClientFromSession();
   if (!resolved) {
@@ -87,6 +107,21 @@ export async function GET(
 
   if (!isDatabaseConfigured) {
     return errorResponse('service_unavailable', 503, 'DATABASE_URL is not set');
+  }
+
+  const productCheck = resolveProduct(params.product);
+  if (!productCheck.ok) return productCheck.response;
+
+  const contracted = await isProductContracted(prisma, resolved.clientId, params.product);
+  if (!contracted) {
+    return errorResponse('forbidden', 403, 'this product is not contracted for your account');
+  }
+
+  // Only 'chatbot' has real wizard content today (WP-15's other four
+  // catalogs are deliberately empty). A real productCode with no step
+  // content simply has no such step.
+  if (params.product !== CHATBOT_PRODUCT_CODE) {
+    return errorResponse('not_found', 404, `no wizard content for product "${params.product}" yet`);
   }
 
   let stepNumber: WizardStepNumber;
@@ -212,14 +247,14 @@ export async function GET(
     if (err instanceof WizardClientError && err.error.code === 'invalid_step_key') {
       return errorResponse('bad_request', 400, 'step must be a string from the allowlist');
     }
-    console.error('[GET /api/portal/wizard/[step]]', err);
+    console.error('[GET /api/portal/wizard/[product]/[step]]', err);
     return NextResponse.json({ error: 'internal_error' }, { status: 500 });
   }
 }
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { step: string } },
+  { params }: { params: { product: string; step: string } },
 ) {
   const resolved = await resolveClientFromSession();
   if (!resolved) {
@@ -228,6 +263,21 @@ export async function PATCH(
 
   if (!isDatabaseConfigured) {
     return errorResponse('service_unavailable', 503, 'DATABASE_URL is not set');
+  }
+
+  const productCheck = resolveProduct(params.product);
+  if (!productCheck.ok) return productCheck.response;
+
+  // WP-16 AC — a PATCH to a product the client hasn't contracted is a 403,
+  // not a 404: the product code itself is real, the client just doesn't
+  // own it. Checked before the body is even parsed.
+  const contracted = await isProductContracted(prisma, resolved.clientId, params.product);
+  if (!contracted) {
+    return errorResponse('forbidden', 403, 'this product is not contracted for your account');
+  }
+
+  if (params.product !== CHATBOT_PRODUCT_CODE) {
+    return errorResponse('not_found', 404, `no wizard content for product "${params.product}" yet`);
   }
 
   let body: PatchBody;
@@ -291,7 +341,7 @@ export async function PATCH(
           return errorResponse('bad_request', 400, 'data must be a JSON object');
       }
     }
-    console.error('[PATCH /api/portal/wizard/[step]]', err);
+    console.error('[PATCH /api/portal/wizard/[product]/[step]]', err);
     return NextResponse.json({ error: 'internal_error' }, { status: 500 });
   }
 }
