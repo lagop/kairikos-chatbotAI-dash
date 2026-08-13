@@ -9,7 +9,7 @@ export type TestClient = {
   primaryContactEmail: string;
   stripeCustomerId: string | null;
   tier: 'starter' | 'pro' | 'premium';
-  onboardingStatus: 'pending' | 'in_progress' | 'live' | 'paused' | 'cancelled';
+  onboardingStatus: 'pending' | 'in-progress' | 'go-live-pending' | 'ready' | 'live' | 'updating' | 'paused' | 'cancelled';
   users: TestUser[];
 };
 
@@ -57,7 +57,7 @@ export const testClients: Record<string, TestClient> = {
     primaryContactEmail: 'qa-test-client-b@kairikos.com',
     stripeCustomerId: 'cus_test_client_b',
     tier: 'premium',
-    onboardingStatus: 'in_progress',
+    onboardingStatus: 'in-progress',
     users: [
       {
         id: '00000000-0000-0000-0000-000000000021',

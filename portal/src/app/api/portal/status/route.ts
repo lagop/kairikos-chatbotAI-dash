@@ -38,7 +38,7 @@ export async function GET(_req: NextRequest) {
 
   return NextResponse.json({
     spaceId: `spc_${client.id}`,
-    status: client.goLiveAt ? 'live' : 'in_progress',
+    status: client.goLiveAt ? 'live' : 'in-progress',
     goLiveDate: client.goLiveAt?.toISOString() ?? null,
     totalConversations: conversationCount,
     lastActivityAt: lastActivity ? lastActivity.toISOString() : null,

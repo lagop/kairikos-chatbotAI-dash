@@ -5,6 +5,7 @@ import { EmptyState } from '@/components/portal/EmptyState';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { listAdminClients } from '@/lib/portal-data';
 import { getSession } from '@/lib/session';
+import { onboardingStatusLabel, onboardingStatusPillClass } from '@/lib/onboarding-status';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,22 +14,6 @@ export const metadata: Metadata = {
   description: 'Listado de clientes y su estado en el portal (sólo lectura).',
   alternates: { canonical: '/admin/portal/clients' },
   robots: { index: false, follow: false },
-};
-
-const STATUS_LABEL: Record<string, string> = {
-  pending: 'Pendiente',
-  in_progress: 'En curso',
-  live: 'En producción',
-  paused: 'En pausa',
-  cancelled: 'Cancelado',
-};
-
-const STATUS_PILL: Record<string, string> = {
-  pending: 'pill-muted',
-  in_progress: 'pill-warning',
-  live: 'pill-success',
-  paused: 'pill-warning',
-  cancelled: 'pill-danger',
 };
 
 export default async function AdminClientsPage() {
@@ -92,11 +77,11 @@ export default async function AdminClientsPage() {
                     <td className="px-4 py-3 align-middle capitalize">{c.tier}</td>
                     <td className="px-4 py-3 align-middle">
                       <span
-                        className={STATUS_PILL[c.onboardingStatus] ?? 'pill-muted'}
+                        className={onboardingStatusPillClass(c.onboardingStatus)}
                         data-testid="client-status"
                         data-status={c.onboardingStatus}
                       >
-                        {STATUS_LABEL[c.onboardingStatus] ?? c.onboardingStatus}
+                        {onboardingStatusLabel(c.onboardingStatus)}
                       </span>
                     </td>
                     <td className="px-4 py-3 align-middle text-right">

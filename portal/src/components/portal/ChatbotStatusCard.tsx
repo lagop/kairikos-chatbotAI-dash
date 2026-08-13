@@ -1,17 +1,31 @@
 import type { ChatbotStatusSummary, OnboardingStatus } from '@/types/portal';
 
+// WP-23 — extended from 5 to the 8 real ChatbotClient.state values
+// (schema.prisma's column comment / ALLOWED_STATES in
+// api/admin/portal/clients/[id]/route.ts). This card only ever receives
+// 'live' or 'in-progress' today (deriveOnboardingStatus() in
+// chatbot-status.ts is deliberately binary for the client-facing view),
+// but the type is now shared with the admin listing's finer-grained
+// status, so the Record has to cover every member or the compiler
+// rejects it.
 const STATUS_LABEL: Record<OnboardingStatus, string> = {
   pending: 'Pendiente de configurar',
-  in_progress: 'En configuración',
+  'in-progress': 'En configuración',
+  'go-live-pending': 'Pidió salir a producción',
+  ready: 'Listo, pendiente de aprobar',
   live: 'En producción',
+  updating: 'Actualizando',
   paused: 'En pausa',
   cancelled: 'Archivado',
 };
 
 const STATUS_PILL: Record<OnboardingStatus, string> = {
   pending: 'pill-muted',
-  in_progress: 'pill-warning',
+  'in-progress': 'pill-warning',
+  'go-live-pending': 'pill-warning',
+  ready: 'pill-warning',
   live: 'pill-success',
+  updating: 'pill-warning',
   paused: 'pill-warning',
   cancelled: 'pill-muted',
 };

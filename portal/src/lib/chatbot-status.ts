@@ -93,7 +93,7 @@ function deriveOnboardingStatus(
   // elsewhere. For the card we only need the binary live vs. in_progress
   // signal — anything with a `goLiveAt` is `live`, otherwise the bot has
   // not been promoted to production yet.
-  return client.goLiveAt ? 'live' : 'in_progress';
+  return client.goLiveAt ? 'live' : 'in-progress';
 }
 
 export function buildAdminClientChatbotStatus(

@@ -310,7 +310,7 @@ export const MOCK_SECONDARY_CLIENT: ChatbotClient = {
   primaryContactEmail: 'qa-test-client-b@kairikos.com',
   stripeCustomerId: 'cus_test_client_b',
   tier: 'premium',
-  onboardingStatus: 'in_progress',
+  onboardingStatus: 'in-progress',
   createdAt: '2026-05-18T09:00:00.000Z',
   goLiveDate: null,
   chatbotSpaceId: null,
@@ -327,7 +327,7 @@ export const MOCK_STARTER_CLIENT: ChatbotClient = {
   primaryContactEmail: 'qa-test-client-starter@kairikos.com',
   stripeCustomerId: 'cus_test_client_starter',
   tier: 'starter',
-  onboardingStatus: 'in_progress',
+  onboardingStatus: 'in-progress',
   createdAt: '2026-06-01T09:00:00.000Z',
   goLiveDate: null,
   chatbotSpaceId: null,
@@ -356,21 +356,49 @@ export const MOCK_STARTER_CLIENT: ChatbotClient = {
 //     dependency on the per-chunk `isDatabaseConfigured` evaluation.
 // Shape mapping: DB columns are `email` / `state` / `goLiveAt`; the
 // `ChatbotClient` type expects `primaryContactEmail` / `onboardingStatus`
-// / `goLiveDate`. The page already handles unknown `state` values via
-// `STATUS_LABEL[c.onboardingStatus] ?? c.onboardingStatus`.
+// / `goLiveDate`.
+//
+// WP-23 — this used to validate against a 5-value allowlist that only
+// matched 2 of the 5 real values `ChatbotClient.state` can hold (see the
+// column comment in schema.prisma and ALLOWED_STATES in
+// api/admin/portal/clients/[id]/route.ts for the authoritative list —
+// 8 total once the operator-editable pending/paused/cancelled overrides
+// are counted). Every unmatched value — 'go-live-pending', 'ready',
+// 'updating' among them — silently became 'in_progress', which is the
+// exact bug this WP exists to close: a client waiting for go-live
+// approval and one whose wizard just regressed after going live were
+// indistinguishable from one still filling out the wizard.
+//
+// ONBOARDING_STATUSES is now the full real set, and an unrecognized value
+// is logged as an anomaly instead of silently mapped — the column
+// drifting from this list should be loud, not invisible.
 const ONBOARDING_STATUSES: ReadonlyArray<ChatbotClient['onboardingStatus']> = [
   'pending',
-  'in_progress',
+  'in-progress',
+  'go-live-pending',
+  'ready',
   'live',
+  'updating',
   'paused',
   'cancelled',
 ];
 
+function isKnownOnboardingStatus(value: string): value is ChatbotClient['onboardingStatus'] {
+  return (ONBOARDING_STATUSES as readonly string[]).includes(value);
+}
+
 function toOnboardingStatus(value: string | null | undefined): ChatbotClient['onboardingStatus'] {
-  if (value && (ONBOARDING_STATUSES as readonly string[]).includes(value)) {
-    return value as ChatbotClient['onboardingStatus'];
+  const raw = value ?? 'in-progress';
+  if (isKnownOnboardingStatus(raw)) {
+    return raw;
   }
-  return 'in_progress';
+  // eslint-disable-next-line no-console
+  console.error(
+    `[toOnboardingStatus] anomaly: ChatbotClient.state has unrecognized value ${JSON.stringify(raw)} — ` +
+      `not in the known list (${ONBOARDING_STATUSES.join(', ')}). Falling back to 'in-progress'. ` +
+      'This means the column has drifted from types/portal.ts OnboardingStatus.',
+  );
+  return 'in-progress';
 }
 
 // KAIA-13715 — single-shot diagnostic so a future Vercel production

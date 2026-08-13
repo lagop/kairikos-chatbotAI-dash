@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
       primaryContactEmail: 'qa-test-client-b@kairikos.com',
       stripeCustomerId: 'cus_test_client_b',
       tier: 'premium',
-      onboardingStatus: 'in_progress',
+      onboardingStatus: 'in-progress',
     },
   ]);
 }

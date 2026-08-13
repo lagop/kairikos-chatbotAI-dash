@@ -128,7 +128,7 @@ describe('listAdminClients (KAIA-13702, prisma read when DB configured)', () => 
       STAGING_CLINICA_DENTAL_ORLY.id,
       STAGING_BRISA_BEACH.id,
     ]);
-    expect(result[1].onboardingStatus).toBe('in_progress');
+    expect(result[1].onboardingStatus).toBe('in-progress');
     expect(result[1].goLiveDate).toBeNull();
   });
 
@@ -153,12 +153,29 @@ describe('listAdminClients (KAIA-13702, prisma read when DB configured)', () => 
     expect(arg.where).toBeUndefined();
   });
 
-  it('maps unknown state values to in_progress so the page STATUS_LABEL still renders', async () => {
+  // WP-23 — 'go-live-pending' used to be one of the "unknown" values this
+  // exact test asserted got silently collapsed to 'in_progress' (the bug:
+  // the old allowlist only recognized 'pending' | 'in_progress' | 'live' |
+  // 'paused' | 'cancelled', so 3 of the 5 real state-machine values —
+  // 'go-live-pending', 'ready', 'updating' — all landed on the same
+  // default). It's now a recognized value in its own right.
+  it('maps the real go-live-pending state through unchanged (not collapsed to in-progress)', async () => {
     findMany.mockResolvedValueOnce([
       { ...STAGING_CLINICA_DENTAL_ORLY, state: 'go-live-pending' },
     ]);
     const result = await listAdminClients();
-    expect(result[0].onboardingStatus).toBe('in_progress');
+    expect(result[0].onboardingStatus).toBe('go-live-pending');
+  });
+
+  it('maps a genuinely unrecognized state value to in-progress and logs an anomaly', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    findMany.mockResolvedValueOnce([
+      { ...STAGING_CLINICA_DENTAL_ORLY, state: 'archived-legacy-2024' },
+    ]);
+    const result = await listAdminClients();
+    expect(result[0].onboardingStatus).toBe('in-progress');
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('archived-legacy-2024'));
+    errorSpy.mockRestore();
   });
 
   it('returns [] (not the dev-mock fixtures) when findMany returns an empty array', async () => {

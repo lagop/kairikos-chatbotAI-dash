@@ -1,6 +1,27 @@
 export type ChatbotTier = 'starter' | 'pro' | 'premium';
 
-export type OnboardingStatus = 'pending' | 'in_progress' | 'live' | 'paused' | 'cancelled';
+// WP-23 — this used to be a 5-value UI vocabulary (`in_progress`, underscore)
+// that only partially overlapped with what ChatbotClient.state actually
+// writes (schema.prisma's `state` column comment; `pending` and `updating`
+// there are hyphen/underscore look-alikes that never matched, and
+// `go-live-pending` / `ready` / `updating` had no UI value at all —
+// toOnboardingStatus() silently collapsed all three to `in_progress`).
+//
+// Convention decision: hyphen, matching what's already stored in the
+// `state` column and already used by the admin PATCH route's
+// ALLOWED_STATES (src/app/api/admin/portal/clients/[id]/route.ts). This
+// needs zero data migration — only the read-side TypeScript type and its
+// few `in_progress`-literal producers move to match the DB, not the other
+// way around.
+export type OnboardingStatus =
+  | 'pending'
+  | 'in-progress'
+  | 'go-live-pending'
+  | 'ready'
+  | 'live'
+  | 'updating'
+  | 'paused'
+  | 'cancelled';
 
 export type UserRole = 'owner' | 'admin' | 'viewer';
 

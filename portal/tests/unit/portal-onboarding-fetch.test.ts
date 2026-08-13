@@ -199,7 +199,7 @@ describe('getChatbotStatus path (KAIA-11955 round 4)', () => {
   it('hits /portal/status, not the stale /portal/chatbot-status', async () => {
     mockApiResponse({
       spaceId: 'spc_cmsh9mzor00018zsgsfa97l6m',
-      status: 'in_progress',
+      status: 'in-progress',
       goLiveDate: null,
       last7Days: { conversations: 0, fallbackRate: 0, escalationRate: 0 },
     });
@@ -210,7 +210,7 @@ describe('getChatbotStatus path (KAIA-11955 round 4)', () => {
     expect(calledUrl).not.toMatch(/chatbot-status/);
     // The real data is returned, not the Acme MOCK_CHATBOT fallback.
     expect(summary.spaceId).toBe('spc_cmsh9mzor00018zsgsfa97l6m');
-    expect(summary.status).toBe('in_progress');
+    expect(summary.status).toBe('in-progress');
     expect(summary.last7Days.conversations).toBe(0);
   });
 });

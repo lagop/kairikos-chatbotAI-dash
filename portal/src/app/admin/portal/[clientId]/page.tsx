@@ -440,7 +440,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
     }
   }
 
-  const status: 'live' | 'in_progress' = goLiveAt ? 'live' : 'in_progress';
+  const status: 'live' | 'in-progress' = goLiveAt ? 'live' : 'in-progress';
 
   return (
     <div className="space-y-6">
