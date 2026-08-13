@@ -51,7 +51,7 @@ export function AdminLoginForm() {
         window.location.href = url.toString();
         return;
       }
-      window.location.href = '/admin/portal';
+      window.location.href = '/admin/portal/clients';
     } finally {
       setSubmitting(false);
     }

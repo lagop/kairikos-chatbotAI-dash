@@ -5,7 +5,7 @@ import { PortalFooter } from '@/components/portal/PortalFooter';
 export const metadata: Metadata = {
   title: 'Admin · Portal Kairikos',
   description: 'Vista de soporte para el equipo operador.',
-  alternates: { canonical: '/admin/portal' },
+  alternates: { canonical: '/admin/portal/clients' },
   robots: { index: false, follow: false },
 };
 

@@ -5,6 +5,7 @@ import { auth } from '../../auth';
 import { prisma } from './prisma';
 import { MOCK_CLIENT, MOCK_SECONDARY_CLIENT } from './portal-data';
 import { constantTimeEqual } from './operator-crypto';
+import { isPortalDevMock } from './portal-session';
 
 export type SessionReason = 'no_session' | 'no_client_access' | 'cross_tenant';
 
@@ -42,26 +43,13 @@ async function resolveDevMockSession(): Promise<PortalSession> {
   };
 }
 
-// KAIA-1519 — placeholder Supabase URL/key (e.g. `placeholder.supabase.co`
-// + `placeholder` or `placeholder-key`) is the same dev-mock signal that
-// the .env file ships with. Without this branch the portal layout
-// redirects to /portal/login because Supabase "looks" configured but
-// auth.getSession() returns null. The wizard-side resolver in
-// `portal-session.ts:21` applies the same rule so the layout and the
-// wizard always agree.
-function isDevMockSupabaseConfig(): boolean {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
-  if (!url || !key) return true;
-  if (url.includes('YOUR-PROJECT')) return true;
-  if (url === 'https://invalid.supabase.co') return true;
-  if (url.includes('placeholder.supabase.co')) return true;
-  if (key === 'placeholder' || key === 'placeholder-key') return true;
-  return false;
-}
-
 export async function getSession(): Promise<PortalSession> {
-  const isDevMock = isDevMockSupabaseConfig();
+  // WP-06 — this used to be a private byte-for-byte copy of
+  // isPortalDevMock() (KAIA-1519 already documented the two had to be kept
+  // in sync by hand so the layout and the wizard agreed on dev-mock
+  // detection). Importing the one export removes the chance of the copies
+  // drifting.
+  const isDevMock = isPortalDevMock();
 
   // KAIA-1909: production-stage QA bypass — honor the same operator-key
   // header the API routes (`/api/admin/portal/*`) already honor. When the

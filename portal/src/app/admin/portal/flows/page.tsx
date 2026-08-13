@@ -227,7 +227,7 @@ export default async function AdminFlowsPage({ searchParams }: PageProps) {
   return (
     <div className="space-y-6">
       <div className="text-sm text-kairikos-muted">
-        <Link href="/admin/portal" className="hover:text-kairikos-text">
+        <Link href="/admin/portal/clients" className="hover:text-kairikos-text">
           ← Volver al listado de clientes
         </Link>
       </div>
