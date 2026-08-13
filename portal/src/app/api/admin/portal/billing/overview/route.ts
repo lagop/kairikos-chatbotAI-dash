@@ -14,7 +14,9 @@ export const runtime = 'nodejs';
  *   GET /api/admin/portal/billing/overview
  *
  * Returns the aggregated billing data the owner dashboard needs:
- *   * mrrByProductCents — keyed by Product.tier, includes mrr + active count
+ *   * mrrByProductCents — keyed by Product.id (WP-12: tier is only unique
+ *     within a product's code, so it can't key this map on its own),
+ *     includes mrr + active count
  *   * mrrTotalCents — sum across all active subscriptions
  *   * expiringSoon — active subscriptions whose current_period_end is
  *     within the next 14 days
