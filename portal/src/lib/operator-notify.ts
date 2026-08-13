@@ -396,3 +396,85 @@ export function resolveCeoRecipient(raw: string | undefined): string | null {
   const trimmed = raw.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
+
+// =============================================================================
+// WP-26 — in-process alert for a critical automated flow that failed.
+//
+// POST /api/internal/notify-operator is the n8n-facing entry point; this is
+// the same dedup → render → send → persist sequence for code that's
+// already running server-side in the same process (e.g. the Stripe
+// webhook handler) and would rather call a function than round-trip an
+// HTTP request to itself. Reuses 'execution-failed' — the existing kind
+// and template already mean "an automated process failed, a human should
+// look" — rather than inventing a parallel notification kind for
+// "webhook failed" specifically.
+//
+// Deliberately fails OPEN, unlike the HTTP route: this runs inside an
+// error-handling path, so a misconfigured KAIRIKOS_OPERATOR_EMAILS must
+// not turn "the alert didn't send" into "the webhook handler itself
+// threw a second error." The caller's own logError() call is the
+// guaranteed-to-happen signal; this is best-effort on top of that.
+// =============================================================================
+export type NotifyOperatorOfExecutionFailureResult =
+  | SendOperatorNotificationResult
+  | { ok: true; skipped: true; messageId: null; reason: 'no_recipients' | 'kind_disabled' | 'deduped' };
+
+export async function notifyOperatorOfExecutionFailure(
+  ctx: ExecutionFailedContext,
+): Promise<NotifyOperatorOfExecutionFailureResult> {
+  const allowlist = parseKindsAllowlist(process.env.KAIRIKOS_NOTIFY_KINDS);
+  if (allowlist && !allowlist.has('execution-failed')) {
+    return { ok: true, skipped: true, messageId: null, reason: 'kind_disabled' };
+  }
+
+  const recipients = resolveOperatorRecipients(process.env.KAIRIKOS_OPERATOR_EMAILS);
+  if (recipients.length === 0) {
+    return { ok: true, skipped: true, messageId: null, reason: 'no_recipients' };
+  }
+
+  // Lazy import — this module otherwise has no Prisma dependency, and
+  // most of its callers (template rendering, the HTTP route) don't need
+  // one loaded for a call that never touches the DB.
+  const { prisma } = await import('./prisma');
+
+  const day = utcDayKey();
+  // The (clientId, kind, day) unique constraint can't dedup on a real
+  // NULL — SQL NULL never equals NULL, so two unassigned failures on the
+  // same day would both insert instead of colliding. The HTTP route
+  // (api/internal/notify-operator) already established the sentinel
+  // string for exactly this reason; reuse it instead of null.
+  const clientId = ctx.clientId ?? '__unassigned__';
+  const existing = await prisma.operatorNotification.findUnique({
+    where: { clientId_kind_day: { clientId, kind: 'execution-failed', day } },
+    select: { id: true },
+  });
+  if (existing) {
+    return { ok: true, skipped: true, messageId: null, reason: 'deduped' };
+  }
+
+  const { subject, text, html } = renderExecutionFailed(ctx);
+  const sent = await sendOperatorNotification({ kind: 'execution-failed', to: recipients, subject, text, html });
+  if (!sent.ok) {
+    return sent;
+  }
+
+  await prisma.operatorNotification.upsert({
+    where: { clientId_kind_day: { clientId, kind: 'execution-failed', day } },
+    create: {
+      clientId,
+      kind: 'execution-failed',
+      day,
+      subject,
+      context: JSON.stringify(ctx),
+      resendMessageId: sent.ok && 'messageId' in sent ? sent.messageId : null,
+      sentAt: new Date(),
+    },
+    update: {
+      subject,
+      context: JSON.stringify(ctx),
+      sentAt: new Date(),
+    },
+  });
+
+  return sent;
+}

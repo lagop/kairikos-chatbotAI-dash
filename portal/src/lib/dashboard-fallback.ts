@@ -50,6 +50,7 @@
 
 import 'server-only';
 import type { ClientProfile } from '@/types/portal';
+import { logError } from './observability';
 
 function hostOf(url: string): string {
   try {
@@ -121,7 +122,7 @@ export async function loadClientProfileViaPortalApi(): Promise<ClientProfile | n
     if (!res.ok) return null;
     return (await res.json()) as ClientProfile;
   } catch (err) {
-    console.error('[portal] /portal/dashboard portal_api_fallback fetch failed:', err);
+    logError('dashboard.portal_api_fallback', err, { route: '/portal/dashboard' });
     return null;
   }
 }

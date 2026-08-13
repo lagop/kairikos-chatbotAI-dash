@@ -13,6 +13,8 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { MOCK_CLIENT, MOCK_CHATBOT, MOCK_TIMELINE } from '@/lib/portal-data';
 import type { ClientProfile, ChatbotStatusSummary } from '@/types/portal';
 import { loadClientProfileViaPortalApi } from '@/lib/dashboard-fallback';
+import { logError } from '@/lib/observability';
+import { notifyOperatorOfExecutionFailure } from '@/lib/operator-notify';
 
 export const metadata: Metadata = {
   title: 'Dashboard',
@@ -36,7 +38,7 @@ export default async function PortalDashboardPage() {
   try {
     session = await getSession();
   } catch (err) {
-    console.error('[portal] /portal/dashboard getSession() crashed, treating as no_session:', err);
+    logError('dashboard.get_session', err, { route: '/portal/dashboard' });
     redirect('/portal/login');
   }
   if (!session.hasClientAccess) {
@@ -84,9 +86,11 @@ export default async function PortalDashboardPage() {
           orderBy: { completedAt: 'asc' },
         });
       } catch (activitiesErr) {
-        console.warn(
-          '[portal] /portal/dashboard prisma.chatbotActivity.findMany failed; rendering empty timeline.',
+        logError(
+          'dashboard.activities_find_many',
           activitiesErr,
+          { route: '/portal/dashboard', clientId: resolved.clientId, clientEmail: resolved.email },
+          'warn',
         );
       }
       if (client) {
@@ -94,10 +98,11 @@ export default async function PortalDashboardPage() {
         goLiveAt = client.goLiveAt?.toISOString() ?? null;
         dataSource = 'prisma';
       } else {
-        console.warn(
-          '[portal] /portal/dashboard prisma.chatbotClient.findUnique returned null for resolved.clientId=%s (email=%s)',
-          resolved.clientId,
-          resolved.email,
+        logError(
+          'dashboard.client_not_found',
+          new Error('prisma.chatbotClient.findUnique returned null for a resolved clientId'),
+          { route: '/portal/dashboard', clientId: resolved.clientId, clientEmail: resolved.email },
+          'warn',
         );
       }
       conversationCount = count;
@@ -125,11 +130,10 @@ export default async function PortalDashboardPage() {
       }
     } catch (err) {
       prismaError = err;
-      console.error(
-        '[portal] /portal/dashboard prisma fetch threw for clientId=%s email=%s:',
-        resolved.clientId,
-        resolved.email,
+      logError(
+        'dashboard.prisma_fetch',
         err,
+        { route: '/portal/dashboard', clientId: resolved.clientId, clientEmail: resolved.email },
       );
     }
     // KAIA-11641: when Prisma is broken, route the dashboard data through
@@ -149,10 +153,27 @@ export default async function PortalDashboardPage() {
         }
         dataSource = 'portal_api_fallback';
       } else if (prismaError) {
-        console.error(
-          '[portal] /portal/dashboard prisma + portal_api_fallback both failed for clientId=%s; rendering with mock data',
-          resolved.clientId,
-        );
+        // Both data sources failed — the customer is about to see
+        // MOCK_CLIENT ("Acme Corp") instead of their own data, the exact
+        // incident class KAIA-11329/11641/11955 already happened three
+        // times before either fallback existed. Alert, not just log.
+        logError('dashboard.both_sources_failed', prismaError, {
+          route: '/portal/dashboard',
+          clientId: resolved.clientId,
+          clientEmail: resolved.email,
+        });
+        // clientName is still the MOCK_CLIENT placeholder at this point
+        // (both real sources failed) — not useful to the operator, so we
+        // pass the email instead, which the template surfaces verbatim.
+        void notifyOperatorOfExecutionFailure({
+          executionId: `dashboard-${resolved.clientId}-${Date.now()}`,
+          workflowName: 'portal_dashboard_data_resolution',
+          error: prismaError instanceof Error ? prismaError.message : String(prismaError),
+          clientId: resolved.clientId,
+          clientName: resolved.email,
+        }).catch(() => {
+          // Best-effort — logError above already guarantees this isn't silent.
+        });
       }
     }
   }
