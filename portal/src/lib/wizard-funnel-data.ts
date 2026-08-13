@@ -11,12 +11,6 @@ export const VERTICAL_LABEL: Record<FunnelVertical, string> = {
   otro: 'Otros',
 };
 
-export const TIER_LABEL: Record<string, string> = {
-  starter: 'Web Starter',
-  pro: 'Web Pro',
-  premium: 'Web Premium',
-};
-
 export const STEP_LABELS: Record<string, string> = {
   '1': 'Perfil del negocio',
   '2': 'Personalidad y límites',

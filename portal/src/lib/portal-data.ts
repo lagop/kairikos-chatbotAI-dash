@@ -11,12 +11,7 @@ import type {
 } from '@/types/portal';
 import { isBackendConfigured, PORTAL_API_BASE_URL, SUPABASE_ANON_KEY } from './supabase';
 import { prisma, isDatabaseConfigured } from './prisma';
-
-const TIER_LABEL: Record<BillingSummary['tier'], string> = {
-  starter: 'Web Starter',
-  pro: 'Web Pro',
-  premium: 'Web Premium',
-};
+import { TIER_LABEL } from './billing-tier';
 
 const TIER_PRICE_CENTS: Record<BillingSummary['tier'], number> = {
   starter: 9900,

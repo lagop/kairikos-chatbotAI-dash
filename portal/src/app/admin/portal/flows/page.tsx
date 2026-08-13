@@ -5,6 +5,7 @@ import { PageHeading } from '@/components/portal/PageHeading';
 import { EmptyState } from '@/components/portal/EmptyState';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
+import { TIER_LABEL } from '@/lib/billing-tier';
 import {
   MOCK_N8N_EXECUTIONS,
   MOCK_FLOW_HEALTH_ROWS,
@@ -26,11 +27,6 @@ interface PageProps {
 }
 
 const STUCK_THRESHOLD_DAYS = 3;
-const TIER_LABEL: Record<string, string> = {
-  starter: 'Web Starter',
-  pro: 'Web Pro',
-  premium: 'Web Premium',
-};
 
 interface FlowHealthRow {
   id: string;

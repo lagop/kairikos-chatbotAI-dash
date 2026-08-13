@@ -8,6 +8,7 @@ import { getSession } from '@/lib/session';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { DEV_MOCK_CLIENT_BY_EMAIL } from '@/lib/portal-data';
 import { isPortalDevMock } from '@/lib/portal-session';
+import { TIER_LABEL } from '@/lib/billing-tier';
 import type { ClientProfile } from '@/types/portal';
 
 export const dynamic = 'force-dynamic';
@@ -17,12 +18,6 @@ const DATE_FMT = new Intl.DateTimeFormat('es-ES', {
   month: 'long',
   year: 'numeric',
 });
-
-const TIER_LABEL: Record<string, string> = {
-  starter: 'Web Starter',
-  pro: 'Web Pro',
-  premium: 'Web Premium',
-};
 
 const ONBOARDING_LABEL: Record<string, string> = {
   pending: 'Pendiente',
