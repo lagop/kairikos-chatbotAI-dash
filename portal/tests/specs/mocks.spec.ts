@@ -105,9 +105,17 @@ function assertNoMockLiterals(name: string, body: string): void {
 test.describe('@staging Admin portal SSR is free of MOCK_* fixtures (KAIA-13753)', () => {
   test.skip(shouldSkip(), SKIP_REASON);
 
-  test('/admin/portal (list) renders no MOCK_* literals', async ({ request }) => {
-    const body = await fetchSsr(request, '/admin/portal');
-    assertNoMockLiterals('/admin/portal', body);
+  // WP-06 — /admin/portal no longer renders its own list; it's a
+  // permanent redirect to /admin/portal/clients (the surviving page,
+  // covered by the next test). Guard the redirect itself instead of
+  // re-running the MOCK_* content check against a route with no content.
+  test('/admin/portal redirects to /admin/portal/clients', async ({ request }) => {
+    const res = await request.get('/admin/portal', {
+      headers: { 'x-kaia-operator-key': OPERATOR_KEY },
+      maxRedirects: 0,
+    });
+    expect([307, 308]).toContain(res.status());
+    expect(res.headers()['location']).toContain('/admin/portal/clients');
   });
 
   test('/admin/portal/clients renders no MOCK_* literals', async ({ request }) => {

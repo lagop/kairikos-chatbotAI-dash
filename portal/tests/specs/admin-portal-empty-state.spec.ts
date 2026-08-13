@@ -57,9 +57,13 @@ test.describe('Admin portal dev-mock fallback is preserved (KAIA-13758)', () => 
   test.skip(shouldSkip(), SKIP_REASON);
 
   test('/admin/portal renders the dev-mock client fixtures in dev-mock mode', async ({ page }) => {
+    // WP-06 — /admin/portal is now a permanent redirect to the surviving
+    // /admin/portal/clients listing (client-row, not admin-client-row —
+    // the testid the old duplicate page used no longer exists).
     await gotoAsOperator(page, '/admin/portal');
+    await expect(page).toHaveURL(/\/admin\/portal\/clients$/);
 
-    const rows = page.locator('[data-testid="admin-client-row"]');
+    const rows = page.locator('[data-testid="client-row"]');
     const count = await rows.count();
     expect(count).toBeGreaterThan(0);
 

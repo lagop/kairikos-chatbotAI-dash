@@ -16,18 +16,33 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function AdminClientsPage() {
+export default async function AdminClientsPage({
+  searchParams,
+}: {
+  searchParams: { search?: string };
+}) {
   const session = await getSession();
   if (!session.isOperator) {
     redirect('/portal/login?next=/admin/portal/clients');
   }
-  const clients = await listAdminClients();
+  // WP-06 — listAdminClients() has taken a search param since KAIA-13715,
+  // but this page never read searchParams.search and passed it through:
+  // the search form below submitted a query string the query never used.
+  const search = searchParams.search ?? '';
+  const clients = await listAdminClients(search);
   return (
     <div className="space-y-6">
       <PageHeading
         eyebrow="Operador"
         title="Clientes del portal"
         description="Vista de soporte de sólo lectura. Selecciona un cliente para ver el detalle en su portal."
+        actions={
+          <form action="/api/portal/operator" method="post">
+            <input type="hidden" name="mode" value="disable" />
+            <input type="hidden" name="return_to" value="/admin/portal/clients" />
+            <button type="submit" className="btn-ghost">Salir del modo operador</button>
+          </form>
+        }
       />
       <form action="/admin/portal/clients" method="get" className="card flex items-center gap-3 p-3">
         <label htmlFor="search" className="sr-only">
@@ -37,6 +52,7 @@ export default async function AdminClientsPage() {
           id="search"
           type="search"
           name="search"
+          defaultValue={search}
           placeholder="Buscar por nombre…"
           className="input"
         />

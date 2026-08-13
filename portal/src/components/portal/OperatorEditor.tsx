@@ -2,6 +2,7 @@
 
 import { useState, useTransition, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import { TIER_LABEL } from '@/lib/billing-tier';
 
 export interface OperatorEditorInitial {
   companyName: string | null;
@@ -190,7 +191,7 @@ export function OperatorEditor({ clientId, initial }: OperatorEditorProps) {
       await sendPatch(
         'tier',
         { tier: confirm.nextValue },
-        `Plan actualizado a ${TIER_LABEL(confirm.nextValue)}.`,
+        `Plan actualizado a ${TIER_LABEL[confirm.nextValue]}.`,
       );
     }
   };
@@ -400,10 +401,6 @@ export function OperatorEditor({ clientId, initial }: OperatorEditorProps) {
       ) : null}
     </section>
   );
-}
-
-function TIER_LABEL(value: 'starter' | 'pro' | 'premium'): string {
-  return TIER_OPTIONS.find((opt) => opt.value === value)?.label ?? value;
 }
 
 function ConfirmModal({

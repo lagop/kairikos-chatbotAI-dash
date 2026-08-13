@@ -10,6 +10,7 @@ import { MOCK_CLIENT, MOCK_SECONDARY_CLIENT } from '@/lib/portal-data';
 import { resolveClientTier, readLatestStepsForClient } from '@/lib/wizard-tier-prisma';
 import { buildSavedStateMap, listStepsForOperator } from '@/lib/wizard-visibility';
 import { getStepDefinition, WIZARD_STEP_NUMBERS, type WizardStepNumber } from '@/lib/wizard-catalog';
+import { TIER_LABEL } from '@/lib/billing-tier';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,12 +44,6 @@ const DATE_FORMAT = new Intl.DateTimeFormat('es-ES', {
   hour: '2-digit',
   minute: '2-digit',
 });
-
-const TIER_LABEL: Record<string, string> = {
-  starter: 'Web Starter',
-  pro: 'Web Pro',
-  premium: 'Web Premium',
-};
 
 function formatRelative(iso: string | null): string {
   if (!iso) return '—';

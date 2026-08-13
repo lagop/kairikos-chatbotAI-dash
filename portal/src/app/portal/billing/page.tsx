@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { formatPriceEUR, getBilling } from '@/lib/portal-data';
 import { assertSameClient, requirePortalSession } from '@/lib/session';
+import { TIER_LABEL } from '@/lib/billing-tier';
 
 export const metadata: Metadata = {
   title: 'Facturación',
@@ -11,12 +12,6 @@ export const metadata: Metadata = {
 };
 
 const DATE_FMT = new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
-
-const TIER_LABEL: Record<string, string> = {
-  starter: 'Web Starter',
-  pro: 'Web Pro',
-  premium: 'Web Premium',
-};
 
 export default async function BillingPage({
   searchParams,
