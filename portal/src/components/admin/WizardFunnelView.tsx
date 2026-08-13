@@ -1,9 +1,9 @@
 import type { ChatbotTier } from '@/types/portal';
 import { EmptyState } from '@/components/portal/EmptyState';
+import { TIER_LABEL } from '@/lib/billing-tier';
 import {
   getWizardFunnelData,
   VERTICAL_LABEL,
-  TIER_LABEL,
   STEP_LABELS,
   TIME_WINDOW_OPTIONS,
   VERTICAL_OPTIONS,

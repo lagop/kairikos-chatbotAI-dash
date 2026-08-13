@@ -434,7 +434,7 @@ async function getCustomerPortalUrl(stripeCustomerId: string): Promise<string | 
     const session = await stripe.billingPortal.sessions.create({
       customer: stripeCustomerId,
       return_url: process.env.NEXT_PUBLIC_PORTAL_URL
-        ? `${process.env.NEXT_PUBLIC_PORTAL_URL}/portal/facturacion`
+        ? `${process.env.NEXT_PUBLIC_PORTAL_URL}/portal/billing`
         : undefined,
     });
     return session.url;

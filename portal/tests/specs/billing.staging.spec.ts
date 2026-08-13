@@ -68,7 +68,16 @@ test.describe('@staging Billing', () => {
   test('billing page is only accessible to authenticated clients', async ({ page }) => {
     await page.context().clearCookies();
     await page.goto('/portal/billing');
-    
+
     await expect(page).toHaveURL(/\/portal\/login/);
+  });
+
+  // WP-05 — /portal/facturacion was the "coming soon" placeholder the
+  // Stripe Billing Portal return_url used to send clients back to. It now
+  // redirects to the real page instead of stranding them.
+  test('legacy /portal/facturacion redirects to /portal/billing', async ({ page }) => {
+    await page.goto('/portal/facturacion');
+
+    await expect(page).toHaveURL(/\/portal\/billing/);
   });
 });

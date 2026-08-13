@@ -7,6 +7,7 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { MOCK_CLIENT, MOCK_SECONDARY_CLIENT } from '@/lib/portal-data';
 import { WIZARD_STEP_NUMBERS, type WizardStepNumber } from '@/lib/wizard-catalog';
+import { TIER_LABEL } from '@/lib/billing-tier';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,12 +17,6 @@ export const metadata: Metadata = {
     'Tabla por cliente con el estado de cada paso del wizard y la fecha de la última edición. Permite identificar clientes atascados o abandonados.',
   alternates: { canonical: '/admin/portal/wizard-funnel' },
   robots: { index: false, follow: false },
-};
-
-const TIER_LABEL: Record<string, string> = {
-  starter: 'Web Starter',
-  pro: 'Web Pro',
-  premium: 'Web Premium',
 };
 
 const STATUS_PILL: Record<string, string> = {
