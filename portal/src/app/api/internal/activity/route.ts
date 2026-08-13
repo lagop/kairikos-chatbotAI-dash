@@ -5,39 +5,44 @@ import {
   authenticateInternalRequest,
   internalAuthFailureResponse,
 } from '@/lib/internal-auth';
+import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
+import { getProductCatalog, ProductCatalogError } from '@/lib/catalogs';
 
 // =============================================================================
 // POST /api/internal/activity
 //
 // KAIA-756 — internal endpoint for the n8n T+0/3/7/14 onboarding flows and
 // the status-change watcher. Writes (idempotently) a single `ChatbotActivity`
-// row per (clientId, milestone) pair, scoping every query to the supplied
-// clientId (no global writes, no cross-tenant reads).
+// row per (clientId, productCode, milestone) pair, scoping every query to
+// the supplied clientId (no global writes, no cross-tenant reads).
 //
 // Auth: shared secret via `PORTAL_API_KEY`, verified by
 // `authenticateInternalRequest`. See `src/lib/internal-auth.ts` for the
 // scheme and the fail-closed default.
 //
-// Idempotency: a `@@unique([clientId, milestone])` constraint on
-// `ChatbotActivity` (added by the migration in this issue) lets Prisma's
-// `upsert` collapse repeated writes from n8n retries into a no-op. The
-// endpoint returns the row on first insert and on subsequent upserts with
-// HTTP 200 + `{ created: false, id, clientId, milestone }`.
+// Idempotency: a `@@unique([clientId, productCode, milestone])` constraint
+// on `ChatbotActivity` (repointed from `(clientId, milestone)` by WP-14)
+// lets Prisma's `upsert` collapse repeated writes from n8n retries into a
+// no-op. The endpoint returns the row on first insert and on subsequent
+// upserts with HTTP 200 + `{ created: false, id, clientId, milestone }`.
+//
+// WP-14 — `productCode` is optional in the request body (defaults to
+// 'chatbot', matching the DB column default) so n8n's existing flows —
+// which only know about the chatbot onboarding timeline — keep working
+// unmodified. The milestone allowlist is now per-product: it must be one
+// of that product's catalog milestones, OR the universal 'status_change'
+// value used by the status-change watcher (not a wizard milestone, so it
+// isn't part of any product's catalog).
 // =============================================================================
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MILESTONE_RE = /^(T\+\d+|status_change)$/;
-const ALLOWED_MILESTONES = new Set([
-  'T+0',
-  'T+3',
-  'T+7',
-  'T+14',
-  'status_change',
-]);
+const STATUS_CHANGE_MILESTONE = 'status_change';
 
 interface ActivityRequestBody {
   clientId?: unknown;
+  productCode?: unknown;
   milestone?: unknown;
   completedAt?: unknown;
   notes?: unknown;
@@ -45,6 +50,7 @@ interface ActivityRequestBody {
 
 interface ParsedActivityRequest {
   clientId: string;
+  productCode: string;
   milestone: string;
   completedAt: Date;
   notes: string | null;
@@ -100,14 +106,16 @@ export async function POST(req: NextRequest) {
   try {
     const row = await prisma.chatbotActivity.upsert({
       where: {
-        clientId_milestone: {
+        clientId_productCode_milestone: {
           clientId: parsed.value.clientId,
+          productCode: parsed.value.productCode,
           milestone: parsed.value.milestone,
         },
       },
       create: {
         clientId: parsed.value.clientId,
         tenantId: client.tenantId,
+        productCode: parsed.value.productCode,
         milestone: parsed.value.milestone,
         completedAt: parsed.value.completedAt,
         notes: parsed.value.notes,
@@ -120,7 +128,7 @@ export async function POST(req: NextRequest) {
         completedAt: parsed.value.completedAt,
         notes: parsed.value.notes,
       },
-      select: { id: true, clientId: true, milestone: true, completedAt: true, notes: true },
+      select: { id: true, clientId: true, productCode: true, milestone: true, completedAt: true, notes: true },
     });
 
     // The `created` flag isn't returned by `upsert`. Detect it by comparing
@@ -135,6 +143,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       id: row.id,
       clientId: row.clientId,
+      productCode: row.productCode,
       milestone: row.milestone,
       completedAt: row.completedAt?.toISOString() ?? null,
       notes: row.notes,
@@ -173,19 +182,35 @@ type ParseResult =
   | { ok: false; reason: string };
 
 function parseRequestBody(body: ActivityRequestBody): ParseResult {
-  const { clientId, milestone, completedAt, notes } = body;
+  const { clientId, productCode: rawProductCode, milestone, completedAt, notes } = body;
 
   if (typeof clientId !== 'string' || !UUID_RE.test(clientId)) {
     return { ok: false, reason: 'clientId must be a UUID string' };
   }
-  if (typeof milestone !== 'string' || !ALLOWED_MILESTONES.has(milestone)) {
+  if (rawProductCode !== undefined && typeof rawProductCode !== 'string') {
+    return { ok: false, reason: 'productCode must be a string' };
+  }
+  const productCode = rawProductCode ?? CHATBOT_PRODUCT_CODE;
+  let catalogMilestones: readonly string[];
+  try {
+    catalogMilestones = getProductCatalog(productCode).milestones;
+  } catch (err) {
+    if (err instanceof ProductCatalogError) {
+      return { ok: false, reason: `unknown productCode: ${productCode}` };
+    }
+    throw err;
+  }
+  if (typeof milestone !== 'string' || !MILESTONE_RE.test(milestone)) {
+    return { ok: false, reason: 'milestone must match T+N or status_change' };
+  }
+  // 'status_change' is a universal exception — the status-change watcher
+  // fires it for any product, and it is deliberately not part of any
+  // product's wizard milestone catalog.
+  if (milestone !== STATUS_CHANGE_MILESTONE && !catalogMilestones.includes(milestone)) {
     return {
       ok: false,
-      reason: `milestone must be one of ${[...ALLOWED_MILESTONES].join(', ')}`,
+      reason: `milestone must be one of ${[...catalogMilestones, STATUS_CHANGE_MILESTONE].join(', ')} for productCode "${productCode}"`,
     };
-  }
-  if (!MILESTONE_RE.test(milestone)) {
-    return { ok: false, reason: 'milestone must match T+N or status_change' };
   }
   let completedAtDate: Date;
   if (typeof completedAt === 'string') {
@@ -209,6 +234,7 @@ function parseRequestBody(body: ActivityRequestBody): ParseResult {
     ok: true,
     value: {
       clientId,
+      productCode,
       milestone,
       completedAt: completedAtDate,
       notes: notesValue,

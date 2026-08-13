@@ -367,6 +367,10 @@ export const MOCK_STARTER_CLIENT: ChatbotClient = {
 // ONBOARDING_STATUSES is now the full real set, and an unrecognized value
 // is logged as an anomaly instead of silently mapped — the column
 // drifting from this list should be loud, not invisible.
+// WP-14 — 'archived' / 'draft' added: both were already writable via
+// POST /api/internal/clients/[id]/state-transition's ALLOWED_STATES but
+// missing here, so they were silently collapsing to 'in-progress' via the
+// anomaly fallback below — the same class of bug this list exists to stop.
 const ONBOARDING_STATUSES: ReadonlyArray<ChatbotClient['onboardingStatus']> = [
   'pending',
   'in-progress',
@@ -376,6 +380,8 @@ const ONBOARDING_STATUSES: ReadonlyArray<ChatbotClient['onboardingStatus']> = [
   'updating',
   'paused',
   'cancelled',
+  'archived',
+  'draft',
 ];
 
 function isKnownOnboardingStatus(value: string): value is ChatbotClient['onboardingStatus'] {

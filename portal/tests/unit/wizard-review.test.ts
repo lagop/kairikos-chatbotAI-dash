@@ -34,6 +34,9 @@ interface MockTx {
     findUnique: ReturnType<typeof vi.fn>;
     updateMany: ReturnType<typeof vi.fn>;
   };
+  clientProduct: {
+    updateMany: ReturnType<typeof vi.fn>;
+  };
   chatbotConfigStep: {
     findFirst: ReturnType<typeof vi.fn>;
     findMany: ReturnType<typeof vi.fn>;
@@ -50,6 +53,9 @@ const mockState = vi.hoisted(() => {
   const makeTx = (): MockTx => ({
     chatbotClient: {
       findUnique: vi.fn(),
+      updateMany: vi.fn(),
+    },
+    clientProduct: {
       updateMany: vi.fn(),
     },
     chatbotConfigStep: {
@@ -126,6 +132,7 @@ function resetAllMocks() {
   });
   mockState.tx.chatbotClient.findUnique.mockReset();
   mockState.tx.chatbotClient.updateMany.mockReset();
+  mockState.tx.clientProduct.updateMany.mockReset();
   mockState.tx.chatbotConfigStep.findFirst.mockReset();
   mockState.tx.chatbotConfigStep.findMany.mockReset();
   mockState.tx.chatbotConfigStep.update.mockReset();
@@ -149,6 +156,7 @@ beforeEach(() => {
   mockSend.sendOperatorNotification.mockResolvedValue({ ok: true, messageId: 'res_msg_1' });
   // Default UPDATE returns 1 — the readiness / updating flip succeeded.
   mockState.tx.chatbotClient.updateMany.mockResolvedValue({ count: 1 });
+  mockState.tx.clientProduct.updateMany.mockResolvedValue({ count: 1 });
   mockState.operatorNotification.upsert.mockResolvedValue({ id: 'opn_1' });
   // Default: no active rows in tx.findMany — readiness check sees the
   // full `REQUIRED_STEP_KEYS_FOR_READY` set as missing, so the legacy
@@ -167,6 +175,7 @@ function mockPrisma() {
   return {
     $transaction: mockState.$transaction,
     chatbotClient: mockState.tx.chatbotClient,
+    clientProduct: mockState.tx.clientProduct,
     chatbotConfigStep: mockState.tx.chatbotConfigStep,
     chatbotConfigStepAudit: mockState.tx.chatbotConfigStepAudit,
     operatorNotification: { upsert: mockState.operatorNotification.upsert },
@@ -235,6 +244,7 @@ describe('applyWizardReview — approve', () => {
         name: 'Acme',
         companyName: 'Acme Corp',
         email: 'ops@acme.com',
+        clientProducts: [{ id: 'cp1', onboardingState: 'in-progress' }],
       });
     mockState.tx.chatbotConfigStep.findFirst
       .mockResolvedValueOnce({ id: 's1', version: 1, status: 'submitted' }) // latest
@@ -252,7 +262,7 @@ describe('applyWizardReview — approve', () => {
 
     const result = await applyWizardReview(
       mockPrisma(),
-      { clientId: 'c1', stepKey: '1', action: 'approve', comment: 'Looks good' },
+      { clientId: 'c1', productCode: 'chatbot', stepKey: '1', action: 'approve', comment: 'Looks good' },
       OPERATOR,
     );
 
@@ -260,6 +270,7 @@ describe('applyWizardReview — approve', () => {
     expect(result.activeForBot).toBe(true);
     expect(result.deactivatedStepIds).toEqual([]);
     expect(result.transition.nextState).toBeNull();
+    expect(mockState.tx.clientProduct.updateMany).not.toHaveBeenCalled();
     expect(mockState.tx.chatbotClient.updateMany).not.toHaveBeenCalled();
     expect(mockState.tx.chatbotConfigStep.update).toHaveBeenCalledWith({
       where: { id: 's1' },
@@ -319,6 +330,13 @@ describe('applyWizardReview — approve', () => {
         name: 'Acme',
         companyName: 'Acme Corp',
         email: 'ops@acme.com',
+        // No ClientProduct row for 'web' yet — this client's chatbot is
+        // in-progress but nobody has provisioned 'web' onboarding. Kept
+        // empty on purpose so this test's WP-13 isolation assertions
+        // aren't muddied by a WP-14 readiness transition firing (an
+        // empty product catalog has zero required steps, so any active
+        // step would otherwise trivially satisfy readiness).
+        clientProducts: [],
       });
     mockState.tx.chatbotConfigStep.findFirst
       .mockResolvedValueOnce({ id: 's-web-1', version: 1, status: 'submitted' }) // latest (web)
@@ -362,12 +380,15 @@ describe('applyWizardReview — approve', () => {
     mockState.tx.chatbotClient.findUnique
       .mockResolvedValueOnce({ id: 'c1' }) // ensureClientExists
       .mockResolvedValueOnce({
-        // loadClientForTransition (state != in-progress → no flip)
+        // loadClientForTransition — readiness check falls through since
+        // chatbotConfigStep.findMany defaults to [] (no active rows), so
+        // no flip fires regardless of onboardingState.
         id: 'c1',
         state: 'in-progress',
         name: 'Acme',
         companyName: 'Acme Corp',
         email: 'ops@acme.com',
+        clientProducts: [{ id: 'cp1', onboardingState: 'in-progress' }],
       });
     mockState.tx.chatbotConfigStep.findFirst
       .mockResolvedValueOnce({ id: 's2', version: 2, status: 'submitted' }) // latest
@@ -387,7 +408,7 @@ describe('applyWizardReview — approve', () => {
 
     const result = await applyWizardReview(
       mockPrisma(),
-      { clientId: 'c1', stepKey: '2', action: 'approve' },
+      { clientId: 'c1', productCode: 'chatbot', stepKey: '2', action: 'approve' },
       OPERATOR,
     );
 
@@ -415,7 +436,7 @@ describe('applyWizardReview — request_revision', () => {
     try {
       await applyWizardReview(
         mockPrisma(),
-        { clientId: 'c1', stepKey: '1', action: 'request_revision', comment: '   ' },
+        { clientId: 'c1', productCode: 'chatbot', stepKey: '1', action: 'request_revision', comment: '   ' },
         OPERATOR,
       );
       throw new Error('expected throw');
@@ -430,7 +451,7 @@ describe('applyWizardReview — request_revision', () => {
     try {
       await applyWizardReview(
         mockPrisma(),
-        { clientId: 'c1', stepKey: '1', action: 'request_revision', comment: 'x'.repeat(2001) },
+        { clientId: 'c1', productCode: 'chatbot', stepKey: '1', action: 'request_revision', comment: 'x'.repeat(2001) },
         OPERATOR,
       );
       throw new Error('expected throw');
@@ -440,7 +461,10 @@ describe('applyWizardReview — request_revision', () => {
   });
 
   it('flips status to needs_revision and writes one audit row', async () => {
-    mockState.tx.chatbotClient.findUnique.mockResolvedValue({ id: 'c1' });
+    // Step 1 is mandatory, so applyWizardReview also calls
+    // loadClientForTransition — clientProducts: [] means no flip fires
+    // (clientProductId is null), independent of `state`.
+    mockState.tx.chatbotClient.findUnique.mockResolvedValue({ id: 'c1', tenantId: null, clientProducts: [] });
     mockState.tx.chatbotConfigStep.findFirst.mockResolvedValue({ id: 's1', version: 1, status: 'submitted' });
     mockState.tx.chatbotConfigStep.update.mockResolvedValue({
       id: 's1',
@@ -454,7 +478,7 @@ describe('applyWizardReview — request_revision', () => {
 
     const result = await applyWizardReview(
       mockPrisma(),
-      { clientId: 'c1', stepKey: '1', action: 'request_revision', comment: 'Please add the company logo' },
+      { clientId: 'c1', productCode: 'chatbot', stepKey: '1', action: 'request_revision', comment: 'Please add the company logo' },
       OPERATOR,
     );
 
@@ -500,6 +524,7 @@ describe('applyWizardReview — KAIA-14519 ready transition', () => {
         name: 'Acme',
         companyName: 'Acme Corp',
         email: 'ops@acme.com',
+        clientProducts: [{ id: 'cp1', onboardingState: 'in-progress' }],
       });
     mockState.tx.chatbotConfigStep.findFirst
       .mockResolvedValueOnce({ id: 's5', version: 2, status: 'submitted' }) // latest
@@ -518,11 +543,16 @@ describe('applyWizardReview — KAIA-14519 ready transition', () => {
 
     const result = await applyWizardReview(
       mockPrisma(),
-      { clientId: 'c1', stepKey: '5', action: 'approve' },
+      { clientId: 'c1', productCode: 'chatbot', stepKey: '5', action: 'approve' },
       OPERATOR,
     );
 
-    // State flipped in the transaction via updateMany (not update).
+    // WP-14 — ClientProduct.onboardingState is the primary write.
+    expect(mockState.tx.clientProduct.updateMany).toHaveBeenCalledWith({
+      where: { id: 'cp1', onboardingState: 'in-progress' },
+      data: { onboardingState: 'ready' },
+    });
+    // COMPAT mirror — chatbot's ChatbotClient.state via updateMany (not update).
     expect(mockState.tx.chatbotClient.updateMany).toHaveBeenCalledWith({
       where: { id: 'c1', state: 'in-progress' },
       data: { state: 'ready' },
@@ -553,6 +583,7 @@ describe('applyWizardReview — KAIA-14519 ready transition', () => {
         name: 'Acme',
         companyName: null,
         email: 'ops@acme.com',
+        clientProducts: [{ id: 'cp1', onboardingState: 'in-progress' }],
       });
     mockState.tx.chatbotConfigStep.findFirst
       .mockResolvedValueOnce({ id: 's5', version: 2, status: 'submitted' })
@@ -573,10 +604,11 @@ describe('applyWizardReview — KAIA-14519 ready transition', () => {
 
     const result = await applyWizardReview(
       mockPrisma(),
-      { clientId: 'c1', stepKey: '5', action: 'approve' },
+      { clientId: 'c1', productCode: 'chatbot', stepKey: '5', action: 'approve' },
       OPERATOR,
     );
 
+    expect(mockState.tx.clientProduct.updateMany).not.toHaveBeenCalled();
     expect(mockState.tx.chatbotClient.updateMany).not.toHaveBeenCalled();
     expect(result.transition.nextState).toBeNull();
     expect(mockSend.sendOperatorNotification).not.toHaveBeenCalled();
@@ -592,6 +624,7 @@ describe('applyWizardReview — KAIA-14519 ready transition', () => {
         name: 'Acme',
         companyName: null,
         email: 'ops@acme.com',
+        clientProducts: [{ id: 'cp1', onboardingState: 'in-progress' }],
       });
     mockState.tx.chatbotConfigStep.findFirst
       .mockResolvedValueOnce({ id: 's11', version: 1, status: 'submitted' }) // approve Step 11
@@ -614,10 +647,14 @@ describe('applyWizardReview — KAIA-14519 ready transition', () => {
 
     const result = await applyWizardReview(
       mockPrisma(),
-      { clientId: 'c1', stepKey: '11', action: 'approve' },
+      { clientId: 'c1', productCode: 'chatbot', stepKey: '11', action: 'approve' },
       OPERATOR,
     );
 
+    expect(mockState.tx.clientProduct.updateMany).toHaveBeenCalledWith({
+      where: { id: 'cp1', onboardingState: 'in-progress' },
+      data: { onboardingState: 'ready' },
+    });
     expect(mockState.tx.chatbotClient.updateMany).toHaveBeenCalledWith({
       where: { id: 'c1', state: 'in-progress' },
       data: { state: 'ready' },
@@ -635,6 +672,9 @@ describe('applyWizardReview — KAIA-14519 ready transition', () => {
         name: 'Acme',
         companyName: null,
         email: 'ops@acme.com',
+        // ClientProduct.onboardingState already 'ready' — the guard
+        // this test exercises is now on this field, not ChatbotClient.state.
+        clientProducts: [{ id: 'cp1', onboardingState: 'ready' }],
       });
     mockState.tx.chatbotConfigStep.findFirst
       .mockResolvedValueOnce({ id: 's1', version: 1, status: 'submitted' })
@@ -648,7 +688,8 @@ describe('applyWizardReview — KAIA-14519 ready transition', () => {
       approvedAt: new Date('2026-06-13T10:00:00.000Z'),
     });
     // Even if the active-set were full (which it shouldn't be since this
-    // client was never 'in-progress'), the state guard is the real check.
+    // product was never 'in-progress'), the onboardingState guard is the
+    // real check.
     mockState.tx.chatbotConfigStep.findMany.mockResolvedValue([
       { stepKey: '1' }, { stepKey: '2' }, { stepKey: '3' }, { stepKey: '4' }, { stepKey: '5' },
       { stepKey: '6' }, { stepKey: '7' }, { stepKey: '9' }, { stepKey: '10' }, { stepKey: '11' },
@@ -656,10 +697,11 @@ describe('applyWizardReview — KAIA-14519 ready transition', () => {
 
     const result = await applyWizardReview(
       mockPrisma(),
-      { clientId: 'c1', stepKey: '1', action: 'approve' },
+      { clientId: 'c1', productCode: 'chatbot', stepKey: '1', action: 'approve' },
       OPERATOR,
     );
 
+    expect(mockState.tx.clientProduct.updateMany).not.toHaveBeenCalled();
     expect(mockState.tx.chatbotClient.updateMany).not.toHaveBeenCalled();
     expect(result.transition.nextState).toBeNull();
     expect(mockSend.sendOperatorNotification).not.toHaveBeenCalled();
@@ -667,8 +709,9 @@ describe('applyWizardReview — KAIA-14519 ready transition', () => {
 
   it('re-approving the same already-approved step does not double-fire the notify (idempotent)', async () => {
     // Two approve calls on the same client. First call flips state to
-    // 'ready' and fires notify. Second call: state is already 'ready',
-    // so maybeTransitionToReady short-circuits and notify is NOT re-fired.
+    // 'ready' and fires notify. Second call: onboardingState is already
+    // 'ready', so maybeTransitionToReady short-circuits and notify is NOT
+    // re-fired.
     mockState.tx.chatbotClient.findUnique
       // First call
       .mockResolvedValueOnce({ id: 'c1' }) // ensureClientExists
@@ -678,6 +721,7 @@ describe('applyWizardReview — KAIA-14519 ready transition', () => {
         name: 'Acme',
         companyName: null,
         email: 'ops@acme.com',
+        clientProducts: [{ id: 'cp1', onboardingState: 'in-progress' }],
       });
     mockState.tx.chatbotConfigStep.findFirst
       .mockResolvedValueOnce({ id: 's1', version: 1, status: 'submitted' })
@@ -696,16 +740,18 @@ describe('applyWizardReview — KAIA-14519 ready transition', () => {
       { stepKey: '6' }, { stepKey: '7' }, { stepKey: '9' }, { stepKey: '10' }, { stepKey: '11' },
     ]);
     mockState.tx.chatbotClient.updateMany.mockResolvedValueOnce({ count: 1 });
+    mockState.tx.clientProduct.updateMany.mockResolvedValueOnce({ count: 1 });
 
     await applyWizardReview(
       mockPrisma(),
-      { clientId: 'c1', stepKey: '1', action: 'approve' },
+      { clientId: 'c1', productCode: 'chatbot', stepKey: '1', action: 'approve' },
       OPERATOR,
     );
     expect(mockSend.sendOperatorNotification).toHaveBeenCalledTimes(1);
 
-    // Second call — same client, same step. The state is already 'ready'
-    // so maybeTransitionToReady short-circuits at the guard.
+    // Second call — same client, same step. onboardingState is already
+    // 'ready' so maybeTransitionToReady would short-circuit at the guard
+    // (moot here since the step's own status already throws first).
     mockState.tx.chatbotClient.findUnique
       .mockResolvedValueOnce({ id: 'c1' })
       .mockResolvedValueOnce({
@@ -714,6 +760,7 @@ describe('applyWizardReview — KAIA-14519 ready transition', () => {
         name: 'Acme',
         companyName: null,
         email: 'ops@acme.com',
+        clientProducts: [{ id: 'cp1', onboardingState: 'ready' }],
       });
     mockState.tx.chatbotConfigStep.findFirst.mockReset();
     mockState.tx.chatbotConfigStep.findFirst
@@ -722,7 +769,7 @@ describe('applyWizardReview — KAIA-14519 ready transition', () => {
     await expect(
       applyWizardReview(
         mockPrisma(),
-        { clientId: 'c1', stepKey: '1', action: 'approve' },
+        { clientId: 'c1', productCode: 'chatbot', stepKey: '1', action: 'approve' },
         OPERATOR,
       ),
     ).rejects.toMatchObject({ error: { code: 'invalid_state_for_approve' } });
@@ -741,6 +788,7 @@ describe('applyWizardReview — KAIA-14519 updating transition', () => {
         name: 'Acme',
         companyName: 'Acme Corp',
         email: 'ops@acme.com',
+        clientProducts: [{ id: 'cp1', onboardingState: 'live' }],
       });
     mockState.tx.chatbotConfigStep.findFirst.mockResolvedValue({
       id: 's5',
@@ -759,10 +807,14 @@ describe('applyWizardReview — KAIA-14519 updating transition', () => {
 
     const result = await applyWizardReview(
       mockPrisma(),
-      { clientId: 'c1', stepKey: '5', action: 'request_revision', comment: 'Update the prices' },
+      { clientId: 'c1', productCode: 'chatbot', stepKey: '5', action: 'request_revision', comment: 'Update the prices' },
       OPERATOR,
     );
 
+    expect(mockState.tx.clientProduct.updateMany).toHaveBeenCalledWith({
+      where: { id: 'cp1', onboardingState: 'live' },
+      data: { onboardingState: 'updating' },
+    });
     expect(mockState.tx.chatbotClient.updateMany).toHaveBeenCalledWith({
       where: { id: 'c1', state: 'live' },
       data: { state: 'updating' },
@@ -785,6 +837,7 @@ describe('applyWizardReview — KAIA-14519 updating transition', () => {
         name: 'Acme',
         companyName: null,
         email: 'ops@acme.com',
+        clientProducts: [{ id: 'cp1', onboardingState: 'in-progress' }],
       });
     mockState.tx.chatbotConfigStep.findFirst.mockResolvedValue({
       id: 's5',
@@ -803,10 +856,11 @@ describe('applyWizardReview — KAIA-14519 updating transition', () => {
 
     const result = await applyWizardReview(
       mockPrisma(),
-      { clientId: 'c1', stepKey: '5', action: 'request_revision', comment: 'Hmm' },
+      { clientId: 'c1', productCode: 'chatbot', stepKey: '5', action: 'request_revision', comment: 'Hmm' },
       OPERATOR,
     );
 
+    expect(mockState.tx.clientProduct.updateMany).not.toHaveBeenCalled();
     expect(mockState.tx.chatbotClient.updateMany).not.toHaveBeenCalled();
     expect(result.transition.nextState).toBeNull();
     expect(mockSend.sendOperatorNotification).not.toHaveBeenCalled();
@@ -821,6 +875,7 @@ describe('applyWizardReview — KAIA-14519 updating transition', () => {
         name: 'Acme',
         companyName: null,
         email: 'ops@acme.com',
+        clientProducts: [{ id: 'cp1', onboardingState: 'live' }],
       });
     mockState.tx.chatbotConfigStep.findFirst.mockResolvedValue({
       id: 's8',
@@ -839,10 +894,11 @@ describe('applyWizardReview — KAIA-14519 updating transition', () => {
 
     const result = await applyWizardReview(
       mockPrisma(),
-      { clientId: 'c1', stepKey: '8', action: 'request_revision', comment: 'Optional refinement' },
+      { clientId: 'c1', productCode: 'chatbot', stepKey: '8', action: 'request_revision', comment: 'Optional refinement' },
       OPERATOR,
     );
 
+    expect(mockState.tx.clientProduct.updateMany).not.toHaveBeenCalled();
     expect(mockState.tx.chatbotClient.updateMany).not.toHaveBeenCalled();
     expect(result.transition.nextState).toBeNull();
     expect(mockSend.sendOperatorNotification).not.toHaveBeenCalled();

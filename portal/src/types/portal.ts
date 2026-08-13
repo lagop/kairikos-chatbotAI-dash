@@ -13,6 +13,12 @@ export type ChatbotTier = 'starter' | 'pro' | 'premium';
 // needs zero data migration — only the read-side TypeScript type and its
 // few `in_progress`-literal producers move to match the DB, not the other
 // way around.
+// WP-14 — 'archived' and 'draft' were already writable via POST
+// /api/internal/clients/[id]/state-transition's ALLOWED_STATES (KAIA-3127,
+// Paperclip's Day-2 endpoint) but missing from this union, so
+// toOnboardingStatus() in portal-data.ts silently collapsed both to
+// 'in-progress' with a console.error anomaly log — a real, live bug this
+// WP fixes by making the type match the actual writable set.
 export type OnboardingStatus =
   | 'pending'
   | 'in-progress'
@@ -21,7 +27,9 @@ export type OnboardingStatus =
   | 'live'
   | 'updating'
   | 'paused'
-  | 'cancelled';
+  | 'cancelled'
+  | 'archived'
+  | 'draft';
 
 export type UserRole = 'owner' | 'admin' | 'viewer';
 

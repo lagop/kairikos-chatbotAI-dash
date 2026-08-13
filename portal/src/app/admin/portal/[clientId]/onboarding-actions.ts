@@ -27,9 +27,11 @@
 // auth check.
 //
 // Idempotency: `chatbotActivity.upsert` on the unique
-// `(clientId, milestone)` key guarantees a re-click on the same milestone
-// is a no-op-ish (the row already exists, `completedAt` is re-stamped
-// to `now()`).
+// `(clientId, productCode, milestone)` key (WP-14; was `(clientId,
+// milestone)`) guarantees a re-click on the same milestone is a no-op-ish
+// (the row already exists, `completedAt` is re-stamped to `now()`). This
+// operator control only exists for the chatbot's timeline today, so
+// productCode is fixed to CHATBOT_PRODUCT_CODE.
 //
 // KAIA-14409 — write goes through the regular pooled `prisma` client. The
 // earlier direct-connection split (KAIA-14388) was inert on prod because
@@ -43,6 +45,7 @@ import { revalidatePath } from 'next/cache';
 import { isDatabaseConfigured, prisma } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { isAllowedMilestone } from './onboarding-constants';
+import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
 
 export async function advanceOnboardingMilestone(
   formData: FormData,
@@ -76,10 +79,17 @@ export async function advanceOnboardingMilestone(
   const now = new Date();
   const note = `Marcado por el operador (${session.email ?? 'operador'}) el ${now.toISOString()}`;
   await prisma.chatbotActivity.upsert({
-    where: { clientId_milestone: { clientId, milestone } },
+    where: {
+      clientId_productCode_milestone: {
+        clientId,
+        productCode: CHATBOT_PRODUCT_CODE,
+        milestone,
+      },
+    },
     create: {
       clientId,
       tenantId: client.tenantId,
+      productCode: CHATBOT_PRODUCT_CODE,
       milestone,
       completedAt: now,
       notes: note,

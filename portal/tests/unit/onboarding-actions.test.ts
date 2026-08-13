@@ -18,6 +18,8 @@ const mockState = vi.hoisted(() => ({
   upsertActivity: vi.fn(),
   findUniqueClient: vi.fn(),
   updateClient: vi.fn(),
+  findFirstClientProduct: vi.fn(),
+  updateClientProduct: vi.fn(),
   findUniqueOperatorNotification: vi.fn(),
   upsertOperatorNotification: vi.fn(),
   isDatabaseConfigured: true,
@@ -26,8 +28,25 @@ const mockState = vi.hoisted(() => ({
   utcDayKey: () => '2026-06-12',
 }));
 
+// WP-14 — handleGoLiveReady's state write now runs inside a
+// prisma.$transaction (to commit atomically with the ClientProduct mirror
+// write), so the mock's $transaction just invokes the callback with a `tx`
+// exposing the same chatbotClient.update + a clientProduct table.
+const mockTx = {
+  chatbotClient: {
+    update: (...args: unknown[]) => mockState.updateClient(...(args as [])),
+  },
+  clientProduct: {
+    findFirst: (...args: unknown[]) =>
+      mockState.findFirstClientProduct(...(args as [])),
+    update: (...args: unknown[]) =>
+      mockState.updateClientProduct(...(args as [])),
+  },
+};
+
 vi.mock('@/lib/prisma', () => ({
   prisma: {
+    $transaction: (fn: (tx: typeof mockTx) => unknown) => fn(mockTx),
     chatbotActivity: {
       findUnique: (...args: unknown[]) =>
         mockState.findUniqueActivity(...(args as [])),

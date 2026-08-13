@@ -12,6 +12,7 @@ import {
   lastStepHuman as resolveLastStepHuman,
   sendRecoveryEmail,
 } from '@/lib/wizard-recovery-email';
+import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
 
 // =============================================================================
 // POST /api/internal/wizard-abandoned/fire
@@ -108,8 +109,9 @@ export async function POST(req: NextRequest) {
   // common retry path and lets us return the original row unchanged.
   const existing = await prisma.chatbotActivity.findUnique({
     where: {
-      clientId_milestone: {
+      clientId_productCode_milestone: {
         clientId: parsed.value.clientId,
+        productCode: CHATBOT_PRODUCT_CODE,
         milestone: 'wizard_abandoned',
       },
     },
@@ -184,14 +186,16 @@ export async function POST(req: NextRequest) {
   try {
     const row = await prisma.chatbotActivity.upsert({
       where: {
-        clientId_milestone: {
+        clientId_productCode_milestone: {
           clientId: parsed.value.clientId,
+          productCode: CHATBOT_PRODUCT_CODE,
           milestone: 'wizard_abandoned',
         },
       },
       create: {
         clientId: parsed.value.clientId,
         tenantId: client.tenantId,
+        productCode: CHATBOT_PRODUCT_CODE,
         milestone: 'wizard_abandoned',
         completedAt,
         notes,
@@ -227,8 +231,9 @@ export async function POST(req: NextRequest) {
       if (err.code === 'P2002') {
         const original = await prisma.chatbotActivity.findUnique({
           where: {
-            clientId_milestone: {
+            clientId_productCode_milestone: {
               clientId: parsed.value.clientId,
+              productCode: CHATBOT_PRODUCT_CODE,
               milestone: 'wizard_abandoned',
             },
           },

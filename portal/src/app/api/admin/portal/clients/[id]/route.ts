@@ -52,6 +52,7 @@ import { getSession } from '@/lib/session';
 import { authenticateAdminRequest } from '@/lib/operator-session';
 import { constantTimeEqual } from '@/lib/operator-crypto';
 import { sendSetupPassword, SETUP_EMAIL_LINK_EXPIRY_DAYS } from '@/lib/auth-email';
+import { mirrorChatbotStateToClientProduct } from '@/lib/client-product-lifecycle';
 
 const ALLOWED_FIELDS = new Set([
   'companyName',
@@ -540,6 +541,13 @@ export async function PATCH(
           }),
         ),
       );
+
+      // WP-14 — mirror an operator-driven state/goLiveAt edit onto
+      // ClientProduct.onboardingState for the chatbot product, in the same
+      // transaction as the ChatbotClient write above.
+      if (parsed.changes.some((c) => c.field === 'state' || c.field === 'goLiveAt')) {
+        await mirrorChatbotStateToClientProduct(tx, clientId, updated.state, updated.goLiveAt);
+      }
 
       // KAIA-13370 — When email changes, rewrite ChatbotClientUser.nextAuthEmail
       // to the new address and rotate User.passwordHash to __must_reset__ so

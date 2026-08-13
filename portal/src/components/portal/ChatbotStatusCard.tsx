@@ -17,6 +17,8 @@ const STATUS_LABEL: Record<OnboardingStatus, string> = {
   updating: 'Actualizando',
   paused: 'En pausa',
   cancelled: 'Archivado',
+  archived: 'Archivado',
+  draft: 'Borrador',
 };
 
 const STATUS_PILL: Record<OnboardingStatus, string> = {
@@ -28,6 +30,8 @@ const STATUS_PILL: Record<OnboardingStatus, string> = {
   updating: 'pill-warning',
   paused: 'pill-warning',
   cancelled: 'pill-muted',
+  archived: 'pill-muted',
+  draft: 'pill-muted',
 };
 
 const PERCENT = new Intl.NumberFormat('es-ES', {

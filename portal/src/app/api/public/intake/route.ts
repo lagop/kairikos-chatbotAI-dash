@@ -190,6 +190,39 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           select: { id: true, name: true, companyName: true, tenantId: true },
         });
 
+    // WP-14 — a brand-new client needs a ClientProduct row for 'chatbot'
+    // too, or ClientProduct.onboardingState (the WP-14 source of truth for
+    // per-product lifecycle) never gets created and every wizard-review
+    // transition on this client silently no-ops (clientProductId stays
+    // null). The Phase 0 migration backfilled this for clients that
+    // existed before WP-14; this is the root-cause fix so new clients
+    // never fall into that gap again. Best-effort: a missing 'chatbot'
+    // Product row (seed not run) logs but never fails the intake.
+    if (!existingClient) {
+      const chatbotProduct = await tx.product.findUnique({
+        where: { code_tier: { code: CHATBOT_PRODUCT_CODE, tier: DEFAULT_TIER } },
+        select: { id: true },
+      });
+      if (chatbotProduct) {
+        await tx.clientProduct.create({
+          data: {
+            clientId: clientRecord.id,
+            productId: chatbotProduct.id,
+            tenantId: clientRecord.tenantId,
+            status: 'active',
+            onboardingState: DEFAULT_STATE,
+            createdBy: 'system:intake',
+          },
+        });
+      } else {
+        logError(
+          'intake.chatbot_product_missing',
+          new Error(`no Product row for code=${CHATBOT_PRODUCT_CODE} tier=${DEFAULT_TIER}`),
+          { route: 'POST /api/public/intake', clientId: clientRecord.id },
+        );
+      }
+    }
+
     // ChatbotClientUser.nextAuthEmail is UNIQUE — upsert.
     const clientUser = await tx.chatbotClientUser.upsert({
       where: { nextAuthEmail: payload.human_handoff_email },

@@ -599,6 +599,17 @@ model ClientProduct {
   createdBy    String?   @map("created_by")
   changedBy    String?   @map("changed_by")
   changedAt    DateTime  @default(now()) @map("changed_at")
+  // WP-14 — per-product onboarding lifecycle. `status` above is the
+  // Stripe-mirroring billing state (active/cancelled/past_due);
+  // `onboardingState` is a different axis entirely — where THIS
+  // product's wizard/onboarding sits, using the same vocabulary as
+  // ChatbotClient.state / types/portal.ts's OnboardingStatus. This
+  // column is now the source of truth for onboarding lifecycle;
+  // ChatbotClient.state is kept as a mirror of the chatbot product's
+  // onboardingState (n8n still reads it — see the migration's COMPAT
+  // note) rather than removed.
+  onboardingState String    @default("in-progress") @map("onboarding_state")
+  goLiveAt        DateTime? @map("go_live_at")
 
   client       ChatbotClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
   product      Product              @relation(fields: [productId], references: [id], onDelete: Restrict)
@@ -763,6 +774,12 @@ model ChatbotActivity {
   // pre-multi-tenant rows; the backfill migration sets it from
   // ChatbotClient.tenantId.
   tenantId    String?       @map("tenant_id") @db.Uuid
+  // WP-14 — which product's onboarding this milestone belongs to. Was
+  // implicitly "the chatbot's" (the unique key was (clientId, milestone),
+  // so a client could only ever have one "T+0" total). Defaults to
+  // 'chatbot' at the DB level for the same reason ChatbotConfigStep's
+  // productCode does — see that column's comment.
+  productCode String        @default("chatbot")
   // T+N milestone label — "T+0", "T+3", "T+7", "T+14" by convention; free-form
   // string so n8n can extend without a schema migration. Enforced allowlist
   // lives in the route handler at src/app/api/internal/activity/route.ts.
@@ -774,8 +791,9 @@ model ChatbotActivity {
   client      ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant      Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
-  @@unique([clientId, milestone])
+  @@unique([clientId, productCode, milestone])
   @@index([clientId, completedAt])
+  @@index([clientId, productCode])
   @@index([tenantId])
 }
 
