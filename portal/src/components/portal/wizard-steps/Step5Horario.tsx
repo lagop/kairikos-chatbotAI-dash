@@ -10,7 +10,8 @@ import {
   TIMEZONE_DEFAULT,
 } from '@/lib/wizard-templates';
 import { useZodValidation } from './useZodValidation';
-import { Button, CheckboxGroup, FieldRow, RadioGroup, Select, Textarea, TextInput } from './primitives';
+import { Button, FieldRow, Select, Textarea, TextInput } from './primitives';
+import { ChipToggleGroup, CompactRadioGroup } from '@/components/forms/CompactSelectionControls';
 
 interface Props {
   value: Step5Input | null;
@@ -148,7 +149,7 @@ export function Step5Horario({ value, onChange }: Props) {
               key={i}
               className="space-y-3 rounded-xl border border-kairikos-border bg-kairikos-surface2 p-3"
             >
-              <CheckboxGroup
+              <ChipToggleGroup
                 legend={step.fields.horario.subfields.dias.label}
                 name={`horario.${i}.dias`}
                 options={DIAS}
@@ -210,7 +211,7 @@ export function Step5Horario({ value, onChange }: Props) {
         ) : null}
       </div>
 
-      <RadioGroup
+      <CompactRadioGroup
         legend={step.fields.comportamiento_fuera_horario.label}
         name="comportamiento_fuera_horario"
         options={COMPORTAMIENTO_OPTIONS}
