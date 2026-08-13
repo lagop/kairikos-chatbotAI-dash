@@ -445,7 +445,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
   return (
     <div className="space-y-6">
       <div className="text-sm text-kairikos-muted">
-        <Link href="/admin/portal" className="hover:text-kairikos-text">← Volver al listado</Link>
+        <Link href="/admin/portal/clients" className="hover:text-kairikos-text">← Volver al listado</Link>
       </div>
       <PageHeading
         eyebrow="Operador · vista de cliente"
@@ -529,7 +529,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
           <p className="text-xs text-kairikos-muted">
             Esta vista replica el portal del cliente sin posibilidad de modificar datos.
             Para soporte, accede a la{' '}
-            <Link href="/admin/portal" className="underline">lista de clientes</Link>.
+            <Link href="/admin/portal/clients" className="underline">lista de clientes</Link>.
           </p>
         </>
       ) : (

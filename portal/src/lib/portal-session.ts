@@ -10,12 +10,11 @@ export interface ResolvedClient {
   source: 'database' | 'mock_dev';
 }
 
-// KAIA-1519 — mirrors the dev-mock detection in `session.ts:42` so the
-// portal-side session and the wizard-side client resolver agree on what
-// counts as a "dev mock" environment. Previously `isSupabaseConfigured`
-// (truthy URL + key) and `isDevMock` (placeholder URL) diverged, leaving
-// the wizard page redirected to /portal/login even when the layout was
-// happy with the mock session.
+// KAIA-1519 — the single dev-mock detector. `session.ts`'s getSession()
+// imports this too (WP-06) instead of keeping its own copy; previously
+// `isSupabaseConfigured` (truthy URL + key) and `isDevMock` (placeholder
+// URL) diverged, leaving the wizard page redirected to /portal/login even
+// when the layout was happy with the mock session.
 //
 // We accept the same placeholder URL that ships in `.env` (`placeholder.supabase.co`)
 // and the explicit `YOUR-PROJECT` / `invalid.supabase.co` markers so the
