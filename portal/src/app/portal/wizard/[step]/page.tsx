@@ -202,6 +202,7 @@ export default async function WizardStepPage({ params }: PageProps) {
         submittedAt: result?.latest?.submittedAt?.toISOString() ?? null,
         approvedAt: result?.latest?.approvedAt?.toISOString() ?? null,
         activeForBot: result?.latest?.activeForBot,
+        seededFromIntake: result?.latest?.seededFromIntake,
       }}
       isDatabaseConfigured={true}
       steps={steps}

@@ -32,12 +32,19 @@ const FROM_ADDRESS =
 // original three. They share the same Resend dispatch path and the same
 // (clientId, kind, day) dedup but render a different template and add the
 // CEO email to the recipient list at escalation severity.
+//
+// WP-11: 'help-request' (POST /api/portal/operator) and 'go-live-ready'
+// (handleGoLiveReady in onboarding-actions.ts) both already called
+// sendOperatorNotification with these kinds via a `@ts-expect-error` —
+// this is that debt paid off, not new behavior.
 export type NotificationKind =
   | 'stuck'
   | 'execution-failed'
   | 'escalation'
   | 'review-overdue-warning'
-  | 'review-overdue-escalation';
+  | 'review-overdue-escalation'
+  | 'help-request'
+  | 'go-live-ready';
 
 export const ALLOWED_KINDS: ReadonlySet<NotificationKind> = new Set([
   'stuck',
@@ -45,6 +52,8 @@ export const ALLOWED_KINDS: ReadonlySet<NotificationKind> = new Set([
   'escalation',
   'review-overdue-warning',
   'review-overdue-escalation',
+  'help-request',
+  'go-live-ready',
 ]);
 
 // Severity → NotificationKind. Used by review-overdue/fire so the route

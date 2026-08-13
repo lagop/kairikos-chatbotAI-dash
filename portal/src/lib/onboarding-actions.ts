@@ -295,9 +295,6 @@ async function fireGoLiveReadyNotification(client: {
   </body>
 </html>`;
   const sent = await sendOperatorNotification({
-    // @ts-expect-error WP-01/WP-11 — 'go-live-ready' isn't in
-    // NotificationKind yet; WP-11 adds it to the union and to
-    // ALLOWED_KINDS.
     kind: GO_LIVE_READY_KIND,
     to: recipients,
     subject,

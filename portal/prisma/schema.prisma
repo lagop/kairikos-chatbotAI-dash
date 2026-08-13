@@ -111,6 +111,7 @@ model ChatbotClient {
   n8nExecutions         N8nExecution[]
   configSteps           ChatbotConfigStep[]
   intakeSubmissions     IntakeSubmission[]
+  supportRequests       SupportRequest[]
   tenant                Tenant?                @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   clientProducts        ClientProduct[]
   productAudits         ClientProductAudit[]
@@ -231,6 +232,52 @@ model OperatorNotification {
   // trip.
   @@index([stepId, kind, day])
   @@index([stepId])
+  @@index([tenantId])
+}
+
+// =============================================================================
+// WP-11 — Client help requests, persisted and manageable in the admin panel.
+//
+// Before this table, "Necesito ayuda" (POST /api/portal/operator with
+// kind: 'help-request') only wrote its subject/message into
+// OperatorNotification.context — a JSON-as-string blob keyed by
+// (clientId, kind, day). A second help request from the same client on
+// the same UTC day silently overwrote the first one's context (the route
+// dedupes the EMAIL per day, which is correct — the operator shouldn't
+// get spammed — but that dedup was also erasing the client's own
+// message history, and there was no admin view to read past requests at
+// all). This table is the durable, queryable record: one row per
+// request, independent of the email dedup window, with a status the
+// operator can move from 'open' to 'resolved' from the admin panel.
+// =============================================================================
+model SupportRequest {
+  id       String @id @default(cuid())
+  clientId String @map("client_id")
+  // KAIA-4258: tenant isolation FK. NULL for pre-multi-tenant rows.
+  tenantId String? @map("tenant_id") @db.Uuid
+
+  subject String
+  message String
+
+  // 'open' | 'resolved'. Enforced server-side (route allowlist), not a
+  // DB CHECK constraint — same convention as OperatorNotification.kind.
+  status String @default("open")
+  // Operator email/id who marked it resolved — free-form string, same
+  // convention as OperatorAction.actorId (not a FK to Operator; v1 auth
+  // reads the identity from the admin session, not a DB-enforced actor).
+  resolvedByOperatorId String?   @map("resolved_by_operator_id")
+  resolvedAt           DateTime? @map("resolved_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@index([clientId, createdAt(sort: Desc)])
+  @@index([status])
+  @@index([status, createdAt(sort: Desc)])
   @@index([tenantId])
 }
 
@@ -419,6 +466,7 @@ model Tenant {
   chatbotConfigStepAudits ChatbotConfigStepAudit[]
   intakeSubmissions       IntakeSubmission[]
   operatorNotifications   OperatorNotification[]
+  supportRequests         SupportRequest[]
   n8nExecutions           N8nExecution[]
   clientProducts          ClientProduct[]
   productAudits           ClientProductAudit[]

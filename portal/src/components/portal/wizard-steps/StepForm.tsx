@@ -31,6 +31,9 @@ export type WizardSavedState = {
   submittedAt?: string | null;
   approvedAt?: string | null;
   activeForBot?: boolean | undefined;
+  // WP-24 — true when the current version's row was written by the
+  // intake-seeding job (actor: 'system'), not typed in by the client.
+  seededFromIntake?: boolean;
 };
 
 export interface StepFormProps {

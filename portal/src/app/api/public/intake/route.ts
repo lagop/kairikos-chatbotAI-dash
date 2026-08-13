@@ -11,6 +11,9 @@ import { createClientFolderAndUploadKit } from '@/lib/google-drive';
 import { createDay2OnboardingIssue } from '@/lib/paperclip-day2';
 import { notifyOperatorOfExecutionFailure } from '@/lib/operator-notify';
 import { DEFAULT_TENANT_ID } from '@/lib/tenant';
+import { mapIntakeToWizardSteps } from '@/lib/intake-to-wizard';
+import { saveWizardStep } from '@/lib/wizard-client';
+import { logError } from '@/lib/observability';
 
 // =============================================================================
 // POST /api/public/intake — KAIA-2913
@@ -222,6 +225,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         clientId: clientRecord.id,
         clientUserId: clientUser.id,
         submissionId: submission.id,
+        // WP-24 — the wizard-seeding step below only runs for a client
+        // that didn't exist before this request. A second intake
+        // submission for the same email (existingClient !== null) is a
+        // real, if unusual, case — re-seeding would create a new
+        // ChatbotConfigStep version and silently override whatever the
+        // client already did in the wizard, since the wizard always
+        // reads the latest version.
+        isNewClient: existingClient === null,
       };
     } catch (err) {
       // P2002 (unique violation) on idempotency_key — a concurrent retry
@@ -236,12 +247,48 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             clientId: winner.clientId,
             clientUserId: clientUser.id,
             submissionId: winner.id,
+            isNewClient: existingClient === null,
           };
         }
       }
       throw err;
     }
   });
+
+  // ---- 3b. seed the wizard from the intake payload (WP-24) -----------------
+  // Best-effort and gated on isNewClient — see the comment above. A
+  // seeding failure must not fail the intake response; the client still
+  // gets their account, they just start the wizard from a blank slate
+  // instead of a pre-filled one.
+  if (client.isNewClient) {
+    try {
+      const seeded = mapIntakeToWizardSteps(payload);
+      const seededStepKeys = Object.keys(seeded);
+      for (const stepKey of seededStepKeys) {
+        const data = seeded[stepKey as keyof typeof seeded];
+        if (!data) continue;
+        await saveWizardStep(
+          prisma,
+          { clientId: client.clientId, email: payload.human_handoff_email },
+          { stepKey, data: data as unknown as Record<string, unknown>, status: 'draft' },
+          {
+            actor: 'system',
+            comment: `Sembrado automáticamente desde el intake (submission ${client.submissionId}, KAIA-2913/WP-24).`,
+          },
+        );
+      }
+      logIntake('intake.wizard_seeded', {
+        submissionId: client.submissionId,
+        clientId: client.clientId,
+        stepKeys: seededStepKeys,
+      });
+    } catch (err) {
+      logError('intake.wizard_seed_failed', err, {
+        route: 'POST /api/public/intake',
+        clientId: client.clientId,
+      });
+    }
+  }
 
   logIntake('intake.persisted', {
     submissionId: client.submissionId,

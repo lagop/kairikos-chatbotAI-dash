@@ -21,10 +21,12 @@ import {
 } from '@/lib/operator-notify';
 
 describe('ALLOWED_KINDS', () => {
-  it('exposes the five contract kinds (KAIA-1177 added the two review-overdue kinds)', () => {
+  it('exposes the seven contract kinds (WP-11 added help-request and go-live-ready)', () => {
     expect([...ALLOWED_KINDS].sort()).toEqual([
       'escalation',
       'execution-failed',
+      'go-live-ready',
+      'help-request',
       'review-overdue-escalation',
       'review-overdue-warning',
       'stuck',
