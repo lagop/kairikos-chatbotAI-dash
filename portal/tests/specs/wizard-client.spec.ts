@@ -70,7 +70,7 @@ test.describe('Wizard client tier-aware visibility (KAIA-1519)', () => {
 
     test('@smoke Starter session lands on Step 1 (first visible)', async ({ page }) => {
       await page.goto('/portal/wizard');
-      await expect(page).toHaveURL(/\/portal\/wizard\/1$/);
+      await expect(page).toHaveURL(/\/portal\/wizard\/chatbot\/1$/);
     });
 
     for (const step of STARTER_VISIBLE_STEPS) {
@@ -122,7 +122,7 @@ test.describe('Wizard client tier-aware visibility (KAIA-1519)', () => {
       // First "next" step in the Starter matrix is Step 2 (not Step 3).
       const nav = page.getByRole('navigation', { name: 'Navegación entre pasos' });
       const next = nav.getByRole('link').filter({ hasText: /→/ });
-      await expect(next).toHaveAttribute('href', '/portal/wizard/2');
+      await expect(next).toHaveAttribute('href', '/portal/wizard/chatbot/2');
     });
   });
 
@@ -135,7 +135,7 @@ test.describe('Wizard client tier-aware visibility (KAIA-1519)', () => {
 
     test('@smoke Pro session lands on Step 1', async ({ page }) => {
       await page.goto('/portal/wizard');
-      await expect(page).toHaveURL(/\/portal\/wizard\/1$/);
+      await expect(page).toHaveURL(/\/portal\/wizard\/chatbot\/1$/);
     });
 
     for (const step of PRO_VISIBLE_STEPS) {
@@ -153,7 +153,7 @@ test.describe('Wizard client tier-aware visibility (KAIA-1519)', () => {
       await openStep(page, 2);
       const nav = page.getByRole('navigation', { name: 'Navegación entre pasos' });
       const next = nav.getByRole('link').filter({ hasText: /→/ });
-      await expect(next).toHaveAttribute('href', '/portal/wizard/3');
+      await expect(next).toHaveAttribute('href', '/portal/wizard/chatbot/3');
     });
   });
 
