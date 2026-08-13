@@ -9,6 +9,9 @@ import { TIER_LABEL } from '@/lib/billing-tier';
 import {
   MOCK_N8N_EXECUTIONS,
   MOCK_FLOW_HEALTH_ROWS,
+  getFlowHealthRows,
+  STUCK_DAYS as STUCK_THRESHOLD_DAYS,
+  type FlowHealthRow,
   type N8nExecutionSummary,
 } from '@/lib/flow-health';
 
@@ -26,20 +29,6 @@ interface PageProps {
   searchParams: { filter?: string };
 }
 
-const STUCK_THRESHOLD_DAYS = 3;
-
-interface FlowHealthRow {
-  id: string;
-  companyName: string;
-  tier: string;
-  currentMilestone: string | null;
-  daysInMilestone: number | null;
-  lastActivityAt: string | null;
-  stuck: boolean;
-  lastN8nStatus: 'success' | 'failed' | 'unknown';
-  lastN8nAt: string | null;
-}
-
 const N8N_STATUS_PILL: Record<'success' | 'failed' | 'unknown', string> = {
   success: 'pill-success',
   failed: 'pill-danger',
@@ -51,14 +40,6 @@ const N8N_STATUS_LABEL: Record<'success' | 'failed' | 'unknown', string> = {
   failed: 'Falló',
   unknown: 'Sin datos',
 };
-
-function isStuck(daysInMilestone: number | null, lastActivityAt: string | null): boolean {
-  if (daysInMilestone !== null && daysInMilestone > STUCK_THRESHOLD_DAYS) return true;
-  if (!lastActivityAt) return false;
-  const last = new Date(lastActivityAt).getTime();
-  const ageDays = (Date.now() - last) / (1000 * 60 * 60 * 24);
-  return ageDays > STUCK_THRESHOLD_DAYS;
-}
 
 function formatRelative(iso: string | null): string {
   if (!iso) return '—';
@@ -80,13 +61,10 @@ export default async function AdminFlowsPage({ searchParams }: PageProps) {
 
   const filter = (searchParams.filter ?? 'all').toLowerCase();
 
-  // Pull clients + their last activity + last n8n execution.
-  // The "last n8n execution" join is intentionally best-effort: until the
-  // Backend Developer lands the dedicated `N8nExecution` table (or the
-  // POST /api/internal/n8n-execution endpoint), this returns null and the
-  // page falls back to the mock data in MOCK_FLOW_HEALTH_ROWS. The
-  // "Falló" filter is still exercised against the mock data so the
-  // operator UI is verifiable end-to-end.
+  // WP-10 — getFlowHealthRows() is the single per-client "last activity +
+  // last n8n execution" read, shared with GET /api/admin/portal/flows so
+  // there's exactly one implementation instead of two drifting apart.
+  //
   // KAIA-13758 — mirror the `listAdminClients` (KAIA-13715) hardening: try
   // Prisma unconditionally, surface a real empty state when Prisma returns
   // zero rows, and only fall back to dev-mock fixtures when Prisma itself
@@ -97,39 +75,7 @@ export default async function AdminFlowsPage({ searchParams }: PageProps) {
   let rows: FlowHealthRow[] = [];
   let n8nFailureCount = 0;
   try {
-    const clients = await prisma.chatbotClient.findMany({
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        companyName: true,
-        name: true,
-        tier: true,
-        goLiveAt: true,
-        activities: {
-          orderBy: { completedAt: 'desc' },
-          take: 1,
-          select: { completedAt: true, milestone: true },
-        },
-      },
-    });
-    rows = clients.map((c) => {
-      const lastActivity = c.activities[0]?.completedAt ?? null;
-      const lastMilestone = c.activities[0]?.milestone ?? null;
-      const days = lastActivity
-        ? Math.floor((Date.now() - lastActivity.getTime()) / (1000 * 60 * 60 * 24))
-        : null;
-      return {
-        id: c.id,
-        companyName: c.companyName ?? c.name,
-        tier: c.tier,
-        currentMilestone: lastMilestone,
-        daysInMilestone: days,
-        lastActivityAt: lastActivity?.toISOString() ?? null,
-        stuck: isStuck(days, lastActivity?.toISOString() ?? null),
-        lastN8nStatus: 'unknown' as const,
-        lastN8nAt: null,
-      };
-    });
+    rows = await getFlowHealthRows(prisma);
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('[admin/portal/flows] Prisma read failed:', err);

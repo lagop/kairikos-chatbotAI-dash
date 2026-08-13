@@ -1,14 +1,25 @@
-// Mock data for the operator flow-health dashboard (KAIA-1060).
-// Consumed by src/app/admin/portal/flows/page.tsx and the per-client
-// flow view on src/app/admin/portal/[clientId]/page.tsx.
+// Mock data (dev-mock only) + the real read path for the operator
+// flow-health dashboard (KAIA-1060 / WP-10).
 //
-// Once the Backend Developer lands the dedicated endpoints
-//   GET /api/admin/portal/flows
-//   GET /api/admin/portal/clients/[id]/flow
-// and the Automation Engineer wires n8n execution capture (N8nExecution
-// table or POST /api/internal/n8n-execution), the page should switch
-// from these mocks to the live data. The TypeScript shapes defined here
-// are the contract the frontend expects from those endpoints.
+// WP-10 — `getFlowHealthRows()` below is the single source of truth for
+// "per-client last activity + last n8n execution", used by BOTH
+// GET /api/admin/portal/flows and admin/portal/flows/page.tsx. Before this,
+// each had its own inline Prisma query; the route's version correctly
+// joined `n8nExecutions`, but the page's never did — every row's
+// `lastN8nStatus` was hardcoded to `'unknown'` behind a comment claiming
+// the N8nExecution table didn't exist yet (it has, since KAIA-1072), so
+// the "Última ejecución n8n" column always read "Sin datos" regardless of
+// what actually happened. Two implementations of the same read, one of
+// them stale, is exactly the class of bug this consolidation removes.
+//
+// Mock fixtures are restricted to the dev-mock path (`!isDatabaseConfigured`)
+// — the same rule `listAdminClients()` follows (KAIA-13715/13753): a real,
+// configured database that returns zero rows is a genuine empty state, not
+// a signal to fall back to `MOCK_FLOW_HEALTH_ROWS`.
+
+import type { PrismaClient } from '@prisma/client';
+
+export const STUCK_DAYS = 3;
 
 export interface FlowHealthRow {
   id: string;
@@ -20,6 +31,70 @@ export interface FlowHealthRow {
   stuck: boolean;
   lastN8nStatus: 'success' | 'failed' | 'unknown';
   lastN8nAt: string | null;
+}
+
+/**
+ * Per-client flow health: last completed onboarding milestone + last n8n
+ * execution, sorted stuck-first (then longest-in-milestone first) so the
+ * operator sees what needs attention at the top. Callers decide what to do
+ * on failure/no-DB — this only runs the query.
+ */
+export async function getFlowHealthRows(prisma: PrismaClient): Promise<FlowHealthRow[]> {
+  const clients = await prisma.chatbotClient.findMany({
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      companyName: true,
+      name: true,
+      tier: true,
+      activities: {
+        orderBy: { completedAt: 'desc' },
+        take: 1,
+        select: { completedAt: true, milestone: true },
+      },
+      n8nExecutions: {
+        orderBy: { startedAt: 'desc' },
+        take: 1,
+        select: { status: true, startedAt: true },
+      },
+    },
+  });
+
+  return clients
+    .map((c) => {
+      const lastActivityDate = c.activities[0]?.completedAt ?? null;
+      const lastMilestone = c.activities[0]?.milestone ?? null;
+      const days = lastActivityDate
+        ? Math.floor((Date.now() - lastActivityDate.getTime()) / (1000 * 60 * 60 * 24))
+        : null;
+      const stuck = days !== null && days > STUCK_DAYS;
+
+      const lastExec = c.n8nExecutions[0] ?? null;
+      const lastN8nStatus: FlowHealthRow['lastN8nStatus'] =
+        lastExec?.status === 'success'
+          ? 'success'
+          : lastExec?.status === 'failed'
+            ? 'failed'
+            : 'unknown';
+
+      return {
+        id: c.id,
+        companyName: c.companyName ?? c.name,
+        tier: c.tier,
+        currentMilestone: lastMilestone,
+        daysInMilestone: days,
+        lastActivityAt: lastActivityDate?.toISOString() ?? null,
+        stuck,
+        lastN8nStatus,
+        lastN8nAt: lastExec?.startedAt?.toISOString() ?? null,
+      } satisfies FlowHealthRow;
+    })
+    .sort((a, b) => {
+      if (a.stuck !== b.stuck) return a.stuck ? -1 : 1;
+      const ad = a.daysInMilestone ?? -1;
+      const bd = b.daysInMilestone ?? -1;
+      return bd - ad;
+    });
 }
 
 export interface N8nExecutionSummary {
@@ -47,7 +122,6 @@ export interface FlowActivityEntry {
 const ACME_ID = '00000000-0000-0000-0000-000000000001';
 const GLOBEX_ID = '00000000-0000-0000-0000-000000000002';
 
-const STUCK_DAYS = 3;
 const NOW = Date.now();
 const daysAgoIso = (d: number): string => new Date(NOW - d * 24 * 60 * 60 * 1000).toISOString();
 const hoursAgoIso = (h: number): string => new Date(NOW - h * 60 * 60 * 1000).toISOString();
@@ -98,8 +172,6 @@ export const MOCK_FLOW_HEALTH_ROWS: FlowHealthRow[] = [
     lastN8nAt: hoursAgoIso(30),
   },
 ];
-
-void STUCK_DAYS;
 
 export const MOCK_N8N_EXECUTIONS: N8nExecutionSummary[] = [
   {
