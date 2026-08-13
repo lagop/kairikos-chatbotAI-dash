@@ -6,6 +6,7 @@ import { EmptyState } from '@/components/portal/EmptyState';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { MOCK_CLIENT, MOCK_SECONDARY_CLIENT } from '@/lib/portal-data';
+import { TIER_LABEL } from '@/lib/billing-tier';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,12 +31,6 @@ const STATUS_PILL: Record<string, string> = {
   live: 'pill-success',
   paused: 'pill-warning',
   cancelled: 'pill-danger',
-};
-
-const TIER_LABEL: Record<string, string> = {
-  starter: 'Web Starter',
-  pro: 'Web Pro',
-  premium: 'Web Premium',
 };
 
 export default async function AdminPortalIndexPage() {
