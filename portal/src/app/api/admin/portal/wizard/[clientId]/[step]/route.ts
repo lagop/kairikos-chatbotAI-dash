@@ -17,6 +17,11 @@ import {
 } from '@/lib/wizard-catalog';
 import { resolveOperatorStep } from '@/lib/wizard-visibility';
 import { jsonToObject } from '@/lib/wizard-tier-prisma';
+import { PRODUCT_CODES, type ProductCode } from '@/lib/catalogs';
+
+function isProductCode(value: string): value is ProductCode {
+  return (PRODUCT_CODES as readonly string[]).includes(value);
+}
 
 // =============================================================================
 // KAIA-1165 (BE-3) + KAIA-1166 (BE-4) — Operator wizard review.
@@ -91,15 +96,27 @@ export async function GET(
     return errorResponse('bad_request', 400, 'step must match [a-z0-9_-]{1,64}');
   }
 
-  const data = await getWizardStepReview(prisma, clientId, CHATBOT_PRODUCT_CODE, step);
+  const productCodeRaw = req.nextUrl.searchParams.get('productCode') ?? CHATBOT_PRODUCT_CODE;
+  if (!isProductCode(productCodeRaw)) {
+    return errorResponse('bad_request', 400, 'unknown productCode');
+  }
+  const productCode = productCodeRaw;
+
+  const data = await getWizardStepReview(prisma, clientId, productCode, step);
   if (!data) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
 
-  // BE-4: compute the tier-aware companion view.
+  // BE-4: compute the tier-aware companion view. `parseStepNumber` /
+  // `getStepDefinition` are chatbot's numbered-step catalog — the other
+  // four products have no step catalog yet (see @/lib/catalogs), so the
+  // companion block only applies to the chatbot product.
   let stepNumber: WizardStepNumber | null = null;
   let companionBlock: Record<string, unknown> | null = null;
   try {
+    if (productCode !== CHATBOT_PRODUCT_CODE) {
+      throw new Error('companion block only applies to the chatbot product');
+    }
     stepNumber = parseStepNumber(step);
     const def = getStepDefinition(stepNumber);
     const clientTier: WizardTier | null = normalizeTier(data.client.tier);
@@ -200,20 +217,30 @@ export async function PATCH(
     return errorResponse('bad_request', 400, 'step must match [a-z0-9_-]{1,64}');
   }
 
+  const productCodeRaw = req.nextUrl.searchParams.get('productCode') ?? CHATBOT_PRODUCT_CODE;
+  if (!isProductCode(productCodeRaw)) {
+    return errorResponse('bad_request', 400, 'unknown productCode');
+  }
+  const productCode = productCodeRaw;
+
   // BE-4 gate: Step 12 is v1.1 deferred and cannot be approved /
-  // sent-back through the operator flow. Surface a clear 409.
-  try {
-    const stepNumber = parseStepNumber(step);
-    const def = getStepDefinition(stepNumber);
-    if (def.v11Deferred) {
-      return errorResponse(
-        'conflict',
-        409,
-        'step 12 is deferred to v1.1; the operator cannot approve it in v1',
-      );
+  // sent-back through the operator flow. Surface a clear 409. This gate
+  // only applies to the chatbot's numbered-step catalog; other products
+  // have no step catalog yet to check against.
+  if (productCode === CHATBOT_PRODUCT_CODE) {
+    try {
+      const stepNumber = parseStepNumber(step);
+      const def = getStepDefinition(stepNumber);
+      if (def.v11Deferred) {
+        return errorResponse(
+          'conflict',
+          409,
+          'step 12 is deferred to v1.1; the operator cannot approve it in v1',
+        );
+      }
+    } catch {
+      return errorResponse('bad_request', 400, 'step must be a string from the allowlist');
     }
-  } catch {
-    return errorResponse('bad_request', 400, 'step must be a string from the allowlist');
   }
 
   let body: PatchBody;
@@ -255,7 +282,7 @@ export async function PATCH(
   try {
     const result = await applyWizardReview(
       prisma,
-      { clientId, productCode: CHATBOT_PRODUCT_CODE, stepKey: step, action, comment },
+      { clientId, productCode, stepKey: step, action, comment },
       { operatorId: operator.id, email: operator.email },
     );
     return NextResponse.json({

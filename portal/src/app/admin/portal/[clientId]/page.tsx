@@ -15,12 +15,19 @@ import { MOCK_FLOW_ACTIVITY, MOCK_N8N_EXECUTIONS, type FlowActivityEntry, type N
 import { buildAdminClientChatbotStatus } from '@/lib/chatbot-status';
 import { advanceOnboardingMilestone } from './onboarding-actions';
 import { ALLOWED_MILESTONES } from './onboarding-constants';
+import { PRODUCT_CODES, PRODUCT_CATALOGS, getProductCatalog, type ProductCode } from '@/lib/catalogs';
+import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
+import { ProductAssignment, type AssignableProduct, type ClientProductRow } from '@/components/admin/ProductAssignment';
 
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
   params: { clientId: string };
-  searchParams: { tab?: string };
+  searchParams: { tab?: string; product?: string };
+}
+
+function isProductCode(value: string): value is ProductCode {
+  return (PRODUCT_CODES as readonly string[]).includes(value);
 }
 
 const MILESTONE_LABEL: Record<string, string> = {
@@ -61,6 +68,35 @@ function TabLink({ clientId, current, value, label }: { clientId: string; curren
       href={href}
       className={active ? 'btn-primary' : 'btn-ghost'}
       data-testid={`client-tab-${value}`}
+      aria-current={active ? 'page' : undefined}
+    >
+      {label}
+    </Link>
+  );
+}
+
+function ProductTabLink({
+  clientId,
+  currentTab,
+  currentProduct,
+  value,
+  label,
+}: {
+  clientId: string;
+  currentTab: string;
+  currentProduct: string;
+  value: string;
+  label: string;
+}) {
+  const sp = new URLSearchParams();
+  if (currentTab !== 'overview') sp.set('tab', currentTab);
+  sp.set('product', value);
+  const active = currentProduct === value;
+  return (
+    <Link
+      href={`/admin/portal/${clientId}?${sp.toString()}`}
+      className={active ? 'btn-primary' : 'btn-ghost'}
+      data-testid={`client-product-tab-${value}`}
       aria-current={active ? 'page' : undefined}
     >
       {label}
@@ -130,10 +166,12 @@ function FlowHistoryTimeline({ entries }: { entries: FlowActivityEntry[] }) {
 
 function OnboardingOperatorControls({
   clientId,
+  productCode,
   timeline,
   advance,
 }: {
   clientId: string;
+  productCode: string;
   timeline: OnboardingTimelineRow[];
   advance: (formData: FormData) => Promise<void>;
 }) {
@@ -160,6 +198,7 @@ function OnboardingOperatorControls({
         firstPending ? (
           <form action={advance}>
             <input type="hidden" name="clientId" value={clientId} />
+            <input type="hidden" name="productCode" value={productCode} />
             <input type="hidden" name="milestone" value={firstPending} />
             <button
               type="submit"
@@ -201,6 +240,7 @@ function OnboardingOperatorControls({
                 ) : (
                   <form action={advance}>
                     <input type="hidden" name="clientId" value={clientId} />
+                    <input type="hidden" name="productCode" value={productCode} />
                     <input type="hidden" name="milestone" value={m} />
                     <button
                       type="submit"
@@ -256,6 +296,15 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
   // WP-24 — most recent intake submission for this client, so the operator
   // can see exactly what the client answered before any wizard editing.
   let latestIntake: { id: string; createdAt: string; payload: Prisma.JsonValue } | null = null;
+  // WP-18 — the client's contracted products. `activeProductCodes` drives
+  // the product tab bar; `productCode` is the tab currently selected
+  // (validated against it below); `clientProducts`/`assignableProducts`
+  // feed the assign/retire UI, which needs every ClientProduct row
+  // (any status) plus every sellable Product not already active.
+  let activeProductCodes: ProductCode[] = [];
+  let productCode: ProductCode = CHATBOT_PRODUCT_CODE;
+  let clientProducts: ClientProductRow[] = [];
+  let assignableProducts: AssignableProduct[] = [];
   if (isDatabaseConfigured) {
     try {
       const client = await prisma.chatbotClient.findUnique({
@@ -285,7 +334,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
         // separate `groupBy` over the last 7 days drives the fallback and
         // escalation rates on the card.
         const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-        const [count, recentGroups, activities] = await Promise.all([
+        const [count, recentGroups, cpRows, allProducts] = await Promise.all([
           prisma.chatbotConversation.count({ where: { clientId: client.id } }),
           prisma.chatbotConversation.groupBy({
             by: ['outcome'],
@@ -295,12 +344,59 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
             },
             _count: { _all: true },
           }),
-          prisma.chatbotActivity.findMany({
+          prisma.clientProduct.findMany({
             where: { clientId: client.id },
-            orderBy: { completedAt: 'asc' },
+            include: { product: true },
+            orderBy: { subscribedAt: 'asc' },
+          }),
+          prisma.product.findMany({
+            where: { isActive: true },
+            orderBy: [{ code: 'asc' }, { tier: 'asc' }],
           }),
         ]);
         conversationCount = count;
+
+        clientProducts = cpRows.map((cp) => ({
+          id: cp.id,
+          productId: cp.productId,
+          code: cp.product.code,
+          tier: cp.product.tier,
+          name: (isProductCode(cp.product.code) ? PRODUCT_CATALOGS[cp.product.code].label : null) ?? cp.product.name,
+          status: cp.status,
+          subscribedAt: cp.subscribedAt.toISOString(),
+          cancelledAt: cp.cancelledAt?.toISOString() ?? null,
+        }));
+        assignableProducts = allProducts
+          .filter((p) => !cpRows.some((cp) => cp.productId === p.id && cp.status === 'active'))
+          .map((p) => ({
+            id: p.id,
+            code: p.code,
+            tier: p.tier,
+            name: `${(isProductCode(p.code) ? PRODUCT_CATALOGS[p.code].label : null) ?? p.name} (${p.tier})`,
+            priceCents: p.priceCents,
+            currency: p.currency,
+          }));
+
+        activeProductCodes = Array.from(
+          new Set(
+            cpRows
+              .filter((cp) => cp.status === 'active' || cp.status === 'paused')
+              .map((cp) => cp.product.code),
+          ),
+        ).filter(isProductCode);
+        const requestedProduct = searchParams.product;
+        productCode =
+          requestedProduct && isProductCode(requestedProduct) && activeProductCodes.includes(requestedProduct)
+            ? requestedProduct
+            : activeProductCodes.includes(CHATBOT_PRODUCT_CODE)
+              ? CHATBOT_PRODUCT_CODE
+              : (activeProductCodes[0] ?? CHATBOT_PRODUCT_CODE);
+
+        const activities = await prisma.chatbotActivity.findMany({
+          where: { clientId: client.id, productCode },
+          orderBy: { completedAt: 'asc' },
+        });
+
         const intakeRow = await prisma.intakeSubmission.findFirst({
           where: { clientId: client.id },
           orderBy: { createdAt: 'desc' },
@@ -399,6 +495,11 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
     }
     flowHistory = MOCK_FLOW_ACTIVITY[params.clientId] ?? [];
     timeline = MOCK_TIMELINE;
+    // Dev-mock fixtures predate ClientProduct — they only ever represent
+    // the chatbot product, so the tab bar has exactly one (unselectable)
+    // tab and the assign/retire UI (which needs a real DB) stays hidden.
+    activeProductCodes = [CHATBOT_PRODUCT_CODE];
+    productCode = CHATBOT_PRODUCT_CODE;
   }
 
   // KAIA-13753 hardening — n8n executions: try Prisma first, fall back to
@@ -494,44 +595,81 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
         }}
       />
 
+      {isDatabaseConfigured ? (
+        <ProductAssignment clientId={params.clientId} assigned={clientProducts} assignable={assignableProducts} />
+      ) : null}
+
+      {activeProductCodes.length > 0 ? (
+        <nav
+          aria-label="Productos del cliente"
+          className="card flex flex-wrap items-center gap-2 p-3"
+          data-testid="client-product-tab-bar"
+        >
+          {activeProductCodes.map((code) => (
+            <ProductTabLink
+              key={code}
+              clientId={params.clientId}
+              currentTab={tab}
+              currentProduct={productCode}
+              value={code}
+              label={PRODUCT_CATALOGS[code]?.label ?? code}
+            />
+          ))}
+        </nav>
+      ) : null}
+
       {tab === 'overview' ? (
         <>
-          <section className="card" aria-label="Estado del chatbot del cliente">
-            <header className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Estado del chatbot</h2>
-              <span className={status === 'live' ? 'pill-success' : 'pill-warning'}>
-                {status === 'live' ? 'En producción' : 'En curso'}
-              </span>
-            </header>
-            <ChatbotStatusCard
-              summary={buildAdminClientChatbotStatus({
-                isDatabaseConfigured,
-                client:
-                  resolvedClientId !== null
-                    ? { id: resolvedClientId, goLiveAt: resolvedGoLiveAt }
-                    : null,
-                last7DaysCounts,
-                conversationCount,
-              })}
-            />
-          </section>
+          {productCode === CHATBOT_PRODUCT_CODE ? (
+            <section className="card" aria-label="Estado del chatbot del cliente">
+              <header className="mb-4 flex items-center justify-between">
+                <h2 className="text-lg font-semibold">Estado del chatbot</h2>
+                <span className={status === 'live' ? 'pill-success' : 'pill-warning'}>
+                  {status === 'live' ? 'En producción' : 'En curso'}
+                </span>
+              </header>
+              <ChatbotStatusCard
+                summary={buildAdminClientChatbotStatus({
+                  isDatabaseConfigured,
+                  client:
+                    resolvedClientId !== null
+                      ? { id: resolvedClientId, goLiveAt: resolvedGoLiveAt }
+                      : null,
+                  last7DaysCounts,
+                  conversationCount,
+                })}
+              />
+            </section>
+          ) : null}
 
           <section className="card" aria-label="Onboarding del cliente">
             <header className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Onboarding</h2>
-              {session.isOperator && isDatabaseConfigured ? (
-                <span
-                  data-testid="onboarding-operator-badge"
-                  className="pill-muted"
-                >
-                  Controles de operador activos
-                </span>
-              ) : null}
+              <h2 className="text-lg font-semibold">Onboarding · {PRODUCT_CATALOGS[productCode]?.label ?? productCode}</h2>
+              <div className="flex items-center gap-2">
+                {getProductCatalog(productCode).stepKeys.length > 0 ? (
+                  <Link
+                    href={`/admin/portal/${params.clientId}/wizard?product=${productCode}`}
+                    className="btn-ghost"
+                    data-testid="onboarding-wizard-review-link"
+                  >
+                    Revisar pasos del wizard →
+                  </Link>
+                ) : null}
+                {session.isOperator && isDatabaseConfigured ? (
+                  <span
+                    data-testid="onboarding-operator-badge"
+                    className="pill-muted"
+                  >
+                    Controles de operador activos
+                  </span>
+                ) : null}
+              </div>
             </header>
             <OnboardingTimeline rows={timeline} />
             {session.isOperator && isDatabaseConfigured ? (
               <OnboardingOperatorControls
                 clientId={params.clientId}
+                productCode={productCode}
                 timeline={timeline}
                 advance={advanceOnboardingMilestone}
               />

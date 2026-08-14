@@ -63,6 +63,7 @@ interface StepDetailResponse {
 
 interface AdminConfigReviewProps {
   clientId: string;
+  productCode?: string;
 }
 
 const BLOCK_LABEL: Record<WizardBlock, string> = {
@@ -193,7 +194,7 @@ function PayloadViewer({ payload, label }: { payload: unknown; label: string }) 
   );
 }
 
-export default function AdminConfigReview({ clientId }: AdminConfigReviewProps) {
+export default function AdminConfigReview({ clientId, productCode = 'chatbot' }: AdminConfigReviewProps) {
   const [steps, setSteps] = useState<StepListEntry[] | null>(null);
   const [stepDetails, setStepDetails] = useState<Map<string, StepDetailResponse>>(new Map());
   const [loading, setLoading] = useState(true);
@@ -209,7 +210,7 @@ export default function AdminConfigReview({ clientId }: AdminConfigReviewProps) 
     setLoading(true);
     setError(null);
 
-    fetch(`/api/admin/portal/wizard/${encodeURIComponent(clientId)}/steps`)
+    fetch(`/api/admin/portal/wizard/${encodeURIComponent(clientId)}/steps?productCode=${encodeURIComponent(productCode)}`)
       .then(async (res) => {
         if (!res.ok) {
           if (res.status === 503) throw new Error('database_not_configured');
@@ -229,7 +230,7 @@ export default function AdminConfigReview({ clientId }: AdminConfigReviewProps) 
       });
 
     return () => { cancelled = true; };
-  }, [clientId]);
+  }, [clientId, productCode]);
 
   useEffect(() => {
     if (!steps || steps.length === 0) return;
@@ -241,7 +242,7 @@ export default function AdminConfigReview({ clientId }: AdminConfigReviewProps) 
 
     Promise.all(
       activeSteps.map((s) =>
-        fetch(`/api/admin/portal/wizard/${encodeURIComponent(clientId)}/${s.key}`)
+        fetch(`/api/admin/portal/wizard/${encodeURIComponent(clientId)}/${s.key}?productCode=${encodeURIComponent(productCode)}`)
           .then(async (res) => {
             if (!res.ok) return null;
             const detail: StepDetailResponse = await res.json();
@@ -259,13 +260,13 @@ export default function AdminConfigReview({ clientId }: AdminConfigReviewProps) 
     });
 
     return () => { cancelled = true; };
-  }, [clientId, steps]);
+  }, [clientId, productCode, steps]);
 
   const handleApprove = useCallback(async (stepKey: string) => {
     setActionLoading(stepKey);
     setActionError(null);
     try {
-      const res = await fetch(`/api/admin/portal/wizard/${encodeURIComponent(clientId)}/${stepKey}`, {
+      const res = await fetch(`/api/admin/portal/wizard/${encodeURIComponent(clientId)}/${stepKey}?productCode=${encodeURIComponent(productCode)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'approve' }),
@@ -321,7 +322,7 @@ export default function AdminConfigReview({ clientId }: AdminConfigReviewProps) 
     } finally {
       setActionLoading(null);
     }
-  }, [clientId]);
+  }, [clientId, productCode]);
 
   const handleRequestRevision = useCallback(async (stepKey: string) => {
     if (!revisionComment.trim()) {
@@ -331,7 +332,7 @@ export default function AdminConfigReview({ clientId }: AdminConfigReviewProps) 
     setActionLoading(stepKey);
     setActionError(null);
     try {
-      const res = await fetch(`/api/admin/portal/wizard/${encodeURIComponent(clientId)}/${stepKey}`, {
+      const res = await fetch(`/api/admin/portal/wizard/${encodeURIComponent(clientId)}/${stepKey}?productCode=${encodeURIComponent(productCode)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'request_revision', comment: revisionComment.trim() }),
@@ -376,7 +377,7 @@ export default function AdminConfigReview({ clientId }: AdminConfigReviewProps) 
     } finally {
       setActionLoading(null);
     }
-  }, [clientId, revisionComment]);
+  }, [clientId, productCode, revisionComment]);
 
   const toggleExpand = useCallback((stepKey: string) => {
     setExpandedStep((prev) => (prev === stepKey ? null : stepKey));

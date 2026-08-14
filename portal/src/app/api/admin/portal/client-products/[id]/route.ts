@@ -18,14 +18,32 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (!current) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
   const status = body.data.status;
-  const row = await prisma.clientProduct.update({
-    where: { id: params.id },
-    data: {
-      status,
-      cancelledAt: status === 'cancelled' ? new Date() : null,
-      changedBy: auth.operatorId,
-    },
-    include: { product: true, client: { select: { id: true, name: true, companyName: true, email: true } }, auditLogs: { orderBy: { changedAt: 'desc' }, take: 20 } },
+  // WP-18 — same atomicity requirement as the assign path (see
+  // client-products/route.ts): retiring/changing a product's status and
+  // recording the audit row happen in one transaction.
+  const row = await prisma.$transaction(async (tx) => {
+    const updated = await tx.clientProduct.update({
+      where: { id: params.id },
+      data: {
+        status,
+        cancelledAt: status === 'cancelled' ? new Date() : null,
+        changedBy: auth.operatorId,
+      },
+      include: { product: true, client: { select: { id: true, name: true, companyName: true, email: true } }, auditLogs: { orderBy: { changedAt: 'desc' }, take: 20 } },
+    });
+    await tx.clientProductAudit.create({
+      data: {
+        clientProductId: updated.id,
+        clientId: updated.clientId,
+        productId: updated.productId,
+        tenantId: updated.tenantId,
+        action: status === 'cancelled' ? 'retire' : 'status_change',
+        statusBefore: current.status,
+        statusAfter: status,
+        actorId: auth.operatorId,
+      },
+    });
+    return updated;
   });
   return NextResponse.json(row);
 }
