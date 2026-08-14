@@ -27,11 +27,16 @@ const mockState = vi.hoisted(() => ({
   connectionUpsert: vi.fn(),
   connectionFindUnique: vi.fn(),
   connectionUpdate: vi.fn(),
+  isProductContracted: vi.fn(),
   logError: vi.fn(),
 }));
 
 vi.mock('@/lib/portal-session', () => ({
   resolveClientFromSession: (...args: unknown[]) => mockState.resolveClientFromSession(...args),
+}));
+
+vi.mock('@/lib/client-product-access', () => ({
+  isProductContracted: (...args: unknown[]) => mockState.isProductContracted(...args),
 }));
 
 vi.mock('@/lib/prisma', () => ({
@@ -83,6 +88,7 @@ beforeEach(() => {
   mockState.connectionUpsert.mockReset().mockResolvedValue({ id: 'conn_1' });
   mockState.connectionFindUnique.mockReset();
   mockState.connectionUpdate.mockReset().mockResolvedValue({});
+  mockState.isProductContracted.mockReset().mockResolvedValue(true);
   mockState.logError.mockReset();
 });
 
@@ -103,6 +109,14 @@ describe('GET /api/portal/google-business/oauth/start', () => {
     const { GET } = await import('@/app/api/portal/google-business/oauth/start/route');
     const res = await GET(makeRequest());
     expect(res.headers.get('location')).toContain('connect_error=not_available_in_dev_mode');
+  });
+
+  it('redirects with connect_error=forbidden (WP-22a) when the client has not contracted the reviews product', async () => {
+    mockState.isProductContracted.mockResolvedValueOnce(false);
+    const { GET } = await import('@/app/api/portal/google-business/oauth/start/route');
+    const res = await GET(makeRequest());
+    expect(res.headers.get('location')).toContain('connect_error=forbidden');
+    expect(mockState.buildAuthorizationUrl).not.toHaveBeenCalled();
   });
 
   it('redirects with connect_error when OAuth is not configured', async () => {

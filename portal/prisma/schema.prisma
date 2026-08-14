@@ -119,6 +119,7 @@ model ChatbotClient {
   invoices              Invoice[]
   operatorActions       OperatorAction[]
   googleBusinessConnections GoogleBusinessConnection[]
+  googleReviews             GoogleReview[]
 
   @@index([stripeCustomerId])
   @@index([tier])
@@ -474,6 +475,7 @@ model Tenant {
   subscriptions           Subscription[]
   invoices                Invoice[]
   googleBusinessConnections GoogleBusinessConnection[]
+  googleReviews             GoogleReview[]
 
   @@index([slug])
   @@index([status])
@@ -1173,10 +1175,49 @@ model GoogleBusinessConnection {
   lastSyncAt             DateTime? @map("last_sync_at")
   lastSyncError          String?   @map("last_sync_error")
 
-  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  client ChatbotClient   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  reviews GoogleReview[]
 
   @@unique([clientId, locationId])
   @@index([tenantId])
   @@index([status])
+}
+
+// =============================================================================
+// WP-22a — one row per review synced from a client's connected Google
+// Business Profile location (GoogleBusinessConnection, WP-21).
+//
+// `googleReviewId` stores the review's full Google resource name
+// ("accounts/.../locations/.../reviews/...") rather than the bare
+// reviewId — the resource name is guaranteed globally unique the same
+// way GoogleBusinessConnection's locationId already is, whereas a bare
+// reviewId's uniqueness scope is not documented by Google. It is the
+// idempotency key: syncReviewsForConnection always upserts on it, so a
+// retried or overlapping sync run can never create a duplicate row.
+model GoogleReview {
+  id             String    @id @default(uuid()) @db.Uuid
+  connectionId   String    @map("connection_id") @db.Uuid
+  clientId       String    @map("client_id")
+  tenantId       String    @map("tenant_id") @db.Uuid
+  googleReviewId String    @unique @map("google_review_id")
+  reviewerName   String?   @map("reviewer_name")
+  // 1-5. Google's API returns an enum string (ONE..FIVE) — mapped to an
+  // int at the sync boundary (see google-review-sync.ts) so every
+  // consumer downstream (sorting, averages) works with a plain number.
+  starRating     Int       @map("star_rating")
+  comment        String?
+  createTime     DateTime  @map("create_time")
+  updateTime     DateTime  @map("update_time")
+  replyComment   String?   @map("reply_comment")
+  replyUpdatedAt DateTime? @map("reply_updated_at")
+  syncedAt       DateTime  @default(now()) @map("synced_at")
+
+  connection GoogleBusinessConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  client     ChatbotClient            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant     Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([connectionId])
+  @@index([clientId])
+  @@index([starRating])
 }
