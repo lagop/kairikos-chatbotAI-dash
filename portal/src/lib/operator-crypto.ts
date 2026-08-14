@@ -17,13 +17,7 @@ const KEY_LENGTH = 32;
 const ARGON2ID: Algorithm = 2 as Algorithm;
 
 function getEncryptionKey(): Buffer {
-  const raw = process.env.OPERATOR_TOTP_ENCRYPTION_KEY;
-  if (!raw) throw new Error('OPERATOR_TOTP_ENCRYPTION_KEY is not set');
-  const key = Buffer.from(raw, 'hex');
-  if (key.length !== KEY_LENGTH) {
-    throw new Error(`OPERATOR_TOTP_ENCRYPTION_KEY must be ${KEY_LENGTH} hex bytes (got ${key.length})`);
-  }
-  return key;
+  return parseHexKey('OPERATOR_TOTP_ENCRYPTION_KEY', process.env.OPERATOR_TOTP_ENCRYPTION_KEY);
 }
 
 export function encryptTotpSecret(plaintext: string): string {
@@ -45,6 +39,48 @@ export function decryptTotpSecret(encrypted: string): string {
   const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
   decipher.setAuthTag(tag);
   return decipher.update(data) + decipher.final('utf8');
+}
+
+// WP-21 — a generic, buffer-in/buffer-out sibling to
+// encryptTotpSecret/decryptTotpSecret above, for callers whose storage
+// shape is three separate columns (ciphertext/iv/tag) rather than one
+// colon-joined hex string — GoogleBusinessConnection's refresh token
+// being the first. Same algorithm and constants as the TOTP functions;
+// deliberately parameterized on `key` rather than reading an env var
+// itself, so a caller encrypting a different class of secret (e.g. a
+// third-party OAuth refresh token) supplies its OWN dedicated key rather
+// than reusing OPERATOR_TOTP_ENCRYPTION_KEY — different secret classes
+// should never share key material.
+export interface EncryptedBuffer {
+  ciphertext: Buffer;
+  iv: Buffer;
+  tag: Buffer;
+}
+
+export function encryptBuffer(plaintext: string, key: Buffer): EncryptedBuffer {
+  const iv = crypto.randomBytes(IV_LENGTH);
+  const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
+  const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return { ciphertext, iv, tag };
+}
+
+export function decryptBuffer(parts: EncryptedBuffer, key: Buffer): string {
+  const decipher = crypto.createDecipheriv(ALGORITHM, key, parts.iv);
+  decipher.setAuthTag(parts.tag);
+  return decipher.update(parts.ciphertext) + decipher.final('utf8');
+}
+
+/** Parse and length-validate a hex-encoded AES-256 key from an env var.
+ *  Shared by every caller that stores its encryption key as a 32-byte hex
+ *  string (OPERATOR_TOTP_ENCRYPTION_KEY, GOOGLE_TOKEN_ENCRYPTION_KEY, …). */
+export function parseHexKey(envVarName: string, raw: string | undefined): Buffer {
+  if (!raw) throw new Error(`${envVarName} is not set`);
+  const key = Buffer.from(raw, 'hex');
+  if (key.length !== KEY_LENGTH) {
+    throw new Error(`${envVarName} must be ${KEY_LENGTH} hex bytes (got ${key.length})`);
+  }
+  return key;
 }
 
 export async function hashPassword(password: string): Promise<string> {
