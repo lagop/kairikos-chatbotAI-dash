@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { PORTAL_NAV, PORTAL_PROFILE_ITEM } from '@/lib/portal-nav';
 import { ThemeToggle } from '@/components/portal/ThemeToggle';
+import { PortalMobileNav } from '@/components/portal/PortalMobileNav';
 
 export function PortalHeader({
   email,
@@ -29,6 +30,7 @@ export function PortalHeader({
           ) : null}
         </div>
         <div className="flex items-center gap-1">
+          <PortalMobileNav />
           <ThemeToggle />
           {email ? <UserMenu email={email} businessName={businessName} /> : null}
         </div>
@@ -60,35 +62,6 @@ export function PortalHeader({
               </Link>
             </li>
           ))}
-        </ul>
-      </nav>
-      <nav aria-label="Navegación móvil" className="border-t border-kairikos-border/60 sm:hidden">
-        <ul className="mx-auto flex max-w-page gap-1 overflow-x-auto px-4 py-2 text-sm">
-          {PORTAL_NAV.map((item) => (
-            <li key={item.href}>
-              <Link
-                href={item.href}
-                data-testid={`header-nav-${item.href.replace(/\//g, '-')}`}
-                className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-kairikos-muted hover:bg-kairikos-surface hover:text-kairikos-text"
-              >
-                <span>{item.label}</span>
-                {item.badge ? (
-                  <span className="rounded-full border border-kairikos-border bg-kairikos-surface2 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-kairikos-muted">
-                    {item.badge}
-                  </span>
-                ) : null}
-              </Link>
-            </li>
-          ))}
-          <li>
-            <Link
-              href={PORTAL_PROFILE_ITEM.href}
-              className="block whitespace-nowrap rounded-lg px-3 py-1.5 text-kairikos-muted hover:bg-kairikos-surface hover:text-kairikos-text"
-              data-testid="header-profile-link-mobile"
-            >
-              Perfil
-            </Link>
-          </li>
         </ul>
       </nav>
     </header>
