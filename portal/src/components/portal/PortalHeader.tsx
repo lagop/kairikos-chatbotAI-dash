@@ -28,31 +28,40 @@ export function PortalHeader({
             </span>
           ) : null}
         </div>
-        {/* Only source of primary nav on tablet widths (640–1023px), where
-            PortalSidebar is hidden (lg:block). Hidden again at lg: the
-            sidebar takes over there — showing both was a duplicate menu. */}
-        <nav aria-label="Navegación principal" className="hidden gap-1 sm:flex lg:hidden">
-          {PORTAL_NAV.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              data-testid={`header-nav-${item.href.replace(/\//g, '-')}`}
-              className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-kairikos-muted transition hover:bg-kairikos-surface hover:text-kairikos-text"
-            >
-              <span>{item.label}</span>
-              {item.badge ? (
-                <span className="rounded-full border border-kairikos-border bg-kairikos-surface2 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-kairikos-muted">
-                  {item.badge}
-                </span>
-              ) : null}
-            </Link>
-          ))}
-        </nav>
         <div className="flex items-center gap-1">
           <ThemeToggle />
           {email ? <UserMenu email={email} businessName={businessName} /> : null}
         </div>
       </div>
+      {/* Only source of primary nav on tablet widths (640–1023px), where
+          PortalSidebar is hidden (lg:block) — hidden again at lg, where the
+          sidebar takes over (showing both was a duplicate menu). Its own
+          full-width row rather than squeezed into the flex row above:
+          logo + company name + nav + theme + profile all in one row
+          overflowed the header at 768–1023px (confirmed: page needed
+          ~1120px). A dedicated row can never compete with the rest of the
+          header for horizontal space, same reasoning as the mobile nav
+          row below. */}
+      <nav aria-label="Navegación principal" className="hidden border-t border-kairikos-border/60 sm:block lg:hidden">
+        <ul className="mx-auto flex max-w-page gap-1 overflow-x-auto px-4 py-2 sm:px-6">
+          {PORTAL_NAV.map((item) => (
+            <li key={item.href}>
+              <Link
+                href={item.href}
+                data-testid={`header-nav-${item.href.replace(/\//g, '-')}`}
+                className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm text-kairikos-muted transition hover:bg-kairikos-surface hover:text-kairikos-text"
+              >
+                <span>{item.label}</span>
+                {item.badge ? (
+                  <span className="rounded-full border border-kairikos-border bg-kairikos-surface2 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-kairikos-muted">
+                    {item.badge}
+                  </span>
+                ) : null}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </nav>
       <nav aria-label="Navegación móvil" className="border-t border-kairikos-border/60 sm:hidden">
         <ul className="mx-auto flex max-w-page gap-1 overflow-x-auto px-4 py-2 text-sm">
           {PORTAL_NAV.map((item) => (
