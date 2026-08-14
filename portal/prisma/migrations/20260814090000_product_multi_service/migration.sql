@@ -37,7 +37,17 @@ CREATE INDEX IF NOT EXISTS "Product_code_idx" ON "Product" ("code");
 
 -- ============================================================================
 -- 2. tier: global UNIQUE -> compound UNIQUE (code, tier)
+--
+-- `Product.tier` was declared column-level UNIQUE in the original
+-- CREATE TABLE (20260724130000_multi_tenant_phase0), so Postgres backs
+-- it with a real CONSTRAINT named "Product_tier_key", not a standalone
+-- index — `DROP INDEX` refuses to drop an index a constraint depends
+-- on (error 2BP01). Must drop the constraint itself, which implicitly
+-- drops its backing index too. This was never caught before because
+-- CI never runs `prisma migrate deploy` against a real Postgres (see
+-- WP-03) and no environment had applied this migration yet.
 -- ============================================================================
+ALTER TABLE "Product" DROP CONSTRAINT IF EXISTS "Product_tier_key";
 DROP INDEX IF EXISTS "Product_tier_key";
 CREATE UNIQUE INDEX IF NOT EXISTS "Product_code_tier_key" ON "Product" ("code", "tier");
 

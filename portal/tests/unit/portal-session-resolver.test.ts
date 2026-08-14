@@ -132,16 +132,52 @@ describe('resolveClientFromSession — dev-mock branch (KAIA-11624 regression gu
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'placeholder';
   });
 
-  it('still uses the dev-mock lookup table for a known dev email', async () => {
+  it('falls through to the dev-mock lookup table when there is no real session', async () => {
+    auth.mockResolvedValueOnce(null);
+
     const result = await resolveClientFromSession();
 
-    // The dev-mock branch falls through to MOCK_CLIENT when no dev-email
-    // cookie is set in the request context. We only assert here that the
-    // production path (auth + prisma.chatbotClientUser.findUnique) is NOT
-    // exercised in dev-mock mode — the exact dev-mock lookup is covered
+    // A real NextAuth session is now always checked first (see the bug
+    // fixed below), so `auth()` IS called here — but with no session,
+    // `prisma.chatbotClientUser.findUnique` must still never run, and the
+    // dev-mock branch falls through to MOCK_CLIENT when no dev-email
+    // cookie is set. The exact dev-mock lookup-table behaviour is covered
     // by the existing wizard-client spec.
-    expect(auth).not.toHaveBeenCalled();
+    expect(auth).toHaveBeenCalledTimes(1);
     expect(findUnique).not.toHaveBeenCalled();
     expect(result).not.toBeNull();
+    expect(result?.source).toBe('mock_dev');
+  });
+
+  it('prefers a real NextAuth session over the mock fixture, even with placeholder Supabase env (bug fix)', async () => {
+    // Bug: resolveClientFromSession() used to gate the ENTIRE NextAuth
+    // lookup behind isPortalDevMock() (a Supabase-configuration check
+    // unrelated to whether there's a real session) — so a genuinely
+    // logged-in client in any environment with placeholder Supabase env
+    // vars (e.g. local dev, where Supabase is no longer used for auth at
+    // all) silently saw MOCK_CLIENT's data instead of their own, with no
+    // way to reach their real account through the actual login form.
+    // Caught by logging in for real against a local Postgres and seeing
+    // the mock client render instead of the logged-in one.
+    auth.mockResolvedValueOnce({ user: { email: KNOWN_EMAIL } });
+    findUnique.mockResolvedValueOnce({ clientId: KNOWN_CLIENT_ID });
+
+    const result = await resolveClientFromSession();
+
+    expect(result).toEqual({
+      clientId: KNOWN_CLIENT_ID,
+      email: KNOWN_EMAIL,
+      source: 'database',
+    });
+  });
+
+  it('falls through to the mock fixture when a real session has no matching ChatbotClientUser row', async () => {
+    auth.mockResolvedValueOnce({ user: { email: KNOWN_EMAIL } });
+    findUnique.mockResolvedValueOnce(null);
+
+    const result = await resolveClientFromSession();
+
+    expect(result).not.toBeNull();
+    expect(result?.source).toBe('mock_dev');
   });
 });

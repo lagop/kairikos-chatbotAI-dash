@@ -2,7 +2,9 @@
 -- Verify audit retention requirements and take a backup before applying.
 
 DROP TRIGGER IF EXISTS "ClientProduct_audit_trigger" ON "ClientProduct";
+DROP TRIGGER IF EXISTS "ClientProduct_changed_at_trigger" ON "ClientProduct";
 DROP FUNCTION IF EXISTS public.audit_client_product_change();
+DROP FUNCTION IF EXISTS public.set_client_product_changed_at();
 DROP INDEX IF EXISTS "ClientProductAudit_tenant_id_idx";
 DROP INDEX IF EXISTS "ClientProductAudit_client_id_changed_at_idx";
 DROP INDEX IF EXISTS "ClientProductAudit_client_product_id_changed_at_idx";

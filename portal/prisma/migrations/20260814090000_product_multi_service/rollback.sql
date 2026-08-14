@@ -29,7 +29,7 @@ ALTER TABLE "Product"
     DROP COLUMN IF EXISTS "setup_fee_cents";
 
 DROP INDEX IF EXISTS "Product_code_tier_key";
-CREATE UNIQUE INDEX IF NOT EXISTS "Product_tier_key" ON "Product" ("tier");
+ALTER TABLE "Product" ADD CONSTRAINT "Product_tier_key" UNIQUE ("tier");
 
 DROP INDEX IF EXISTS "Product_code_idx";
 ALTER TABLE "Product" DROP COLUMN IF EXISTS "code";

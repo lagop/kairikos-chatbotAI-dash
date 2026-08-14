@@ -26,8 +26,15 @@ import { fileURLToPath } from 'node:url';
 const prisma = new PrismaClient();
 
 // Dev-only password hash for seed users. DO NOT use in production.
-// Hash of 'devpassword123' using argon2id.
-const DEV_PASSWORD_HASH = '$argon2id$v=19$m=65536,t=3,p=4$QU5FRC5BTi80SjZSdVBFQQ$CfJqKkKj7mJ9xLs1pVnI8hKmN3oR4tW6yB2cD4eF0g';
+// Real argon2id hash of 'devpassword123', generated via
+// @node-rs/argon2 with this codebase's own default params (see
+// hashPassword() in src/lib/operator-crypto.ts) — the previous value
+// here was a hand-written placeholder that LOOKED like a valid argon2
+// hash but never actually verified against 'devpassword123' (caught by
+// actually trying to log in against a real Postgres; every login
+// attempt against a seeded client had been silently impossible until
+// now, since no environment had a reachable database to catch it).
+const DEV_PASSWORD_HASH = '$argon2id$v=19$m=19456,t=2,p=1$hd0vm1Nk/ZoaOQ/0r148Vg$w78pK34dgpYwbtiUv0eqHJvHMHKfwxfNJQAg6vXCEh0';
 
 // =============================================================================
 // WP-12 — the real Kairikos product catalog (kairikos.com, checked 2026-08-14).
@@ -179,7 +186,13 @@ async function main() {
 
   const userA = await prisma.user.upsert({
     where: { email: 'aurora@example.com' },
-    update: {},
+    // Keep passwordHash in sync with DEV_PASSWORD_HASH on every reseed —
+    // an empty `update` here previously meant an already-existing row
+    // kept serving whatever hash it was FIRST created with forever,
+    // even after DEV_PASSWORD_HASH changed (caught when the constant
+    // was fixed from a fake hash to a real one and reseeding an
+    // existing DB silently kept the old, non-working value).
+    update: { passwordHash: DEV_PASSWORD_HASH },
     create: {
       email: 'aurora@example.com',
       role: 'client',
@@ -249,7 +262,7 @@ async function main() {
 
   const userB = await prisma.user.upsert({
     where: { email: 'rios@example.com' },
-    update: {},
+    update: { passwordHash: DEV_PASSWORD_HASH },
     create: {
       email: 'rios@example.com',
       role: 'client',
