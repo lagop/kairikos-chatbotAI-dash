@@ -9,6 +9,20 @@ import { CHATBOT_PRODUCT_CODE } from './wizard-catalog';
 import type { ResolvedClient } from './portal-session';
 import type { OnboardingTimelineRow } from '@/types/portal';
 
+// Two products' portal pages predate the generic `/portal/[product]`
+// route (this WP) and keep their own, differently-named folders: the
+// chatbot's is `/portal/status` (WP-17) and reviews' is `/portal/resenas`
+// (WP-22a, Spanish — matches the KAIA-11956-pinned nav label). Every
+// other product's live CTA lands on `/portal/${code}` directly.
+const PRODUCT_HOME_HREF: Readonly<Partial<Record<string, string>>> = {
+  chatbot: '/portal/status',
+  reviews: '/portal/resenas',
+};
+
+function productHomeHref(productCode: string): string {
+  return PRODUCT_HOME_HREF[productCode] ?? `/portal/${productCode}`;
+}
+
 // =============================================================================
 // WP-08 / WP-17 — one data function for the client-facing summary screen
 // (rendered at /portal — see that page's own header comment for why /portal,
@@ -219,8 +233,25 @@ async function buildProductCard(clientId: string, cp: ClientProductRow): Promise
   };
 
   // WP-15's other four catalogs are still empty — nothing to compute a
-  // wizard percentage or a "your turn" signal against yet.
+  // wizard percentage or a "your turn" signal against yet. 'live' is the
+  // one state that isn't actually "coming soon" though: an operator can
+  // mark any product live regardless of whether its wizard has real step
+  // content, and a live product that still said "Próximamente" (with no
+  // link at all) was a real dead end for a client who'd already paid for
+  // it — same bug the switch below fixes for products with real wizard
+  // content.
   if (catalog.requiredStepKeys.length === 0) {
+    if (cp.onboardingState === 'live') {
+      return {
+        ...base,
+        progressPercent: 100,
+        turn: null,
+        ctaLabel: 'En producción',
+        ctaHref: productHomeHref(cp.productCode),
+        timeline: [],
+        activity: null,
+      };
+    }
     return {
       ...base,
       progressPercent: null,
@@ -254,7 +285,12 @@ async function buildProductCard(clientId: string, cp: ClientProductRow): Promise
     case 'live':
       turn = null;
       ctaLabel = 'En producción';
-      ctaHref = null;
+      // WP-17 originally left this null for every product but chatbot
+      // (`/portal/status`) — a live Web/Leads/SEO/Reviews product had no
+      // page to send the client to at all, a dead-end "En producción"
+      // card. Every product now has a home somewhere (see
+      // PRODUCT_HOME_HREF above).
+      ctaHref = productHomeHref(cp.productCode);
       progressPercent = 100;
       break;
     case 'updating':

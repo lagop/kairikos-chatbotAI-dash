@@ -107,11 +107,29 @@ export default async function PortalProductsPage({
           {availableCodes.map((code) => {
             const label = isProductCode(code) ? PRODUCT_CATALOGS[code].label : code;
             const pendingProductId = pendingByCode.get(code);
-            if (pendingProductId) {
-              return <SelfServeProductCard key={code} code={code} label={label} status="pending" productId={pendingProductId} />;
-            }
-            const tiers = tiersByCode.get(code) ?? [];
-            return <SelfServeProductCard key={code} code={code} label={label} status="available" tiers={tiers} />;
+            const card = pendingProductId ? (
+              <SelfServeProductCard key={code} code={code} label={label} status="pending" productId={pendingProductId} />
+            ) : (
+              <SelfServeProductCard key={code} code={code} label={label} status="available" tiers={tiersByCode.get(code) ?? []} />
+            );
+            // Reseñas publica un tercer plan, Enterprise, con precio a
+            // medida — no tiene un Price de Stripe fijo que cobrar por
+            // autoservicio (kairikos.com/resenas-google lo deja explícito),
+            // así que no es una fila de Product; en vez de eso, esta nota
+            // enlaza a soporte para ese caso.
+            if (code !== 'reviews') return card;
+            return (
+              <div key={code} className="space-y-2">
+                {card}
+                <p className="px-1 text-xs text-kairikos-muted">
+                  ¿Necesitas más volumen?{' '}
+                  <Link href="/portal/support" className="underline hover:text-kairikos-text">
+                    Habla con nosotros
+                  </Link>{' '}
+                  sobre el plan Enterprise.
+                </p>
+              </div>
+            );
           })}
         </div>
       )}

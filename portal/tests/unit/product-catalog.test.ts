@@ -36,12 +36,26 @@ describe('PRODUCT_CATALOG', () => {
     expect(web!.setupFeeCents).toBeGreaterThan(0);
   });
 
-  it('reviews (Google reviews) is active — €99/mes, no setup fee', () => {
-    const reviews = PRODUCT_CATALOG.find((p) => p.code === 'reviews');
-    expect(reviews).toBeDefined();
-    expect(reviews!.isActive).toBe(true);
-    expect(reviews!.priceCents).toBe(9900);
-    expect(reviews!.setupFeeCents).toBe(0);
+  it('reviews (Google reviews) has two self-serve tiers matching kairikos.com/resenas-google', () => {
+    const reviews = PRODUCT_CATALOG.filter((p) => p.code === 'reviews');
+    expect(reviews.map((p) => p.tier).sort()).toEqual(['basic', 'pro']);
+    for (const p of reviews) {
+      expect(p.isActive).toBe(true);
+      expect(p.stripeRecurringPriceId).toBeTruthy();
+    }
+
+    const basic = reviews.find((p) => p.tier === 'basic')!;
+    expect(basic.priceCents).toBe(9900);
+    expect(basic.setupFeeCents).toBe(9900);
+    expect(basic.stripeSetupPriceId).toBeTruthy();
+
+    const pro = reviews.find((p) => p.tier === 'pro')!;
+    expect(pro.priceCents).toBe(14900);
+    expect(pro.setupFeeCents).toBe(0);
+
+    // Enterprise (custom pricing, not self-serve per the marketing page)
+    // is deliberately NOT modeled as a Product row.
+    expect(reviews.some((p) => p.tier === 'enterprise')).toBe(false);
   });
 
   it('every product is active and has a positive price component', () => {
