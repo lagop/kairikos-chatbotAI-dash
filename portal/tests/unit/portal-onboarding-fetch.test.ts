@@ -184,33 +184,9 @@ describe('portalFetch cookie forwarding (KAIA-11955 round 3)', () => {
   });
 });
 
-describe('getChatbotStatus path (KAIA-11955 round 4)', () => {
-  // The Acme chatbot status card was leaking into the home page
-  // because getChatbotStatus() called /portal/chatbot-status, which
-  // doesn't exist as a route. The real route is /portal/status
-  // (see src/app/api/portal/status/route.ts), which returns the
-  // customer's actual spaceId and zero conversation count for a
-  // fresh signup. The wrong path 404'd and the helper fell back
-  // to MOCK_CHATBOT, which is the Acme happy-path fixture.
-  afterEach(() => {
-    fetchMock.mockReset();
-  });
-
-  it('hits /portal/status, not the stale /portal/chatbot-status', async () => {
-    mockApiResponse({
-      spaceId: 'spc_cmsh9mzor00018zsgsfa97l6m',
-      status: 'in-progress',
-      goLiveDate: null,
-      last7Days: { conversations: 0, fallbackRate: 0, escalationRate: 0 },
-    });
-    const { getChatbotStatus } = await import('@/lib/portal-data');
-    const summary = await getChatbotStatus('test-token');
-    const calledUrl = fetchMock.mock.calls[0][0] as string;
-    expect(calledUrl).toBe('https://project-fxidg.vercel.app/api/portal/status');
-    expect(calledUrl).not.toMatch(/chatbot-status/);
-    // The real data is returned, not the Acme MOCK_CHATBOT fallback.
-    expect(summary.spaceId).toBe('spc_cmsh9mzor00018zsgsfa97l6m');
-    expect(summary.status).toBe('in-progress');
-    expect(summary.last7Days.conversations).toBe(0);
-  });
-});
+// WP-17 — the getChatbotStatus(accessToken) regression test that used to
+// live here (KAIA-11955 round 4) was retired along with the function
+// itself: /portal/status now reads getDashboardData() directly (same as
+// /portal), so there is no self-fetch path left to regress. See
+// dashboard-data.test.ts for the equivalent coverage on the function
+// that replaced it.

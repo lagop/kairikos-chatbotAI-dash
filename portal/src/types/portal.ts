@@ -114,12 +114,6 @@ export interface SupportLink {
   description: string;
 }
 
-export interface PortalContext {
-  client: ChatbotClient;
-  onboarding: OnboardingTimelineRow[];
-  chatbot: ChatbotStatusSummary;
-}
-
 // KAIA-3921 — client profile contract. Mirrors the fields exposed by
 // `GET /api/portal/me` so the profile page can render the same shape
 // the API returns. The PATCH endpoint accepts the same fields minus the

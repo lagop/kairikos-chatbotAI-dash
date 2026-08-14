@@ -45,7 +45,64 @@ const DATE_FMT_LONG = new Intl.DateTimeFormat('es-ES', {
   year: 'numeric',
 });
 
-export function ChatbotStatusCard({ summary }: { summary: ChatbotStatusSummary }) {
+/**
+ * WP-17 AC — activity metrics show trend vs the previous period, not
+ * just the absolute value. A delta arrow + point/percent change is
+ * enough; no chart. `null` (no previous-period data, e.g. the dev-mock
+ * fixture) renders nothing rather than a misleading "+0%".
+ */
+function TrendBadge({ current, previous, isRate }: { current: number; previous: number | null; isRate: boolean }) {
+  if (previous === null) return null;
+  if (previous === 0 && current === 0) return null;
+  const delta = isRate ? (current - previous) * 100 : previous === 0 ? null : ((current - previous) / previous) * 100;
+  if (delta === null) {
+    return (
+      <span className="ml-2 text-xs font-medium text-kairikos-muted" data-testid="trend-badge" data-trend="new">
+        nuevo
+      </span>
+    );
+  }
+  const rounded = Math.round(delta * 10) / 10;
+  if (rounded === 0) {
+    return (
+      <span className="ml-2 text-xs font-medium text-kairikos-muted" data-testid="trend-badge" data-trend="flat">
+        sin cambios
+      </span>
+    );
+  }
+  const isUp = rounded > 0;
+  // Fewer conversations, fallbacks, or escalations is not automatically
+  // "bad" (a lower fallback rate is good; fewer conversations could be
+  // either) — the arrow is a neutral direction indicator, not a
+  // good/bad judgement, so it stays the same muted color both ways.
+  return (
+    <span
+      className="ml-2 text-xs font-medium text-kairikos-muted"
+      data-testid="trend-badge"
+      data-trend={isUp ? 'up' : 'down'}
+    >
+      {isUp ? '↑' : '↓'} {Math.abs(rounded).toLocaleString('es-ES', { maximumFractionDigits: 1 })}
+      {isRate ? ' pp' : '%'}
+    </span>
+  );
+}
+
+export interface ChatbotStatusCardPrevious7Days {
+  conversations: number;
+  fallbackRate: number;
+  escalationRate: number;
+}
+
+export function ChatbotStatusCard({
+  summary,
+  previous7Days,
+}: {
+  summary: ChatbotStatusSummary;
+  /** WP-17 — optional: when supplied, each metric shows a trend badge
+   *  against this prior 7-day window. Omit where no comparison window
+   *  is available (e.g. the portal_api_fallback degraded path). */
+  previous7Days?: ChatbotStatusCardPrevious7Days;
+}) {
   return (
     <div className="card" data-testid="status-card">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -80,20 +137,35 @@ export function ChatbotStatusCard({ summary }: { summary: ChatbotStatusSummary }
       >
         <div className="rounded-xl border border-kairikos-border bg-kairikos-surface2 p-4">
           <dt className="text-xs uppercase tracking-wider text-kairikos-muted">Conversaciones (7 d.)</dt>
-          <dd className="mt-1 text-2xl font-semibold" data-testid="conversations-7d">
+          <dd className="mt-1 flex items-baseline text-2xl font-semibold" data-testid="conversations-7d">
             {summary.last7Days.conversations}
+            <TrendBadge
+              current={summary.last7Days.conversations}
+              previous={previous7Days?.conversations ?? null}
+              isRate={false}
+            />
           </dd>
         </div>
         <div className="rounded-xl border border-kairikos-border bg-kairikos-surface2 p-4">
           <dt className="text-xs uppercase tracking-wider text-kairikos-muted">Tasa de fallback</dt>
-          <dd className="mt-1 text-2xl font-semibold" data-testid="fallback-rate">
+          <dd className="mt-1 flex items-baseline text-2xl font-semibold" data-testid="fallback-rate">
             {PERCENT.format(summary.last7Days.fallbackRate)}
+            <TrendBadge
+              current={summary.last7Days.fallbackRate}
+              previous={previous7Days?.fallbackRate ?? null}
+              isRate
+            />
           </dd>
         </div>
         <div className="rounded-xl border border-kairikos-border bg-kairikos-surface2 p-4">
           <dt className="text-xs uppercase tracking-wider text-kairikos-muted">Tasa de derivación</dt>
-          <dd className="mt-1 text-2xl font-semibold" data-testid="escalation-rate">
+          <dd className="mt-1 flex items-baseline text-2xl font-semibold" data-testid="escalation-rate">
             {PERCENT.format(summary.last7Days.escalationRate)}
+            <TrendBadge
+              current={summary.last7Days.escalationRate}
+              previous={previous7Days?.escalationRate ?? null}
+              isRate
+            />
           </dd>
         </div>
       </dl>
