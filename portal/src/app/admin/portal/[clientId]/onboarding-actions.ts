@@ -29,9 +29,12 @@
 // Idempotency: `chatbotActivity.upsert` on the unique
 // `(clientId, productCode, milestone)` key (WP-14; was `(clientId,
 // milestone)`) guarantees a re-click on the same milestone is a no-op-ish
-// (the row already exists, `completedAt` is re-stamped to `now()`). This
-// operator control only exists for the chatbot's timeline today, so
-// productCode is fixed to CHATBOT_PRODUCT_CODE.
+// (the row already exists, `completedAt` is re-stamped to `now()`).
+//
+// WP-18 — the operator can now advance the milestone timeline for any
+// product the client has (not just chatbot). `productCode` is read from
+// the same FormData the milestone comes from and validated against the
+// product catalog registry, mirroring `isAllowedMilestone`'s shape.
 //
 // KAIA-14409 — write goes through the regular pooled `prisma` client. The
 // earlier direct-connection split (KAIA-14388) was inert on prod because
@@ -46,12 +49,21 @@ import { isDatabaseConfigured, prisma } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { isAllowedMilestone } from './onboarding-constants';
 import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
+import { PRODUCT_CODES, type ProductCode } from '@/lib/catalogs';
+
+function isProductCode(value: string): value is ProductCode {
+  return (PRODUCT_CODES as readonly string[]).includes(value);
+}
 
 export async function advanceOnboardingMilestone(
   formData: FormData,
 ): Promise<void> {
   const clientId = formData.get('clientId');
   const milestone = formData.get('milestone');
+  const productCodeRaw = formData.get('productCode');
+  const productCode = typeof productCodeRaw === 'string' && isProductCode(productCodeRaw)
+    ? productCodeRaw
+    : CHATBOT_PRODUCT_CODE;
 
   if (typeof clientId !== 'string' || !clientId) {
     return;
@@ -82,14 +94,14 @@ export async function advanceOnboardingMilestone(
     where: {
       clientId_productCode_milestone: {
         clientId,
-        productCode: CHATBOT_PRODUCT_CODE,
+        productCode,
         milestone,
       },
     },
     create: {
       clientId,
       tenantId: client.tenantId,
-      productCode: CHATBOT_PRODUCT_CODE,
+      productCode,
       milestone,
       completedAt: now,
       notes: note,
@@ -102,5 +114,8 @@ export async function advanceOnboardingMilestone(
   });
 
   revalidatePath(`/admin/portal/${clientId}`);
-  revalidatePath(`/portal/onboarding`);
+  revalidatePath(`/portal`);
+  if (productCode === CHATBOT_PRODUCT_CODE) {
+    revalidatePath(`/portal/onboarding`);
+  }
 }

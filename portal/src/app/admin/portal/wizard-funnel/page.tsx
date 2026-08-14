@@ -6,7 +6,8 @@ import { EmptyState } from '@/components/portal/EmptyState';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { MOCK_CLIENT, MOCK_SECONDARY_CLIENT } from '@/lib/portal-data';
-import { WIZARD_STEP_NUMBERS, type WizardStepNumber } from '@/lib/wizard-catalog';
+import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
+import { PRODUCT_CODES, PRODUCT_CATALOGS, getProductCatalog, type ProductCode } from '@/lib/catalogs';
 import { TIER_LABEL } from '@/lib/billing-tier';
 
 export const dynamic = 'force-dynamic';
@@ -18,6 +19,10 @@ export const metadata: Metadata = {
   alternates: { canonical: '/admin/portal/wizard-funnel' },
   robots: { index: false, follow: false },
 };
+
+function isProductCode(value: string): value is ProductCode {
+  return (PRODUCT_CODES as readonly string[]).includes(value);
+}
 
 const STATUS_PILL: Record<string, string> = {
   draft: 'pill-muted',
@@ -69,23 +74,25 @@ interface ClientFunnelRow {
   stuck: boolean;
 }
 
-async function loadRowsFromDb(): Promise<ClientFunnelRow[]> {
-  const clients = await prisma.chatbotClient.findMany({
-    orderBy: { createdAt: 'desc' },
+async function loadRowsFromDb(productCode: ProductCode, stepKeys: readonly string[]): Promise<ClientFunnelRow[]> {
+  const clientProducts = await prisma.clientProduct.findMany({
+    where: { product: { code: productCode } },
+    orderBy: { subscribedAt: 'desc' },
     select: {
-      id: true,
-      companyName: true,
-      name: true,
-      email: true,
-      tier: true,
-      goLiveAt: true,
+      client: {
+        select: { id: true, companyName: true, name: true, email: true, tier: true, goLiveAt: true },
+      },
     },
   });
+  // A client could in principle have two ClientProduct rows for the same
+  // productCode (e.g. an old cancelled tier plus a new active one) — the
+  // funnel is a per-client, per-product view, so de-dupe on clientId.
+  const clients = Array.from(new Map(clientProducts.map((cp) => [cp.client.id, cp.client])).values());
 
   const rows: ClientFunnelRow[] = [];
   for (const c of clients) {
     const stepRows = await prisma.chatbotConfigStep.findMany({
-      where: { clientId: c.id },
+      where: { clientId: c.id, productCode },
       orderBy: [{ stepKey: 'asc' }, { version: 'desc' }],
       select: {
         stepKey: true,
@@ -114,8 +121,7 @@ async function loadRowsFromDb(): Promise<ClientFunnelRow[]> {
     let approved = 0;
     let submitted = 0;
     let needsRev = 0;
-    const perStep = WIZARD_STEP_NUMBERS.map((n) => {
-      const key = String(n as WizardStepNumber);
+    const perStep = stepKeys.map((key) => {
       const latest = latestByStep.get(key);
       if (latest) {
         if (!lastUpdated || latest.updatedAt > lastUpdated) lastUpdated = latest.updatedAt;
@@ -147,54 +153,60 @@ async function loadRowsFromDb(): Promise<ClientFunnelRow[]> {
       approvedCount: approved,
       submittedCount: submitted,
       needsRevisionCount: needsRev,
-      totalSteps: WIZARD_STEP_NUMBERS.length,
+      totalSteps: stepKeys.length,
       stuck,
     });
   }
   return rows;
 }
 
-function loadMockRows(): ClientFunnelRow[] {
+function loadMockRows(stepKeys: readonly string[]): ClientFunnelRow[] {
   const now = Date.now();
   const mk = (
     c: typeof MOCK_CLIENT | typeof MOCK_SECONDARY_CLIENT,
     lastDays: number,
-    approved: number[],
+    approvedThrough: number,
   ): ClientFunnelRow => {
     const lastUpdated = new Date(now - lastDays * 24 * 60 * 60 * 1000).toISOString();
-    const perStep = WIZARD_STEP_NUMBERS.map((n) => {
-      const key = String(n as WizardStepNumber);
-      if (approved.includes(n)) {
+    const perStep = stepKeys.map((key, i) => {
+      if (i < approvedThrough) {
         return { stepKey: key, status: 'approved', updatedAt: lastUpdated, activeForBot: true };
       }
       return { stepKey: key, status: null, updatedAt: null, activeForBot: false };
     });
+    const approvedCount = Math.min(approvedThrough, stepKeys.length);
     return {
       clientId: c.id,
       companyName: c.companyName,
       email: c.primaryContactEmail,
       tier: c.tier,
       goLiveAt: c.goLiveDate ?? null,
-      lastUpdatedAt: approved.length > 0 ? lastUpdated : null,
+      lastUpdatedAt: approvedCount > 0 ? lastUpdated : null,
       perStep,
-      approvedCount: approved.length,
+      approvedCount,
       submittedCount: 0,
       needsRevisionCount: 0,
-      totalSteps: WIZARD_STEP_NUMBERS.length,
-      stuck: approved.length === 0 && lastDays > STUCK_DAYS,
+      totalSteps: stepKeys.length,
+      stuck: approvedCount === 0 && lastDays > STUCK_DAYS,
     };
   };
-  return [
-    mk(MOCK_CLIENT, 1, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]),
-    mk(MOCK_SECONDARY_CLIENT, 5, [1, 2, 3]),
-  ];
+  return [mk(MOCK_CLIENT, 1, 11), mk(MOCK_SECONDARY_CLIENT, 5, 3)];
 }
 
-export default async function AdminWizardFunnelPage() {
+export default async function AdminWizardFunnelPage({
+  searchParams,
+}: {
+  searchParams: { product?: string };
+}) {
   const session = await getSession();
   if (!session.isOperator) {
     redirect('/portal/sin-acceso');
   }
+
+  const productCodeRaw = searchParams.product ?? CHATBOT_PRODUCT_CODE;
+  const productCode: ProductCode = isProductCode(productCodeRaw) ? productCodeRaw : CHATBOT_PRODUCT_CODE;
+  const catalog = getProductCatalog(productCode);
+  const stepKeys = catalog.stepKeys;
 
   // KAIA-13758 — mirror the `listAdminClients` (KAIA-13715) hardening: try
   // Prisma unconditionally, surface a real empty state when Prisma returns
@@ -204,13 +216,15 @@ export default async function AdminWizardFunnelPage() {
   // empty tenant lists and a transient Prisma outage behind the same
   // Acme Corp / Globex Inc fixture.
   let rows: ClientFunnelRow[] = [];
-  try {
-    rows = await loadRowsFromDb();
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('[admin/portal/wizard-funnel] Prisma read failed:', err);
-    if (!isDatabaseConfigured) {
-      rows = loadMockRows();
+  if (stepKeys.length > 0) {
+    try {
+      rows = await loadRowsFromDb(productCode, stepKeys);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[admin/portal/wizard-funnel] Prisma read failed:', err);
+      if (!isDatabaseConfigured && productCode === CHATBOT_PRODUCT_CODE) {
+        rows = loadMockRows(stepKeys);
+      }
     }
   }
   // KAIA-13758 — when Prisma returned successfully with zero rows we
@@ -220,7 +234,6 @@ export default async function AdminWizardFunnelPage() {
 
   const stuckCount = rows.filter((r) => r.stuck).length;
   const liveCount = rows.filter((r) => r.goLiveAt !== null).length;
-  const stepKeys = WIZARD_STEP_NUMBERS.map((n) => String(n as WizardStepNumber));
 
   return (
     <div className="space-y-6">
@@ -232,7 +245,7 @@ export default async function AdminWizardFunnelPage() {
 
       <PageHeading
         eyebrow="Operador · embudo de cohortes"
-        title="Embudo de configuración por cliente"
+        title={`Embudo de configuración por cliente · ${catalog.label}`}
         description={`${rows.length} cliente${rows.length === 1 ? '' : 's'} · ${stuckCount} atascado${stuckCount === 1 ? '' : 's'} (más de ${STUCK_DAYS} días sin editar) · ${liveCount} en producción`}
         actions={
           <form action="/api/portal/operator" method="post">
@@ -245,10 +258,33 @@ export default async function AdminWizardFunnelPage() {
         }
       />
 
-      {rows.length === 0 ? (
+      <nav
+        aria-label="Filtro por producto"
+        className="card flex flex-wrap items-center gap-2 p-3"
+        data-testid="funnel-product-filter"
+      >
+        {PRODUCT_CODES.map((code) => (
+          <Link
+            key={code}
+            href={`/admin/portal/wizard-funnel?product=${code}`}
+            className={code === productCode ? 'btn-primary' : 'btn-ghost'}
+            aria-pressed={code === productCode}
+            data-testid={`funnel-product-filter-${code}`}
+          >
+            {PRODUCT_CATALOGS[code].label}
+          </Link>
+        ))}
+      </nav>
+
+      {stepKeys.length === 0 ? (
+        <EmptyState
+          title="Sin wizard todavía"
+          description={`${catalog.label} no tiene un asistente de configuración por pasos todavía, así que no hay embudo que mostrar.`}
+        />
+      ) : rows.length === 0 ? (
         <EmptyState
           title="Sin clientes"
-          description="Cuando se den de alta clientes en el portal aparecerán aquí con el estado de su wizard."
+          description={`Cuando se den de alta clientes con ${catalog.label} aparecerán aquí con el estado de su wizard.`}
         />
       ) : (
         <section
@@ -355,7 +391,7 @@ export default async function AdminWizardFunnelPage() {
                   </td>
                   <td className="py-3">
                     <Link
-                      href={`/admin/portal/${row.clientId}/wizard`}
+                      href={`/admin/portal/${row.clientId}/wizard?product=${productCode}`}
                       className="text-kairikos-accent2 underline"
                       data-testid="wizard-funnel-row-open"
                     >

@@ -5,12 +5,14 @@ import { PageHeading } from '@/components/portal/PageHeading';
 import AdminConfigReview from '@/components/admin/AdminConfigReview';
 import { getSession } from '@/lib/session';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
-import { parseStepNumber, getStepDefinition, WIZARD_STEP_NUMBERS } from '@/lib/wizard-catalog';
+import { parseStepNumber, getStepDefinition, WIZARD_STEP_NUMBERS, CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
+import { PRODUCT_CODES, getProductCatalog } from '@/lib/catalogs';
 
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
   params: { clientId: string; step: string };
+  searchParams: { product?: string };
 }
 
 const STEP_KEY_RE = /^[a-z0-9_-]{1,64}$/i;
@@ -42,10 +44,22 @@ function isKnownStep(step: string): boolean {
   return WIZARD_STEP_NUMBERS.some((n) => String(n) === step);
 }
 
-export default async function AdminClientWizardStepPage({ params }: PageProps) {
+export default async function AdminClientWizardStepPage({ params, searchParams }: PageProps) {
   const session = await getSession();
   if (!session.isOperator) {
     redirect('/portal/sin-acceso');
+  }
+
+  const productCodeRaw = searchParams.product ?? CHATBOT_PRODUCT_CODE;
+  if (!(PRODUCT_CODES as readonly string[]).includes(productCodeRaw)) {
+    notFound();
+  }
+  const productCode = productCodeRaw;
+  // WP-18 — mirrors the wizard summary page: only chatbot has real step
+  // content today (see @/lib/catalogs), so a step review for any other
+  // product has nothing to show.
+  if (getProductCatalog(productCode).stepKeys.length === 0) {
+    notFound();
   }
 
   if (!isKnownStep(params.step)) {
@@ -83,7 +97,7 @@ export default async function AdminClientWizardStepPage({ params }: PageProps) {
     <div className="space-y-6">
       <div className="text-sm text-kairikos-muted">
         <Link
-          href={`/admin/portal/${params.clientId}/wizard`}
+          href={`/admin/portal/${params.clientId}/wizard?product=${productCode}`}
           className="hover:text-kairikos-text"
         >
           ← Volver al wizard de {clientLabel}
@@ -100,7 +114,7 @@ export default async function AdminClientWizardStepPage({ params }: PageProps) {
         }
         actions={
           <Link
-            href={`/admin/portal/${params.clientId}/wizard`}
+            href={`/admin/portal/${params.clientId}/wizard?product=${productCode}`}
             className="btn-ghost"
             data-testid="admin-wizard-step-back-to-summary"
           >
@@ -116,7 +130,7 @@ export default async function AdminClientWizardStepPage({ params }: PageProps) {
         data-step-number={def.number}
         data-v11-deferred={def.v11Deferred ? 'true' : 'false'}
       >
-        <AdminConfigReview clientId={params.clientId} />
+        <AdminConfigReview clientId={params.clientId} productCode={productCode} />
       </section>
     </div>
   );

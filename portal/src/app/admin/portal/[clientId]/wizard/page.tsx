@@ -10,12 +10,14 @@ import { MOCK_CLIENT, MOCK_SECONDARY_CLIENT } from '@/lib/portal-data';
 import { resolveClientTier, readLatestStepsForClient } from '@/lib/wizard-tier-prisma';
 import { buildSavedStateMap, listStepsForOperator } from '@/lib/wizard-visibility';
 import { getStepDefinition, WIZARD_STEP_NUMBERS, CHATBOT_PRODUCT_CODE, type WizardStepNumber } from '@/lib/wizard-catalog';
+import { PRODUCT_CODES, getProductCatalog } from '@/lib/catalogs';
 import { TIER_LABEL } from '@/lib/billing-tier';
 
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
   params: { clientId: string };
+  searchParams: { product?: string };
 }
 
 const BLOCK_LABEL: Record<string, string> = {
@@ -67,10 +69,24 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function AdminClientWizardPage({ params }: PageProps) {
+export default async function AdminClientWizardPage({ params, searchParams }: PageProps) {
   const session = await getSession();
   if (!session.isOperator) {
     redirect('/portal/sin-acceso');
+  }
+
+  const productCodeRaw = searchParams.product ?? CHATBOT_PRODUCT_CODE;
+  if (!(PRODUCT_CODES as readonly string[]).includes(productCodeRaw)) {
+    notFound();
+  }
+  const productCode = productCodeRaw;
+  // WP-18 — only the chatbot product has real wizard step content today
+  // (see @/lib/catalogs); the other four ship with empty catalogs. There
+  // is nothing to review yet for those, so this page 404s rather than
+  // running the chatbot-shaped step machinery against an empty catalog —
+  // mirrors the client-facing /portal/wizard/[product] behaviour (WP-16).
+  if (getProductCatalog(productCode).stepKeys.length === 0) {
+    notFound();
   }
 
   let companyName = 'Cliente';
@@ -146,7 +162,7 @@ export default async function AdminClientWizardPage({ params }: PageProps) {
 
   if (foundInDb) {
     try {
-      const savedRows = await readLatestStepsForClient(prisma, params.clientId, CHATBOT_PRODUCT_CODE);
+      const savedRows = await readLatestStepsForClient(prisma, params.clientId, productCode);
       const savedMap = buildSavedStateMap(
         savedRows.map((r) => ({
           stepKey: r.stepKey,
@@ -176,7 +192,7 @@ export default async function AdminClientWizardPage({ params }: PageProps) {
       }));
 
       const stepRows = await prisma.chatbotConfigStep.findMany({
-        where: { clientId: params.clientId },
+        where: { clientId: params.clientId, productCode },
         orderBy: [{ stepKey: 'asc' }, { version: 'desc' }],
         select: {
           stepKey: true,
@@ -283,7 +299,7 @@ export default async function AdminClientWizardPage({ params }: PageProps) {
     <div className="space-y-6">
       <div className="text-sm text-kairikos-muted">
         <Link
-          href={`/admin/portal/${params.clientId}`}
+          href={`/admin/portal/${params.clientId}?product=${productCode}`}
           className="hover:text-kairikos-text"
         >
           ← Volver al cliente
@@ -300,7 +316,7 @@ export default async function AdminClientWizardPage({ params }: PageProps) {
         }
         actions={
           <Link
-            href="/admin/portal/wizard-funnel"
+            href={`/admin/portal/wizard-funnel?product=${productCode}`}
             className="btn-ghost"
             data-testid="admin-wizard-funnel-link"
           >
@@ -398,7 +414,7 @@ export default async function AdminClientWizardPage({ params }: PageProps) {
                   </td>
                   <td className="py-3">
                     <Link
-                      href={`/admin/portal/${params.clientId}/wizard/${step.key}`}
+                      href={`/admin/portal/${params.clientId}/wizard/${step.key}?product=${productCode}`}
                       className="text-kairikos-accent2 underline"
                       data-testid={`admin-wizard-step-open-${step.key}`}
                     >
