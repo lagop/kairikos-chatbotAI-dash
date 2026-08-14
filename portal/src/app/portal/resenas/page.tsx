@@ -6,6 +6,7 @@ import { resolveClientFromSession } from '@/lib/portal-session';
 import { isProductContracted } from '@/lib/client-product-access';
 import { EmptyState } from '@/components/portal/EmptyState';
 import { GoogleReviewsPanel, type ConnectionStatus } from '@/components/portal/GoogleReviewsPanel';
+import { ReviewCampaignsPanel, type CampaignSummary } from '@/components/portal/ReviewCampaignsPanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -164,6 +165,26 @@ export default async function PortalResenasPage({ searchParams }: PageProps) {
     ? (connection.status as ConnectionStatus)
     : 'not_connected';
 
+  const campaigns: CampaignSummary[] =
+    connectionStatus === 'active'
+      ? (
+          await prisma.reviewRequestCampaign.findMany({
+            where: { clientId: resolved.clientId },
+            orderBy: { createdAt: 'desc' },
+            include: { requests: { select: { status: true, clickedAt: true } } },
+          })
+        ).map((c) => ({
+          id: c.id,
+          name: c.name,
+          status: c.status,
+          createdAt: c.createdAt.toISOString(),
+          totalRequests: c.requests.length,
+          sent: c.requests.filter((r) => r.status === 'sent').length,
+          failed: c.requests.filter((r) => r.status === 'failed').length,
+          clicked: c.requests.filter((r) => r.clickedAt !== null).length,
+        }))
+      : [];
+
   return (
     <div className="space-y-6" data-testid="portal-resenas-connected">
       <header className="space-y-2">
@@ -230,6 +251,8 @@ export default async function PortalResenasPage({ searchParams }: PageProps) {
           )}
         </section>
       ) : null}
+
+      {connectionStatus === 'active' ? <ReviewCampaignsPanel campaigns={campaigns} /> : null}
     </div>
   );
 }

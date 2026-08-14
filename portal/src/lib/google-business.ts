@@ -26,6 +26,8 @@ const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const ACCOUNTS_URL = 'https://mybusinessaccountmanagement.googleapis.com/v1/accounts';
 const locationsUrl = (accountName: string) =>
   `https://mybusinessbusinessinformation.googleapis.com/v1/${accountName}/locations?readMask=name,title`;
+const locationMetadataUrl = (locationName: string) =>
+  `https://mybusinessbusinessinformation.googleapis.com/v1/${locationName}?readMask=metadata`;
 
 // A single scope covers every Business Profile management call this
 // integration needs (accounts, locations, reviews) — see the WP-20
@@ -168,6 +170,27 @@ export async function fetchAccessibleLocations(accessToken: string): Promise<Goo
     }
   }
   return results;
+}
+
+/**
+ * WP-22b — fetches Google's own "leave a review" link for a location
+ * (Location.metadata.newReviewUri via the Business Information API).
+ * Returns null on any failure (missing field, non-ok response, network
+ * error) rather than throwing — the caller decides whether "no review
+ * link yet" blocks campaign creation.
+ */
+export async function fetchLocationReviewUrl(accessToken: string, locationId: string): Promise<string | null> {
+  try {
+    const res = await fetch(locationMetadataUrl(locationId), {
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { metadata?: { newReviewUri?: string } };
+    return json.metadata?.newReviewUri ?? null;
+  } catch (err) {
+    logError('google_business.fetch_review_url', err, { route: 'lib/google-business.ts' }, 'warn');
+    return null;
+  }
 }
 
 /** Revoke a token (access or refresh) at Google — the AC that a
