@@ -120,6 +120,7 @@ model ChatbotClient {
   operatorActions       OperatorAction[]
   googleBusinessConnections GoogleBusinessConnection[]
   googleReviews             GoogleReview[]
+  reviewRequestCampaigns    ReviewRequestCampaign[]
 
   @@index([stripeCustomerId])
   @@index([tier])
@@ -476,6 +477,7 @@ model Tenant {
   invoices                Invoice[]
   googleBusinessConnections GoogleBusinessConnection[]
   googleReviews             GoogleReview[]
+  reviewRequestCampaigns    ReviewRequestCampaign[]
 
   @@index([slug])
   @@index([status])
@@ -1174,10 +1176,17 @@ model GoogleBusinessConnection {
   connectedAt            DateTime  @default(now()) @map("connected_at")
   lastSyncAt             DateTime? @map("last_sync_at")
   lastSyncError          String?   @map("last_sync_error")
+  // WP-22b — Google's own "leave a review" link for this location
+  // (Business Information API's Location.metadata.newReviewUri).
+  // Fetched lazily on first campaign creation and cached here — it does
+  // not change for a given location, so there is no reason to re-fetch
+  // it on every campaign.
+  reviewUrl              String?   @map("review_url")
 
   client ChatbotClient   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   reviews GoogleReview[]
+  campaigns ReviewRequestCampaign[]
 
   @@unique([clientId, locationId])
   @@index([tenantId])
@@ -1220,4 +1229,64 @@ model GoogleReview {
   @@index([connectionId])
   @@index([clientId])
   @@index([starRating])
+}
+
+// =============================================================================
+// WP-22b — a batch of review-request invitations for one connected
+// location. AC: "la misma invitación se envía a todos los clientes por
+// igual" — there is deliberately no field anywhere on these two models
+// for a customer's satisfaction/experience rating. Review gating (asking
+// first, routing only happy customers to the public review link)
+// violates Google's policies; nothing in this schema makes it
+// expressible.
+model ReviewRequestCampaign {
+  id           String   @id @default(uuid()) @db.Uuid
+  connectionId String   @map("connection_id") @db.Uuid
+  clientId     String   @map("client_id")
+  tenantId     String   @map("tenant_id") @db.Uuid
+  name         String
+  // 'active' | 'paused'.
+  status       String   @default("active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  connection GoogleBusinessConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  client     ChatbotClient            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant     Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  requests   ReviewRequest[]
+
+  @@index([clientId])
+  @@index([connectionId])
+}
+
+// One row per invited recipient. `channel` is a free string so a future
+// 'sms' implementation needs no schema change — WP-22b only implements
+// 'email' (this codebase has no SMS provider integrated anywhere yet).
+model ReviewRequest {
+  id              String    @id @default(uuid()) @db.Uuid
+  campaignId      String    @map("campaign_id") @db.Uuid
+  channel         String    @default("email")
+  recipient       String
+  recipientName   String?   @map("recipient_name")
+  // Legal basis for contacting this recipient — set once per campaign,
+  // applied uniformly to every request in it (same "no per-recipient
+  // discrimination" principle as the review-gating constraint above).
+  consentBasis    String    @map("consent_basis")
+  // 'pending' | 'sent' | 'failed'. A retry (see
+  // review-request-campaign.ts's retryFailedRequests) only ever touches
+  // 'failed' rows — an already-'sent' request is never re-sent.
+  status          String    @default("pending")
+  resendMessageId String?   @map("resend_message_id")
+  sendError       String?   @map("send_error")
+  sentAt          DateTime? @map("sent_at")
+  // Set the first time GET /r/[requestId] is visited — the AC's
+  // "conversion rate" measure. Never records anything about the review
+  // itself, only that the link was opened.
+  clickedAt       DateTime? @map("clicked_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  campaign ReviewRequestCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, recipient])
+  @@index([campaignId])
+  @@index([status])
 }
