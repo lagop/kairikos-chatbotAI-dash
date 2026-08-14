@@ -213,6 +213,21 @@ describe('getDashboardData — source: prisma', () => {
     expect(findManyConfigSteps).not.toHaveBeenCalled();
   });
 
+  it('live product other than chatbot → CTA links to its own portal page, not a dead end', async () => {
+    findUniqueClient.mockResolvedValueOnce({ companyName: 'Orly', name: 'Orly' });
+    findManyClientProducts.mockResolvedValueOnce([
+      { onboardingState: 'live', goLiveAt: new Date('2026-01-01T00:00:00.000Z'), product: { code: 'web', name: 'Plataforma Web' } },
+      { onboardingState: 'live', goLiveAt: new Date('2026-01-01T00:00:00.000Z'), product: { code: 'reviews', name: 'Reseñas en Google' } },
+    ]);
+
+    const data = await getDashboardData(RESOLVED);
+
+    const [web, reviews] = data.products;
+    expect(web.ctaHref).toBe('/portal/web');
+    // Reviews keeps its pre-existing Spanish route folder, not /portal/reviews.
+    expect(reviews.ctaHref).toBe('/portal/resenas');
+  });
+
   it('N active ClientProducts → N cards, only chatbot carries activity metrics', async () => {
     findUniqueClient.mockResolvedValueOnce({ companyName: 'Orly', name: 'Orly' });
     findManyClientProducts.mockResolvedValueOnce([

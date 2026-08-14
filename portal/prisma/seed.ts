@@ -48,12 +48,15 @@ const DEV_PASSWORD_HASH = '$argon2id$v=19$m=19456,t=2,p=1$hd0vm1Nk/ZoaOQ/0r148Vg
 // number (chatbot setup: €299–€499; web platform: €799–€1.299) — this
 // catalog uses the low end of each range ("desde X€"), noted per entry.
 // `reviews` (Google reviews) was gated `isActive: false` while WP-20 (the
-// Google API access approval) was pending; now active at €99/mes, no
-// setup fee. Its `stripeRecurringPriceId` below is a PLACEHOLDER — no
-// real Stripe Price object exists for it yet. Self-serve checkout
-// (api/portal/billing/checkout) 404s with `product_price_id_missing`
-// until it's swapped for a real Price id created in the Stripe
-// Dashboard; do not announce this product to clients before that swap.
+// Google API access approval) was pending; now active with its two
+// self-serve tiers (Basic/Pro — see the entry below for the source and
+// the documented feature gap against the marketing page). Every
+// `stripeRecurringPriceId`/`stripeSetupPriceId` in this file is a
+// PLACEHOLDER — no real Stripe Price objects exist yet. Self-serve
+// checkout (api/portal/billing/checkout) 404s with
+// `product_price_id_missing` until they're swapped for real Price ids
+// created in the Stripe Dashboard; do not announce reviews to clients
+// before that swap.
 // =============================================================================
 export interface ProductCatalogEntry {
   code: string;
@@ -111,16 +114,42 @@ export const PRODUCT_CATALOG: ProductCatalogEntry[] = [
     priceCents: 19900, setupFeeCents: 0, currency: 'EUR', isActive: true,
     stripeRecurringPriceId: null, stripeSetupPriceId: null,
   },
-  // Google reviews — monthly only, no setup fee, same shape as SEO.
-  // WP-20 (Google API approval) is done; activated at €99/mes.
-  // WP-15 — code renamed from 'resenas' to 'reviews', same reason as
-  // 'leads' above.
-  // stripeRecurringPriceId is a PLACEHOLDER pending a real Stripe Price
-  // object — see the catalog-level comment above before reseeding prod.
+  // Google reviews — two self-serve tiers, matching the real published
+  // pricing at kairikos.com/resenas-google (checked 2026-08-15). WP-15 —
+  // code renamed from 'resenas' to 'reviews', same reason as 'leads'
+  // above. stripeRecurringPriceId/stripeSetupPriceId are PLACEHOLDERS
+  // pending real Stripe Price objects — see the catalog-level comment
+  // above before reseeding prod.
+  //
+  // A third plan, "Enterprise", is custom-priced ("a medida") and
+  // explicitly not self-serve on the marketing page — it has no fixed
+  // amount to charge via Stripe Checkout, so it's deliberately NOT
+  // modeled as a Product row here. /portal/productos instead shows a
+  // "contáctanos" note under the Reseñas card pointing to support.
+  //
+  // The marketing page also promises real functionality this portal
+  // does not build yet — documented here so the gap stays visible
+  // rather than silently forgotten:
+  //   - multichannel requests (email + SMS + WhatsApp) — only email
+  //     (Resend) exists today (WP-22b)
+  //   - auto-triggering requests from the client's own booking/CRM
+  //     software (Doctoralia, TheFork, Bizneo, Holded, etc. — 20+
+  //     integrations advertised) — campaigns are 100% manual today,
+  //     the operator pastes a recipient list
+  //   - an internal pre-review satisfaction survey (Pro plan only,
+  //     explicitly does not gate the actual Google review request)
+  //   - client-facing data export
+  //   - tracking/enforcement of the "double your reviews in 90 days or
+  //     we refund the last month" guarantee
   {
-    code: 'reviews', tier: 'standard', name: 'Reseñas en Google',
-    priceCents: 9900, setupFeeCents: 0, currency: 'EUR', isActive: true,
-    stripeRecurringPriceId: 'price_reviews', stripeSetupPriceId: null,
+    code: 'reviews', tier: 'basic', name: 'Reseñas en Google — Basic',
+    priceCents: 9900, setupFeeCents: 9900, currency: 'EUR', isActive: true,
+    stripeRecurringPriceId: 'price_reviews_basic', stripeSetupPriceId: 'price_reviews_basic_setup',
+  },
+  {
+    code: 'reviews', tier: 'pro', name: 'Reseñas en Google — Pro',
+    priceCents: 14900, setupFeeCents: 0, currency: 'EUR', isActive: true,
+    stripeRecurringPriceId: 'price_reviews_pro', stripeSetupPriceId: null,
   },
 ];
 
@@ -147,6 +176,21 @@ async function seedProductCatalog(): Promise<void> {
         stripeSetupPriceId: p.stripeSetupPriceId,
       },
     });
+  }
+
+  // A renamed tier (e.g. reviews' 'standard' → 'basic'/'pro', this WP)
+  // upserts the new rows but never touches the old one — it just
+  // lingers, isActive:true, still showing up in every `where: {isActive:
+  // true}` query (e.g. /portal/productos), a stale price alongside the
+  // real ones. Deactivate (not delete — a real ClientProduct could FK
+  // to it) any row whose (code, tier) fell out of the catalog above, so
+  // reseeding an existing database actually reconciles to the current
+  // source of truth instead of only ever adding to it.
+  const currentPairs = new Set(PRODUCT_CATALOG.map((p) => `${p.code}:${p.tier}`));
+  const existing = await prisma.product.findMany({ where: { isActive: true }, select: { id: true, code: true, tier: true } });
+  const staleIds = existing.filter((p) => !currentPairs.has(`${p.code}:${p.tier}`)).map((p) => p.id);
+  if (staleIds.length > 0) {
+    await prisma.product.updateMany({ where: { id: { in: staleIds } }, data: { isActive: false } });
   }
 }
 
