@@ -118,6 +118,7 @@ model ChatbotClient {
   subscriptions         Subscription[]
   invoices              Invoice[]
   operatorActions       OperatorAction[]
+  googleBusinessConnections GoogleBusinessConnection[]
 
   @@index([stripeCustomerId])
   @@index([tier])
@@ -472,6 +473,7 @@ model Tenant {
   productAudits           ClientProductAudit[]
   subscriptions           Subscription[]
   invoices                Invoice[]
+  googleBusinessConnections GoogleBusinessConnection[]
 
   @@index([slug])
   @@index([status])
@@ -1129,4 +1131,52 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+// =============================================================================
+// WP-21 — a client's own Google Business Profile, connected via OAuth so
+// WP-22 can sync/reply to reviews on their behalf. Deliberately separate
+// from the GOOGLE_OAUTH_CLIENT_ID/SECRET used by lib/google-drive.ts
+// (KAIA-2913): that integration authorizes Kairikos's OWN Google account
+// for internal Drive provisioning with one static refresh token; this one
+// authorizes each CLIENT's Google account, one row per connected
+// location, via its own OAuth client (scope: business.manage) so the two
+// consent screens and credential sets never mix.
+//
+// The refresh token is the highest-value secret this schema stores after
+// Stripe's own credentials — it grants ongoing API access to the client's
+// real Google Business listing. It is never stored as plaintext or as a
+// single opaque string: ciphertext/iv/tag are separate Bytes columns,
+// encrypted with AES-256-GCM via the generic encryptBuffer/decryptBuffer
+// primitives in lib/operator-crypto.ts (a DIFFERENT key,
+// GOOGLE_TOKEN_ENCRYPTION_KEY, from the one guarding operator TOTP
+// secrets — different secret classes should never share key material).
+//
+// `status`: 'active' | 'needs_reconnect' (refresh failed — Google
+// revoked/expired it; surfaced in the portal as a degraded state with a
+// reconnect prompt) | 'revoked' (the client disconnected from Kairikos's
+// side; the row is kept, not hard-deleted, so sync history and the
+// disconnect itself stay auditable).
+model GoogleBusinessConnection {
+  id                     String    @id @default(uuid()) @db.Uuid
+  clientId               String    @map("client_id")
+  tenantId               String    @map("tenant_id") @db.Uuid
+  googleAccountId        String    @map("google_account_id")
+  locationId             String    @map("location_id")
+  locationName           String    @map("location_name")
+  refreshTokenCiphertext Bytes     @map("refresh_token_ciphertext")
+  refreshTokenIv         Bytes     @map("refresh_token_iv")
+  refreshTokenTag        Bytes     @map("refresh_token_tag")
+  scopes                 String[]
+  status                 String    @default("active")
+  connectedAt            DateTime  @default(now()) @map("connected_at")
+  lastSyncAt             DateTime? @map("last_sync_at")
+  lastSyncError          String?   @map("last_sync_error")
+
+  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([clientId, locationId])
+  @@index([tenantId])
+  @@index([status])
 }
