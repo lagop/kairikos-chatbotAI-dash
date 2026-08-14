@@ -198,19 +198,36 @@ describe('getDashboardData — source: prisma', () => {
   it('a contracted product with an empty catalog (WP-15) shows "Próximamente", no progress query', async () => {
     findUniqueClient.mockResolvedValueOnce({ companyName: 'Orly', name: 'Orly' });
     findManyClientProducts.mockResolvedValueOnce([
-      { onboardingState: 'in-progress', goLiveAt: null, product: { code: 'web', name: 'Plataforma Web' } },
+      // 'seo' still has no dedicated page — 'web' is the one product
+      // with real content ahead of 'live' now (see the next test).
+      { onboardingState: 'in-progress', goLiveAt: null, product: { code: 'seo', name: 'SEO con IA' } },
     ]);
 
     const data = await getDashboardData(RESOLVED);
 
     expect(data.products).toHaveLength(1);
-    const web = data.products[0];
-    expect(web.productCode).toBe('web');
-    expect(web.progressPercent).toBeNull();
-    expect(web.turn).toBeNull();
-    expect(web.ctaLabel).toBe('Próximamente');
-    expect(web.activity).toBeNull();
+    const seo = data.products[0];
+    expect(seo.productCode).toBe('seo');
+    expect(seo.progressPercent).toBeNull();
+    expect(seo.turn).toBeNull();
+    expect(seo.ctaLabel).toBe('Próximamente');
+    expect(seo.ctaHref).toBeNull();
+    expect(seo.activity).toBeNull();
     expect(findManyConfigSteps).not.toHaveBeenCalled();
+  });
+
+  it('web (empty catalog, not yet live) links to its own brief page, not "Próximamente"', async () => {
+    findUniqueClient.mockResolvedValueOnce({ companyName: 'Orly', name: 'Orly' });
+    findManyClientProducts.mockResolvedValueOnce([
+      { onboardingState: 'in-progress', goLiveAt: null, product: { code: 'web', name: 'Plataforma Web' } },
+    ]);
+
+    const data = await getDashboardData(RESOLVED);
+
+    const web = data.products[0];
+    expect(web.turn).toBe('client');
+    expect(web.ctaLabel).toBe('Completa el brief');
+    expect(web.ctaHref).toBe('/portal/web');
   });
 
   it('live product other than chatbot → CTA links to its own portal page, not a dead end', async () => {
