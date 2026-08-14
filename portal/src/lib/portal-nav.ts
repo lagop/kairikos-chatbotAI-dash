@@ -17,13 +17,21 @@ export interface PortalNavItem {
   readonly placeholder?: boolean;
   /** Short badge text shown next to the label, e.g. "Pronto". */
   readonly badge?: string;
+  /**
+   * href of this item's parent product section, e.g. Onboarding/Conversaciones
+   * both belong under Chatbot (/portal/status). Only PortalSidebar groups by
+   * this today — PortalHeader keeps rendering PORTAL_NAV as a flat row
+   * (it's the only nav on tablet widths, where the sidebar is hidden, and a
+   * flat pill row doesn't have room for a nested tree).
+   */
+  readonly parentHref?: string;
 }
 
 export const PORTAL_NAV: readonly PortalNavItem[] = [
   { href: '/portal', label: 'Resumen' },
-  { href: '/portal/onboarding', label: 'Onboarding' },
   { href: '/portal/status', label: 'Chatbot' },
-  { href: '/portal/conversations', label: 'Conversaciones' },
+  { href: '/portal/onboarding', label: 'Onboarding', parentHref: '/portal/status' },
+  { href: '/portal/conversations', label: 'Conversaciones', parentHref: '/portal/status' },
   { href: '/portal/resenas', label: 'Reseñas' },
   { href: '/portal/billing', label: 'Facturación' },
   { href: '/portal/support', label: 'Soporte' },

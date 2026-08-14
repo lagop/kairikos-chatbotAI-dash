@@ -28,7 +28,10 @@ export function PortalHeader({
             </span>
           ) : null}
         </div>
-        <nav aria-label="Navegación principal" className="hidden gap-1 sm:flex">
+        {/* Only source of primary nav on tablet widths (640–1023px), where
+            PortalSidebar is hidden (lg:block). Hidden again at lg: the
+            sidebar takes over there — showing both was a duplicate menu. */}
+        <nav aria-label="Navegación principal" className="hidden gap-1 sm:flex lg:hidden">
           {PORTAL_NAV.map((item) => (
             <Link
               key={item.href}
