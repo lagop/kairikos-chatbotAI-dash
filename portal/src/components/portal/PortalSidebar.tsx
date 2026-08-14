@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { PORTAL_NAV, PORTAL_PROFILE_ITEM, type PortalNavItem } from '@/lib/portal-nav';
 import { ICON_BY_HREF, FALLBACK_ICON } from '@/components/portal/portal-nav-icons';
+import { CollapsibleNavGroup } from '@/components/portal/CollapsibleNavGroup';
 
 // The profile item is a separate account-level link, not a portal
 // "section" — appended after PORTAL_NAV rather than folded into it, same
@@ -71,10 +72,21 @@ export function PortalSidebar({ pathname }: { pathname: string }) {
       <ul className="space-y-1">
         {topLevelItems.map((item) => {
           const children = SIDEBAR_ITEMS.filter((child) => child.parentHref === item.href);
+          if (children.length === 0) {
+            return (
+              <li key={item.href}>
+                <SidebarLink item={item} pathname={pathname} />
+              </li>
+            );
+          }
           return (
             <li key={item.href}>
-              <SidebarLink item={item} pathname={pathname} />
-              {children.length > 0 ? (
+              <CollapsibleNavGroup
+                testId={`sidebar-group-toggle-${item.href.replace(/\//g, '-')}`}
+                hasActiveChild={children.some((child) => isItemActive(child, pathname))}
+                trigger={<SidebarLink item={item} pathname={pathname} />}
+                toggleLabel={`Subsecciones de ${item.label}`}
+              >
                 <ul className="ml-4 mt-1 space-y-1 border-l border-kairikos-border/60 pl-3">
                   {children.map((child) => (
                     <li key={child.href}>
@@ -82,7 +94,7 @@ export function PortalSidebar({ pathname }: { pathname: string }) {
                     </li>
                   ))}
                 </ul>
-              ) : null}
+              </CollapsibleNavGroup>
             </li>
           );
         })}
