@@ -121,6 +121,7 @@ model ChatbotClient {
   googleBusinessConnections GoogleBusinessConnection[]
   googleReviews             GoogleReview[]
   reviewRequestCampaigns    ReviewRequestCampaign[]
+  webBrief                  WebBrief?
 
   @@index([stripeCustomerId])
   @@index([tier])
@@ -478,6 +479,7 @@ model Tenant {
   googleBusinessConnections GoogleBusinessConnection[]
   googleReviews             GoogleReview[]
   reviewRequestCampaigns    ReviewRequestCampaign[]
+  webBriefs                 WebBrief[]
 
   @@index([slug])
   @@index([status])
@@ -1315,4 +1317,68 @@ model ReviewRequest {
   @@unique([campaignId, recipient])
   @@index([campaignId])
   @@index([status])
+}
+
+// =============================================================================
+// Web brief — the 'web' product's own, standalone intake form. Deliberately
+// NOT built on the chatbot's wizard engine (ChatbotConfigStep +
+// wizard-visibility.ts's tier-aware step catalog): that machinery is
+// hardcoded to chatbot in ~22 call sites across API routes and lib
+// functions, and generalizing it for every product is its own large,
+// higher-risk refactor of a system already in production. Web is also a
+// fundamentally different shape of product — a one-time delivery (799€
+// setup fee, no recurring price — see the 'web' Product row), not an
+// ongoing service the client reconfigures — so a single-shot brief fits
+// better than a multi-step, tier-aware, per-step-audited wizard anyway.
+//
+// One brief per client — a second website would be a new purchase cycle,
+// handled manually, not modeled here.
+// =============================================================================
+model WebBrief {
+  id       String  @id @default(cuid())
+  clientId String  @unique @map("client_id")
+  tenantId String? @map("tenant_id") @db.Uuid
+
+  // 'draft' | 'submitted'. Resubmitting after 'submitted' is allowed
+  // (upsert, no hard server-side lock) — the client can always send
+  // Kairikos their latest answers; the portal UI just shows a read-only
+  // summary instead of the form once submitted, with an explicit
+  // "editar respuestas" action to reopen it.
+  status String @default("draft")
+
+  businessName String? @map("business_name")
+  vertical     String?
+  // Objetivo principal del sitio: 'vender' | 'leads' | 'informar' |
+  // 'reservas' | 'otro'. Free-form string, not an enum — same
+  // convention as the rest of this schema's status/state columns
+  // (enforced server-side via Zod, not the DB).
+  goal           String?
+  targetAudience String? @map("target_audience")
+
+  hasExistingBrand Boolean? @map("has_existing_brand")
+  brandAssetsNote  String?  @map("brand_assets_note")
+
+  // string[] — which pages the client wants (Inicio, Servicios, etc.)
+  pagesNeeded    Json?   @map("pages_needed")
+  otherPagesNote String? @map("other_pages_note")
+
+  // 'cliente' | 'kairikos' | 'mixto' — who writes the page copy.
+  contentProvidedBy String? @map("content_provided_by")
+
+  desiredDomain     String? @map("desired_domain")
+  referenceWebsites String? @map("reference_websites")
+
+  // string[] — WhatsApp, Calendario de citas, CRM, Formulario, Pagos, etc.
+  integrationsNeeded    Json?   @map("integrations_needed")
+  otherIntegrationsNote String? @map("other_integrations_note")
+
+  additionalNotes String?   @map("additional_notes")
+  submittedAt     DateTime? @map("submitted_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
 }

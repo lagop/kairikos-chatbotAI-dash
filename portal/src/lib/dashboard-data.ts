@@ -252,6 +252,21 @@ async function buildProductCard(clientId: string, cp: ClientProductRow): Promise
         activity: null,
       };
     }
+    // 'web' has real content at /portal/web (its own brief form) even
+    // before the site itself goes live — unlike leads/seo, which still
+    // have nothing but the generic placeholder, so "Próximamente" with
+    // no link stays honest for those two.
+    if (cp.productCode === 'web') {
+      return {
+        ...base,
+        progressPercent: null,
+        turn: 'client',
+        ctaLabel: 'Completa el brief',
+        ctaHref: '/portal/web',
+        timeline: [],
+        activity: null,
+      };
+    }
     return {
       ...base,
       progressPercent: null,
