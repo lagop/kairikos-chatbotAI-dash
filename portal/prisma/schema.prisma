@@ -1182,6 +1182,16 @@ model GoogleBusinessConnection {
   // not change for a given location, so there is no reason to re-fetch
   // it on every campaign.
   reviewUrl              String?   @map("review_url")
+  // WP-22c — when true, google-review-sync.ts publishes an AI-drafted
+  // reply to a newly-synced review with no reply yet, with no human
+  // approval step. Off by default (the AC's "salvo que el cliente
+  // active lo contrario") — this pair of columns IS the audit trail the
+  // AC requires ("queda auditado con quién y cuándo lo cambió"): who
+  // last flipped the setting and when, not a full change history table,
+  // which is more than a single boolean toggle needs.
+  autoPublishReplies          Boolean   @default(false) @map("auto_publish_replies")
+  autoPublishRepliesChangedBy String?   @map("auto_publish_replies_changed_by")
+  autoPublishRepliesChangedAt DateTime? @map("auto_publish_replies_changed_at")
 
   client ChatbotClient   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
@@ -1218,9 +1228,25 @@ model GoogleReview {
   comment        String?
   createTime     DateTime  @map("create_time")
   updateTime     DateTime  @map("update_time")
+  // The PUBLISHED reply, as last synced FROM Google — read-only,
+  // written only by google-review-sync.ts.
   replyComment   String?   @map("reply_comment")
   replyUpdatedAt DateTime? @map("reply_updated_at")
   syncedAt       DateTime  @default(now()) @map("synced_at")
+
+  // WP-22c — an AI-generated reply the client hasn't published yet.
+  // Deliberately separate from replyComment/replyUpdatedAt above: those
+  // two only ever reflect what Google reports as actually live. A draft
+  // here is not published anywhere until the publish route sends it and
+  // stamps replyPublishedAt.
+  aiDraftReply       String?   @map("ai_draft_reply")
+  aiDraftGeneratedAt DateTime? @map("ai_draft_generated_at")
+  // 'client:<clientId>' for a human approval, 'auto' when
+  // autoPublishReplies published it without a human in the loop — the
+  // AC's "si fue auto-publicada" audit trail.
+  replyApprovedBy    String?   @map("reply_approved_by")
+  replyApprovedAt    DateTime? @map("reply_approved_at")
+  replyPublishedAt   DateTime? @map("reply_published_at")
 
   connection GoogleBusinessConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   client     ChatbotClient            @relation(fields: [clientId], references: [id], onDelete: Cascade)
