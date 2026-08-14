@@ -21,10 +21,22 @@ const mockState = vi.hoisted(() => ({
   invoicesCreate: vi.fn(),
   invoiceItemsCreate: vi.fn(),
   invoicesFinalize: vi.fn(),
+  clientProductUpdate: vi.fn(),
+  clientProductAuditCreate: vi.fn(),
 }));
+
+const mockTx = {
+  clientProduct: {
+    update: (...args: unknown[]) => mockState.clientProductUpdate(...args),
+  },
+  clientProductAudit: {
+    create: (...args: unknown[]) => mockState.clientProductAuditCreate(...args),
+  },
+};
 
 vi.mock('@/lib/prisma', () => ({
   prisma: {
+    $transaction: (fn: (tx: typeof mockTx) => unknown) => fn(mockTx),
     clientProduct: {
       findUnique: (...args: unknown[]) => mockState.findUniqueClientProduct(...args),
     },
@@ -57,6 +69,8 @@ import {
   syncInvoiceFromStripe,
   createOneTimeInvoice,
   toDate,
+  activateClientProductFromCheckout,
+  expireClientProductFromCheckout,
 } from '@/lib/stripe-billing';
 
 beforeEach(() => {
@@ -67,6 +81,13 @@ beforeEach(() => {
   mockState.invoicesCreate.mockReset();
   mockState.invoiceItemsCreate.mockReset();
   mockState.invoicesFinalize.mockReset();
+  mockState.clientProductUpdate.mockReset().mockResolvedValue({
+    id: 'cp_1',
+    clientId: 'client_1',
+    productId: 'prod_1',
+    tenantId: 'tenant_1',
+  });
+  mockState.clientProductAuditCreate.mockReset();
 });
 
 function makeStripeSubscription(overrides: Record<string, unknown> = {}) {
@@ -245,6 +266,79 @@ describe('createOneTimeInvoice', () => {
     });
     expect(mockState.invoicesFinalize).toHaveBeenCalledWith('in_draft_1');
     expect(result).toEqual({ id: 'in_draft_1', status: 'open' });
+  });
+});
+
+describe('activateClientProductFromCheckout (WP-30)', () => {
+  function makeSession(overrides: Record<string, unknown> = {}) {
+    return { id: 'cs_1', metadata: { kairikos_client_product_id: 'cp_1' }, ...overrides } as never;
+  }
+
+  it('flips a pending_payment ClientProduct to active and writes a checkout_completed audit row', async () => {
+    mockState.findUniqueClientProduct.mockResolvedValueOnce({ status: 'pending_payment' });
+
+    await activateClientProductFromCheckout(makeSession());
+
+    expect(mockState.clientProductUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'cp_1' }, data: expect.objectContaining({ status: 'active' }) }),
+    );
+    expect(mockState.clientProductAuditCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        clientProductId: 'cp_1',
+        action: 'checkout_completed',
+        statusBefore: 'pending_payment',
+        statusAfter: 'active',
+        actorId: 'stripe:checkout.session.completed',
+      }),
+    });
+  });
+
+  it('is a no-op when the session has no kairikos_client_product_id metadata (not ours)', async () => {
+    await activateClientProductFromCheckout(makeSession({ metadata: {} }));
+    expect(mockState.findUniqueClientProduct).not.toHaveBeenCalled();
+    expect(mockState.clientProductUpdate).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op when the ClientProduct is no longer pending_payment (idempotent against duplicate/late delivery)', async () => {
+    mockState.findUniqueClientProduct.mockResolvedValueOnce({ status: 'active' });
+    await activateClientProductFromCheckout(makeSession());
+    expect(mockState.clientProductUpdate).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op when the ClientProduct row no longer exists', async () => {
+    mockState.findUniqueClientProduct.mockResolvedValueOnce(null);
+    await activateClientProductFromCheckout(makeSession());
+    expect(mockState.clientProductUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe('expireClientProductFromCheckout (WP-30)', () => {
+  function makeSession(overrides: Record<string, unknown> = {}) {
+    return { id: 'cs_1', metadata: { kairikos_client_product_id: 'cp_1' }, ...overrides } as never;
+  }
+
+  it('flips a pending_payment ClientProduct to cancelled and writes a checkout_expired audit row', async () => {
+    mockState.findUniqueClientProduct.mockResolvedValueOnce({ status: 'pending_payment' });
+
+    await expireClientProductFromCheckout(makeSession());
+
+    expect(mockState.clientProductUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'cp_1' }, data: expect.objectContaining({ status: 'cancelled' }) }),
+    );
+    expect(mockState.clientProductAuditCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'checkout_expired',
+        statusBefore: 'pending_payment',
+        statusAfter: 'cancelled',
+        actorId: 'stripe:checkout.session.expired',
+      }),
+    });
+  });
+
+  it('does not touch a ClientProduct that already turned active (the completed event won the race)', async () => {
+    mockState.findUniqueClientProduct.mockResolvedValueOnce({ status: 'active' });
+    await expireClientProductFromCheckout(makeSession());
+    expect(mockState.clientProductUpdate).not.toHaveBeenCalled();
   });
 });
 

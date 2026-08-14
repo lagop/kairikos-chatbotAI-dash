@@ -283,6 +283,86 @@ export async function createOneTimeInvoice(params: {
 }
 
 // ---------------------------------------------------------------------------
+// Self-serve checkout (WP-30) — activate/expire a ClientProduct created in
+// 'pending_payment' state by POST /api/portal/billing/checkout, driven by
+// the Checkout Session's own lifecycle events.
+// ---------------------------------------------------------------------------
+
+/**
+ * `checkout.session.completed` — flips the ClientProduct the checkout
+ * route pre-created (status='pending_payment') to 'active'. Guarded on
+ * the current status still being 'pending_payment' so a duplicate/
+ * out-of-order webhook delivery, or a session that completes after an
+ * operator has already changed the row some other way, is a no-op rather
+ * than clobbering state. Not every Checkout Session is a Kairikos
+ * self-serve one (there is exactly one caller today, but Stripe accounts
+ * can have other sessions), so a missing `kairikos_client_product_id` is
+ * silently ignored, not an error.
+ */
+export async function activateClientProductFromCheckout(session: Stripe.Checkout.Session): Promise<void> {
+  const cpId = (session.metadata?.kairikos_client_product_id ?? null) as string | null;
+  if (!cpId) return;
+  const cp = await prisma.clientProduct.findUnique({ where: { id: cpId }, select: { status: true } });
+  if (!cp || cp.status !== 'pending_payment') return;
+
+  await prisma.$transaction(async (tx) => {
+    const updated = await tx.clientProduct.update({
+      where: { id: cpId },
+      data: { status: 'active', subscribedAt: new Date() },
+    });
+    await tx.clientProductAudit.create({
+      data: {
+        clientProductId: updated.id,
+        clientId: updated.clientId,
+        productId: updated.productId,
+        tenantId: updated.tenantId,
+        action: 'checkout_completed',
+        statusBefore: 'pending_payment',
+        statusAfter: 'active',
+        actorId: 'stripe:checkout.session.completed',
+      },
+    });
+  });
+}
+
+/**
+ * `checkout.session.expired` — Stripe fires this when a session's payment
+ * page is abandoned (no completion within its expiry window, ~24h by
+ * default). Flips the pending ClientProduct to 'cancelled' rather than
+ * leaving it stuck in 'pending_payment' forever — the AC this satisfies:
+ * a failed/abandoned checkout must not leave the client in an ambiguous
+ * half-activated state. `isProductContracted` (status='active' only)
+ * already treats 'pending_payment' as "not contracted", so the client can
+ * simply retry from /portal/productos without waiting for this event —
+ * this is cleanup, not a blocker.
+ */
+export async function expireClientProductFromCheckout(session: Stripe.Checkout.Session): Promise<void> {
+  const cpId = (session.metadata?.kairikos_client_product_id ?? null) as string | null;
+  if (!cpId) return;
+  const cp = await prisma.clientProduct.findUnique({ where: { id: cpId }, select: { status: true } });
+  if (!cp || cp.status !== 'pending_payment') return;
+
+  await prisma.$transaction(async (tx) => {
+    const updated = await tx.clientProduct.update({
+      where: { id: cpId },
+      data: { status: 'cancelled', cancelledAt: new Date() },
+    });
+    await tx.clientProductAudit.create({
+      data: {
+        clientProductId: updated.id,
+        clientId: updated.clientId,
+        productId: updated.productId,
+        tenantId: updated.tenantId,
+        action: 'checkout_expired',
+        statusBefore: 'pending_payment',
+        statusAfter: 'cancelled',
+        actorId: 'stripe:checkout.session.expired',
+      },
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Read paths — billing for client (single tenant) and overview for owner
 // ---------------------------------------------------------------------------
 
