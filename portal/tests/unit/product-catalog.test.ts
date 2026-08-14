@@ -36,15 +36,16 @@ describe('PRODUCT_CATALOG', () => {
     expect(web!.setupFeeCents).toBeGreaterThan(0);
   });
 
-  it('reviews (Google reviews) is not active — pricing not published yet', () => {
+  it('reviews (Google reviews) is active — €99/mes, no setup fee', () => {
     const reviews = PRODUCT_CATALOG.find((p) => p.code === 'reviews');
     expect(reviews).toBeDefined();
-    expect(reviews!.isActive).toBe(false);
+    expect(reviews!.isActive).toBe(true);
+    expect(reviews!.priceCents).toBe(9900);
+    expect(reviews!.setupFeeCents).toBe(0);
   });
 
-  it('every product but reviews is active and has a positive price component', () => {
+  it('every product is active and has a positive price component', () => {
     for (const p of PRODUCT_CATALOG) {
-      if (p.code === 'reviews') continue;
       expect(p.isActive).toBe(true);
       expect(p.priceCents + p.setupFeeCents).toBeGreaterThan(0);
     }
