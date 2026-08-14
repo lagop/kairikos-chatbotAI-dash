@@ -4,262 +4,145 @@ import { redirect } from 'next/navigation';
 import { ChatbotStatusCard } from '@/components/portal/ChatbotStatusCard';
 import { OnboardingTimeline } from '@/components/portal/OnboardingTimeline';
 import { PageHeading } from '@/components/portal/PageHeading';
-import { MOCK_CLIENT, MOCK_CHATBOT, MOCK_TIMELINE } from '@/lib/portal-data';
-import { assertSameClient, getSession } from '@/lib/session';
-import { prisma, isDatabaseConfigured } from '@/lib/prisma';
+import { ProductSummaryCard } from '@/components/portal/ProductSummaryCard';
+import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
-import { loadClientProfileViaPortalApi } from '@/lib/dashboard-fallback';
-import type { ChatbotStatusSummary } from '@/types/portal';
+import { isDatabaseConfigured } from '@/lib/prisma';
+import { getDashboardData } from '@/lib/dashboard-data';
+import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
+import { logError } from '@/lib/observability';
+import type { OnboardingStatus } from '@/types/portal';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'Resumen',
-  description: 'Estado del onboarding, del chatbot y próximas acciones en tu portal Kairikos.',
+  description: 'Estado de tus productos Kairikos y próximos pasos del onboarding.',
   alternates: { canonical: '/portal' },
   robots: { index: false, follow: false },
 };
 
-const DATE_FMT = new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
-
-export default async function PortalHome({
-  searchParams,
-}: {
-  searchParams: { client?: string };
-}) {
-  // KAIA-2857 — call getSession() and translate "no access" into a redirect
-  // locally so any throw from requirePortalSession() never escapes the page.
-  // On Vercel, getSession() catches auth()/Prisma init failures and returns
-  // { reason: 'no_session' } which we forward to /portal/login (or
-  // /portal/sin-acceso for cross-tenant). This keeps /portal returning 200/307
-  // instead of the Vercel-rendered 500 pages/_error fallback.
+// =============================================================================
+// WP-08 / WP-17 — this is the real client-facing summary screen: PORTAL_NAV
+// (WP-04's canonical nav list) links "Resumen" here, not to the orphaned
+// /portal/dashboard route (now a redirect — see that file). Before WP-17
+// this page ran its own independent Prisma reads + its own
+// fallbackRate/escalationRate = 0 shortcut, completely bypassing
+// dashboard-data.ts — the exact CONFIRMADO audit finding (this page showed
+// 0%/0% while /portal/status showed a stale 8%/12% for the same client at
+// the same moment). Now this page renders exactly what getDashboardData()
+// decided, same as /portal/status — nowhere recomputes those numbers.
+//
+// One ProductSummaryCard per active ClientProduct. A single-product
+// client (today's overwhelming majority) sees exactly one card — the
+// multi-product grid degrades to "one card" instead of a page redesign,
+// per the WP-17 AC that multi-product must not penalize that case.
+// =============================================================================
+export default async function PortalHome() {
   let session;
   try {
     session = await getSession();
   } catch (err) {
-    console.error('[portal] /portal getSession() crashed, treating as no_session:', err);
+    logError('portal_home.get_session', err, { route: '/portal' });
     redirect('/portal/login');
   }
   if (!session.hasClientAccess) {
     const target = session.reason === 'no_session' ? '/portal/login' : '/portal/sin-acceso';
     redirect(target);
   }
-  assertSameClient(session, searchParams.client ?? null);
-
-  // KAIA-11955 — round 5: query Prisma directly instead of going
-  // through getPortalContext(). The previous helper-based path
-  // required a self-call to /api/portal/... from the server-side
-  // page, which on Vercel intermittently failed to authenticate
-  // the NextAuth JWT cookie, so the helpers fell back to the
-  // MOCK fixtures (spc_acme_corp, 142 conversaciones, etc.) for
-  // every signed-in customer. Querying Prisma here — same as
-  // /portal/dashboard already does — keeps the data layer in one
-  // place and removes the self-call failure mode entirely.
   const resolved = await resolveClientFromSession();
   if (!resolved) {
     redirect('/portal/sin-acceso');
   }
 
-  let client = {
-    id: resolved.clientId,
-    companyName: MOCK_CLIENT.companyName,
-    // @ts-expect-error WP-01/WP-08 — the UI's client shape wants `name`, the
-    // Prisma-backed ChatbotClient type doesn't have it. WP-08's single
-    // dashboard-data function resolves this properly.
-    name: MOCK_CLIENT.name,
-    tier: 'starter' as string,
-    createdAt: new Date(0).toISOString(),
-  };
-  let timeline: typeof MOCK_TIMELINE = [];
-  let conversationCount = 0;
-  let goLiveAt: string | null = null;
-  const isDevMockMode = resolved.source === 'mock_dev' && !isDatabaseConfigured;
+  const data = await getDashboardData(resolved);
 
-  if (!isDevMockMode) {
-    try {
-      const [clientRow, activities, count] = await Promise.all([
-        prisma.chatbotClient.findUnique({
-          where: { id: resolved.clientId },
-          select: {
-            id: true,
-            companyName: true,
-            name: true,
-            tier: true,
-            createdAt: true,
-            goLiveAt: true,
-          },
-        }),
-        prisma.chatbotActivity.findMany({
-          where: { clientId: resolved.clientId },
-          orderBy: { completedAt: 'asc' },
-        }),
-        prisma.chatbotConversation.count({ where: { clientId: resolved.clientId } }),
-      ]);
-      if (clientRow) {
-        client = {
-          id: clientRow.id,
-          companyName: clientRow.companyName ?? MOCK_CLIENT.companyName,
-          // @ts-expect-error WP-01/WP-08 — see the `name` note above; same
-          // ChatbotClient/UI shape mismatch, resolved by WP-08.
-          name: clientRow.name ?? MOCK_CLIENT.name,
-          tier: clientRow.tier,
-          createdAt: clientRow.createdAt.toISOString(),
-        };
-        goLiveAt = clientRow.goLiveAt?.toISOString() ?? null;
-      }
-      conversationCount = count;
-      if (activities.length > 0) {
-        const MILESTONE_LABEL: Record<string, string> = {
-          'T+0': 'Bienvenida y acceso al portal',
-          'T+3': 'Configuración inicial',
-          'T+7': 'Puesta en producción',
-          'T+14': 'Revisión y optimización',
-        };
-        const MILESTONE_STEP: Record<string, 't_plus_0' | 't_plus_3' | 't_plus_7' | 't_plus_14'> = {
-          'T+0': 't_plus_0',
-          'T+3': 't_plus_3',
-          'T+7': 't_plus_7',
-          'T+14': 't_plus_14',
-        };
-        timeline = activities.map((a, i) => ({
-          id: a.id,
-          step: MILESTONE_STEP[a.milestone] ?? 't_plus_0',
-          label: MILESTONE_LABEL[a.milestone] ?? a.milestone,
-          description: a.notes ?? '',
-          occurredAt: a.completedAt?.toISOString() ?? null,
-          status: a.completedAt
-            ? 'done'
-            : i === activities.findIndex((x) => !x.completedAt)
-              ? 'current'
-              : 'pending',
-        }));
-      }
-    } catch (err) {
-      console.error('[portal] /portal Prisma fetch failed:', err);
-      // KAIA-11641: try the API fallback so the heading still resolves
-      // to a real customer record even if the direct Prisma call throws.
-      const profile = await loadClientProfileViaPortalApi();
-      if (profile) {
-        client = {
-          id: resolved.clientId,
-          companyName: profile.companyName ?? MOCK_CLIENT.companyName,
-          // @ts-expect-error WP-01/WP-08 — see the `name` note above; same
-          // ChatbotClient/UI shape mismatch, resolved by WP-08.
-          name: profile.contactName ?? MOCK_CLIENT.name,
-          tier: profile.tier,
-          createdAt: profile.createdAt,
-        };
-        if (profile.goLiveDate) {
-          goLiveAt = profile.goLiveDate;
-        }
-      }
-    }
-  } else {
-    client = {
-      id: MOCK_CLIENT.id,
-      companyName: MOCK_CLIENT.companyName,
-      // @ts-expect-error WP-01/WP-08 — see the `name` note above; same
-      // ChatbotClient/UI shape mismatch, resolved by WP-08.
-      name: MOCK_CLIENT.name,
-      tier: MOCK_CLIENT.tier,
-      createdAt: MOCK_CLIENT.createdAt,
-    };
-    timeline = MOCK_TIMELINE;
-  }
+  // WP-08 AC, carried over from /portal/dashboard: a visitor whose
+  // Supabase env looks like dev-mock but whose DATABASE_URL is genuinely
+  // configured and reachable is a real half-configured-environment class,
+  // not a developer running `next dev` with nothing set up. Surface it as
+  // a banner instead of quietly rendering MOCK_CLIENT as if it were real.
+  const showMockDiagnosticBanner = data.source === 'mock_dev' && isDatabaseConfigured;
 
-  const chatbotSummary: ChatbotStatusSummary = isDevMockMode
-    ? MOCK_CHATBOT
-    : {
-        spaceId: `spc_${client.id}`,
-        status: goLiveAt ? 'live' : 'in-progress',
-        goLiveDate: goLiveAt,
-        last7Days: {
-          conversations: conversationCount,
-          fallbackRate: 0,
-          escalationRate: 0,
-        },
-      };
-
-  const currentStep = timeline.find((s) => s.status === 'current');
-  const completedSteps = timeline.filter((s) => s.status === 'done').length;
-  const totalSteps = timeline.length;
-  const progressPct = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
+  const chatbot = data.products.find((p) => p.productCode === CHATBOT_PRODUCT_CODE);
+  // KAIA-11956 — Reseñas de Google is not sellable yet (WP-15's seed
+  // marks it inactive), but customers reported the section was
+  // undiscoverable when it was missing entirely from the home screen.
+  // Every client who doesn't already have it contracted gets an honest
+  // "No incluido" card (never "Pronto" — the board flagged that as a
+  // promise Kairikos wasn't ready to make) instead of silence. This is
+  // deliberately NOT a ProductSummaryCard: those only render for
+  // products the client actually has.
+  const hasReviews = data.products.some((p) => p.productCode === 'reviews');
+  const chatbotSummary = chatbot?.activity
+    ? {
+        spaceId: `spc_${data.client.id}`,
+        status: chatbot.onboardingState as OnboardingStatus,
+        goLiveDate: chatbot.goLiveAt,
+        last7Days: chatbot.activity.last7Days,
+      }
+    : null;
 
   return (
     <div className="space-y-6">
+      {showMockDiagnosticBanner ? (
+        <div
+          className="rounded-xl border border-kairikos-warning/40 bg-kairikos-warning/10 px-4 py-3 text-sm text-kairikos-text"
+          role="status"
+          data-testid="dashboard-mock-diagnostic-banner"
+        >
+          <p className="font-semibold">Mostrando datos de ejemplo</p>
+          <p className="mt-1 text-kairikos-muted">
+            La base de datos está configurada, pero esta sesión no ha podido resolver un cliente real. Un
+            operador ya ha sido avisado.
+          </p>
+        </div>
+      ) : null}
+
       <PageHeading
-        eyebrow="Hola, buenas tardes"
-        title={client.companyName}
-        description={`Tu portal de cliente. Aquí verás el estado de tu chatbot y los próximos pasos del onboarding.`}
+        eyebrow="Resumen"
+        title={data.client.name}
+        description="Aquí verás el estado de tus productos Kairikos y los próximos pasos del onboarding."
         actions={
-          <Link href="/portal/support" className="btn-ghost">
-            Contactar soporte
-          </Link>
+          <Link href="/portal/support" className="btn-ghost">Contactar soporte</Link>
         }
       />
+      <span data-testid="dashboard-client-name" data-dashboard-source={data.source} hidden>
+        {data.client.name}
+      </span>
 
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-3" aria-label="Indicadores clave">
-        <div className="card">
-          <p className="text-xs uppercase tracking-wider text-kairikos-muted">Plan</p>
-          <p className="mt-1 text-lg font-semibold capitalize">{client.tier}</p>
-          <p className="mt-1 text-xs text-kairikos-muted">
-            Cliente desde el {DATE_FMT.format(new Date(client.createdAt))}
-          </p>
+      {data.products.length === 0 ? (
+        <div className="card text-sm text-kairikos-muted">
+          Todavía no tienes productos activos en tu cuenta. Si crees que esto es un error, contacta con soporte.
         </div>
-        <div className="card">
-          <p className="text-xs uppercase tracking-wider text-kairikos-muted">Onboarding</p>
-          {/* KAIA-11955 — render a clear "preparing" copy when the
-              customer has no ChatbotActivity rows yet, instead of the
-              misleading "0% completado / 0 de 0 pasos" which the user
-              read as "stuck at the T+0 step". */}
-          {totalSteps > 0 ? (
-            <>
-              <p className="mt-1 text-lg font-semibold">{progressPct}% completado</p>
-              <p className="mt-1 text-xs text-kairikos-muted">
-                {completedSteps} de {totalSteps} pasos
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="mt-1 text-lg font-semibold">Preparando tu portal</p>
-              <p className="mt-1 text-xs text-kairikos-muted">
-                Te avisaremos por email cuando completemos el primer paso.
-              </p>
-            </>
-          )}
+      ) : (
+        <div
+          className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3"
+          aria-label="Tus productos"
+          data-testid="product-grid"
+        >
+          {data.products.map((product) => (
+            <ProductSummaryCard key={product.productCode} product={product} />
+          ))}
         </div>
-        <div className="card">
-          <p className="text-xs uppercase tracking-wider text-kairikos-muted">Chatbot</p>
-          <p className="mt-1 text-lg font-semibold">
-            {chatbotSummary.status === 'live' ? 'En producción' : 'Pendiente'}
-          </p>
-          <p className="mt-1 text-xs text-kairikos-muted">
-            {chatbotSummary.last7Days.conversations} conversaciones en los últimos 7 días
-          </p>
-        </div>
-      </section>
+      )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <section className="card" aria-labelledby="onboarding-resumen">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 id="onboarding-resumen" className="text-lg font-semibold">
-              Onboarding
-            </h2>
-            <Link href="/portal/onboarding" className="text-sm text-kairikos-accent2 hover:underline">
-              Ver todo
-            </Link>
-          </div>
-          {currentStep ? (
-            <p className="mb-4 text-sm text-kairikos-muted">
-              <span className="pill-warning mr-2">En curso</span>
-              {currentStep.label}
-            </p>
-          ) : null}
-          <OnboardingTimeline rows={timeline.slice(0, 4)} />
-        </section>
+      {chatbotSummary ? (
+        <>
+          <ChatbotStatusCard summary={chatbotSummary} previous7Days={chatbot?.activity?.previous7Days} />
+          <section className="card" aria-label="Progreso del onboarding del chatbot">
+            <header className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Onboarding del chatbot</h2>
+              <Link href="/portal/onboarding" className="text-sm text-kairikos-accent2 hover:underline">
+                Ver todo
+              </Link>
+            </header>
+            <OnboardingTimeline rows={chatbot?.timeline ?? []} />
+          </section>
+        </>
+      ) : null}
 
-        <ChatbotStatusCard summary={chatbotSummary} />
-
+      {!hasReviews ? (
         <section
           className="card"
           aria-labelledby="resenas-resumen"
@@ -283,7 +166,7 @@ export default async function PortalHome({
             Ver detalles →
           </Link>
         </section>
-      </div>
+      ) : null}
     </div>
   );
 }

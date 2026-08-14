@@ -4,9 +4,10 @@
 // (Acme Corp) instead of real customer data" bug.
 //
 // Reproduces the deterministic orly.nityananda@gmail.com scenario from the
-// staging environment: log in via the seeded customer, hit /portal/dashboard,
-// and assert the rendered h1 matches the customer's seeded ChatbotClient row,
-// NOT the dev-mock "Acme Corp" fixture.
+// staging environment: log in via the seeded customer, hit /portal (the
+// real client summary screen — WP-17 retired /portal/dashboard in favor
+// of the nav-linked route), and assert the rendered h1 matches the
+// customer's seeded ChatbotClient row, NOT the dev-mock "Acme Corp" fixture.
 //
 // Skip conditions match the existing cross-tenant.staging.spec.ts:
 //   - PORTAL_URL unset / empty / points at localhost
@@ -20,7 +21,7 @@
 //   npx playwright test tests/specs/dashboard.staging.spec.ts
 //
 // Acceptance criterion (mirrors KAIA-11641 issue body):
-//   * /portal/dashboard renders the h1 with the real customer's
+//   * /portal renders the h1 with the real customer's
 //     ChatbotClient.name (falling back to companyName) — never the literal
 //     MOCK_CLIENT string "Acme Corp".
 //   * The hidden data-source marker reports "prisma" | "portal_api_fallback".
@@ -58,15 +59,17 @@ test.describe('@staging Dashboard renders real customer data (KAIA-11641)', () =
     const portalUrl = process.env.PORTAL_URL ?? 'https://project-fxidg.vercel.app';
     const client = createStagingMagicLinkClient(process.env as NodeJS.ProcessEnv);
 
+    // WP-17 — /portal/dashboard is now a permanent redirect to /portal
+    // (the real, nav-linked summary screen); redirect straight there.
     const link = await client.generateMagicLink(REPRO_EMAIL, {
-      redirectTo: `${portalUrl}/portal/dashboard`,
+      redirectTo: `${portalUrl}/portal`,
     });
 
     await context.clearCookies();
     await page.goto(link, { waitUntil: 'networkidle' });
 
-    // The route guard (KAIA-11623) lets the customer reach /portal/dashboard.
-    await expect(page).toHaveURL(/\/portal\/dashboard/);
+    // The route guard (KAIA-11623) lets the customer reach /portal.
+    await expect(page).toHaveURL(/\/portal$/);
 
     // Read the hidden data-source marker. We expect either 'prisma' (the
     // normal path) or 'portal_api_fallback' (the KAIA-11641 fallback). The

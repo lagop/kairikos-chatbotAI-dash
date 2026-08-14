@@ -3,7 +3,7 @@ import { authedPortalFixture as test } from '../fixtures/portal';
 
 test.describe('@staging Portal header — profile + logout (KAIA-2878)', () => {
   test('header shows the profile trigger with the signed-in email', async ({ page, clientA }) => {
-    await page.goto('/portal/dashboard');
+    await page.goto('/portal');
 
     const trigger = page.locator('[data-testid="header-profile-trigger"]');
     await expect(trigger).toBeVisible();
@@ -11,7 +11,7 @@ test.describe('@staging Portal header — profile + logout (KAIA-2878)', () => {
   });
 
   test('profile popover reveals full email, company name, and a logout button', async ({ page, clientA }) => {
-    await page.goto('/portal/dashboard');
+    await page.goto('/portal');
 
     const details = page.locator('[data-testid="header-profile"]');
     await expect(details).toBeVisible();
@@ -31,7 +31,7 @@ test.describe('@staging Portal header — profile + logout (KAIA-2878)', () => {
   });
 
   test('logout button clears the session and lands on /portal/login', async ({ page }) => {
-    await page.goto('/portal/dashboard');
+    await page.goto('/portal');
 
     const details = page.locator('[data-testid="header-profile"]');
     await expect(details).toBeVisible();
@@ -47,7 +47,7 @@ test.describe('@staging Portal header — profile + logout (KAIA-2878)', () => {
 
   test('direct POST to /api/portal/logout clears cookies and redirects to login', async ({ request, page }) => {
     // Seed an authenticated session via the same portal path the app uses
-    await page.goto('/portal/dashboard');
+    await page.goto('/portal');
 
     const res = await request.post('/api/portal/logout', {
       maxRedirects: 0,

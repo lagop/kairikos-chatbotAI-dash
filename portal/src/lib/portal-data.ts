@@ -6,7 +6,6 @@ import type {
   ConversationSummary,
   ConversationTranscript,
   OnboardingTimelineRow,
-  PortalContext,
   SupportLink,
 } from '@/types/portal';
 import { isBackendConfigured, PORTAL_API_BASE_URL, SUPABASE_ANON_KEY } from './supabase';
@@ -212,32 +211,6 @@ export async function getOnboardingFor(
   // return at most 1 row to model the "fresh client" / "different tenant" case.
   // The real backend would never return rows the caller doesn't own.
   return all.slice(0, 1);
-}
-
-export async function getChatbotStatus(accessToken: string): Promise<ChatbotStatusSummary> {
-  // KAIA-11955 — the GET route is /portal/status (see
-  // src/app/api/portal/status/route.ts), not /portal/chatbot-status.
-  // Calling the wrong path returned 404 and the customer saw the
-  // Acme MOCK_CHATBOT (spc_acme_corp, 142 conversaciones, 8% / 12%
-  // rates) instead of their real (empty) chatbot status. The real
-  // route returns the customer's actual `chatbotClient.id` as
-  // spaceId, the live/in_progress status, and a 7-day window
-  // derived from the real conversation count.
-  const fromApi = await portalFetch<ChatbotStatusSummary>('/portal/status', accessToken);
-  return fromApi ?? MOCK_CHATBOT;
-}
-
-export async function getPortalContext(accessToken: string): Promise<PortalContext> {
-  const [client, onboarding, chatbot] = await Promise.all([
-    getClientProfile(accessToken),
-    getOnboarding(accessToken),
-    getChatbotStatus(accessToken),
-  ]);
-  return {
-    client: client ?? MOCK_CLIENT,
-    onboarding,
-    chatbot,
-  };
 }
 
 export async function listConversations(accessToken: string): Promise<ConversationSummary[]> {

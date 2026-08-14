@@ -50,13 +50,12 @@ test.describe('Client self-service UI (KAIA-1062)', () => {
     await expect(page.getByTestId('self-service-help')).toBeVisible();
   });
 
-  test('@smoke "Necesito ayuda" form is visible on /portal/dashboard', async ({ page }) => {
-    await page.goto('/portal/dashboard');
-    // The dashboard variant only renders the help button.
-    await expect(page.getByTestId('self-service-help')).toBeVisible();
-    // The full onboarding actions are not rendered on the dashboard.
-    await expect(page.getByTestId('self-service-assets-uploaded')).toHaveCount(0);
-  });
+  // WP-17 — /portal/dashboard (the page this test used to exercise) is
+  // now a permanent redirect to /portal, which never rendered
+  // <SelfServiceActions> (that page only ever had the 'onboarding'
+  // variant as a real caller). The 'dashboard' variant prop still exists
+  // on the component but has no live caller left; this test's premise
+  // — a page rendering the 'dashboard' variant — no longer applies.
 
   test('@smoke clicking "He subido mis assets" surfaces a confirmation toast', async ({ page }) => {
     await openOnboardingPage(page);
