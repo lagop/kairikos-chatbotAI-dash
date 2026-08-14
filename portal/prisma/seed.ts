@@ -40,9 +40,13 @@ const DEV_PASSWORD_HASH = '$argon2id$v=19$m=65536,t=3,p=4$QU5FRC5BTi80SjZSdVBFQQ
 // Two products only publish a price RANGE on the site, not a fixed
 // number (chatbot setup: €299–€499; web platform: €799–€1.299) — this
 // catalog uses the low end of each range ("desde X€"), noted per entry.
-// `resenas` (Google reviews) publishes no pricing at all yet — it's
-// seeded `isActive: false` (not sellable) with a placeholder price,
-// pending the Google API approval tracked as a Sprint-0 risk (WP-20).
+// `reviews` (Google reviews) was gated `isActive: false` while WP-20 (the
+// Google API access approval) was pending; now active at €99/mes, no
+// setup fee. Its `stripeRecurringPriceId` below is a PLACEHOLDER — no
+// real Stripe Price object exists for it yet. Self-serve checkout
+// (api/portal/billing/checkout) 404s with `product_price_id_missing`
+// until it's swapped for a real Price id created in the Stripe
+// Dashboard; do not announce this product to clients before that swap.
 // =============================================================================
 export interface ProductCatalogEntry {
   code: string;
@@ -100,14 +104,16 @@ export const PRODUCT_CATALOG: ProductCatalogEntry[] = [
     priceCents: 19900, setupFeeCents: 0, currency: 'EUR', isActive: true,
     stripeRecurringPriceId: null, stripeSetupPriceId: null,
   },
-  // Google reviews — not sellable yet, no published price. See WP-20 /
-  // the Sprint 0 risk register: blocked on Google API approval.
+  // Google reviews — monthly only, no setup fee, same shape as SEO.
+  // WP-20 (Google API approval) is done; activated at €99/mes.
   // WP-15 — code renamed from 'resenas' to 'reviews', same reason as
   // 'leads' above.
+  // stripeRecurringPriceId is a PLACEHOLDER pending a real Stripe Price
+  // object — see the catalog-level comment above before reseeding prod.
   {
     code: 'reviews', tier: 'standard', name: 'Reseñas en Google',
-    priceCents: 0, setupFeeCents: 0, currency: 'EUR', isActive: false,
-    stripeRecurringPriceId: null, stripeSetupPriceId: null,
+    priceCents: 9900, setupFeeCents: 0, currency: 'EUR', isActive: true,
+    stripeRecurringPriceId: 'price_reviews', stripeSetupPriceId: null,
   },
 ];
 
