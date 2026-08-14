@@ -7,11 +7,16 @@ import { PageHeading } from '@/components/portal/PageHeading';
 import { ProductSummaryCard } from '@/components/portal/ProductSummaryCard';
 import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
-import { isDatabaseConfigured } from '@/lib/prisma';
+import { isDatabaseConfigured, prisma } from '@/lib/prisma';
 import { getDashboardData } from '@/lib/dashboard-data';
 import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
+import { PRODUCT_CODES, PRODUCT_CATALOGS, type ProductCode } from '@/lib/catalogs';
 import { logError } from '@/lib/observability';
 import type { OnboardingStatus } from '@/types/portal';
+
+function isProductCode(value: string): value is ProductCode {
+  return (PRODUCT_CODES as readonly string[]).includes(value);
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -38,7 +43,11 @@ export const metadata: Metadata = {
 // multi-product grid degrades to "one card" instead of a page redesign,
 // per the WP-17 AC that multi-product must not penalize that case.
 // =============================================================================
-export default async function PortalHome() {
+export default async function PortalHome({
+  searchParams,
+}: {
+  searchParams: { checkout?: string };
+}) {
   let session;
   try {
     session = await getSession();
@@ -56,6 +65,29 @@ export default async function PortalHome() {
   }
 
   const data = await getDashboardData(resolved);
+
+  // WP-30 — a lightweight, best-effort "products you could add" teaser.
+  // Deliberately NOT folded into getDashboardData()/DashboardData: that
+  // function's fallback chain (prisma → /api/portal/me → mock) exists to
+  // guarantee the client's OWN identity and products render correctly
+  // under partial outages (see the CONFIRMADO audit history above) — this
+  // is a secondary discovery surface, not load-bearing data, so it stays
+  // isolated with its own try/catch and never blocks or degrades the rest
+  // of the page. /portal/productos re-derives the authoritative version
+  // of this same list (including in-flight 'pending_payment' rows) before
+  // letting the client actually start a checkout.
+  let availableProductCodes: string[] = [];
+  if (isDatabaseConfigured && resolved.source === 'database') {
+    try {
+      const contractedCodes = new Set<string>(data.products.map((p) => p.productCode));
+      const allActiveProducts = await prisma.product.findMany({ where: { isActive: true }, select: { code: true } });
+      availableProductCodes = Array.from(new Set(allActiveProducts.map((p) => p.code))).filter(
+        (code) => !contractedCodes.has(code),
+      );
+    } catch (err) {
+      logError('portal_home.available_products', err, { route: '/portal', clientId: resolved.clientId });
+    }
+  }
 
   // WP-08 AC, carried over from /portal/dashboard: a visitor whose
   // Supabase env looks like dev-mock but whose DATABASE_URL is genuinely
@@ -95,6 +127,19 @@ export default async function PortalHome() {
           <p className="mt-1 text-kairikos-muted">
             La base de datos está configurada, pero esta sesión no ha podido resolver un cliente real. Un
             operador ya ha sido avisado.
+          </p>
+        </div>
+      ) : null}
+
+      {searchParams.checkout === 'success' ? (
+        <div
+          className="rounded-xl border border-kairikos-success/40 bg-kairikos-success/10 px-4 py-3 text-sm text-kairikos-text"
+          role="status"
+          data-testid="checkout-success-banner"
+        >
+          <p className="font-semibold">Pago recibido</p>
+          <p className="mt-1 text-kairikos-muted">
+            Estamos confirmando tu pago y activando el producto — puede tardar unos segundos en aparecer aquí.
           </p>
         </div>
       ) : null}
@@ -165,6 +210,30 @@ export default async function PortalHome() {
           >
             Ver detalles →
           </Link>
+        </section>
+      ) : null}
+
+      {availableProductCodes.length > 0 ? (
+        <section className="card" aria-label="Productos disponibles" data-testid="available-products-section">
+          <header className="mb-3 flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Productos disponibles</h2>
+            <Link href="/portal/productos" className="text-sm text-kairikos-accent2 hover:underline">
+              Añadir producto →
+            </Link>
+          </header>
+          <ul className="flex flex-wrap gap-2">
+            {availableProductCodes.map((code) => (
+              <li key={code}>
+                <Link
+                  href="/portal/productos"
+                  className="pill-muted"
+                  data-testid={`available-product-${code}`}
+                >
+                  {isProductCode(code) ? PRODUCT_CATALOGS[code].label : code}
+                </Link>
+              </li>
+            ))}
+          </ul>
         </section>
       ) : null}
     </div>

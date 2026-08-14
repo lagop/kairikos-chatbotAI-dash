@@ -3,7 +3,13 @@ import { createHmac } from 'crypto';
 import type Stripe from 'stripe';
 import { prisma } from './prisma';
 import { isStripeConfigured, getStripe } from './stripe';
-import { syncSubscriptionFromStripe, syncInvoiceFromStripe, deleteSubscriptionFromStripe } from './stripe-billing';
+import {
+  syncSubscriptionFromStripe,
+  syncInvoiceFromStripe,
+  deleteSubscriptionFromStripe,
+  activateClientProductFromCheckout,
+  expireClientProductFromCheckout,
+} from './stripe-billing';
 import { logError } from './observability';
 import { notifyOperatorOfExecutionFailure } from './operator-notify';
 
@@ -161,6 +167,20 @@ async function dispatch(event: Stripe.Event): Promise<string> {
       const inv = event.data.object as Stripe.Invoice;
       await syncInvoiceFromStripe(inv);
       return 'invoice';
+    }
+    // WP-30 — self-serve checkout (POST /api/portal/billing/checkout)
+    // pre-creates a ClientProduct in 'pending_payment' state before
+    // redirecting to Stripe's hosted Checkout page. These two events are
+    // what confirm or abandon that flow.
+    case 'checkout.session.completed': {
+      const session = event.data.object as Stripe.Checkout.Session;
+      await activateClientProductFromCheckout(session);
+      return 'checkout_session';
+    }
+    case 'checkout.session.expired': {
+      const session = event.data.object as Stripe.Checkout.Session;
+      await expireClientProductFromCheckout(session);
+      return 'checkout_session';
     }
     default:
       return 'ignored';

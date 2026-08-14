@@ -26,6 +26,8 @@ const mockState = vi.hoisted(() => ({
   syncSubscriptionFromStripe: vi.fn(),
   syncInvoiceFromStripe: vi.fn(),
   deleteSubscriptionFromStripe: vi.fn(),
+  activateClientProductFromCheckout: vi.fn(),
+  expireClientProductFromCheckout: vi.fn(),
   logError: vi.fn(),
   notifyOperatorOfExecutionFailure: vi.fn(),
 }));
@@ -50,6 +52,8 @@ vi.mock('@/lib/stripe-billing', () => ({
   syncSubscriptionFromStripe: (...args: unknown[]) => mockState.syncSubscriptionFromStripe(...args),
   syncInvoiceFromStripe: (...args: unknown[]) => mockState.syncInvoiceFromStripe(...args),
   deleteSubscriptionFromStripe: (...args: unknown[]) => mockState.deleteSubscriptionFromStripe(...args),
+  activateClientProductFromCheckout: (...args: unknown[]) => mockState.activateClientProductFromCheckout(...args),
+  expireClientProductFromCheckout: (...args: unknown[]) => mockState.expireClientProductFromCheckout(...args),
 }));
 
 vi.mock('@/lib/observability', () => ({
@@ -123,6 +127,33 @@ const RECORDED_SUBSCRIPTION_DELETED = {
   data: { object: { id: 'sub_chatbot_1' } },
 };
 
+// WP-30 — the self-serve checkout flow's Checkout Session lifecycle.
+const RECORDED_CHECKOUT_COMPLETED = {
+  id: 'evt_checkout_completed_1',
+  type: 'checkout.session.completed',
+  api_version: '2024-06-20',
+  data: {
+    object: {
+      id: 'cs_test_1',
+      mode: 'subscription',
+      metadata: { kairikos_client_product_id: 'cp_leads_1' },
+    },
+  },
+};
+
+const RECORDED_CHECKOUT_EXPIRED = {
+  id: 'evt_checkout_expired_1',
+  type: 'checkout.session.expired',
+  api_version: '2024-06-20',
+  data: {
+    object: {
+      id: 'cs_test_2',
+      mode: 'payment',
+      metadata: { kairikos_client_product_id: 'cp_web_1' },
+    },
+  },
+};
+
 beforeEach(() => {
   mockState.isStripeConfigured.mockReset().mockReturnValue(true);
   mockState.constructEvent.mockReset();
@@ -131,6 +162,8 @@ beforeEach(() => {
   mockState.syncSubscriptionFromStripe.mockReset().mockResolvedValue(undefined);
   mockState.syncInvoiceFromStripe.mockReset().mockResolvedValue(undefined);
   mockState.deleteSubscriptionFromStripe.mockReset().mockResolvedValue(undefined);
+  mockState.activateClientProductFromCheckout.mockReset().mockResolvedValue(undefined);
+  mockState.expireClientProductFromCheckout.mockReset().mockResolvedValue(undefined);
   mockState.logError.mockReset();
   mockState.notifyOperatorOfExecutionFailure.mockReset().mockResolvedValue(undefined);
   process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_secret';
@@ -231,6 +264,27 @@ describe('handleStripeEvent — dispatch by recorded event type', () => {
     expect(result.statusCode).toBe(200);
     expect(mockState.syncInvoiceFromStripe).toHaveBeenCalledWith(
       RECORDED_INVOICE_PAID_ONE_TIME.data.object,
+    );
+  });
+
+  it('checkout.session.completed (WP-30) → activateClientProductFromCheckout', async () => {
+    mockState.constructEvent.mockReturnValue(RECORDED_CHECKOUT_COMPLETED);
+    const result = await handleStripeEvent(RAW_BODY, SIG_HEADER);
+    expect(result.statusCode).toBe(200);
+    expect(mockState.activateClientProductFromCheckout).toHaveBeenCalledWith(
+      RECORDED_CHECKOUT_COMPLETED.data.object,
+    );
+    expect(mockState.webhookEventUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ appliedTo: 'checkout_session' }) }),
+    );
+  });
+
+  it('checkout.session.expired (WP-30) → expireClientProductFromCheckout', async () => {
+    mockState.constructEvent.mockReturnValue(RECORDED_CHECKOUT_EXPIRED);
+    const result = await handleStripeEvent(RAW_BODY, SIG_HEADER);
+    expect(result.statusCode).toBe(200);
+    expect(mockState.expireClientProductFromCheckout).toHaveBeenCalledWith(
+      RECORDED_CHECKOUT_EXPIRED.data.object,
     );
   });
 
