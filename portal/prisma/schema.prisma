@@ -616,6 +616,10 @@ model ClientProduct {
   tenant       Tenant?              @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   auditLogs    ClientProductAudit[]
   subscription Subscription?
+  // WP-19 — one-time-purchase products (no recurring price) invoice
+  // directly against the ClientProduct instead of through a Subscription
+  // — see Invoice.clientProductId.
+  invoices     Invoice[]
 
   @@unique([clientId, productId])
   @@index([clientId])
@@ -672,12 +676,22 @@ model Subscription {
 }
 
 // =============================================================================
-// KAIA-4262 — Stripe Invoice state mirror (per Subscription)
+// KAIA-4262 — Stripe Invoice state mirror (per Subscription or, since
+// WP-19, per one-time-purchase ClientProduct)
 //
 // One row per Stripe Invoice. Used by the client billing page (latest
 // invoice + PDF link) and by the owner MRR aggregation. host_invoice_url
 // is what the portal sends the user to for the Stripe-hosted view;
 // invoice_pdf_url is the direct PDF download.
+//
+// WP-19 — subscriptionId is now nullable and clientProductId was added.
+// A product with no recurring price (e.g. the one-time web platform
+// purchase) never gets a Subscription row at all — its Invoice links
+// straight to the ClientProduct instead. Exactly one of
+// subscriptionId / clientProductId is set per row; which one tells you
+// whether this invoice came from the recurring or the one-time path.
+// Pre-WP-19 rows are all subscription-linked (clientProductId stays
+// NULL for them — no backfill needed, the FK is purely additive).
 //
 // Idempotency: stripe_id is UNIQUE so webhook retries collapse to a
 // no-op upsert.
@@ -686,7 +700,8 @@ model Invoice {
   id              String    @id @default(uuid()) @db.Uuid
   tenantId        String    @map("tenant_id") @db.Uuid
   clientId        String    @map("client_id")
-  subscriptionId  String    @map("subscription_id") @db.Uuid
+  subscriptionId  String?   @map("subscription_id") @db.Uuid
+  clientProductId String?   @map("client_product_id") @db.Uuid
   stripeId        String    @unique @map("stripe_id")
   // 'draft' | 'open' | 'paid' | 'uncollectible' | 'void'.
   status          String    @default("draft")
@@ -705,13 +720,15 @@ model Invoice {
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  client       ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  subscription Subscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  client        ChatbotClient  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  subscription  Subscription?  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  clientProduct ClientProduct? @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
   @@index([clientId])
   @@index([subscriptionId])
+  @@index([clientProductId])
   @@index([status])
 }
 

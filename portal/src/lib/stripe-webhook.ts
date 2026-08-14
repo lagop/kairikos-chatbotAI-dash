@@ -1,5 +1,5 @@
 import 'server-only';
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHmac } from 'crypto';
 import type Stripe from 'stripe';
 import { prisma } from './prisma';
 import { isStripeConfigured, getStripe } from './stripe';
@@ -28,13 +28,18 @@ import { notifyOperatorOfExecutionFailure } from './operator-notify';
  *      is invalid — Stripe does not retry 4xx, so any auth failure is
  *      terminal.
  *
- * Signature verification uses the raw request body + Stripe's
- * `Stripe-Signature` header. We do NOT parse the body as JSON before
- * signing — Stripe signs the byte-exact body string.
+ * WP-19 — signature verification now goes through the Stripe SDK's own
+ * `stripe.webhooks.constructEvent`, replacing a hand-rolled HMAC-SHA256 +
+ * timing-safe-compare implementation. Same algorithm underneath (Stripe's
+ * own code does exactly the header-parse + HMAC + timingSafeEqual dance
+ * this file used to do by hand), but now it's Stripe's problem to keep in
+ * sync with their own signing scheme — a hand-rolled copy is exactly the
+ * kind of thing that quietly drifts the day Stripe changes a header
+ * format detail.
  */
 
 export interface WebhookResult {
-  status: 'ok' | 'duplicate' | 'ignored' | 'signature_invalid' | 'missing_secret';
+  status: 'ok' | 'duplicate' | 'ignored' | 'signature_invalid' | 'missing_secret' | 'error';
   eventId?: string;
   eventType?: string;
   detail?: string;
@@ -123,7 +128,11 @@ export async function handleStripeEvent(
     // retries of the SAME delivery no-op, but a new delivery of the
     // SAME event id is impossible (it's the PK) — so we rely on
     // Stripe to eventually give up.
-    return { statusCode: 500, body: { status: 'ok', eventId: event.id, eventType: event.type, detail: `handler_error:${message}` } };
+    //
+    // WP-19 — this used to report `status: 'ok'` on a 500, which is a
+    // lie the moment anyone reads the response body without also
+    // checking the HTTP status: the handler failed, nothing here is ok.
+    return { statusCode: 500, body: { status: 'error', eventId: event.id, eventType: event.type, detail: `handler_error:${message}` } };
   }
 }
 
@@ -159,29 +168,10 @@ async function dispatch(event: Stripe.Event): Promise<string> {
 }
 
 function verifyAndParse(rawBody: string, signatureHeader: string, secret: string): Stripe.Event | null {
-  // Stripe-Signature header format: t=<timestamp>,v1=<hex hmac>.
-  // Tolerance: 5 minutes (Stripe's default).
-  const parts = signatureHeader.split(',').reduce<Record<string, string>>((acc, part) => {
-    const [k, v] = part.split('=');
-    if (k && v) acc[k] = v;
-    return acc;
-  }, {});
-  const timestamp = parts.t;
-  const v1 = parts.v1;
-  if (!timestamp || !v1) return null;
-  const tsSeconds = Number(timestamp);
-  if (!Number.isFinite(tsSeconds)) return null;
-  const ageSeconds = Math.abs(Date.now() / 1000 - tsSeconds);
-  if (ageSeconds > 5 * 60) return null;
-
-  const expected = createHmac('sha256', secret).update(`${timestamp}.${rawBody}`).digest('hex');
-  const expectedBuf = Buffer.from(expected, 'hex');
-  const receivedBuf = Buffer.from(v1, 'hex');
-  if (expectedBuf.length !== receivedBuf.length) return null;
-  if (!timingSafeEqual(expectedBuf, receivedBuf)) return null;
-
   try {
-    return JSON.parse(rawBody) as Stripe.Event;
+    // 300s tolerance matches Stripe's own default and the 5-minute
+    // window the hand-rolled version enforced before this WP.
+    return getStripe().webhooks.constructEvent(rawBody, signatureHeader, secret, 300);
   } catch {
     return null;
   }
@@ -189,20 +179,4 @@ function verifyAndParse(rawBody: string, signatureHeader: string, secret: string
 
 function hashBody(rawBody: string): string {
   return createHmac('sha256', rawBody).digest('hex').slice(0, 64);
-}
-
-/**
- * Convenience for tests: returns the Stripe client with a forced
- * signature verification bypass. Not used in production.
- */
-export function __getStripeForTests() {
-  return getStripe();
-}
-
-/**
- * Test-only export of the signature verifier. Lets unit tests assert
- * on signature accept/reject without spinning up a real Stripe client.
- */
-export function __verifyAndParseForTests(rawBody: string, signatureHeader: string, secret: string) {
-  return verifyAndParse(rawBody, signatureHeader, secret);
 }

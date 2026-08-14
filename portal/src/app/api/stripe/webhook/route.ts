@@ -20,7 +20,7 @@ export const runtime = 'nodejs';
  *   200 { status: 'duplicate', eventId }     — already processed (idempotency short-circuit)
  *   200 { status: 'ignored', eventType }     — unhandled event type, recorded
  *   400 { status: 'signature_invalid' }      — bad / missing / expired signature
- *   500 { status: 'ok', detail: 'handler_error:…' } — handler threw; Stripe will retry
+ *   500 { status: 'error', detail: 'handler_error:…' } — handler threw; Stripe will retry
  *   503 { status: 'missing_secret' }         — STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET not set
  */
 export async function POST(req: NextRequest) {
