@@ -108,10 +108,20 @@ export async function syncSubscriptionFromStripe(s: Stripe.Subscription): Promis
   const amountCents = item?.price?.unit_amount ?? null;
   const currency = item?.price?.currency ?? 'eur';
 
+  // WP-19 — ClientProduct.tenantId is still nullable pre-WP-09-for-
+  // ClientProduct (see that column's own comment). `?? ''` used to
+  // insert an empty string into a required @db.Uuid column, which
+  // Postgres would reject as invalid UUID syntax anyway — but silently,
+  // deep inside a webhook retry loop, instead of a clear error at the
+  // one point that actually knows what's wrong. Fail explicitly here.
+  if (!clientProduct.tenantId) {
+    throw new Error(`client_product_missing_tenant_id:${clientProduct.id}`);
+  }
+
   await prisma.subscription.upsert({
     where: { stripeId: s.id },
     create: {
-      tenantId: clientProduct.tenantId ?? '',
+      tenantId: clientProduct.tenantId,
       clientId: clientProduct.clientId,
       clientProductId: clientProduct.id,
       stripeId: s.id,
@@ -160,26 +170,54 @@ export async function deleteSubscriptionFromStripe(stripeId: string): Promise<vo
 
 export async function syncInvoiceFromStripe(i: Stripe.Invoice): Promise<void> {
   const subId = typeof i.subscription === 'string' ? i.subscription : i.subscription?.id;
-  if (!subId) {
-    // Not all invoices are tied to a subscription (e.g. one-off
-    // invoices). Skip — we only persist subscription-linked invoices.
-    return;
+
+  let tenantId: string;
+  let clientId: string;
+  let link: { subscriptionId: string; clientProductId: null } | { subscriptionId: null; clientProductId: string };
+
+  if (subId) {
+    const subscription = await prisma.subscription.findUnique({
+      where: { stripeId: subId },
+      select: { id: true, tenantId: true, clientId: true },
+    });
+    if (!subscription) {
+      // Subscription row not yet created. Skip — a subsequent
+      // customer.subscription.created event will land first.
+      return;
+    }
+    tenantId = subscription.tenantId;
+    clientId = subscription.clientId;
+    link = { subscriptionId: subscription.id, clientProductId: null };
+  } else {
+    // WP-19 — a one-time-purchase invoice (createOneTimeInvoice below)
+    // has no Stripe subscription at all. Resolve the ClientProduct via
+    // the same kairikos_client_product_id metadata link
+    // syncSubscriptionFromStripe uses for subscriptions.
+    const cpId = (i.metadata?.kairikos_client_product_id ?? null) as string | null;
+    if (!cpId) {
+      // Not a Kairikos-created invoice (e.g. a manual one from the
+      // Stripe dashboard) — nothing to link it to.
+      return;
+    }
+    const clientProduct = await prisma.clientProduct.findUnique({
+      where: { id: cpId },
+      select: { id: true, tenantId: true, clientId: true },
+    });
+    if (!clientProduct) return;
+    if (!clientProduct.tenantId) {
+      throw new Error(`client_product_missing_tenant_id:${clientProduct.id}`);
+    }
+    tenantId = clientProduct.tenantId;
+    clientId = clientProduct.clientId;
+    link = { subscriptionId: null, clientProductId: clientProduct.id };
   }
-  const subscription = await prisma.subscription.findUnique({
-    where: { stripeId: subId },
-    select: { id: true, tenantId: true, clientId: true },
-  });
-  if (!subscription) {
-    // Subscription row not yet created. Skip — a subsequent
-    // customer.subscription.created event will land first.
-    return;
-  }
+
   await prisma.invoice.upsert({
     where: { stripeId: i.id ?? '' },
     create: {
-      tenantId: subscription.tenantId,
-      clientId: subscription.clientId,
-      subscriptionId: subscription.id,
+      tenantId,
+      clientId,
+      ...link,
       stripeId: i.id ?? '',
       status: i.status ?? 'draft',
       number: i.number ?? null,
@@ -207,6 +245,43 @@ export async function syncInvoiceFromStripe(i: Stripe.Invoice): Promise<void> {
   });
 }
 
+/**
+ * WP-19 — create + finalize a one-off Stripe Invoice for a one-time-
+ * purchase product (no recurring price — e.g. the web platform's pago
+ * único). Mirrors the existing subscription checkout's "payment
+ * collected out-of-band" shape: `collection_method: 'send_invoice'`
+ * makes Stripe email the customer a payment link and starts the invoice
+ * as 'open' rather than auto-charging a stored payment method; the
+ * `invoice.paid` webhook (already wired in stripe-webhook.ts's dispatch)
+ * flips it to 'paid' via syncInvoiceFromStripe above once the client
+ * pays.
+ *
+ * The `kairikos_client_product_id` metadata is what lets
+ * syncInvoiceFromStripe resolve this invoice back to a ClientProduct
+ * with no Subscription to go through.
+ */
+export async function createOneTimeInvoice(params: {
+  clientProductId: string;
+  stripeCustomerId: string;
+  stripeSetupPriceId: string;
+  metadata: Record<string, string>;
+}): Promise<Stripe.Invoice> {
+  const stripe = getStripe();
+  const draft = await stripe.invoices.create({
+    customer: params.stripeCustomerId,
+    collection_method: 'send_invoice',
+    days_until_due: 14,
+    auto_advance: false,
+    metadata: params.metadata,
+  });
+  await stripe.invoiceItems.create({
+    customer: params.stripeCustomerId,
+    invoice: draft.id,
+    price: params.stripeSetupPriceId,
+  });
+  return stripe.invoices.finalizeInvoice(draft.id);
+}
+
 // ---------------------------------------------------------------------------
 // Read paths — billing for client (single tenant) and overview for owner
 // ---------------------------------------------------------------------------
@@ -224,6 +299,25 @@ export interface ClientBillingSummary {
     currentPeriodEnd: string | null;
     cancelAtPeriodEnd: boolean;
     product: { name: string; tier: string; priceCents: number; currency: string };
+  }>;
+  // WP-19 — a ClientProduct for a one-time-purchase product (no
+  // recurring price) never gets a Subscription row, so it's invisible
+  // in `subscriptions` above. Surfaced separately here so the client can
+  // see and audit N ClientProducts total (recurring + one-time), not
+  // just the recurring ones — AC: "la página de facturación los
+  // desglosa".
+  oneTimePurchases: Array<{
+    clientProductId: string;
+    product: { name: string; tier: string; setupFeeCents: number; currency: string };
+    invoice: {
+      status: string;
+      amountDueCents: number;
+      amountPaidCents: number;
+      issuedAt: string | null;
+      paidAt: string | null;
+      invoicePdfUrl: string | null;
+      hostInvoiceUrl: string | null;
+    } | null;
   }>;
   upcomingInvoice: { amountDueCents: number; currency: string; dueAt: string | null } | null;
   recentInvoices: Array<{
@@ -251,8 +345,13 @@ export async function getBillingForClient(clientId: string): Promise<ClientBilli
         where: { status: { in: ['active', 'paused'] } },
         orderBy: { subscribedAt: 'asc' },
         include: {
-          product: { select: { name: true, tier: true, priceCents: true, currency: true } },
+          product: { select: { name: true, tier: true, priceCents: true, setupFeeCents: true, currency: true } },
           subscription: true,
+          // WP-19 — one-time-purchase ClientProducts have no
+          // subscription; `take: 1` + newest-first picks the latest
+          // attempt if a client somehow has more than one invoice here
+          // (e.g. a failed one followed by a retry).
+          invoices: { orderBy: { createdAt: 'desc' }, take: 1 },
         },
       },
     },
@@ -274,6 +373,29 @@ export async function getBillingForClient(clientId: string): Promise<ClientBilli
       cancelAtPeriodEnd: cp.subscription!.cancelAtPeriodEnd,
       product: cp.product,
     }));
+
+  // WP-19 — the complement of `subscriptions`: ClientProducts with no
+  // Subscription row are, by construction, the one-time-purchase ones.
+  const oneTimePurchases = client.clientProducts
+    .filter((cp) => !cp.subscription)
+    .map((cp) => {
+      const invoice = cp.invoices[0];
+      return {
+        clientProductId: cp.id,
+        product: cp.product,
+        invoice: invoice
+          ? {
+              status: invoice.status,
+              amountDueCents: invoice.amountDueCents,
+              amountPaidCents: invoice.amountPaidCents,
+              issuedAt: invoice.issuedAt?.toISOString() ?? null,
+              paidAt: invoice.paidAt?.toISOString() ?? null,
+              invoicePdfUrl: invoice.invoicePdfUrl,
+              hostInvoiceUrl: invoice.hostInvoiceUrl,
+            }
+          : null,
+      };
+    });
 
   const latestInvoice = await prisma.invoice.findFirst({
     where: { clientId: client.id },
@@ -311,6 +433,7 @@ export async function getBillingForClient(clientId: string): Promise<ClientBilli
     tenantId: client.tenantId,
     customer: { stripeCustomerId, portalUrl },
     subscriptions,
+    oneTimePurchases,
     upcomingInvoice: upcoming,
     recentInvoices: recent.map((i) => ({
       id: i.id,
@@ -454,7 +577,7 @@ async function getCustomerPortalUrl(stripeCustomerId: string): Promise<string | 
 // Helpers
 // ---------------------------------------------------------------------------
 
-function toDate(epochSeconds: number | null | undefined): Date | null {
+export function toDate(epochSeconds: number | null | undefined): Date | null {
   if (epochSeconds == null) return null;
   return new Date(epochSeconds * 1000);
 }

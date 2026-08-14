@@ -1,103 +1,286 @@
-import { describe, expect, it } from 'vitest';
-import { createHmac, timingSafeEqual } from 'crypto';
+// =============================================================================
+// KAIA-4262 / WP-19 — unit tests for src/lib/stripe-webhook.ts.
+//
+// WP-19 replaced the hand-rolled HMAC-SHA256 signature check with the
+// Stripe SDK's own `stripe.webhooks.constructEvent`. These tests mock
+// that one call (accept → return the parsed event; reject → throw, same
+// as the real SDK does on a bad signature) and exercise the REAL
+// `handleStripeEvent` end to end — idempotency, dispatch routing, and
+// the error-response shape — rather than re-implementing crypto in the
+// test file the way the pre-WP-19 version of this file did.
+//
+// "Recorded events" per the WP-19 AC: one realistic event fixture per
+// product-billing shape — a recurring subscription, a subscription-
+// linked invoice, and a one-time-purchase invoice with NO subscription
+// at all (WP-19's new path) — shaped like what Stripe actually sends,
+// trimmed to the fields the handler reads.
+// =============================================================================
 
-/**
- * KAIA-4262 — Stripe webhook handler signature tests.
- *
- * These tests mirror the production signature verification logic
- * implemented in src/lib/stripe-webhook.ts so the unit test does not
- * pull in `server-only` (which is incompatible with vitest's resolver
- * without extra deps.inline plumbing).
- *
- * If the production algorithm drifts from this one, the integration
- * smoke (`scripts/verify-stripe-webhook.sh`) will catch it. Keeping
- * the two in sync is enforced by:
- *   - this file's header comment naming the source module
- *   - the staging smoke's Stripe CLI re-delivery test, which proves
- *     the live handler accepts a Stripe-signed body (and rejects
- *     tampered ones) end-to-end
- *
- * Algorithm (must match src/lib/stripe-webhook.ts:verifyAndParse):
- *   1. Parse "Stripe-Signature: t=<ts>,v1=<hex hmac>" into parts.
- *   2. Reject if either part missing or ts not finite.
- *   3. Reject if |now - ts| > 5 minutes.
- *   4. Compute HMAC-SHA256(secret, `${ts}.${body}`) → hex.
- *   5. timingSafeEqual on equal-length buffers.
- *   6. JSON.parse(body) → Stripe.Event.
- */
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-function verifyAndParse(rawBody: string, signatureHeader: string, secret: string): { id: string } | null {
-  const parts = signatureHeader.split(',').reduce<Record<string, string>>((acc, part) => {
-    const [k, v] = part.split('=');
-    if (k && v) acc[k] = v;
-    return acc;
-  }, {});
-  const timestamp = parts.t;
-  const v1 = parts.v1;
-  if (!timestamp || !v1) return null;
-  const tsSeconds = Number(timestamp);
-  if (!Number.isFinite(tsSeconds)) return null;
-  const ageSeconds = Math.abs(Date.now() / 1000 - tsSeconds);
-  if (ageSeconds > 5 * 60) return null;
+const mockState = vi.hoisted(() => ({
+  isStripeConfigured: vi.fn(),
+  constructEvent: vi.fn(),
+  webhookEventCreate: vi.fn(),
+  webhookEventUpdate: vi.fn(),
+  syncSubscriptionFromStripe: vi.fn(),
+  syncInvoiceFromStripe: vi.fn(),
+  deleteSubscriptionFromStripe: vi.fn(),
+  logError: vi.fn(),
+  notifyOperatorOfExecutionFailure: vi.fn(),
+}));
 
-  const expected = createHmac('sha256', secret).update(`${timestamp}.${rawBody}`).digest('hex');
-  const expectedBuf = Buffer.from(expected, 'hex');
-  const receivedBuf = Buffer.from(v1, 'hex');
-  if (expectedBuf.length !== receivedBuf.length) return null;
-  if (!timingSafeEqual(expectedBuf, receivedBuf)) return null;
+vi.mock('@/lib/stripe', () => ({
+  isStripeConfigured: () => mockState.isStripeConfigured(),
+  getStripe: () => ({
+    webhooks: { constructEvent: (...args: unknown[]) => mockState.constructEvent(...args) },
+  }),
+}));
 
-  try {
-    return JSON.parse(rawBody) as { id: string };
-  } catch {
-    return null;
-  }
-}
+vi.mock('@/lib/prisma', () => ({
+  prisma: {
+    stripeWebhookEvent: {
+      create: (...args: unknown[]) => mockState.webhookEventCreate(...args),
+      update: (...args: unknown[]) => mockState.webhookEventUpdate(...args),
+    },
+  },
+}));
 
-function sign(secret: string, ts: number, body: string): string {
-  const hmac = createHmac('sha256', secret).update(`${ts}.${body}`).digest('hex');
-  return `t=${ts},v1=${hmac}`;
-}
+vi.mock('@/lib/stripe-billing', () => ({
+  syncSubscriptionFromStripe: (...args: unknown[]) => mockState.syncSubscriptionFromStripe(...args),
+  syncInvoiceFromStripe: (...args: unknown[]) => mockState.syncInvoiceFromStripe(...args),
+  deleteSubscriptionFromStripe: (...args: unknown[]) => mockState.deleteSubscriptionFromStripe(...args),
+}));
 
-describe('stripe-webhook signature verification', () => {
-  it('accepts a fresh, correctly-signed body', () => {
-    const secret = 'whsec_test_secret';
-    const body = JSON.stringify({ id: 'evt_test_ok' });
-    const ts = Math.floor(Date.now() / 1000);
-    const sig = sign(secret, ts, body);
-    const event = verifyAndParse(body, sig, secret);
-    expect(event).toBeTruthy();
-    expect(event?.id).toBe('evt_test_ok');
+vi.mock('@/lib/observability', () => ({
+  logError: (...args: unknown[]) => mockState.logError(...args),
+}));
+
+vi.mock('@/lib/operator-notify', () => ({
+  notifyOperatorOfExecutionFailure: (...args: unknown[]) => mockState.notifyOperatorOfExecutionFailure(...args),
+}));
+
+import { handleStripeEvent } from '@/lib/stripe-webhook';
+
+const RAW_BODY = '{"id":"evt_test_1"}';
+const SIG_HEADER = 't=1723600000,v1=deadbeef';
+
+// -----------------------------------------------------------------------------
+// Recorded-event fixtures — one per product-billing shape.
+// -----------------------------------------------------------------------------
+
+const RECORDED_SUBSCRIPTION_CREATED = {
+  id: 'evt_sub_created_1',
+  type: 'customer.subscription.created',
+  api_version: '2024-06-20',
+  data: {
+    object: {
+      id: 'sub_chatbot_1',
+      status: 'active',
+      customer: 'cus_1',
+      items: { data: [{ price: { id: 'price_recurring_1', unit_amount: 24900, currency: 'eur' } }] },
+      metadata: { kairikos_client_product_id: 'cp_chatbot_1' },
+    },
+  },
+};
+
+const RECORDED_INVOICE_PAID_RECURRING = {
+  id: 'evt_invoice_paid_1',
+  type: 'invoice.paid',
+  api_version: '2024-06-20',
+  data: {
+    object: {
+      id: 'in_recurring_1',
+      status: 'paid',
+      subscription: 'sub_chatbot_1',
+      amount_due: 24900,
+      amount_paid: 24900,
+    },
+  },
+};
+
+const RECORDED_INVOICE_PAID_ONE_TIME = {
+  id: 'evt_invoice_paid_2',
+  type: 'invoice.paid',
+  api_version: '2024-06-20',
+  data: {
+    object: {
+      id: 'in_one_time_1',
+      status: 'paid',
+      // WP-19 — no `subscription` field at all: this is exactly the
+      // one-time-purchase invoice shape createOneTimeInvoice produces.
+      amount_due: 79900,
+      amount_paid: 79900,
+      metadata: { kairikos_client_product_id: 'cp_web_1' },
+    },
+  },
+};
+
+const RECORDED_SUBSCRIPTION_DELETED = {
+  id: 'evt_sub_deleted_1',
+  type: 'customer.subscription.deleted',
+  api_version: '2024-06-20',
+  data: { object: { id: 'sub_chatbot_1' } },
+};
+
+beforeEach(() => {
+  mockState.isStripeConfigured.mockReset().mockReturnValue(true);
+  mockState.constructEvent.mockReset();
+  mockState.webhookEventCreate.mockReset().mockResolvedValue({ eventId: 'evt_test_1' });
+  mockState.webhookEventUpdate.mockReset().mockResolvedValue({});
+  mockState.syncSubscriptionFromStripe.mockReset().mockResolvedValue(undefined);
+  mockState.syncInvoiceFromStripe.mockReset().mockResolvedValue(undefined);
+  mockState.deleteSubscriptionFromStripe.mockReset().mockResolvedValue(undefined);
+  mockState.logError.mockReset();
+  mockState.notifyOperatorOfExecutionFailure.mockReset().mockResolvedValue(undefined);
+  process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_secret';
+});
+
+describe('handleStripeEvent — preconditions', () => {
+  it('returns 503 when Stripe is not configured', async () => {
+    mockState.isStripeConfigured.mockReturnValue(false);
+    const result = await handleStripeEvent(RAW_BODY, SIG_HEADER);
+    expect(result.statusCode).toBe(503);
+    expect(result.body.status).toBe('missing_secret');
+    expect(mockState.constructEvent).not.toHaveBeenCalled();
   });
 
-  it('rejects an invalid signature', () => {
-    const body = JSON.stringify({ id: 'evt_test' });
-    const ts = Math.floor(Date.now() / 1000);
-    const sig = sign('wrong-secret', ts, body);
-    const event = verifyAndParse(body, sig, 'right-secret');
-    expect(event).toBeNull();
+  it('returns 503 when STRIPE_WEBHOOK_SECRET is not set', async () => {
+    delete process.env.STRIPE_WEBHOOK_SECRET;
+    const result = await handleStripeEvent(RAW_BODY, SIG_HEADER);
+    expect(result.statusCode).toBe(503);
+    expect(result.body.status).toBe('missing_secret');
   });
 
-  it('rejects a stale timestamp (>5 min old)', () => {
-    const secret = 'whsec_test_secret';
-    const body = JSON.stringify({ id: 'evt_test' });
-    const ts = Math.floor(Date.now() / 1000) - 10 * 60;
-    const sig = sign(secret, ts, body);
-    const event = verifyAndParse(body, sig, secret);
-    expect(event).toBeNull();
+  it('returns 400 when the Stripe-Signature header is missing', async () => {
+    const result = await handleStripeEvent(RAW_BODY, null);
+    expect(result.statusCode).toBe(400);
+    expect(result.body.status).toBe('signature_invalid');
+    expect(mockState.constructEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe('handleStripeEvent — signature verification (via stripe.webhooks.constructEvent)', () => {
+  it('returns 400 when constructEvent throws (invalid/tampered signature)', async () => {
+    mockState.constructEvent.mockImplementation(() => {
+      throw new Error('No signatures found matching the expected signature for payload');
+    });
+    const result = await handleStripeEvent(RAW_BODY, SIG_HEADER);
+    expect(result.statusCode).toBe(400);
+    expect(result.body.status).toBe('signature_invalid');
+    expect(mockState.webhookEventCreate).not.toHaveBeenCalled();
   });
 
-  it('rejects a malformed Stripe-Signature header', () => {
-    const event = verifyAndParse('{}', 'garbage', 'whsec_test_secret');
-    expect(event).toBeNull();
+  it('passes the raw body, header, secret, and a 300s tolerance through to constructEvent', async () => {
+    mockState.constructEvent.mockReturnValue(RECORDED_SUBSCRIPTION_CREATED);
+    await handleStripeEvent(RAW_BODY, SIG_HEADER);
+    expect(mockState.constructEvent).toHaveBeenCalledWith(RAW_BODY, SIG_HEADER, 'whsec_test_secret', 300);
   });
 
-  it('rejects when v1 length does not match expected', () => {
-    // Stripe produces a 64-char hex; a shorter one must fail the
-    // length check before timingSafeEqual is called.
-    const body = JSON.stringify({ id: 'evt_test' });
-    const ts = Math.floor(Date.now() / 1000);
-    const sig = `t=${ts},v1=deadbeef`;
-    const event = verifyAndParse(body, sig, 'whsec_test_secret');
-    expect(event).toBeNull();
+  it('proceeds to dispatch when constructEvent accepts the signature', async () => {
+    mockState.constructEvent.mockReturnValue(RECORDED_SUBSCRIPTION_CREATED);
+    const result = await handleStripeEvent(RAW_BODY, SIG_HEADER);
+    expect(result.statusCode).toBe(200);
+    expect(result.body.status).toBe('ok');
+  });
+});
+
+describe('handleStripeEvent — idempotency', () => {
+  it('returns 200 duplicate without dispatching when the event id was already seen (P2002)', async () => {
+    mockState.constructEvent.mockReturnValue(RECORDED_SUBSCRIPTION_CREATED);
+    mockState.webhookEventCreate.mockRejectedValueOnce({ code: 'P2002' });
+    const result = await handleStripeEvent(RAW_BODY, SIG_HEADER);
+    expect(result.statusCode).toBe(200);
+    expect(result.body.status).toBe('duplicate');
+    expect(mockState.syncSubscriptionFromStripe).not.toHaveBeenCalled();
+  });
+});
+
+describe('handleStripeEvent — dispatch by recorded event type', () => {
+  it('customer.subscription.created → syncSubscriptionFromStripe', async () => {
+    mockState.constructEvent.mockReturnValue(RECORDED_SUBSCRIPTION_CREATED);
+    const result = await handleStripeEvent(RAW_BODY, SIG_HEADER);
+    expect(result.statusCode).toBe(200);
+    expect(mockState.syncSubscriptionFromStripe).toHaveBeenCalledWith(
+      RECORDED_SUBSCRIPTION_CREATED.data.object,
+    );
+    expect(mockState.webhookEventUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'processed', appliedTo: 'subscription' }) }),
+    );
+  });
+
+  it('customer.subscription.deleted → deleteSubscriptionFromStripe', async () => {
+    mockState.constructEvent.mockReturnValue(RECORDED_SUBSCRIPTION_DELETED);
+    const result = await handleStripeEvent(RAW_BODY, SIG_HEADER);
+    expect(result.statusCode).toBe(200);
+    expect(mockState.deleteSubscriptionFromStripe).toHaveBeenCalledWith('sub_chatbot_1');
+  });
+
+  it('invoice.paid (subscription-linked, recurring product) → syncInvoiceFromStripe', async () => {
+    mockState.constructEvent.mockReturnValue(RECORDED_INVOICE_PAID_RECURRING);
+    const result = await handleStripeEvent(RAW_BODY, SIG_HEADER);
+    expect(result.statusCode).toBe(200);
+    expect(mockState.syncInvoiceFromStripe).toHaveBeenCalledWith(
+      RECORDED_INVOICE_PAID_RECURRING.data.object,
+    );
+  });
+
+  it('invoice.paid (WP-19 one-time-purchase, no subscription field) → syncInvoiceFromStripe', async () => {
+    mockState.constructEvent.mockReturnValue(RECORDED_INVOICE_PAID_ONE_TIME);
+    const result = await handleStripeEvent(RAW_BODY, SIG_HEADER);
+    expect(result.statusCode).toBe(200);
+    expect(mockState.syncInvoiceFromStripe).toHaveBeenCalledWith(
+      RECORDED_INVOICE_PAID_ONE_TIME.data.object,
+    );
+  });
+
+  it('an unhandled event type is recorded as ignored, no sync call fires', async () => {
+    mockState.constructEvent.mockReturnValue({
+      id: 'evt_charge_1',
+      type: 'charge.succeeded',
+      data: { object: { id: 'ch_1' } },
+    });
+    const result = await handleStripeEvent(RAW_BODY, SIG_HEADER);
+    expect(result.statusCode).toBe(200);
+    expect(mockState.syncSubscriptionFromStripe).not.toHaveBeenCalled();
+    expect(mockState.syncInvoiceFromStripe).not.toHaveBeenCalled();
+    expect(mockState.deleteSubscriptionFromStripe).not.toHaveBeenCalled();
+    expect(mockState.webhookEventUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ appliedTo: 'ignored' }) }),
+    );
+  });
+});
+
+describe('handleStripeEvent — handler failure (WP-19 status-body fix)', () => {
+  it('returns 500 with status "error" (not "ok") when the handler throws', async () => {
+    mockState.constructEvent.mockReturnValue(RECORDED_SUBSCRIPTION_CREATED);
+    mockState.syncSubscriptionFromStripe.mockRejectedValueOnce(new Error('db unavailable'));
+    const result = await handleStripeEvent(RAW_BODY, SIG_HEADER);
+    expect(result.statusCode).toBe(500);
+    expect(result.body.status).toBe('error');
+    expect(result.body.detail).toContain('db unavailable');
+  });
+
+  it('logs the failure and notifies the operator', async () => {
+    mockState.constructEvent.mockReturnValue(RECORDED_SUBSCRIPTION_CREATED);
+    mockState.syncSubscriptionFromStripe.mockRejectedValueOnce(new Error('db unavailable'));
+    await handleStripeEvent(RAW_BODY, SIG_HEADER);
+    expect(mockState.logError).toHaveBeenCalledWith(
+      'stripe.webhook_handler',
+      expect.any(Error),
+      expect.objectContaining({ stripeEventId: 'evt_sub_created_1' }),
+    );
+    expect(mockState.notifyOperatorOfExecutionFailure).toHaveBeenCalledWith(
+      expect.objectContaining({ workflowName: 'stripe_webhook:customer.subscription.created' }),
+    );
+  });
+
+  it('marks the webhook event row as failed', async () => {
+    mockState.constructEvent.mockReturnValue(RECORDED_SUBSCRIPTION_CREATED);
+    mockState.syncSubscriptionFromStripe.mockRejectedValueOnce(new Error('db unavailable'));
+    await handleStripeEvent(RAW_BODY, SIG_HEADER);
+    expect(mockState.webhookEventUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'failed' }) }),
+    );
   });
 });
