@@ -97,15 +97,24 @@ export default async function PortalHome({
   const showMockDiagnosticBanner = data.source === 'mock_dev' && isDatabaseConfigured;
 
   const chatbot = data.products.find((p) => p.productCode === CHATBOT_PRODUCT_CODE);
-  // KAIA-11956 — Reseñas de Google is not sellable yet (WP-15's seed
-  // marks it inactive), but customers reported the section was
-  // undiscoverable when it was missing entirely from the home screen.
-  // Every client who doesn't already have it contracted gets an honest
-  // "No incluido" card (never "Pronto" — the board flagged that as a
-  // promise Kairikos wasn't ready to make) instead of silence. This is
+  // KAIA-11956 — Reseñas de Google, back when it wasn't sellable, was
+  // undiscoverable when missing entirely from the home screen. Every
+  // client who doesn't already have it contracted got an honest "No
+  // incluido" card (never "Pronto") instead of silence. This is
   // deliberately NOT a ProductSummaryCard: those only render for
   // products the client actually has.
+  //
+  // Now that reviews is self-serve purchasable (Product.isActive),
+  // `availableProductCodes` already surfaces it in the generic
+  // "Productos disponibles" section below with a real "Añadir
+  // producto" CTA — showing the old static card at the same time would
+  // put two different, conflicting calls to action for the same
+  // product on one page. So this card only appears when reviews is
+  // NOT self-serve-available (not active, or resolved.source isn't
+  // 'database' and we can't tell) — matching its original, narrower
+  // purpose.
   const hasReviews = data.products.some((p) => p.productCode === 'reviews');
+  const showReviewsUnavailableCard = !hasReviews && !availableProductCodes.includes('reviews');
   const chatbotSummary = chatbot?.activity
     ? {
         spaceId: `spc_${data.client.id}`,
@@ -187,7 +196,7 @@ export default async function PortalHome({
         </>
       ) : null}
 
-      {!hasReviews ? (
+      {showReviewsUnavailableCard ? (
         <section
           className="card"
           aria-labelledby="resenas-resumen"
