@@ -56,17 +56,38 @@ async function resolveFromSupabaseEmail(email: string): Promise<ResolvedClient |
 }
 
 export async function resolveClientFromSession(): Promise<ResolvedClient | null> {
-  if (!isPortalDevMock()) {
-    if (!isDatabaseConfigured) return null;
+  // A real, valid NextAuth session always takes priority over the
+  // dev-mock fallback below. `isPortalDevMock()` detects whether
+  // Supabase env vars look configured — a leftover check from before
+  // this portal's client login moved to NextAuth Credentials, unrelated
+  // to whether there's a real, authenticated session right now. Gating
+  // on it first (as this function used to) meant that in any
+  // environment with placeholder Supabase vars — e.g. local dev, where
+  // Supabase isn't used for auth at all — a genuinely logged-in client
+  // would silently see MOCK_CLIENT's data instead of their own, with no
+  // way to reach their real account through the actual login form.
+  if (isDatabaseConfigured) {
     const session = await auth();
     const email = session?.user?.email?.toLowerCase().trim();
-    if (!email) return null;
-    const link = await prisma.chatbotClientUser.findUnique({
-      where: { nextAuthEmail: email },
-      select: { clientId: true },
-    });
-    if (!link) return null;
-    return { clientId: link.clientId, email, source: 'database' };
+    if (email) {
+      const link = await prisma.chatbotClientUser.findUnique({
+        where: { nextAuthEmail: email },
+        select: { clientId: true },
+      });
+      if (link) {
+        return { clientId: link.clientId, email, source: 'database' };
+      }
+      // Real session, but no matching client row (e.g. an operator
+      // session, or a stale/orphaned NextAuth session). Outside dev-mock
+      // this must resolve to "not a client", not silently fall through
+      // to a mock — dev-mock stays lenient below so local tooling keeps
+      // degrading to something demoable.
+      if (!isPortalDevMock()) return null;
+    }
+  }
+
+  if (!isPortalDevMock()) {
+    return null;
   }
   // Dev fallback: trust an explicit dev-email cookie set by Playwright /
   // local tools. If absent, fall back to the mock client so the UI is
