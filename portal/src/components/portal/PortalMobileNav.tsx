@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { PORTAL_NAV, PORTAL_PROFILE_ITEM, type PortalNavItem } from '@/lib/portal-nav';
 import { ICON_BY_HREF, FALLBACK_ICON } from '@/components/portal/portal-nav-icons';
+import { CollapsibleNavGroup } from '@/components/portal/CollapsibleNavGroup';
 
 // Replaces the old horizontal-scroll pill row (sm:hidden — mobile only).
 // That row had no visual cue that "Perfil" (and sometimes "Soporte") sat
@@ -153,10 +154,21 @@ export function PortalMobileNav() {
                 <ul className="space-y-1">
                   {MOBILE_NAV_ITEMS.filter((item) => !item.parentHref).map((item) => {
                     const children = MOBILE_NAV_ITEMS.filter((child) => child.parentHref === item.href);
+                    if (children.length === 0) {
+                      return (
+                        <li key={item.href}>
+                          <DrawerLink item={item} pathname={pathname} onNavigate={() => setOpen(false)} />
+                        </li>
+                      );
+                    }
                     return (
                       <li key={item.href}>
-                        <DrawerLink item={item} pathname={pathname} onNavigate={() => setOpen(false)} />
-                        {children.length > 0 ? (
+                        <CollapsibleNavGroup
+                          testId={`mobile-nav-group-toggle-${item.href.replace(/\//g, '-')}`}
+                          hasActiveChild={children.some((child) => isItemActive(child, pathname))}
+                          trigger={<DrawerLink item={item} pathname={pathname} onNavigate={() => setOpen(false)} />}
+                          toggleLabel={`Subsecciones de ${item.label}`}
+                        >
                           <ul className="ml-4 mt-1 space-y-1 border-l border-kairikos-border/60 pl-3">
                             {children.map((child) => (
                               <li key={child.href}>
@@ -164,7 +176,7 @@ export function PortalMobileNav() {
                               </li>
                             ))}
                           </ul>
-                        ) : null}
+                        </CollapsibleNavGroup>
                       </li>
                     );
                   })}
