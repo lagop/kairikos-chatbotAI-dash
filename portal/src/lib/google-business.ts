@@ -193,6 +193,40 @@ export async function fetchLocationReviewUrl(accessToken: string, locationId: st
   }
 }
 
+export type PublishReplyResult =
+  | { ok: true }
+  | { ok: false; error: 'needs_reconnect' | 'api_error'; detail?: string };
+
+/**
+ * WP-22c — publishes a reply to a review via the Reviews API v4
+ * (`PUT .../reply`). `reviewResourceName` is a review's full Google
+ * resource name (GoogleReview.googleReviewId). A 401/403 response is
+ * reported as `needs_reconnect` specifically — the caller (the publish
+ * route) turns that into the AC's "mensaje claro de reconexión" instead
+ * of a generic failure.
+ */
+export async function publishReviewReply(accessToken: string, reviewResourceName: string, comment: string): Promise<PublishReplyResult> {
+  try {
+    const res = await fetch(`https://mybusiness.googleapis.com/v4/${reviewResourceName}/reply`, {
+      method: 'PUT',
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ comment }),
+    });
+    if (res.ok) return { ok: true };
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, error: 'needs_reconnect' };
+    }
+    const detail = await res.text().catch(() => '');
+    return { ok: false, error: 'api_error', detail: detail.slice(0, 300) };
+  } catch (err) {
+    logError('google_business.publish_reply', err, { route: 'lib/google-business.ts' }, 'warn');
+    return { ok: false, error: 'api_error', detail: err instanceof Error ? err.message : 'unknown error' };
+  }
+}
+
 /** Revoke a token (access or refresh) at Google — the AC that a
  *  disconnect from the portal invalidates the grant at Google's end too,
  *  not just the local row. */

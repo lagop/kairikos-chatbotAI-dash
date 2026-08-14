@@ -7,6 +7,7 @@ import { isProductContracted } from '@/lib/client-product-access';
 import { EmptyState } from '@/components/portal/EmptyState';
 import { GoogleReviewsPanel, type ConnectionStatus } from '@/components/portal/GoogleReviewsPanel';
 import { ReviewCampaignsPanel, type CampaignSummary } from '@/components/portal/ReviewCampaignsPanel';
+import { ReviewReplyControls } from '@/components/portal/ReviewReplyControls';
 
 export const dynamic = 'force-dynamic';
 
@@ -220,6 +221,8 @@ export default async function PortalResenasPage({ searchParams }: PageProps) {
         locationName={connection?.locationName ?? null}
         lastSyncAt={connection?.lastSyncAt?.toISOString() ?? null}
         lastSyncError={connection?.lastSyncError ?? null}
+        autoPublishReplies={connection?.autoPublishReplies ?? false}
+        autoPublishRepliesChangedAt={connection?.autoPublishRepliesChangedAt?.toISOString() ?? null}
       />
 
       {connectionStatus === 'active' ? (
@@ -245,7 +248,9 @@ export default async function PortalResenasPage({ searchParams }: PageProps) {
                     <p className="text-xs font-semibold uppercase tracking-wider text-kairikos-muted">Tu respuesta</p>
                     <p className="mt-1">{review.replyComment}</p>
                   </div>
-                ) : null}
+                ) : (
+                  <ReviewReplyControls reviewId={review.id} initialDraft={review.aiDraftReply} />
+                )}
               </div>
             ))
           )}

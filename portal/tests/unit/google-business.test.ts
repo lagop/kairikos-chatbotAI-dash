@@ -39,6 +39,7 @@ import {
   encryptRefreshToken,
   decryptRefreshToken,
   getValidAccessToken,
+  publishReviewReply,
 } from '@/lib/google-business';
 
 const ENV_KEYS = [
@@ -217,5 +218,37 @@ describe('getValidAccessToken', () => {
     });
     expect(result).toBeNull();
     expect(mockState.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('publishReviewReply (WP-22c)', () => {
+  it('returns ok:true on a successful PUT', async () => {
+    mockState.fetch.mockResolvedValueOnce(jsonResponse({}));
+    const result = await publishReviewReply('at_1', 'accounts/1/locations/2/reviews/3', 'Gracias por tu reseña');
+    expect(result).toEqual({ ok: true });
+    const [url, init] = mockState.fetch.mock.calls[0];
+    expect(url).toBe('https://mybusiness.googleapis.com/v4/accounts/1/locations/2/reviews/3/reply');
+    expect(init.method).toBe('PUT');
+    expect(JSON.parse(init.body)).toEqual({ comment: 'Gracias por tu reseña' });
+  });
+
+  it('maps a 401/403 to needs_reconnect specifically', async () => {
+    mockState.fetch.mockResolvedValueOnce(jsonResponse({}, false, 403));
+    const result = await publishReviewReply('at_1', 'accounts/1/locations/2/reviews/3', 'x');
+    expect(result).toEqual({ ok: false, error: 'needs_reconnect' });
+  });
+
+  it('maps any other non-ok status to api_error', async () => {
+    mockState.fetch.mockResolvedValueOnce(jsonResponse({}, false, 500));
+    const result = await publishReviewReply('at_1', 'accounts/1/locations/2/reviews/3', 'x');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe('api_error');
+  });
+
+  it('maps a network failure to api_error, never throws', async () => {
+    mockState.fetch.mockRejectedValueOnce(new Error('network down'));
+    const result = await publishReviewReply('at_1', 'accounts/1/locations/2/reviews/3', 'x');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe('api_error');
   });
 });

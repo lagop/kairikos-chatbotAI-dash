@@ -2,6 +2,7 @@ import 'server-only';
 import type { GoogleBusinessConnection } from '@prisma/client';
 import { prisma } from './prisma';
 import { getValidAccessToken } from './google-business';
+import { autoReplyToUnansweredReviews } from './review-reply';
 import { logError } from './observability';
 
 // =============================================================================
@@ -142,6 +143,25 @@ export async function syncReviewsForConnection(
       where: { id: connection.id },
       data: { lastSyncAt: new Date(), lastSyncError: null },
     });
+
+    // WP-22c — a no-op unless the client opted into autoPublishReplies;
+    // isolated so a failure here never turns a successful review sync
+    // into a reported failure.
+    if (connection.autoPublishReplies) {
+      try {
+        const client = await prisma.chatbotClient.findUnique({
+          where: { id: connection.clientId },
+          select: { companyName: true, name: true },
+        });
+        await autoReplyToUnansweredReviews(connection, client?.companyName ?? client?.name ?? 'Nuestro negocio');
+      } catch (err) {
+        logError('google_review_sync.auto_reply_sweep_failed', err, {
+          route: 'lib/google-review-sync.ts',
+          connectionId: connection.id,
+        });
+      }
+    }
+
     return { synced: true, reviewCount };
   } catch (err) {
     logError('google_review_sync.sync_failed', err, {

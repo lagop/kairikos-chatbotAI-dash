@@ -18,6 +18,8 @@ export interface GoogleReviewsPanelProps {
   locationName: string | null;
   lastSyncAt: string | null;
   lastSyncError: string | null;
+  autoPublishReplies: boolean;
+  autoPublishRepliesChangedAt: string | null;
 }
 
 const OAUTH_START_HREF = '/api/portal/google-business/oauth/start';
@@ -34,10 +36,40 @@ function formatRelative(iso: string | null): string {
   return `hace ${days} d`;
 }
 
-export function GoogleReviewsPanel({ connectionId, status, locationName, lastSyncAt, lastSyncError }: GoogleReviewsPanelProps) {
+export function GoogleReviewsPanel({
+  connectionId,
+  status,
+  locationName,
+  lastSyncAt,
+  lastSyncError,
+  autoPublishReplies,
+  autoPublishRepliesChangedAt,
+}: GoogleReviewsPanelProps) {
   const router = useRouter();
-  const [busy, setBusy] = useState<'sync' | 'disconnect' | null>(null);
+  const [busy, setBusy] = useState<'sync' | 'disconnect' | 'auto-publish' | null>(null);
   const [message, setMessage] = useState<{ kind: 'success' | 'error' | 'info'; text: string } | null>(null);
+
+  async function toggleAutoPublish() {
+    setBusy('auto-publish');
+    setMessage(null);
+    try {
+      const res = await fetch('/api/portal/google-business/connection/auto-publish', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !autoPublishReplies }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setMessage({ kind: 'error', text: `No se pudo cambiar el ajuste. ${data?.error ?? res.statusText}` });
+        return;
+      }
+      router.refresh();
+    } catch (err) {
+      setMessage({ kind: 'error', text: `Error de red: ${err instanceof Error ? err.message : 'desconocido'}` });
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function syncNow() {
     setBusy('sync');
@@ -166,6 +198,32 @@ export function GoogleReviewsPanel({ connectionId, status, locationName, lastSyn
               {busy === 'disconnect' ? 'Desconectando…' : 'Desconectar'}
             </button>
           </div>
+        </div>
+      ) : null}
+
+      {status === 'active' ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-kairikos-border pt-4">
+          <div>
+            <p className="text-sm font-semibold">Respuestas automáticas con IA</p>
+            <p className="text-xs text-kairikos-muted">
+              {autoPublishReplies
+                ? 'Las reseñas nuevas sin respuesta se responden automáticamente.'
+                : 'Cada respuesta generada por IA espera tu aprobación antes de publicarse.'}
+              {autoPublishRepliesChangedAt
+                ? ` · último cambio ${formatRelative(autoPublishRepliesChangedAt)}`
+                : ''}
+            </p>
+          </div>
+          <button
+            type="button"
+            className={autoPublishReplies ? 'btn-primary' : 'btn-ghost'}
+            onClick={toggleAutoPublish}
+            disabled={busy !== null}
+            aria-pressed={autoPublishReplies}
+            data-testid="google-reviews-auto-publish-toggle"
+          >
+            {busy === 'auto-publish' ? 'Guardando…' : autoPublishReplies ? 'Activado' : 'Desactivado'}
+          </button>
         </div>
       ) : null}
     </section>

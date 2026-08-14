@@ -15,6 +15,8 @@ const mockState = vi.hoisted(() => ({
   reviewUpsert: vi.fn(),
   connectionUpdate: vi.fn(),
   connectionFindMany: vi.fn(),
+  findUniqueClient: vi.fn(),
+  autoReplyToUnansweredReviews: vi.fn(),
   logError: vi.fn(),
 }));
 
@@ -24,6 +26,10 @@ vi.mock('@/lib/google-business', () => ({
   getValidAccessToken: (...args: unknown[]) => mockState.getValidAccessToken(...args),
 }));
 
+vi.mock('@/lib/review-reply', () => ({
+  autoReplyToUnansweredReviews: (...args: unknown[]) => mockState.autoReplyToUnansweredReviews(...args),
+}));
+
 vi.mock('@/lib/prisma', () => ({
   prisma: {
     googleReview: { upsert: (...args: unknown[]) => mockState.reviewUpsert(...args) },
@@ -31,6 +37,7 @@ vi.mock('@/lib/prisma', () => ({
       update: (...args: unknown[]) => mockState.connectionUpdate(...args),
       findMany: (...args: unknown[]) => mockState.connectionFindMany(...args),
     },
+    chatbotClient: { findUnique: (...args: unknown[]) => mockState.findUniqueClient(...args) },
   },
 }));
 
@@ -68,6 +75,8 @@ beforeEach(() => {
   mockState.reviewUpsert.mockReset().mockResolvedValue({});
   mockState.connectionUpdate.mockReset().mockResolvedValue({});
   mockState.connectionFindMany.mockReset();
+  mockState.findUniqueClient.mockReset().mockResolvedValue({ companyName: 'X', name: 'X' });
+  mockState.autoReplyToUnansweredReviews.mockReset().mockResolvedValue({ drafted: 0, published: 0 });
   mockState.logError.mockReset();
   delete process.env.GOOGLE_REVIEWS_SYNC_MIN_INTERVAL_MINUTES;
 });
@@ -234,5 +243,39 @@ describe('syncAllDueConnections', () => {
     expect(result).toEqual({ swept: 3, synced: 1 });
     // Only 2 fetch calls — 'not_due' never triggers a Google API call.
     expect(mockState.fetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('syncReviewsForConnection — WP-22c auto-reply hook', () => {
+  it('does not call autoReplyToUnansweredReviews when autoPublishReplies is off', async () => {
+    mockState.fetch.mockResolvedValueOnce(jsonResponse({ reviews: [] }));
+    await syncReviewsForConnection(baseConnection({ autoPublishReplies: false }));
+    expect(mockState.autoReplyToUnansweredReviews).not.toHaveBeenCalled();
+  });
+
+  it('calls autoReplyToUnansweredReviews with the resolved business name after a successful sync', async () => {
+    mockState.fetch.mockResolvedValueOnce(jsonResponse({ reviews: [] }));
+    mockState.findUniqueClient.mockResolvedValueOnce({ companyName: 'Clínica Orly', name: 'Orly' });
+    const connection = baseConnection({ autoPublishReplies: true });
+    await syncReviewsForConnection(connection);
+    expect(mockState.autoReplyToUnansweredReviews).toHaveBeenCalledWith(connection, 'Clínica Orly');
+  });
+
+  it('a failure in the auto-reply hook does not turn a successful sync into a failure', async () => {
+    mockState.fetch.mockResolvedValueOnce(jsonResponse({ reviews: [] }));
+    mockState.autoReplyToUnansweredReviews.mockRejectedValueOnce(new Error('anthropic down'));
+    const result = await syncReviewsForConnection(baseConnection({ autoPublishReplies: true }));
+    expect(result.synced).toBe(true);
+    expect(mockState.logError).toHaveBeenCalledWith(
+      'google_review_sync.auto_reply_sweep_failed',
+      expect.any(Error),
+      expect.anything(),
+    );
+  });
+
+  it('does not call the auto-reply hook when the sync itself fails', async () => {
+    mockState.fetch.mockResolvedValueOnce(jsonResponse({}, false, 500));
+    await syncReviewsForConnection(baseConnection({ autoPublishReplies: true }));
+    expect(mockState.autoReplyToUnansweredReviews).not.toHaveBeenCalled();
   });
 });
