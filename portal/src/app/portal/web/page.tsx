@@ -77,11 +77,15 @@ export default async function PortalWebPage({ searchParams }: { searchParams: { 
         ? {
             status: context.webQuote.status,
             amountCents: context.webQuote.amountCents,
+            depositCents: context.webQuote.depositCents,
             currency: context.webQuote.currency,
             description: context.webQuote.description,
           }
         : null;
-      if (context.webQuote && (context.webQuote.status === 'invoiced' || context.webQuote.status === 'paid')) {
+      if (
+        context.webQuote &&
+        ['invoiced', 'invoiced_deposit', 'invoiced_final', 'paid'].includes(context.webQuote.status)
+      ) {
         const invoiceRow = await prisma.invoice.findFirst({
           where: { clientProductId: context.clientProduct.id },
           orderBy: { createdAt: 'desc' },
