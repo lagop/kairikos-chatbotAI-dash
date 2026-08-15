@@ -7,14 +7,15 @@ import { canEditWebQuote } from '@/lib/web-quotes';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const BodySchema = z
-  .object({
-    amountCents: z.number().int().nonnegative().optional(),
-    description: z.string().min(1).optional(),
-  })
-  .refine((v) => v.amountCents !== undefined || v.description !== undefined, {
-    message: 'at_least_one_field_required',
-  });
+const BodySchema = z.object({
+  amountCents: z.number().int().nonnegative().optional(),
+  // WebQuote v2 — null explicitly clears a previously-set deposit
+  // (reverts to a single full-amount invoice); omitted leaves it as-is.
+  depositCents: z.number().int().positive().nullable().optional(),
+  description: z.string().min(1).optional(),
+}).refine((v) => v.amountCents !== undefined || v.depositCents !== undefined || v.description !== undefined, {
+  message: 'at_least_one_field_required',
+});
 
 /**
  * PATCH /api/admin/portal/web-quotes/[id]
@@ -39,12 +40,19 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: 'quote_locked' }, { status: 409 });
   }
 
-  const before = { amountCents: webQuote.amountCents, description: webQuote.description };
+  const effectiveAmountCents = body.data.amountCents ?? webQuote.amountCents;
+  const effectiveDepositCents = body.data.depositCents !== undefined ? body.data.depositCents : webQuote.depositCents;
+  if (effectiveDepositCents !== null && effectiveDepositCents >= effectiveAmountCents) {
+    return NextResponse.json({ error: 'invalid_body', details: 'deposit_must_be_less_than_amount' }, { status: 400 });
+  }
+
+  const before = { amountCents: webQuote.amountCents, depositCents: webQuote.depositCents, description: webQuote.description };
   const updated = await prisma.$transaction(async (tx) => {
     const row = await tx.webQuote.update({
       where: { id: webQuote.id },
       data: {
-        amountCents: body.data.amountCents ?? webQuote.amountCents,
+        amountCents: effectiveAmountCents,
+        depositCents: effectiveDepositCents,
         description: body.data.description ?? webQuote.description,
       },
     });
@@ -53,7 +61,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         webQuoteId: row.id,
         action: 'edited',
         before,
-        after: { amountCents: row.amountCents, description: row.description },
+        after: { amountCents: row.amountCents, depositCents: row.depositCents, description: row.description },
         actorOperatorId: auth.operatorId,
       },
     });

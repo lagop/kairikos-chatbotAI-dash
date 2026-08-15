@@ -47,7 +47,10 @@ export interface DepositPlan {
  *  Pure — reused by both the API routes (to compute what to invoice) and
  *  the operator UI (to preview "Saldo final" while editing a draft). */
 export function resolveDepositPlan(webQuote: { amountCents: number; depositCents: number | null }): DepositPlan {
-  if (webQuote.depositCents === null) {
+  // Loose check — treats a missing/undefined depositCents (e.g. a select()
+  // that forgot the column) the same as an explicit null, rather than
+  // silently taking the "has deposit" branch with a garbage amount.
+  if (webQuote.depositCents == null) {
     return { hasDeposit: false, depositCents: null, finalCents: webQuote.amountCents };
   }
   return {

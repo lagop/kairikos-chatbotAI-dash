@@ -6,12 +6,22 @@ import { authenticateAdminRequest } from '@/lib/operator-session';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const BodySchema = z.object({
-  clientId: z.string().min(1),
-  amountCents: z.number().int().nonnegative(),
-  currency: z.string().min(1).optional(),
-  description: z.string().min(1),
-});
+const BodySchema = z
+  .object({
+    clientId: z.string().min(1),
+    amountCents: z.number().int().nonnegative(),
+    // WebQuote v2 — optional operator-entered advance/deposit. When set,
+    // billing splits into a deposit invoice + a final-balance invoice
+    // instead of a single invoice for the full amount (see
+    // resolveDepositPlan in web-quotes.ts). Must leave a positive balance.
+    depositCents: z.number().int().positive().optional(),
+    currency: z.string().min(1).optional(),
+    description: z.string().min(1),
+  })
+  .refine((v) => v.depositCents === undefined || v.depositCents < v.amountCents, {
+    message: 'deposit_must_be_less_than_amount',
+    path: ['depositCents'],
+  });
 
 /**
  * POST /api/admin/portal/web-quotes
@@ -52,6 +62,7 @@ export async function POST(req: NextRequest) {
         clientProductId: clientProduct.id,
         tenantId: clientProduct.tenantId,
         amountCents: body.data.amountCents,
+        depositCents: body.data.depositCents ?? null,
         currency: body.data.currency ?? 'eur',
         description: body.data.description,
         createdByOperatorId: auth.operatorId,
@@ -61,7 +72,12 @@ export async function POST(req: NextRequest) {
       data: {
         webQuoteId: created.id,
         action: 'created',
-        after: { amountCents: created.amountCents, currency: created.currency, description: created.description },
+        after: {
+          amountCents: created.amountCents,
+          depositCents: created.depositCents,
+          currency: created.currency,
+          description: created.description,
+        },
         actorOperatorId: auth.operatorId,
       },
     });

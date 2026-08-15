@@ -1,5 +1,5 @@
 // =============================================================================
-// Unit tests for POST /api/admin/portal/web-quotes/[id]/generate-invoice.
+// Unit tests for POST /api/admin/portal/web-quotes/[id]/generate-final-invoice.
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -54,13 +54,13 @@ vi.mock('@/lib/prisma', () => ({
 
 const AUTH_OK = { ok: true, sessionId: 's1', operatorId: 'op_1' };
 const STEP_UP_OK = { ok: true, operatorId: 'op_1', sessionId: 's1' };
-const ACCEPTED_QUOTE = {
+const DEPOSIT_PAID_QUOTE = {
   id: 'wq_1',
   clientId: 'client_1',
   clientProductId: 'cp_1',
-  status: 'accepted',
+  status: 'deposit_paid',
   amountCents: 99900,
-  depositCents: null,
+  depositCents: 30000,
   currency: 'eur',
   description: 'Sitio web a medida',
 };
@@ -69,22 +69,22 @@ beforeEach(() => {
   mockState.authenticateAdminRequest.mockReset().mockResolvedValue(AUTH_OK);
   mockState.requireTotpStepUp.mockReset().mockResolvedValue(STEP_UP_OK);
   mockState.isStripeConfigured.mockReset().mockResolvedValue(true);
-  mockState.findUniqueWebQuote.mockReset().mockResolvedValue(ACCEPTED_QUOTE);
+  mockState.findUniqueWebQuote.mockReset().mockResolvedValue(DEPOSIT_PAID_QUOTE);
   mockState.findUniqueClientProduct.mockReset().mockResolvedValue({ id: 'cp_1', tenantId: 'tenant_1' });
-  mockState.findUniqueInvoice.mockReset().mockResolvedValue({ id: 'inv_1', stripeId: 'in_1' });
+  mockState.findUniqueInvoice.mockReset().mockResolvedValue({ id: 'inv_2', stripeId: 'in_2' });
   mockState.ensureCustomerForTenant.mockReset().mockResolvedValue('cus_1');
-  mockState.createWebQuoteInvoice.mockReset().mockResolvedValue({ id: 'in_1', status: 'open' });
+  mockState.createWebQuoteInvoice.mockReset().mockResolvedValue({ id: 'in_2', status: 'open' });
   mockState.syncInvoiceFromStripe.mockReset().mockResolvedValue(undefined);
-  mockState.webQuoteUpdate.mockReset().mockResolvedValue({ ...ACCEPTED_QUOTE, status: 'invoiced' });
+  mockState.webQuoteUpdate.mockReset().mockResolvedValue({ ...DEPOSIT_PAID_QUOTE, status: 'invoiced_final' });
   mockState.webQuoteAuditCreate.mockReset().mockResolvedValue({});
 });
 
 async function callRoute() {
-  const { POST } = await import('@/app/api/admin/portal/web-quotes/[id]/generate-invoice/route');
+  const { POST } = await import('@/app/api/admin/portal/web-quotes/[id]/generate-final-invoice/route');
   return POST({} as NextRequest, { params: { id: 'wq_1' } });
 }
 
-describe('POST /api/admin/portal/web-quotes/[id]/generate-invoice', () => {
+describe('POST /api/admin/portal/web-quotes/[id]/generate-final-invoice', () => {
   it('403s without a fresh TOTP step-up', async () => {
     mockState.requireTotpStepUp.mockResolvedValueOnce({ ok: false, status: 403, error: 'totp_step_up_required' });
     const res = await callRoute();
@@ -98,33 +98,27 @@ describe('POST /api/admin/portal/web-quotes/[id]/generate-invoice', () => {
     expect(res.status).toBe(503);
   });
 
-  it('409s not_accepted when the quote is not in the accepted state', async () => {
-    mockState.findUniqueWebQuote.mockResolvedValueOnce({ ...ACCEPTED_QUOTE, status: 'sent' });
+  it('409s not_deposit_paid when the quote is not in the deposit_paid state', async () => {
+    mockState.findUniqueWebQuote.mockResolvedValueOnce({ ...DEPOSIT_PAID_QUOTE, status: 'invoiced_deposit' });
     const res = await callRoute();
     expect(res.status).toBe(409);
-    expect((await res.clone().json()).error).toBe('not_accepted');
+    expect((await res.clone().json()).error).toBe('not_deposit_paid');
     expect(mockState.createWebQuoteInvoice).not.toHaveBeenCalled();
   });
 
-  it('creates the invoice with the quote amount/description and marks the quote invoiced', async () => {
+  it('invoices the remaining balance (amountCents - depositCents) with role=final', async () => {
     const res = await callRoute();
     expect(res.status).toBe(200);
     expect(mockState.createWebQuoteInvoice).toHaveBeenCalledWith(
       expect.objectContaining({
         stripeCustomerId: 'cus_1',
-        amountCents: 99900,
-        currency: 'eur',
-        description: 'Sitio web a medida',
-        metadata: expect.objectContaining({
-          kairikos_web_quote_id: 'wq_1',
-          kairikos_client_product_id: 'cp_1',
-          kairikos_invoice_role: 'full',
-        }),
+        amountCents: 69900,
+        metadata: expect.objectContaining({ kairikos_invoice_role: 'final', kairikos_web_quote_id: 'wq_1' }),
       }),
     );
     expect(mockState.syncInvoiceFromStripe).toHaveBeenCalled();
     expect(mockState.webQuoteUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { status: 'invoiced' } }),
+      expect.objectContaining({ data: { status: 'invoiced_final' } }),
     );
   });
 
@@ -133,23 +127,5 @@ describe('POST /api/admin/portal/web-quotes/[id]/generate-invoice', () => {
     const res = await callRoute();
     expect(res.status).toBe(502);
     expect(mockState.webQuoteUpdate).not.toHaveBeenCalled();
-  });
-
-  it('with a depositCents set, invoices only the deposit and marks the quote invoiced_deposit', async () => {
-    mockState.findUniqueWebQuote.mockResolvedValueOnce({ ...ACCEPTED_QUOTE, depositCents: 30000 });
-    mockState.webQuoteUpdate.mockResolvedValueOnce({ ...ACCEPTED_QUOTE, depositCents: 30000, status: 'invoiced_deposit' });
-
-    const res = await callRoute();
-
-    expect(res.status).toBe(200);
-    expect(mockState.createWebQuoteInvoice).toHaveBeenCalledWith(
-      expect.objectContaining({
-        amountCents: 30000,
-        metadata: expect.objectContaining({ kairikos_invoice_role: 'deposit' }),
-      }),
-    );
-    expect(mockState.webQuoteUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { status: 'invoiced_deposit' } }),
-    );
   });
 });
