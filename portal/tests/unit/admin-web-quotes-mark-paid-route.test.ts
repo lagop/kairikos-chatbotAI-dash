@@ -73,12 +73,21 @@ describe('POST /api/admin/portal/web-quotes/[id]/mark-paid', () => {
     expect(res.status).toBe(400);
   });
 
-  it('409s not_invoiced when the quote is not in the invoiced state', async () => {
+  it('409s not_invoiced when the quote is not in an invoiced state', async () => {
     mockState.findUniqueWebQuote.mockResolvedValueOnce({ ...INVOICED_QUOTE, status: 'accepted' });
     const res = await callRoute();
     expect(res.status).toBe(409);
     expect((await res.clone().json()).error).toBe('not_invoiced');
   });
+
+  it.each(['invoiced_deposit', 'invoiced_final'])(
+    '200s from %s (WebQuote v2 — manual payment works on the deposit/final invoice too)',
+    async (status) => {
+      mockState.findUniqueWebQuote.mockResolvedValueOnce({ ...INVOICED_QUOTE, status });
+      const res = await callRoute();
+      expect(res.status).toBe(200);
+    },
+  );
 
   it('404s when there is no Invoice for this quote yet', async () => {
     mockState.findFirstInvoice.mockResolvedValueOnce(null);

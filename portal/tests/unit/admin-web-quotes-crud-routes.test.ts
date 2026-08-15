@@ -84,8 +84,22 @@ describe('POST /api/admin/portal/web-quotes (create draft)', () => {
     expect(res.status).toBe(201);
     expect(mockState.webQuoteCreate).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ amountCents: 99900, description: 'Sitio web', createdByOperatorId: 'op_1' }),
+        data: expect.objectContaining({ amountCents: 99900, depositCents: null, description: 'Sitio web', createdByOperatorId: 'op_1' }),
       }),
+    );
+  });
+
+  it('400s when depositCents is not less than amountCents', async () => {
+    const res = await callRoute({ clientId: 'c1', amountCents: 99900, depositCents: 99900, description: 'Sitio web' });
+    expect(res.status).toBe(400);
+    expect(mockState.webQuoteCreate).not.toHaveBeenCalled();
+  });
+
+  it('201s and persists depositCents when provided and valid', async () => {
+    const res = await callRoute({ clientId: 'c1', amountCents: 99900, depositCents: 30000, description: 'Sitio web' });
+    expect(res.status).toBe(201);
+    expect(mockState.webQuoteCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ depositCents: 30000 }) }),
     );
   });
 });
@@ -109,11 +123,36 @@ describe('PATCH /api/admin/portal/web-quotes/[id] (edit)', () => {
   });
 
   it('200s and updates the amount on a draft quote', async () => {
-    mockState.findUniqueWebQuote.mockResolvedValueOnce({ id: 'wq_1', status: 'draft', amountCents: 99900, description: 'x' });
+    mockState.findUniqueWebQuote.mockResolvedValueOnce({ id: 'wq_1', status: 'draft', amountCents: 99900, depositCents: null, description: 'x' });
     const res = await callRoute({ amountCents: 120000 });
     expect(res.status).toBe(200);
     expect(mockState.webQuoteUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ amountCents: 120000 }) }),
+    );
+  });
+
+  it('400s when the new depositCents would not be less than the (unchanged) amountCents', async () => {
+    mockState.findUniqueWebQuote.mockResolvedValueOnce({ id: 'wq_1', status: 'draft', amountCents: 99900, depositCents: null, description: 'x' });
+    const res = await callRoute({ depositCents: 99900 });
+    expect(res.status).toBe(400);
+    expect(mockState.webQuoteUpdate).not.toHaveBeenCalled();
+  });
+
+  it('200s and sets depositCents on a draft quote', async () => {
+    mockState.findUniqueWebQuote.mockResolvedValueOnce({ id: 'wq_1', status: 'draft', amountCents: 99900, depositCents: null, description: 'x' });
+    const res = await callRoute({ depositCents: 30000 });
+    expect(res.status).toBe(200);
+    expect(mockState.webQuoteUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ depositCents: 30000 }) }),
+    );
+  });
+
+  it('200s and clears a previously-set depositCents when passed null', async () => {
+    mockState.findUniqueWebQuote.mockResolvedValueOnce({ id: 'wq_1', status: 'draft', amountCents: 99900, depositCents: 30000, description: 'x' });
+    const res = await callRoute({ depositCents: null });
+    expect(res.status).toBe(200);
+    expect(mockState.webQuoteUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ depositCents: null }) }),
     );
   });
 });

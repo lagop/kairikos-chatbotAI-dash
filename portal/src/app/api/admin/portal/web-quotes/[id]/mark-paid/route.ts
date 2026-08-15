@@ -38,7 +38,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const webQuote = await prisma.webQuote.findUnique({ where: { id: params.id } });
   if (!webQuote) return NextResponse.json({ error: 'web_quote_not_found' }, { status: 404 });
-  if (webQuote.status !== 'invoiced') {
+  // WebQuote v2 — the manual (offline) payment path must work for
+  // whichever invoice is currently open: the single full-amount one, the
+  // deposit, or the final balance. markInvoicePaidManually already
+  // resolves "the current invoice" the same way below (most recent by
+  // clientProductId), and the resulting invoice.paid webhook branches on
+  // the invoice's role to decide whether to activate the ClientProduct.
+  if (webQuote.status !== 'invoiced' && webQuote.status !== 'invoiced_deposit' && webQuote.status !== 'invoiced_final') {
     return NextResponse.json({ error: 'not_invoiced' }, { status: 409 });
   }
 

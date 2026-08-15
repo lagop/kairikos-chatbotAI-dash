@@ -10,17 +10,14 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 /**
- * POST /api/admin/portal/web-quotes/[id]/generate-invoice
+ * POST /api/admin/portal/web-quotes/[id]/generate-final-invoice
  *
- * The operator's explicit confirmation after the client accepted —
- * per the confirmed design, acceptance does NOT auto-invoice. Requires
- * a fresh TOTP step-up (creates a real Stripe billing object).
- *
- * WebQuote v2 — bifurcates on depositCents: without a deposit this
- * invoices the full amount (role='full', status→'invoiced') exactly as
- * before; with a deposit it invoices only that amount (role='deposit',
- * status→'invoiced_deposit') and .../generate-final-invoice handles the
- * remaining balance once the deposit is paid.
+ * WebQuote v2 — the second half of a two-part payment. Only valid once
+ * the deposit has been confirmed paid (status==='deposit_paid'). Invoices
+ * the remaining balance (amountCents - depositCents), role='final', so
+ * that paying it (online or manually) activates the ClientProduct — see
+ * activateClientProductFromWebQuotePayment's role branching. Requires a
+ * fresh TOTP step-up, same standard as generate-invoice.
  */
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await authenticateAdminRequest(req);
@@ -36,8 +33,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const webQuote = await prisma.webQuote.findUnique({ where: { id: params.id } });
   if (!webQuote) return NextResponse.json({ error: 'web_quote_not_found' }, { status: 404 });
-  if (webQuote.status !== 'accepted') {
-    return NextResponse.json({ error: 'not_accepted' }, { status: 409 });
+  if (webQuote.status !== 'deposit_paid') {
+    return NextResponse.json({ error: 'not_deposit_paid' }, { status: 409 });
   }
 
   const clientProduct = await prisma.clientProduct.findUnique({
@@ -54,38 +51,32 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 
   const plan = resolveDepositPlan(webQuote);
-  const role: 'full' | 'deposit' = plan.hasDeposit ? 'deposit' : 'full';
-  const invoiceAmountCents = plan.hasDeposit ? plan.depositCents! : webQuote.amountCents;
-  const nextStatus = plan.hasDeposit ? 'invoiced_deposit' : 'invoiced';
 
   try {
     const invoice = await createWebQuoteInvoice({
       stripeCustomerId,
-      amountCents: invoiceAmountCents,
+      amountCents: plan.finalCents,
       currency: webQuote.currency,
-      description: plan.hasDeposit ? `${webQuote.description} — adelanto` : webQuote.description,
+      description: `${webQuote.description} — saldo final`,
       metadata: {
         kairikos_tenant_id: clientProduct.tenantId,
         kairikos_client_id: webQuote.clientId,
         kairikos_client_product_id: clientProduct.id,
         kairikos_web_quote_id: webQuote.id,
         kairikos_product_code: 'web',
-        kairikos_invoice_role: role,
+        kairikos_invoice_role: 'final',
       },
     });
-    // Persist the Invoice mirror synchronously (same pattern as the admin
-    // billing checkout route) so the operator UI has hostInvoiceUrl right
-    // away, instead of waiting for the invoice.created webhook to land.
     await syncInvoiceFromStripe(invoice);
 
     const updated = await prisma.$transaction(async (tx) => {
-      const row = await tx.webQuote.update({ where: { id: webQuote.id }, data: { status: nextStatus } });
+      const row = await tx.webQuote.update({ where: { id: webQuote.id }, data: { status: 'invoiced_final' } });
       await tx.webQuoteAudit.create({
         data: {
           webQuoteId: row.id,
-          action: nextStatus,
-          before: { status: 'accepted' },
-          after: { status: nextStatus, stripeInvoiceId: invoice.id },
+          action: 'invoiced_final',
+          before: { status: 'deposit_paid' },
+          after: { status: 'invoiced_final', stripeInvoiceId: invoice.id },
           actorOperatorId: stepUp.operatorId,
         },
       });
@@ -96,7 +87,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ ok: true, webQuote: updated, invoice: localInvoice });
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('[POST web-quotes/[id]/generate-invoice] stripe call failed:', err);
+    console.error('[POST web-quotes/[id]/generate-final-invoice] stripe call failed:', err);
     return NextResponse.json({ error: 'stripe_error' }, { status: 502 });
   }
 }
