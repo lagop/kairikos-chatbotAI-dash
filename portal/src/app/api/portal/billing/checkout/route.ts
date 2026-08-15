@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
   if (!isDatabaseConfigured || resolved.source !== 'database') {
     return NextResponse.json({ error: 'service_unavailable', detail: 'not_available_in_dev_mode' }, { status: 503 });
   }
-  if (!isStripeConfigured()) {
+  if (!(await isStripeConfigured())) {
     return NextResponse.json({ error: 'service_unavailable', detail: 'stripe_not_configured' }, { status: 503 });
   }
 
@@ -126,7 +126,7 @@ export async function POST(req: NextRequest) {
   };
 
   try {
-    const stripe = getStripe();
+    const stripe = await getStripe();
     const session = isOneTimeOnly
       ? await stripe.checkout.sessions.create({
           mode: 'payment',

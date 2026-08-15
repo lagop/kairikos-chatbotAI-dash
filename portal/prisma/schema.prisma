@@ -312,6 +312,7 @@ model Operator {
   recoveryCodes       OperatorRecoveryCode[]
   auditLogs           OperatorSettingsAudit[]
   approvedConfigSteps ChatbotConfigStep[]
+  stripeCatalogAudits StripeCatalogAudit[]
 
   @@index([email])
   @@index([isActive])
@@ -536,6 +537,11 @@ model Product {
   // 'chatbot' | 'web' | 'captacion' | 'seo' | 'resenas'. Free-form so a
   // sixth product doesn't need a schema migration.
   code                   String
+  // The Stripe Product these two Price ids below belong to. NULL until
+  // an operator bootstraps this tier from /admin/portal/settings/billing
+  // (src/lib/stripe-catalog.ts) — needed so a later reprice creates the
+  // new Price under the SAME Stripe Product instead of a duplicate one.
+  stripeProductId        String?  @map("stripe_product_id")
   // Stripe recurring-price id for the monthly fee (populated by the
   // Stripe webhook handler). NULL for unsynced/grandfathered rows or
   // products with no subscription component.
@@ -543,6 +549,16 @@ model Product {
   // Stripe one-time-price id for the setup fee. NULL when setupFeeCents
   // is 0, or when the fee hasn't been provisioned on Stripe yet.
   stripeSetupPriceId     String?  @map("stripe_setup_price_id")
+  // 'test' | 'live' | NULL — which Stripe mode stripeProductId/
+  // stripeRecurringPriceId/stripeSetupPriceId were created under. There
+  // is no reliable, documented way to infer test-vs-live from a Stripe
+  // id's shape alone, so this is tracked explicitly at bootstrap/reprice
+  // time. Used to warn an operator in the UI when this tier's Price
+  // objects were created in a different mode than the one currently
+  // active (see StripeOperatorCredential.activeMode) — a checkout
+  // against a mismatched mode fails with a Stripe "resource_missing"
+  // error, since Price ids are scoped to a single mode.
+  stripePriceMode        String?  @map("stripe_price_mode")
   name                   String
   // 'starter' | 'pro' | 'premium' for chatbot; 'standard' for the
   // single-tier products. Unique per `code`, not globally.
@@ -556,6 +572,7 @@ model Product {
 
   clientProducts ClientProduct[]
   auditLogs      ClientProductAudit[]
+  catalogAudits  StripeCatalogAudit[]
 
   @@unique([code, tier])
   @@index([code])
@@ -1381,4 +1398,81 @@ model WebBrief {
   tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([tenantId])
+}
+
+// =============================================================================
+// Stripe operator credentials — the Secret Key an operator pastes into
+// /admin/portal/settings/billing so the app can create/reprice Stripe
+// Products and Prices on their behalf, instead of doing it by hand in
+// the Stripe Dashboard. Encrypted at rest (AES-256-GCM, same pattern as
+// GoogleBusinessConnection.refreshToken* — see src/lib/operator-crypto.ts's
+// encryptBuffer/decryptBuffer), with a DEDICATED encryption key
+// (STRIPE_CREDENTIAL_ENCRYPTION_KEY) — never shared with the key used
+// for TOTP secrets or Google refresh tokens.
+//
+// Singleton row (see STRIPE_CREDENTIAL_SINGLETON_ID in
+// stripe-credentials.ts) rather than one row per mode: there is only
+// ever one "which mode is active" concept in the whole app, so it lives
+// as a single column here instead of needing a second table (or a
+// unique-partial-index trick) just to enforce "at most one row per
+// mode, exactly one active". Test and live keys are stored side by
+// side so switching activeMode back and forth never requires
+// re-pasting a key.
+model StripeOperatorCredential {
+  id         String  @id @default(uuid()) @db.Uuid
+  // 'test' | 'live' | NULL — NULL means a key may already be saved
+  // below but no mode has been explicitly activated yet, so
+  // resolveActiveStripeSecret() falls back to STRIPE_SECRET_KEY (env).
+  activeMode String? @map("active_mode")
+
+  testSecretKeyCiphertext Bytes?    @map("test_secret_key_ciphertext")
+  testSecretKeyIv         Bytes?    @map("test_secret_key_iv")
+  testSecretKeyTag        Bytes?    @map("test_secret_key_tag")
+  // Last 4 chars of the key in cleartext (e.g. "aBcD" from
+  // sk_test_...aBcD) — lets the UI show "•••• aBcD" without a decrypt.
+  testSecretKeyLastFour   String?   @map("test_secret_key_last_four")
+  testSavedAt             DateTime? @map("test_saved_at")
+
+  liveSecretKeyCiphertext Bytes?    @map("live_secret_key_ciphertext")
+  liveSecretKeyIv         Bytes?    @map("live_secret_key_iv")
+  liveSecretKeyTag        Bytes?    @map("live_secret_key_tag")
+  liveSecretKeyLastFour   String?   @map("live_secret_key_last_four")
+  liveSavedAt             DateTime? @map("live_saved_at")
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+}
+
+// Append-only audit trail for (a) saving/rotating a Stripe credential and
+// (b) catalog price bootstrap/reprice events. Styled after
+// OperatorSettingsAudit (before/after JSON snapshots, denormalized
+// actor) rather than reusing that model directly — OperatorSettings
+// assumes secrets live in 1Password/env vars (secretManagerRef), which
+// doesn't apply to a key encrypted in this database. `before`/`after`
+// must NEVER contain the plaintext key or ciphertext — only
+// non-sensitive fields (mode, lastFour, priceCents, setupFeeCents,
+// stripeProductId, stripe*PriceId).
+model StripeCatalogAudit {
+  id        String  @id @default(uuid()) @db.Uuid
+  // NULL for credential-only events (save/rotate/active-mode-change),
+  // set for catalog events (bootstrap/reprice/archive-failed).
+  productId String? @map("product_id") @db.Uuid
+  // 'credential_saved' | 'credential_rotated' | 'active_mode_changed'
+  // | 'price_bootstrap_created' | 'price_repriced'
+  // | 'price_archive_failed' | 'reconciled_after_partial_failure'
+  action    String
+  before    Json?
+  after     Json?
+
+  actorOperatorId String? @map("actor_operator_id") @db.Uuid
+  actorEmail      String? @map("actor_email")
+  // { ip, userAgent, totpVerifiedAt, ... } — free-form, non-sensitive.
+  metadata        Json?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  product  Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+  operator Operator? @relation(fields: [actorOperatorId], references: [id], onDelete: SetNull)
+
+  @@index([productId])
+  @@index([action])
+  @@index([createdAt])
 }

@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
   if (!isDatabaseConfigured) {
     return NextResponse.json({ error: 'service_unavailable', detail: 'database_not_configured' }, { status: 503 });
   }
-  if (!isStripeConfigured()) {
+  if (!(await isStripeConfigured())) {
     return NextResponse.json({ error: 'service_unavailable', detail: 'stripe_not_configured' }, { status: 503 });
   }
 
@@ -147,7 +147,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const stripe = getStripe();
+  const stripe = await getStripe();
   const subscription = await stripe.subscriptions.create({
     customer: customerId,
     items: [{ price: cp.product.stripeRecurringPriceId! }],
