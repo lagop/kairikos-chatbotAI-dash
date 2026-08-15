@@ -267,19 +267,200 @@ export async function createOneTimeInvoice(params: {
   metadata: Record<string, string>;
 }): Promise<Stripe.Invoice> {
   const stripe = await getStripe();
-  const draft = await stripe.invoices.create({
-    customer: params.stripeCustomerId,
-    collection_method: 'send_invoice',
-    days_until_due: 14,
-    auto_advance: false,
-    metadata: params.metadata,
-  });
+  const draft = await createDraftInvoice(stripe, params.stripeCustomerId, params.metadata);
   await stripe.invoiceItems.create({
     customer: params.stripeCustomerId,
     invoice: draft.id,
     price: params.stripeSetupPriceId,
   });
   return stripe.invoices.finalizeInvoice(draft.id);
+}
+
+async function createDraftInvoice(
+  stripe: Stripe,
+  stripeCustomerId: string,
+  metadata: Record<string, string>,
+): Promise<Stripe.Invoice> {
+  return stripe.invoices.create({
+    customer: stripeCustomerId,
+    collection_method: 'send_invoice',
+    days_until_due: 14,
+    auto_advance: false,
+    metadata,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Web quote billing (WP-XX) — custom-priced 'web' invoices, no catalog
+// Price object involved at all (amount decided per project, not per tier).
+// ---------------------------------------------------------------------------
+
+/**
+ * WP-XX — invoice for an ACCEPTED WebQuote. Same draft→item→finalize
+ * shape as createOneTimeInvoice, but the invoice item carries an ad-hoc
+ * `amount`/`currency`/`description` instead of a `price` — confirmed
+ * supported by the installed Stripe SDK's InvoiceItemCreateParams with
+ * no Price/Product pre-provisioning required, because every 'web'
+ * project has its own one-off amount, never a catalog tier.
+ */
+export async function createWebQuoteInvoice(params: {
+  stripeCustomerId: string;
+  amountCents: number;
+  currency: string;
+  description: string;
+  metadata: Record<string, string>;
+}): Promise<Stripe.Invoice> {
+  const stripe = await getStripe();
+  const draft = await createDraftInvoice(stripe, params.stripeCustomerId, params.metadata);
+  await stripe.invoiceItems.create({
+    customer: params.stripeCustomerId,
+    invoice: draft.id,
+    amount: params.amountCents,
+    currency: params.currency,
+    description: params.description,
+  });
+  return stripe.invoices.finalizeInvoice(draft.id);
+}
+
+export type MarkInvoicePaidManuallyError =
+  | { kind: 'invoice_not_found' }
+  | { kind: 'already_paid' }
+  | { kind: 'stripe_error'; detail: string };
+
+/**
+ * WP-XX — operator-initiated "this was paid by bank transfer / cash, not
+ * through Stripe" action. Delegates the actual "mark paid" to Stripe
+ * itself (`invoices.pay({paid_out_of_band: true})`) rather than writing
+ * Invoice.status locally — that keeps syncInvoiceFromStripe the ONE
+ * place that ever decides an invoice is paid (the resulting invoice.paid
+ * webhook re-syncs status/paidAt/amountPaidCents exactly like an online
+ * payment would).
+ *
+ * Writes paymentChannel/paymentReference/markedPaidBy* to Prisma BEFORE
+ * calling Stripe, not after: stripe.invoices.pay() can cause Stripe to
+ * deliver the invoice.paid webhook to our own endpoint while this
+ * function is still running (it's a real network round trip, no
+ * ordering guarantee with our own subsequent writes). Writing after
+ * would leave a real window where the invoice already reads 'paid' via
+ * the webhook but paymentChannel is still null — indistinguishable from
+ * an online Stripe payment. Writing before closes that window entirely.
+ */
+export async function markInvoicePaidManually(params: {
+  invoiceId: string;
+  channel: 'transfer' | 'cash';
+  reference: string;
+  markedByOperatorId: string;
+}): Promise<{ ok: true } | { ok: false; error: MarkInvoicePaidManuallyError }> {
+  const invoice = await prisma.invoice.findUnique({ where: { id: params.invoiceId } });
+  if (!invoice) return { ok: false, error: { kind: 'invoice_not_found' } };
+  if (invoice.status === 'paid') return { ok: false, error: { kind: 'already_paid' } };
+
+  const webQuote = await prisma.webQuote.findUnique({ where: { clientProductId: invoice.clientProductId ?? '' } });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.invoice.update({
+      where: { id: invoice.id },
+      data: {
+        paymentChannel: params.channel,
+        paymentReference: params.reference,
+        markedPaidByOperatorId: params.markedByOperatorId,
+        markedPaidAt: new Date(),
+      },
+    });
+    if (webQuote) {
+      await tx.webQuoteAudit.create({
+        data: {
+          webQuoteId: webQuote.id,
+          action: 'mark_paid_started',
+          actorType: 'operator',
+          actorOperatorId: params.markedByOperatorId,
+          metadata: { channel: params.channel, reference: params.reference },
+        },
+      });
+    }
+  });
+
+  try {
+    const stripe = await getStripe();
+    await stripe.invoices.pay(invoice.stripeId, { paid_out_of_band: true });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'unknown';
+    if (webQuote) {
+      await prisma.webQuoteAudit
+        .create({
+          data: {
+            webQuoteId: webQuote.id,
+            action: 'mark_paid_failed',
+            actorType: 'operator',
+            actorOperatorId: params.markedByOperatorId,
+            metadata: { detail },
+          },
+        })
+        .catch(() => {});
+    }
+    return { ok: false, error: { kind: 'stripe_error', detail } };
+  }
+
+  await prisma.invoice.update({ where: { id: invoice.id }, data: { paidOutOfBand: true } });
+  if (webQuote) {
+    await prisma.webQuoteAudit.create({
+      data: {
+        webQuoteId: webQuote.id,
+        action: 'mark_paid_succeeded',
+        actorType: 'operator',
+        actorOperatorId: params.markedByOperatorId,
+      },
+    });
+  }
+  return { ok: true };
+}
+
+/**
+ * `invoice.paid` — activates the ClientProduct once a web quote's
+ * invoice is paid, by any channel (online via Stripe, or manually via
+ * markInvoicePaidManually above — both converge on the same Stripe
+ * invoice.paid event, so this is the ONLY code path that flips
+ * ClientProduct/WebQuote to their paid state). Mirrors
+ * activateClientProductFromCheckout's idempotent-guard shape. Doubly
+ * defensive: bails unless the ClientProduct is still 'quote_pending' AND
+ * is actually a 'web' product, so this never touches an unrelated
+ * ClientProduct if some future flow reuses the same metadata key
+ * differently.
+ */
+export async function activateClientProductFromWebQuotePayment(invoice: Stripe.Invoice): Promise<void> {
+  const cpId = (invoice.metadata?.kairikos_client_product_id ?? null) as string | null;
+  if (!cpId) return;
+  const cp = await prisma.clientProduct.findUnique({
+    where: { id: cpId },
+    select: { id: true, clientId: true, productId: true, tenantId: true, status: true, product: { select: { code: true } } },
+  });
+  if (!cp || cp.status !== 'quote_pending' || cp.product.code !== 'web') return;
+
+  const webQuote = await prisma.webQuote.findUnique({ where: { clientProductId: cpId } });
+  if (!webQuote || webQuote.status === 'paid') return;
+
+  await prisma.$transaction(async (tx) => {
+    const updated = await tx.clientProduct.update({
+      where: { id: cpId },
+      data: { status: 'active', subscribedAt: new Date() },
+    });
+    await tx.clientProductAudit.create({
+      data: {
+        clientProductId: updated.id,
+        clientId: updated.clientId,
+        productId: updated.productId,
+        tenantId: updated.tenantId,
+        action: 'web_quote_paid',
+        statusBefore: 'quote_pending',
+        statusAfter: 'active',
+        actorId: 'stripe:invoice.paid',
+      },
+    });
+    await tx.webQuote.update({ where: { id: webQuote.id }, data: { status: 'paid' } });
+    await tx.webQuoteAudit.create({
+      data: { webQuoteId: webQuote.id, action: 'paid', actorType: 'system', actorEmail: 'stripe:invoice.paid' },
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------
