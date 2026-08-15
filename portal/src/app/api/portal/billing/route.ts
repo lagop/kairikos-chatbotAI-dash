@@ -49,7 +49,7 @@ export async function GET(_req: NextRequest) {
   // When Stripe is not configured (e.g. staging env without secrets
   // provisioned), fall back to a tier-only summary derived from the
   // client's tier column so the UI still has data to render.
-  if (!isStripeConfigured()) {
+  if (!(await isStripeConfigured())) {
     const client = await prisma.chatbotClient.findUnique({
       where: { id: resolved.clientId },
       select: { tier: true, stripeCustomerId: true },

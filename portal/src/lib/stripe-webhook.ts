@@ -55,7 +55,7 @@ export async function handleStripeEvent(
   rawBody: string,
   signatureHeader: string | null,
 ): Promise<{ statusCode: number; body: WebhookResult }> {
-  if (!isStripeConfigured()) {
+  if (!(await isStripeConfigured())) {
     return { statusCode: 503, body: { status: 'missing_secret', detail: 'STRIPE_SECRET_KEY not configured' } };
   }
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -66,7 +66,7 @@ export async function handleStripeEvent(
     return { statusCode: 400, body: { status: 'signature_invalid', detail: 'Stripe-Signature header missing' } };
   }
 
-  const event = verifyAndParse(rawBody, signatureHeader, webhookSecret);
+  const event = await verifyAndParse(rawBody, signatureHeader, webhookSecret);
   if (!event) {
     return { statusCode: 400, body: { status: 'signature_invalid' } };
   }
@@ -187,11 +187,12 @@ async function dispatch(event: Stripe.Event): Promise<string> {
   }
 }
 
-function verifyAndParse(rawBody: string, signatureHeader: string, secret: string): Stripe.Event | null {
+async function verifyAndParse(rawBody: string, signatureHeader: string, secret: string): Promise<Stripe.Event | null> {
   try {
     // 300s tolerance matches Stripe's own default and the 5-minute
     // window the hand-rolled version enforced before this WP.
-    return getStripe().webhooks.constructEvent(rawBody, signatureHeader, secret, 300);
+    const stripe = await getStripe();
+    return stripe.webhooks.constructEvent(rawBody, signatureHeader, secret, 300);
   } catch {
     return null;
   }

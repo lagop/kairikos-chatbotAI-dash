@@ -47,7 +47,7 @@ function notConfiguredResponse() {
  * Returns the Stripe customer id, or null if Stripe is not configured.
  */
 export async function ensureCustomerForTenant(tenantId: string): Promise<string | null> {
-  if (!isStripeConfigured()) return null;
+  if (!(await isStripeConfigured())) return null;
   const tenant = await prisma.tenant.findUnique({
     where: { id: tenantId },
     select: { id: true, stripeCustomerId: true, name: true, slug: true },
@@ -55,7 +55,7 @@ export async function ensureCustomerForTenant(tenantId: string): Promise<string 
   if (!tenant) throw new Error(`tenant_not_found:${tenantId}`);
   if (tenant.stripeCustomerId) return tenant.stripeCustomerId;
 
-  const stripe = getStripe();
+  const stripe = await getStripe();
   const created = await stripe.customers.create({
     name: tenant.name,
     metadata: { kairikos_tenant_id: tenant.id, kairikos_tenant_slug: tenant.slug },
@@ -266,7 +266,7 @@ export async function createOneTimeInvoice(params: {
   stripeSetupPriceId: string;
   metadata: Record<string, string>;
 }): Promise<Stripe.Invoice> {
-  const stripe = getStripe();
+  const stripe = await getStripe();
   const draft = await stripe.invoices.create({
     customer: params.stripeCustomerId,
     collection_method: 'send_invoice',
@@ -439,7 +439,7 @@ export async function getBillingForClient(clientId: string): Promise<ClientBilli
   if (!client) return null;
 
   const stripeCustomerId = client.stripeCustomerId;
-  const portalUrl = stripeCustomerId && isStripeConfigured()
+  const portalUrl = stripeCustomerId && (await isStripeConfigured())
     ? await getCustomerPortalUrl(stripeCustomerId)
     : null;
 
@@ -638,8 +638,8 @@ export async function getOwnerBillingOverview(): Promise<OwnerBillingOverview> {
  * client billing UI's "Manage payment method" button.
  */
 async function getCustomerPortalUrl(stripeCustomerId: string): Promise<string | null> {
-  if (!isStripeConfigured()) return null;
-  const stripe = getStripe();
+  if (!(await isStripeConfigured())) return null;
+  const stripe = await getStripe();
   try {
     const session = await stripe.billingPortal.sessions.create({
       customer: stripeCustomerId,
