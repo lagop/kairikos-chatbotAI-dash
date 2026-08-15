@@ -44,13 +44,6 @@ async function resolveDevMockSession(): Promise<PortalSession> {
 }
 
 export async function getSession(): Promise<PortalSession> {
-  // WP-06 — this used to be a private byte-for-byte copy of
-  // isPortalDevMock() (KAIA-1519 already documented the two had to be kept
-  // in sync by hand so the layout and the wizard agreed on dev-mock
-  // detection). Importing the one export removes the chance of the copies
-  // drifting.
-  const isDevMock = isPortalDevMock();
-
   // KAIA-1909: production-stage QA bypass — honor the same operator-key
   // header the API routes (`/api/admin/portal/*`) already honor. When the
   // request carries `x-kaia-operator-key` matching `KAIA_OPERATOR_API_KEY`,
@@ -63,31 +56,17 @@ export async function getSession(): Promise<PortalSession> {
     return operatorKeyBypass;
   }
 
-  if (isDevMock) {
-    // KAIA-4011 — dev-mock auto-login is gated on the
-    // `kairikos-portal-dev-session-active` flag cookie. The flag is set
-    // by an explicit dev-mock login action and cleared by the logout
-    // action. Without the flag, dev-mock returns the no-session shape
-    // so the layout redirects to /portal/login — restoring the
-    // unauth → 307 contract and the back-nav protection that the QA
-    // verdict flagged as missing.
-    const hasActiveDevSession = Boolean(cookies().get(DEV_SESSION_ACTIVE_COOKIE)?.value);
-    if (hasActiveDevSession) {
-      return resolveDevMockSession();
-    }
-    return {
-      email: null,
-      accessToken: null,
-      userId: null,
-      role: null,
-      hasClientAccess: false,
-      isOperator: false,
-      clientSlug: null,
-      clientId: null,
-      reason: 'no_session',
-    };
-  }
-
+  // A real, valid NextAuth session (client OR operator) always takes
+  // priority over the dev-mock fallback below. This used to be gated the
+  // other way around — isPortalDevMock() (a Supabase-env-var heuristic
+  // unrelated to whether a real session exists) short-circuited BEFORE
+  // auth() was ever called, so in any environment with placeholder
+  // Supabase vars (e.g. local dev, where Supabase isn't used for auth at
+  // all) a genuinely logged-in operator via the real /admin/login form
+  // was silently bounced to "no session" — /admin/portal/* was
+  // structurally unreachable through the real login form, only through
+  // the dev-mock cookie or the operator-key bypass above. Same bug class,
+  // same fix, as resolveClientFromSession() in portal-session.ts.
   let session;
   try {
     session = await auth();
@@ -95,7 +74,26 @@ export async function getSession(): Promise<PortalSession> {
     console.error('[getSession] auth() failed:', err);
     session = null;
   }
+
   if (!session?.user?.email) {
+    // WP-06 — this used to be a private byte-for-byte copy of
+    // isPortalDevMock() (KAIA-1519 already documented the two had to be
+    // kept in sync by hand so the layout and the wizard agreed on
+    // dev-mock detection). Importing the one export removes the chance
+    // of the copies drifting.
+    if (isPortalDevMock()) {
+      // KAIA-4011 — dev-mock auto-login is gated on the
+      // `kairikos-portal-dev-session-active` flag cookie. The flag is set
+      // by an explicit dev-mock login action and cleared by the logout
+      // action. Without the flag, dev-mock returns the no-session shape
+      // so the layout redirects to /portal/login — restoring the
+      // unauth → 307 contract and the back-nav protection that the QA
+      // verdict flagged as missing.
+      const hasActiveDevSession = Boolean(cookies().get(DEV_SESSION_ACTIVE_COOKIE)?.value);
+      if (hasActiveDevSession) {
+        return resolveDevMockSession();
+      }
+    }
     return {
       email: null,
       accessToken: null,
