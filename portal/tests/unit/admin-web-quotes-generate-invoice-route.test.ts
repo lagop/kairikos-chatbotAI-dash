@@ -12,11 +12,13 @@ const mockState = vi.hoisted(() => ({
   findUniqueWebQuote: vi.fn(),
   findUniqueClientProduct: vi.fn(),
   findUniqueInvoice: vi.fn(),
+  findUniqueChatbotClient: vi.fn(),
   ensureCustomerForTenant: vi.fn(),
   createWebQuoteInvoice: vi.fn(),
   syncInvoiceFromStripe: vi.fn(),
   webQuoteUpdate: vi.fn(),
   webQuoteAuditCreate: vi.fn(),
+  sendWebQuoteInvoiceEmail: vi.fn(),
 }));
 
 const mockTx = {
@@ -42,12 +44,17 @@ vi.mock('@/lib/stripe-billing', () => ({
   syncInvoiceFromStripe: (...args: unknown[]) => mockState.syncInvoiceFromStripe(...args),
 }));
 
+vi.mock('@/lib/web-quote-email', () => ({
+  sendWebQuoteInvoiceEmail: (...args: unknown[]) => mockState.sendWebQuoteInvoiceEmail(...args),
+}));
+
 vi.mock('@/lib/prisma', () => ({
   prisma: {
     $transaction: (fn: (tx: typeof mockTx) => unknown) => fn(mockTx),
     webQuote: { findUnique: (...args: unknown[]) => mockState.findUniqueWebQuote(...args) },
     clientProduct: { findUnique: (...args: unknown[]) => mockState.findUniqueClientProduct(...args) },
     invoice: { findUnique: (...args: unknown[]) => mockState.findUniqueInvoice(...args) },
+    chatbotClient: { findUnique: (...args: unknown[]) => mockState.findUniqueChatbotClient(...args) },
   },
   isDatabaseConfigured: true,
 }));
@@ -77,6 +84,8 @@ beforeEach(() => {
   mockState.syncInvoiceFromStripe.mockReset().mockResolvedValue(undefined);
   mockState.webQuoteUpdate.mockReset().mockResolvedValue({ ...ACCEPTED_QUOTE, status: 'invoiced' });
   mockState.webQuoteAuditCreate.mockReset().mockResolvedValue({});
+  mockState.findUniqueChatbotClient.mockReset().mockResolvedValue({ email: 'aurora@example.com', companyName: 'Peluquería Aurora', name: 'Aurora' });
+  mockState.sendWebQuoteInvoiceEmail.mockReset().mockResolvedValue({ ok: true, messageId: 'msg_1' });
 });
 
 async function callRoute() {
@@ -151,5 +160,12 @@ describe('POST /api/admin/portal/web-quotes/[id]/generate-invoice', () => {
     expect(mockState.webQuoteUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ data: { status: 'invoiced_deposit' } }),
     );
+  });
+
+  it('still 200s when the notification email fails (best-effort, never blocks the response)', async () => {
+    mockState.sendWebQuoteInvoiceEmail.mockResolvedValueOnce({ ok: false, error: 'resend down' });
+    const res = await callRoute();
+    expect(res.status).toBe(200);
+    expect((await res.clone().json()).ok).toBe(true);
   });
 });

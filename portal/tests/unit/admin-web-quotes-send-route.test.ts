@@ -9,8 +9,10 @@ const mockState = vi.hoisted(() => ({
   authenticateAdminRequest: vi.fn(),
   requireTotpStepUp: vi.fn(),
   findUniqueWebQuote: vi.fn(),
+  findUniqueChatbotClient: vi.fn(),
   webQuoteUpdate: vi.fn(),
   webQuoteAuditCreate: vi.fn(),
+  sendWebQuoteSentEmail: vi.fn(),
 }));
 
 const mockTx = {
@@ -26,10 +28,15 @@ vi.mock('@/lib/operator-totp-stepup', () => ({
   requireTotpStepUp: (...args: unknown[]) => mockState.requireTotpStepUp(...args),
 }));
 
+vi.mock('@/lib/web-quote-email', () => ({
+  sendWebQuoteSentEmail: (...args: unknown[]) => mockState.sendWebQuoteSentEmail(...args),
+}));
+
 vi.mock('@/lib/prisma', () => ({
   prisma: {
     $transaction: (fn: (tx: typeof mockTx) => unknown) => fn(mockTx),
     webQuote: { findUnique: (...args: unknown[]) => mockState.findUniqueWebQuote(...args) },
+    chatbotClient: { findUnique: (...args: unknown[]) => mockState.findUniqueChatbotClient(...args) },
   },
   isDatabaseConfigured: true,
 }));
@@ -41,8 +48,10 @@ beforeEach(() => {
   mockState.authenticateAdminRequest.mockReset().mockResolvedValue(AUTH_OK);
   mockState.requireTotpStepUp.mockReset().mockResolvedValue(STEP_UP_OK);
   mockState.findUniqueWebQuote.mockReset().mockResolvedValue({ id: 'wq_1', status: 'draft' });
-  mockState.webQuoteUpdate.mockReset().mockResolvedValue({ id: 'wq_1', status: 'sent' });
+  mockState.findUniqueChatbotClient.mockReset().mockResolvedValue({ email: 'aurora@example.com', companyName: 'Peluquería Aurora', name: 'Aurora' });
+  mockState.webQuoteUpdate.mockReset().mockResolvedValue({ id: 'wq_1', clientId: 'c1', status: 'sent', amountCents: 99900, currency: 'eur', description: 'x' });
   mockState.webQuoteAuditCreate.mockReset().mockResolvedValue({});
+  mockState.sendWebQuoteSentEmail.mockReset().mockResolvedValue({ ok: true, messageId: 'msg_1' });
 });
 
 async function callRoute() {
@@ -90,5 +99,12 @@ describe('POST /api/admin/portal/web-quotes/[id]/send', () => {
     mockState.findUniqueWebQuote.mockResolvedValueOnce({ id: 'wq_1', status: 'sent' });
     const res = await callRoute();
     expect(res.status).toBe(200);
+  });
+
+  it('still 200s when the notification email fails (best-effort, never blocks the response)', async () => {
+    mockState.sendWebQuoteSentEmail.mockResolvedValueOnce({ ok: false, error: 'resend down' });
+    const res = await callRoute();
+    expect(res.status).toBe(200);
+    expect((await res.clone().json()).ok).toBe(true);
   });
 });
