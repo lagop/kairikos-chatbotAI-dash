@@ -232,6 +232,7 @@ export async function syncInvoiceFromStripe(i: Stripe.Invoice): Promise<void> {
       hostInvoiceUrl: i.hosted_invoice_url ?? null,
       invoicePdfUrl: i.invoice_pdf ?? null,
       metadata: (i.metadata ?? {}) as Prisma.InputJsonValue,
+      invoiceRole: (i.metadata?.kairikos_invoice_role ?? null) as string | null,
     },
     update: {
       status: i.status ?? 'draft',
@@ -241,6 +242,7 @@ export async function syncInvoiceFromStripe(i: Stripe.Invoice): Promise<void> {
       paidAt: toDate(i.status === 'paid' ? i.created : null),
       hostInvoiceUrl: i.hosted_invoice_url ?? null,
       invoicePdfUrl: i.invoice_pdf ?? null,
+      invoiceRole: (i.metadata?.kairikos_invoice_role ?? null) as string | null,
     },
   });
 }
@@ -415,17 +417,57 @@ export async function markInvoicePaidManually(params: {
   return { ok: true };
 }
 
+export type VoidWebQuoteInvoiceError =
+  | { kind: 'invoice_not_found' }
+  | { kind: 'already_paid' }
+  | { kind: 'stripe_error'; detail: string };
+
 /**
- * `invoice.paid` — activates the ClientProduct once a web quote's
- * invoice is paid, by any channel (online via Stripe, or manually via
- * markInvoicePaidManually above — both converge on the same Stripe
- * invoice.paid event, so this is the ONLY code path that flips
- * ClientProduct/WebQuote to their paid state). Mirrors
- * activateClientProductFromCheckout's idempotent-guard shape. Doubly
- * defensive: bails unless the ClientProduct is still 'quote_pending' AND
- * is actually a 'web' product, so this never touches an unrelated
- * ClientProduct if some future flow reuses the same metadata key
- * differently.
+ * WebQuote v2 — voids a not-yet-paid invoice (draft/open), the Stripe
+ * counterpart to "cancelar un presupuesto ya facturado". Stripe rejects
+ * voidInvoice on a paid invoice (that needs a refund instead — out of
+ * scope, see canVoidInvoice's comment), so this re-checks the local
+ * Invoice.status as defense in depth before calling Stripe. On success,
+ * syncs the local mirror immediately (same reasoning as invoice
+ * creation: the operator UI shouldn't have to wait for the
+ * invoice.voided webhook to see status='void').
+ */
+export async function voidWebQuoteInvoice(params: {
+  invoiceId: string;
+}): Promise<{ ok: true } | { ok: false; error: VoidWebQuoteInvoiceError }> {
+  const invoice = await prisma.invoice.findUnique({ where: { id: params.invoiceId } });
+  if (!invoice) return { ok: false, error: { kind: 'invoice_not_found' } };
+  if (invoice.status === 'paid') return { ok: false, error: { kind: 'already_paid' } };
+
+  try {
+    const stripe = await getStripe();
+    const voided = await stripe.invoices.voidInvoice(invoice.stripeId);
+    await syncInvoiceFromStripe(voided);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'unknown';
+    return { ok: false, error: { kind: 'stripe_error', detail } };
+  }
+
+  return { ok: true };
+}
+
+/**
+ * `invoice.paid` — the single entrypoint that reacts to a WebQuote invoice
+ * being paid, by any channel (online via Stripe, or manually via
+ * markInvoicePaidManually above — both converge on this same event).
+ * Branches on invoice.metadata.kairikos_invoice_role (WebQuote v2 — deposit
+ * + final):
+ *   - 'deposit': only the deposit was paid. Flips WebQuote to
+ *     'deposit_paid' but deliberately does NOT touch ClientProduct — per
+ *     the confirmed design, the product only becomes 'active' once the
+ *     FULL amount is collected, not on the deposit alone.
+ *   - 'final' | 'full' | absent (old invoices with no role metadata):
+ *     unchanged v1 behavior — flips ClientProduct to 'active' and
+ *     WebQuote to 'paid'.
+ * Doubly defensive either way: bails unless the ClientProduct is still
+ * 'quote_pending' AND is actually a 'web' product, so this never touches
+ * an unrelated ClientProduct if some future flow reuses the same
+ * metadata key differently.
  */
 export async function activateClientProductFromWebQuotePayment(invoice: Stripe.Invoice): Promise<void> {
   const cpId = (invoice.metadata?.kairikos_client_product_id ?? null) as string | null;
@@ -437,7 +479,22 @@ export async function activateClientProductFromWebQuotePayment(invoice: Stripe.I
   if (!cp || cp.status !== 'quote_pending' || cp.product.code !== 'web') return;
 
   const webQuote = await prisma.webQuote.findUnique({ where: { clientProductId: cpId } });
-  if (!webQuote || webQuote.status === 'paid') return;
+  if (!webQuote) return;
+
+  const role = (invoice.metadata?.kairikos_invoice_role ?? 'full') as 'full' | 'deposit' | 'final';
+
+  if (role === 'deposit') {
+    if (webQuote.status !== 'invoiced_deposit') return;
+    await prisma.$transaction(async (tx) => {
+      await tx.webQuote.update({ where: { id: webQuote.id }, data: { status: 'deposit_paid' } });
+      await tx.webQuoteAudit.create({
+        data: { webQuoteId: webQuote.id, action: 'deposit_paid', actorType: 'system', actorEmail: 'stripe:invoice.paid' },
+      });
+    });
+    return;
+  }
+
+  if (webQuote.status === 'paid') return;
 
   await prisma.$transaction(async (tx) => {
     const updated = await tx.clientProduct.update({

@@ -745,9 +745,17 @@ model Invoice {
   subscriptionId  String?   @map("subscription_id") @db.Uuid
   clientProductId String?   @map("client_product_id") @db.Uuid
   stripeId        String    @unique @map("stripe_id")
-  // 'draft' | 'open' | 'paid' | 'uncollectible' | 'void'.
+  // 'draft' | 'open' | 'paid' | 'uncollectible' | 'void'. 'void' is set
+  // via voidWebQuoteInvoice() (stripe.invoices.voidInvoice) — see
+  // canVoidInvoice in web-quotes.ts for when that's allowed.
   status          String    @default("draft")
   number          String?
+  // 'full' | 'deposit' | 'final' | null. Set from the Stripe invoice's
+  // kairikos_invoice_role metadata by syncInvoiceFromStripe — denormalized
+  // here so the UI never has to inspect Stripe metadata to know whether an
+  // Invoice is a WebQuote's single full payment, its deposit, or its final
+  // balance. Null for invoices unrelated to a WebQuote.
+  invoiceRole     String?   @map("invoice_role")
   amountDueCents  Int       @default(0) @map("amount_due_cents")
   amountPaidCents Int       @default(0) @map("amount_paid_cents")
   currency        String    @default("eur")
@@ -1527,10 +1535,15 @@ model StripeCatalogAudit {
 //
 // Status machine (enforced server-side in src/lib/web-quotes.ts, not a
 // DB constraint — same convention as every other status column here):
-//   draft → sent → accepted → invoiced → paid   (happy path)
-//   draft/sent/accepted → cancelled              (operator aborts)
-//   cancelled → draft                            (reset, see WP notes —
-//     cancelling an already-invoiced quote is out of scope for v1)
+//   draft → sent → accepted → invoiced → paid              (no deposit)
+//   accepted → invoiced_deposit → deposit_paid →
+//     invoiced_final → paid                                (with depositCents set)
+//   draft/sent/accepted → cancelled                         (operator aborts, no Stripe)
+//   invoiced/invoiced_deposit/invoiced_final → cancelled    (voidInvoice, see
+//     canVoidInvoice in web-quotes.ts — only while the current invoice is
+//     unpaid; once a deposit or the full amount is paid there is no
+//     cancel path, a refund would be needed and is out of scope)
+//   cancelled → draft                                       (reset, reuses the row)
 // =============================================================================
 model WebQuote {
   id              String  @id @default(uuid()) @db.Uuid
@@ -1543,6 +1556,12 @@ model WebQuote {
   status String @default("draft")
 
   amountCents Int    @map("amount_cents")
+  // Optional advance/deposit — when set, billing splits into a deposit
+  // invoice (amountCents - depositCents left as the final balance) instead
+  // of a single invoice for the full amount. Null preserves today's
+  // single-payment behavior unchanged. Operator-entered free amount, not a
+  // fixed percentage — every quote here is already custom-priced.
+  depositCents Int?   @map("deposit_cents")
   currency    String @default("eur")
   // Free text the CLIENT sees verbatim — what this quote covers.
   description String
@@ -1575,7 +1594,8 @@ model WebQuoteAudit {
   id         String @id @default(uuid()) @db.Uuid
   webQuoteId String @map("web_quote_id") @db.Uuid
   // 'created' | 'edited' | 'sent' | 'accepted' | 'cancelled' |
-  // 'reset_to_draft' | 'invoiced' | 'mark_paid_started' |
+  // 'reset_to_draft' | 'invoiced' | 'invoiced_deposit' | 'deposit_paid' |
+  // 'invoiced_final' | 'invoice_voided' | 'mark_paid_started' |
   // 'mark_paid_succeeded' | 'mark_paid_failed' | 'paid'
   action     String
   before     Json?

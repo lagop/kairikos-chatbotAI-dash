@@ -175,7 +175,12 @@ async function dispatch(event: Stripe.Event): Promise<string> {
     case 'invoice.finalized':
     case 'invoice.payment_failed':
     case 'invoice.updated':
-    case 'invoice.upcoming': {
+    case 'invoice.upcoming':
+    // WebQuote v2 — voidWebQuoteInvoice already syncs the local mirror
+    // synchronously right after calling stripe.invoices.voidInvoice, so
+    // this is redundant confirmation, not the primary path — same
+    // reasoning as the synchronous sync after creating an invoice.
+    case 'invoice.voided': {
       const inv = event.data.object as Stripe.Invoice;
       await syncInvoiceFromStripe(inv);
       return 'invoice';

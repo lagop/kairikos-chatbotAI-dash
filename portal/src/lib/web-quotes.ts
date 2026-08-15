@@ -17,11 +17,44 @@ export function canSendWebQuote(status: string): boolean {
   return status === 'draft' || status === 'sent';
 }
 
-/** Statuses the operator can still abandon the quote from. Cancelling an
- *  already-invoiced quote is out of scope for v1 (would need
- *  stripe.invoices.voidInvoice) — see the plan's "fuera de alcance". */
+/** Statuses the operator can abandon the quote from WITHOUT touching
+ *  Stripe. Once an invoice exists, use canVoidInvoice instead — this
+ *  never covers invoiced/invoiced_deposit/invoiced_final. */
 export function canCancelWebQuote(status: string): boolean {
   return status === 'draft' || status === 'sent' || status === 'accepted';
+}
+
+/** Statuses where the CURRENT invoice for this quote might still be
+ *  unpaid and voidable (stripe.invoices.voidInvoice). The route additionally
+ *  re-checks the actual Invoice.status !== 'paid' before calling Stripe —
+ *  this only gates which WebQuote states are even worth trying. Once a
+ *  deposit or the full amount is paid (deposit_paid/paid) there is no
+ *  cancel path: a refund is a different, more sensitive operation and is
+ *  out of scope — see the plan's "fuera de alcance". */
+export function canVoidInvoice(status: string): boolean {
+  return status === 'invoiced' || status === 'invoiced_deposit' || status === 'invoiced_final';
+}
+
+export interface DepositPlan {
+  hasDeposit: boolean;
+  depositCents: number | null;
+  /** The remaining balance once the deposit (if any) is paid. Equals
+   *  amountCents when there's no deposit. */
+  finalCents: number;
+}
+
+/** Splits a WebQuote's amountCents into its deposit/final breakdown.
+ *  Pure — reused by both the API routes (to compute what to invoice) and
+ *  the operator UI (to preview "Saldo final" while editing a draft). */
+export function resolveDepositPlan(webQuote: { amountCents: number; depositCents: number | null }): DepositPlan {
+  if (webQuote.depositCents === null) {
+    return { hasDeposit: false, depositCents: null, finalCents: webQuote.amountCents };
+  }
+  return {
+    hasDeposit: true,
+    depositCents: webQuote.depositCents,
+    finalCents: webQuote.amountCents - webQuote.depositCents,
+  };
 }
 
 export interface WebQuoteContext {
