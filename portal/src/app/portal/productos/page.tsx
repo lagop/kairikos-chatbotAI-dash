@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { EmptyState } from '@/components/portal/EmptyState';
 import { SelfServeProductCard, type SelfServeTierOption } from '@/components/portal/SelfServeProductCard';
+import { RequestWebQuoteCard } from '@/components/portal/RequestWebQuoteCard';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { PRODUCT_CODES, PRODUCT_CATALOGS, type ProductCode } from '@/lib/catalogs';
@@ -57,6 +58,14 @@ export default async function PortalProductsPage({
   const pendingByCode = new Map(
     clientProducts.filter((cp) => cp.status === 'pending_payment').map((cp) => [cp.product.code, cp.productId]),
   );
+  // 'web' no longer has a fixed self-serve price — it's sold via custom
+  // quote (see canAccessWebProduct / RequestWebQuoteCard). It's excluded
+  // from the generic tiered grid below entirely; a non-cancelled row
+  // (quote_pending, active, paused) means the client is already somewhere
+  // in that flow, so no card is shown here at all — they manage it from
+  // /portal/web instead.
+  const webRow = clientProducts.find((cp) => cp.product.code === 'web');
+  const showRequestWebQuote = !webRow || webRow.status === 'cancelled';
 
   const allProducts = await prisma.product.findMany({
     where: { isActive: true },
@@ -77,7 +86,7 @@ export default async function PortalProductsPage({
     tiersByCode.set(p.code, list);
   }
 
-  const availableCodes = Array.from(tiersByCode.keys()).filter((code) => !contractedCodes.has(code));
+  const availableCodes = Array.from(tiersByCode.keys()).filter((code) => code !== 'web' && !contractedCodes.has(code));
 
   return (
     <div className="space-y-6">
@@ -97,13 +106,14 @@ export default async function PortalProductsPage({
         </div>
       ) : null}
 
-      {availableCodes.length === 0 ? (
+      {availableCodes.length === 0 && !showRequestWebQuote ? (
         <EmptyState
           title="Ya tienes todos los productos disponibles"
           description="No hay productos adicionales que contratar por ahora."
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {showRequestWebQuote ? <RequestWebQuoteCard label={PRODUCT_CATALOGS.web.label} /> : null}
           {availableCodes.map((code) => {
             const label = isProductCode(code) ? PRODUCT_CATALOGS[code].label : code;
             const pendingProductId = pendingByCode.get(code);
