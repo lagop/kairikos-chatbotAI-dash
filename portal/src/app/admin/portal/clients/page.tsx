@@ -38,6 +38,7 @@ export default async function AdminClientsPage({
         description="Vista de soporte de sólo lectura. Selecciona un cliente para ver el detalle en su portal."
         actions={
           <>
+            <Link href="/admin/portal/settings/billing" className="btn-ghost">Configuración de Stripe</Link>
             <Link href="/admin/portal/support" className="btn-ghost">Solicitudes de ayuda</Link>
             <form action="/api/portal/operator" method="post">
               <input type="hidden" name="mode" value="disable" />
