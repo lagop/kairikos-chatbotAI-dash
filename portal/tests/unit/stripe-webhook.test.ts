@@ -28,6 +28,7 @@ const mockState = vi.hoisted(() => ({
   deleteSubscriptionFromStripe: vi.fn(),
   activateClientProductFromCheckout: vi.fn(),
   expireClientProductFromCheckout: vi.fn(),
+  activateClientProductFromWebQuotePayment: vi.fn(),
   logError: vi.fn(),
   notifyOperatorOfExecutionFailure: vi.fn(),
 }));
@@ -54,6 +55,8 @@ vi.mock('@/lib/stripe-billing', () => ({
   deleteSubscriptionFromStripe: (...args: unknown[]) => mockState.deleteSubscriptionFromStripe(...args),
   activateClientProductFromCheckout: (...args: unknown[]) => mockState.activateClientProductFromCheckout(...args),
   expireClientProductFromCheckout: (...args: unknown[]) => mockState.expireClientProductFromCheckout(...args),
+  activateClientProductFromWebQuotePayment: (...args: unknown[]) =>
+    mockState.activateClientProductFromWebQuotePayment(...args),
 }));
 
 vi.mock('@/lib/observability', () => ({
@@ -120,6 +123,40 @@ const RECORDED_INVOICE_PAID_ONE_TIME = {
   },
 };
 
+// WP-XX — a 'web' custom-quote invoice, paid. Same one-time-purchase
+// shape as RECORDED_INVOICE_PAID_ONE_TIME (no subscription field) — the
+// two are distinguished only by which ClientProduct the metadata points
+// at, not by anything in the event payload itself.
+const RECORDED_INVOICE_PAID_WEB_QUOTE = {
+  id: 'evt_invoice_paid_3',
+  type: 'invoice.paid',
+  api_version: '2024-06-20',
+  data: {
+    object: {
+      id: 'in_web_quote_1',
+      status: 'paid',
+      amount_due: 99900,
+      amount_paid: 99900,
+      metadata: { kairikos_client_product_id: 'cp_web_2', kairikos_web_quote_id: 'wq_1' },
+    },
+  },
+};
+
+const RECORDED_INVOICE_FINALIZED = {
+  id: 'evt_invoice_finalized_1',
+  type: 'invoice.finalized',
+  api_version: '2024-06-20',
+  data: {
+    object: {
+      id: 'in_web_quote_1',
+      status: 'open',
+      amount_due: 99900,
+      amount_paid: 0,
+      metadata: { kairikos_client_product_id: 'cp_web_2', kairikos_web_quote_id: 'wq_1' },
+    },
+  },
+};
+
 const RECORDED_SUBSCRIPTION_DELETED = {
   id: 'evt_sub_deleted_1',
   type: 'customer.subscription.deleted',
@@ -164,6 +201,7 @@ beforeEach(() => {
   mockState.deleteSubscriptionFromStripe.mockReset().mockResolvedValue(undefined);
   mockState.activateClientProductFromCheckout.mockReset().mockResolvedValue(undefined);
   mockState.expireClientProductFromCheckout.mockReset().mockResolvedValue(undefined);
+  mockState.activateClientProductFromWebQuotePayment.mockReset().mockResolvedValue(undefined);
   mockState.logError.mockReset();
   mockState.notifyOperatorOfExecutionFailure.mockReset().mockResolvedValue(undefined);
   process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_secret';
@@ -265,6 +303,24 @@ describe('handleStripeEvent — dispatch by recorded event type', () => {
     expect(mockState.syncInvoiceFromStripe).toHaveBeenCalledWith(
       RECORDED_INVOICE_PAID_ONE_TIME.data.object,
     );
+  });
+
+  it('invoice.paid (WP-XX web quote) → syncInvoiceFromStripe AND activateClientProductFromWebQuotePayment', async () => {
+    mockState.constructEvent.mockReturnValue(RECORDED_INVOICE_PAID_WEB_QUOTE);
+    const result = await handleStripeEvent(RAW_BODY, SIG_HEADER);
+    expect(result.statusCode).toBe(200);
+    expect(mockState.syncInvoiceFromStripe).toHaveBeenCalledWith(RECORDED_INVOICE_PAID_WEB_QUOTE.data.object);
+    expect(mockState.activateClientProductFromWebQuotePayment).toHaveBeenCalledWith(
+      RECORDED_INVOICE_PAID_WEB_QUOTE.data.object,
+    );
+  });
+
+  it('invoice.finalized does NOT call activateClientProductFromWebQuotePayment (only invoice.paid does)', async () => {
+    mockState.constructEvent.mockReturnValue(RECORDED_INVOICE_FINALIZED);
+    const result = await handleStripeEvent(RAW_BODY, SIG_HEADER);
+    expect(result.statusCode).toBe(200);
+    expect(mockState.syncInvoiceFromStripe).toHaveBeenCalledWith(RECORDED_INVOICE_FINALIZED.data.object);
+    expect(mockState.activateClientProductFromWebQuotePayment).not.toHaveBeenCalled();
   });
 
   it('checkout.session.completed (WP-30) → activateClientProductFromCheckout', async () => {

@@ -9,6 +9,7 @@ import {
   deleteSubscriptionFromStripe,
   activateClientProductFromCheckout,
   expireClientProductFromCheckout,
+  activateClientProductFromWebQuotePayment,
 } from './stripe-billing';
 import { logError } from './observability';
 import { notifyOperatorOfExecutionFailure } from './operator-notify';
@@ -158,9 +159,20 @@ async function dispatch(event: Stripe.Event): Promise<string> {
       await deleteSubscriptionFromStripe(sub.id);
       return 'subscription';
     }
+    // WP-XX — 'invoice.paid' additionally activates the ClientProduct
+    // for a web-quote invoice (see activateClientProductFromWebQuotePayment) —
+    // both an online Stripe payment AND an operator's manual
+    // paid_out_of_band mark converge on this same event, so this is the
+    // one place that flips a web quote's ClientProduct to 'active'. The
+    // other invoice.* events only ever sync the local Invoice mirror.
+    case 'invoice.paid': {
+      const inv = event.data.object as Stripe.Invoice;
+      await syncInvoiceFromStripe(inv);
+      await activateClientProductFromWebQuotePayment(inv);
+      return 'invoice';
+    }
     case 'invoice.created':
     case 'invoice.finalized':
-    case 'invoice.paid':
     case 'invoice.payment_failed':
     case 'invoice.updated':
     case 'invoice.upcoming': {
