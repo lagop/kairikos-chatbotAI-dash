@@ -51,6 +51,23 @@ export function AdminLoginForm() {
         window.location.href = url.toString();
         return;
       }
+      // Bridges NextAuth (page-level gate) with the separate
+      // kairikos_operator_session cookie that /api/admin/portal/* routes
+      // and the TOTP step-up flow depend on — without this, no operator
+      // logging in through this form ever gets an OperatorSession, so
+      // isTotpStillVerified() can never become true for anyone. Best-effort:
+      // a failure here shouldn't block a login that NextAuth already
+      // approved, it just means sensitive settings screens stay
+      // unreachable until the operator retries.
+      try {
+        await fetch('/api/operator/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+      } catch {
+        // ignored — best-effort bridge, see comment above
+      }
       window.location.href = '/admin/portal/clients';
     } finally {
       setSubmitting(false);
