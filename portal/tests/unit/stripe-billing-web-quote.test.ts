@@ -12,6 +12,7 @@ const mockState = vi.hoisted(() => ({
   invoiceItemsCreate: vi.fn(),
   invoicesFinalize: vi.fn(),
   invoicesPay: vi.fn(),
+  invoicesVoid: vi.fn(),
   findUniqueInvoice: vi.fn(),
   invoiceUpdate: vi.fn(),
   invoiceUpsert: vi.fn(),
@@ -69,6 +70,7 @@ vi.mock('@/lib/stripe', () => ({
         mockState.callOrder.push('stripe.invoices.pay');
         return mockState.invoicesPay(...args);
       },
+      voidInvoice: (...args: unknown[]) => mockState.invoicesVoid(...args),
     },
     invoiceItems: {
       create: (...args: unknown[]) => mockState.invoiceItemsCreate(...args),
@@ -82,6 +84,7 @@ import {
   markInvoicePaidManually,
   activateClientProductFromWebQuotePayment,
   syncInvoiceFromStripe,
+  voidWebQuoteInvoice,
 } from '@/lib/stripe-billing';
 
 beforeEach(() => {
@@ -259,6 +262,99 @@ describe('activateClientProductFromWebQuotePayment', () => {
     );
     expect(mockState.webQuoteUpdate).toHaveBeenCalledWith({ where: { id: 'wq_1' }, data: { status: 'paid' } });
   });
+
+  const DEPOSIT_INVOICE = {
+    metadata: { kairikos_client_product_id: 'cp_1', kairikos_invoice_role: 'deposit' },
+  } as unknown as Parameters<typeof activateClientProductFromWebQuotePayment>[0];
+
+  it('role=deposit: flips WebQuote to deposit_paid but leaves ClientProduct untouched', async () => {
+    mockState.findUniqueClientProduct.mockResolvedValueOnce({
+      id: 'cp_1', clientId: 'c1', productId: 'p1', tenantId: 't1', status: 'quote_pending', product: { code: 'web' },
+    });
+    mockState.findUniqueWebQuote.mockResolvedValueOnce({ id: 'wq_1', status: 'invoiced_deposit' });
+
+    await activateClientProductFromWebQuotePayment(DEPOSIT_INVOICE);
+
+    expect(mockState.clientProductUpdate).not.toHaveBeenCalled();
+    expect(mockState.webQuoteUpdate).toHaveBeenCalledWith({ where: { id: 'wq_1' }, data: { status: 'deposit_paid' } });
+    expect(mockState.webQuoteAuditCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: 'deposit_paid' }) }),
+    );
+  });
+
+  it('role=deposit: is a no-op when the WebQuote is not invoiced_deposit (idempotent)', async () => {
+    mockState.findUniqueClientProduct.mockResolvedValueOnce({
+      id: 'cp_1', clientId: 'c1', productId: 'p1', tenantId: 't1', status: 'quote_pending', product: { code: 'web' },
+    });
+    mockState.findUniqueWebQuote.mockResolvedValueOnce({ id: 'wq_1', status: 'deposit_paid' });
+
+    await activateClientProductFromWebQuotePayment(DEPOSIT_INVOICE);
+
+    expect(mockState.webQuoteUpdate).not.toHaveBeenCalled();
+  });
+
+  it('role=final: activates the ClientProduct exactly like role=full', async () => {
+    const FINAL_INVOICE = {
+      metadata: { kairikos_client_product_id: 'cp_1', kairikos_invoice_role: 'final' },
+    } as unknown as Parameters<typeof activateClientProductFromWebQuotePayment>[0];
+    mockState.findUniqueClientProduct.mockResolvedValueOnce({
+      id: 'cp_1', clientId: 'c1', productId: 'p1', tenantId: 't1', status: 'quote_pending', product: { code: 'web' },
+    });
+    mockState.findUniqueWebQuote.mockResolvedValueOnce({ id: 'wq_1', status: 'invoiced_final' });
+    mockState.clientProductUpdate.mockResolvedValueOnce({ id: 'cp_1', clientId: 'c1', productId: 'p1', tenantId: 't1' });
+
+    await activateClientProductFromWebQuotePayment(FINAL_INVOICE);
+
+    expect(mockState.clientProductUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'cp_1' }, data: expect.objectContaining({ status: 'active' }) }),
+    );
+    expect(mockState.webQuoteUpdate).toHaveBeenCalledWith({ where: { id: 'wq_1' }, data: { status: 'paid' } });
+  });
+});
+
+describe('voidWebQuoteInvoice', () => {
+  const INVOICE = { id: 'inv_1', stripeId: 'in_stripe_1', status: 'open' };
+
+  it('returns invoice_not_found when the invoice does not exist', async () => {
+    mockState.findUniqueInvoice.mockResolvedValueOnce(null);
+    const result = await voidWebQuoteInvoice({ invoiceId: 'inv_missing' });
+    expect(result).toEqual({ ok: false, error: { kind: 'invoice_not_found' } });
+    expect(mockState.invoicesVoid).not.toHaveBeenCalled();
+  });
+
+  it('returns already_paid without calling Stripe when the invoice is already paid', async () => {
+    mockState.findUniqueInvoice.mockResolvedValueOnce({ ...INVOICE, status: 'paid' });
+    const result = await voidWebQuoteInvoice({ invoiceId: 'inv_1' });
+    expect(result).toEqual({ ok: false, error: { kind: 'already_paid' } });
+    expect(mockState.invoicesVoid).not.toHaveBeenCalled();
+  });
+
+  it('voids via Stripe and syncs the local mirror immediately on the happy path', async () => {
+    mockState.findUniqueInvoice.mockResolvedValueOnce(INVOICE);
+    mockState.invoicesVoid.mockResolvedValueOnce({
+      id: 'in_stripe_1',
+      status: 'void',
+      metadata: { kairikos_client_product_id: 'cp_1' },
+    });
+    mockState.findUniqueClientProduct.mockResolvedValueOnce({ id: 'cp_1', tenantId: 't1', clientId: 'c1' });
+    mockState.invoiceUpsert.mockResolvedValueOnce({});
+
+    const result = await voidWebQuoteInvoice({ invoiceId: 'inv_1' });
+
+    expect(result).toEqual({ ok: true });
+    expect(mockState.invoicesVoid).toHaveBeenCalledWith('in_stripe_1');
+    expect(mockState.invoiceUpsert).toHaveBeenCalledTimes(1);
+    expect(mockState.invoiceUpsert.mock.calls[0][0].create.status).toBe('void');
+  });
+
+  it('returns stripe_error when Stripe rejects the void call', async () => {
+    mockState.findUniqueInvoice.mockResolvedValueOnce(INVOICE);
+    mockState.invoicesVoid.mockRejectedValueOnce(new Error('invoice already paid'));
+
+    const result = await voidWebQuoteInvoice({ invoiceId: 'inv_1' });
+
+    expect(result).toEqual({ ok: false, error: { kind: 'stripe_error', detail: 'invoice already paid' } });
+  });
 });
 
 describe('syncInvoiceFromStripe — regression: never writes manual-payment columns', () => {
@@ -283,5 +379,42 @@ describe('syncInvoiceFromStripe — regression: never writes manual-payment colu
       expect(Object.keys(call.create)).not.toContain(key);
       expect(Object.keys(call.update)).not.toContain(key);
     }
+  });
+
+  it('persists invoiceRole from metadata.kairikos_invoice_role in both create and update', async () => {
+    mockState.findUniqueClientProduct.mockResolvedValueOnce({ id: 'cp_1', tenantId: 't1', clientId: 'c1' });
+    mockState.invoiceUpsert.mockResolvedValueOnce({});
+
+    await syncInvoiceFromStripe({
+      id: 'in_1',
+      status: 'open',
+      amount_due: 87500,
+      amount_paid: 0,
+      currency: 'eur',
+      created: 1700000000,
+      metadata: { kairikos_client_product_id: 'cp_1', kairikos_invoice_role: 'deposit' },
+    } as never);
+
+    const call = mockState.invoiceUpsert.mock.calls[0][0];
+    expect(call.create.invoiceRole).toBe('deposit');
+    expect(call.update.invoiceRole).toBe('deposit');
+  });
+
+  it('invoiceRole is null when the invoice has no kairikos_invoice_role metadata', async () => {
+    mockState.findUniqueClientProduct.mockResolvedValueOnce({ id: 'cp_1', tenantId: 't1', clientId: 'c1' });
+    mockState.invoiceUpsert.mockResolvedValueOnce({});
+
+    await syncInvoiceFromStripe({
+      id: 'in_1',
+      status: 'open',
+      amount_due: 87500,
+      amount_paid: 0,
+      currency: 'eur',
+      created: 1700000000,
+      metadata: { kairikos_client_product_id: 'cp_1' },
+    } as never);
+
+    const call = mockState.invoiceUpsert.mock.calls[0][0];
+    expect(call.create.invoiceRole).toBeNull();
   });
 });

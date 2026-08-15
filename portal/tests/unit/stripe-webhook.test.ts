@@ -157,6 +157,25 @@ const RECORDED_INVOICE_FINALIZED = {
   },
 };
 
+// WebQuote v2 — a voided invoice. voidWebQuoteInvoice already syncs the
+// local mirror synchronously right after calling voidInvoice, so the
+// webhook's job here is just redundant confirmation, same as the other
+// invoice.* events.
+const RECORDED_INVOICE_VOIDED = {
+  id: 'evt_invoice_voided_1',
+  type: 'invoice.voided',
+  api_version: '2024-06-20',
+  data: {
+    object: {
+      id: 'in_web_quote_1',
+      status: 'void',
+      amount_due: 99900,
+      amount_paid: 0,
+      metadata: { kairikos_client_product_id: 'cp_web_2', kairikos_web_quote_id: 'wq_1' },
+    },
+  },
+};
+
 const RECORDED_SUBSCRIPTION_DELETED = {
   id: 'evt_sub_deleted_1',
   type: 'customer.subscription.deleted',
@@ -320,6 +339,14 @@ describe('handleStripeEvent — dispatch by recorded event type', () => {
     const result = await handleStripeEvent(RAW_BODY, SIG_HEADER);
     expect(result.statusCode).toBe(200);
     expect(mockState.syncInvoiceFromStripe).toHaveBeenCalledWith(RECORDED_INVOICE_FINALIZED.data.object);
+    expect(mockState.activateClientProductFromWebQuotePayment).not.toHaveBeenCalled();
+  });
+
+  it('invoice.voided (WebQuote v2) → syncInvoiceFromStripe, no activation', async () => {
+    mockState.constructEvent.mockReturnValue(RECORDED_INVOICE_VOIDED);
+    const result = await handleStripeEvent(RAW_BODY, SIG_HEADER);
+    expect(result.statusCode).toBe(200);
+    expect(mockState.syncInvoiceFromStripe).toHaveBeenCalledWith(RECORDED_INVOICE_VOIDED.data.object);
     expect(mockState.activateClientProductFromWebQuotePayment).not.toHaveBeenCalled();
   });
 
