@@ -3,10 +3,12 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
-import { isProductContracted } from '@/lib/client-product-access';
+import { canAccessWebProduct } from '@/lib/client-product-access';
+import { resolveWebQuoteContext } from '@/lib/web-quotes';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { EmptyState } from '@/components/portal/EmptyState';
 import { WebBriefForm, type WebBriefFormValues } from '@/components/portal/WebBriefForm';
+import { WebQuoteCard, type ClientWebQuoteData, type ClientWebQuoteInvoiceData } from '@/components/portal/WebQuoteCard';
 import { GOAL_LABELS, CONTENT_PROVIDED_BY_LABELS, type GOAL_OPTIONS, type CONTENT_PROVIDED_BY_OPTIONS } from '@/lib/web-brief-schema';
 
 export const dynamic = 'force-dynamic';
@@ -40,7 +42,7 @@ export default async function PortalWebPage({ searchParams }: { searchParams: { 
 
   const hasWeb =
     isDatabaseConfigured && resolved.source === 'database'
-      ? await isProductContracted(prisma, resolved.clientId, 'web')
+      ? await canAccessWebProduct(prisma, resolved.clientId)
       : false;
 
   if (!hasWeb) {
@@ -58,6 +60,36 @@ export default async function PortalWebPage({ searchParams }: { searchParams: { 
         />
       </div>
     );
+  }
+
+  // WebQuote Fase 4 — while the 'web' ClientProduct is still in
+  // 'quote_pending' (pre-payment), show the quote status above the
+  // brief. Once it flips to 'active', this stays null and the page
+  // behaves exactly as before.
+  let isQuotePending = false;
+  let webQuote: ClientWebQuoteData | null = null;
+  let webQuoteInvoice: ClientWebQuoteInvoiceData | null = null;
+  if (isDatabaseConfigured && resolved.source === 'database') {
+    const context = await resolveWebQuoteContext(prisma, resolved.clientId);
+    if (context?.clientProduct.status === 'quote_pending') {
+      isQuotePending = true;
+      webQuote = context.webQuote
+        ? {
+            status: context.webQuote.status,
+            amountCents: context.webQuote.amountCents,
+            currency: context.webQuote.currency,
+            description: context.webQuote.description,
+          }
+        : null;
+      if (context.webQuote && (context.webQuote.status === 'invoiced' || context.webQuote.status === 'paid')) {
+        const invoiceRow = await prisma.invoice.findFirst({
+          where: { clientProductId: context.clientProduct.id },
+          orderBy: { createdAt: 'desc' },
+          select: { hostInvoiceUrl: true },
+        });
+        webQuoteInvoice = invoiceRow ? { hostInvoiceUrl: invoiceRow.hostInvoiceUrl } : null;
+      }
+    }
   }
 
   const brief = await prisma.webBrief.findUnique({ where: { clientId: resolved.clientId } });
@@ -78,6 +110,7 @@ export default async function PortalWebPage({ searchParams }: { searchParams: { 
             </Link>
           }
         />
+        {isQuotePending ? <WebQuoteCard webQuote={webQuote} invoice={webQuoteInvoice} /> : null}
         <div className="card space-y-4" data-testid="web-brief-summary">
           <SummaryRow label="Negocio" value={brief.businessName} />
           <SummaryRow label="Sector" value={brief.vertical} />
@@ -144,6 +177,7 @@ export default async function PortalWebPage({ searchParams }: { searchParams: { 
         title="Plataforma web profesional"
         description="Contanos sobre tu negocio para que empecemos a diseñar tu sitio."
       />
+      {isQuotePending ? <WebQuoteCard webQuote={webQuote} invoice={webQuoteInvoice} /> : null}
       <WebBriefForm initial={initial} />
     </div>
   );
