@@ -18,6 +18,7 @@ import { ALLOWED_MILESTONES } from './onboarding-constants';
 import { PRODUCT_CODES, PRODUCT_CATALOGS, getProductCatalog, type ProductCode } from '@/lib/catalogs';
 import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
 import { ProductAssignment, type AssignableProduct, type ClientProductRow } from '@/components/admin/ProductAssignment';
+import { WebQuoteEditor, type WebQuoteData, type WebQuoteInvoiceData } from '@/components/admin/WebQuoteEditor';
 
 export const dynamic = 'force-dynamic';
 
@@ -305,6 +306,11 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
   let productCode: ProductCode = CHATBOT_PRODUCT_CODE;
   let clientProducts: ClientProductRow[] = [];
   let assignableProducts: AssignableProduct[] = [];
+  // WebQuote Fase 3 — populated only when productCode === 'web', so the
+  // custom-quote billing editor can render inside that product's tab.
+  let webQuoteClientProductId: string | null = null;
+  let webQuote: WebQuoteData | null = null;
+  let webQuoteInvoice: WebQuoteInvoiceData | null = null;
   if (isDatabaseConfigured) {
     try {
       const client = await prisma.chatbotClient.findUnique({
@@ -380,7 +386,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
         activeProductCodes = Array.from(
           new Set(
             cpRows
-              .filter((cp) => cp.status === 'active' || cp.status === 'paused')
+              .filter((cp) => cp.status === 'active' || cp.status === 'paused' || cp.status === 'quote_pending')
               .map((cp) => cp.product.code),
           ),
         ).filter(isProductCode);
@@ -391,6 +397,41 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
             : activeProductCodes.includes(CHATBOT_PRODUCT_CODE)
               ? CHATBOT_PRODUCT_CODE
               : (activeProductCodes[0] ?? CHATBOT_PRODUCT_CODE);
+
+        if (productCode === 'web') {
+          const webCp = cpRows.find((cp) => cp.product.code === 'web');
+          if (webCp) {
+            webQuoteClientProductId = webCp.id;
+            const webQuoteRow = await prisma.webQuote.findUnique({ where: { clientProductId: webCp.id } });
+            webQuote = webQuoteRow
+              ? {
+                  id: webQuoteRow.id,
+                  status: webQuoteRow.status,
+                  amountCents: webQuoteRow.amountCents,
+                  currency: webQuoteRow.currency,
+                  description: webQuoteRow.description,
+                  sentAt: webQuoteRow.sentAt?.toISOString() ?? null,
+                  acceptedAt: webQuoteRow.acceptedAt?.toISOString() ?? null,
+                  cancelledAt: webQuoteRow.cancelledAt?.toISOString() ?? null,
+                }
+              : null;
+            if (webQuoteRow && (webQuoteRow.status === 'invoiced' || webQuoteRow.status === 'paid')) {
+              const invoiceRow = await prisma.invoice.findFirst({
+                where: { clientProductId: webCp.id },
+                orderBy: { createdAt: 'desc' },
+              });
+              webQuoteInvoice = invoiceRow
+                ? {
+                    id: invoiceRow.id,
+                    status: invoiceRow.status,
+                    hostInvoiceUrl: invoiceRow.hostInvoiceUrl,
+                    paymentChannel: invoiceRow.paymentChannel,
+                    paymentReference: invoiceRow.paymentReference,
+                  }
+                : null;
+            }
+          }
+        }
 
         const activities = await prisma.chatbotActivity.findMany({
           where: { clientId: client.id, productCode },
@@ -640,6 +681,15 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
                 })}
               />
             </section>
+          ) : null}
+
+          {productCode === 'web' && webQuoteClientProductId ? (
+            <WebQuoteEditor
+              clientId={params.clientId}
+              clientProductId={webQuoteClientProductId}
+              webQuote={webQuote}
+              invoice={webQuoteInvoice}
+            />
           ) : null}
 
           <section className="card" aria-label="Onboarding del cliente">

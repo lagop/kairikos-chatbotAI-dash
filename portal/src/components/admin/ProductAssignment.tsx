@@ -45,6 +45,7 @@ const STATUS_LABEL: Record<string, string> = {
   paused: 'En pausa',
   cancelled: 'Retirado',
   past_due: 'Pago pendiente',
+  quote_pending: 'Presupuesto en curso',
 };
 
 const STATUS_PILL: Record<string, string> = {
@@ -52,6 +53,7 @@ const STATUS_PILL: Record<string, string> = {
   paused: 'pill-warning',
   cancelled: 'pill-muted',
   past_due: 'pill-danger',
+  quote_pending: 'pill-warning',
 };
 
 function formatPrice(cents: number, currency: string): string {
