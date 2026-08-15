@@ -36,9 +36,22 @@ const STATUS_PILL: Record<string, string> = {
   sent: 'pill-warning',
   accepted: 'pill-warning',
   invoiced: 'pill-warning',
+  invoiced_deposit: 'pill-warning',
+  deposit_paid: 'pill-warning',
+  invoiced_final: 'pill-warning',
   paid: 'pill-success',
   cancelled: 'pill-muted',
 };
+
+// WebQuote v2 — visual-only nudge for the operator: a 'sent' quote the
+// client hasn't responded to in a while gets a warning badge. No email
+// or automatic reminder to the client, per the confirmed design — the
+// operator's own follow-up is the only signal.
+const STALE_QUOTE_DAYS = 3;
+
+function daysSince(date: Date): number {
+  return Math.floor((Date.now() - date.getTime()) / (24 * 60 * 60 * 1000));
+}
 
 function WebQuoteQueueCard({ row }: { row: WebQuoteQueueRow }) {
   const status = row.webQuote?.status ?? 'sin_presupuesto';
@@ -49,9 +62,16 @@ function WebQuoteQueueCard({ row }: { row: WebQuoteQueueRow }) {
           <p className="text-xs uppercase tracking-wider text-kairikos-muted">{row.clientEmail}</p>
           <h3 className="mt-1 text-base font-semibold">{row.clientName}</h3>
         </div>
-        <span className={STATUS_PILL[status] ?? 'pill-muted'}>
-          {row.webQuote ? STATUS_LABEL[status] ?? status : 'Sin presupuesto todavía'}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={STATUS_PILL[status] ?? 'pill-muted'}>
+            {row.webQuote ? STATUS_LABEL[status] ?? status : 'Sin presupuesto todavía'}
+          </span>
+          {status === 'sent' && row.webQuote?.sentAt && daysSince(row.webQuote.sentAt) >= STALE_QUOTE_DAYS ? (
+            <span className="pill-danger" data-testid="web-quote-stale-badge">
+              Sin respuesta hace {daysSince(row.webQuote.sentAt)} días
+            </span>
+          ) : null}
+        </div>
       </div>
       {row.webQuote ? (
         <p className="text-sm text-kairikos-text">

@@ -8,6 +8,10 @@ export interface WebQuoteData {
   id: string;
   status: string;
   amountCents: number;
+  // WebQuote v2 — optional operator-entered advance. Splits billing into
+  // a deposit invoice + a final-balance invoice instead of one invoice
+  // for the full amount. Null preserves the original single-payment flow.
+  depositCents: number | null;
   currency: string;
   description: string;
   sentAt: string | null;
@@ -38,8 +42,10 @@ const ERROR_LABEL: Record<string, string> = {
   quote_locked: 'El presupuesto ya no se puede editar en este estado.',
   not_accepted: 'El cliente todavía no aceptó el presupuesto.',
   not_invoiced: 'Todavía no se generó la factura.',
+  not_deposit_paid: 'El adelanto todavía no está pagado.',
   not_cancelled: 'El presupuesto no está cancelado.',
   cannot_cancel: 'El presupuesto ya no se puede cancelar (facturado o pagado).',
+  cannot_void: 'Esta factura ya no se puede anular.',
   invoice_not_found: 'No se encontró la factura.',
   already_paid: 'La factura ya estaba pagada.',
   service_unavailable: 'No disponible en este momento.',
@@ -77,9 +83,14 @@ const STATUS_LABEL: Record<string, string> = {
   sent: 'Enviado al cliente',
   accepted: 'Aceptado por el cliente',
   invoiced: 'Facturado',
+  invoiced_deposit: 'Adelanto facturado',
+  deposit_paid: 'Adelanto pagado',
+  invoiced_final: 'Saldo final facturado',
   paid: 'Pagado',
   cancelled: 'Cancelado',
 };
+
+const VOIDABLE_STATUSES = new Set(['invoiced', 'invoiced_deposit', 'invoiced_final']);
 
 export function WebQuoteEditor({
   clientId,
@@ -98,6 +109,9 @@ export function WebQuoteEditor({
   const [stepUp, setStepUp] = useState<StepUpPending | null>(null);
   const [editing, setEditing] = useState(!webQuote);
   const [amountEuros, setAmountEuros] = useState(webQuote ? (webQuote.amountCents / 100).toFixed(2) : '');
+  const [depositEuros, setDepositEuros] = useState(
+    webQuote?.depositCents != null ? (webQuote.depositCents / 100).toFixed(2) : '',
+  );
   const [description, setDescription] = useState(webQuote?.description ?? '');
   const [channel, setChannel] = useState<'transfer' | 'cash'>('transfer');
   const [reference, setReference] = useState('');
@@ -136,8 +150,13 @@ export function WebQuoteEditor({
 
   async function saveDraft() {
     const amountCents = Math.round(parseFloat(amountEuros) * 100);
+    const depositCents = depositEuros.trim() ? Math.round(parseFloat(depositEuros) * 100) : null;
     if (!Number.isFinite(amountCents) || amountCents < 0 || !description.trim()) {
       showToast({ kind: 'error', message: 'Completa el monto y la descripción.' });
+      return;
+    }
+    if (depositCents !== null && (!Number.isFinite(depositCents) || depositCents <= 0 || depositCents >= amountCents)) {
+      showToast({ kind: 'error', message: 'El adelanto debe ser mayor a 0 y menor al monto total.' });
       return;
     }
     setBusyKey('save');
@@ -146,12 +165,12 @@ export function WebQuoteEditor({
         ? await fetch(`/api/admin/portal/web-quotes/${webQuote.id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ amountCents, description }),
+            body: JSON.stringify({ amountCents, depositCents, description }),
           })
         : await fetch('/api/admin/portal/web-quotes', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ clientId, amountCents, description }),
+            body: JSON.stringify({ clientId, amountCents, ...(depositCents !== null ? { depositCents } : {}), description }),
           });
       const body = await safeJson(res);
       if (res.ok) {
@@ -234,6 +253,40 @@ export function WebQuoteEditor({
     );
   }
 
+  async function generateFinalInvoice() {
+    if (!webQuote) return;
+    await requestWithStepUp(
+      'generate-final-invoice',
+      () => fetch(`/api/admin/portal/web-quotes/${webQuote.id}/generate-final-invoice`, { method: 'POST' }),
+      async (res) => {
+        const body = await safeJson(res);
+        if (res.ok) {
+          showToast({ kind: 'success', message: 'Factura del saldo final generada.' });
+          router.refresh();
+        } else {
+          showToast({ kind: 'error', message: errorLabel(body.error as string) });
+        }
+      },
+    );
+  }
+
+  async function voidInvoice() {
+    if (!webQuote) return;
+    await requestWithStepUp(
+      'void-invoice',
+      () => fetch(`/api/admin/portal/web-quotes/${webQuote.id}/void-invoice`, { method: 'POST' }),
+      async (res) => {
+        const body = await safeJson(res);
+        if (res.ok) {
+          showToast({ kind: 'success', message: 'Factura anulada — el presupuesto quedó cancelado.' });
+          router.refresh();
+        } else {
+          showToast({ kind: 'error', message: errorLabel(body.error as string) });
+        }
+      },
+    );
+  }
+
   async function markPaid() {
     if (!webQuote || !reference.trim()) {
       showToast({ kind: 'error', message: 'Indica una referencia del pago.' });
@@ -304,6 +357,27 @@ export function WebQuoteEditor({
             />
           </div>
           <div>
+            <label className="label" htmlFor="web-quote-deposit">
+              Adelanto (EUR, opcional)
+            </label>
+            <input
+              id="web-quote-deposit"
+              type="number"
+              step="0.01"
+              min="0"
+              className="input w-40"
+              placeholder="Sin adelanto"
+              value={depositEuros}
+              onChange={(e) => setDepositEuros(e.target.value)}
+              data-testid="web-quote-deposit-input"
+            />
+            {depositEuros.trim() && Number.isFinite(parseFloat(amountEuros)) && Number.isFinite(parseFloat(depositEuros)) ? (
+              <p className="mt-1 text-xs text-kairikos-muted" data-testid="web-quote-final-preview">
+                Saldo final: {formatPrice(Math.round((parseFloat(amountEuros) - parseFloat(depositEuros)) * 100), 'eur')}
+              </p>
+            ) : null}
+          </div>
+          <div>
             <label className="label" htmlFor="web-quote-description">
               Qué incluye (el cliente lo ve tal cual)
             </label>
@@ -343,6 +417,12 @@ export function WebQuoteEditor({
           <div>
             <p className="text-2xl font-semibold">{formatPrice(webQuote.amountCents, webQuote.currency)}</p>
             <p className="mt-1 text-sm text-kairikos-muted">{webQuote.description}</p>
+            {webQuote.depositCents != null ? (
+              <p className="mt-1 text-xs text-kairikos-muted" data-testid="web-quote-deposit-breakdown">
+                Adelanto: {formatPrice(webQuote.depositCents, webQuote.currency)} · Saldo final:{' '}
+                {formatPrice(webQuote.amountCents - webQuote.depositCents, webQuote.currency)}
+              </p>
+            ) : null}
           </div>
 
           {status === 'cancelled' ? (
@@ -384,7 +464,22 @@ export function WebQuoteEditor({
                   onClick={generateInvoice}
                   data-testid="web-quote-generate-invoice"
                 >
-                  {busyKey === 'generate-invoice' ? 'Generando…' : 'Generar factura'}
+                  {busyKey === 'generate-invoice'
+                    ? 'Generando…'
+                    : webQuote.depositCents != null
+                      ? 'Generar factura del adelanto'
+                      : 'Generar factura'}
+                </button>
+              ) : null}
+              {status === 'deposit_paid' ? (
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={busyKey === 'generate-final-invoice'}
+                  onClick={generateFinalInvoice}
+                  data-testid="web-quote-generate-final-invoice"
+                >
+                  {busyKey === 'generate-final-invoice' ? 'Generando…' : 'Generar factura final'}
                 </button>
               ) : null}
               {status === 'draft' || status === 'sent' || status === 'accepted' ? (
@@ -398,17 +493,32 @@ export function WebQuoteEditor({
                   {busyKey === 'cancel' ? 'Cancelando…' : 'Cancelar presupuesto'}
                 </button>
               ) : null}
+              {VOIDABLE_STATUSES.has(status) ? (
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  disabled={busyKey === 'void-invoice'}
+                  onClick={voidInvoice}
+                  data-testid="web-quote-void-invoice"
+                >
+                  {busyKey === 'void-invoice' ? 'Anulando…' : 'Anular factura'}
+                </button>
+              ) : null}
             </div>
           )}
 
-          {status === 'invoiced' && invoice ? (
+          {VOIDABLE_STATUSES.has(status) && invoice ? (
             <div className="space-y-3 rounded-lg border border-kairikos-border bg-kairikos-surface2 p-3">
               {invoice.hostInvoiceUrl ? (
                 <a href={invoice.hostInvoiceUrl} target="_blank" rel="noreferrer" className="text-sm text-kairikos-accent2 underline">
                   Ver factura en Stripe →
                 </a>
               ) : null}
-              <p className="text-sm font-semibold">Marcar como pagada por transferencia o efectivo</p>
+              <p className="text-sm font-semibold">
+                Marcar{' '}
+                {status === 'invoiced_deposit' ? 'el adelanto' : status === 'invoiced_final' ? 'el saldo final' : ''} como
+                pagada por transferencia o efectivo
+              </p>
               <div className="flex flex-wrap items-end gap-3">
                 <div>
                   <label className="label" htmlFor="web-quote-channel">
@@ -450,6 +560,12 @@ export function WebQuoteEditor({
                 </button>
               </div>
             </div>
+          ) : null}
+
+          {status === 'deposit_paid' ? (
+            <p className="text-sm text-kairikos-muted" data-testid="web-quote-deposit-paid-note">
+              Adelanto pagado ✓ — listo para generar la factura del saldo final.
+            </p>
           ) : null}
 
           {status === 'paid' && invoice?.paymentChannel ? (
