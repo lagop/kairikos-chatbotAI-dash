@@ -61,6 +61,14 @@ export async function POST(req: NextRequest) {
   if (!product || !product.isActive) {
     return NextResponse.json({ error: 'product_not_found' }, { status: 404 });
   }
+  // WP-XX — 'web' no longer sells at a fixed catalog price; it goes
+  // through the custom-quote flow (POST /api/portal/web-quote/request)
+  // instead. The UI should never offer this product here, but reject it
+  // explicitly too — defense in depth against a stale client or a
+  // direct API call.
+  if (product.code === 'web') {
+    return NextResponse.json({ error: 'product_requires_quote' }, { status: 400 });
+  }
 
   const client = await prisma.chatbotClient.findUnique({
     where: { id: resolved.clientId },

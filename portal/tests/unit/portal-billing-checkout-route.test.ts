@@ -83,7 +83,13 @@ const RECURRING_PRODUCT = {
 };
 const ONE_TIME_PRODUCT = {
   id: '22222222-2222-2222-2222-222222222222',
-  code: 'web',
+  // WP-XX — deliberately NOT 'web': that code now goes through the
+  // custom-quote flow and is rejected by this route before it would
+  // ever reach the price checks this fixture exercises (see the
+  // dedicated 'web' guard test below). This is a generic one-time-
+  // purchase product shape (no recurring price) to test that branch on
+  // its own terms.
+  code: 'onetime-test',
   tier: 'standard',
   isActive: true,
   stripeRecurringPriceId: null,
@@ -140,6 +146,17 @@ describe('POST /api/portal/billing/checkout — auth and guards', () => {
     const { POST } = await import('@/app/api/portal/billing/checkout/route');
     const res = await POST(makeRequest({ productId: RECURRING_PRODUCT.id }));
     expect(res.status).toBe(404);
+  });
+
+  it('400s product_requires_quote for code=web — it no longer sells at a fixed price (WP-XX)', async () => {
+    mockState.findUniqueProduct.mockResolvedValueOnce({ ...ONE_TIME_PRODUCT, code: 'web' });
+    const { POST } = await import('@/app/api/portal/billing/checkout/route');
+    const res = await POST(makeRequest({ productId: ONE_TIME_PRODUCT.id }));
+    const body = await res.clone().json();
+    expect(res.status).toBe(400);
+    expect(body.error).toBe('product_requires_quote');
+    expect(mockState.clientProductUpsert).not.toHaveBeenCalled();
+    expect(mockState.checkoutSessionsCreate).not.toHaveBeenCalled();
   });
 
   it('404s when a one-time-only product has neither recurring price nor setup fee provisioned', async () => {
