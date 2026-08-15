@@ -408,6 +408,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
                   id: webQuoteRow.id,
                   status: webQuoteRow.status,
                   amountCents: webQuoteRow.amountCents,
+                  depositCents: webQuoteRow.depositCents,
                   currency: webQuoteRow.currency,
                   description: webQuoteRow.description,
                   sentAt: webQuoteRow.sentAt?.toISOString() ?? null,
@@ -415,7 +416,10 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
                   cancelledAt: webQuoteRow.cancelledAt?.toISOString() ?? null,
                 }
               : null;
-            if (webQuoteRow && (webQuoteRow.status === 'invoiced' || webQuoteRow.status === 'paid')) {
+            if (
+              webQuoteRow &&
+              ['invoiced', 'invoiced_deposit', 'invoiced_final', 'paid'].includes(webQuoteRow.status)
+            ) {
               const invoiceRow = await prisma.invoice.findFirst({
                 where: { clientProductId: webCp.id },
                 orderBy: { createdAt: 'desc' },
