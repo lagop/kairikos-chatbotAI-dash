@@ -16,8 +16,10 @@ export async function GET(req: NextRequest) {
     select: {
       id: true,
       code: true,
+      stripeProductId: true,
       stripeRecurringPriceId: true,
       stripeSetupPriceId: true,
+      stripePriceMode: true,
       name: true,
       tier: true,
       priceCents: true,
