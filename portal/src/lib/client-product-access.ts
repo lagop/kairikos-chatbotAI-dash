@@ -25,6 +25,25 @@ export async function isProductContracted(
   return row !== null;
 }
 
+/**
+ * WP-XX — access to the 'web' product's two client-facing surfaces
+ * (the brief and /portal/web) DURING the quote cycle, before the
+ * ClientProduct reaches 'active'. Deliberately separate from
+ * isProductContracted (which requires 'active' exclusively, unchanged,
+ * used everywhere else in the portal): 'web' now goes through a free
+ * 'quote_pending' request → operator quote → client acceptance → invoice
+ * flow before any payment exists, and the client needs to reach the
+ * brief/summary pages throughout that whole window, not just after
+ * paying. Do not reuse this for any product other than 'web'.
+ */
+export async function canAccessWebProduct(prisma: PrismaClient, clientId: string): Promise<boolean> {
+  const row = await prisma.clientProduct.findFirst({
+    where: { clientId, status: { in: ['quote_pending', 'active', 'paused'] }, product: { code: 'web' } },
+    select: { id: true },
+  });
+  return row !== null;
+}
+
 export interface ContractedProduct {
   code: string;
   tier: string;
