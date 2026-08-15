@@ -3,7 +3,7 @@
 // =============================================================================
 
 import { describe, it, expect, vi } from 'vitest';
-import { isProductContracted, listContractedProducts } from '@/lib/client-product-access';
+import { isProductContracted, listContractedProducts, canAccessWebProduct } from '@/lib/client-product-access';
 
 function makePrisma(clientProduct: { findFirst?: unknown; findMany?: unknown }) {
   return {
@@ -30,6 +30,27 @@ describe('isProductContracted', () => {
     await isProductContracted(prisma, 'c1', 'web');
     expect(prisma.clientProduct.findFirst).toHaveBeenCalledWith({
       where: { clientId: 'c1', status: 'active', product: { code: 'web' } },
+      select: { id: true },
+    });
+  });
+});
+
+describe('canAccessWebProduct', () => {
+  it('returns true when the web ClientProduct is quote_pending', async () => {
+    const prisma = makePrisma({ findFirst: { id: 'cp1' } });
+    await expect(canAccessWebProduct(prisma, 'c1')).resolves.toBe(true);
+  });
+
+  it('returns false when there is no web ClientProduct row at all', async () => {
+    const prisma = makePrisma({ findFirst: null });
+    await expect(canAccessWebProduct(prisma, 'c1')).resolves.toBe(false);
+  });
+
+  it('scopes the query by clientId, status in [quote_pending, active, paused], and product.code=web', async () => {
+    const prisma = makePrisma({ findFirst: null });
+    await canAccessWebProduct(prisma, 'c1');
+    expect(prisma.clientProduct.findFirst).toHaveBeenCalledWith({
+      where: { clientId: 'c1', status: { in: ['quote_pending', 'active', 'paused'] }, product: { code: 'web' } },
       select: { id: true },
     });
   });

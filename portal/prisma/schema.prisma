@@ -104,24 +104,25 @@ model ChatbotClient {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  activities            ChatbotActivity[]
-  conversations         ChatbotConversation[]
-  users                 ChatbotClientUser[]
-  operatorNotifications OperatorNotification[]
-  n8nExecutions         N8nExecution[]
-  configSteps           ChatbotConfigStep[]
-  intakeSubmissions     IntakeSubmission[]
-  supportRequests       SupportRequest[]
-  tenant                Tenant?                @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  clientProducts        ClientProduct[]
-  productAudits         ClientProductAudit[]
-  subscriptions         Subscription[]
-  invoices              Invoice[]
-  operatorActions       OperatorAction[]
+  activities                ChatbotActivity[]
+  conversations             ChatbotConversation[]
+  users                     ChatbotClientUser[]
+  operatorNotifications     OperatorNotification[]
+  n8nExecutions             N8nExecution[]
+  configSteps               ChatbotConfigStep[]
+  intakeSubmissions         IntakeSubmission[]
+  supportRequests           SupportRequest[]
+  tenant                    Tenant?                    @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  clientProducts            ClientProduct[]
+  productAudits             ClientProductAudit[]
+  subscriptions             Subscription[]
+  invoices                  Invoice[]
+  operatorActions           OperatorAction[]
   googleBusinessConnections GoogleBusinessConnection[]
   googleReviews             GoogleReview[]
   reviewRequestCampaigns    ReviewRequestCampaign[]
   webBrief                  WebBrief?
+  webQuotes                 WebQuote[]
 
   @@index([stripeCustomerId])
   @@index([tier])
@@ -255,8 +256,8 @@ model OperatorNotification {
 // operator can move from 'open' to 'resolved' from the admin panel.
 // =============================================================================
 model SupportRequest {
-  id       String @id @default(cuid())
-  clientId String @map("client_id")
+  id       String  @id @default(cuid())
+  clientId String  @map("client_id")
   // KAIA-4258: tenant isolation FK. NULL for pre-multi-tenant rows.
   tenantId String? @map("tenant_id") @db.Uuid
 
@@ -265,7 +266,7 @@ model SupportRequest {
 
   // 'open' | 'resolved'. Enforced server-side (route allowlist), not a
   // DB CHECK constraint — same convention as OperatorNotification.kind.
-  status String @default("open")
+  status               String    @default("open")
   // Operator email/id who marked it resolved — free-form string, same
   // convention as OperatorAction.actorId (not a FK to Operator; v1 auth
   // reads the identity from the admin session, not a DB-enforced actor).
@@ -276,7 +277,7 @@ model SupportRequest {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([clientId])
   @@index([clientId, createdAt(sort: Desc)])
@@ -313,6 +314,10 @@ model Operator {
   auditLogs           OperatorSettingsAudit[]
   approvedConfigSteps ChatbotConfigStep[]
   stripeCatalogAudits StripeCatalogAudit[]
+  webQuotesCreated    WebQuote[]              @relation("WebQuoteCreatedBy")
+  webQuotesSent       WebQuote[]              @relation("WebQuoteSentBy")
+  webQuoteAudits      WebQuoteAudit[]
+  invoicesMarkedPaid  Invoice[]
 
   @@index([email])
   @@index([isActive])
@@ -462,25 +467,26 @@ model Tenant {
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  profiles                Profile[]
-  chatbotClients          ChatbotClient[]
-  chatbotClientUsers      ChatbotClientUser[]
-  chatbotActivities       ChatbotActivity[]
-  chatbotConversations    ChatbotConversation[]
-  chatbotConfigSteps      ChatbotConfigStep[]
-  chatbotConfigStepAudits ChatbotConfigStepAudit[]
-  intakeSubmissions       IntakeSubmission[]
-  operatorNotifications   OperatorNotification[]
-  supportRequests         SupportRequest[]
-  n8nExecutions           N8nExecution[]
-  clientProducts          ClientProduct[]
-  productAudits           ClientProductAudit[]
-  subscriptions           Subscription[]
-  invoices                Invoice[]
+  profiles                  Profile[]
+  chatbotClients            ChatbotClient[]
+  chatbotClientUsers        ChatbotClientUser[]
+  chatbotActivities         ChatbotActivity[]
+  chatbotConversations      ChatbotConversation[]
+  chatbotConfigSteps        ChatbotConfigStep[]
+  chatbotConfigStepAudits   ChatbotConfigStepAudit[]
+  intakeSubmissions         IntakeSubmission[]
+  operatorNotifications     OperatorNotification[]
+  supportRequests           SupportRequest[]
+  n8nExecutions             N8nExecution[]
+  clientProducts            ClientProduct[]
+  productAudits             ClientProductAudit[]
+  subscriptions             Subscription[]
+  invoices                  Invoice[]
   googleBusinessConnections GoogleBusinessConnection[]
   googleReviews             GoogleReview[]
   reviewRequestCampaigns    ReviewRequestCampaign[]
   webBriefs                 WebBrief[]
+  webQuotes                 WebQuote[]
 
   @@index([slug])
   @@index([status])
@@ -614,16 +620,26 @@ model ClientProductAudit {
 // through UPDATE on the existing row, not a fresh INSERT.
 // =============================================================================
 model ClientProduct {
-  id           String    @id @default(uuid()) @db.Uuid
-  clientId     String    @map("client_id")
-  productId    String    @map("product_id") @db.Uuid
-  tenantId     String?   @map("tenant_id") @db.Uuid
-  status       String    @default("active")
-  subscribedAt DateTime  @default(now()) @map("subscribed_at")
-  cancelledAt  DateTime? @map("cancelled_at")
-  createdBy    String?   @map("created_by")
-  changedBy    String?   @map("changed_by")
-  changedAt    DateTime  @default(now()) @map("changed_at")
+  id              String    @id @default(uuid()) @db.Uuid
+  clientId        String    @map("client_id")
+  productId       String    @map("product_id") @db.Uuid
+  tenantId        String?   @map("tenant_id") @db.Uuid
+  // 'pending_payment' | 'active' | 'paused' | 'cancelled' | 'past_due' |
+  // 'quote_pending'. The last one is 'web'-specific (WP-XX): covers the
+  // ENTIRE pre-payment stretch of the custom-quote flow — from the
+  // client's free request through the operator's quote, the client's
+  // acceptance, and the resulting invoice — until it's paid, at which
+  // point this flips straight to 'active' (see
+  // activateClientProductFromWebQuotePayment in stripe-billing.ts).
+  // WebQuote.status carries the fine-grained state within this one
+  // coarse value, same relationship 'pending_payment' already has to
+  // the plain self-serve Stripe Checkout flow.
+  status          String    @default("active")
+  subscribedAt    DateTime  @default(now()) @map("subscribed_at")
+  cancelledAt     DateTime? @map("cancelled_at")
+  createdBy       String?   @map("created_by")
+  changedBy       String?   @map("changed_by")
+  changedAt       DateTime  @default(now()) @map("changed_at")
   // WP-14 — per-product onboarding lifecycle. `status` above is the
   // Stripe-mirroring billing state (active/cancelled/past_due);
   // `onboardingState` is a different axis entirely — where THIS
@@ -645,6 +661,7 @@ model ClientProduct {
   // directly against the ClientProduct instead of through a Subscription
   // — see Invoice.clientProductId.
   invoices     Invoice[]
+  webQuote     WebQuote?
 
   @@unique([clientId, productId])
   @@index([clientId])
@@ -745,10 +762,27 @@ model Invoice {
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
+  // WP-XX — manual (offline) payment tracking for web-quote invoices.
+  // CRITICAL: syncInvoiceFromStripe() must NEVER write to these 5
+  // columns, in either its `create` or `update` — Stripe has no concept
+  // of "channel", only the read-only `paid_out_of_band` boolean it
+  // returns on the Invoice object, which we separately store here to
+  // remember whether a payment was manual. If a future sync change ever
+  // includes these fields, it silently erases the audit trail of who
+  // marked a payment manually and how (transfer vs cash, reference
+  // number) — there is deliberately only ONE code path that writes them:
+  // markInvoicePaidManually() in stripe-billing.ts.
+  paymentChannel         String?   @map("payment_channel")
+  paymentReference       String?   @map("payment_reference")
+  paidOutOfBand          Boolean   @default(false) @map("paid_out_of_band")
+  markedPaidByOperatorId String?   @map("marked_paid_by_operator_id") @db.Uuid
+  markedPaidAt           DateTime? @map("marked_paid_at")
+
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   client        ChatbotClient  @relation(fields: [clientId], references: [id], onDelete: Cascade)
   subscription  Subscription?  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
   clientProduct ClientProduct? @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
+  markedPaidBy  Operator?      @relation(fields: [markedPaidByOperatorId], references: [id], onDelete: SetNull)
 
   @@index([tenantId])
   @@index([clientId])
@@ -1181,26 +1215,26 @@ model VerificationToken {
 // side; the row is kept, not hard-deleted, so sync history and the
 // disconnect itself stay auditable).
 model GoogleBusinessConnection {
-  id                     String    @id @default(uuid()) @db.Uuid
-  clientId               String    @map("client_id")
-  tenantId               String    @map("tenant_id") @db.Uuid
-  googleAccountId        String    @map("google_account_id")
-  locationId             String    @map("location_id")
-  locationName           String    @map("location_name")
-  refreshTokenCiphertext Bytes     @map("refresh_token_ciphertext")
-  refreshTokenIv         Bytes     @map("refresh_token_iv")
-  refreshTokenTag        Bytes     @map("refresh_token_tag")
-  scopes                 String[]
-  status                 String    @default("active")
-  connectedAt            DateTime  @default(now()) @map("connected_at")
-  lastSyncAt             DateTime? @map("last_sync_at")
-  lastSyncError          String?   @map("last_sync_error")
+  id                          String    @id @default(uuid()) @db.Uuid
+  clientId                    String    @map("client_id")
+  tenantId                    String    @map("tenant_id") @db.Uuid
+  googleAccountId             String    @map("google_account_id")
+  locationId                  String    @map("location_id")
+  locationName                String    @map("location_name")
+  refreshTokenCiphertext      Bytes     @map("refresh_token_ciphertext")
+  refreshTokenIv              Bytes     @map("refresh_token_iv")
+  refreshTokenTag             Bytes     @map("refresh_token_tag")
+  scopes                      String[]
+  status                      String    @default("active")
+  connectedAt                 DateTime  @default(now()) @map("connected_at")
+  lastSyncAt                  DateTime? @map("last_sync_at")
+  lastSyncError               String?   @map("last_sync_error")
   // WP-22b — Google's own "leave a review" link for this location
   // (Business Information API's Location.metadata.newReviewUri).
   // Fetched lazily on first campaign creation and cached here — it does
   // not change for a given location, so there is no reason to re-fetch
   // it on every campaign.
-  reviewUrl              String?   @map("review_url")
+  reviewUrl                   String?   @map("review_url")
   // WP-22c — when true, google-review-sync.ts publishes an AI-drafted
   // reply to a newly-synced review with no reply yet, with no human
   // approval step. Off by default (the AC's "salvo que el cliente
@@ -1212,9 +1246,9 @@ model GoogleBusinessConnection {
   autoPublishRepliesChangedBy String?   @map("auto_publish_replies_changed_by")
   autoPublishRepliesChangedAt DateTime? @map("auto_publish_replies_changed_at")
 
-  client ChatbotClient   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  reviews GoogleReview[]
+  client    ChatbotClient           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant    Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  reviews   GoogleReview[]
   campaigns ReviewRequestCampaign[]
 
   @@unique([clientId, locationId])
@@ -1363,8 +1397,8 @@ model WebBrief {
   // "editar respuestas" action to reopen it.
   status String @default("draft")
 
-  businessName String? @map("business_name")
-  vertical     String?
+  businessName   String? @map("business_name")
+  vertical       String?
   // Objetivo principal del sitio: 'vender' | 'leads' | 'informar' |
   // 'reservas' | 'otro'. Free-form string, not an enum — same
   // convention as the rest of this schema's status/state columns
@@ -1463,8 +1497,8 @@ model StripeCatalogAudit {
   before    Json?
   after     Json?
 
-  actorOperatorId String? @map("actor_operator_id") @db.Uuid
-  actorEmail      String? @map("actor_email")
+  actorOperatorId String?  @map("actor_operator_id") @db.Uuid
+  actorEmail      String?  @map("actor_email")
   // { ip, userAgent, totpVerifiedAt, ... } — free-form, non-sensitive.
   metadata        Json?
   createdAt       DateTime @default(now()) @map("created_at")
@@ -1473,6 +1507,92 @@ model StripeCatalogAudit {
   operator Operator? @relation(fields: [actorOperatorId], references: [id], onDelete: SetNull)
 
   @@index([productId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+// =============================================================================
+// WP-XX — custom-quote billing for 'web'. Replaces the fixed-price
+// (799€) self-serve purchase: the client requests 'web' for free
+// (ClientProduct.status='quote_pending'), fills in WebBrief, an operator
+// prices the project and sends a quote, the client accepts it, the
+// operator confirms by generating a Stripe invoice, and the client pays
+// — online, or the operator marks it paid manually (transfer/cash,
+// channel+reference — see Invoice.paymentChannel above).
+//
+// 1:1 with ClientProduct (@unique clientProductId), same shape as
+// Subscription — only one "live" quote per client at a time. Reusing
+// the row across a cancel→retry cycle (rather than creating a new one)
+// is intentional: the full history survives in WebQuoteAudit regardless.
+//
+// Status machine (enforced server-side in src/lib/web-quotes.ts, not a
+// DB constraint — same convention as every other status column here):
+//   draft → sent → accepted → invoiced → paid   (happy path)
+//   draft/sent/accepted → cancelled              (operator aborts)
+//   cancelled → draft                            (reset, see WP notes —
+//     cancelling an already-invoiced quote is out of scope for v1)
+// =============================================================================
+model WebQuote {
+  id              String  @id @default(uuid()) @db.Uuid
+  clientId        String  @map("client_id")
+  // 1:1 — mirrors Subscription.clientProductId. Only one live quote per
+  // ClientProduct at a time.
+  clientProductId String  @unique @map("client_product_id") @db.Uuid
+  tenantId        String? @map("tenant_id") @db.Uuid
+
+  status String @default("draft")
+
+  amountCents Int    @map("amount_cents")
+  currency    String @default("eur")
+  // Free text the CLIENT sees verbatim — what this quote covers.
+  description String
+
+  createdByOperatorId String?   @map("created_by_operator_id") @db.Uuid
+  sentAt              DateTime? @map("sent_at")
+  sentByOperatorId    String?   @map("sent_by_operator_id") @db.Uuid
+  acceptedAt          DateTime? @map("accepted_at")
+  cancelledAt         DateTime? @map("cancelled_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  client        ChatbotClient   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientProduct ClientProduct   @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
+  tenant        Tenant?         @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  createdBy     Operator?       @relation("WebQuoteCreatedBy", fields: [createdByOperatorId], references: [id], onDelete: SetNull)
+  sentBy        Operator?       @relation("WebQuoteSentBy", fields: [sentByOperatorId], references: [id], onDelete: SetNull)
+  auditLogs     WebQuoteAudit[]
+
+  @@index([clientId])
+  @@index([status])
+  @@index([tenantId])
+}
+
+// Append-only audit trail for WebQuote — before/after JSON because this
+// tracks real money amounts, not just status strings (ClientProductAudit
+// has no columns for that). Same style as StripeCatalogAudit.
+model WebQuoteAudit {
+  id         String @id @default(uuid()) @db.Uuid
+  webQuoteId String @map("web_quote_id") @db.Uuid
+  // 'created' | 'edited' | 'sent' | 'accepted' | 'cancelled' |
+  // 'reset_to_draft' | 'invoiced' | 'mark_paid_started' |
+  // 'mark_paid_succeeded' | 'mark_paid_failed' | 'paid'
+  action     String
+  before     Json?
+  after      Json?
+
+  // 'operator' | 'client' | 'system'
+  actorType       String   @default("operator") @map("actor_type")
+  actorOperatorId String?  @map("actor_operator_id") @db.Uuid
+  // operator email, 'client:<clientId>', or 'stripe:invoice.paid'.
+  actorEmail      String?  @map("actor_email")
+  metadata        Json?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  webQuote WebQuote  @relation(fields: [webQuoteId], references: [id], onDelete: Cascade)
+  operator Operator? @relation(fields: [actorOperatorId], references: [id], onDelete: SetNull)
+
+  @@index([webQuoteId])
   @@index([action])
   @@index([createdAt])
 }
