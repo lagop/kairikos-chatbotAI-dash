@@ -5,6 +5,8 @@ import { requireTotpStepUp } from '@/lib/operator-totp-stepup';
 import { isStripeConfigured } from '@/lib/stripe';
 import { ensureCustomerForTenant, createWebQuoteInvoice, syncInvoiceFromStripe } from '@/lib/stripe-billing';
 import { resolveDepositPlan } from '@/lib/web-quotes';
+import { sendWebQuoteInvoiceEmail } from '@/lib/web-quote-email';
+import { logError } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -84,6 +86,30 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     });
 
     const localInvoice = await prisma.invoice.findUnique({ where: { stripeId: invoice.id ?? '' } });
+
+    // Best-effort — an email failure never blocks the invoice actually
+    // being created, which already happened above.
+    const client = await prisma.chatbotClient.findUnique({
+      where: { id: updated.clientId },
+      select: { email: true, companyName: true, name: true },
+    });
+    if (client) {
+      const emailResult = await sendWebQuoteInvoiceEmail({
+        to: client.email,
+        businessName: client.companyName ?? client.name,
+        amountCents: plan.finalCents,
+        currency: updated.currency,
+        role: 'final',
+        hostInvoiceUrl: localInvoice?.hostInvoiceUrl ?? null,
+      });
+      if (!emailResult.ok) {
+        logError('web_quote_email.invoice_failed', new Error(emailResult.error), {
+          route: 'POST web-quotes/[id]/generate-final-invoice',
+          webQuoteId: updated.id,
+        });
+      }
+    }
+
     return NextResponse.json({ ok: true, webQuote: updated, invoice: localInvoice });
   } catch (err) {
     // eslint-disable-next-line no-console

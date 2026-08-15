@@ -3,6 +3,8 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateAdminRequest } from '@/lib/operator-session';
 import { requireTotpStepUp } from '@/lib/operator-totp-stepup';
 import { canSendWebQuote } from '@/lib/web-quotes';
+import { sendWebQuoteSentEmail } from '@/lib/web-quote-email';
+import { logError } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -45,6 +47,25 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     });
     return row;
   });
+
+  // Best-effort — an email failure never blocks the quote actually
+  // being marked 'sent', which already happened above.
+  const client = await prisma.chatbotClient.findUnique({
+    where: { id: updated.clientId },
+    select: { email: true, companyName: true, name: true },
+  });
+  if (client) {
+    const result = await sendWebQuoteSentEmail({
+      to: client.email,
+      businessName: client.companyName ?? client.name,
+      amountCents: updated.amountCents,
+      currency: updated.currency,
+      description: updated.description,
+    });
+    if (!result.ok) {
+      logError('web_quote_email.sent_failed', new Error(result.error), { route: 'POST web-quotes/[id]/send', webQuoteId: updated.id });
+    }
+  }
 
   return NextResponse.json({ ok: true, webQuote: updated });
 }
