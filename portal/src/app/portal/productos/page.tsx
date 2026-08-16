@@ -6,6 +6,7 @@ import { EmptyState } from '@/components/portal/EmptyState';
 import { SelfServeProductCard, type SelfServeTierOption } from '@/components/portal/SelfServeProductCard';
 import { RequestWebQuoteCard } from '@/components/portal/RequestWebQuoteCard';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
+import { requirePortalSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { PRODUCT_CODES, PRODUCT_CATALOGS, type ProductCode } from '@/lib/catalogs';
 
@@ -31,6 +32,7 @@ export default async function PortalProductsPage({
 }: {
   searchParams: { checkout?: string };
 }) {
+  await requirePortalSession();
   const resolved = await resolveClientFromSession();
   if (!resolved) {
     redirect('/portal/login?next=/portal/productos');

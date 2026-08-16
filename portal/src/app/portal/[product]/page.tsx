@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
+import { requirePortalSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { isProductContracted } from '@/lib/client-product-access';
 import { PRODUCT_CODES, PRODUCT_CATALOGS, type ProductCode } from '@/lib/catalogs';
@@ -55,6 +56,7 @@ export default async function PortalProductPage({ params }: { params: { product:
   }
   const productCode = params.product;
 
+  await requirePortalSession();
   const resolved = await resolveClientFromSession();
   if (!resolved) {
     redirect(`/portal/login?next=/portal/${productCode}`);
