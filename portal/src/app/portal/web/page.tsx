@@ -6,7 +6,8 @@ import { resolveClientFromSession } from '@/lib/portal-session';
 import { canAccessWebProduct } from '@/lib/client-product-access';
 import { resolveWebQuoteContext } from '@/lib/web-quotes';
 import { PageHeading } from '@/components/portal/PageHeading';
-import { EmptyState } from '@/components/portal/EmptyState';
+import { ProductPitch } from '@/components/portal/ProductPitch';
+import { RequestWebQuoteCard } from '@/components/portal/RequestWebQuoteCard';
 import { WebBriefForm, type WebBriefFormValues } from '@/components/portal/WebBriefForm';
 import { WebQuoteCard, type ClientWebQuoteData, type ClientWebQuoteInvoiceData } from '@/components/portal/WebQuoteCard';
 import { GOAL_LABELS, CONTENT_PROVIDED_BY_LABELS, type GOAL_OPTIONS, type CONTENT_PROVIDED_BY_OPTIONS } from '@/lib/web-brief-schema';
@@ -49,15 +50,17 @@ export default async function PortalWebPage({ searchParams }: { searchParams: { 
     return (
       <div className="space-y-6">
         <PageHeading eyebrow="Portal" title="Plataforma web profesional" />
-        <EmptyState
-          title="No incluido en tu plan actual"
-          description="Este producto no está contratado en tu cuenta. Puedes añadirlo desde el catálogo de autoservicio."
-          action={
-            <Link href="/portal/productos" className="btn-primary" data-testid="web-brief-add-link">
-              Ver productos disponibles
-            </Link>
-          }
-        />
+        <ProductPitch
+          tagline="Un sitio hecho a tu medida, no una plantilla genérica."
+          features={[
+            'Páginas a tu medida: inicio, servicios, sobre nosotros, contacto, blog, precios, testimonios y más.',
+            'Integraciones reales: WhatsApp, calendario de citas, CRM, formulario de contacto, pagos online.',
+            'Vos elegís quién escribe los textos — los enviás vos, los redactamos nosotros, o un poco de cada uno.',
+          ]}
+          priceNote="Proyectos desde 799 €, según el alcance."
+        >
+          <RequestWebQuoteCard label="Plataforma web profesional" />
+        </ProductPitch>
       </div>
     );
   }

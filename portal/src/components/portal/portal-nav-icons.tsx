@@ -47,6 +47,18 @@ export const ICON_BY_HREF: Record<string, ReactNode> = {
       <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 4v-4H6.5A2.5 2.5 0 0 1 4 13.5v-7z" />
     </svg>
   ),
+  '/portal/web': (
+    <svg {...ICON_PROPS}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18" />
+      <path d="M12 3c2.5 2.5 4 5.8 4 9s-1.5 6.5-4 9c-2.5-2.5-4-5.8-4-9s1.5-6.5 4-9z" />
+    </svg>
+  ),
+  '/portal/leads': (
+    <svg {...ICON_PROPS}>
+      <path d="M4 4.5h16l-6.2 8v6l-3.6 1.8v-7.8L4 4.5z" strokeLinejoin="round" />
+    </svg>
+  ),
   '/portal/resenas': (
     <svg {...ICON_PROPS}>
       <path d="M12 3.5l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L3.3 9.9l6-.9L12 3.5z" />
