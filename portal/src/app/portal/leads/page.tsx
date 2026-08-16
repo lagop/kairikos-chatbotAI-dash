@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
+import { requirePortalSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { isProductContracted } from '@/lib/client-product-access';
 import { PageHeading } from '@/components/portal/PageHeading';
@@ -37,6 +38,7 @@ function tierLabel(tier: string): string {
 }
 
 export default async function PortalLeadsPage() {
+  await requirePortalSession();
   const resolved = await resolveClientFromSession();
   if (!resolved) {
     redirect('/portal/login?next=/portal/leads');

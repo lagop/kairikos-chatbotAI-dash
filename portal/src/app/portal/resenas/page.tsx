@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
+import { requirePortalSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { isProductContracted } from '@/lib/client-product-access';
 import { EmptyState } from '@/components/portal/EmptyState';
@@ -134,6 +135,7 @@ const CONNECT_ERROR_LABEL: Record<string, string> = {
 };
 
 export default async function PortalResenasPage({ searchParams }: PageProps) {
+  await requirePortalSession();
   const resolved = await resolveClientFromSession();
   if (!resolved) {
     redirect('/portal/login?next=/portal/resenas');

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
+import { requirePortalSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { canAccessWebProduct } from '@/lib/client-product-access';
 import { resolveWebQuoteContext } from '@/lib/web-quotes';
@@ -36,6 +37,7 @@ function jsonToStringArray(value: unknown): string[] {
 }
 
 export default async function PortalWebPage({ searchParams }: { searchParams: { edit?: string } }) {
+  await requirePortalSession();
   const resolved = await resolveClientFromSession();
   if (!resolved) {
     redirect('/portal/login?next=/portal/web');
