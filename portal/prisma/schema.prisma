@@ -127,6 +127,8 @@ model ChatbotClient {
   telegramConnections       TelegramConnection[]
   metaChannelConnections    MetaChannelConnection[]
   channelWebhookDeliveries  ChannelWebhookDelivery[]
+  conversationDigests       ConversationDigest[]
+  conversationDigestSchedule ConversationDigestSchedule?
 
   @@index([stripeCustomerId])
   @@index([tier])
@@ -494,6 +496,8 @@ model Tenant {
   chatWebEmbeds             ChatWebEmbed[]
   telegramConnections       TelegramConnection[]
   metaChannelConnections    MetaChannelConnection[]
+  conversationDigests       ConversationDigest[]
+  conversationDigestSchedules ConversationDigestSchedule[]
 
   @@index([slug])
   @@index([status])
@@ -906,9 +910,17 @@ model ChatbotConversation {
   outcome    String?
   // Full transcript as JSON — message list, metadata, tool calls, etc.
   transcript Json?
+  // Canales Fase 4 — the widget/n8n side's own session identifier
+  // (crypto-random, generated client-side per pageview). Lets
+  // POST /api/internal/channels/web/message upsert one row per session
+  // instead of creating a new row per turn — NULL for every
+  // pre-Fase-4 row (Telegram/WhatsApp conversations, seed data), which
+  // is fine since Postgres treats NULL as distinct in a unique index.
+  externalSessionId String? @map("external_session_id")
   client     ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant     Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
+  @@unique([clientId, externalSessionId])
   @@index([clientId, startedAt])
   @@index([clientId, outcome])
   @@index([tenantId])
@@ -1704,6 +1716,12 @@ model MetaChannelConnection {
   // Human-readable name discovered at connect time (Page name / WABA
   // label) — externalId alone is a raw Meta id, not fit to show a client.
   label                 String?
+  // whatsapp only — the WABA id. Meta's app-webhook subscription
+  // (subscribed_apps) is called at the WABA level, not the phone number
+  // level, so this needs its own column rather than being parsed back
+  // out of `label` (which only ever held it for display). NULL for
+  // messenger/instagram rows, which don't have this concept.
+  wabaId                String?  @map("waba_id")
   accessTokenCiphertext Bytes    @map("access_token_ciphertext")
   accessTokenIv         Bytes    @map("access_token_iv")
   accessTokenTag        Bytes    @map("access_token_tag")
@@ -1748,4 +1766,72 @@ model ChannelWebhookDelivery {
   @@index([clientId])
   @@index([status])
   @@index([connectionType, connectionId])
+}
+
+// =============================================================================
+// Canales Fase 7 — resúmenes periódicos de conversaciones. A diferencia de
+// los modelos de arriba (credenciales de canal), esto no depende de n8n
+// construir nada nuevo: se apoya en ChatbotConversation.transcript, que el
+// portal ya lee hoy (ver /api/portal/conversations). Nombrado
+// "ConversationDigest", no "ConversationSummary" — ese nombre ya lo usa
+// src/types/portal.ts para el tipo de una fila del listado de
+// conversaciones; reutilizarlo aquí habría creado dos tipos homónimos con
+// forma completamente distinta en el mismo codebase.
+//
+// totalConversations/escalatedCount/fallbackCount son agregados baratos y
+// deterministas sobre `outcome` (sin IA) — solo summaryText/highlights
+// vienen de conversation-summary-ai.ts, y solo cuando hay al menos una
+// conversación en la ventana (ver isDigestDue/generateDueDigests en
+// conversation-digest.ts).
+// =============================================================================
+model ConversationDigest {
+  id                 String   @id @default(uuid()) @db.Uuid
+  clientId           String   @map("client_id")
+  tenantId           String?  @map("tenant_id") @db.Uuid
+  windowStart        DateTime @map("window_start")
+  windowEnd          DateTime @map("window_end")
+  generatedAt        DateTime @default(now()) @map("generated_at")
+  totalConversations Int      @map("total_conversations")
+  escalatedCount     Int      @map("escalated_count")
+  fallbackCount      Int      @map("fallback_count")
+  summaryText        String   @map("summary_text")
+  // Lista de solicitudes concretas que habría que atender — generada por
+  // IA a partir de los transcripts de la ventana. String[] serializado
+  // como Json (no String[] nativo) porque conversation-summary-ai.ts
+  // degrada con gracia devolviendo [] sin IA configurada, y Json admite
+  // ese mismo shape sin una migración aparte si el formato crece
+  // (ej. agregar una referencia a la conversación de origen).
+  highlights         Json     @default("[]")
+
+  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, windowEnd])
+  @@index([tenantId])
+}
+
+// Un schedule por cliente (no uno por fase del día) — enabled + preset
+// alcanzan para "activar/desactivar" y "mañana/mediodía/tarde vs. cada X
+// horas" sin necesitar N filas por cliente. lastGeneratedAt es lo único
+// que isDigestDue() necesita para decidir si ya tocaba generar el
+// próximo — mismo principio de una-sola-fuente-de-verdad que isSyncDue()
+// en google-review-sync.ts.
+model ConversationDigestSchedule {
+  id              String    @id @default(uuid()) @db.Uuid
+  clientId        String    @unique @map("client_id")
+  tenantId        String?   @map("tenant_id") @db.Uuid
+  enabled         Boolean   @default(false)
+  // 'morning_noon_evening' | 'custom_interval'
+  preset          String    @default("morning_noon_evening")
+  // Solo aplica cuando preset = 'custom_interval'.
+  intervalHours   Int?      @map("interval_hours")
+  timezone        String    @default("Europe/Madrid")
+  lastGeneratedAt DateTime? @map("last_generated_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
 }

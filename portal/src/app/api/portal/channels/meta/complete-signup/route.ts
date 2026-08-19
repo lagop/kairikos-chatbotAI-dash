@@ -12,6 +12,8 @@ import {
   fetchPagesWithInstagram,
   encryptMetaToken,
 } from '@/lib/meta-business';
+import { subscribeWaba } from '@/lib/whatsapp-api';
+import { subscribePage } from '@/lib/messenger-api';
 import { deliverChannelEvent } from '@/lib/channel-webhook';
 import { logError } from '@/lib/observability';
 
@@ -92,7 +94,13 @@ export async function POST(req: NextRequest) {
   const connected: Array<{ channel: ChannelCode; externalId: string; label: string }> = [];
   const blocked: ChannelCode[] = [];
 
-  async function upsertSurface(channel: ChannelCode, externalId: string, label: string) {
+  async function upsertSurface(
+    channel: ChannelCode,
+    externalId: string,
+    label: string,
+    wabaId: string | null = null,
+    subscribePageId: string | null = null,
+  ) {
     if (!allowedChannels.includes(channel)) {
       blocked.push(channel);
       return;
@@ -102,6 +110,7 @@ export async function POST(req: NextRequest) {
       where: { clientId_channel_externalId: { clientId, channel, externalId } },
       update: {
         label,
+        wabaId,
         accessTokenCiphertext: encrypted.ciphertext,
         accessTokenIv: encrypted.iv,
         accessTokenTag: encrypted.tag,
@@ -114,12 +123,48 @@ export async function POST(req: NextRequest) {
         channel,
         externalId,
         label,
+        wabaId,
         accessTokenCiphertext: encrypted.ciphertext,
         accessTokenIv: encrypted.iv,
         accessTokenTag: encrypted.tag,
         status: 'active',
       },
     });
+
+    // WhatsApp's app-level webhook (configured once in the Meta App
+    // Dashboard, external to this repo) only delivers messages for a
+    // WABA that has explicitly subscribed the app — this is that
+    // subscription. A failure here doesn't unwind the connection (the
+    // token IS valid, connecting DID succeed) — same "never leaves the
+    // client thinking they were rejected" posture as Telegram's
+    // setWebhook — it's recorded as lastSyncError instead.
+    if (channel === 'whatsapp' && wabaId) {
+      const subscribeResult = await subscribeWaba(accessToken, wabaId);
+      if (!subscribeResult.ok) {
+        await prisma.metaChannelConnection
+          .update({ where: { id: connection.id }, data: { lastSyncError: subscribeResult.error.slice(0, 500) } })
+          .catch(() => null);
+        logError('channels.meta_complete_signup.subscribe_waba_failed', new Error(subscribeResult.error), { clientId, wabaId }, 'warn');
+      }
+    }
+
+    // Messenger AND Instagram both ride on the same Page-level
+    // subscription (see messenger-api.ts's comment) — messenger's
+    // subscribePageId is the page itself (externalId); instagram's is
+    // the page that owns it, passed in separately since externalId for
+    // an instagram row is the IG account id, not the page id. Calling
+    // this twice for the same page (once per surface) is harmless —
+    // subscribed_apps is idempotent.
+    if ((channel === 'messenger' || channel === 'instagram') && subscribePageId) {
+      const subscribeResult = await subscribePage(accessToken, subscribePageId);
+      if (!subscribeResult.ok) {
+        await prisma.metaChannelConnection
+          .update({ where: { id: connection.id }, data: { lastSyncError: subscribeResult.error.slice(0, 500) } })
+          .catch(() => null);
+        logError('channels.meta_complete_signup.subscribe_page_failed', new Error(subscribeResult.error), { clientId, subscribePageId }, 'warn');
+      }
+    }
+
     connected.push({ channel, externalId, label });
     await deliverChannelEvent({
       connectionType: 'meta',
@@ -131,14 +176,19 @@ export async function POST(req: NextRequest) {
 
   try {
     if (body.data.whatsapp) {
-      await upsertSurface('whatsapp', body.data.whatsapp.phoneNumberId, `WhatsApp (${body.data.whatsapp.wabaId})`);
+      await upsertSurface(
+        'whatsapp',
+        body.data.whatsapp.phoneNumberId,
+        `WhatsApp (${body.data.whatsapp.wabaId})`,
+        body.data.whatsapp.wabaId,
+      );
     }
 
     const pages = await fetchPagesWithInstagram(accessToken);
     for (const page of pages) {
-      await upsertSurface('messenger', page.pageId, page.pageName);
+      await upsertSurface('messenger', page.pageId, page.pageName, null, page.pageId);
       if (page.instagramAccountId) {
-        await upsertSurface('instagram', page.instagramAccountId, page.pageName);
+        await upsertSurface('instagram', page.instagramAccountId, page.pageName, null, page.pageId);
       }
     }
   } catch (err) {
