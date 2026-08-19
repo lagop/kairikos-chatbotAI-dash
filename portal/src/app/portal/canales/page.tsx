@@ -5,6 +5,7 @@ import { resolveClientFromSession } from '@/lib/portal-session';
 import { getAllowedChannelsForClient } from '@/lib/channel-access';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { TelegramChannelCard, type TelegramConnectionSummary } from '@/components/portal/TelegramChannelCard';
+import { MetaChannelCard, type MetaConnectionSummary } from '@/components/portal/MetaChannelCard';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,11 +17,11 @@ export const metadata: Metadata = {
 };
 
 // =============================================================================
-// WP: conexión de canales — Fase 2, primera versión de esta página: solo
-// la tarjeta de Telegram. Web (el widget) y Meta (WhatsApp/Messenger/
-// Instagram) llegan en las Fases 3 y 4, cada uno con su propia tarjeta.
-// Subsección de Chatbot en el sidebar (portal-nav.ts), mismo criterio
-// que /portal/status y /portal/conversations.
+// WP: conexión de canales — Fase 3 agrega la tarjeta de Meta (WhatsApp/
+// Messenger/Instagram) junto a la de Telegram (Fase 2). Web (el widget)
+// llega en la Fase 4. Subsección de Chatbot en el sidebar
+// (portal-nav.ts), mismo criterio que /portal/status y
+// /portal/conversations.
 // =============================================================================
 
 export default async function PortalCanalesPage() {
@@ -29,14 +30,31 @@ export default async function PortalCanalesPage() {
 
   let allowedChannels: string[] = [];
   let telegramConnection: TelegramConnectionSummary | null = null;
+  let metaConnections: MetaConnectionSummary[] = [];
 
   if (isDatabaseConfigured && resolved?.source === 'database') {
     allowedChannels = await getAllowedChannelsForClient(prisma, resolved.clientId);
-    const row = await prisma.telegramConnection.findUnique({
-      where: { clientId: resolved.clientId },
-      select: { status: true, botUsername: true },
-    });
-    telegramConnection = row ? { status: row.status as TelegramConnectionSummary['status'], botUsername: row.botUsername } : null;
+    const [telegramRow, metaRows] = await Promise.all([
+      prisma.telegramConnection.findUnique({
+        where: { clientId: resolved.clientId },
+        select: { status: true, botUsername: true },
+      }),
+      prisma.metaChannelConnection.findMany({
+        where: { clientId: resolved.clientId },
+        select: { id: true, channel: true, externalId: true, label: true, status: true },
+        orderBy: { connectedAt: 'asc' },
+      }),
+    ]);
+    telegramConnection = telegramRow
+      ? { status: telegramRow.status as TelegramConnectionSummary['status'], botUsername: telegramRow.botUsername }
+      : null;
+    metaConnections = metaRows.map((row) => ({
+      id: row.id,
+      channel: row.channel as MetaConnectionSummary['channel'],
+      externalId: row.externalId,
+      label: row.label,
+      status: row.status as MetaConnectionSummary['status'],
+    }));
   }
 
   return (
@@ -47,6 +65,12 @@ export default async function PortalCanalesPage() {
         description="Conecta tu chatbot a los canales por los que tus clientes te contactan."
       />
       <TelegramChannelCard connection={telegramConnection} allowed={allowedChannels.includes('telegram')} />
+      <MetaChannelCard
+        metaAppId={process.env.META_APP_ID ?? null}
+        metaConfigId={process.env.META_CONFIG_ID ?? null}
+        connections={metaConnections}
+        allowedChannels={allowedChannels}
+      />
     </div>
   );
 }
