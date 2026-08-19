@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
+import { getSession } from '@/lib/session';
 import { handleGoLiveReady, handleSnooze } from '@/lib/onboarding-actions';
 // MOCK_BILLING re-exported as MOCK_BILLING_EXPORT for the billing route.
 
@@ -15,6 +16,10 @@ const MILESTONE_STEP: Record<string, { id: 't_plus_0' | 't_plus_3' | 't_plus_7' 
 };
 
 export async function GET(_req: NextRequest) {
+  const session = await getSession();
+  if (!session.hasClientAccess) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
   const resolved = await resolveClientFromSession();
   if (!resolved) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
@@ -64,6 +69,10 @@ interface GoLiveReadyBody {
 }
 
 export async function POST(req: NextRequest) {
+  const session = await getSession();
+  if (!session.hasClientAccess) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
   const resolved = await resolveClientFromSession();
   if (!resolved) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });

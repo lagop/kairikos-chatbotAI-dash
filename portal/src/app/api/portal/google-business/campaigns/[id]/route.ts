@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
+import { getSession } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -17,6 +18,10 @@ const BodySchema = z.object({ status: z.enum(['active', 'paused']) });
  * action).
  */
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const session = await getSession();
+  if (!session.hasClientAccess) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
   const resolved = await resolveClientFromSession();
   if (!resolved) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   if (!isDatabaseConfigured || resolved.source !== 'database') {

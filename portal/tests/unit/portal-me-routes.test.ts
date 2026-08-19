@@ -33,6 +33,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const resolveClientFromSession = vi.fn();
+const getSession = vi.fn();
 const findUnique = vi.fn();
 const update = vi.fn();
 const updateMany = vi.fn();
@@ -45,6 +46,10 @@ vi.mock('@/lib/portal-session', () => ({
   // KAIA-4011 added an isPortalDevMock()-gated branch to the password
   // route; false keeps these tests on the real-session code path.
   isPortalDevMock: () => false,
+}));
+
+vi.mock('@/lib/session', () => ({
+  getSession: (...args: unknown[]) => getSession(...args),
 }));
 
 vi.mock('@/lib/prisma', () => ({
@@ -105,6 +110,7 @@ function makeRequest(body: unknown, headers: Record<string, string> = {}) {
 
 beforeEach(() => {
   resolveClientFromSession.mockReset();
+  getSession.mockReset().mockResolvedValue({ hasClientAccess: true });
   findUnique.mockReset();
   update.mockReset();
   updateMany.mockReset();

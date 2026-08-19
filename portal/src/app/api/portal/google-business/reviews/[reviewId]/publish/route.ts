@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
+import { getSession } from '@/lib/session';
 import { isProductContracted } from '@/lib/client-product-access';
 import { publishReplyToReview } from '@/lib/review-reply';
 
@@ -21,6 +22,10 @@ const BodySchema = z.object({ comment: z.string().trim().min(1).max(4000) });
  * route).
  */
 export async function POST(req: NextRequest, { params }: { params: { reviewId: string } }) {
+  const session = await getSession();
+  if (!session.hasClientAccess) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
   const resolved = await resolveClientFromSession();
   if (!resolved) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   if (!isDatabaseConfigured || resolved.source !== 'database') {

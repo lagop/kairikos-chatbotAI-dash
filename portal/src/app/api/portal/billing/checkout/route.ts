@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { isDatabaseConfigured, prisma } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
+import { getSession } from '@/lib/session';
 import { getStripe, isStripeConfigured } from '@/lib/stripe';
 import { ensureCustomerForTenant } from '@/lib/stripe-billing';
 import { isProductContracted } from '@/lib/client-product-access';
@@ -42,6 +43,10 @@ const BodySchema = z.object({ productId: z.string().uuid() });
  * pending or abandoned row never blocks (or falsely allows past) a retry.
  */
 export async function POST(req: NextRequest) {
+  const session = await getSession();
+  if (!session.hasClientAccess) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
   const resolved = await resolveClientFromSession();
   if (!resolved) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   if (!isDatabaseConfigured || resolved.source !== 'database') {

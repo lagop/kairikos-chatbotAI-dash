@@ -1,8 +1,13 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
+import { getSession } from '@/lib/session';
 
 export async function GET(_req: NextRequest) {
+  const session = await getSession();
+  if (!session.hasClientAccess) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
   const resolved = await resolveClientFromSession();
   if (!resolved) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   if (!isDatabaseConfigured || resolved.source !== 'database') return NextResponse.json([]);

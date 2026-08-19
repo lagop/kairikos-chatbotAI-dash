@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
+import { getSession } from '@/lib/session';
 import { isProductContracted } from '@/lib/client-product-access';
 import { generateReviewReplyDraft } from '@/lib/review-reply-ai';
 
@@ -13,6 +14,10 @@ export const runtime = 'nodejs';
  * review row. This alone never publishes anything — see .../publish.
  */
 export async function POST(_req: NextRequest, { params }: { params: { reviewId: string } }) {
+  const session = await getSession();
+  if (!session.hasClientAccess) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
   const resolved = await resolveClientFromSession();
   if (!resolved) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   if (!isDatabaseConfigured || resolved.source !== 'database') {

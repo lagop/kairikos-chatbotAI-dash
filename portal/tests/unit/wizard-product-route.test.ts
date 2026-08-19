@@ -13,6 +13,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const resolveClientFromSession = vi.fn();
+const getSession = vi.fn();
 const findFirstClientProduct = vi.fn();
 const findUniqueChatbotClient = vi.fn();
 const readWizardStep = vi.fn();
@@ -20,6 +21,10 @@ const saveWizardStep = vi.fn();
 
 vi.mock('@/lib/portal-session', () => ({
   resolveClientFromSession: (...args: unknown[]) => resolveClientFromSession(...args),
+}));
+
+vi.mock('@/lib/session', () => ({
+  getSession: (...args: unknown[]) => getSession(...args),
 }));
 
 vi.mock('@/lib/prisma', () => ({
@@ -63,6 +68,7 @@ function makePatchRequest(body: unknown) {
 
 beforeEach(() => {
   resolveClientFromSession.mockReset();
+  getSession.mockReset().mockResolvedValue({ hasClientAccess: true });
   findFirstClientProduct.mockReset();
   findUniqueChatbotClient.mockReset();
   readWizardStep.mockReset();

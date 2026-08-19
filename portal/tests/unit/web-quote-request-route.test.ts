@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockState = vi.hoisted(() => ({
   resolveClientFromSession: vi.fn(),
+  getSession: vi.fn(),
   findFirstProduct: vi.fn(),
   findUniqueClient: vi.fn(),
   findUniqueClientProduct: vi.fn(),
@@ -20,6 +21,10 @@ const mockTx = {
 
 vi.mock('@/lib/portal-session', () => ({
   resolveClientFromSession: (...args: unknown[]) => mockState.resolveClientFromSession(...args),
+}));
+
+vi.mock('@/lib/session', () => ({
+  getSession: (...args: unknown[]) => mockState.getSession(...args),
 }));
 
 vi.mock('@/lib/prisma', () => ({
@@ -37,6 +42,7 @@ const WEB_PRODUCT = { id: 'prod_web_1', code: 'web', isActive: true };
 
 beforeEach(() => {
   mockState.resolveClientFromSession.mockReset().mockResolvedValue(RESOLVED);
+  mockState.getSession.mockReset().mockResolvedValue({ hasClientAccess: true });
   mockState.findFirstProduct.mockReset().mockResolvedValue(WEB_PRODUCT);
   mockState.findUniqueClient.mockReset().mockResolvedValue({ id: 'client_1', tenantId: 'tenant_1' });
   mockState.findUniqueClientProduct.mockReset().mockResolvedValue(null);

@@ -17,6 +17,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
+import { getSession } from '@/lib/session';
 import { DEV_MOCK_CLIENT_BY_EMAIL } from '@/lib/portal-data';
 import type { ClientProfile } from '@/types/portal';
 
@@ -102,6 +103,10 @@ function buildMockProfile(client: {
 }
 
 export async function GET(_req: NextRequest) {
+  const session = await getSession();
+  if (!session.hasClientAccess) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
   const resolved = await resolveClientFromSession();
   if (!resolved) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
@@ -134,6 +139,10 @@ export async function GET(_req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const session = await getSession();
+  if (!session.hasClientAccess) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
   const resolved = await resolveClientFromSession();
   if (!resolved) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
