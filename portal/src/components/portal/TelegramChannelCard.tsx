@@ -13,6 +13,7 @@ import { useRouter } from 'next/navigation';
 export interface TelegramConnectionSummary {
   status: 'active' | 'needs_reconnect' | 'revoked';
   botUsername: string;
+  lastSyncError: string | null;
 }
 
 const ERROR_LABEL: Record<string, string> = {
@@ -102,6 +103,12 @@ export function TelegramChannelCard({
           <p className="text-sm text-kairikos-text">
             Bot conectado: <span className="font-semibold">@{connection.botUsername}</span>
           </p>
+          {connection.lastSyncError ? (
+            <p className="text-sm text-kairikos-warning" data-testid="telegram-webhook-warning">
+              Tu bot se conectó, pero hubo un problema activándolo con Telegram. Contacta con soporte si no empieza a
+              responder en unos minutos.
+            </p>
+          ) : null}
           {error ? (
             <p className="text-sm text-kairikos-danger" data-testid="telegram-error">
               {error}

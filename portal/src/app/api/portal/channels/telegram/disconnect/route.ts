@@ -1,8 +1,11 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { deliverChannelEvent } from '@/lib/channel-webhook';
+import { decryptChannelCredential } from '@/lib/channel-crypto';
+import { deleteWebhook } from '@/lib/telegram-api';
+import { logError } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -10,11 +13,14 @@ export const runtime = 'nodejs';
 // =============================================================================
 // WP: conexión de canales — POST /api/portal/channels/telegram/disconnect
 //
-// Unlike Google's disconnect, there is no platform-side "revoke" call to
-// make here — a Telegram bot token is only invalidated by regenerating
-// it via @BotFather, not through the Bot API. Disconnecting is purely
-// local: mark the row `revoked` and forget the token. A later reconnect
-// re-upserts the same row back to `active` with a fresh token.
+// The token itself can only be invalidated by regenerating it via
+// @BotFather, not through the Bot API — but deleteWebhook (best-effort,
+// same "never leaves the client stuck" posture as Meta's disconnect) IS
+// a real, useful call: it stops Telegram from delivering messages to
+// n8n's per-connection URL. Disconnecting is local either way: mark the
+// row `revoked` and forget the token regardless of whether deleteWebhook
+// succeeded. A later reconnect re-upserts the same row back to `active`
+// with a fresh token and re-registers the webhook.
 // =============================================================================
 
 export async function POST() {
@@ -37,6 +43,25 @@ export async function POST() {
   }
   if (connection.status === 'revoked') {
     return NextResponse.json({ ok: true, status: 'revoked', alreadyRevoked: true });
+  }
+
+  try {
+    const token = decryptChannelCredential({
+      ciphertext: connection.botTokenCiphertext,
+      iv: connection.botTokenIv,
+      tag: connection.botTokenTag,
+    });
+    const result = await deleteWebhook(token);
+    if (!result.ok) {
+      logError('channels.telegram_disconnect.delete_webhook_failed', new Error(result.error), { clientId: resolved.clientId, connectionId: connection.id }, 'warn');
+    }
+  } catch (err) {
+    // Best-effort — never blocks the disconnect. A stale webhook
+    // subscription left on Telegram's side is harmless: the connection
+    // row is about to be marked revoked, so the multi-tenant n8n
+    // workflow's context lookup for this connectionId will 404/403 any
+    // update Telegram still delivers.
+    logError('channels.telegram_disconnect.delete_webhook_failed', err, { clientId: resolved.clientId, connectionId: connection.id }, 'warn');
   }
 
   await prisma.telegramConnection.update({

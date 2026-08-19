@@ -39,7 +39,7 @@ export default async function PortalCanalesPage() {
     const [telegramRow, metaRows, webRow] = await Promise.all([
       prisma.telegramConnection.findUnique({
         where: { clientId: resolved.clientId },
-        select: { status: true, botUsername: true },
+        select: { status: true, botUsername: true, lastSyncError: true },
       }),
       prisma.metaChannelConnection.findMany({
         where: { clientId: resolved.clientId },
@@ -52,7 +52,11 @@ export default async function PortalCanalesPage() {
       }),
     ]);
     telegramConnection = telegramRow
-      ? { status: telegramRow.status as TelegramConnectionSummary['status'], botUsername: telegramRow.botUsername }
+      ? {
+          status: telegramRow.status as TelegramConnectionSummary['status'],
+          botUsername: telegramRow.botUsername,
+          lastSyncError: telegramRow.lastSyncError,
+        }
       : null;
     metaConnections = metaRows.map((row) => ({
       id: row.id,
