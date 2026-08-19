@@ -4,6 +4,11 @@ import { EmptyState } from '@/components/portal/EmptyState';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { listConversations } from '@/lib/portal-data';
 import { assertSameClient, requirePortalSession } from '@/lib/session';
+import { resolveClientFromSession } from '@/lib/portal-session';
+import { prisma, isDatabaseConfigured } from '@/lib/prisma';
+import { isProductContracted } from '@/lib/client-product-access';
+import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
+import { ConversationDigestsPanel, type ConversationDigestSummary, type ConversationDigestScheduleConfig } from '@/components/portal/ConversationDigestsPanel';
 
 export const metadata: Metadata = {
   title: 'Conversaciones',
@@ -59,6 +64,55 @@ export default async function ConversationsPage({
   const start = (page - 1) * PAGE_SIZE;
   const pageItems = conversations.slice(start, start + PAGE_SIZE);
   const hasNext = start + PAGE_SIZE < conversations.length;
+
+  // Canales Fase 7 — Resúmenes periódicos. A diferencia del listado de
+  // arriba (que pasa por portalFetch/listConversations), esto lee
+  // Prisma directo, mismo patrón que /portal/resenas — ConversationDigest
+  // es un modelo nuevo sin ningún path de proxy existente que reutilizar.
+  const resolved = isDatabaseConfigured ? await resolveClientFromSession() : null;
+  const hasChatbot = resolved && resolved.source === 'database'
+    ? await isProductContracted(prisma, resolved.clientId, CHATBOT_PRODUCT_CODE)
+    : false;
+
+  let digestSummaries: ConversationDigestSummary[] = [];
+  let scheduleConfig: ConversationDigestScheduleConfig = {
+    enabled: false,
+    preset: 'morning_noon_evening',
+    intervalHours: null,
+    timezone: 'Europe/Madrid',
+    lastGeneratedAt: null,
+  };
+
+  if (hasChatbot && resolved) {
+    const [digests, schedule] = await Promise.all([
+      prisma.conversationDigest.findMany({
+        where: { clientId: resolved.clientId },
+        orderBy: { windowEnd: 'desc' },
+        take: 20,
+      }),
+      prisma.conversationDigestSchedule.findUnique({ where: { clientId: resolved.clientId } }),
+    ]);
+    digestSummaries = digests.map((d) => ({
+      id: d.id,
+      windowStart: d.windowStart.toISOString(),
+      windowEnd: d.windowEnd.toISOString(),
+      generatedAt: d.generatedAt.toISOString(),
+      totalConversations: d.totalConversations,
+      escalatedCount: d.escalatedCount,
+      fallbackCount: d.fallbackCount,
+      summaryText: d.summaryText,
+      highlights: Array.isArray(d.highlights) ? (d.highlights as unknown[]).filter((h): h is string => typeof h === 'string') : [],
+    }));
+    if (schedule) {
+      scheduleConfig = {
+        enabled: schedule.enabled,
+        preset: schedule.preset as ConversationDigestScheduleConfig['preset'],
+        intervalHours: schedule.intervalHours,
+        timezone: schedule.timezone,
+        lastGeneratedAt: schedule.lastGeneratedAt?.toISOString() ?? null,
+      };
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -167,6 +221,17 @@ export default async function ConversationsPage({
           </nav>
         </section>
       )}
+
+      {hasChatbot ? (
+        <div className="space-y-4">
+          <PageHeading
+            eyebrow="Resúmenes"
+            title="Resúmenes periódicos"
+            description="Un resumen de la actividad de tu chatbot, generado con IA, en el horario que elijas."
+          />
+          <ConversationDigestsPanel digests={digestSummaries} schedule={scheduleConfig} />
+        </div>
+      ) : null}
     </div>
   );
 }
