@@ -910,9 +910,17 @@ model ChatbotConversation {
   outcome    String?
   // Full transcript as JSON — message list, metadata, tool calls, etc.
   transcript Json?
+  // Canales Fase 4 — the widget/n8n side's own session identifier
+  // (crypto-random, generated client-side per pageview). Lets
+  // POST /api/internal/channels/web/message upsert one row per session
+  // instead of creating a new row per turn — NULL for every
+  // pre-Fase-4 row (Telegram/WhatsApp conversations, seed data), which
+  // is fine since Postgres treats NULL as distinct in a unique index.
+  externalSessionId String? @map("external_session_id")
   client     ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant     Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
+  @@unique([clientId, externalSessionId])
   @@index([clientId, startedAt])
   @@index([clientId, outcome])
   @@index([tenantId])
