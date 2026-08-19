@@ -37,7 +37,11 @@ function graphVersion(): string {
   return process.env.META_GRAPH_API_VERSION || 'v21.0';
 }
 
-function graphUrl(path: string): string {
+// Exported so whatsapp-api.ts (and future Messenger/Instagram API
+// modules) build Graph API URLs against the same version instead of
+// hardcoding their own — one place controls what Graph API version
+// this whole codebase targets.
+export function graphUrl(path: string): string {
   return `https://graph.facebook.com/${graphVersion()}${path}`;
 }
 

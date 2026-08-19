@@ -1716,6 +1716,12 @@ model MetaChannelConnection {
   // Human-readable name discovered at connect time (Page name / WABA
   // label) — externalId alone is a raw Meta id, not fit to show a client.
   label                 String?
+  // whatsapp only — the WABA id. Meta's app-webhook subscription
+  // (subscribed_apps) is called at the WABA level, not the phone number
+  // level, so this needs its own column rather than being parsed back
+  // out of `label` (which only ever held it for display). NULL for
+  // messenger/instagram rows, which don't have this concept.
+  wabaId                String?  @map("waba_id")
   accessTokenCiphertext Bytes    @map("access_token_ciphertext")
   accessTokenIv         Bytes    @map("access_token_iv")
   accessTokenTag        Bytes    @map("access_token_tag")

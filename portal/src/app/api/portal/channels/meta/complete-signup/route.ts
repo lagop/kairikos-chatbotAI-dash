@@ -12,6 +12,7 @@ import {
   fetchPagesWithInstagram,
   encryptMetaToken,
 } from '@/lib/meta-business';
+import { subscribeWaba } from '@/lib/whatsapp-api';
 import { deliverChannelEvent } from '@/lib/channel-webhook';
 import { logError } from '@/lib/observability';
 
@@ -92,7 +93,7 @@ export async function POST(req: NextRequest) {
   const connected: Array<{ channel: ChannelCode; externalId: string; label: string }> = [];
   const blocked: ChannelCode[] = [];
 
-  async function upsertSurface(channel: ChannelCode, externalId: string, label: string) {
+  async function upsertSurface(channel: ChannelCode, externalId: string, label: string, wabaId: string | null = null) {
     if (!allowedChannels.includes(channel)) {
       blocked.push(channel);
       return;
@@ -102,6 +103,7 @@ export async function POST(req: NextRequest) {
       where: { clientId_channel_externalId: { clientId, channel, externalId } },
       update: {
         label,
+        wabaId,
         accessTokenCiphertext: encrypted.ciphertext,
         accessTokenIv: encrypted.iv,
         accessTokenTag: encrypted.tag,
@@ -114,12 +116,31 @@ export async function POST(req: NextRequest) {
         channel,
         externalId,
         label,
+        wabaId,
         accessTokenCiphertext: encrypted.ciphertext,
         accessTokenIv: encrypted.iv,
         accessTokenTag: encrypted.tag,
         status: 'active',
       },
     });
+
+    // WhatsApp's app-level webhook (configured once in the Meta App
+    // Dashboard, external to this repo) only delivers messages for a
+    // WABA that has explicitly subscribed the app — this is that
+    // subscription. A failure here doesn't unwind the connection (the
+    // token IS valid, connecting DID succeed) — same "never leaves the
+    // client thinking they were rejected" posture as Telegram's
+    // setWebhook — it's recorded as lastSyncError instead.
+    if (channel === 'whatsapp' && wabaId) {
+      const subscribeResult = await subscribeWaba(accessToken, wabaId);
+      if (!subscribeResult.ok) {
+        await prisma.metaChannelConnection
+          .update({ where: { id: connection.id }, data: { lastSyncError: subscribeResult.error.slice(0, 500) } })
+          .catch(() => null);
+        logError('channels.meta_complete_signup.subscribe_waba_failed', new Error(subscribeResult.error), { clientId, wabaId }, 'warn');
+      }
+    }
+
     connected.push({ channel, externalId, label });
     await deliverChannelEvent({
       connectionType: 'meta',
@@ -131,7 +152,12 @@ export async function POST(req: NextRequest) {
 
   try {
     if (body.data.whatsapp) {
-      await upsertSurface('whatsapp', body.data.whatsapp.phoneNumberId, `WhatsApp (${body.data.whatsapp.wabaId})`);
+      await upsertSurface(
+        'whatsapp',
+        body.data.whatsapp.phoneNumberId,
+        `WhatsApp (${body.data.whatsapp.wabaId})`,
+        body.data.whatsapp.wabaId,
+      );
     }
 
     const pages = await fetchPagesWithInstagram(accessToken);
