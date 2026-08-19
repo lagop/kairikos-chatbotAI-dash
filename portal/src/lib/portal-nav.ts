@@ -32,6 +32,7 @@ export const PORTAL_NAV: readonly PortalNavItem[] = [
   { href: '/portal/status', label: 'Chatbot' },
   { href: '/portal/onboarding', label: 'Onboarding', parentHref: '/portal/status' },
   { href: '/portal/conversations', label: 'Conversaciones', parentHref: '/portal/status' },
+  { href: '/portal/canales', label: 'Canales', parentHref: '/portal/status' },
   { href: '/portal/web', label: 'Web' },
   { href: '/portal/leads', label: 'Captación con IA' },
   { href: '/portal/resenas', label: 'Reseñas' },
