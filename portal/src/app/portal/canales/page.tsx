@@ -6,6 +6,7 @@ import { getAllowedChannelsForClient } from '@/lib/channel-access';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { TelegramChannelCard, type TelegramConnectionSummary } from '@/components/portal/TelegramChannelCard';
 import { MetaChannelCard, type MetaConnectionSummary } from '@/components/portal/MetaChannelCard';
+import { WebChannelCard, type WebEmbedSummary } from '@/components/portal/WebChannelCard';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,8 +19,8 @@ export const metadata: Metadata = {
 
 // =============================================================================
 // WP: conexión de canales — Fase 3 agrega la tarjeta de Meta (WhatsApp/
-// Messenger/Instagram) junto a la de Telegram (Fase 2). Web (el widget)
-// llega en la Fase 4. Subsección de Chatbot en el sidebar
+// Messenger/Instagram) junto a la de Telegram (Fase 2). Fase 4 agrega
+// Web (el widget). Subsección de Chatbot en el sidebar
 // (portal-nav.ts), mismo criterio que /portal/status y
 // /portal/conversations.
 // =============================================================================
@@ -31,10 +32,11 @@ export default async function PortalCanalesPage() {
   let allowedChannels: string[] = [];
   let telegramConnection: TelegramConnectionSummary | null = null;
   let metaConnections: MetaConnectionSummary[] = [];
+  let webEmbed: WebEmbedSummary | null = null;
 
   if (isDatabaseConfigured && resolved?.source === 'database') {
     allowedChannels = await getAllowedChannelsForClient(prisma, resolved.clientId);
-    const [telegramRow, metaRows] = await Promise.all([
+    const [telegramRow, metaRows, webRow] = await Promise.all([
       prisma.telegramConnection.findUnique({
         where: { clientId: resolved.clientId },
         select: { status: true, botUsername: true },
@@ -43,6 +45,10 @@ export default async function PortalCanalesPage() {
         where: { clientId: resolved.clientId },
         select: { id: true, channel: true, externalId: true, label: true, status: true },
         orderBy: { connectedAt: 'asc' },
+      }),
+      prisma.chatWebEmbed.findFirst({
+        where: { clientId: resolved.clientId },
+        select: { publicToken: true, status: true, primaryColor: true, position: true },
       }),
     ]);
     telegramConnection = telegramRow
@@ -55,6 +61,14 @@ export default async function PortalCanalesPage() {
       label: row.label,
       status: row.status as MetaConnectionSummary['status'],
     }));
+    webEmbed = webRow
+      ? {
+          publicToken: webRow.publicToken,
+          status: webRow.status as WebEmbedSummary['status'],
+          primaryColor: webRow.primaryColor,
+          position: webRow.position as WebEmbedSummary['position'],
+        }
+      : null;
   }
 
   return (
@@ -64,6 +78,7 @@ export default async function PortalCanalesPage() {
         title="Canales"
         description="Conecta tu chatbot a los canales por los que tus clientes te contactan."
       />
+      <WebChannelCard embed={webEmbed} allowed={allowedChannels.includes('web')} />
       <TelegramChannelCard connection={telegramConnection} allowed={allowedChannels.includes('telegram')} />
       <MetaChannelCard
         metaAppId={process.env.META_APP_ID ?? null}
