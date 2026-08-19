@@ -21,6 +21,7 @@ const mockState = vi.hoisted(() => ({
   revokeMetaAccess: vi.fn(),
   subscribeWaba: vi.fn(),
   unsubscribeWaba: vi.fn(),
+  subscribePage: vi.fn(),
   deliverChannelEvent: vi.fn(),
   findUniqueClient: vi.fn(),
   metaUpsert: vi.fn(),
@@ -58,6 +59,10 @@ vi.mock('@/lib/meta-business', () => ({
 vi.mock('@/lib/whatsapp-api', () => ({
   subscribeWaba: (...args: unknown[]) => mockState.subscribeWaba(...args),
   unsubscribeWaba: (...args: unknown[]) => mockState.unsubscribeWaba(...args),
+}));
+
+vi.mock('@/lib/messenger-api', () => ({
+  subscribePage: (...args: unknown[]) => mockState.subscribePage(...args),
 }));
 
 vi.mock('@/lib/channel-webhook', () => ({
@@ -102,6 +107,7 @@ beforeEach(() => {
   mockState.revokeMetaAccess.mockReset().mockResolvedValue(true);
   mockState.subscribeWaba.mockReset().mockResolvedValue({ ok: true, data: { success: true } });
   mockState.unsubscribeWaba.mockReset().mockResolvedValue({ ok: true, data: { success: true } });
+  mockState.subscribePage.mockReset().mockResolvedValue({ ok: true, data: { success: true } });
   mockState.deliverChannelEvent.mockReset().mockResolvedValue({ ok: true, deliveryId: 'dlv_1', status: 'delivered' });
   mockState.findUniqueClient.mockReset().mockResolvedValue({ tenantId: 'tenant_1' });
   mockState.metaUpsert.mockReset().mockResolvedValue({ id: 'conn_1' });
@@ -201,7 +207,7 @@ describe('POST /api/portal/channels/meta/complete-signup', () => {
     );
   });
 
-  it('connects messenger and instagram for every discovered page', async () => {
+  it('connects messenger and instagram for every discovered page, subscribing the underlying page for both', async () => {
     mockState.fetchPagesWithInstagram.mockResolvedValue([
       { pageId: 'page_1', pageName: 'Peluquería Aurora', instagramAccountId: 'ig_1' },
       { pageId: 'page_2', pageName: 'Aurora Spa', instagramAccountId: null },
@@ -214,6 +220,27 @@ describe('POST /api/portal/channels/meta/complete-signup', () => {
       { channel: 'instagram', externalId: 'ig_1', label: 'Peluquería Aurora' },
       { channel: 'messenger', externalId: 'page_2', label: 'Aurora Spa' },
     ]);
+    // Called once for the messenger surface and once more for the
+    // instagram surface sharing the same page — subscribed_apps is
+    // idempotent, so this is deliberate, not a bug.
+    expect(mockState.subscribePage).toHaveBeenCalledWith('long_lived', 'page_1');
+    expect(mockState.subscribePage).toHaveBeenCalledWith('long_lived', 'page_2');
+    expect(mockState.subscribePage).toHaveBeenCalledTimes(3);
+  });
+
+  it('still connects the surface, recording lastSyncError, when subscribePage fails', async () => {
+    mockState.fetchPagesWithInstagram.mockResolvedValue([
+      { pageId: 'page_1', pageName: 'Peluquería Aurora', instagramAccountId: null },
+    ]);
+    mockState.subscribePage.mockResolvedValue({ ok: false, error: 'Invalid OAuth access token' });
+    const { POST } = await import('@/app/api/portal/channels/meta/complete-signup/route');
+    const res = await POST(jsonRequest({ code: 'auth_code' }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.connected).toEqual([{ channel: 'messenger', externalId: 'page_1', label: 'Peluquería Aurora' }]);
+    expect(mockState.metaUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'conn_1' }, data: { lastSyncError: 'Invalid OAuth access token' } }),
+    );
   });
 
   it('reports blocked channels instead of connecting them when the tier excludes them', async () => {
