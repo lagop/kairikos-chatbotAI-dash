@@ -19,6 +19,8 @@ const mockState = vi.hoisted(() => ({
   encryptMetaToken: vi.fn(),
   decryptMetaToken: vi.fn(),
   revokeMetaAccess: vi.fn(),
+  subscribeWaba: vi.fn(),
+  unsubscribeWaba: vi.fn(),
   deliverChannelEvent: vi.fn(),
   findUniqueClient: vi.fn(),
   metaUpsert: vi.fn(),
@@ -51,6 +53,11 @@ vi.mock('@/lib/meta-business', () => ({
   encryptMetaToken: (...args: unknown[]) => mockState.encryptMetaToken(...args),
   decryptMetaToken: (...args: unknown[]) => mockState.decryptMetaToken(...args),
   revokeMetaAccess: (...args: unknown[]) => mockState.revokeMetaAccess(...args),
+}));
+
+vi.mock('@/lib/whatsapp-api', () => ({
+  subscribeWaba: (...args: unknown[]) => mockState.subscribeWaba(...args),
+  unsubscribeWaba: (...args: unknown[]) => mockState.unsubscribeWaba(...args),
 }));
 
 vi.mock('@/lib/channel-webhook', () => ({
@@ -93,6 +100,8 @@ beforeEach(() => {
     .mockReturnValue({ ciphertext: Buffer.from('c'), iv: Buffer.from('i'), tag: Buffer.from('t') });
   mockState.decryptMetaToken.mockReset().mockReturnValue('long_lived');
   mockState.revokeMetaAccess.mockReset().mockResolvedValue(true);
+  mockState.subscribeWaba.mockReset().mockResolvedValue({ ok: true, data: { success: true } });
+  mockState.unsubscribeWaba.mockReset().mockResolvedValue({ ok: true, data: { success: true } });
   mockState.deliverChannelEvent.mockReset().mockResolvedValue({ ok: true, deliveryId: 'dlv_1', status: 'delivered' });
   mockState.findUniqueClient.mockReset().mockResolvedValue({ tenantId: 'tenant_1' });
   mockState.metaUpsert.mockReset().mockResolvedValue({ id: 'conn_1' });
@@ -149,7 +158,7 @@ describe('POST /api/portal/channels/meta/complete-signup', () => {
     expect(res.status).toBe(502);
   });
 
-  it('connects the WhatsApp surface when provided and allowed', async () => {
+  it('connects the WhatsApp surface when provided and allowed, storing wabaId and subscribing the app', async () => {
     const { POST } = await import('@/app/api/portal/channels/meta/complete-signup/route');
     const res = await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: 'waba_1', phoneNumberId: 'phone_1' } }));
     expect(res.status).toBe(200);
@@ -158,14 +167,38 @@ describe('POST /api/portal/channels/meta/complete-signup', () => {
     expect(mockState.metaUpsert).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { clientId_channel_externalId: { clientId: 'client_1', channel: 'whatsapp', externalId: 'phone_1' } },
+        update: expect.objectContaining({ wabaId: 'waba_1' }),
+        create: expect.objectContaining({ wabaId: 'waba_1' }),
       }),
     );
+    expect(mockState.subscribeWaba).toHaveBeenCalledWith('long_lived', 'waba_1');
     expect(mockState.deliverChannelEvent).toHaveBeenCalledWith({
       connectionType: 'meta',
       connectionId: 'conn_1',
       clientId: 'client_1',
       payload: { event: 'connected', channel: 'whatsapp', externalId: 'phone_1', label: 'WhatsApp (waba_1)' },
     });
+  });
+
+  it('never calls subscribeWaba for messenger/instagram surfaces', async () => {
+    mockState.fetchPagesWithInstagram.mockResolvedValue([
+      { pageId: 'page_1', pageName: 'Peluquería Aurora', instagramAccountId: 'ig_1' },
+    ]);
+    const { POST } = await import('@/app/api/portal/channels/meta/complete-signup/route');
+    await POST(jsonRequest({ code: 'auth_code' }));
+    expect(mockState.subscribeWaba).not.toHaveBeenCalled();
+  });
+
+  it('still connects the surface, recording lastSyncError, when subscribeWaba fails — the token IS valid', async () => {
+    mockState.subscribeWaba.mockResolvedValue({ ok: false, error: 'Invalid OAuth access token' });
+    const { POST } = await import('@/app/api/portal/channels/meta/complete-signup/route');
+    const res = await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: 'waba_1', phoneNumberId: 'phone_1' } }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.connected).toEqual([{ channel: 'whatsapp', externalId: 'phone_1', label: 'WhatsApp (waba_1)' }]);
+    expect(mockState.metaUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'conn_1' }, data: { lastSyncError: 'Invalid OAuth access token' } }),
+    );
   });
 
   it('connects messenger and instagram for every discovered page', async () => {
@@ -255,8 +288,8 @@ describe('POST /api/portal/channels/meta/disconnect', () => {
       id: 'conn_1',
       clientId: 'client_1',
       status: 'active',
-      channel: 'whatsapp',
-      externalId: 'phone_1',
+      channel: 'messenger',
+      externalId: 'page_1',
       accessTokenCiphertext: Buffer.from('c'),
       accessTokenIv: Buffer.from('i'),
       accessTokenTag: Buffer.from('t'),
@@ -265,6 +298,45 @@ describe('POST /api/portal/channels/meta/disconnect', () => {
     const res = await POST(jsonRequest({ connectionId: '00000000-0000-0000-0000-000000000001' }));
     const body = await res.json();
     expect(body).toEqual({ ok: true, status: 'revoked', revokedAtMeta: true });
+    expect(mockState.metaUpdate).toHaveBeenCalledWith({ where: { id: 'conn_1' }, data: { status: 'revoked' } });
+    expect(mockState.unsubscribeWaba).not.toHaveBeenCalled();
+  });
+
+  it('unsubscribes the WABA before revoking when disconnecting a whatsapp connection', async () => {
+    mockState.metaFindUnique.mockResolvedValue({
+      id: 'conn_1',
+      clientId: 'client_1',
+      status: 'active',
+      channel: 'whatsapp',
+      externalId: 'phone_1',
+      wabaId: 'waba_1',
+      accessTokenCiphertext: Buffer.from('c'),
+      accessTokenIv: Buffer.from('i'),
+      accessTokenTag: Buffer.from('t'),
+    });
+    const { POST } = await import('@/app/api/portal/channels/meta/disconnect/route');
+    const res = await POST(jsonRequest({ connectionId: '00000000-0000-0000-0000-000000000001' }));
+    expect(res.status).toBe(200);
+    expect(mockState.unsubscribeWaba).toHaveBeenCalledWith('long_lived', 'waba_1');
+    expect(mockState.metaUpdate).toHaveBeenCalledWith({ where: { id: 'conn_1' }, data: { status: 'revoked' } });
+  });
+
+  it('still revokes locally when unsubscribeWaba fails — never blocks the disconnect', async () => {
+    mockState.metaFindUnique.mockResolvedValue({
+      id: 'conn_1',
+      clientId: 'client_1',
+      status: 'active',
+      channel: 'whatsapp',
+      externalId: 'phone_1',
+      wabaId: 'waba_1',
+      accessTokenCiphertext: Buffer.from('c'),
+      accessTokenIv: Buffer.from('i'),
+      accessTokenTag: Buffer.from('t'),
+    });
+    mockState.unsubscribeWaba.mockResolvedValue({ ok: false, error: 'network down' });
+    const { POST } = await import('@/app/api/portal/channels/meta/disconnect/route');
+    const res = await POST(jsonRequest({ connectionId: '00000000-0000-0000-0000-000000000001' }));
+    expect(res.status).toBe(200);
     expect(mockState.metaUpdate).toHaveBeenCalledWith({ where: { id: 'conn_1' }, data: { status: 'revoked' } });
   });
 

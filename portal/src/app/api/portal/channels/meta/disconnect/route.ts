@@ -4,6 +4,7 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { decryptMetaToken, revokeMetaAccess } from '@/lib/meta-business';
+import { unsubscribeWaba } from '@/lib/whatsapp-api';
 import { deliverChannelEvent } from '@/lib/channel-webhook';
 import { logError } from '@/lib/observability';
 
@@ -55,6 +56,12 @@ export async function POST(req: NextRequest) {
       iv: connection.accessTokenIv,
       tag: connection.accessTokenTag,
     });
+    if (connection.channel === 'whatsapp' && connection.wabaId) {
+      const unsubscribeResult = await unsubscribeWaba(accessToken, connection.wabaId);
+      if (!unsubscribeResult.ok) {
+        logError('channels.meta_disconnect.unsubscribe_waba_failed', new Error(unsubscribeResult.error), { connectionId: connection.id }, 'warn');
+      }
+    }
     revokedAtMeta = await revokeMetaAccess(accessToken);
   } catch (err) {
     logError('channels.meta_disconnect.revoke_failed', err, { connectionId: connection.id }, 'warn');
