@@ -140,14 +140,21 @@ export function StepForm(props: StepFormProps) {
   const stepMsg = getStep(stepNumber as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11);
 
   const stepKey = stepNumber as StepSchemaKey;
-  const seedValue = (props.savedPayload ?? props.effectivePayload ?? null) as Record<string, unknown> | null;
+  const rawSeed = (props.savedPayload ?? props.effectivePayload ?? null) as Record<string, unknown> | null;
+  // An empty catalog default (`{}` — most steps have no per-tier default)
+  // is not the same as an actual saved answer, but it's still a truthy
+  // object. Several step components (Step1Perfil, Step2Personalidad) seed
+  // their internal state with `value ?? { ...builtInDefaults }`, which
+  // only falls through on null/undefined — handing them `{}` short-
+  // circuits that fallback and leaves required fields (e.g. `idiomas`)
+  // undefined, crashing on first render. Collapse a keyless payload to
+  // null here so every step component's own defaults apply uniformly.
+  const seedValue = rawSeed && Object.keys(rawSeed).length > 0 ? rawSeed : null;
   const initialValues = { [stepKey]: seedValue } as Record<StepSchemaKey, Record<string, unknown> | null>;
 
-  const handleSubmit = async (status: 'draft' | 'submitted') => {
+  const handleSubmit = async (status: 'draft' | 'submitted', payload: Record<string, unknown>) => {
     if (!props.onSubmit) return;
-    const cur = initialValues[stepKey] ?? null;
-    if (!cur) return;
-    await props.onSubmit(status, cur);
+    await props.onSubmit(status, payload);
   };
 
   return (

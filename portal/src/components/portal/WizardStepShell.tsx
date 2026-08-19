@@ -130,6 +130,13 @@ export function WizardStepShell(props: WizardStepShellProps) {
   );
 
   useEffect(() => {
+    // Reacts to React 18 StrictMode's dev-only mount→cleanup→mount cycle
+    // (next.config.js has reactStrictMode: true). Without resetting to
+    // true here, the cleanup from that first synthetic unmount leaves
+    // isMountedRef permanently false for the rest of the component's real
+    // lifetime — every performSave() call after that silently no-ops on
+    // its `if (!isMountedRef.current) return` guard, in every dev session.
+    isMountedRef.current = true;
     return () => { isMountedRef.current = false; };
   }, []);
 
