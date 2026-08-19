@@ -19,6 +19,13 @@ import { PRODUCT_CODES, PRODUCT_CATALOGS, getProductCatalog, type ProductCode } 
 import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
 import { ProductAssignment, type AssignableProduct, type ClientProductRow } from '@/components/admin/ProductAssignment';
 import { WebQuoteEditor, type WebQuoteData, type WebQuoteInvoiceData } from '@/components/admin/WebQuoteEditor';
+import {
+  ChannelsOperatorPanel,
+  type TelegramConnectionRow,
+  type MetaConnectionRow,
+  type FailedDeliveryRow,
+} from '@/components/admin/ChannelsOperatorPanel';
+import { getAllowedChannelsForClient } from '@/lib/channel-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -311,6 +318,14 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
   let webQuoteClientProductId: string | null = null;
   let webQuote: WebQuoteData | null = null;
   let webQuoteInvoice: WebQuoteInvoiceData | null = null;
+  // WP: conexión de canales — Fase 5. Populated only when
+  // productCode === CHATBOT_PRODUCT_CODE, so the read-only channels
+  // panel (+ manual webhook-delivery retry) renders inside that
+  // product's tab, same pattern as WebQuote's editor under 'web'.
+  let channelsTelegram: TelegramConnectionRow | null = null;
+  let channelsMeta: MetaConnectionRow[] = [];
+  let channelsAllowed: string[] = [];
+  let channelsFailedDeliveries: FailedDeliveryRow[] = [];
   if (isDatabaseConfigured) {
     try {
       const client = await prisma.chatbotClient.findUnique({
@@ -435,6 +450,44 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
                 : null;
             }
           }
+        }
+
+        if (productCode === CHATBOT_PRODUCT_CODE) {
+          const [telegramRow, metaRows, allowed, failedRows] = await Promise.all([
+            prisma.telegramConnection.findUnique({
+              where: { clientId: client.id },
+              select: { status: true, botUsername: true },
+            }),
+            prisma.metaChannelConnection.findMany({
+              where: { clientId: client.id },
+              select: { id: true, channel: true, externalId: true, label: true, status: true },
+              orderBy: { connectedAt: 'asc' },
+            }),
+            getAllowedChannelsForClient(prisma, client.id),
+            prisma.channelWebhookDelivery.findMany({
+              where: { clientId: client.id, status: 'failed' },
+              select: { id: true, connectionType: true, attempts: true, lastError: true, lastAttemptAt: true },
+              orderBy: { lastAttemptAt: 'desc' },
+            }),
+          ]);
+          channelsTelegram = telegramRow
+            ? { status: telegramRow.status as TelegramConnectionRow['status'], botUsername: telegramRow.botUsername }
+            : null;
+          channelsMeta = metaRows.map((row) => ({
+            id: row.id,
+            channel: row.channel as MetaConnectionRow['channel'],
+            externalId: row.externalId,
+            label: row.label,
+            status: row.status as MetaConnectionRow['status'],
+          }));
+          channelsAllowed = allowed;
+          channelsFailedDeliveries = failedRows.map((row) => ({
+            id: row.id,
+            connectionType: row.connectionType as FailedDeliveryRow['connectionType'],
+            attempts: row.attempts,
+            lastError: row.lastError,
+            lastAttemptAt: row.lastAttemptAt?.toISOString() ?? null,
+          }));
         }
 
         const activities = await prisma.chatbotActivity.findMany({
@@ -683,6 +736,21 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
                   last7DaysCounts,
                   conversationCount,
                 })}
+              />
+            </section>
+          ) : null}
+
+          {productCode === CHATBOT_PRODUCT_CODE ? (
+            <section className="card" aria-label="Canales del chatbot" data-testid="client-channels-section">
+              <header className="mb-4">
+                <h2 className="text-lg font-semibold">Canales</h2>
+                <p className="mt-1 text-xs text-kairikos-muted">Solo lectura — el cliente conecta y desconecta desde su portal.</p>
+              </header>
+              <ChannelsOperatorPanel
+                telegram={channelsTelegram}
+                meta={channelsMeta}
+                allowedChannels={channelsAllowed}
+                failedDeliveries={channelsFailedDeliveries}
               />
             </section>
           ) : null}
