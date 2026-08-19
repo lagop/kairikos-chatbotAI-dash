@@ -68,6 +68,13 @@ export interface ProductCatalogEntry {
   isActive: boolean;
   stripeRecurringPriceId: string | null;
   stripeSetupPriceId: string | null;
+  // Free-form per-tier feature data (schema.prisma's Product.features —
+  // present since WP-12 but never populated until now). First real use:
+  // { channels: string[] } — which chatbot channels (WP: conexión de
+  // canales) a tier unlocks, read by getAllowedChannelsForClient() in
+  // src/lib/channel-access.ts. Reference mapping, not definitive —
+  // adjusting it later is a seed change, not a code change.
+  features?: Record<string, unknown>;
 }
 
 export const PRODUCT_CATALOG: ProductCatalogEntry[] = [
@@ -79,16 +86,19 @@ export const PRODUCT_CATALOG: ProductCatalogEntry[] = [
     code: 'chatbot', tier: 'starter', name: 'Chatbot IA — Starter',
     priceCents: 9900, setupFeeCents: 39900, currency: 'EUR', isActive: true,
     stripeRecurringPriceId: 'price_starter', stripeSetupPriceId: null,
+    features: { channels: ['web'] },
   },
   {
     code: 'chatbot', tier: 'pro', name: 'Chatbot IA — Pro',
     priceCents: 24900, setupFeeCents: 39900, currency: 'EUR', isActive: true,
     stripeRecurringPriceId: 'price_pro', stripeSetupPriceId: null,
+    features: { channels: ['web', 'telegram', 'whatsapp'] },
   },
   {
     code: 'chatbot', tier: 'premium', name: 'Chatbot IA — Premium',
     priceCents: 49900, setupFeeCents: 39900, currency: 'EUR', isActive: true,
     stripeRecurringPriceId: 'price_premium', stripeSetupPriceId: null,
+    features: { channels: ['web', 'telegram', 'whatsapp', 'messenger', 'instagram'] },
   },
   // Web platform — one-time only, no subscription. €799–€1.299 range →
   // using the €799 floor ("desde 799€").
@@ -163,6 +173,7 @@ async function seedProductCatalog(): Promise<void> {
         setupFeeCents: p.setupFeeCents,
         currency: p.currency,
         isActive: p.isActive,
+        features: p.features ?? {},
       },
       create: {
         code: p.code,
@@ -174,6 +185,7 @@ async function seedProductCatalog(): Promise<void> {
         isActive: p.isActive,
         stripeRecurringPriceId: p.stripeRecurringPriceId,
         stripeSetupPriceId: p.stripeSetupPriceId,
+        features: p.features ?? {},
       },
     });
   }
