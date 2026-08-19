@@ -123,6 +123,10 @@ model ChatbotClient {
   reviewRequestCampaigns    ReviewRequestCampaign[]
   webBrief                  WebBrief?
   webQuotes                 WebQuote[]
+  chatWebEmbeds             ChatWebEmbed[]
+  telegramConnections       TelegramConnection[]
+  metaChannelConnections    MetaChannelConnection[]
+  channelWebhookDeliveries  ChannelWebhookDelivery[]
 
   @@index([stripeCustomerId])
   @@index([tier])
@@ -487,6 +491,9 @@ model Tenant {
   reviewRequestCampaigns    ReviewRequestCampaign[]
   webBriefs                 WebBrief[]
   webQuotes                 WebQuote[]
+  chatWebEmbeds             ChatWebEmbed[]
+  telegramConnections       TelegramConnection[]
+  metaChannelConnections    MetaChannelConnection[]
 
   @@index([slug])
   @@index([status])
@@ -1555,16 +1562,16 @@ model WebQuote {
 
   status String @default("draft")
 
-  amountCents Int    @map("amount_cents")
+  amountCents  Int    @map("amount_cents")
   // Optional advance/deposit — when set, billing splits into a deposit
   // invoice (amountCents - depositCents left as the final balance) instead
   // of a single invoice for the full amount. Null preserves today's
   // single-payment behavior unchanged. Operator-entered free amount, not a
   // fixed percentage — every quote here is already custom-priced.
   depositCents Int?   @map("deposit_cents")
-  currency    String @default("eur")
+  currency     String @default("eur")
   // Free text the CLIENT sees verbatim — what this quote covers.
-  description String
+  description  String
 
   createdByOperatorId String?   @map("created_by_operator_id") @db.Uuid
   sentAt              DateTime? @map("sent_at")
@@ -1615,4 +1622,127 @@ model WebQuoteAudit {
   @@index([webQuoteId])
   @@index([action])
   @@index([createdAt])
+}
+
+// =============================================================================
+// Canales del chatbot — instalación desde el wizard (WP: conexión de
+// canales). Un modelo dedicado por tipo de conexión, mismo patrón que
+// GoogleBusinessConnection (WP-21): no una tabla polimórfica genérica con
+// discriminador, sino una tabla por clase de conexión, cada una con la
+// forma que realmente necesita.
+//
+// Gating por tier: qué canales puede conectar un cliente depende de
+// Product.features.channels (el tier de su ClientProduct 'chatbot'), leído
+// por getAllowedChannelsForClient() en src/lib/channel-access.ts — no hay
+// columna nueva para esto, se reutiliza la columna Product.features ya
+// existente y sin usar.
+// =============================================================================
+
+// Canal Web — el widget embebible. publicToken NO se cifra: es un
+// identificador público (se pega en HTML del cliente), no un secreto,
+// igual que una clave pública de analytics.
+model ChatWebEmbed {
+  id           String   @id @default(uuid()) @db.Uuid
+  clientId     String   @map("client_id")
+  tenantId     String?  @map("tenant_id") @db.Uuid
+  publicToken  String   @unique @map("public_token")
+  // 'active' | 'disabled'
+  status       String   @default("disabled")
+  // Apariencia del widget — configurable por el cliente, no un único
+  // aspecto para todos. El copy (bienvenida/despedida/prompts) NO vive
+  // acá: se lee directo de la config ya aprobada del Paso 9 del wizard,
+  // para no duplicar el mismo dato en dos lugares.
+  primaryColor String   @default("#0E6B5E") @map("primary_color")
+  // 'bottom-right' | 'bottom-left'
+  position     String   @default("bottom-right")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@index([tenantId])
+}
+
+// Canal Telegram — el cliente pega el token de un bot que él mismo creó
+// vía @BotFather. Un bot por cliente en v1 (sin selector multi-cuenta).
+model TelegramConnection {
+  id                 String   @id @default(uuid()) @db.Uuid
+  clientId           String   @map("client_id")
+  tenantId           String?  @map("tenant_id") @db.Uuid
+  botTokenCiphertext Bytes    @map("bot_token_ciphertext")
+  botTokenIv         Bytes    @map("bot_token_iv")
+  botTokenTag        Bytes    @map("bot_token_tag")
+  botUsername        String   @map("bot_username")
+  // 'active' | 'needs_reconnect' | 'revoked'
+  status             String   @default("active")
+  connectedAt        DateTime @default(now()) @map("connected_at")
+  lastSyncError      String?  @map("last_sync_error")
+
+  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@unique([clientId])
+  @@index([tenantId])
+  @@index([status])
+}
+
+// Canal Meta unificado — WhatsApp, Messenger e Instagram comparten una
+// única conexión OAuth contra la cuenta de Meta Business, pero una sola
+// autorización puede exponer varias superficies a la vez (varios números
+// de WhatsApp, varias Páginas, varias cuentas de Instagram) — a
+// diferencia de GoogleBusinessConnection, que asume una sola location.
+// Por eso una fila por superficie, no una por cliente.
+model MetaChannelConnection {
+  id                    String   @id @default(uuid()) @db.Uuid
+  clientId              String   @map("client_id")
+  tenantId              String?  @map("tenant_id") @db.Uuid
+  // 'whatsapp' | 'messenger' | 'instagram'
+  channel               String
+  // phone_number_id (whatsapp) | page_id (messenger) | ig_user_id (instagram)
+  externalId            String   @map("external_id")
+  accessTokenCiphertext Bytes    @map("access_token_ciphertext")
+  accessTokenIv         Bytes    @map("access_token_iv")
+  accessTokenTag        Bytes    @map("access_token_tag")
+  // 'active' | 'needs_reconnect' | 'revoked'
+  status                String   @default("active")
+  connectedAt           DateTime @default(now()) @map("connected_at")
+  lastSyncError         String?  @map("last_sync_error")
+
+  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@unique([clientId, channel, externalId])
+  @@index([tenantId])
+  @@index([status])
+  @@index([channel])
+}
+
+// El puente hacia n8n — portal → n8n únicamente (no hay lectura directa
+// de esta base desde el motor externo). connectionId es polimórfico
+// (apunta a una fila de ChatWebEmbed/TelegramConnection/
+// MetaChannelConnection según connectionType) — sin FK, mismo motivo por
+// el que otras tablas de este schema tampoco declaran FK a filas
+// polimórficas. Reintento con backoff vía el cron
+// /api/cron/sync-channel-webhooks, mismo shape que review-overdue /
+// wizard-abandoned (scan + fire).
+model ChannelWebhookDelivery {
+  id             String    @id @default(uuid()) @db.Uuid
+  // 'web' | 'telegram' | 'meta'
+  connectionType String    @map("connection_type")
+  connectionId   String    @map("connection_id") @db.Uuid
+  clientId       String    @map("client_id")
+  payload        Json
+  // 'pending' | 'delivered' | 'failed'
+  status         String    @default("pending")
+  attempts       Int       @default(0)
+  lastAttemptAt  DateTime? @map("last_attempt_at")
+  lastError      String?   @map("last_error")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([status])
+  @@index([connectionType, connectionId])
 }
