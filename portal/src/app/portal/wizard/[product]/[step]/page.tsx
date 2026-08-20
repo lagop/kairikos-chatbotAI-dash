@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
-import { resolveClientFromSession, isPortalDevMock } from '@/lib/portal-session';
+import { resolveClientFromSession } from '@/lib/portal-session';
 import { readLatestStepsForClient } from '@/lib/wizard-tier-prisma';
 import {
   listStepsForClient,
@@ -75,7 +75,19 @@ export default async function WizardStepPage({ params }: PageProps) {
     notFound();
   }
 
-  if (!isDatabaseConfigured || isPortalDevMock()) {
+  // `resolved.source === 'database'` means resolveClientFromSession()
+  // already matched a real, authenticated NextAuth session to a real
+  // ChatbotClientUser row — that takes priority over isPortalDevMock(),
+  // same as it does inside resolveClientFromSession() itself. Gating this
+  // branch on isPortalDevMock() alone (a Supabase-env-var heuristic,
+  // unrelated to whether a real session exists) reintroduces the exact
+  // bug documented in portal-session.ts and session.ts: any environment
+  // with a real DATABASE_URL but placeholder Supabase vars (ordinary
+  // local dev, since portal auth is NextAuth Credentials now, not
+  // Supabase) would silently route a real client into the dev-mock
+  // fixture branch below — which forces isDatabaseConfigured={false} and
+  // null payloads onto the shell, breaking every save for that client.
+  if (!isDatabaseConfigured || resolved.source !== 'database') {
     // Dev-mock fixtures (src/lib/portal-data.ts) are chatbot-only — there
     // is no ClientProduct concept in dev-mock mode, so any other product
     // code has nothing to render.

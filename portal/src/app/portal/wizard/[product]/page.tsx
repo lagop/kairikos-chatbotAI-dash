@@ -1,6 +1,6 @@
 import { notFound, redirect } from 'next/navigation';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
-import { resolveClientFromSession, isPortalDevMock } from '@/lib/portal-session';
+import { resolveClientFromSession } from '@/lib/portal-session';
 import { readLatestStepsForClient } from '@/lib/wizard-tier-prisma';
 import { listStepsForClient, buildSavedStateMap } from '@/lib/wizard-visibility';
 import { parseStepNumber, CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
@@ -42,7 +42,10 @@ export default async function WizardProductIndexPage({
     }
   }
 
-  if (!isDatabaseConfigured || isPortalDevMock()) {
+  // See the matching comment in wizard/[product]/[step]/page.tsx —
+  // resolved.source === 'database' means this is a real, authenticated
+  // client, which must take priority over the isPortalDevMock() heuristic.
+  if (!isDatabaseConfigured || resolved.source !== 'database') {
     if (params.product !== CHATBOT_PRODUCT_CODE) notFound();
     redirect(`/portal/wizard/${CHATBOT_PRODUCT_CODE}/1`);
   }

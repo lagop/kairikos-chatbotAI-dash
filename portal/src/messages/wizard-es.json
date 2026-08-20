@@ -366,7 +366,7 @@
     },
     "8": {
       "title": "Canales",
-      "subtitle": "Dónde funciona el bot",
+      "subtitle": "Conecta tu chatbot desde la sección Canales del portal",
       "fields": {
         "canal_web": {
           "label": "Web",

@@ -33,7 +33,7 @@ export function WizardFormProvider({
 }: {
   stepNumber: StepSchemaKey;
   initialValues: Record<StepSchemaKey, Record<string, unknown> | null>;
-  onSubmit: (status: 'draft' | 'submitted') => Promise<void> | void;
+  onSubmit: (status: 'draft' | 'submitted', payload: Record<string, unknown>) => Promise<void> | void;
   isSubmitting: boolean;
   isSubmitted: boolean;
   children: ReactNode;
@@ -71,15 +71,34 @@ export function WizardFormProvider({
     [values, setStepValue, validateAll, errors],
   );
 
+  // Reads the LIVE `values[stepNumber]` at click time — not a snapshot
+  // frozen at the initial server-rendered payload. StepForm used to derive
+  // the submit payload from `initialValues` (the props-seeded value from
+  // the last server render), which never reflects what the client typed
+  // into the form: for a first-time step that's `{}` (most steps default
+  // to an empty catalog payload), so every "first save" silently
+  // persisted an empty object instead of the client's actual answers.
+  const handleSubmitClick = useCallback(
+    (status: 'draft' | 'submitted') => {
+      if (status === 'submitted') {
+        const r = validateAll();
+        if (!r.ok) return;
+      }
+      const cur = values[stepNumber];
+      if (!cur) return;
+      void onSubmit(status, cur);
+    },
+    [validateAll, values, stepNumber, onSubmit],
+  );
+
   return (
     <FormContext.Provider value={ctx}>
       {children}
       <FormFooter
         stepNumber={stepNumber}
-        onSubmit={onSubmit}
+        onSubmit={handleSubmitClick}
         isSubmitting={isSubmitting}
         isSubmitted={isSubmitted}
-        validateAll={validateAll}
         firstError={errors[0]}
       />
     </FormContext.Provider>
@@ -91,24 +110,15 @@ function FormFooter({
   onSubmit,
   isSubmitting,
   isSubmitted,
-  validateAll,
   firstError,
 }: {
   stepNumber: StepSchemaKey;
-  onSubmit: (status: 'draft' | 'submitted') => Promise<void> | void;
+  onSubmit: (status: 'draft' | 'submitted') => void;
   isSubmitting: boolean;
   isSubmitted: boolean;
-  validateAll: () => { ok: boolean; firstError?: FieldError };
   firstError?: FieldError;
 }) {
   const step = getStep(stepNumber);
-  const handle = (status: 'draft' | 'submitted') => {
-    if (status === 'submitted') {
-      const r = validateAll();
-      if (!r.ok) return;
-    }
-    void onSubmit(status);
-  };
   return (
     <div className="space-y-2">
       {firstError ? (
@@ -124,14 +134,14 @@ function FormFooter({
             <>
               <Button
                 variant="primary"
-                onClick={() => handle('submitted')}
+                onClick={() => onSubmit('submitted')}
                 disabled={isSubmitting}
               >
                 {isSubmitting ? 'Enviando…' : 'Enviar para revisión'}
               </Button>
               <Button
                 variant="ghost"
-                onClick={() => handle('draft')}
+                onClick={() => onSubmit('draft')}
                 disabled={isSubmitting}
               >
                 Guardar borrador

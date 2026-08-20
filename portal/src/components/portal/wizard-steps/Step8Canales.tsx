@@ -1,75 +1,62 @@
 'use client';
 
-import { useState } from 'react';
-import { getStep } from '@/messages/wizard-es';
+import { useEffect } from 'react';
+import Link from 'next/link';
 import { step8Schema, type Step8Input } from '@/lib/wizard-schemas';
-import { useZodValidation } from './useZodValidation';
-import { Toggle } from './primitives';
 
 interface Props {
   value: Step8Input | null;
   onChange: (value: Step8Input) => void;
 }
 
+// =============================================================================
+// WP: conexión de canales — Fase 6. Este paso deja de ser un formulario
+// (los dos booleanos "canal_web"/"canal_whatsapp" nunca reflejaron una
+// conexión real — ver el WP de conexión de canales completo) y pasa a
+// ser informativo: la conexión real vive en /portal/canales, mismo
+// criterio que Reseñas, que tampoco vive dentro del wizard.
+//
+// Deliberadamente NO se muestra el estado en vivo de los canales acá —
+// duplicar esa lectura en dos lugares es exactamente el patrón que ya
+// causó una divergencia real en este código (WP-17: /portal y
+// /portal/status computaban el mismo dato dos veces y terminaron
+// mostrando números distintos al mismo tiempo). /portal/canales es la
+// única fuente de verdad; este paso solo enlaza ahí.
+//
+// step8Schema y el emit-on-mount de abajo se mantienen sin cambios para
+// no tocar la máquina de estados del wizard (borrador/enviado/aprobado)
+// — un valor por defecto válido sigue disponible para que "Guardar y
+// continuar" funcione igual que en cualquier otro paso, aunque este ya
+// no tenga nada que el cliente edite.
+//
+// El valor inicial que llega acá para un cliente sin envío previo de
+// este paso es `{}` (objeto vacío) — no `null` — porque
+// resolveClientStep() en wizard-visibility.ts hace
+// `{ ...def.defaultPayload }` cuando no hay guardado, y el catálogo de
+// Step 8 tiene `defaultPayload: NO_DEFAULT = {}`. Por eso NO alcanza con
+// chequear si `value` es truthy — `{}` lo es — hay que validar contra
+// el schema real: solo se deja el valor como está si YA es válido.
+// =============================================================================
+
+const DEFAULT_VALUE: Step8Input = { canal_web: true, canal_whatsapp: false };
+
 export function Step8Canales({ value, onChange }: Props) {
-  const step = getStep(8);
-  const [web, setWeb] = useState<boolean>(value?.canal_web ?? true);
-  const [whatsapp, setWhatsapp] = useState<boolean>(value?.canal_whatsapp ?? false);
-
-  const { errorMap } = useZodValidation(step8Schema);
-  const err = (path: string) => errorMap.get(path);
-
-  const emit = (w: boolean, wpp: boolean) => {
-    const payload: Step8Input = { canal_web: w, canal_whatsapp: wpp };
-    const r = step8Schema.safeParse(payload);
-    if (r.success) onChange(r.data);
-  };
-
-  const onWebChange = (v: boolean) => {
-    setWeb(v);
-    emit(v, whatsapp);
-  };
-  const onWppChange = (v: boolean) => {
-    setWhatsapp(v);
-    emit(web, v);
-  };
+  useEffect(() => {
+    if (step8Schema.safeParse(value ?? {}).success) return;
+    const parsed = step8Schema.safeParse(DEFAULT_VALUE);
+    if (parsed.success) onChange(parsed.data);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <p className="text-sm text-kairikos-muted">
-        Selecciona los canales donde funcionará el bot. Instagram no está disponible en v1 (está previsto para v2).
+        La conexión de canales ahora se gestiona desde su propia sección del portal — ahí puedes conectar Telegram,
+        WhatsApp, Messenger, Instagram y el widget para tu web, y ver el estado real de cada uno.
       </p>
-      <div className="space-y-3">
-        <Toggle
-          id="canal_web"
-          name="canal_web"
-          checked={web}
-          onChange={onWebChange}
-          label={step.fields.canal_web.label}
-          helper={step.fields.canal_web.helper}
-        />
-        <Toggle
-          id="canal_whatsapp"
-          name="canal_whatsapp"
-          checked={whatsapp}
-          onChange={onWppChange}
-          label={step.fields.canal_whatsapp.label}
-          helper={step.fields.canal_whatsapp.helper}
-        />
-        {step.fields.canal_whatsapp.note ? (
-          <p className="text-xs text-kairikos-muted">
-            {step.fields.canal_whatsapp.note}
-          </p>
-        ) : null}
-        <div className="rounded-xl border border-kairikos-border bg-kairikos-surface2 p-3 text-sm text-kairikos-muted">
-          <span className="font-medium text-kairikos-text">Instagram</span>: {step.fields.canal_instagram.helper} ({step.fields.canal_instagram.disabled})
-        </div>
-      </div>
-      {err('canal_web') ? (
-        <p role="alert" className="text-xs text-kairikos-danger">
-          {err('canal_web')}
-        </p>
-      ) : null}
+      <Link href="/portal/canales" className="btn-primary" data-testid="step8-canales-link">
+        Ir a Canales →
+      </Link>
     </div>
   );
 }
