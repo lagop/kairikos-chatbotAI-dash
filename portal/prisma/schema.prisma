@@ -129,6 +129,8 @@ model ChatbotClient {
   channelWebhookDeliveries  ChannelWebhookDelivery[]
   conversationDigests       ConversationDigest[]
   conversationDigestSchedule ConversationDigestSchedule?
+  leads                     Lead[]
+  leadAudits                LeadAudit[]
 
   @@index([stripeCustomerId])
   @@index([tier])
@@ -498,6 +500,8 @@ model Tenant {
   metaChannelConnections    MetaChannelConnection[]
   conversationDigests       ConversationDigest[]
   conversationDigestSchedules ConversationDigestSchedule[]
+  leads                     Lead[]
+  leadAudits                LeadAudit[]
 
   @@index([slug])
   @@index([status])
@@ -919,6 +923,7 @@ model ChatbotConversation {
   externalSessionId String? @map("external_session_id")
   client     ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant     Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  leads      Lead[]
 
   @@unique([clientId, externalSessionId])
   @@index([clientId, startedAt])
@@ -1833,5 +1838,84 @@ model ConversationDigestSchedule {
   client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
+  @@index([tenantId])
+}
+
+// =============================================================================
+// WP-XX — Leads ("Captación con IA" / 'leads' product). Structured record
+// for a prospective customer a channel conversation produced. Status
+// lifecycle is enforced in src/lib/leads.ts, not a DB constraint — same
+// convention as every other status column in this schema (WebQuote.status,
+// ReviewRequestCampaign.status, etc.). Audit trail mirrors
+// ClientProductAudit's shape (plain before/after status strings, a single
+// actorId string) rather than WebQuoteAudit's JSON blobs — a lead has no
+// money to track.
+// =============================================================================
+model Lead {
+  id             String    @id @default(uuid()) @db.Uuid
+  clientId       String    @map("client_id")
+  // KAIA-4258: tenant isolation FK, same convention as every other model.
+  tenantId       String?   @map("tenant_id") @db.Uuid
+  // Nullable, SetNull — deleting the source conversation must not delete
+  // the lead it produced. Also leaves room for a future non-conversation
+  // capture path (e.g. a form) without a migration.
+  conversationId String?   @map("conversation_id")
+
+  // All three nullable — the AI classifier doesn't always extract all of
+  // them from a single turn.
+  contactName    String?   @map("contact_name")
+  contactPhone   String?   @map("contact_phone")
+  contactEmail   String?   @map("contact_email")
+  // LLM-extracted summary of what the prospect asked for.
+  summary        String?
+  // 0-100, set by the n8n classifier. Nullable — no scoring pipeline is
+  // guaranteed to run for every lead.
+  score          Int?
+
+  // 'nuevo' | 'contactado' | 'convertido' | 'descartado'. See
+  // src/lib/leads.ts for the transition predicates.
+  status         String    @default("nuevo")
+  // 'telegram' | 'whatsapp' | 'messenger' | 'instagram' | 'web'. Free
+  // string, same convention as ChannelWebhookDelivery.connectionType.
+  channel        String?
+
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  contactedAt    DateTime? @map("contacted_at")
+  convertedAt    DateTime? @map("converted_at")
+  discardedAt    DateTime? @map("discarded_at")
+
+  client       ChatbotClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant       Tenant?              @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  conversation ChatbotConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  auditLogs    LeadAudit[]
+
+  @@index([clientId, status])
+  @@index([clientId, createdAt])
+  @@index([tenantId])
+  @@index([conversationId])
+}
+
+model LeadAudit {
+  id           String   @id @default(uuid()) @db.Uuid
+  leadId       String   @map("lead_id") @db.Uuid
+  clientId     String   @map("client_id")
+  tenantId     String?  @map("tenant_id") @db.Uuid
+  // 'created' | 'refreshed' | 'marked_contacted' | 'marked_converted' | 'marked_discarded'
+  action       String
+  statusBefore String?  @map("status_before")
+  statusAfter  String?  @map("status_after")
+  // Operator UUID, 'client:<clientId>' (client-initiated status change),
+  // or 'system:n8n' (ingestion route) — same actorId string convention as
+  // ClientProductAudit.
+  actorId      String   @map("actor_id")
+  changedAt    DateTime @default(now()) @map("changed_at")
+
+  lead   Lead          @relation(fields: [leadId], references: [id], onDelete: Restrict)
+  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([leadId, changedAt])
+  @@index([clientId, changedAt])
   @@index([tenantId])
 }
