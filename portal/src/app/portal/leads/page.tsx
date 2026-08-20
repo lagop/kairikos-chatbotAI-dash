@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { requirePortalSession } from '@/lib/session';
@@ -9,6 +8,7 @@ import { PageHeading } from '@/components/portal/PageHeading';
 import { EmptyState } from '@/components/portal/EmptyState';
 import { ProductPitch } from '@/components/portal/ProductPitch';
 import { SelfServeProductCard, type SelfServeTierOption } from '@/components/portal/SelfServeProductCard';
+import { LeadStatusControls } from '@/components/portal/LeadStatusControls';
 
 export const dynamic = 'force-dynamic';
 
@@ -107,23 +107,98 @@ export default async function PortalLeadsPage() {
     );
   }
 
-  const clientProduct = await prisma.clientProduct.findFirst({
-    where: { clientId: resolved.clientId, status: 'active', product: { code: 'leads' } },
-    select: { onboardingState: true },
+  // Leads Fase 4 — no hay paso de "setup" real para este producto (su
+  // catálogo del wizard es un emptyCatalog, y ClientProduct.onboardingState
+  // nunca llega a 'live' para 'leads' — el único código que lo escribe
+  // está hardcodeado a chatbot). En cuanto isProductContracted es true, el
+  // panel real se muestra directamente, sin esperar ningún estado extra.
+  const leads = await prisma.lead.findMany({
+    where: { clientId: resolved.clientId },
+    orderBy: [{ createdAt: 'desc' }],
   });
-  const statusLabel = clientProduct?.onboardingState === 'live' ? 'En producción' : 'Configurando';
 
   return (
     <div className="space-y-6">
-      <PageHeading eyebrow="Portal" title="Captación con IA" description={`Estado: ${statusLabel}.`} />
-      <EmptyState
-        title="La gestión detallada de este producto se coordina por soporte"
-        description="Esta sección todavía no tiene su propio panel en el portal. Si necesitas hacer cambios o tienes preguntas sobre tu plan, escríbenos."
-        action={
-          <Link href="/portal/support" className="btn-primary" data-testid="leads-support-link">
-            Contactar soporte
-          </Link>
-        }
+      <PageHeading
+        eyebrow="Portal"
+        title="Captación con IA"
+        description="Los contactos que la IA ha priorizado para ti."
+      />
+      {leads.length === 0 ? (
+        <EmptyState
+          title="Sin leads todavía"
+          description="En cuanto la IA detecte un contacto interesado en una conversación, aparecerá aquí."
+        />
+      ) : (
+        <section className="space-y-3" data-testid="leads-list">
+          {leads.map((lead) => (
+            <LeadRow key={lead.id} lead={lead} />
+          ))}
+        </section>
+      )}
+    </div>
+  );
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  nuevo: 'Nuevo',
+  contactado: 'Contactado',
+  convertido: 'Convertido',
+  descartado: 'Descartado',
+};
+
+const STATUS_PILL: Record<string, string> = {
+  nuevo: 'pill-warning',
+  contactado: 'pill-warning',
+  convertido: 'pill-success',
+  descartado: 'pill-muted',
+};
+
+const DATE_FMT = new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+function LeadRow({
+  lead,
+}: {
+  lead: {
+    id: string;
+    status: string;
+    contactName: string | null;
+    contactPhone: string | null;
+    contactEmail: string | null;
+    summary: string | null;
+    score: number | null;
+    channel: string | null;
+    createdAt: Date;
+  };
+}) {
+  const contactParts = [lead.contactName, lead.contactPhone, lead.contactEmail].filter(Boolean);
+  return (
+    <div className="card space-y-2" data-testid="lead-row" data-status={lead.status}>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="text-xs uppercase tracking-wider text-kairikos-muted">
+            {DATE_FMT.format(lead.createdAt)}
+            {lead.channel ? ` · ${lead.channel}` : ''}
+          </p>
+          <h3 className="mt-1 text-base font-semibold">
+            {contactParts.length > 0 ? contactParts.join(' · ') : 'Sin datos de contacto'}
+          </h3>
+        </div>
+        <div className="flex items-center gap-2">
+          {lead.score !== null ? (
+            <span className="pill-muted" data-testid="lead-score">
+              Prioridad {lead.score}
+            </span>
+          ) : null}
+          <span className={STATUS_PILL[lead.status] ?? 'pill-muted'} data-testid="lead-status-pill">
+            {STATUS_LABEL[lead.status] ?? lead.status}
+          </span>
+        </div>
+      </div>
+      {lead.summary ? <p className="text-sm text-kairikos-text">{lead.summary}</p> : null}
+      <LeadStatusControls
+        leadId={lead.id}
+        status={lead.status as 'nuevo' | 'contactado' | 'convertido' | 'descartado'}
       />
     </div>
   );
