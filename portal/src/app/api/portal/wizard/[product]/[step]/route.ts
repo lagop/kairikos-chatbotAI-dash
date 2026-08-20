@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
+import { getSession } from '@/lib/session';
 import {
   readWizardStep,
   saveWizardStep,
@@ -100,6 +101,10 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: { product: string; step: string } },
 ) {
+  const session = await getSession();
+  if (!session.hasClientAccess) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
   const resolved = await resolveClientFromSession();
   if (!resolved) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
@@ -256,6 +261,10 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: { product: string; step: string } },
 ) {
+  const session = await getSession();
+  if (!session.hasClientAccess) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
   const resolved = await resolveClientFromSession();
   if (!resolved) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });

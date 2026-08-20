@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
+import { getSession } from '@/lib/session';
 import { isProductContracted } from '@/lib/client-product-access';
 import { webBriefSchema, webBriefDraftSchema } from '@/lib/web-brief-schema';
 
@@ -26,6 +27,10 @@ export const runtime = 'nodejs';
  * 200 { status: 'draft' | 'submitted' }
  */
 export async function POST(req: NextRequest) {
+  const session = await getSession();
+  if (!session.hasClientAccess) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
   const resolved = await resolveClientFromSession();
   if (!resolved) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   if (!isDatabaseConfigured || resolved.source !== 'database') {

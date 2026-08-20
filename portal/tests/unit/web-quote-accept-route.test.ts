@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockState = vi.hoisted(() => ({
   resolveClientFromSession: vi.fn(),
+  getSession: vi.fn(),
   resolveWebQuoteContext: vi.fn(),
   webQuoteUpdate: vi.fn(),
   webQuoteAuditCreate: vi.fn(),
@@ -18,6 +19,10 @@ const mockTx = {
 
 vi.mock('@/lib/portal-session', () => ({
   resolveClientFromSession: (...args: unknown[]) => mockState.resolveClientFromSession(...args),
+}));
+
+vi.mock('@/lib/session', () => ({
+  getSession: (...args: unknown[]) => mockState.getSession(...args),
 }));
 
 vi.mock('@/lib/web-quotes', () => ({
@@ -33,6 +38,7 @@ const RESOLVED = { clientId: 'client_1', email: 'a@b.com', source: 'database' as
 
 beforeEach(() => {
   mockState.resolveClientFromSession.mockReset().mockResolvedValue(RESOLVED);
+  mockState.getSession.mockReset().mockResolvedValue({ hasClientAccess: true });
   mockState.resolveWebQuoteContext.mockReset();
   mockState.webQuoteUpdate.mockReset().mockResolvedValue({ id: 'wq_1', status: 'accepted' });
   mockState.webQuoteAuditCreate.mockReset().mockResolvedValue({});

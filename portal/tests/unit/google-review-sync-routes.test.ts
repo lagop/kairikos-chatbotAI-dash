@@ -9,6 +9,7 @@ import type { NextRequest } from 'next/server';
 
 const mockState = vi.hoisted(() => ({
   resolveClientFromSession: vi.fn(),
+  getSession: vi.fn(),
   isDatabaseConfigured: true,
   isProductContracted: vi.fn(),
   connectionFindFirst: vi.fn(),
@@ -19,6 +20,10 @@ const mockState = vi.hoisted(() => ({
 
 vi.mock('@/lib/portal-session', () => ({
   resolveClientFromSession: (...args: unknown[]) => mockState.resolveClientFromSession(...args),
+}));
+
+vi.mock('@/lib/session', () => ({
+  getSession: (...args: unknown[]) => mockState.getSession(...args),
 }));
 
 vi.mock('@/lib/client-product-access', () => ({
@@ -44,6 +49,7 @@ const RESOLVED = { clientId: 'client_1', email: 'a@b.com', source: 'database' as
 
 beforeEach(() => {
   mockState.resolveClientFromSession.mockReset().mockResolvedValue(RESOLVED);
+  mockState.getSession.mockReset().mockResolvedValue({ hasClientAccess: true });
   mockState.isDatabaseConfigured = true;
   mockState.isProductContracted.mockReset().mockResolvedValue(true);
   mockState.connectionFindFirst.mockReset().mockResolvedValue({ id: 'conn_1', status: 'active', lastSyncAt: null });

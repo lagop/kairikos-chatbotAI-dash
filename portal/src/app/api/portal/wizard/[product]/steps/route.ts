@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
+import { getSession } from '@/lib/session';
 import { listStepsForClient, buildSavedStateMap } from '@/lib/wizard-visibility';
 import {
   readLatestStepsForClient,
@@ -27,6 +28,10 @@ export async function GET(
   _req: Request,
   { params }: { params: { product: string } },
 ) {
+  const session = await getSession();
+  if (!session.hasClientAccess) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
   const resolved = await resolveClientFromSession();
   if (!resolved) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
