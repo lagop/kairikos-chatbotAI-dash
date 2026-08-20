@@ -2,7 +2,15 @@ name: Build and push portal image
 
 on:
   push:
-    branches: [main]
+    # kaia-743-staging-runner is the repo's actual default/active branch —
+    # every merge in this project lands there, not on `main` (which sat
+    # 225 commits behind as of 2026-08-20, so the image this workflow
+    # produced was ~11 days stale). `main` is kept in the trigger too in
+    # case it's ever revived; docker/metadata-action's `is_default_branch`
+    # check (below, in the `latest` tag rule) already resolves against the
+    # repo's actual configured default branch (kaia-743-staging-runner),
+    # so this addition is what makes the `:latest` tag track real work.
+    branches: [main, kaia-743-staging-runner]
     paths:
       - 'portal/**'
       - 'portal/Dockerfile'
