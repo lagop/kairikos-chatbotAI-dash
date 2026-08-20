@@ -11,6 +11,7 @@ import type {
 import { isBackendConfigured, PORTAL_API_BASE_URL, SUPABASE_ANON_KEY } from './supabase';
 import { prisma, isDatabaseConfigured } from './prisma';
 import { TIER_LABEL } from './billing-tier';
+import { getBillingForClient } from './stripe-billing';
 // WP-25 — portal-session.ts imports MOCK_CLIENT / DEV_MOCK_CLIENT_BY_EMAIL
 // back from this module, so this is a deliberate circular import. Safe here
 // because neither module touches the other's bindings at top-level module
@@ -267,7 +268,46 @@ export async function getOnboardingFor(
   return all.slice(0, 1);
 }
 
+// WP-25 follow-up — same root cause as getOnboarding() above (KAIA-11955:
+// PORTAL_API_BASE_URL is unset on Vercel production, so portalFetch()
+// always returns null and every real customer silently saw the Acme
+// MOCK_CONVERSATIONS fixture instead of their own conversations). The
+// row-mapping logic mirrors the already-correct GET /api/portal/conversations
+// (src/app/api/portal/conversations/route.ts), which was unreachable from
+// here via portalFetch. Same fallback contract as getOnboarding(): only
+// fall through to legacy portalFetch/mocks when Prisma is not configured,
+// the session doesn't resolve to a real database client, or the query throws.
 export async function listConversations(accessToken: string): Promise<ConversationSummary[]> {
+  if (isDatabaseConfigured) {
+    try {
+      const resolved = await resolveClientFromSession();
+      if (resolved && resolved.source === 'database') {
+        const rows = await prisma.chatbotConversation.findMany({
+          where: { clientId: resolved.clientId },
+          orderBy: { startedAt: 'desc' },
+          take: 50,
+          select: { id: true, startedAt: true, duration: true, outcome: true },
+        });
+        return rows.map(
+          (r): ConversationSummary => ({
+            id: r.id,
+            startedAt: r.startedAt.toISOString(),
+            durationSeconds: r.duration ?? 0,
+            // ChatbotConversation.outcome/no per-row channel column are
+            // free-form (see the schema.prisma column comment); the UI
+            // (conversations/page.tsx OUTCOME_LABEL/CHANNEL_LABEL) already
+            // falls back to the raw string for any value outside the
+            // client-facing union, same as the real API route does.
+            outcome: (r.outcome ?? 'unknown') as ConversationSummary['outcome'],
+            channel: 'other' as ConversationSummary['channel'],
+          }),
+        );
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[listConversations] Prisma read failed, falling back to legacy portalFetch/mocks:', err);
+    }
+  }
   const fromApi = await portalFetch<{ conversations: ConversationSummary[] }>(
     '/portal/conversations',
     accessToken,
@@ -279,6 +319,38 @@ export async function getConversation(
   accessToken: string,
   id: string,
 ): Promise<ConversationTranscript | null> {
+  if (isDatabaseConfigured) {
+    try {
+      const resolved = await resolveClientFromSession();
+      if (resolved && resolved.source === 'database') {
+        const row = await prisma.chatbotConversation.findFirst({
+          where: { id, clientId: resolved.clientId },
+          select: { id: true, startedAt: true, duration: true, outcome: true, transcript: true },
+        });
+        if (!row) return null;
+        const transcript = row.transcript as
+          | { messages?: Array<{ id?: string; role?: string; content?: string; at?: string }>; channel?: string }
+          | null;
+        const endedAt = new Date(row.startedAt.getTime() + (row.duration ?? 0) * 1000).toISOString();
+        return {
+          id: row.id,
+          startedAt: row.startedAt.toISOString(),
+          endedAt,
+          outcome: (row.outcome ?? 'unknown') as ConversationSummary['outcome'],
+          channel: (transcript?.channel ?? 'other') as ConversationSummary['channel'],
+          messages: (transcript?.messages ?? []).map((m, i) => ({
+            id: m.id ?? `m${i}`,
+            role: (m.role ?? 'user') as 'user' | 'assistant' | 'system',
+            content: m.content ?? '',
+            at: m.at ?? row.startedAt.toISOString(),
+          })),
+        };
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[getConversation] Prisma read failed, falling back to legacy portalFetch/mocks:', err);
+    }
+  }
   const fromApi = await portalFetch<ConversationTranscript>(`/portal/conversations/${id}`, accessToken);
   if (fromApi) return fromApi;
   const summary = MOCK_CONVERSATIONS.find((c) => c.id === id);
@@ -315,11 +387,62 @@ export async function getConversation(
   };
 }
 
+// WP-25 follow-up — same root cause as getOnboarding()/listConversations()
+// above. Reuses getBillingForClient() (src/lib/stripe-billing.ts), the
+// exact helper the already-correct GET /api/portal/billing route calls,
+// for the Stripe-derived figures (customer portal URL, upcoming invoice —
+// summed across all of the client's active subscriptions, matching what
+// that route already does). The single "Plan" / "Cuota mensual" the
+// billing page renders is projected from ChatbotClient.tier (the
+// canonical per-client tier column — see its schema.prisma comment),
+// same as MOCK_BILLING was derived from MOCK_CLIENT.tier, since the flat
+// BillingSummary shape here predates multi-product billing and this fix
+// is scoped to "stop serving Acme's data to real customers", not to
+// redesign the page for multiple simultaneous product subscriptions.
 export async function getBilling(accessToken: string): Promise<BillingSummary> {
+  if (isDatabaseConfigured) {
+    try {
+      const resolved = await resolveClientFromSession();
+      if (resolved && resolved.source === 'database') {
+        const [client, summary] = await Promise.all([
+          prisma.chatbotClient.findUnique({
+            where: { id: resolved.clientId },
+            select: { tier: true },
+          }),
+          getBillingForClient(resolved.clientId),
+        ]);
+        if (client && summary) {
+          const rawTier = client.tier;
+          const tier: BillingSummary['tier'] =
+            rawTier === 'starter' || rawTier === 'pro' || rawTier === 'premium' ? rawTier : 'starter';
+          return {
+            tier,
+            tierLabel: TIER_LABEL[tier],
+            monthlyFeeCents: TIER_PRICE_CENTS[tier],
+            currency: 'EUR',
+            nextInvoiceDate: summary.upcomingInvoice?.dueAt ?? null,
+            nextInvoiceAmountCents: summary.upcomingInvoice?.amountDueCents ?? null,
+            stripeCustomerPortalUrl: summary.customer.portalUrl,
+            stripeCustomerId: summary.customer.stripeCustomerId,
+          };
+        }
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[getBilling] Prisma read failed, falling back to legacy portalFetch/mocks:', err);
+    }
+  }
   const fromApi = await portalFetch<BillingSummary>('/portal/billing', accessToken);
   return fromApi ?? MOCK_BILLING;
 }
 
+// Unlike getOnboarding/listConversations/getConversation/getBilling above,
+// this one is NOT the same bug class: there is no ChannelSupportLink model,
+// no /api/portal/support-link route, and no per-client field to read — the
+// support contact (WhatsApp number, business hours) is genuinely the same
+// static value for every client, so portalFetch always 404s and falling
+// through to MOCK_SUPPORT is the correct, permanent behavior, not a mock
+// standing in for missing per-client data.
 export async function getSupportLink(accessToken: string): Promise<SupportLink> {
   const fromApi = await portalFetch<SupportLink>('/portal/support-link', accessToken);
   return fromApi ?? MOCK_SUPPORT;
