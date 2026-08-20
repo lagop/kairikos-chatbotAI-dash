@@ -52,13 +52,15 @@ export function TelegramChannelCard({
       if (!res.ok) {
         const detail = await res.json().catch(() => null);
         setError(ERROR_LABEL[detail?.error] ?? 'No se pudo conectar el canal.');
-        setBusy(false);
         return;
       }
       setToken('');
       router.refresh();
     } catch (err) {
       setError(`Error de red: ${err instanceof Error ? err.message : 'desconocido'}`);
+    } finally {
+      // router.refresh() re-fetches server data but doesn't unmount this
+      // client component, so busy must be reset explicitly on success too.
       setBusy(false);
     }
   }
@@ -71,12 +73,12 @@ export function TelegramChannelCard({
       if (!res.ok) {
         const detail = await res.json().catch(() => null);
         setError(ERROR_LABEL[detail?.error] ?? 'No se pudo desconectar el canal.');
-        setBusy(false);
         return;
       }
       router.refresh();
     } catch (err) {
       setError(`Error de red: ${err instanceof Error ? err.message : 'desconocido'}`);
+    } finally {
       setBusy(false);
     }
   }
