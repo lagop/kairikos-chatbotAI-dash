@@ -141,13 +141,12 @@ export function MetaChannelCard({
       window.FB?.login(
         (response) => {
           void (async () => {
-            const code = response.authResponse?.code;
-            if (!code) {
-              setError('No se pudo completar la conexión — se cerró la ventana antes de terminar.');
-              setBusy(false);
-              return;
-            }
             try {
+              const code = response.authResponse?.code;
+              if (!code) {
+                setError('No se pudo completar la conexión — se cerró la ventana antes de terminar.');
+                return;
+              }
               const res = await fetch('/api/portal/channels/meta/complete-signup', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
@@ -156,12 +155,14 @@ export function MetaChannelCard({
               if (!res.ok) {
                 const detail = await res.json().catch(() => null);
                 setError(ERROR_LABEL[detail?.error] ?? 'No se pudo conectar con Meta.');
-                setBusy(false);
                 return;
               }
               router.refresh();
             } catch (err) {
               setError(`Error de red: ${err instanceof Error ? err.message : 'desconocido'}`);
+            } finally {
+              // router.refresh() re-fetches server data but doesn't unmount this
+              // client component, so busy must be reset explicitly on success too.
               setBusy(false);
             }
           })();
@@ -190,12 +191,12 @@ export function MetaChannelCard({
       if (!res.ok) {
         const detail = await res.json().catch(() => null);
         setError(ERROR_LABEL[detail?.error] ?? 'No se pudo desconectar el canal.');
-        setBusy(false);
         return;
       }
       router.refresh();
     } catch (err) {
       setError(`Error de red: ${err instanceof Error ? err.message : 'desconocido'}`);
+    } finally {
       setBusy(false);
     }
   }
