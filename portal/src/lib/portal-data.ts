@@ -11,6 +11,12 @@ import type {
 import { isBackendConfigured, PORTAL_API_BASE_URL, SUPABASE_ANON_KEY } from './supabase';
 import { prisma, isDatabaseConfigured } from './prisma';
 import { TIER_LABEL } from './billing-tier';
+// WP-25 — portal-session.ts imports MOCK_CLIENT / DEV_MOCK_CLIENT_BY_EMAIL
+// back from this module, so this is a deliberate circular import. Safe here
+// because neither module touches the other's bindings at top-level module
+// scope — only inside function bodies, evaluated after the module graph
+// finishes loading.
+import { resolveClientFromSession } from './portal-session';
 
 const TIER_PRICE_CENTS: Record<BillingSummary['tier'], number> = {
   starter: 9900,
@@ -185,7 +191,55 @@ export async function getClientUser(): Promise<ChatbotClientUser> {
   return MOCK_CLIENT_USER;
 }
 
+const ONBOARDING_MILESTONE_STEP: Record<string, { id: OnboardingTimelineRow['step']; label: string }> = {
+  'T+0': { id: 't_plus_0', label: 'Bienvenida y acceso al portal' },
+  'T+3': { id: 't_plus_3', label: 'Configuración inicial' },
+  'T+7': { id: 't_plus_7', label: 'Puesta en producción' },
+  'T+14': { id: 't_plus_14', label: 'Revisión y optimización' },
+};
+
+// WP-25 (KAIA-13702 follow-up) — this used to depend exclusively on
+// portalFetch('/portal/onboarding', ...), which is gated on
+// `isBackendConfigured = Boolean(PORTAL_API_BASE_URL)`. Same root cause
+// class as listAdminClients() (see the KAIA-13702/13715 comment on
+// listAdminClients below): when that gate is false, every real customer
+// silently saw the Acme MOCK_TIMELINE_INTERNAL fixture instead of their
+// own onboarding timeline, with no error surfaced anywhere. Fix: try
+// Prisma first via the same clientId-resolution helper the working
+// digest/reviews pages already use (resolveClientFromSession(), see
+// portal-session.ts), mirroring the row-mapping logic that already
+// lived correctly in GET /api/portal/onboarding (src/app/api/portal/onboarding/route.ts)
+// but was unreachable from here. Only fall back to the legacy
+// portalFetch path (and from there to the mock) when Prisma is not
+// configured, the session doesn't resolve to a real database client, or
+// the query itself throws — never because an unrelated env var was unset.
 export async function getOnboarding(accessToken: string): Promise<OnboardingTimelineRow[]> {
+  if (isDatabaseConfigured) {
+    try {
+      const resolved = await resolveClientFromSession();
+      if (resolved && resolved.source === 'database') {
+        const rows = await prisma.chatbotActivity.findMany({
+          where: { clientId: resolved.clientId, productCode: 'chatbot' },
+          orderBy: { completedAt: 'asc' },
+          select: { id: true, milestone: true, completedAt: true, notes: true },
+        });
+        return rows.map((r): OnboardingTimelineRow => {
+          const def = ONBOARDING_MILESTONE_STEP[r.milestone] ?? { id: 't_plus_0' as const, label: r.milestone };
+          return {
+            id: r.id,
+            step: def.id,
+            label: def.label,
+            description: r.notes ?? '',
+            occurredAt: r.completedAt?.toISOString() ?? null,
+            status: r.completedAt ? 'done' : 'current',
+          };
+        });
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[getOnboarding] Prisma read failed, falling back to legacy portalFetch/mocks:', err);
+    }
+  }
   // KAIA-11955 — the GET route is /portal/onboarding (see
   // src/app/api/portal/onboarding/route.ts), not /portal/onboarding-status.
   // Calling the wrong path returned 404 and the customer saw the Acme
