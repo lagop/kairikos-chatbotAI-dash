@@ -26,6 +26,7 @@ import {
   type FailedDeliveryRow,
 } from '@/components/admin/ChannelsOperatorPanel';
 import { getAllowedChannelsForClient } from '@/lib/channel-access';
+import { LeadsSummaryPanel, type LeadSummaryRow } from '@/components/admin/LeadsSummaryPanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -326,6 +327,9 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
   let channelsMeta: MetaConnectionRow[] = [];
   let channelsAllowed: string[] = [];
   let channelsFailedDeliveries: FailedDeliveryRow[] = [];
+  // Leads Fase 5 — populated only when productCode === 'leads', same
+  // pattern as the Canales/WebQuote blocks above.
+  let leads: LeadSummaryRow[] = [];
   if (isDatabaseConfigured) {
     try {
       const client = await prisma.chatbotClient.findUnique({
@@ -488,6 +492,13 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
             lastError: row.lastError,
             lastAttemptAt: row.lastAttemptAt?.toISOString() ?? null,
           }));
+        }
+
+        if (productCode === 'leads') {
+          leads = await prisma.lead.findMany({
+            where: { clientId: client.id },
+            orderBy: [{ createdAt: 'desc' }],
+          });
         }
 
         const activities = await prisma.chatbotActivity.findMany({
@@ -752,6 +763,16 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
                 allowedChannels={channelsAllowed}
                 failedDeliveries={channelsFailedDeliveries}
               />
+            </section>
+          ) : null}
+
+          {productCode === 'leads' ? (
+            <section className="card" aria-label="Leads del cliente" data-testid="client-leads-section">
+              <header className="mb-4">
+                <h2 className="text-lg font-semibold">Leads</h2>
+                <p className="mt-1 text-xs text-kairikos-muted">Solo lectura — el ciclo de vida de cada lead lo maneja el equipo del cliente.</p>
+              </header>
+              <LeadsSummaryPanel leads={leads} />
             </section>
           ) : null}
 
