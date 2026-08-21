@@ -27,10 +27,15 @@ interface ToastState {
 
 type FieldKey = 'companyName' | 'email' | 'tier' | 'state' | 'goLiveAt' | 'notes';
 
+// Labels come from the shared TIER_LABEL (billing-tier.ts) rather than
+// being hardcoded here a second time — this exact duplication is what
+// let "Web Starter"/"Web Pro"/"Web Premium" (wrong: these are the
+// Chatbot product's tiers, not Web's) drift out of sync with the one
+// other place that used to hardcode them, found 2026-08-21 via manual QA.
 const TIER_OPTIONS = [
-  { value: 'starter', label: 'Web Starter' },
-  { value: 'pro', label: 'Web Pro' },
-  { value: 'premium', label: 'Web Premium' },
+  { value: 'starter', label: TIER_LABEL.starter },
+  { value: 'pro', label: TIER_LABEL.pro },
+  { value: 'premium', label: TIER_LABEL.premium },
 ] as const;
 
 const STATE_OPTIONS = [
