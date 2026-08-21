@@ -131,6 +131,34 @@ services:
     # via the internal Docker network. Production posture preserved in
     # both modes.
 
+  # Daily pg_dump, gzipped, kept BACKUP_RETENTION_DAYS (default 14) —
+  # see scripts/backup-postgres.sh. NOT behind the `proxy` profile: runs
+  # in both deploy modes, since data matters regardless of TLS status.
+  # Volume-only backup (no off-box copy) — the `backups` volume still
+  # lives on the same VPS/disk as `pgdata`, so this protects against a
+  # bad migration or an accidental DROP, not against losing the VPS
+  # itself. Pull `backups/` off-box periodically (e.g. rclone to
+  # object storage) once that matters more than shipping features.
+  backup:
+    image: postgres:16-alpine
+    container_name: kairikos-portal-backup
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kairikos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-kairikos_portal}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+    volumes:
+      - ./scripts/backup-postgres.sh:/backup-postgres.sh:ro
+      - backups:/backups
+    entrypoint: ["/bin/sh", "/backup-postgres.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - portal-net
+
   # nginx + certbot are in the `proxy` profile. Start them with:
   #   docker compose --profile proxy up -d
   # The Hostinger Docker Manager doesn't run profiles by default, so the
@@ -166,6 +194,8 @@ services:
 volumes:
   pgdata:
     name: kairikos-portal-pgdata
+  backups:
+    name: kairikos-portal-backups
   certs:
   certbot-www:
 
