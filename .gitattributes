@@ -1,0 +1,5 @@
+# Shell scripts run inside Linux containers (docker-compose.yml bind-mounts
+# scripts/*.sh straight into postgres:16-alpine) — a CRLF shebang line
+# ("#!/bin/sh\r") fails there with "bad interpreter". Force LF regardless
+# of the checkout platform's core.autocrlf setting.
+*.sh text eol=lf
