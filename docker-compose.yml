@@ -50,6 +50,53 @@ services:
       #   prod mode: https://portal.kairikos.com
       NEXTAUTH_URL: ${NEXTAUTH_URL}
       PORTAL_API_KEY: ${PORTAL_API_KEY}
+
+      # --- Required for Canales (chatbot channel activation), the cron
+      # routes, operator 2FA, and the QA/operator-key bypass. Without
+      # these, the app still boots, but those features are dead — see
+      # .env.production.example for how to generate each one.
+      CHANNEL_CREDENTIAL_ENCRYPTION_KEY: ${CHANNEL_CREDENTIAL_ENCRYPTION_KEY}
+      OPERATOR_TOTP_ENCRYPTION_KEY: ${OPERATOR_TOTP_ENCRYPTION_KEY}
+      CRON_SECRET: ${CRON_SECRET}
+      KAIA_OPERATOR_API_KEY: ${KAIA_OPERATOR_API_KEY}
+      N8N_CHANNEL_WEBHOOK_URL: ${N8N_CHANNEL_WEBHOOK_URL}
+      N8N_CHANNEL_WEBHOOK_SECRET: ${N8N_CHANNEL_WEBHOOK_SECRET}
+      N8N_TELEGRAM_WEBHOOK_BASE_URL: ${N8N_TELEGRAM_WEBHOOK_BASE_URL}
+      N8N_WEBCHAT_URL: ${N8N_WEBCHAT_URL}
+      META_APP_ID: ${META_APP_ID}
+      META_APP_SECRET: ${META_APP_SECRET}
+      META_CONFIG_ID: ${META_CONFIG_ID}
+
+      # --- Optional — leave blank until you activate the matching
+      # product. The app degrades gracefully (feature just shows as
+      # "not configured") when any of these are unset; nothing below
+      # this line blocks the first deploy. See .env.production.example
+      # for what each group turns on.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GOOGLE_BUSINESS_OAUTH_CLIENT_ID: ${GOOGLE_BUSINESS_OAUTH_CLIENT_ID:-}
+      GOOGLE_BUSINESS_OAUTH_CLIENT_SECRET: ${GOOGLE_BUSINESS_OAUTH_CLIENT_SECRET:-}
+      GOOGLE_BUSINESS_OAUTH_REDIRECT_URI: ${GOOGLE_BUSINESS_OAUTH_REDIRECT_URI:-}
+      GOOGLE_TOKEN_ENCRYPTION_KEY: ${GOOGLE_TOKEN_ENCRYPTION_KEY:-}
+      DRIVE_PARENT_FOLDER_ID: ${DRIVE_PARENT_FOLDER_ID:-}
+      PAPERCLIP_API_KEY: ${PAPERCLIP_API_KEY:-}
+      PAPERCLIP_API_URL: ${PAPERCLIP_API_URL:-}
+      PAPERCLIP_COMPANY_ID: ${PAPERCLIP_COMPANY_ID:-}
+      PAPERCLIP_DAY2_AGENT_ID: ${PAPERCLIP_DAY2_AGENT_ID:-}
+      KAIRIKOS_CEO_EMAIL: ${KAIRIKOS_CEO_EMAIL:-}
+      KAIRIKOS_OPERATOR_EMAILS: ${KAIRIKOS_OPERATOR_EMAILS:-}
+      KAIRIKOS_NOTIFY_KINDS: ${KAIRIKOS_NOTIFY_KINDS:-}
+      OPERATOR_NOTIFY_FROM: ${OPERATOR_NOTIFY_FROM:-}
+      PORTAL_ANALYTICS_ENDPOINT: ${PORTAL_ANALYTICS_ENDPOINT:-}
+      PORTAL_ANALYTICS_SITE_ID: ${PORTAL_ANALYTICS_SITE_ID:-}
+      NEXT_PUBLIC_PORTAL_URL: ${NEXT_PUBLIC_PORTAL_URL:-}
+      N8N_API_KEY: ${N8N_API_KEY:-}
+      N8N_BASE_URL: ${N8N_BASE_URL:-}
+      # Stripe already has an admin-configurable fallback
+      # (/admin/portal/settings/billing → StripeOperatorCredential) — these
+      # env vars are only the pre-UI fallback, not required to boot billing.
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_CREDENTIAL_ENCRYPTION_KEY: ${STRIPE_CREDENTIAL_ENCRYPTION_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
