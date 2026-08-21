@@ -268,6 +268,46 @@ export async function getOnboardingFor(
   return all.slice(0, 1);
 }
 
+// Bug found 2026-08-21 via manual QA (a real /portal/conversations/[id]
+// page rendered with zero messages): every channel's internal /message
+// route (src/app/api/internal/channels/*/message/route.ts) has only
+// ever written ChatbotConversation.transcript as a bare array of
+// `{role, content, at?}` turns — never the `{messages: [...], channel}`
+// object shape this file and the sibling API routes assumed. Confirmed
+// against every row in the local DB: 12/12 are the bare-array shape,
+// 0 are the object shape. That object-wrapper shape was never real —
+// this bug was simply unreachable until the WP-25 follow-up fix above
+// made the direct-Prisma path reachable for real clients for the first
+// time; before that, every real conversation silently rendered the
+// Acme MOCK_CONVERSATIONS fixture instead, which masked this too.
+type RawTranscriptEntry = { id?: string; role?: string; content?: string; at?: string };
+
+function extractTranscriptMessages(transcript: unknown): RawTranscriptEntry[] {
+  if (Array.isArray(transcript)) return transcript as RawTranscriptEntry[];
+  if (transcript && typeof transcript === 'object' && Array.isArray((transcript as { messages?: unknown }).messages)) {
+    return (transcript as { messages: RawTranscriptEntry[] }).messages;
+  }
+  return [];
+}
+
+// ChatbotConversation has no channel column — the only per-row channel
+// signal is the externalSessionId prefix each channel's /message route
+// writes (see e.g. telegram/message/route.ts's `telegram-<chatId>-`).
+// ConversationSummary['channel'] predates Canales and has no value for
+// telegram/messenger yet — 'other' there is honest, not a regression:
+// channel was hardcoded 'other' for every real conversation before this
+// fix, regardless of source. Web's session id (web/message/route.ts) is
+// an opaque client-generated string with no prefix — it's the only
+// other real writer of externalSessionId, so no-prefix-match defaults
+// to 'web' rather than 'other'.
+function inferChannelFromExternalSessionId(externalSessionId: string | null): ConversationSummary['channel'] {
+  if (!externalSessionId) return 'other';
+  if (externalSessionId.startsWith('whatsapp-')) return 'whatsapp';
+  if (externalSessionId.startsWith('instagram-')) return 'instagram';
+  if (externalSessionId.startsWith('telegram-') || externalSessionId.startsWith('messenger-')) return 'other';
+  return 'web';
+}
+
 // WP-25 follow-up — same root cause as getOnboarding() above (KAIA-11955:
 // PORTAL_API_BASE_URL is unset on Vercel production, so portalFetch()
 // always returns null and every real customer silently saw the Acme
@@ -286,20 +326,20 @@ export async function listConversations(accessToken: string): Promise<Conversati
           where: { clientId: resolved.clientId },
           orderBy: { startedAt: 'desc' },
           take: 50,
-          select: { id: true, startedAt: true, duration: true, outcome: true },
+          select: { id: true, startedAt: true, duration: true, outcome: true, externalSessionId: true },
         });
         return rows.map(
           (r): ConversationSummary => ({
             id: r.id,
             startedAt: r.startedAt.toISOString(),
             durationSeconds: r.duration ?? 0,
-            // ChatbotConversation.outcome/no per-row channel column are
-            // free-form (see the schema.prisma column comment); the UI
-            // (conversations/page.tsx OUTCOME_LABEL/CHANNEL_LABEL) already
-            // falls back to the raw string for any value outside the
-            // client-facing union, same as the real API route does.
+            // ChatbotConversation.outcome is free-form (see the
+            // schema.prisma column comment); the UI
+            // (conversations/page.tsx OUTCOME_LABEL/CHANNEL_LABEL)
+            // already falls back to the raw string for any value
+            // outside the client-facing union.
             outcome: (r.outcome ?? 'unknown') as ConversationSummary['outcome'],
-            channel: 'other' as ConversationSummary['channel'],
+            channel: inferChannelFromExternalSessionId(r.externalSessionId),
           }),
         );
       }
@@ -325,20 +365,18 @@ export async function getConversation(
       if (resolved && resolved.source === 'database') {
         const row = await prisma.chatbotConversation.findFirst({
           where: { id, clientId: resolved.clientId },
-          select: { id: true, startedAt: true, duration: true, outcome: true, transcript: true },
+          select: { id: true, startedAt: true, duration: true, outcome: true, transcript: true, externalSessionId: true },
         });
         if (!row) return null;
-        const transcript = row.transcript as
-          | { messages?: Array<{ id?: string; role?: string; content?: string; at?: string }>; channel?: string }
-          | null;
+        const rawMessages = extractTranscriptMessages(row.transcript);
         const endedAt = new Date(row.startedAt.getTime() + (row.duration ?? 0) * 1000).toISOString();
         return {
           id: row.id,
           startedAt: row.startedAt.toISOString(),
           endedAt,
           outcome: (row.outcome ?? 'unknown') as ConversationSummary['outcome'],
-          channel: (transcript?.channel ?? 'other') as ConversationSummary['channel'],
-          messages: (transcript?.messages ?? []).map((m, i) => ({
+          channel: inferChannelFromExternalSessionId(row.externalSessionId),
+          messages: rawMessages.map((m, i) => ({
             id: m.id ?? `m${i}`,
             role: (m.role ?? 'user') as 'user' | 'assistant' | 'system',
             content: m.content ?? '',
