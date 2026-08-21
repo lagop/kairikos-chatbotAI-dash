@@ -75,7 +75,13 @@ describe('listConversations (WP-25 follow-up, prisma read when DB configured + r
       source: 'database',
     });
     conversationFindMany.mockResolvedValueOnce([
-      { id: 'cnv-1', startedAt: new Date('2026-08-10T09:00:00.000Z'), duration: 90, outcome: 'resolved' },
+      {
+        id: 'cnv-1',
+        startedAt: new Date('2026-08-10T09:00:00.000Z'),
+        duration: 90,
+        outcome: 'resolved',
+        externalSessionId: 'whatsapp-34600111222-1755000000000',
+      },
     ]);
 
     const result = await listConversations('any-token');
@@ -89,10 +95,31 @@ describe('listConversations (WP-25 follow-up, prisma read when DB configured + r
         startedAt: '2026-08-10T09:00:00.000Z',
         durationSeconds: 90,
         outcome: 'resolved',
-        channel: 'other',
+        channel: 'whatsapp',
       },
     ]);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['whatsapp-34600111222-1755000000000', 'whatsapp'],
+    ['instagram-17800000000-1755000000000', 'instagram'],
+    ['telegram-987654321-1755000000000', 'other'],
+    ['messenger-123456789-1755000000000', 'other'],
+    ['a1b2c3d4-widget-session-id', 'web'],
+    [null, 'other'],
+  ])('infers channel %s -> %s from externalSessionId (no channel column exists on the row)', async (externalSessionId, expectedChannel) => {
+    resolveClientFromSession.mockResolvedValueOnce({
+      clientId: 'client-real-1',
+      email: 'owner@realclient.example.com',
+      source: 'database',
+    });
+    conversationFindMany.mockResolvedValueOnce([
+      { id: 'cnv-1', startedAt: new Date('2026-08-10T09:00:00.000Z'), duration: 0, outcome: null, externalSessionId },
+    ]);
+
+    const result = await listConversations('any-token');
+    expect(result[0].channel).toBe(expectedChannel);
   });
 
   it('returns [] (not the mock) when the real client has no conversations yet', async () => {
@@ -149,7 +176,13 @@ describe('getConversation (WP-25 follow-up, prisma read when DB configured + rea
   beforeEach(resetAll);
   afterEach(resetAll);
 
-  it('queries the resolved client scoped conversation and maps the transcript', async () => {
+  it('queries the resolved client scoped conversation and maps the transcript (real shape: a bare array, not {messages, channel})', async () => {
+    // Regression test — found 2026-08-21 via manual QA. Every channel's
+    // internal /message route (src/app/api/internal/channels/*/message/
+    // route.ts) has only ever written `transcript` as a bare array of
+    // turns, never the {messages: [...], channel} object shape this
+    // function used to assume. That object shape was never real — every
+    // one of the 12 rows in the dev DB is the bare-array shape.
     resolveClientFromSession.mockResolvedValueOnce({
       clientId: 'client-real-1',
       email: 'owner@realclient.example.com',
@@ -160,10 +193,8 @@ describe('getConversation (WP-25 follow-up, prisma read when DB configured + rea
       startedAt: new Date('2026-08-10T09:00:00.000Z'),
       duration: 30,
       outcome: 'escalated',
-      transcript: {
-        channel: 'whatsapp',
-        messages: [{ id: 'm1', role: 'user', content: 'Hola', at: '2026-08-10T09:00:01.000Z' }],
-      },
+      externalSessionId: 'whatsapp-34600111222-1755000000000',
+      transcript: [{ id: 'm1', role: 'user', content: 'Hola', at: '2026-08-10T09:00:01.000Z' }],
     });
 
     const result = await getConversation('any-token', 'cnv-1');
@@ -180,6 +211,48 @@ describe('getConversation (WP-25 follow-up, prisma read when DB configured + rea
       messages: [{ id: 'm1', role: 'user', content: 'Hola', at: '2026-08-10T09:00:01.000Z' }],
     });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('fills in a missing `at` per-message timestamp with startedAt, and defaults role to user', async () => {
+    resolveClientFromSession.mockResolvedValueOnce({
+      clientId: 'client-real-1',
+      email: 'owner@realclient.example.com',
+      source: 'database',
+    });
+    conversationFindFirst.mockResolvedValueOnce({
+      id: 'cnv-2',
+      startedAt: new Date('2026-08-10T09:00:00.000Z'),
+      duration: 0,
+      outcome: null,
+      externalSessionId: null,
+      transcript: [{ role: 'user', content: '¿Tenéis hueco el viernes a las 18h?' }, { content: 'Sí, tenemos hueco.' }],
+    });
+
+    const result = await getConversation('any-token', 'cnv-2');
+    expect(result?.channel).toBe('other');
+    expect(result?.messages).toEqual([
+      { id: 'm0', role: 'user', content: '¿Tenéis hueco el viernes a las 18h?', at: '2026-08-10T09:00:00.000Z' },
+      { id: 'm1', role: 'user', content: 'Sí, tenemos hueco.', at: '2026-08-10T09:00:00.000Z' },
+    ]);
+  });
+
+  it('returns an empty messages array (not a crash) when transcript is null', async () => {
+    resolveClientFromSession.mockResolvedValueOnce({
+      clientId: 'client-real-1',
+      email: 'owner@realclient.example.com',
+      source: 'database',
+    });
+    conversationFindFirst.mockResolvedValueOnce({
+      id: 'cnv-3',
+      startedAt: new Date('2026-08-10T09:00:00.000Z'),
+      duration: 0,
+      outcome: null,
+      externalSessionId: null,
+      transcript: null,
+    });
+
+    const result = await getConversation('any-token', 'cnv-3');
+    expect(result?.messages).toEqual([]);
   });
 
   it('returns null (not the mock) when the real client has no conversation with that id', async () => {
