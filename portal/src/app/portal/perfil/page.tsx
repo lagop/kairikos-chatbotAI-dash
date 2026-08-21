@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { ProfileForm } from '@/components/portal/ProfileForm';
@@ -7,7 +6,7 @@ import { PasswordChangeForm } from '@/components/portal/PasswordChangeForm';
 import { getSession } from '@/lib/session';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { DEV_MOCK_CLIENT_BY_EMAIL } from '@/lib/portal-data';
-import { isPortalDevMock } from '@/lib/portal-session';
+import { resolveClientFromSession } from '@/lib/portal-session';
 import { TIER_LABEL } from '@/lib/billing-tier';
 import type { ClientProfile } from '@/types/portal';
 
@@ -44,64 +43,67 @@ export const metadata: Metadata = {
   },
 };
 
-async function loadProfile(
-  email: string,
-  resolvedClientId: string | null,
-): Promise<ClientProfile | null> {
-  const devCookie = cookies().get('kairikos-portal-dev-email')?.value;
-  const lookupEmail = (devCookie ?? email).toLowerCase();
+// Bug found 2026-08-21 via manual QA (a real client's /portal/perfil
+// showed "no pudimos cargar tus datos" — no profile card, no edit
+// form). This function used to gate on `isPortalDevMock()` — a
+// Supabase-env-var heuristic that predates this portal's move to
+// NextAuth Credentials + Prisma/VPS (the real architecture never sets
+// NEXT_PUBLIC_SUPABASE_URL/ANON_KEY at all, so isPortalDevMock() is
+// unconditionally true everywhere real, including production) — so
+// every real, authenticated client was routed into the
+// DEV_MOCK_CLIENT_BY_EMAIL lookup, which has no entry for a real email
+// like aurora@example.com and returned null. Same root-cause class as
+// the KAIA-11955/WP-25 bugs already fixed in portal-data.ts (getOnboarding,
+// listConversations, getBilling): a stale mock-detection gate firing
+// before the real session/DB path ever got a chance. Fix: resolve via
+// resolveClientFromSession() (the canonical, already-correct resolver —
+// tries the real NextAuth session + Prisma first, only falls back to
+// mock_dev when there's genuinely no real session), mirroring the
+// already-correct GET /api/portal/me.
+async function loadProfile(): Promise<ClientProfile | null> {
+  const resolved = await resolveClientFromSession();
+  if (!resolved) return null;
 
-  if (!isDatabaseConfigured || isPortalDevMock()) {
-    const mock = DEV_MOCK_CLIENT_BY_EMAIL.get(lookupEmail);
+  if (resolved.source === 'mock_dev' || !isDatabaseConfigured) {
+    const mock = DEV_MOCK_CLIENT_BY_EMAIL.get(resolved.email.toLowerCase());
     if (!mock) return null;
     return { ...mock, contactName: mock.companyName };
   }
 
-  const target = resolvedClientId
-    ? await prisma.chatbotClient.findUnique({
-        where: { id: resolvedClientId },
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          companyName: true,
-          tier: true,
-          stripeCustomerId: true,
-          goLiveAt: true,
-          createdAt: true,
-        },
-      })
-    : await prisma.chatbotClient.findUnique({
-        where: { email: lookupEmail },
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          companyName: true,
-          tier: true,
-          stripeCustomerId: true,
-          goLiveAt: true,
-          createdAt: true,
-        },
-      });
+  try {
+    const target = await prisma.chatbotClient.findUnique({
+      where: { id: resolved.clientId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        companyName: true,
+        tier: true,
+        stripeCustomerId: true,
+        goLiveAt: true,
+        createdAt: true,
+      },
+    });
+    if (!target) return null;
 
-  if (!target) {
+    return {
+      id: target.id,
+      slug: target.email,
+      companyName: target.companyName ?? target.name ?? '',
+      primaryContactEmail: target.email,
+      stripeCustomerId: target.stripeCustomerId,
+      tier: target.tier as ClientProfile['tier'],
+      onboardingStatus: target.goLiveAt ? 'live' : 'in-progress',
+      createdAt: target.createdAt.toISOString(),
+      goLiveDate: target.goLiveAt?.toISOString() ?? null,
+      chatbotSpaceId: null,
+      contactName: target.name,
+    };
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[loadProfile] Prisma read failed:', err);
     return null;
   }
-
-  return {
-    id: target.id,
-    slug: target.email,
-    companyName: target.companyName ?? target.name ?? '',
-    primaryContactEmail: target.email,
-    stripeCustomerId: target.stripeCustomerId,
-    tier: target.tier as ClientProfile['tier'],
-    onboardingStatus: target.goLiveAt ? 'live' : 'in-progress',
-    createdAt: target.createdAt.toISOString(),
-    goLiveDate: target.goLiveAt?.toISOString() ?? null,
-    chatbotSpaceId: null,
-    contactName: target.name,
-  };
 }
 
 export default async function ProfilePage() {
@@ -122,7 +124,7 @@ export default async function ProfilePage() {
     redirect('/portal/login');
   }
 
-  const profile = await loadProfile(session.email, session.clientId);
+  const profile = await loadProfile();
 
   if (!profile) {
     return (
