@@ -40,20 +40,29 @@ export async function POST() {
     return NextResponse.json({ error: 'service_unavailable', detail: 'client_has_no_tenant' }, { status: 503 });
   }
 
-  const existing = await prisma.clientProduct.findUnique({
-    where: { clientId_productId: { clientId: resolved.clientId, productId: product.id } },
-    select: { status: true },
+  // WP-XX — 'web' no longer carries a DB-level (clientId, productId)
+  // unique constraint (see prisma/migrations/20260901120000_client_product_web_multiplicity),
+  // so this is a findFirst, not a findUnique-by-compound-key. The
+  // "already_requested" rule itself (still "any non-cancelled row blocks
+  // a new request" here) narrows to "only a quote_pending row blocks" in
+  // a later phase, once a second concurrent web project is supported.
+  const existing = await prisma.clientProduct.findFirst({
+    where: { clientId: resolved.clientId, productId: product.id },
+    select: { id: true, status: true },
   });
   if (existing && existing.status !== 'cancelled') {
     return NextResponse.json({ error: 'already_requested' }, { status: 409 });
   }
 
   await prisma.$transaction(async (tx) => {
-    const row = await tx.clientProduct.upsert({
-      where: { clientId_productId: { clientId: resolved.clientId, productId: product.id } },
-      create: { clientId: resolved.clientId, productId: product.id, tenantId: client.tenantId!, status: 'quote_pending' },
-      update: { status: 'quote_pending', cancelledAt: null },
-    });
+    const row = existing
+      ? await tx.clientProduct.update({
+          where: { id: existing.id },
+          data: { status: 'quote_pending', cancelledAt: null },
+        })
+      : await tx.clientProduct.create({
+          data: { clientId: resolved.clientId, productId: product.id, tenantId: client.tenantId!, status: 'quote_pending' },
+        });
     await tx.clientProductAudit.create({
       data: {
         clientProductId: row.id,

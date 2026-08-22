@@ -101,17 +101,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'service_unavailable', detail: 'stripe_customer_create_failed' }, { status: 503 });
   }
 
-  const existing = await prisma.clientProduct.findUnique({
-    where: { clientId_productId: { clientId: resolved.clientId, productId: product.id } },
-    select: { status: true },
+  // WP-XX — no longer a findUnique-by-compound-key: the (clientId,
+  // productId) DB constraint is now partial (excludes 'web', rejected
+  // above already) — see prisma/migrations/20260901120000_client_product_web_multiplicity.
+  const existing = await prisma.clientProduct.findFirst({
+    where: { clientId: resolved.clientId, productId: product.id },
+    select: { id: true, status: true },
   });
 
   const cp = await prisma.$transaction(async (tx) => {
-    const row = await tx.clientProduct.upsert({
-      where: { clientId_productId: { clientId: resolved.clientId, productId: product.id } },
-      create: { clientId: resolved.clientId, productId: product.id, tenantId: client.tenantId!, status: 'pending_payment' },
-      update: { status: 'pending_payment', cancelledAt: null },
-    });
+    const row = existing
+      ? await tx.clientProduct.update({
+          where: { id: existing.id },
+          data: { status: 'pending_payment', cancelledAt: null },
+        })
+      : await tx.clientProduct.create({
+          data: { clientId: resolved.clientId, productId: product.id, tenantId: client.tenantId!, status: 'pending_payment' },
+        });
     await tx.clientProductAudit.create({
       data: {
         clientProductId: row.id,
