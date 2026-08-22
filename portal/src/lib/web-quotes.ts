@@ -65,11 +65,16 @@ export interface WebQuoteContext {
   webQuote: WebQuote | null;
 }
 
-/** Resolves the client's 'web' ClientProduct + its WebQuote (if any).
- *  Returns null if the client has no 'web' ClientProduct row at all. */
-export async function resolveWebQuoteContext(prisma: PrismaClient, clientId: string): Promise<WebQuoteContext | null> {
+/** Resolves one specific 'web' ClientProduct row (by its own id, never
+ *  inferred from clientId alone) + its WebQuote (if any). A client can
+ *  have multiple 'web' projects — see ClientProduct's schema comment —
+ *  so callers must always know WHICH project they mean; this never
+ *  guesses "the" row. Returns null if the id doesn't exist or isn't a
+ *  'web' row. Callers are responsible for checking clientProduct.clientId
+ *  against the caller's own session before trusting the result. */
+export async function resolveWebQuoteContext(prisma: PrismaClient, clientProductId: string): Promise<WebQuoteContext | null> {
   const clientProduct = await prisma.clientProduct.findFirst({
-    where: { clientId, product: { code: 'web' } },
+    where: { id: clientProductId, product: { code: 'web' } },
     select: { id: true, clientId: true, tenantId: true, status: true },
   });
   if (!clientProduct) return null;

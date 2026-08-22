@@ -1,5 +1,11 @@
 // =============================================================================
 // Unit tests for POST /api/portal/web-quote/request.
+//
+// WP-XX — a client can have multiple 'web' projects (see ClientProduct's
+// schema comment): the route no longer blocks on "any non-cancelled row"
+// (that would prevent a 2nd project while the 1st is simply 'active'),
+// only on an in-flight 'quote_pending' negotiation, and it always creates
+// a fresh row rather than reactivating an old cancelled one.
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -49,8 +55,12 @@ beforeEach(() => {
   mockState.getSession.mockReset().mockResolvedValue({ hasClientAccess: true });
   mockState.findFirstProduct.mockReset().mockResolvedValue(WEB_PRODUCT);
   mockState.findUniqueClient.mockReset().mockResolvedValue({ id: 'client_1', tenantId: 'tenant_1' });
+  // Represents "no in-flight quote_pending row" — the route's own query
+  // already filters status: 'quote_pending', so a null here means the
+  // in-flight check found nothing, regardless of any OTHER (active/
+  // cancelled) row that might exist for this client.
   mockState.findFirstClientProduct.mockReset().mockResolvedValue(null);
-  mockState.clientProductCreate.mockReset().mockResolvedValue({ id: 'cp_1' });
+  mockState.clientProductCreate.mockReset().mockResolvedValue({ id: 'cp_new' });
   mockState.clientProductUpdate.mockReset().mockResolvedValue({ id: 'cp_1' });
   mockState.clientProductAuditCreate.mockReset().mockResolvedValue({});
 });
@@ -82,37 +92,37 @@ describe('POST /api/portal/web-quote/request', () => {
     expect(body.error).toBe('product_not_found');
   });
 
-  it('409s already_requested when the client already has a non-cancelled web ClientProduct', async () => {
-    mockState.findFirstClientProduct.mockResolvedValueOnce({ id: 'cp_1', status: 'active' });
+  it('409s already_requested when a quote_pending row is already in flight', async () => {
+    mockState.findFirstClientProduct.mockResolvedValueOnce({ id: 'cp_pending' });
     const res = await callRoute();
     expect(res.status).toBe(409);
     const body = await res.clone().json();
     expect(body.error).toBe('already_requested');
     expect(mockState.clientProductCreate).not.toHaveBeenCalled();
-    expect(mockState.clientProductUpdate).not.toHaveBeenCalled();
   });
 
-  it('creates the ClientProduct in quote_pending on the happy path (no prior row)', async () => {
+  it('creates a new ClientProduct in quote_pending and returns its id (no prior row)', async () => {
     const res = await callRoute();
     expect(res.status).toBe(200);
     const body = await res.clone().json();
-    expect(body).toEqual({ status: 'quote_pending' });
+    expect(body).toEqual({ status: 'quote_pending', clientProductId: 'cp_new' });
     expect(mockState.clientProductCreate).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ status: 'quote_pending' }),
+        data: expect.objectContaining({ clientId: 'client_1', productId: 'prod_web_1', status: 'quote_pending' }),
       }),
     );
+    expect(mockState.clientProductAuditCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ clientProductId: 'cp_new', action: 'web_quote_requested', statusBefore: null }),
+    });
   });
 
-  it('allows re-requesting when the prior row was cancelled', async () => {
-    mockState.findFirstClientProduct.mockResolvedValueOnce({ id: 'cp_1', status: 'cancelled' });
+  it('always creates a fresh row, never reactivating an old cancelled one — no in-flight row means it just creates', async () => {
+    // Even if the client has a prior 'cancelled' web project elsewhere,
+    // the in-flight check (status: 'quote_pending') doesn't see it, so a
+    // brand-new request creates a brand-new row rather than touching it.
     const res = await callRoute();
     expect(res.status).toBe(200);
-    expect(mockState.clientProductUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'cp_1' },
-        data: expect.objectContaining({ status: 'quote_pending', cancelledAt: null }),
-      }),
-    );
+    expect(mockState.clientProductCreate).toHaveBeenCalledTimes(1);
+    expect(mockState.clientProductUpdate).not.toHaveBeenCalled();
   });
 });

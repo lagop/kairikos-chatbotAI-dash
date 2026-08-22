@@ -72,9 +72,11 @@ function InvoicedAmount({
 }
 
 export function WebQuoteCard({
+  clientProductId,
   webQuote,
   invoice,
 }: {
+  clientProductId: string;
   webQuote: ClientWebQuoteData | null;
   invoice: ClientWebQuoteInvoiceData | null;
 }) {
@@ -86,7 +88,11 @@ export function WebQuoteCard({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch('/api/portal/web-quote/accept', { method: 'POST' });
+      const res = await fetch('/api/portal/web-quote/accept', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientProductId }),
+      });
       if (!res.ok) {
         const detail = await res.json().catch(() => null);
         setError(ERROR_LABEL[detail?.error] ?? 'No se pudo aceptar el presupuesto.');
