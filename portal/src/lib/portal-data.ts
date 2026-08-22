@@ -116,9 +116,17 @@ const MOCK_BILLING: BillingSummary = {
   stripeCustomerId: MOCK_CLIENT.stripeCustomerId,
 };
 
+// Bug found 2026-08-22 via manual QA: this used to hardcode
+// https://wa.me/34600000000 (a placeholder, all-zeros number) — every
+// real client's "Hablar con el equipo" button pointed at a WhatsApp
+// number that doesn't exist. AUTH_SUPPORT_WHATSAPP already existed as
+// an env var (docker-compose.yml passes it through, .env.production.example
+// documents it) but nothing in src/ actually read it — wired through
+// infra, never consumed. Real number: +34 624 51 44 25.
+const SUPPORT_WHATSAPP_BASE_URL = process.env.AUTH_SUPPORT_WHATSAPP || 'https://wa.me/34624514425';
 const MOCK_SUPPORT: SupportLink = {
   label: 'Hablar con el equipo',
-  href: 'https://wa.me/34600000000?text=Hola%2C%20necesito%20ayuda%20con%20mi%20portal%20Kairikos',
+  href: `${SUPPORT_WHATSAPP_BASE_URL}?text=${encodeURIComponent('Hola, necesito ayuda con mi portal Kairikos')}`,
   description: 'Te respondemos por WhatsApp en horario laboral (L–V, 9:00–18:00 CET).',
 };
 
