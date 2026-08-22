@@ -8,7 +8,23 @@ import { RequestWebQuoteCard } from '@/components/portal/RequestWebQuoteCard';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { requirePortalSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
+import { WEB_ACCESSIBLE_STATUSES } from '@/lib/client-product-access';
 import { PRODUCT_CODES, PRODUCT_CATALOGS, type ProductCode } from '@/lib/catalogs';
+
+// WP-XX — mirrors the status vocabulary/labels used by /portal/web's own
+// project picker (see that page) — duplicated rather than shared, same
+// small-per-component-map convention already used by ProductAssignment.tsx
+// (admin) for the equivalent status pill.
+const WEB_STATUS_LABEL: Record<string, string> = {
+  quote_pending: 'Presupuesto en curso',
+  active: 'Activo',
+  paused: 'Pausado',
+};
+const WEB_STATUS_PILL: Record<string, string> = {
+  quote_pending: 'pill-warning',
+  active: 'pill-success',
+  paused: 'pill-warning',
+};
 
 export const dynamic = 'force-dynamic';
 
@@ -52,7 +68,14 @@ export default async function PortalProductsPage({
 
   const clientProducts = await prisma.clientProduct.findMany({
     where: { clientId: resolved.clientId },
-    select: { status: true, productId: true, product: { select: { code: true } } },
+    select: {
+      id: true,
+      status: true,
+      productId: true,
+      subscribedAt: true,
+      product: { select: { code: true } },
+      webBrief: { select: { businessName: true } },
+    },
   });
   const contractedCodes = new Set(
     clientProducts.filter((cp) => cp.status === 'active' || cp.status === 'paused').map((cp) => cp.product.code),
@@ -60,14 +83,18 @@ export default async function PortalProductsPage({
   const pendingByCode = new Map(
     clientProducts.filter((cp) => cp.status === 'pending_payment').map((cp) => [cp.product.code, cp.productId]),
   );
-  // 'web' no longer has a fixed self-serve price — it's sold via custom
-  // quote (see canAccessWebProduct / RequestWebQuoteCard). It's excluded
-  // from the generic tiered grid below entirely; a non-cancelled row
-  // (quote_pending, active, paused) means the client is already somewhere
-  // in that flow, so no card is shown here at all — they manage it from
-  // /portal/web instead.
-  const webRow = clientProducts.find((cp) => cp.product.code === 'web');
-  const showRequestWebQuote = !webRow || webRow.status === 'cancelled';
+  // WP-XX — 'web' no longer has a fixed self-serve price (custom quote,
+  // see canAccessWebProduct / RequestWebQuoteCard) AND a client can have
+  // multiple independent 'web' projects (see ClientProduct's schema
+  // comment). It's excluded from the generic tiered grid below entirely;
+  // instead every project in an accessible status gets its own status
+  // pill + link to /portal/web/[id]. Requesting another project is only
+  // blocked while one is 'quote_pending' — the entire pre-payment
+  // negotiation window — same rule as /portal/web's own resolver.
+  const webRows = clientProducts
+    .filter((cp) => cp.product.code === 'web' && WEB_ACCESSIBLE_STATUSES.includes(cp.status))
+    .sort((a, b) => a.subscribedAt.getTime() - b.subscribedAt.getTime());
+  const canRequestWebQuote = !webRows.some((cp) => cp.status === 'quote_pending');
 
   const allProducts = await prisma.product.findMany({
     where: { isActive: true },
@@ -108,42 +135,67 @@ export default async function PortalProductsPage({
         </div>
       ) : null}
 
-      {availableCodes.length === 0 && !showRequestWebQuote ? (
+      {availableCodes.length === 0 && !canRequestWebQuote && webRows.length === 0 ? (
         <EmptyState
           title="Ya tienes todos los productos disponibles"
           description="No hay productos adicionales que contratar por ahora."
         />
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {showRequestWebQuote ? <RequestWebQuoteCard label={PRODUCT_CATALOGS.web.label} /> : null}
-          {availableCodes.map((code) => {
-            const label = isProductCode(code) ? PRODUCT_CATALOGS[code].label : code;
-            const pendingProductId = pendingByCode.get(code);
-            const card = pendingProductId ? (
-              <SelfServeProductCard key={code} code={code} label={label} status="pending" productId={pendingProductId} />
-            ) : (
-              <SelfServeProductCard key={code} code={code} label={label} status="available" tiers={tiersByCode.get(code) ?? []} />
-            );
-            // Reseñas publica un tercer plan, Enterprise, con precio a
-            // medida — no tiene un Price de Stripe fijo que cobrar por
-            // autoservicio (kairikos.com/resenas-google lo deja explícito),
-            // así que no es una fila de Product; en vez de eso, esta nota
-            // enlaza a soporte para ese caso.
-            if (code !== 'reviews') return card;
-            return (
-              <div key={code} className="space-y-2">
-                {card}
-                <p className="px-1 text-xs text-kairikos-muted">
-                  ¿Necesitas más volumen?{' '}
-                  <Link href="/portal/support" className="underline hover:text-kairikos-text">
-                    Habla con nosotros
-                  </Link>{' '}
-                  sobre el plan Enterprise.
-                </p>
-              </div>
-            );
-          })}
-        </div>
+        <>
+          {webRows.length > 0 ? (
+            <div className="space-y-3">
+              <h2 className="text-sm font-semibold text-kairikos-muted">Tus proyectos web</h2>
+              <ul className="space-y-2" data-testid="productos-web-project-list">
+                {webRows.map((row, index) => (
+                  <li key={row.id}>
+                    <Link
+                      href={`/portal/web/${row.id}`}
+                      className="card flex items-center justify-between gap-3 transition hover:border-kairikos-accent/40"
+                      data-testid="productos-web-project-row"
+                    >
+                      <span className="font-medium">{row.webBrief?.businessName || `Proyecto ${index + 1}`}</span>
+                      <span className={WEB_STATUS_PILL[row.status] ?? 'pill-muted'}>
+                        {WEB_STATUS_LABEL[row.status] ?? row.status}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {canRequestWebQuote ? (
+              <RequestWebQuoteCard label={webRows.length > 0 ? 'Solicitar otro proyecto web' : PRODUCT_CATALOGS.web.label} />
+            ) : null}
+            {availableCodes.map((code) => {
+              const label = isProductCode(code) ? PRODUCT_CATALOGS[code].label : code;
+              const pendingProductId = pendingByCode.get(code);
+              const card = pendingProductId ? (
+                <SelfServeProductCard key={code} code={code} label={label} status="pending" productId={pendingProductId} />
+              ) : (
+                <SelfServeProductCard key={code} code={code} label={label} status="available" tiers={tiersByCode.get(code) ?? []} />
+              );
+              // Reseñas publica un tercer plan, Enterprise, con precio a
+              // medida — no tiene un Price de Stripe fijo que cobrar por
+              // autoservicio (kairikos.com/resenas-google lo deja explícito),
+              // así que no es una fila de Product; en vez de eso, esta nota
+              // enlaza a soporte para ese caso.
+              if (code !== 'reviews') return card;
+              return (
+                <div key={code} className="space-y-2">
+                  {card}
+                  <p className="px-1 text-xs text-kairikos-muted">
+                    ¿Necesitas más volumen?{' '}
+                    <Link href="/portal/support" className="underline hover:text-kairikos-text">
+                      Habla con nosotros
+                    </Link>{' '}
+                    sobre el plan Enterprise.
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
     </div>
   );
