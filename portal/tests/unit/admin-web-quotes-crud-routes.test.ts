@@ -47,7 +47,7 @@ function makeRequest(body: unknown) {
 
 beforeEach(() => {
   mockState.authenticateAdminRequest.mockReset().mockResolvedValue(AUTH_OK);
-  mockState.findFirstClientProduct.mockReset().mockResolvedValue({ id: 'cp_1', tenantId: 't1', status: 'quote_pending' });
+  mockState.findFirstClientProduct.mockReset().mockResolvedValue({ id: 'cp_1', clientId: 'c1', tenantId: 't1', status: 'quote_pending' });
   mockState.findUniqueWebQuote.mockReset();
   mockState.webQuoteCreate.mockReset().mockResolvedValue({ id: 'wq_1', amountCents: 99900, currency: 'eur', description: 'x' });
   mockState.webQuoteUpdate.mockReset().mockResolvedValue({ id: 'wq_1' });
@@ -62,25 +62,25 @@ describe('POST /api/admin/portal/web-quotes (create draft)', () => {
 
   it('401s without a real operator session', async () => {
     mockState.authenticateAdminRequest.mockResolvedValueOnce({ ok: false });
-    const res = await callRoute({ clientId: 'c1', amountCents: 99900, description: 'x' });
+    const res = await callRoute({ clientProductId: '11111111-1111-1111-1111-111111111111', amountCents: 99900, description: 'x' });
     expect(res.status).toBe(401);
   });
 
   it('404s when the client has no web ClientProduct yet', async () => {
     mockState.findFirstClientProduct.mockResolvedValueOnce(null);
-    const res = await callRoute({ clientId: 'c1', amountCents: 99900, description: 'x' });
+    const res = await callRoute({ clientProductId: '11111111-1111-1111-1111-111111111111', amountCents: 99900, description: 'x' });
     expect(res.status).toBe(404);
   });
 
   it('409s not_quote_pending when the ClientProduct is not in the quote flow', async () => {
     mockState.findFirstClientProduct.mockResolvedValueOnce({ id: 'cp_1', tenantId: 't1', status: 'active' });
-    const res = await callRoute({ clientId: 'c1', amountCents: 99900, description: 'x' });
+    const res = await callRoute({ clientProductId: '11111111-1111-1111-1111-111111111111', amountCents: 99900, description: 'x' });
     expect(res.status).toBe(409);
     expect((await res.clone().json()).error).toBe('not_quote_pending');
   });
 
   it('201s and creates the draft on the happy path', async () => {
-    const res = await callRoute({ clientId: 'c1', amountCents: 99900, description: 'Sitio web' });
+    const res = await callRoute({ clientProductId: '11111111-1111-1111-1111-111111111111', amountCents: 99900, description: 'Sitio web' });
     expect(res.status).toBe(201);
     expect(mockState.webQuoteCreate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -90,13 +90,13 @@ describe('POST /api/admin/portal/web-quotes (create draft)', () => {
   });
 
   it('400s when depositCents is not less than amountCents', async () => {
-    const res = await callRoute({ clientId: 'c1', amountCents: 99900, depositCents: 99900, description: 'Sitio web' });
+    const res = await callRoute({ clientProductId: '11111111-1111-1111-1111-111111111111', amountCents: 99900, depositCents: 99900, description: 'Sitio web' });
     expect(res.status).toBe(400);
     expect(mockState.webQuoteCreate).not.toHaveBeenCalled();
   });
 
   it('201s and persists depositCents when provided and valid', async () => {
-    const res = await callRoute({ clientId: 'c1', amountCents: 99900, depositCents: 30000, description: 'Sitio web' });
+    const res = await callRoute({ clientProductId: '11111111-1111-1111-1111-111111111111', amountCents: 99900, depositCents: 30000, description: 'Sitio web' });
     expect(res.status).toBe(201);
     expect(mockState.webQuoteCreate).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ depositCents: 30000 }) }),

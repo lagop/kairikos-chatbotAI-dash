@@ -93,12 +93,10 @@ const STATUS_LABEL: Record<string, string> = {
 const VOIDABLE_STATUSES = new Set(['invoiced', 'invoiced_deposit', 'invoiced_final']);
 
 export function WebQuoteEditor({
-  clientId,
   clientProductId,
   webQuote,
   invoice,
 }: {
-  clientId: string;
   clientProductId: string;
   webQuote: WebQuoteData | null;
   invoice: WebQuoteInvoiceData | null;
@@ -170,7 +168,7 @@ export function WebQuoteEditor({
         : await fetch('/api/admin/portal/web-quotes', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ clientId, amountCents, ...(depositCents !== null ? { depositCents } : {}), description }),
+            body: JSON.stringify({ clientProductId, amountCents, ...(depositCents !== null ? { depositCents } : {}), description }),
           });
       const body = await safeJson(res);
       if (res.ok) {
