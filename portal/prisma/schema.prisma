@@ -121,7 +121,7 @@ model ChatbotClient {
   googleBusinessConnections GoogleBusinessConnection[]
   googleReviews             GoogleReview[]
   reviewRequestCampaigns    ReviewRequestCampaign[]
-  webBrief                  WebBrief?
+  webBriefs                 WebBrief[]
   webQuotes                 WebQuote[]
   chatWebEmbeds             ChatWebEmbed[]
   telegramConnections       TelegramConnection[]
@@ -685,6 +685,7 @@ model ClientProduct {
   // — see Invoice.clientProductId.
   invoices     Invoice[]
   webQuote     WebQuote?
+  webBrief     WebBrief?
 
   // Real DB-level uniqueness for every code except 'web' lives in a raw-SQL
   // partial unique index (see this migration's .sql) — Prisma can't express
@@ -1425,13 +1426,17 @@ model ReviewRequest {
 // ongoing service the client reconfigures — so a single-shot brief fits
 // better than a multi-step, tier-aware, per-step-audited wizard anyway.
 //
-// One brief per client — a second website would be a new purchase cycle,
-// handled manually, not modeled here.
+// WP-XX — one brief per PROJECT (ClientProduct row), not per client: a
+// client can have multiple independent 'web' engagements (see
+// ClientProduct's comment), each with its own brief. `clientId` stays as a
+// denormalized, non-unique column for convenient client-scoped queries;
+// `clientProductId` is the real 1:1 key.
 // =============================================================================
 model WebBrief {
-  id       String  @id @default(cuid())
-  clientId String  @unique @map("client_id")
-  tenantId String? @map("tenant_id") @db.Uuid
+  id              String  @id @default(cuid())
+  clientId        String  @map("client_id")
+  clientProductId String  @unique @map("client_product_id") @db.Uuid
+  tenantId        String? @map("tenant_id") @db.Uuid
 
   // 'draft' | 'submitted'. Resubmitting after 'submitted' is allowed
   // (upsert, no hard server-side lock) — the client can always send
@@ -1471,10 +1476,42 @@ model WebBrief {
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
-  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  client        ChatbotClient   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientProduct ClientProduct   @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
+  tenant        Tenant?         @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  auditLogs     WebBriefAudit[]
 
+  @@index([clientId])
   @@index([tenantId])
+}
+
+// Append-only audit trail for WebBrief edits — mirrors WebQuoteAudit
+// exactly (before/after JSON, write-only, no UI viewer — see that model's
+// comment). Exists so an operator can show a client exactly what a brief
+// said on a given date if they later dispute work done against an
+// earlier version (the brief route itself never locks or blocks edits).
+model WebBriefAudit {
+  id         String @id @default(uuid()) @db.Uuid
+  // WebBrief.id is a cuid (String), not a uuid — no @db.Uuid here.
+  webBriefId String @map("web_brief_id")
+  clientId   String @map("client_id")
+  // 'draft_saved' | 'submitted'
+  action     String
+  before     Json?
+  after      Json?
+
+  // 'client' | 'operator' | 'system' — always 'client' today, the brief
+  // has no operator-edit path, but this mirrors WebQuoteAudit's shape in
+  // case that ever changes.
+  actorType  String  @default("client") @map("actor_type")
+  actorEmail String? @map("actor_email")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  webBrief WebBrief @relation(fields: [webBriefId], references: [id], onDelete: Cascade)
+
+  @@index([webBriefId])
+  @@index([createdAt])
 }
 
 // =============================================================================

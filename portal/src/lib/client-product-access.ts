@@ -26,19 +26,23 @@ export async function isProductContracted(
 }
 
 /**
- * WP-XX — access to the 'web' product's two client-facing surfaces
- * (the brief and /portal/web) DURING the quote cycle, before the
+ * WP-XX — statuses that grant access to a 'web' project's client-facing
+ * surfaces (the brief and /portal/web) DURING the quote cycle, before the
  * ClientProduct reaches 'active'. Deliberately separate from
  * isProductContracted (which requires 'active' exclusively, unchanged,
  * used everywhere else in the portal): 'web' now goes through a free
  * 'quote_pending' request → operator quote → client acceptance → invoice
  * flow before any payment exists, and the client needs to reach the
  * brief/summary pages throughout that whole window, not just after
- * paying. Do not reuse this for any product other than 'web'.
+ * paying. Do not reuse this for any product other than 'web'. Shared
+ * between canAccessWebProduct below, /portal/web/page.tsx, and
+ * /api/portal/web-brief/route.ts so the three never silently drift apart.
  */
+export const WEB_ACCESSIBLE_STATUSES = ['quote_pending', 'active', 'paused'];
+
 export async function canAccessWebProduct(prisma: PrismaClient, clientId: string): Promise<boolean> {
   const row = await prisma.clientProduct.findFirst({
-    where: { clientId, status: { in: ['quote_pending', 'active', 'paused'] }, product: { code: 'web' } },
+    where: { clientId, status: { in: WEB_ACCESSIBLE_STATUSES }, product: { code: 'web' } },
     select: { id: true },
   });
   return row !== null;
