@@ -2,13 +2,19 @@
 // WP-12 — unit tests for POST /api/admin/portal/client-products.
 //
 // AC: "ClientProduct puede tener varias filas por cliente con productId de
-// productos distintos (el @@unique([clientId, productId]) existente ya lo
-// permite; verificar con un test)." This is that test — it proves the
-// route's own upsert logic never collapses two DIFFERENT products for the
-// same client into one row, and that re-posting the SAME (client, product)
-// pair is the idempotent no-op the @@unique constraint is meant to give.
+// productos distintos." This is that test — it proves the route's own
+// find-then-create-or-update logic never collapses two DIFFERENT products
+// for the same client into one row, and that re-posting the SAME (client,
+// product) pair is the idempotent no-op the (formerly DB-level, now
+// partial-index-level for non-'web' codes) uniqueness is meant to give.
 //
-// WP-18 — the route now wraps the ClientProduct upsert and its
+// WP-XX — the route no longer does a findUnique-by-compound-key + upsert
+// (the (clientId, productId) DB constraint became partial, exempting
+// 'web' — see prisma/migrations/20260901120000_client_product_web_multiplicity).
+// It's now a findFirst (outside the transaction) followed by an explicit
+// create/update branch (inside it).
+//
+// WP-18 — the route wraps the ClientProduct write and its
 // ClientProductAudit row in a single `$transaction`, so the mock exposes a
 // `tx` with both tables; `$transaction` just invokes the callback with it
 // (matching the mockTx pattern already used elsewhere in this test suite,
@@ -21,14 +27,16 @@ const mockState = vi.hoisted(() => ({
   authenticateAdminRequest: vi.fn(),
   findUniqueClient: vi.fn(),
   findUniqueProduct: vi.fn(),
-  findUniqueClientProduct: vi.fn(),
-  upsertClientProduct: vi.fn(),
+  findFirstClientProduct: vi.fn(),
+  createClientProduct: vi.fn(),
+  updateClientProduct: vi.fn(),
   createClientProductAudit: vi.fn(),
 }));
 
 const mockTx = {
   clientProduct: {
-    upsert: (...args: unknown[]) => mockState.upsertClientProduct(...args),
+    create: (...args: unknown[]) => mockState.createClientProduct(...args),
+    update: (...args: unknown[]) => mockState.updateClientProduct(...args),
   },
   clientProductAudit: {
     create: (...args: unknown[]) => mockState.createClientProductAudit(...args),
@@ -49,7 +57,7 @@ vi.mock('@/lib/prisma', () => ({
       findUnique: (...args: unknown[]) => mockState.findUniqueProduct(...args),
     },
     clientProduct: {
-      findUnique: (...args: unknown[]) => mockState.findUniqueClientProduct(...args),
+      findFirst: (...args: unknown[]) => mockState.findFirstClientProduct(...args),
     },
   },
   isDatabaseConfigured: true,
@@ -65,46 +73,52 @@ beforeEach(() => {
   mockState.authenticateAdminRequest.mockReset().mockResolvedValue({ ok: true, operatorId: 'op_1' });
   mockState.findUniqueClient.mockReset().mockResolvedValue({ id: 'client_1', tenantId: 'tenant_1' });
   mockState.findUniqueProduct.mockReset().mockResolvedValue({ id: 'prod_1', isActive: true });
-  mockState.findUniqueClientProduct.mockReset().mockResolvedValue(null);
-  mockState.upsertClientProduct.mockReset();
+  mockState.findFirstClientProduct.mockReset().mockResolvedValue(null);
+  mockState.createClientProduct.mockReset();
+  mockState.updateClientProduct.mockReset();
   mockState.createClientProductAudit.mockReset();
 });
 
 describe('POST /api/admin/portal/client-products — multi-product assignment', () => {
-  it('assigning two different products to the same client issues two distinct upserts, each keyed by (clientId, productId)', async () => {
+  it('assigning two different products to the same client issues two distinct creates, each looked up by (clientId, productId)', async () => {
     const { POST } = await import('@/app/api/admin/portal/client-products/route');
 
     mockState.findUniqueProduct.mockResolvedValueOnce({ id: '11111111-1111-1111-1111-111111111111', isActive: true });
-    mockState.upsertClientProduct.mockResolvedValueOnce({ id: 'cp_1', clientId: 'client_1', productId: '11111111-1111-1111-1111-111111111111' });
+    mockState.createClientProduct.mockResolvedValueOnce({ id: 'cp_1', clientId: 'client_1', productId: '11111111-1111-1111-1111-111111111111' });
     const res1 = await POST(makeRequest({ clientId: 'client_1', productId: '11111111-1111-1111-1111-111111111111' }));
     expect(res1.status).toBe(201);
 
     mockState.findUniqueProduct.mockResolvedValueOnce({ id: '22222222-2222-2222-2222-222222222222', isActive: true });
-    mockState.upsertClientProduct.mockResolvedValueOnce({ id: 'cp_2', clientId: 'client_1', productId: '22222222-2222-2222-2222-222222222222' });
+    mockState.createClientProduct.mockResolvedValueOnce({ id: 'cp_2', clientId: 'client_1', productId: '22222222-2222-2222-2222-222222222222' });
     const res2 = await POST(makeRequest({ clientId: 'client_1', productId: '22222222-2222-2222-2222-222222222222' }));
     expect(res2.status).toBe(201);
 
-    expect(mockState.upsertClientProduct).toHaveBeenCalledTimes(2);
-    expect(mockState.upsertClientProduct).toHaveBeenNthCalledWith(
+    expect(mockState.createClientProduct).toHaveBeenCalledTimes(2);
+    expect(mockState.findFirstClientProduct).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ where: { clientId_productId: { clientId: 'client_1', productId: '11111111-1111-1111-1111-111111111111' } } }),
+      expect.objectContaining({ where: { clientId: 'client_1', productId: '11111111-1111-1111-1111-111111111111' } }),
     );
-    expect(mockState.upsertClientProduct).toHaveBeenNthCalledWith(
+    expect(mockState.findFirstClientProduct).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ where: { clientId_productId: { clientId: 'client_1', productId: '22222222-2222-2222-2222-222222222222' } } }),
+      expect.objectContaining({ where: { clientId: 'client_1', productId: '22222222-2222-2222-2222-222222222222' } }),
     );
   });
 
-  it('re-posting the same (clientId, productId) pair is the idempotent update branch, not a duplicate', async () => {
+  it('re-posting the same (clientId, productId) pair takes the idempotent update branch, not a duplicate create', async () => {
     const { POST } = await import('@/app/api/admin/portal/client-products/route');
 
-    mockState.upsertClientProduct.mockResolvedValue({ id: 'cp_1', clientId: 'client_1', productId: '11111111-1111-1111-1111-111111111111' });
-    await POST(makeRequest({ clientId: 'client_1', productId: '11111111-1111-1111-1111-111111111111' }));
+    mockState.createClientProduct.mockResolvedValueOnce({ id: 'cp_1', clientId: 'client_1', productId: '11111111-1111-1111-1111-111111111111' });
     await POST(makeRequest({ clientId: 'client_1', productId: '11111111-1111-1111-1111-111111111111' }));
 
-    expect(mockState.upsertClientProduct).toHaveBeenCalledTimes(2);
-    const [firstCall, secondCall] = mockState.upsertClientProduct.mock.calls;
-    expect(firstCall[0].where).toEqual(secondCall[0].where);
+    mockState.findFirstClientProduct.mockResolvedValueOnce({ id: 'cp_1', status: 'active' });
+    mockState.updateClientProduct.mockResolvedValueOnce({ id: 'cp_1', clientId: 'client_1', productId: '11111111-1111-1111-1111-111111111111' });
+    await POST(makeRequest({ clientId: 'client_1', productId: '11111111-1111-1111-1111-111111111111' }));
+
+    expect(mockState.createClientProduct).toHaveBeenCalledTimes(1);
+    expect(mockState.updateClientProduct).toHaveBeenCalledTimes(1);
+    expect(mockState.updateClientProduct).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'cp_1' } }),
+    );
   });
 
   it('refuses to assign an inactive product', async () => {
@@ -116,15 +130,16 @@ describe('POST /api/admin/portal/client-products — multi-product assignment', 
     );
 
     expect(res.status).toBe(404);
-    expect(mockState.upsertClientProduct).not.toHaveBeenCalled();
+    expect(mockState.createClientProduct).not.toHaveBeenCalled();
+    expect(mockState.updateClientProduct).not.toHaveBeenCalled();
     expect(mockState.createClientProductAudit).not.toHaveBeenCalled();
   });
 });
 
 describe('POST /api/admin/portal/client-products — WP-18 audit trail', () => {
   it('writes a ClientProductAudit row with action=assign for a brand-new (clientId, productId)', async () => {
-    mockState.findUniqueClientProduct.mockResolvedValueOnce(null);
-    mockState.upsertClientProduct.mockResolvedValueOnce({
+    mockState.findFirstClientProduct.mockResolvedValueOnce(null);
+    mockState.createClientProduct.mockResolvedValueOnce({
       id: 'cp_1',
       clientId: 'client_1',
       productId: '11111111-1111-1111-1111-111111111111',
@@ -152,8 +167,8 @@ describe('POST /api/admin/portal/client-products — WP-18 audit trail', () => {
   });
 
   it('writes action=reactivate (with the prior status) when the row already existed', async () => {
-    mockState.findUniqueClientProduct.mockResolvedValueOnce({ status: 'cancelled' });
-    mockState.upsertClientProduct.mockResolvedValueOnce({
+    mockState.findFirstClientProduct.mockResolvedValueOnce({ id: 'cp_1', status: 'cancelled' });
+    mockState.updateClientProduct.mockResolvedValueOnce({
       id: 'cp_1',
       clientId: 'client_1',
       productId: '11111111-1111-1111-1111-111111111111',

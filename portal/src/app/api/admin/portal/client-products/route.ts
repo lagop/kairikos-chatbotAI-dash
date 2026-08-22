@@ -51,9 +51,14 @@ export async function POST(req: NextRequest) {
   const product = await prisma.product.findUnique({ where: { id: productId }, select: { id: true, isActive: true } });
   if (!product || !product.isActive) return NextResponse.json({ error: 'product_not_found' }, { status: 404 });
 
-  const existing = await prisma.clientProduct.findUnique({
-    where: { clientId_productId: { clientId, productId } },
-    select: { status: true },
+  // WP-XX — 'web' no longer carries a DB-level (clientId, productId)
+  // unique constraint (see prisma/migrations/20260901120000_client_product_web_multiplicity),
+  // so this is a findFirst, not a findUnique-by-compound-key. Still
+  // resolves to a single row here — the 'web' multi-project code-aware
+  // branch lands separately (see ProductAssignment.tsx's web exclusion).
+  const existing = await prisma.clientProduct.findFirst({
+    where: { clientId, productId },
+    select: { id: true, status: true },
   });
 
   // WP-18 — assigning/reactivating a product and recording the audit row
@@ -61,12 +66,16 @@ export async function POST(req: NextRequest) {
   // access with no matching ClientProductAudit row would be invisible to
   // anyone auditing the account later.
   const row = await prisma.$transaction(async (tx) => {
-    const clientProduct = await tx.clientProduct.upsert({
-      where: { clientId_productId: { clientId, productId } },
-      create: { clientId, productId, tenantId: client.tenantId, status: 'active', createdBy: auth.operatorId, changedBy: auth.operatorId },
-      update: { status: 'active', cancelledAt: null, changedBy: auth.operatorId },
-      include: { product: true, client: { select: { id: true, name: true, companyName: true, email: true } } },
-    });
+    const clientProduct = existing
+      ? await tx.clientProduct.update({
+          where: { id: existing.id },
+          data: { status: 'active', cancelledAt: null, changedBy: auth.operatorId },
+          include: { product: true, client: { select: { id: true, name: true, companyName: true, email: true } } },
+        })
+      : await tx.clientProduct.create({
+          data: { clientId, productId, tenantId: client.tenantId, status: 'active', createdBy: auth.operatorId, changedBy: auth.operatorId },
+          include: { product: true, client: { select: { id: true, name: true, companyName: true, email: true } } },
+        });
     await tx.clientProductAudit.create({
       data: {
         clientProductId: clientProduct.id,

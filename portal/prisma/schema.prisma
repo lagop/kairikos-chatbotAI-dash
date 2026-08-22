@@ -630,9 +630,17 @@ model ClientProductAudit {
 //
 // Associates chatbot clients with their subscribed products. Stripe stores
 // the subscription itself; this row is the portal/Supabase denormalization
-// for owner views and feature gating. UNIQUE (clientId, productId) so a
-// client cannot have two rows for the same tier — reactivation goes
-// through UPDATE on the existing row, not a fresh INSERT.
+// for owner views and feature gating.
+//
+// WP-XX — 'web' is deliberately EXEMPT from the one-row-per-client rule: a
+// client can have multiple independent web projects (e.g. a main site + a
+// separate landing page brand), each with its own WebQuote/WebBrief/
+// Subscription/Invoice lifecycle. Every OTHER product code still gets a
+// real DB-level uniqueness guarantee — reactivation goes through UPDATE on
+// the existing row, not a fresh INSERT — but Prisma's schema DSL can't
+// express a conditional/partial unique constraint, so that guarantee lives
+// as a raw-SQL partial unique index in this migration's .sql file, NOT as
+// an `@@unique` here. See prisma/migrations/<this migration>/migration.sql.
 // =============================================================================
 model ClientProduct {
   id              String    @id @default(uuid()) @db.Uuid
@@ -678,7 +686,10 @@ model ClientProduct {
   invoices     Invoice[]
   webQuote     WebQuote?
 
-  @@unique([clientId, productId])
+  // Real DB-level uniqueness for every code except 'web' lives in a raw-SQL
+  // partial unique index (see this migration's .sql) — Prisma can't express
+  // "unique except when product.code = 'web'" via @@unique.
+  @@index([clientId, productId])
   @@index([clientId])
   @@index([productId])
   @@index([status])

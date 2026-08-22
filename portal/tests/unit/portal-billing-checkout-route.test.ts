@@ -15,8 +15,8 @@ const mockState = vi.hoisted(() => ({
   isProductContracted: vi.fn(),
   findUniqueProduct: vi.fn(),
   findUniqueClient: vi.fn(),
-  findUniqueClientProduct: vi.fn(),
-  clientProductUpsert: vi.fn(),
+  findFirstClientProduct: vi.fn(),
+  clientProductCreate: vi.fn(),
   clientProductUpdate: vi.fn(),
   clientProductAuditCreate: vi.fn(),
   ensureCustomerForTenant: vi.fn(),
@@ -26,7 +26,7 @@ const mockState = vi.hoisted(() => ({
 
 const mockTx = {
   clientProduct: {
-    upsert: (...args: unknown[]) => mockState.clientProductUpsert(...args),
+    create: (...args: unknown[]) => mockState.clientProductCreate(...args),
     update: (...args: unknown[]) => mockState.clientProductUpdate(...args),
   },
   clientProductAudit: {
@@ -51,7 +51,7 @@ vi.mock('@/lib/prisma', () => ({
     $transaction: (fn: (tx: typeof mockTx) => unknown) => fn(mockTx),
     product: { findUnique: (...args: unknown[]) => mockState.findUniqueProduct(...args) },
     chatbotClient: { findUnique: (...args: unknown[]) => mockState.findUniqueClient(...args) },
-    clientProduct: { findUnique: (...args: unknown[]) => mockState.findUniqueClientProduct(...args) },
+    clientProduct: { findFirst: (...args: unknown[]) => mockState.findFirstClientProduct(...args) },
   },
   isDatabaseConfigured: true,
 }));
@@ -110,8 +110,8 @@ beforeEach(() => {
   mockState.isProductContracted.mockReset().mockResolvedValue(false);
   mockState.findUniqueProduct.mockReset().mockResolvedValue(RECURRING_PRODUCT);
   mockState.findUniqueClient.mockReset().mockResolvedValue({ id: 'client_1', tenantId: 'tenant_1' });
-  mockState.findUniqueClientProduct.mockReset().mockResolvedValue(null);
-  mockState.clientProductUpsert.mockReset().mockResolvedValue({ id: 'cp_1' });
+  mockState.findFirstClientProduct.mockReset().mockResolvedValue(null);
+  mockState.clientProductCreate.mockReset().mockResolvedValue({ id: 'cp_1' });
   mockState.clientProductUpdate.mockReset().mockResolvedValue({ id: 'cp_1', status: 'cancelled' });
   mockState.clientProductAuditCreate.mockReset();
   mockState.ensureCustomerForTenant.mockReset().mockResolvedValue('cus_123');
@@ -143,7 +143,7 @@ describe('POST /api/portal/billing/checkout — auth and guards', () => {
     const body = await res.clone().json();
     expect(res.status).toBe(409);
     expect(body.error).toBe('already_contracted');
-    expect(mockState.clientProductUpsert).not.toHaveBeenCalled();
+    expect(mockState.clientProductCreate).not.toHaveBeenCalled();
     expect(mockState.checkoutSessionsCreate).not.toHaveBeenCalled();
   });
 
@@ -161,7 +161,7 @@ describe('POST /api/portal/billing/checkout — auth and guards', () => {
     const body = await res.clone().json();
     expect(res.status).toBe(400);
     expect(body.error).toBe('product_requires_quote');
-    expect(mockState.clientProductUpsert).not.toHaveBeenCalled();
+    expect(mockState.clientProductCreate).not.toHaveBeenCalled();
     expect(mockState.checkoutSessionsCreate).not.toHaveBeenCalled();
   });
 
@@ -180,16 +180,17 @@ describe('POST /api/portal/billing/checkout — auth and guards', () => {
 });
 
 describe('POST /api/portal/billing/checkout — ClientProduct pre-creation', () => {
-  it('upserts a pending_payment ClientProduct and writes a checkout_started audit row before calling Stripe', async () => {
+  it('creates a pending_payment ClientProduct and writes a checkout_started audit row before calling Stripe', async () => {
     const { POST } = await import('@/app/api/portal/billing/checkout/route');
     const res = await POST(makeRequest({ productId: RECURRING_PRODUCT.id }));
 
     expect(res.status).toBe(200);
-    expect(mockState.clientProductUpsert).toHaveBeenCalledWith(
+    expect(mockState.findFirstClientProduct).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { clientId: 'client_1', productId: RECURRING_PRODUCT.id } }),
+    );
+    expect(mockState.clientProductCreate).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { clientId_productId: { clientId: 'client_1', productId: RECURRING_PRODUCT.id } },
-        create: expect.objectContaining({ status: 'pending_payment' }),
-        update: expect.objectContaining({ status: 'pending_payment', cancelledAt: null }),
+        data: expect.objectContaining({ status: 'pending_payment' }),
       }),
     );
     expect(mockState.clientProductAuditCreate).toHaveBeenCalledWith({
@@ -206,9 +207,9 @@ describe('POST /api/portal/billing/checkout — ClientProduct pre-creation', () 
     const { POST } = await import('@/app/api/portal/billing/checkout/route');
     await POST(makeRequest({ productId: RECURRING_PRODUCT.id }));
 
-    const upsertCallIndex = mockState.clientProductUpsert.mock.invocationCallOrder[0];
+    const createCallIndex = mockState.clientProductCreate.mock.invocationCallOrder[0];
     const stripeCallIndex = mockState.checkoutSessionsCreate.mock.invocationCallOrder[0];
-    expect(upsertCallIndex).toBeLessThan(stripeCallIndex);
+    expect(createCallIndex).toBeLessThan(stripeCallIndex);
 
     expect(mockState.checkoutSessionsCreate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -293,7 +294,7 @@ describe('POST /api/portal/billing/checkout — Stripe failure rollback', () => 
   });
 
   it('reverts to the prior status (not cancelled) when the ClientProduct already existed before this attempt', async () => {
-    mockState.findUniqueClientProduct.mockResolvedValueOnce({ status: 'paused' });
+    mockState.findFirstClientProduct.mockResolvedValueOnce({ id: 'cp_1', status: 'paused' });
     mockState.checkoutSessionsCreate.mockRejectedValueOnce(new Error('stripe_down'));
     mockState.clientProductUpdate.mockResolvedValueOnce({ id: 'cp_1', status: 'paused' });
     const { POST } = await import('@/app/api/portal/billing/checkout/route');
