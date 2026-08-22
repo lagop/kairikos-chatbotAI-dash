@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 
 const BodySchema = z
   .object({
-    clientId: z.string().min(1),
+    clientProductId: z.string().uuid(),
     amountCents: z.number().int().nonnegative(),
     // WebQuote v2 — optional operator-entered advance/deposit. When set,
     // billing splits into a deposit invoice + a final-balance invoice
@@ -26,10 +26,15 @@ const BodySchema = z
 /**
  * POST /api/admin/portal/web-quotes
  *
- * First-time creation of a draft WebQuote for a client already in the
- * 'web' quote flow (ClientProduct.status='quote_pending' — created by
- * POST /api/portal/web-quote/request). No TOTP — a draft commits
- * nothing, "Enviar al cliente" is the compromising action.
+ * First-time creation of a draft WebQuote for one specific 'web' project
+ * (ClientProduct.status='quote_pending' — created by POST
+ * /api/portal/web-quote/request). No TOTP — a draft commits nothing,
+ * "Enviar al cliente" is the compromising action.
+ *
+ * WP-XX — takes clientProductId directly instead of resolving "the"
+ * web ClientProduct from clientId + code: a client can have multiple
+ * 'web' projects (see ClientProduct's schema comment), so the operator
+ * must always specify which one.
  */
 export async function POST(req: NextRequest) {
   const auth = await authenticateAdminRequest(req);
@@ -42,8 +47,8 @@ export async function POST(req: NextRequest) {
   }
 
   const clientProduct = await prisma.clientProduct.findFirst({
-    where: { clientId: body.data.clientId, product: { code: 'web' } },
-    select: { id: true, tenantId: true, status: true },
+    where: { id: body.data.clientProductId, product: { code: 'web' } },
+    select: { id: true, clientId: true, tenantId: true, status: true },
   });
   if (!clientProduct) return NextResponse.json({ error: 'client_product_not_found' }, { status: 404 });
   if (clientProduct.status !== 'quote_pending') {
@@ -58,7 +63,7 @@ export async function POST(req: NextRequest) {
   const webQuote = await prisma.$transaction(async (tx) => {
     const created = await tx.webQuote.create({
       data: {
-        clientId: body.data.clientId,
+        clientId: clientProduct.clientId,
         clientProductId: clientProduct.id,
         tenantId: clientProduct.tenantId,
         amountCents: body.data.amountCents,

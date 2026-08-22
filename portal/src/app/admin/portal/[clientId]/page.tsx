@@ -35,6 +35,17 @@ interface PageProps {
   searchParams: { tab?: string; product?: string };
 }
 
+// WP-XX — one entry per 'web' ClientProduct row (see WebProjects fetch
+// below). `label` helps the operator tell projects apart at a glance —
+// the submitted brief's business name when there is one, else a stable
+// fallback by creation order.
+interface WebProjectEntry {
+  clientProductId: string;
+  label: string;
+  webQuote: WebQuoteData | null;
+  invoice: WebQuoteInvoiceData | null;
+}
+
 function isProductCode(value: string): value is ProductCode {
   return (PRODUCT_CODES as readonly string[]).includes(value);
 }
@@ -315,10 +326,13 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
   let clientProducts: ClientProductRow[] = [];
   let assignableProducts: AssignableProduct[] = [];
   // WebQuote Fase 3 — populated only when productCode === 'web', so the
-  // custom-quote billing editor can render inside that product's tab.
-  let webQuoteClientProductId: string | null = null;
-  let webQuote: WebQuoteData | null = null;
-  let webQuoteInvoice: WebQuoteInvoiceData | null = null;
+  // custom-quote billing editor(s) can render inside that product's tab.
+  // WP-XX — a client can have multiple independent 'web' projects (see
+  // ClientProduct's schema comment), so this is now a list: one entry per
+  // 'web' ClientProduct row, each rendering its own WebQuoteEditor. The
+  // tab bar itself is unchanged — there's still one "web" tab, the
+  // multiplicity lives inside it.
+  let webProjects: WebProjectEntry[] = [];
   // WP: conexión de canales — Fase 5. Populated only when
   // productCode === CHATBOT_PRODUCT_CODE, so the read-only channels
   // panel (+ manual webhook-delivery retry) renders inside that
@@ -381,17 +395,28 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
         ]);
         conversationCount = count;
 
-        clientProducts = cpRows.map((cp) => ({
-          id: cp.id,
-          productId: cp.productId,
-          code: cp.product.code,
-          tier: cp.product.tier,
-          name: (isProductCode(cp.product.code) ? PRODUCT_CATALOGS[cp.product.code].label : null) ?? cp.product.name,
-          status: cp.status,
-          subscribedAt: cp.subscribedAt.toISOString(),
-          cancelledAt: cp.cancelledAt?.toISOString() ?? null,
-        }));
+        // WP-XX — 'web' is excluded from this generic panel entirely (both
+        // the assigned list and the assignable dropdown): it's managed
+        // exclusively via the quote flow (see the 'web' WebQuoteEditor
+        // block below). This panel's "Reactivar" button POSTs {clientId,
+        // productId} with no row id — after 'web' became exempt from the
+        // one-row-per-client rule, that POST always creates a FRESH row
+        // instead of reviving the one the operator clicked, silently
+        // orphaning it. Every other product code is unaffected.
+        clientProducts = cpRows
+          .filter((cp) => cp.product.code !== 'web')
+          .map((cp) => ({
+            id: cp.id,
+            productId: cp.productId,
+            code: cp.product.code,
+            tier: cp.product.tier,
+            name: (isProductCode(cp.product.code) ? PRODUCT_CATALOGS[cp.product.code].label : null) ?? cp.product.name,
+            status: cp.status,
+            subscribedAt: cp.subscribedAt.toISOString(),
+            cancelledAt: cp.cancelledAt?.toISOString() ?? null,
+          }));
         assignableProducts = allProducts
+          .filter((p) => p.code !== 'web')
           .filter((p) => !cpRows.some((cp) => cp.productId === p.id && cp.status === 'active'))
           .map((p) => ({
             id: p.id,
@@ -418,42 +443,56 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
               : (activeProductCodes[0] ?? CHATBOT_PRODUCT_CODE);
 
         if (productCode === 'web') {
-          const webCp = cpRows.find((cp) => cp.product.code === 'web');
-          if (webCp) {
-            webQuoteClientProductId = webCp.id;
-            const webQuoteRow = await prisma.webQuote.findUnique({ where: { clientProductId: webCp.id } });
-            webQuote = webQuoteRow
-              ? {
-                  id: webQuoteRow.id,
-                  status: webQuoteRow.status,
-                  amountCents: webQuoteRow.amountCents,
-                  depositCents: webQuoteRow.depositCents,
-                  currency: webQuoteRow.currency,
-                  description: webQuoteRow.description,
-                  sentAt: webQuoteRow.sentAt?.toISOString() ?? null,
-                  acceptedAt: webQuoteRow.acceptedAt?.toISOString() ?? null,
-                  cancelledAt: webQuoteRow.cancelledAt?.toISOString() ?? null,
-                }
-              : null;
-            if (
-              webQuoteRow &&
-              ['invoiced', 'invoiced_deposit', 'invoiced_final', 'paid'].includes(webQuoteRow.status)
-            ) {
-              const invoiceRow = await prisma.invoice.findFirst({
-                where: { clientProductId: webCp.id },
-                orderBy: { createdAt: 'desc' },
-              });
-              webQuoteInvoice = invoiceRow
-                ? {
-                    id: invoiceRow.id,
-                    status: invoiceRow.status,
-                    hostInvoiceUrl: invoiceRow.hostInvoiceUrl,
-                    paymentChannel: invoiceRow.paymentChannel,
-                    paymentReference: invoiceRow.paymentReference,
-                  }
-                : null;
-            }
-          }
+          // WP-XX — every 'web' row for this client, not just one (see
+          // WebProjectEntry) — cpRows is already ordered subscribedAt
+          // asc, so `index` gives a stable fallback label when the
+          // project's own brief has no businessName yet.
+          const webCps = cpRows.filter((cp) => cp.product.code === 'web');
+          webProjects = await Promise.all(
+            webCps.map(async (webCp, index) => {
+              const [webQuoteRow, brief] = await Promise.all([
+                prisma.webQuote.findUnique({ where: { clientProductId: webCp.id } }),
+                prisma.webBrief.findUnique({ where: { clientProductId: webCp.id }, select: { businessName: true } }),
+              ]);
+              let invoice: WebQuoteInvoiceData | null = null;
+              if (
+                webQuoteRow &&
+                ['invoiced', 'invoiced_deposit', 'invoiced_final', 'paid'].includes(webQuoteRow.status)
+              ) {
+                const invoiceRow = await prisma.invoice.findFirst({
+                  where: { clientProductId: webCp.id },
+                  orderBy: { createdAt: 'desc' },
+                });
+                invoice = invoiceRow
+                  ? {
+                      id: invoiceRow.id,
+                      status: invoiceRow.status,
+                      hostInvoiceUrl: invoiceRow.hostInvoiceUrl,
+                      paymentChannel: invoiceRow.paymentChannel,
+                      paymentReference: invoiceRow.paymentReference,
+                    }
+                  : null;
+              }
+              return {
+                clientProductId: webCp.id,
+                label: brief?.businessName || `Proyecto ${index + 1} · desde ${webCp.subscribedAt.toISOString().slice(0, 10)}`,
+                webQuote: webQuoteRow
+                  ? {
+                      id: webQuoteRow.id,
+                      status: webQuoteRow.status,
+                      amountCents: webQuoteRow.amountCents,
+                      depositCents: webQuoteRow.depositCents,
+                      currency: webQuoteRow.currency,
+                      description: webQuoteRow.description,
+                      sentAt: webQuoteRow.sentAt?.toISOString() ?? null,
+                      acceptedAt: webQuoteRow.acceptedAt?.toISOString() ?? null,
+                      cancelledAt: webQuoteRow.cancelledAt?.toISOString() ?? null,
+                    }
+                  : null,
+                invoice,
+              };
+            }),
+          );
         }
 
         if (productCode === CHATBOT_PRODUCT_CODE) {
@@ -776,13 +815,19 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
             </section>
           ) : null}
 
-          {productCode === 'web' && webQuoteClientProductId ? (
-            <WebQuoteEditor
-              clientId={params.clientId}
-              clientProductId={webQuoteClientProductId}
-              webQuote={webQuote}
-              invoice={webQuoteInvoice}
-            />
+          {productCode === 'web' && webProjects.length > 0 ? (
+            <div className="space-y-4">
+              {webProjects.map((project) => (
+                <section key={project.clientProductId} data-testid="web-project-editor" data-client-product-id={project.clientProductId}>
+                  <h3 className="mb-2 text-sm font-semibold text-kairikos-muted">{project.label}</h3>
+                  <WebQuoteEditor
+                    clientProductId={project.clientProductId}
+                    webQuote={project.webQuote}
+                    invoice={project.invoice}
+                  />
+                </section>
+              ))}
+            </div>
           ) : null}
 
           <section className="card" aria-label="Onboarding del cliente">
