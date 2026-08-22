@@ -81,8 +81,24 @@ export default async function PortalHome({
     try {
       const contractedCodes = new Set<string>(data.products.map((p) => p.productCode));
       const allActiveProducts = await prisma.product.findMany({ where: { isActive: true }, select: { code: true } });
+      // Bug found 2026-08-22 via manual QA: 'web' kept appearing here as
+      // "available" for a client who had already requested a quote
+      // (ClientProduct.status: 'quote_pending') — data.products only
+      // contains active|paused rows (getDashboardData.ts), so a
+      // quote_pending row (neither contracted nor cancelled) fell
+      // through this filter's contractedCodes check untouched.
+      // /portal/productos already has the real rule for this exact
+      // case (RequestWebQuoteCard renders only when there's no
+      // non-cancelled 'web' row) — mirror it here so this teaser never
+      // points at a product the destination page then shows no card
+      // for at all.
+      const webRow = await prisma.clientProduct.findFirst({
+        where: { clientId: resolved.clientId, product: { code: 'web' } },
+        select: { status: true },
+      });
+      const webAlreadyInFlight = Boolean(webRow) && webRow!.status !== 'cancelled';
       availableProductCodes = Array.from(new Set(allActiveProducts.map((p) => p.code))).filter(
-        (code) => !contractedCodes.has(code),
+        (code) => !contractedCodes.has(code) && !(code === 'web' && webAlreadyInFlight),
       );
     } catch (err) {
       logError('portal_home.available_products', err, { route: '/portal', clientId: resolved.clientId });
