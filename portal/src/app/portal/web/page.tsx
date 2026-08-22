@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { requirePortalSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
-import { canAccessWebProduct } from '@/lib/client-product-access';
+import { WEB_ACCESSIBLE_STATUSES } from '@/lib/client-product-access';
 import { resolveWebQuoteContext } from '@/lib/web-quotes';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { ProductPitch } from '@/components/portal/ProductPitch';
@@ -43,12 +43,20 @@ export default async function PortalWebPage({ searchParams }: { searchParams: { 
     redirect('/portal/login?next=/portal/web');
   }
 
-  const hasWeb =
+  // WP-XX — fetched directly (not via canAccessWebProduct's boolean) so
+  // the page also has the row's own id to scope the brief/quote to this
+  // specific project — still 1:1 in practice (Phase 3 is what lets a
+  // second row exist), matched against the same WEB_ACCESSIBLE_STATUSES
+  // canAccessWebProduct itself uses so the two never drift apart.
+  const webClientProduct =
     isDatabaseConfigured && resolved.source === 'database'
-      ? await canAccessWebProduct(prisma, resolved.clientId)
-      : false;
+      ? await prisma.clientProduct.findFirst({
+          where: { clientId: resolved.clientId, status: { in: WEB_ACCESSIBLE_STATUSES }, product: { code: 'web' } },
+          select: { id: true },
+        })
+      : null;
 
-  if (!hasWeb) {
+  if (!webClientProduct) {
     return (
       <div className="space-y-6">
         <PageHeading eyebrow="Portal" title="Plataforma web profesional" />
@@ -101,7 +109,7 @@ export default async function PortalWebPage({ searchParams }: { searchParams: { 
     }
   }
 
-  const brief = await prisma.webBrief.findUnique({ where: { clientId: resolved.clientId } });
+  const brief = await prisma.webBrief.findUnique({ where: { clientProductId: webClientProduct.id } });
   const wantsEdit = searchParams.edit === '1';
 
   if (brief?.status === 'submitted' && !wantsEdit) {
@@ -187,7 +195,7 @@ export default async function PortalWebPage({ searchParams }: { searchParams: { 
         description="Contanos sobre tu negocio para que empecemos a diseñar tu sitio."
       />
       {isQuotePending ? <WebQuoteCard webQuote={webQuote} invoice={webQuoteInvoice} /> : null}
-      <WebBriefForm initial={initial} />
+      <WebBriefForm clientProductId={webClientProduct.id} initial={initial} />
     </div>
   );
 }

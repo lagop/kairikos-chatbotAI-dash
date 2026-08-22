@@ -100,7 +100,13 @@ function CheckboxGroup({
   );
 }
 
-export function WebBriefForm({ initial }: { initial: Partial<WebBriefFormValues> | null }) {
+export function WebBriefForm({
+  clientProductId,
+  initial,
+}: {
+  clientProductId: string;
+  initial: Partial<WebBriefFormValues> | null;
+}) {
   const router = useRouter();
   const [values, setValues] = useState<WebBriefFormValues>({ ...EMPTY_VALUES, ...initial });
   const [busy, setBusy] = useState<'draft' | 'submit' | null>(null);
@@ -126,6 +132,7 @@ export function WebBriefForm({ initial }: { initial: Partial<WebBriefFormValues>
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          clientProductId,
           businessName: values.businessName,
           vertical: values.vertical || undefined,
           goal: values.goal || undefined,
