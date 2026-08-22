@@ -5,13 +5,9 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { requirePortalSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { WEB_ACCESSIBLE_STATUSES } from '@/lib/client-product-access';
-import { resolveWebQuoteContext } from '@/lib/web-quotes';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { ProductPitch } from '@/components/portal/ProductPitch';
 import { RequestWebQuoteCard } from '@/components/portal/RequestWebQuoteCard';
-import { WebBriefForm, type WebBriefFormValues } from '@/components/portal/WebBriefForm';
-import { WebQuoteCard, type ClientWebQuoteData, type ClientWebQuoteInvoiceData } from '@/components/portal/WebQuoteCard';
-import { GOAL_LABELS, CONTENT_PROVIDED_BY_LABELS, type GOAL_OPTIONS, type CONTENT_PROVIDED_BY_OPTIONS } from '@/lib/web-brief-schema';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,42 +17,37 @@ export const metadata: Metadata = {
 };
 
 // =============================================================================
-// Real, standalone content page for the 'web' product — see
-// prisma/schema.prisma's WebBrief model comment for why this is a single
-// form, not a multi-step wizard reusing the chatbot's engine.
-//
-// This is a real folder (not the generic /portal/[product] catch-all), so
-// Next.js resolves requests to /portal/web here automatically — no entry
-// needed in that page's CANONICAL_HREF map (that map only exists for
-// products whose real folder name differs from their product code;
-// 'web' already matches).
+// WP-XX — a client can have multiple independent 'web' projects (see
+// ClientProduct's schema comment), each with its own brief/quote/detail
+// page at /portal/web/[clientProductId]. This page is now purely a
+// resolver: 0 projects → the pitch (unchanged); exactly 1 → redirect
+// straight to that project's detail page (preserves today's UX for the
+// ~100% of clients who have exactly one); 2+ → a simple picker list.
 // =============================================================================
 
-function jsonToStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
-}
+const STATUS_LABEL: Record<string, string> = {
+  quote_pending: 'Presupuesto en curso',
+  active: 'Activo',
+  paused: 'Pausado',
+};
 
-export default async function PortalWebPage({ searchParams }: { searchParams: { edit?: string } }) {
+export default async function PortalWebPage() {
   await requirePortalSession();
   const resolved = await resolveClientFromSession();
   if (!resolved) {
     redirect('/portal/login?next=/portal/web');
   }
 
-  // WP-XX — fetched directly (not via canAccessWebProduct's boolean) so
-  // the page also has the row's own id to scope the brief/quote to this
-  // specific project — still 1:1 in practice (Phase 3 is what lets a
-  // second row exist), matched against the same WEB_ACCESSIBLE_STATUSES
-  // canAccessWebProduct itself uses so the two never drift apart.
-  const webClientProduct =
+  const projects =
     isDatabaseConfigured && resolved.source === 'database'
-      ? await prisma.clientProduct.findFirst({
+      ? await prisma.clientProduct.findMany({
           where: { clientId: resolved.clientId, status: { in: WEB_ACCESSIBLE_STATUSES }, product: { code: 'web' } },
-          select: { id: true },
+          orderBy: { subscribedAt: 'asc' },
+          select: { id: true, status: true, webBrief: { select: { businessName: true } } },
         })
-      : null;
+      : [];
 
-  if (!webClientProduct) {
+  if (projects.length === 0) {
     return (
       <div className="space-y-6">
         <PageHeading eyebrow="Portal" title="Plataforma web profesional" />
@@ -75,137 +66,36 @@ export default async function PortalWebPage({ searchParams }: { searchParams: { 
     );
   }
 
-  // WebQuote Fase 4 — while the 'web' ClientProduct is still in
-  // 'quote_pending' (pre-payment), show the quote status above the
-  // brief. Once it flips to 'active', this stays null and the page
-  // behaves exactly as before.
-  let isQuotePending = false;
-  let webQuote: ClientWebQuoteData | null = null;
-  let webQuoteInvoice: ClientWebQuoteInvoiceData | null = null;
-  if (isDatabaseConfigured && resolved.source === 'database') {
-    const context = await resolveWebQuoteContext(prisma, resolved.clientId);
-    if (context?.clientProduct.status === 'quote_pending') {
-      isQuotePending = true;
-      webQuote = context.webQuote
-        ? {
-            status: context.webQuote.status,
-            amountCents: context.webQuote.amountCents,
-            depositCents: context.webQuote.depositCents,
-            currency: context.webQuote.currency,
-            description: context.webQuote.description,
-          }
-        : null;
-      if (
-        context.webQuote &&
-        ['invoiced', 'invoiced_deposit', 'invoiced_final', 'paid'].includes(context.webQuote.status)
-      ) {
-        const invoiceRow = await prisma.invoice.findFirst({
-          where: { clientProductId: context.clientProduct.id },
-          orderBy: { createdAt: 'desc' },
-          select: { hostInvoiceUrl: true },
-        });
-        webQuoteInvoice = invoiceRow ? { hostInvoiceUrl: invoiceRow.hostInvoiceUrl } : null;
-      }
-    }
+  if (projects.length === 1) {
+    redirect(`/portal/web/${projects[0].id}`);
   }
 
-  const brief = await prisma.webBrief.findUnique({ where: { clientProductId: webClientProduct.id } });
-  const wantsEdit = searchParams.edit === '1';
-
-  if (brief?.status === 'submitted' && !wantsEdit) {
-    const pages = jsonToStringArray(brief.pagesNeeded);
-    const integrations = jsonToStringArray(brief.integrationsNeeded);
-    return (
-      <div className="space-y-6">
-        <PageHeading
-          eyebrow="Portal"
-          title="Plataforma web profesional"
-          description={`Brief enviado ${brief.submittedAt ? new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }).format(brief.submittedAt) : ''}.`}
-          actions={
-            <Link href="/portal/web?edit=1" className="btn-ghost" data-testid="web-brief-edit-link">
-              Editar respuestas
-            </Link>
-          }
-        />
-        {isQuotePending ? <WebQuoteCard webQuote={webQuote} invoice={webQuoteInvoice} /> : null}
-        <div className="card space-y-4" data-testid="web-brief-summary">
-          <SummaryRow label="Negocio" value={brief.businessName} />
-          <SummaryRow label="Sector" value={brief.vertical} />
-          <SummaryRow
-            label="Objetivo"
-            value={brief.goal ? (GOAL_LABELS[brief.goal as (typeof GOAL_OPTIONS)[number]] ?? brief.goal) : null}
-          />
-          <SummaryRow label="Público objetivo" value={brief.targetAudience} />
-          <SummaryRow
-            label="Marca existente"
-            value={brief.hasExistingBrand === null ? null : brief.hasExistingBrand ? 'Sí' : 'No'}
-          />
-          <SummaryRow label="Notas de marca" value={brief.brandAssetsNote} />
-          <SummaryRow label="Páginas" value={pages.length > 0 ? pages.join(', ') : null} />
-          <SummaryRow label="Otras páginas" value={brief.otherPagesNote} />
-          <SummaryRow
-            label="Textos"
-            value={
-              brief.contentProvidedBy
-                ? (CONTENT_PROVIDED_BY_LABELS[brief.contentProvidedBy as (typeof CONTENT_PROVIDED_BY_OPTIONS)[number]] ?? brief.contentProvidedBy)
-                : null
-            }
-          />
-          <SummaryRow label="Dominio deseado" value={brief.desiredDomain} />
-          <SummaryRow label="Referencias" value={brief.referenceWebsites} />
-          <SummaryRow label="Integraciones" value={integrations.length > 0 ? integrations.join(', ') : null} />
-          <SummaryRow label="Otras integraciones" value={brief.otherIntegrationsNote} />
-          <SummaryRow label="Notas adicionales" value={brief.additionalNotes} />
-        </div>
-        <p className="text-sm text-kairikos-muted">
-          ¿Necesitás cambiar algo que no está en este formulario?{' '}
-          <Link href="/portal/support" className="underline hover:text-kairikos-text">
-            Escribinos a soporte
-          </Link>
-          .
-        </p>
-      </div>
-    );
-  }
-
-  const initial: Partial<WebBriefFormValues> | null = brief
-    ? {
-        businessName: brief.businessName ?? '',
-        vertical: brief.vertical ?? '',
-        goal: brief.goal ?? '',
-        targetAudience: brief.targetAudience ?? '',
-        hasExistingBrand: brief.hasExistingBrand,
-        brandAssetsNote: brief.brandAssetsNote ?? '',
-        pagesNeeded: jsonToStringArray(brief.pagesNeeded),
-        otherPagesNote: brief.otherPagesNote ?? '',
-        contentProvidedBy: brief.contentProvidedBy ?? '',
-        desiredDomain: brief.desiredDomain ?? '',
-        referenceWebsites: brief.referenceWebsites ?? '',
-        integrationsNeeded: jsonToStringArray(brief.integrationsNeeded),
-        otherIntegrationsNote: brief.otherIntegrationsNote ?? '',
-        additionalNotes: brief.additionalNotes ?? '',
-      }
-    : null;
+  const hasInFlightRequest = projects.some((p) => p.status === 'quote_pending');
 
   return (
     <div className="space-y-6">
       <PageHeading
         eyebrow="Portal"
         title="Plataforma web profesional"
-        description="Contanos sobre tu negocio para que empecemos a diseñar tu sitio."
+        description="Tienes varios proyectos web — elige uno para ver su detalle."
       />
-      {isQuotePending ? <WebQuoteCard webQuote={webQuote} invoice={webQuoteInvoice} /> : null}
-      <WebBriefForm clientProductId={webClientProduct.id} initial={initial} />
-    </div>
-  );
-}
-
-function SummaryRow({ label, value }: { label: string; value: string | null }) {
-  if (!value) return null;
-  return (
-    <div>
-      <p className="text-xs font-semibold uppercase tracking-wider text-kairikos-muted">{label}</p>
-      <p className="mt-1 whitespace-pre-wrap text-sm">{value}</p>
+      <ul className="space-y-3" data-testid="web-project-list">
+        {projects.map((project, index) => (
+          <li key={project.id}>
+            <Link
+              href={`/portal/web/${project.id}`}
+              className="card flex items-center justify-between gap-3 transition hover:border-kairikos-accent/40"
+              data-testid="web-project-row"
+            >
+              <span className="font-medium">{project.webBrief?.businessName || `Proyecto ${index + 1}`}</span>
+              <span className="pill-muted" data-testid={`web-project-status-${project.id}`}>
+                {STATUS_LABEL[project.status] ?? project.status}
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+      {!hasInFlightRequest ? <RequestWebQuoteCard label="Solicitar otro proyecto" /> : null}
     </div>
   );
 }

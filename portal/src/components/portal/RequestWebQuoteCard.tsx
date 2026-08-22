@@ -1,15 +1,19 @@
 'use client';
 
 import { useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 
 // =============================================================================
 // WebQuote Fase 4 — replaces the fixed-price SelfServeProductCard for
 // 'web' on /portal/productos. The 'web' product no longer has a single
 // price to charge (each project gets a custom quote), so this is a
-// single free action: request a quote. Creates ClientProduct('web') in
-// 'quote_pending' via POST /api/portal/web-quote/request, then sends
-// the client to /portal/web where the brief + WebQuoteCard live.
+// single free action: request a quote. Creates a new ClientProduct('web')
+// row in 'quote_pending' via POST /api/portal/web-quote/request, then
+// sends the client straight to that project's own /portal/web/[id] detail
+// page (brief + WebQuoteCard). WP-XX — every request now creates a
+// distinct project with its own id (see ClientProduct's schema comment),
+// so the destination is always a genuinely new path — no same-pathname
+// no-op case to special-case here anymore.
 // =============================================================================
 
 const ERROR_LABEL: Record<string, string> = {
@@ -20,7 +24,6 @@ const ERROR_LABEL: Record<string, string> = {
 
 export function RequestWebQuoteCard({ label }: { label: string }) {
   const router = useRouter();
-  const pathname = usePathname();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,21 +38,8 @@ export function RequestWebQuoteCard({ label }: { label: string }) {
         setBusy(false);
         return;
       }
-      // This card now renders both on /portal/productos (needs a real
-      // cross-page navigation) and on /portal/web's own "not requested
-      // yet" pitch (WebQuote v2 sidebar work). push()ing to the current
-      // URL is a same-pathname no-op in the App Router — it never
-      // remounts this component, leaving it stuck on "Solicitando…"
-      // forever even though the request succeeded — and calling
-      // refresh() and push() together races two competing RSC fetches,
-      // where push()'s aborts refresh()'s before it applies. So: when
-      // already on /portal/web, just refresh (the page stops rendering
-      // this card once hasWeb flips true); otherwise navigate there.
-      if (pathname === '/portal/web') {
-        router.refresh();
-      } else {
-        router.push('/portal/web');
-      }
+      const body: { clientProductId: string } = await res.json();
+      router.push(`/portal/web/${body.clientProductId}`);
     } catch (err) {
       setError(`Error de red: ${err instanceof Error ? err.message : 'desconocido'}`);
       setBusy(false);
