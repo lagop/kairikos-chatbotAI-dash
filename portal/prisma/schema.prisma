@@ -134,6 +134,7 @@ model ChatbotClient {
   recallSubscriptions       RecallSubscription[]
   recallSubscriptionAudits  RecallSubscriptionAudit[]
   callEvents                CallEvent[]
+  whatsappTemplates         WhatsappTemplate[]
 
   @@index([stripeCustomerId])
   @@index([tier])
@@ -1791,14 +1792,93 @@ model MetaChannelConnection {
   connectedAt           DateTime @default(now()) @map("connected_at")
   lastSyncError         String?  @map("last_sync_error")
 
+  // WP-XX — token lifecycle. Meta's long-lived tokens expire in ~60 days
+  // and the exchange has always RETURNED `expires_in`, but the portal
+  // discarded it: there was no column to put it in, and nothing anywhere
+  // ever wrote status='needs_reconnect'. For a chatbot answering inbound
+  // messages that degrades quietly; for a product that sends scheduled
+  // outbound messages it is a guaranteed silent death two months after
+  // every connection. NULL means "unknown" — rows connected before this
+  // column existed, which are treated as needing a re-check rather than
+  // assumed fine.
+  tokenExpiresAt        DateTime? @map("token_expires_at")
+  // Set when the operator has already been told this connection is about
+  // to die, so the warning is not repeated on every scheduler tick.
+  expiryWarnedAt        DateTime? @map("expiry_warned_at")
+
+  // WP-XX — the business's REAL number in E.164, from
+  // GET /{phone_number_id}. Previously the portal only stored
+  // phone_number_id and a label of 'WhatsApp (<wabaId>)', so nobody could
+  // answer "which number does this client send from". WhatsApp only.
+  displayPhoneNumber    String?  @map("display_phone_number")
+  verifiedName          String?  @map("verified_name")
+  // Meta's own rating of the number ('GREEN' | 'YELLOW' | 'RED'). It
+  // degrades when recipients report or block the business, and a RED
+  // number gets restricted — which for this product means the client
+  // loses the WhatsApp they work with every day, so it is worth watching.
+  qualityRating         String?  @map("quality_rating")
+
   client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   recallSubscriptions RecallSubscription[]
+  whatsappTemplates   WhatsappTemplate[]
 
   @@unique([clientId, channel, externalId])
   @@index([tenantId])
   @@index([status])
   @@index([channel])
+  // Drives the expiry sweep: find connections due to be warned about.
+  @@index([tokenExpiresAt])
+}
+
+// =============================================================================
+// WP-XX — per-client registry of the WhatsApp message templates Meta has
+// approved (or rejected, or paused) for a connection.
+//
+// PER CLIENT, not global, and that is the operationally significant part:
+// with Coexistence every client keeps their own WABA, so templates are
+// registered and reviewed per business. N clients means N sets of Meta
+// approvals, each 1-2 days, each sitting squarely in the critical path of
+// that client's alta. Modelling it makes the wait visible in the operator
+// queue instead of being discovered by a send that fails.
+//
+// The row is a MIRROR of Meta's state, refreshed by polling
+// listMessageTemplates — never the source of truth. Meta can pause a
+// template for quality at any moment without telling us, which is why
+// `status` here is re-synced rather than only written when we create one.
+// =============================================================================
+model WhatsappTemplate {
+  id           String @id @default(uuid()) @db.Uuid
+  clientId     String @map("client_id")
+  connectionId String @map("connection_id") @db.Uuid
+
+  // Meta's template name, e.g. 'recall_missed_call'. Unique per
+  // (connection, name, language) the same way Meta scopes it.
+  name         String
+  languageCode String @map("language_code")
+
+  // Meta's own id for the template, once it exists there.
+  metaTemplateId String? @map("meta_template_id")
+
+  // 'PENDING' | 'APPROVED' | 'REJECTED' | 'PAUSED' | 'DISABLED' —
+  // Meta's vocabulary, uppercased as Meta returns it, so a value we do
+  // not recognise still round-trips honestly instead of being coerced.
+  status   String  @default("PENDING")
+  category String?
+  // Meta's reason when it rejects. This is what an operator needs to fix
+  // the copy and resubmit, and it is not derivable from anything else.
+  rejectedReason String? @map("rejected_reason")
+
+  lastCheckedAt DateTime? @map("last_checked_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  client     ChatbotClient         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  connection MetaChannelConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, name, languageCode])
+  @@index([clientId])
+  @@index([status])
 }
 
 // El puente hacia n8n — portal → n8n únicamente (no hay lectura directa

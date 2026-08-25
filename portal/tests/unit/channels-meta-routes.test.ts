@@ -21,6 +21,7 @@ const mockState = vi.hoisted(() => ({
   revokeMetaAccess: vi.fn(),
   subscribeWaba: vi.fn(),
   unsubscribeWaba: vi.fn(),
+  getPhoneNumberInfo: vi.fn(),
   subscribePage: vi.fn(),
   deliverChannelEvent: vi.fn(),
   findUniqueClient: vi.fn(),
@@ -59,6 +60,7 @@ vi.mock('@/lib/meta-business', () => ({
 vi.mock('@/lib/whatsapp-api', () => ({
   subscribeWaba: (...args: unknown[]) => mockState.subscribeWaba(...args),
   unsubscribeWaba: (...args: unknown[]) => mockState.unsubscribeWaba(...args),
+  getPhoneNumberInfo: (...args: unknown[]) => mockState.getPhoneNumberInfo(...args),
 }));
 
 vi.mock('@/lib/messenger-api', () => ({
@@ -107,6 +109,9 @@ beforeEach(() => {
   mockState.revokeMetaAccess.mockReset().mockResolvedValue(true);
   mockState.subscribeWaba.mockReset().mockResolvedValue({ ok: true, data: { success: true } });
   mockState.unsubscribeWaba.mockReset().mockResolvedValue({ ok: true, data: { success: true } });
+  mockState.getPhoneNumberInfo
+    .mockReset()
+    .mockResolvedValue({ ok: true, data: { display_phone_number: '+34600112233', verified_name: 'Fontanería Aurora', quality_rating: 'GREEN' } });
   mockState.subscribePage.mockReset().mockResolvedValue({ ok: true, data: { success: true } });
   mockState.deliverChannelEvent.mockReset().mockResolvedValue({ ok: true, deliveryId: 'dlv_1', status: 'delivered' });
   mockState.findUniqueClient.mockReset().mockResolvedValue({ tenantId: 'tenant_1' });
@@ -162,6 +167,68 @@ describe('POST /api/portal/channels/meta/complete-signup', () => {
     const { POST } = await import('@/app/api/portal/channels/meta/complete-signup/route');
     const res = await POST(jsonRequest({ code: 'bad_code' }));
     expect(res.status).toBe(502);
+  });
+
+  // WP-XX — Meta has always returned `expires_in` on the exchange and the
+  // portal always discarded it, so nothing knew when a connection would
+  // die. For a product that sends on a schedule that is a guaranteed
+  // silent outage ~60 days after every connection.
+  it('persists the token expiry instead of discarding it', async () => {
+    mockState.exchangeForLongLivedToken.mockResolvedValue({ accessToken: 'long_lived', expiresIn: 5184000 });
+    const before = Date.now();
+
+    const { POST } = await import('@/app/api/portal/channels/meta/complete-signup/route');
+    await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: 'waba_1', phoneNumberId: 'phone_1' } }));
+
+    const { create, update } = mockState.metaUpsert.mock.calls[0][0];
+    for (const data of [create, update]) {
+      const expiresAt = data.tokenExpiresAt as Date;
+      expect(expiresAt).toBeInstanceOf(Date);
+      // ~60 days out, allowing for the clock moving during the test.
+      expect(expiresAt.getTime()).toBeGreaterThanOrEqual(before + 5184000 * 1000 - 5000);
+    }
+    // A reconnect is a fresh token with a fresh clock, so the operator
+    // must be warned again about THIS one.
+    expect(update.expiryWarnedAt).toBeNull();
+  });
+
+  it('leaves the expiry unknown rather than inventing one when Meta omits it', async () => {
+    mockState.exchangeCodeForToken.mockResolvedValue({ accessToken: 'short_lived', expiresIn: null });
+    mockState.exchangeForLongLivedToken.mockResolvedValue({ accessToken: 'long_lived', expiresIn: null });
+
+    const { POST } = await import('@/app/api/portal/channels/meta/complete-signup/route');
+    await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: 'waba_1', phoneNumberId: 'phone_1' } }));
+
+    expect(mockState.metaUpsert.mock.calls[0][0].create.tokenExpiresAt).toBeNull();
+  });
+
+  it('resolves and stores the real phone number, which the portal never knew before', async () => {
+    const { POST } = await import('@/app/api/portal/channels/meta/complete-signup/route');
+    await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: 'waba_1', phoneNumberId: 'phone_1' } }));
+
+    expect(mockState.getPhoneNumberInfo).toHaveBeenCalledWith('long_lived', 'phone_1');
+    expect(mockState.metaUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          displayPhoneNumber: '+34600112233',
+          verifiedName: 'Fontanería Aurora',
+          qualityRating: 'GREEN',
+          // Relabelled with something a human can read instead of the
+          // WABA id.
+          label: 'WhatsApp +34600112233',
+        }),
+      }),
+    );
+  });
+
+  it('still connects when the number lookup fails — a missing label must not fail the connection', async () => {
+    mockState.getPhoneNumberInfo.mockResolvedValue({ ok: false, error: 'meta_down' });
+
+    const { POST } = await import('@/app/api/portal/channels/meta/complete-signup/route');
+    const res = await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: 'waba_1', phoneNumberId: 'phone_1' } }));
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).connected).toHaveLength(1);
   });
 
   it('connects the WhatsApp surface when provided and allowed, storing wabaId and subscribing the app', async () => {

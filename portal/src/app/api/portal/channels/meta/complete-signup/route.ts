@@ -12,7 +12,7 @@ import {
   fetchPagesWithInstagram,
   encryptMetaToken,
 } from '@/lib/meta-business';
-import { subscribeWaba } from '@/lib/whatsapp-api';
+import { subscribeWaba, getPhoneNumberInfo } from '@/lib/whatsapp-api';
 import { subscribePage } from '@/lib/messenger-api';
 import { deliverChannelEvent } from '@/lib/channel-webhook';
 import { logError } from '@/lib/observability';
@@ -84,6 +84,12 @@ export async function POST(req: NextRequest) {
   }
   const longLived = await exchangeForLongLivedToken(shortLived.accessToken);
   const accessToken = longLived?.accessToken ?? shortLived.accessToken;
+  // WP-XX — Meta has always returned this and the portal has always
+  // thrown it away, so nothing knew when a connection was going to die.
+  // Long-lived tokens last ~60 days; for a product that sends on a
+  // schedule, an unnoticed expiry is a silent outage for that client.
+  const expiresIn = longLived?.expiresIn ?? shortLived.expiresIn;
+  const tokenExpiresAt = expiresIn ? new Date(Date.now() + expiresIn * 1000) : null;
 
   const client = await prisma.chatbotClient.findUnique({
     where: { id: resolved.clientId },
@@ -116,6 +122,11 @@ export async function POST(req: NextRequest) {
         accessTokenTag: encrypted.tag,
         status: 'active',
         lastSyncError: null,
+        tokenExpiresAt,
+        // A reconnect resets the warning: this is a fresh token with a
+        // fresh clock, and the operator should be told again when THIS
+        // one is about to die.
+        expiryWarnedAt: null,
       },
       create: {
         clientId,
@@ -128,6 +139,7 @@ export async function POST(req: NextRequest) {
         accessTokenIv: encrypted.iv,
         accessTokenTag: encrypted.tag,
         status: 'active',
+        tokenExpiresAt,
       },
     });
 
@@ -145,6 +157,31 @@ export async function POST(req: NextRequest) {
           .update({ where: { id: connection.id }, data: { lastSyncError: subscribeResult.error.slice(0, 500) } })
           .catch(() => null);
         logError('channels.meta_complete_signup.subscribe_waba_failed', new Error(subscribeResult.error), { clientId, wabaId }, 'warn');
+      }
+
+      // WP-XX — resolve what the client's number ACTUALLY is. Until now
+      // the row only ever held phone_number_id and a label of
+      // 'WhatsApp (<wabaId>)', so no support conversation could answer
+      // "which number is this client sending from". Best-effort for the
+      // same reason as the subscription above: the connection succeeded,
+      // and a missing display name must not fail it.
+      const info = await getPhoneNumberInfo(accessToken, externalId);
+      if (info.ok) {
+        await prisma.metaChannelConnection
+          .update({
+            where: { id: connection.id },
+            data: {
+              displayPhoneNumber: info.data.display_phone_number ?? null,
+              verifiedName: info.data.verified_name ?? null,
+              qualityRating: info.data.quality_rating ?? null,
+              // Now that the real number is known, label it with that
+              // rather than the WABA id nobody can read.
+              ...(info.data.display_phone_number
+                ? { label: `WhatsApp ${info.data.display_phone_number}` }
+                : {}),
+            },
+          })
+          .catch(() => null);
       }
     }
 
