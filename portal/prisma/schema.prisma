@@ -133,6 +133,7 @@ model ChatbotClient {
   leadAudits                LeadAudit[]
   recallSubscriptions       RecallSubscription[]
   recallSubscriptionAudits  RecallSubscriptionAudit[]
+  callEvents                CallEvent[]
 
   @@index([stripeCustomerId])
   @@index([tier])
@@ -506,6 +507,7 @@ model Tenant {
   leads                     Lead[]
   leadAudits                LeadAudit[]
   recallSubscriptions       RecallSubscription[]
+  callEvents                CallEvent[]
 
   @@index([slug])
   @@index([status])
@@ -1944,6 +1946,7 @@ model Lead {
   tenant       Tenant?              @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   conversation ChatbotConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
   auditLogs    LeadAudit[]
+  callEvents   CallEvent[]
 
   @@index([clientId, status])
   @@index([clientId, createdAt])
@@ -2069,6 +2072,7 @@ model RecallSubscription {
   // resource and it is the pool row that records who currently holds it,
   // so claiming and releasing are each a single write on one row.
   virtualNumber    VirtualNumber?
+  callEvents       CallEvent[]
 
   @@index([clientId])
   @@index([status])
@@ -2169,8 +2173,97 @@ model VirtualNumber {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   subscription RecallSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  callEvents   CallEvent[]
 
   @@index([status])
   @@index([provider])
   @@index([countryCode, status])
+}
+
+// =============================================================================
+// WP-XX — One row per call that reached a client's virtual number, i.e.
+// per call the client did NOT answer (conditional forwarding only sends
+// us the ones they missed — we never intercept a call they took).
+//
+// `twilioCallSid` is @unique and is the idempotency key: Twilio retries
+// webhooks on any non-2xx, and a retried voice webhook must find the
+// existing row rather than create a second one.
+//
+// RECORDINGS ARE NOT STORED HERE. Twilio hosts the audio; we keep the SID
+// and URL and delete it at Twilio at 30 days (RGPD — we are the processor,
+// the client is the controller). `recordingDeletedAt` is what the purge
+// job stamps. Storing third-party voice recordings in our own database
+// would turn a 30-day retention promise into a backup-retention problem.
+// =============================================================================
+model CallEvent {
+  id             String  @id @default(uuid()) @db.Uuid
+  clientId       String  @map("client_id")
+  subscriptionId String  @map("subscription_id") @db.Uuid
+  tenantId       String? @map("tenant_id") @db.Uuid
+
+  twilioCallSid String @unique @map("twilio_call_sid")
+
+  // Null/withheld when the caller hid their number. Kept as a distinct
+  // flag rather than inferred from a null, because "we don't know who
+  // called" and "we haven't parsed it yet" are different states and only
+  // the first is un-recoverable — a withheld call can never be called
+  // back, so it must not be counted as a recoverable missed call.
+  fromNumber String?  @map("from_number")
+  withheld   Boolean  @default(false)
+  // The virtual number that was dialled, denormalised as text so the
+  // history survives that number later being released and reassigned.
+  toNumber   String   @map("to_number")
+
+  virtualNumberId String? @map("virtual_number_id") @db.Uuid
+
+  startedAt DateTime  @default(now()) @map("started_at")
+  endedAt   DateTime? @map("ended_at")
+
+  // @unique so a retried recording callback updates rather than
+  // duplicates. Twilio delivers these at-least-once.
+  recordingSid             String?   @unique @map("recording_sid")
+  recordingUrl             String?   @map("recording_url")
+  recordingDurationSeconds Int?      @map("recording_duration_seconds")
+  recordingDeletedAt       DateTime? @map("recording_deleted_at")
+
+  // Filled by the transcription step (Fase 4).
+  transcript        String?   @db.Text
+  transcribedAt     DateTime? @map("transcribed_at")
+  transcriptionError String?  @map("transcription_error")
+
+  // 'pending'    — call in progress, no outcome yet
+  // 'recorded'   — the caller left a message
+  // 'no_message' — they hung up during the greeting or left silence
+  // 'withheld'   — number hidden; nothing to call back, not recoverable
+  // 'blocked'    — a number on the client's blocklist (Fase 9)
+  outcome String @default("pending")
+
+  // The Lead this call produced, if any (Fase 4). A missed call with a
+  // message IS a lead — the existing model already fits, so it is reused
+  // rather than duplicated.
+  leadId String? @map("lead_id") @db.Uuid
+
+  // Stamped by the messaging engine (Fase 9). Also the throttle source:
+  // "one message per number per 24h" is derived from the most recent
+  // notifiedCallerAt for a given (clientId, fromNumber), which is why
+  // this needs no separate table.
+  notifiedOwnerAt  DateTime? @map("notified_owner_at")
+  notifiedCallerAt DateTime? @map("notified_caller_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  client        ChatbotClient      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  subscription  RecallSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  tenant        Tenant?            @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  virtualNumber VirtualNumber?     @relation(fields: [virtualNumberId], references: [id], onDelete: SetNull)
+  lead          Lead?              @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, startedAt])
+  @@index([subscriptionId, startedAt])
+  @@index([outcome])
+  @@index([tenantId])
+  // Drives the 30-day purge sweep: find recordings still present past
+  // their retention window.
+  @@index([recordingDeletedAt, startedAt])
 }
