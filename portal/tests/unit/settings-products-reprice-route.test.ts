@@ -128,4 +128,15 @@ describe('POST /api/admin/portal/settings/products/[productId]/reprice', () => {
       { operatorId: 'op_1', operatorEmail: 'lucia@kairikos.com' },
     );
   });
+
+  it('500s cleanly, rather than crashing, when the decrypt/reprice call throws', async () => {
+    // Same class of crash as the credentials and bootstrap routes:
+    // repriceStripeTier decrypts the stored key too.
+    mockState.repriceStripeTier.mockRejectedValueOnce(
+      new Error('STRIPE_CREDENTIAL_ENCRYPTION_KEY is not set'),
+    );
+    const res = await callRoute(VALID_BODY);
+    expect(res.status).toBe(500);
+    expect(await res.clone().json()).toEqual({ error: 'internal_error' });
+  });
 });

@@ -4,6 +4,7 @@ import { authenticateAdminRequest } from '@/lib/operator-session';
 import { requireTotpStepUp } from '@/lib/operator-totp-stepup';
 import { isStripeConfigured } from '@/lib/stripe';
 import { bootstrapStripeProductForTier } from '@/lib/stripe-catalog';
+import { logError } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -32,7 +33,18 @@ export async function POST(req: NextRequest, { params }: { params: { productId: 
   const operator = await prisma.operator.findUnique({ where: { id: stepUp.operatorId }, select: { email: true } });
   const actor = { operatorId: stepUp.operatorId, operatorEmail: operator?.email ?? null };
 
-  const result = await bootstrapStripeProductForTier(params.productId, actor);
+  // See the credentials route's POST for why this needs its own
+  // catch: resolveActiveStripeSecret() (inside
+  // bootstrapStripeProductForTier) decrypts the stored key, and a
+  // misconfigured STRIPE_CREDENTIAL_ENCRYPTION_KEY throws synchronously
+  // rather than returning a result the switch below could handle.
+  let result;
+  try {
+    result = await bootstrapStripeProductForTier(params.productId, actor);
+  } catch (err) {
+    logError('stripe_catalog.bootstrap_failed', err, { productId: params.productId });
+    return NextResponse.json({ error: 'internal_error' }, { status: 500 });
+  }
   if (!result.ok) {
     switch (result.error.kind) {
       case 'already_bootstrapped':

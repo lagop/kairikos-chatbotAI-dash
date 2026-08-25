@@ -59,6 +59,10 @@ const ERROR_LABEL: Record<string, string> = {
   stripe_error: 'Stripe devolvió un error inesperado.',
   product_not_found: 'No se encontró el producto.',
   unauthorized: 'Tu sesión expiró — vuelve a iniciar sesión.',
+  // A server-side crash (e.g. a missing encryption key) — distinct from
+  // the generic fallback below so a real bug reads as a configuration
+  // problem rather than the vague catch-all wording.
+  internal_error: 'Algo falló en el servidor. Si persiste, contacta con el equipo técnico.',
 };
 
 function errorLabel(code: string | undefined): string {

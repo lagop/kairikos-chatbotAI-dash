@@ -103,6 +103,19 @@ describe('POST .../products/[productId]/bootstrap', () => {
     const res = await callRoute();
     expect(res.status).toBe(200);
   });
+
+  it('500s cleanly, rather than crashing, when the tier decrypt/create throws', async () => {
+    // Regression: bootstrapStripeProductForTier decrypts the stored
+    // Stripe key via resolveActiveStripeSecret(). A misconfigured
+    // STRIPE_CREDENTIAL_ENCRYPTION_KEY throws synchronously there,
+    // unguarded — same class of crash as the credentials route.
+    mockState.bootstrapStripeProductForTier.mockRejectedValueOnce(
+      new Error('STRIPE_CREDENTIAL_ENCRYPTION_KEY is not set'),
+    );
+    const res = await callRoute();
+    expect(res.status).toBe(500);
+    expect(await res.clone().json()).toEqual({ error: 'internal_error' });
+  });
 });
 
 describe('POST .../stripe/active-mode', () => {
