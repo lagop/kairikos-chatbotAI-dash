@@ -15,6 +15,8 @@ const mockState = vi.hoisted(() => ({
   notifyStuckOnboardings: vi.fn(),
   sweepPendingNotifications: vi.fn(),
   sendDailyDigests: vi.fn(),
+  sendMonthlyReports: vi.fn(),
+  rollUpUsage: vi.fn(),
   sweepReviewReminders: vi.fn(),
   syncTemplateStatuses: vi.fn(),
   warnExpiringTokens: vi.fn(),
@@ -29,6 +31,10 @@ vi.mock('@/lib/recall-retention', () => ({
 }));
 vi.mock('@/lib/recall-stuck-alerts', () => ({
   notifyStuckOnboardings: (...a: unknown[]) => mockState.notifyStuckOnboardings(...a),
+}));
+vi.mock('@/lib/recall-reports', () => ({
+  sendMonthlyReports: (...a: unknown[]) => mockState.sendMonthlyReports(...a),
+  rollUpUsage: (...a: unknown[]) => mockState.rollUpUsage(...a),
 }));
 vi.mock('@/lib/recall-reviews', () => ({
   sendDailyDigests: (...a: unknown[]) => mockState.sendDailyDigests(...a),
@@ -61,6 +67,10 @@ beforeEach(() => {
   mockState.sweepPendingTranscriptions.mockReset().mockResolvedValue({ scanned: 0, transcribed: 0, failed: 0 });
   mockState.purgeExpiredRecordings.mockReset().mockResolvedValue({ scanned: 0, purged: 0, failed: 0 });
   mockState.notifyStuckOnboardings.mockReset().mockResolvedValue({ scanned: 0, stuck: 0, notified: 0, deduped: 0, failed: 0 });
+  mockState.sendMonthlyReports
+    .mockReset()
+    .mockResolvedValue({ scanned: 0, sent: 0, skippedEmpty: 0, failed: 0 });
+  mockState.rollUpUsage.mockReset().mockResolvedValue({ scanned: 0, updated: 0, alerted: 0, failed: 0 });
   mockState.sendDailyDigests
     .mockReset()
     .mockResolvedValue({ scanned: 0, sent: 0, skippedNoCalls: 0, failed: 0 });
@@ -96,6 +106,8 @@ describe('GET /api/cron/recall-tick', () => {
       'notifications',
       'dailyDigests',
       'reviewReminders',
+      'monthlyReports',
+      'usageRollup',
       'stuckAlerts',
       'tokenExpiry',
       'templateSync',
@@ -105,6 +117,8 @@ describe('GET /api/cron/recall-tick', () => {
     expect(mockState.sweepPendingNotifications).toHaveBeenCalled();
     expect(mockState.sendDailyDigests).toHaveBeenCalled();
     expect(mockState.sweepReviewReminders).toHaveBeenCalled();
+    expect(mockState.sendMonthlyReports).toHaveBeenCalled();
+    expect(mockState.rollUpUsage).toHaveBeenCalled();
     expect(mockState.notifyStuckOnboardings).toHaveBeenCalled();
     expect(mockState.warnExpiringTokens).toHaveBeenCalled();
     expect(mockState.syncTemplateStatuses).toHaveBeenCalled();

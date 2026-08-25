@@ -585,6 +585,22 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
                   notifiedOwnerAt: true,
                 },
               },
+              // Fase 11 — this month's consumption. The pack is flat
+              // rate, so this is not a bill: it is how an operator sees
+              // that one client stopped consuming like the others.
+              usageMonths: {
+                orderBy: { localMonth: 'desc' },
+                take: 1,
+                select: {
+                  localMonth: true,
+                  calls: true,
+                  callSeconds: true,
+                  whatsappMessages: true,
+                  smsMessages: true,
+                  reviewRequests: true,
+                  alertedAt: true,
+                },
+              },
               blockedNumbers: {
                 orderBy: { createdAt: 'desc' },
                 take: 20,
@@ -627,6 +643,17 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
                 notifiedCallerAt: call.notifiedCallerAt?.toISOString() ?? null,
                 notifiedOwnerAt: call.notifiedOwnerAt?.toISOString() ?? null,
               })),
+              usage: subscription.usageMonths[0]
+                ? {
+                    localMonth: subscription.usageMonths[0].localMonth,
+                    calls: subscription.usageMonths[0].calls,
+                    minutes: Math.round(subscription.usageMonths[0].callSeconds / 60),
+                    whatsappMessages: subscription.usageMonths[0].whatsappMessages,
+                    smsMessages: subscription.usageMonths[0].smsMessages,
+                    reviewRequests: subscription.usageMonths[0].reviewRequests,
+                    alerted: subscription.usageMonths[0].alertedAt !== null,
+                  }
+                : null,
               blockedNumbers: subscription.blockedNumbers.map((row) => ({
                 id: row.id,
                 e164: row.e164,

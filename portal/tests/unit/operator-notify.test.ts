@@ -21,7 +21,7 @@ import {
 } from '@/lib/operator-notify';
 
 describe('ALLOWED_KINDS', () => {
-  it('exposes the seven contract kinds (WP-11 added help-request and go-live-ready)', () => {
+  it('exposes the eight contract kinds (WP-11 added help-request and go-live-ready; Fase 11 usage-spike)', () => {
     expect([...ALLOWED_KINDS].sort()).toEqual([
       'escalation',
       'execution-failed',
@@ -30,6 +30,7 @@ describe('ALLOWED_KINDS', () => {
       'review-overdue-escalation',
       'review-overdue-warning',
       'stuck',
+      'usage-spike',
     ]);
   });
 });

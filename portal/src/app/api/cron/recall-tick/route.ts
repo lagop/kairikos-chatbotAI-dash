@@ -5,6 +5,7 @@ import { purgeExpiredRecordings } from '@/lib/recall-retention';
 import { notifyStuckOnboardings } from '@/lib/recall-stuck-alerts';
 import { sweepPendingNotifications } from '@/lib/recall-messaging';
 import { sendDailyDigests, sweepReviewReminders } from '@/lib/recall-reviews';
+import { sendMonthlyReports, rollUpUsage } from '@/lib/recall-reports';
 import { syncTemplateStatuses, warnExpiringTokens } from '@/lib/whatsapp-health';
 import { logError } from '@/lib/observability';
 
@@ -96,11 +97,19 @@ export async function GET(req: NextRequest) {
   jobs.dailyDigests = await runJob('dailyDigests', () => sendDailyDigests(prisma));
   jobs.reviewReminders = await runJob('reviewReminders', () => sweepReviewReminders(prisma));
 
-  // 5. Push stalled altas at an operator. Deduped per (client, day) by
+  // 5. The monthly report is what stops a client cancelling in month
+  //    two: recovered calls are invisible by nature, so nothing tells
+  //    him it worked unless we do. The roll-up beside it is not billing
+  //    — the pack is flat rate — but the early warning that one client
+  //    has stopped consuming like the others.
+  jobs.monthlyReports = await runJob('monthlyReports', () => sendMonthlyReports(prisma));
+  jobs.usageRollup = await runJob('usageRollup', () => rollUpUsage(prisma));
+
+  // 6. Push stalled altas at an operator. Deduped per (client, day) by
   //    operator-notify, so running this every tick is safe.
   jobs.stuckAlerts = await runJob('stuckAlerts', () => notifyStuckOnboardings(prisma));
 
-  // 6. Meta changes state without telling us. A token that dies at 60
+  // 7. Meta changes state without telling us. A token that dies at 60
   //    days and a template Meta paused for quality both fail silently —
   //    the product keeps looking fine until a client's messages stop
   //    arriving. These two jobs are how that gets noticed in advance.

@@ -38,6 +38,17 @@ export interface RecallBlockedRow {
   createdAt: string;
 }
 
+export interface RecallUsageSummary {
+  localMonth: string;
+  calls: number;
+  minutes: number;
+  whatsappMessages: number;
+  smsMessages: number;
+  reviewRequests: number;
+  /** An operator has already been told this month looks abnormal. */
+  alerted: boolean;
+}
+
 export interface RecallPanelData {
   subscriptionId: string;
   status: string;
@@ -49,6 +60,7 @@ export interface RecallPanelData {
   ownerWhatsapp: string | null;
   calls: RecallCallRow[];
   blockedNumbers: RecallBlockedRow[];
+  usage: RecallUsageSummary | null;
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -206,6 +218,45 @@ export function RecallOperatorPanel({ data }: { data: RecallPanelData | null }) 
               </li>
             ))}
           </ul>
+        )}
+      </div>
+
+      <div>
+        <h3 className="mb-2 text-sm font-semibold">Consumo del mes</h3>
+        {data.usage === null ? (
+          <p className="text-sm text-kairikos-muted" data-testid="recall-panel-no-usage">
+            Todavía sin datos de este mes.
+          </p>
+        ) : (
+          <dl
+            className="grid grid-cols-2 gap-3 sm:grid-cols-4"
+            data-testid="recall-usage"
+            data-alerted={data.usage.alerted ? 'true' : 'false'}
+          >
+            <div>
+              <dt className="text-xs text-kairikos-muted">Minutos ({data.usage.localMonth})</dt>
+              <dd
+                className={`mt-1 text-sm font-medium tabular-nums ${data.usage.alerted ? 'text-kairikos-danger' : ''}`}
+                data-testid="recall-usage-minutes"
+              >
+                {data.usage.minutes}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-kairikos-muted">Llamadas</dt>
+              <dd className="mt-1 text-sm font-medium tabular-nums">{data.usage.calls}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-kairikos-muted">Mensajes</dt>
+              <dd className="mt-1 text-sm font-medium tabular-nums">
+                {data.usage.whatsappMessages} WhatsApp · {data.usage.smsMessages} SMS
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-kairikos-muted">Reseñas pedidas</dt>
+              <dd className="mt-1 text-sm font-medium tabular-nums">{data.usage.reviewRequests}</dd>
+            </div>
+          </dl>
         )}
       </div>
 
