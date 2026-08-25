@@ -1,6 +1,12 @@
 import 'server-only';
 import type { PrismaClient } from '@prisma/client';
-import { computeMonthlyMetrics, localMonthFor, monthBounds, type MonthlyMetrics } from './recall-reports';
+import {
+  computeMonthlyMetrics,
+  localMonthFor,
+  monthBounds,
+  shiftLocalMonth,
+  type MonthlyMetrics,
+} from './recall-reports';
 import { RECORDING_RETENTION_DAYS } from './recall-retention';
 
 // =============================================================================
@@ -31,10 +37,12 @@ import { RECORDING_RETENTION_DAYS } from './recall-retention';
  *  trend and short enough that the page stays one screen. */
 export const HISTORY_MONTHS = 12;
 
-/** How many recent calls are listed. The full history lives in the
- *  operator's panel; this answers "what happened lately", not "give me
- *  everything". */
-export const RECENT_CALLS = 20;
+/** Upper bound on one month's call list. A month is the unit the page
+ *  navigates by, so this is a safety rail rather than the usual case —
+ *  even the busiest tier runs well under it. When it does bite, the page
+ *  SAYS so: a list that silently stops is worse than a short one,
+ *  because nothing tells the reader anything is missing. */
+export const CALLS_PER_MONTH_CAP = 200;
 
 export interface RecallCallSummary {
   id: string;
@@ -65,10 +73,20 @@ export type RecallClientView =
   | {
       state: 'active';
       virtualNumber: string | null;
+      /** The month being viewed, 'YYYY-MM' in the client's timezone. */
       localMonth: string;
+      /** Neighbouring months inside the range that has data, or null at
+       *  either end. The page renders these as its only navigation. */
+      previousMonth: string | null;
+      nextMonth: string | null;
+      /** Always computed live for whichever month is shown, so a past
+       *  month and the current one are produced the same way. */
       metrics: MonthlyMetrics;
+      /** Every OTHER month, as the table that doubles as navigation. */
       history: RecallMonthSummary[];
       calls: RecallCallSummary[];
+      /** True when the month had more calls than the cap. */
+      truncated: boolean;
       recordingRetentionDays: number;
     };
 
@@ -87,7 +105,7 @@ export type RecallClientView =
 export async function loadRecallClientView(
   prisma: PrismaClient,
   clientId: string,
-  opts: { now?: Date } = {},
+  opts: { now?: Date; month?: string | null } = {},
 ): Promise<RecallClientView> {
   const now = opts.now ?? new Date();
 
@@ -122,20 +140,38 @@ export async function loadRecallClientView(
     };
   }
 
-  const localMonth = localMonthFor(now, subscription.timezone);
+  const currentMonth = localMonthFor(now, subscription.timezone);
+
+  // The earliest month worth offering: whatever the roll-up has, or
+  // this month when it has nothing yet. Without a floor the previous
+  // arrow would walk backwards forever through empty months.
+  const earliestRow = await prisma.recallUsageMonth.findFirst({
+    where: { subscriptionId: subscription.id },
+    orderBy: { localMonth: 'asc' },
+    select: { localMonth: true },
+  });
+  const earliestMonth =
+    earliestRow && earliestRow.localMonth < currentMonth ? earliestRow.localMonth : currentMonth;
+
+  // The month key arrives from the query string, so it is validated and
+  // clamped rather than trusted: a malformed or out-of-range value must
+  // land somewhere real instead of rendering an empty month.
+  const localMonth = clampMonth(opts.month, earliestMonth, currentMonth);
   const { since, until } = monthBounds(localMonth, subscription.timezone);
+
+  const previousMonth = localMonth > earliestMonth ? shiftLocalMonth(localMonth, -1) : null;
+  const nextMonth = localMonth < currentMonth ? shiftLocalMonth(localMonth, 1) : null;
 
   const [metrics, historyRows, callRows] = await Promise.all([
     computeMonthlyMetrics(prisma, subscription, since, until),
     prisma.recallUsageMonth.findMany({
       where: {
         subscriptionId: subscription.id,
-        // The current month is shown live in the summary above the
-        // table. Listing it here too would print it twice on one
-        // screen AND let the two disagree: the summary is computed
-        // now, this row was written by the last roll-up, so between
-        // ticks they differ by whatever came in since.
-        localMonth: { lt: localMonth },
+        // Every month EXCEPT the one on screen. Its figures are already
+        // above, computed live, and this row was written by the last
+        // roll-up — showing both would print the month twice and let
+        // the two disagree by whatever came in since that tick.
+        localMonth: { not: localMonth },
       },
       orderBy: { localMonth: 'desc' },
       take: HISTORY_MONTHS,
@@ -150,12 +186,15 @@ export async function loadRecallClientView(
     prisma.callEvent.findMany({
       where: {
         subscriptionId: subscription.id,
+        startedAt: { gte: since, lt: until },
         // A blocked caller is one the client asked us to silence. Listing
         // them back to him is noise about a decision he already made.
         outcome: { not: 'blocked' },
       },
       orderBy: { startedAt: 'desc' },
-      take: RECENT_CALLS,
+      // One over the cap, so the page can tell the difference between
+      // "exactly a capful" and "there are more".
+      take: CALLS_PER_MONTH_CAP + 1,
       select: {
         id: true,
         startedAt: true,
@@ -169,10 +208,14 @@ export async function loadRecallClientView(
     }),
   ]);
 
+  const truncated = callRows.length > CALLS_PER_MONTH_CAP;
+
   return {
     state: 'active',
     virtualNumber,
     localMonth,
+    previousMonth,
+    nextMonth,
     metrics,
     history: historyRows.map((row) => ({
       localMonth: row.localMonth,
@@ -181,9 +224,31 @@ export async function loadRecallClientView(
       minutes: Math.round(row.callSeconds / 60),
       reviewRequests: row.reviewRequests,
     })),
-    calls: callRows,
+    calls: truncated ? callRows.slice(0, CALLS_PER_MONTH_CAP) : callRows,
+    truncated,
     // Surfaced rather than hard-coded in the page so the number the client
     // is told always matches the number the purge job actually enforces.
     recordingRetentionDays: RECORDING_RETENTION_DAYS,
   };
+}
+
+const MONTH_KEY = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/**
+ * Read a month key off the query string.
+ *
+ * Anything unparseable, or outside the range that actually has data,
+ * falls back to the newest month. A URL is user input: the failure mode
+ * to avoid is an empty page that looks like "you had no calls" when it
+ * really means "that month never existed".
+ */
+export function clampMonth(
+  requested: string | null | undefined,
+  earliest: string,
+  latest: string,
+): string {
+  if (!requested || !MONTH_KEY.test(requested)) return latest;
+  if (requested < earliest) return earliest;
+  if (requested > latest) return latest;
+  return requested;
 }

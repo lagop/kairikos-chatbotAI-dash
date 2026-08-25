@@ -117,6 +117,36 @@ function notifyLabel(call: RecallCallSummary): string {
   return 'Le escribiremos en unos minutos';
 }
 
+/** One arrow of the month navigation. Rendered as disabled text rather
+ *  than hidden at the ends of the range, so the control does not move
+ *  under the reader as they page back. */
+function MonthLink({
+  month,
+  label,
+  testId,
+}: {
+  month: string | null;
+  label: string;
+  testId: string;
+}) {
+  if (!month) {
+    return (
+      <span className="px-2 py-1 text-xs text-kairikos-muted opacity-40" aria-disabled="true">
+        {label}
+      </span>
+    );
+  }
+  return (
+    <Link
+      href={`/portal/llamadas?mes=${month}`}
+      className="rounded-lg px-2 py-1 text-xs text-kairikos-accent2 hover:underline"
+      data-testid={testId}
+    >
+      {label}
+    </Link>
+  );
+}
+
 function Metric({
   label,
   value,
@@ -139,7 +169,11 @@ function Metric({
   );
 }
 
-export default async function PortalLlamadasPage() {
+export default async function PortalLlamadasPage({
+  searchParams,
+}: {
+  searchParams?: { mes?: string };
+}) {
   await requirePortalSession();
   const resolved = await resolveClientFromSession();
   if (!resolved) {
@@ -148,7 +182,7 @@ export default async function PortalLlamadasPage() {
 
   const view =
     isDatabaseConfigured && resolved.source === 'database'
-      ? await loadRecallClientView(prisma, resolved.clientId)
+      ? await loadRecallClientView(prisma, resolved.clientId, { month: searchParams?.mes ?? null })
       : ({ state: 'not_contracted' } as const);
 
   if (view.state === 'not_contracted') {
@@ -246,7 +280,7 @@ export default async function PortalLlamadasPage() {
     );
   }
 
-  const { metrics, history, calls } = view;
+  const { metrics, history, calls, previousMonth, nextMonth, truncated } = view;
 
   return (
     <div className="space-y-6">
@@ -257,7 +291,15 @@ export default async function PortalLlamadasPage() {
       />
 
       <section aria-label={`Resumen de ${monthLabel(view.localMonth)}`}>
-        <h2 className="mb-2 text-sm font-semibold capitalize">{monthLabel(view.localMonth)}</h2>
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold capitalize" data-testid="recall-client-month">
+            {monthLabel(view.localMonth)}
+          </h2>
+          <nav className="flex items-center gap-1" aria-label="Cambiar de mes">
+            <MonthLink month={previousMonth} label="← Mes anterior" testId="recall-client-prev-month" />
+            <MonthLink month={nextMonth} label="Mes siguiente →" testId="recall-client-next-month" />
+          </nav>
+        </div>
         <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="recall-client-metrics">
           <Metric
             label="Llamadas recuperadas"
@@ -301,8 +343,14 @@ export default async function PortalLlamadasPage() {
               <tbody>
                 {history.map((row) => (
                   <tr key={row.localMonth} className="border-b border-kairikos-border last:border-0">
-                    <th scope="row" className="px-4 py-2 text-left font-normal capitalize">
-                      {monthLabel(row.localMonth)}
+                    <th scope="row" className="px-4 py-2 text-left font-normal">
+                      <Link
+                        href={`/portal/llamadas?mes=${row.localMonth}`}
+                        className="capitalize text-kairikos-accent2 hover:underline"
+                        data-testid="recall-client-history-link"
+                      >
+                        {monthLabel(row.localMonth)}
+                      </Link>
                     </th>
                     <td className="px-4 py-2 text-right tabular-nums">{row.calls}</td>
                     <td className="px-4 py-2 text-right tabular-nums">{row.recordedCalls}</td>
@@ -315,11 +363,13 @@ export default async function PortalLlamadasPage() {
         </section>
       ) : null}
 
-      <section aria-label="Últimas llamadas">
-        <h2 className="mb-2 text-sm font-semibold">Últimas llamadas</h2>
+      <section aria-label={`Llamadas de ${monthLabel(view.localMonth)}`}>
+        <h2 className="mb-2 text-sm font-semibold">
+          Llamadas de <span className="capitalize">{monthLabel(view.localMonth)}</span>
+        </h2>
         {calls.length === 0 ? (
           <EmptyState
-            title="Todavía no ha entrado ninguna llamada"
+            title="Ninguna llamada este mes"
             description="Cuando alguien te llame y no puedas atender, aparecerá aquí y te llegará por WhatsApp."
           />
         ) : (
@@ -350,6 +400,14 @@ export default async function PortalLlamadasPage() {
             ))}
           </ul>
         )}
+        {truncated ? (
+          // Never stop the list without saying so: a reader has no way to
+          // tell a short month from a truncated one.
+          <p className="mt-2 text-xs text-kairikos-muted" data-testid="recall-client-truncated">
+            Mostramos las {calls.length} llamadas más recientes de este mes. Si necesitas el resto,
+            escríbenos.
+          </p>
+        ) : null}
       </section>
 
       <p className="text-xs text-kairikos-muted" data-testid="recall-client-retention">
