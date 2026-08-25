@@ -101,6 +101,16 @@ services:
       TWILIO_BUNDLE_SID: ${TWILIO_BUNDLE_SID:-}
       TWILIO_ADDRESS_SID: ${TWILIO_ADDRESS_SID:-}
       TWILIO_VOICE_WEBHOOK_URL: ${TWILIO_VOICE_WEBHOOK_URL:-}
+      # Origen público que Twilio usa para firmar sus webhooks. Detrás de
+      # nginx la app ve el host interno, así que sin esto la URL que
+      # reconstruye no coincide con la que Twilio firmó y fallan TODAS
+      # las firmas. Fíjalo en producción.
+      TWILIO_WEBHOOK_BASE_URL: ${TWILIO_WEBHOOK_BASE_URL:-}
+      # Transcripción: el servicio whisper de aquí abajo, en la red
+      # interna de Docker. La voz de quien llama nunca sale del VPS.
+      WHISPER_BASE_URL: ${WHISPER_BASE_URL:-http://whisper:9000}
+      WHISPER_MODEL: ${WHISPER_MODEL:-whisper-1}
+      WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-es}
       # Stripe already has an admin-configurable fallback
       # (/admin/portal/settings/billing → StripeOperatorCredential) — these
       # env vars are only the pre-UI fallback, not required to boot billing.
@@ -169,6 +179,51 @@ services:
     networks:
       - portal-net
 
+  # Speech-to-text for the 'recall' product, self-hosted.
+  #
+  # On the VPS rather than a transcription API for two reasons that both
+  # outweigh the (negligible) cost difference:
+  #
+  #   1. RGPD. We are the processor and the client is the controller of a
+  #      third party's recorded voice. Keeping transcription here means
+  #      the caller's voice never leaves infrastructure already covered by
+  #      the client's processing agreement — no sub-processor to declare.
+  #   2. Zero marginal cost. "Modo Recado" takes 30-60s messages, so a
+  #      50-client book is ~12 hours of audio a month.
+  #
+  # No host port: only the app container reaches it, over the internal
+  # Docker network. Same posture as postgres.
+  #
+  # The image speaks the OpenAI-compatible /v1/audio/transcriptions shape,
+  # so if self-hosting ever becomes a burden, pointing WHISPER_BASE_URL at
+  # a hosted endpoint is a config change rather than a rewrite.
+  #
+  # Model sizing: `small` is the sweet spot for Spanish on CPU — `base`
+  # mangles proper nouns and street names, `medium` roughly triples the
+  # time per clip for little gain on 30-60s recordings. Raise it if the
+  # VPS has cores to spare.
+  whisper:
+    image: hwdsl2/whisper-server
+    container_name: kairikos-portal-whisper
+    restart: unless-stopped
+    environment:
+      WHISPER_MODEL: ${WHISPER_ASR_MODEL:-small}
+      WHISPER_DEVICE: cpu
+    volumes:
+      # Model weights download on first boot; without this the download
+      # repeats on every container recreate.
+      - whisper-data:/var/lib/whisper
+    networks:
+      - portal-net
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/docs"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      # Generous on purpose: the first boot downloads the model weights
+      # before the service can answer anything.
+      start_period: 300s
+
   # nginx + certbot are in the `proxy` profile. Start them with:
   #   docker compose --profile proxy up -d
   # The Hostinger Docker Manager doesn't run profiles by default, so the
@@ -206,6 +261,10 @@ volumes:
     name: kairikos-portal-pgdata
   backups:
     name: kairikos-portal-backups
+  # Whisper model weights. Named so a `docker compose down` doesn't force
+  # a multi-hundred-megabyte re-download on the next boot.
+  whisper-data:
+    name: kairikos-portal-whisper-data
   certs:
   certbot-www:
 

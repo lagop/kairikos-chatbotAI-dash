@@ -2,6 +2,7 @@ import { type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { verifyTwilioSignature, resolveWebhookUrl, formDataToParams } from '@/lib/telephony/twilio-signature';
 import { attachRecording } from '@/lib/recall-calls';
+import { transcribeCallEventInBackground } from '@/lib/recall-transcription';
 import { logError } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
@@ -74,6 +75,18 @@ export async function POST(req: NextRequest) {
         headers: { 'content-type': 'application/json' },
       });
     }
+
+    // Fire and forget: transcription takes seconds and this callback must
+    // return promptly, or Twilio treats it as failed and re-delivers.
+    // Whatever this misses, the scheduler's sweep picks up — which is why
+    // it is safe not to await, and why the sweep exists at all.
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    transcribeCallEventInBackground(
+      prisma,
+      result.callEventId,
+      accountSid ? { accountSid, authToken } : undefined,
+    );
+
     return new Response(JSON.stringify({ status: 'ok' }), {
       status: 200,
       headers: { 'content-type': 'application/json' },

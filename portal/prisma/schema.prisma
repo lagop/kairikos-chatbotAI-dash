@@ -1932,8 +1932,11 @@ model Lead {
   // 'nuevo' | 'contactado' | 'convertido' | 'descartado'. See
   // src/lib/leads.ts for the transition predicates.
   status         String    @default("nuevo")
-  // 'telegram' | 'whatsapp' | 'messenger' | 'instagram' | 'web'. Free
-  // string, same convention as ChannelWebhookDelivery.connectionType.
+  // 'telegram' | 'whatsapp' | 'messenger' | 'instagram' | 'web' | 'phone'.
+  // Free string, same convention as ChannelWebhookDelivery.connectionType.
+  // 'phone' is the 'recall' product: a missed call whose caller left a
+  // message IS a lead, so it reuses this model rather than duplicating it
+  // — see CallEvent.leadId and src/lib/recall-transcription.ts.
   channel        String?
 
   createdAt      DateTime  @default(now()) @map("created_at")
