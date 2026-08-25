@@ -82,15 +82,28 @@ describe('PRODUCT_CATALOG', () => {
     }
   });
 
-  it('the only inactive products are the recall tiers, which are not sellable until Coexistence is verified', () => {
-    // Deliberate: 'recall' depends on a WhatsApp path that has never run
-    // against a real Meta app (see the plan's Fase 8). It must not be
-    // purchasable — /portal/productos and the self-serve checkout both
-    // filter on isActive — until that is proven. Flip the seed to
-    // isActive: true then, and this assertion with it.
+  it('recall is on sale, ahead of Coexistence being verified — a deliberate business call, not an oversight', () => {
+    // 2026-08-25: the user made this call explicitly, twice, aware that
+    // Coexistence (Fase 8) has not run against a real Meta app yet. Do
+    // not flip this back to inactive without asking first.
+    //
+    // What still gates a real purchase is the Stripe side, not this
+    // flag: stripeRecurringPriceId/stripeSetupPriceId below are
+    // placeholders until an operator runs Bootstrap for these three
+    // tiers at /admin/portal/settings/billing. See that route's own
+    // tests (stripe-catalog.test.ts) for the placeholder-id lifecycle.
+    const recall = PRODUCT_CATALOG.filter((p) => p.code === 'recall');
+    expect(recall).toHaveLength(3);
+    expect(recall.every((p) => p.isActive)).toBe(true);
+  });
+
+  it('every product in the catalogue is active — none should be silently unsellable', () => {
+    // An inactive row is invisible on /portal/productos and rejected by
+    // the self-serve checkout. That has to be a deliberate, commented
+    // decision (like recall's above, while it lasted) — never a default
+    // a new entry falls into by omission.
     const inactive = PRODUCT_CATALOG.filter((p) => !p.isActive);
-    expect(new Set(inactive.map((p) => p.code))).toEqual(new Set(['recall']));
-    expect(PRODUCT_CATALOG.filter((p) => p.code === 'recall').every((p) => !p.isActive)).toBe(true);
+    expect(inactive).toEqual([]);
   });
 
   it('billing type derives correctly from priceCents/setupFeeCents for every entry', () => {

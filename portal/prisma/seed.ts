@@ -176,22 +176,33 @@ export const PRODUCT_CATALOG: ProductCatalogEntry[] = [
   // 'reviews' product above stays for a different segment (email channel,
   // panel-driven, no telephony) — see /portal/productos.
   //
-  // isActive: false until Fase 8 (Coexistence verified against a real Meta
-  // app) — the product must not be sellable before its WhatsApp path is
-  // proven. Flip to true when that lands.
+  // WP-XX (2026-08-25) — isActive: true. The user made the call
+  // explicitly, twice, aware Coexistence (Fase 8) is not yet verified
+  // against a real Meta app: this is a deliberate decision to sell ahead
+  // of that proof, not an oversight. Do not revert this to false without
+  // asking first.
+  //
+  // stripeRecurringPriceId/stripeSetupPriceId below are still
+  // PLACEHOLDERS. Do not deploy or re-seed this into an environment
+  // until an operator has run Bootstrap for these three tiers at
+  // /admin/portal/settings/billing — otherwise Contratar will 502 for a
+  // real paying client. Bootstrap writes the real ids straight onto the
+  // Product row; running this seed again afterwards would only
+  // overwrite isActive/name/price fields (see the upsert below), not the
+  // Stripe ids, which the create-only branch never touches on update.
   {
     code: 'recall', tier: 'solo', name: 'Recuperación de llamadas — Autónomo',
-    priceCents: 14900, setupFeeCents: 29000, currency: 'EUR', isActive: false,
+    priceCents: 14900, setupFeeCents: 29000, currency: 'EUR', isActive: true,
     stripeRecurringPriceId: 'price_recall_solo', stripeSetupPriceId: 'price_recall_solo_setup',
   },
   {
     code: 'recall', tier: 'team', name: 'Recuperación de llamadas — Equipo',
-    priceCents: 24900, setupFeeCents: 39000, currency: 'EUR', isActive: false,
+    priceCents: 24900, setupFeeCents: 39000, currency: 'EUR', isActive: true,
     stripeRecurringPriceId: 'price_recall_team', stripeSetupPriceId: 'price_recall_team_setup',
   },
   {
     code: 'recall', tier: 'business', name: 'Recuperación de llamadas — Empresa',
-    priceCents: 39900, setupFeeCents: 49000, currency: 'EUR', isActive: false,
+    priceCents: 39900, setupFeeCents: 49000, currency: 'EUR', isActive: true,
     stripeRecurringPriceId: 'price_recall_business', stripeSetupPriceId: 'price_recall_business_setup',
   },
 ];
