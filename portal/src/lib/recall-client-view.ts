@@ -37,12 +37,10 @@ import { RECORDING_RETENTION_DAYS } from './recall-retention';
  *  trend and short enough that the page stays one screen. */
 export const HISTORY_MONTHS = 12;
 
-/** Upper bound on one month's call list. A month is the unit the page
- *  navigates by, so this is a safety rail rather than the usual case —
- *  even the busiest tier runs well under it. When it does bite, the page
- *  SAYS so: a list that silently stops is worse than a short one,
- *  because nothing tells the reader anything is missing. */
-export const CALLS_PER_MONTH_CAP = 200;
+/** Calls per page. Sized for a phone: about a screenful of cards once
+ *  transcripts are included, and small enough that page one answers
+ *  "what came in these last few days" without sending down a month. */
+export const CALLS_PER_PAGE = 20;
 
 export interface RecallCallSummary {
   id: string;
@@ -87,9 +85,15 @@ export type RecallClientView =
       metrics: MonthlyMetrics;
       /** Every OTHER month, as the table that doubles as navigation. */
       history: RecallMonthSummary[];
+      /** Just this page of the month, newest first. */
       calls: RecallCallSummary[];
-      /** True when the month had more calls than the cap. */
-      truncated: boolean;
+      /** 1-based. Always inside [1, pageCount]. */
+      page: number;
+      pageCount: number;
+      /** Every call in the month, so the page can say "21-40 de 47"
+       *  instead of leaving the reader to guess what is off-screen. */
+      totalCalls: number;
+      pageSize: number;
       recordingRetentionDays: number;
     };
 
@@ -108,7 +112,7 @@ export type RecallClientView =
 export async function loadRecallClientView(
   prisma: PrismaClient,
   clientId: string,
-  opts: { now?: Date; month?: string | null } = {},
+  opts: { now?: Date; month?: string | null; page?: string | number | null } = {},
 ): Promise<RecallClientView> {
   const now = opts.now ?? new Date();
 
@@ -165,7 +169,15 @@ export async function loadRecallClientView(
   const previousMonth = localMonth > earliestMonth ? shiftLocalMonth(localMonth, -1) : null;
   const nextMonth = localMonth < currentMonth ? shiftLocalMonth(localMonth, 1) : null;
 
-  const [metrics, historyRows, callRows] = await Promise.all([
+  const callWhere = {
+    subscriptionId: subscription.id,
+    startedAt: { gte: since, lt: until },
+    // A blocked caller is one the client asked us to silence. Listing
+    // them back to him is noise about a decision he already made.
+    outcome: { not: 'blocked' },
+  };
+
+  const [metrics, historyRows, totalCalls] = await Promise.all([
     computeMonthlyMetrics(prisma, subscription, since, until),
     prisma.recallUsageMonth.findMany({
       // EVERY month, including the one on screen: this table is the
@@ -182,32 +194,31 @@ export async function loadRecallClientView(
         reviewRequests: true,
       },
     }),
-    prisma.callEvent.findMany({
-      where: {
-        subscriptionId: subscription.id,
-        startedAt: { gte: since, lt: until },
-        // A blocked caller is one the client asked us to silence. Listing
-        // them back to him is noise about a decision he already made.
-        outcome: { not: 'blocked' },
-      },
-      orderBy: { startedAt: 'desc' },
-      // One over the cap, so the page can tell the difference between
-      // "exactly a capful" and "there are more".
-      take: CALLS_PER_MONTH_CAP + 1,
-      select: {
-        id: true,
-        startedAt: true,
-        fromNumber: true,
-        withheld: true,
-        outcome: true,
-        transcript: true,
-        callerNotifyChannel: true,
-        notifiedCallerAt: true,
-      },
-    }),
+    prisma.callEvent.count({ where: callWhere }),
   ]);
 
-  const truncated = callRows.length > CALLS_PER_MONTH_CAP;
+  // Clamped only once the total is known, so ?p=99 on a two-page month
+  // lands on page two rather than on an empty list that would read as
+  // "you had no calls".
+  const pageCount = Math.max(1, Math.ceil(totalCalls / CALLS_PER_PAGE));
+  const page = clampPage(opts.page, pageCount);
+
+  const callRows = await prisma.callEvent.findMany({
+    where: callWhere,
+    orderBy: { startedAt: 'desc' },
+    skip: (page - 1) * CALLS_PER_PAGE,
+    take: CALLS_PER_PAGE,
+    select: {
+      id: true,
+      startedAt: true,
+      fromNumber: true,
+      withheld: true,
+      outcome: true,
+      transcript: true,
+      callerNotifyChannel: true,
+      notifiedCallerAt: true,
+    },
+  });
 
   return {
     state: 'active',
@@ -217,8 +228,11 @@ export async function loadRecallClientView(
     nextMonth,
     metrics,
     history: buildHistory(historyRows, localMonth, metrics),
-    calls: truncated ? callRows.slice(0, CALLS_PER_MONTH_CAP) : callRows,
-    truncated,
+    calls: callRows,
+    page,
+    pageCount,
+    totalCalls,
+    pageSize: CALLS_PER_PAGE,
     // Surfaced rather than hard-coded in the page so the number the client
     // is told always matches the number the purge job actually enforces.
     recordingRetentionDays: RECORDING_RETENTION_DAYS,
@@ -283,6 +297,19 @@ const MONTH_KEY = /^\d{4}-(0[1-9]|1[0-2])$/;
  * to avoid is an empty page that looks like "you had no calls" when it
  * really means "that month never existed".
  */
+/**
+ * Read a page number off the query string.
+ *
+ * Same posture as clampMonth: a URL is user input, and the failure to
+ * avoid is an empty list that reads as "you had no calls" when it
+ * really means "that page does not exist".
+ */
+export function clampPage(requested: string | number | null | undefined, pageCount: number): number {
+  const parsed = typeof requested === 'number' ? requested : Number.parseInt(String(requested ?? ''), 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return 1;
+  return Math.min(Math.trunc(parsed), Math.max(1, pageCount));
+}
+
 export function clampMonth(
   requested: string | null | undefined,
   earliest: string,

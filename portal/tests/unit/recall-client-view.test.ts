@@ -22,8 +22,9 @@ import {
   loadRecallClientView,
   buildHistory,
   clampMonth,
+  clampPage,
   HISTORY_MONTHS,
-  CALLS_PER_MONTH_CAP,
+  CALLS_PER_PAGE,
 } from '@/lib/recall-client-view';
 import { RECORDING_RETENTION_DAYS } from '@/lib/recall-retention';
 
@@ -32,6 +33,7 @@ const state = {
   usageFindMany: vi.fn(),
   usageFindFirst: vi.fn(),
   callFindMany: vi.fn(),
+  callCount: vi.fn(),
 };
 
 const prisma = {
@@ -40,7 +42,10 @@ const prisma = {
     findMany: (...a: unknown[]) => state.usageFindMany(...a),
     findFirst: (...a: unknown[]) => state.usageFindFirst(...a),
   },
-  callEvent: { findMany: (...a: unknown[]) => state.callFindMany(...a) },
+  callEvent: {
+    findMany: (...a: unknown[]) => state.callFindMany(...a),
+    count: (...a: unknown[]) => state.callCount(...a),
+  },
 } as unknown as PrismaClient;
 
 // 15 July 2026, 12:00 Madrid.
@@ -80,6 +85,7 @@ beforeEach(() => {
   // No roll-up rows by default: the range floor becomes the current month.
   state.usageFindFirst.mockResolvedValue(null);
   state.callFindMany.mockResolvedValue([]);
+  state.callCount.mockResolvedValue(0);
 });
 
 const load = () => loadRecallClientView(prisma, 'client_1', { now: NOW });
@@ -179,13 +185,12 @@ describe('loadRecallClientView — active', () => {
     expect(state.callFindMany.mock.calls[0][0].where.outcome).toEqual({ not: 'blocked' });
   });
 
-  it('lists the calls of that month, newest first, inside its window', async () => {
+  it('fetches one page of that month, newest first, inside its window', async () => {
     await load();
     const query = state.callFindMany.mock.calls[0][0];
     expect(query.orderBy).toEqual({ startedAt: 'desc' });
-    // One over the cap, so the caller can tell "exactly a capful" from
-    // "there are more".
-    expect(query.take).toBe(CALLS_PER_MONTH_CAP + 1);
+    expect(query.take).toBe(CALLS_PER_PAGE);
+    expect(query.skip).toBe(0);
     expect(query.where.startedAt.gte).toBeInstanceOf(Date);
     expect(query.where.startedAt.lt).toBeInstanceOf(Date);
   });
@@ -272,40 +277,6 @@ describe('loadRecallClientView — month navigation', () => {
   });
 });
 
-describe('loadRecallClientView — truncation', () => {
-  beforeEach(() => {
-    state.subFindFirst.mockResolvedValue(subscription());
-  });
-
-  const rows = (n: number) =>
-    Array.from({ length: n }, (_, i) => ({
-      id: `c${i}`,
-      startedAt: NOW,
-      fromNumber: '+34651234567',
-      withheld: false,
-      outcome: 'recorded',
-      transcript: null,
-      callerNotifyChannel: null,
-      notifiedCallerAt: null,
-    }));
-
-  it('reports an ordinary month as not truncated', async () => {
-    state.callFindMany.mockResolvedValue(rows(CALLS_PER_MONTH_CAP));
-    const view = await load();
-    expect(view).toMatchObject({ truncated: false });
-    expect((view as { calls: unknown[] }).calls).toHaveLength(CALLS_PER_MONTH_CAP);
-  });
-
-  it('says so when it cut the list, and cuts it to the cap', async () => {
-    // A list that silently stops is worse than a short one: nothing
-    // tells the reader anything is missing.
-    state.callFindMany.mockResolvedValue(rows(CALLS_PER_MONTH_CAP + 1));
-    const view = await load();
-    expect(view).toMatchObject({ truncated: true });
-    expect((view as { calls: unknown[] }).calls).toHaveLength(CALLS_PER_MONTH_CAP);
-  });
-});
-
 describe('buildHistory', () => {
   const rows = [
     { localMonth: '2026-06', calls: 4, recordedCalls: 2, callSeconds: 120, reviewRequests: 1 },
@@ -354,5 +325,75 @@ describe('buildHistory', () => {
     // The normal state of a month that started this morning.
     const out = buildHistory([], '2026-07', live);
     expect(out).toEqual([{ localMonth: '2026-07', calls: 12, recordedCalls: 8, minutes: 5, reviewRequests: 6, isSelected: true }]);
+  });
+});
+
+describe('clampPage', () => {
+  it('accepts a page inside the range', () => {
+    expect(clampPage(3, 6)).toBe(3);
+    expect(clampPage('3', 6)).toBe(3);
+  });
+
+  it('falls back to the first page for anything unparseable', () => {
+    for (const bad of [null, undefined, '', 'abc', '-4', '0', Number.NaN]) {
+      expect(clampPage(bad, 6)).toBe(1);
+    }
+  });
+
+  it('clamps past the end rather than rendering an empty list', () => {
+    // ?p=99 on a two-page month must land on page two, not on a page
+    // that would read as "you had no calls".
+    expect(clampPage(99, 2)).toBe(2);
+  });
+
+  it('always yields at least page 1, even with nothing to show', () => {
+    expect(clampPage(5, 0)).toBe(1);
+    expect(clampPage(1, 0)).toBe(1);
+  });
+});
+
+describe('loadRecallClientView — pagination', () => {
+  beforeEach(() => {
+    state.subFindFirst.mockResolvedValue(subscription());
+  });
+
+  it('reports the whole month even though it only fetched a page', async () => {
+    state.callCount.mockResolvedValue(47);
+    const view = await load();
+    // The reader needs "1-20 de 47", not a list that stops with no
+    // explanation.
+    expect(view).toMatchObject({ page: 1, pageCount: 3, totalCalls: 47, pageSize: CALLS_PER_PAGE });
+  });
+
+  it('counts over the SAME window it lists', async () => {
+    await load();
+    // A total taken from a different filter than the list is how a pager
+    // ends up promising a page that renders empty.
+    expect(state.callCount.mock.calls[0][0].where).toEqual(state.callFindMany.mock.calls[0][0].where);
+  });
+
+  it('skips by whole pages', async () => {
+    state.callCount.mockResolvedValue(47);
+    await loadRecallClientView(prisma, 'client_1', { now: NOW, page: 3 });
+    expect(state.callFindMany.mock.calls[0][0].skip).toBe(2 * CALLS_PER_PAGE);
+  });
+
+  it('clamps a page past the end once it knows the total', async () => {
+    state.callCount.mockResolvedValue(21);
+    const view = await loadRecallClientView(prisma, 'client_1', { now: NOW, page: 99 });
+    expect(view).toMatchObject({ page: 2, pageCount: 2 });
+    expect(state.callFindMany.mock.calls[0][0].skip).toBe(CALLS_PER_PAGE);
+  });
+
+  it('reports a single page for an empty month rather than zero', async () => {
+    state.callCount.mockResolvedValue(0);
+    const view = await load();
+    expect(view).toMatchObject({ page: 1, pageCount: 1, totalCalls: 0 });
+  });
+
+  it('needs no pager when the month fits on one page', async () => {
+    state.callCount.mockResolvedValue(CALLS_PER_PAGE);
+    const view = await load();
+    expect(view).toMatchObject({ pageCount: 1 });
   });
 });

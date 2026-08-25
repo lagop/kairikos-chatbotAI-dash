@@ -147,6 +147,38 @@ function MonthLink({
   );
 }
 
+/** One arrow of the in-month pager. Disabled text at the ends rather
+ *  than a hidden control, same reasoning as MonthLink: the pager must
+ *  not move under the reader as they page. */
+function PageLink({
+  month,
+  page,
+  label,
+  testId,
+}: {
+  month: string;
+  page: number | null;
+  label: string;
+  testId: string;
+}) {
+  if (page === null) {
+    return (
+      <span className="px-2 py-1 text-xs text-kairikos-muted opacity-40" aria-disabled="true">
+        {label}
+      </span>
+    );
+  }
+  return (
+    <Link
+      href={`/portal/llamadas?mes=${month}&p=${page}`}
+      className="rounded-lg px-2 py-1 text-xs text-kairikos-accent2 hover:underline"
+      data-testid={testId}
+    >
+      {label}
+    </Link>
+  );
+}
+
 function Metric({
   label,
   value,
@@ -172,7 +204,7 @@ function Metric({
 export default async function PortalLlamadasPage({
   searchParams,
 }: {
-  searchParams?: { mes?: string };
+  searchParams?: { mes?: string; p?: string };
 }) {
   await requirePortalSession();
   const resolved = await resolveClientFromSession();
@@ -182,7 +214,10 @@ export default async function PortalLlamadasPage({
 
   const view =
     isDatabaseConfigured && resolved.source === 'database'
-      ? await loadRecallClientView(prisma, resolved.clientId, { month: searchParams?.mes ?? null })
+      ? await loadRecallClientView(prisma, resolved.clientId, {
+          month: searchParams?.mes ?? null,
+          page: searchParams?.p ?? null,
+        })
       : ({ state: 'not_contracted' } as const);
 
   if (view.state === 'not_contracted') {
@@ -280,7 +315,10 @@ export default async function PortalLlamadasPage({
     );
   }
 
-  const { metrics, history, calls, previousMonth, nextMonth, truncated } = view;
+  const { metrics, history, calls, previousMonth, nextMonth } = view;
+  const { page, pageCount, totalCalls, pageSize } = view;
+  const firstShown = totalCalls === 0 ? 0 : (page - 1) * pageSize + 1;
+  const lastShown = (page - 1) * pageSize + calls.length;
 
   return (
     <div className="space-y-6">
@@ -380,6 +418,9 @@ export default async function PortalLlamadasPage({
       <section aria-label={`Llamadas de ${monthLabel(view.localMonth)}`}>
         <h2 className="mb-2 text-sm font-semibold">
           Llamadas de <span className="capitalize">{monthLabel(view.localMonth)}</span>
+          {totalCalls > 0 ? (
+            <span className="ml-2 font-normal text-kairikos-muted tabular-nums">({totalCalls})</span>
+          ) : null}
         </h2>
         {calls.length === 0 ? (
           <EmptyState
@@ -414,13 +455,30 @@ export default async function PortalLlamadasPage({
             ))}
           </ul>
         )}
-        {truncated ? (
-          // Never stop the list without saying so: a reader has no way to
-          // tell a short month from a truncated one.
-          <p className="mt-2 text-xs text-kairikos-muted" data-testid="recall-client-truncated">
-            Mostramos las {calls.length} llamadas más recientes de este mes. Si necesitas el resto,
-            escríbenos.
-          </p>
+        {pageCount > 1 ? (
+          <nav
+            className="mt-3 flex flex-wrap items-center justify-between gap-2"
+            aria-label="Paginación de llamadas"
+            data-testid="recall-client-pager"
+          >
+            <p className="text-xs text-kairikos-muted tabular-nums" data-testid="recall-client-range">
+              {firstShown}–{lastShown} de {totalCalls}
+            </p>
+            <div className="flex items-center gap-1">
+              <PageLink
+                month={view.localMonth}
+                page={page > 1 ? page - 1 : null}
+                label="← Anteriores"
+                testId="recall-client-prev-page"
+              />
+              <PageLink
+                month={view.localMonth}
+                page={page < pageCount ? page + 1 : null}
+                label="Siguientes →"
+                testId="recall-client-next-page"
+              />
+            </div>
+          </nav>
         ) : null}
       </section>
 
