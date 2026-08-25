@@ -28,6 +28,7 @@ const mockState = vi.hoisted(() => ({
   requestUpdate: vi.fn(),
   requestFindMany: vi.fn(),
   logError: vi.fn(),
+  sendTemplate: vi.fn(),
 }));
 
 vi.mock('@/lib/google-business', () => ({
@@ -47,6 +48,10 @@ vi.mock('@/lib/prisma', () => ({
   },
 }));
 
+vi.mock('@/lib/whatsapp-api', () => ({
+  sendTemplate: (...args: unknown[]) => mockState.sendTemplate(...args),
+}));
+
 vi.mock('@/lib/observability', () => ({
   logError: (...args: unknown[]) => mockState.logError(...args),
 }));
@@ -57,6 +62,9 @@ import {
   createCampaignWithRequests,
   retryFailedRequests,
   isConsentBasis,
+  isAddressable,
+  dispatchReviewRequest,
+  REVIEW_TEMPLATE,
 } from '@/lib/review-request-campaign';
 
 function baseConnection(overrides: Record<string, unknown> = {}) {
@@ -152,7 +160,7 @@ describe('createCampaignWithRequests', () => {
       businessName: 'X',
       campaignName: 'Test',
       consentBasis: 'customer_relationship',
-      recipients: [{ email: 'Ana@Example.com' }, { email: 'ana@example.com' }, { email: 'carlos@example.com' }],
+      recipients: [{ recipient: 'Ana@Example.com' }, { recipient: 'ana@example.com' }, { recipient: 'carlos@example.com' }],
     });
     expect(mockState.requestCreate).toHaveBeenCalledTimes(2);
   });
@@ -165,7 +173,7 @@ describe('createCampaignWithRequests', () => {
       businessName: 'X',
       campaignName: 'Test',
       consentBasis: 'customer_relationship',
-      recipients: [{ email: 'ana@example.com' }],
+      recipients: [{ recipient: 'ana@example.com' }],
     });
     expect(mockState.fetchLocationReviewUrl).toHaveBeenCalledWith('at_1', 'locations/456');
     expect(mockState.connectionUpdate).toHaveBeenCalledWith(
@@ -180,7 +188,7 @@ describe('createCampaignWithRequests', () => {
       businessName: 'X',
       campaignName: 'Test',
       consentBasis: 'customer_relationship',
-      recipients: [{ email: 'ana@example.com' }],
+      recipients: [{ recipient: 'ana@example.com' }],
     });
     expect(result).toEqual({ ok: false, error: 'no_review_url' });
     expect(mockState.campaignCreate).not.toHaveBeenCalled();
@@ -192,7 +200,7 @@ describe('createCampaignWithRequests', () => {
       businessName: 'X',
       campaignName: 'Test',
       consentBasis: 'explicit_consent',
-      recipients: [{ email: 'ana@example.com' }, { email: 'carlos@example.com' }],
+      recipients: [{ recipient: 'ana@example.com' }, { recipient: 'carlos@example.com' }],
     });
     expect(result.ok).toBe(true);
     for (const call of mockState.requestCreate.mock.calls) {
@@ -207,7 +215,7 @@ describe('createCampaignWithRequests', () => {
       businessName: 'X',
       campaignName: 'Test',
       consentBasis: 'customer_relationship',
-      recipients: [{ email: 'ana@example.com' }],
+      recipients: [{ recipient: 'ana@example.com' }],
     });
     expect(result).toEqual({ ok: true, campaignId: 'campaign_1', sent: 0, failed: 0, skipped: 1 });
     expect(mockState.requestUpdate).toHaveBeenCalledWith(
@@ -233,5 +241,86 @@ describe('retryFailedRequests', () => {
     const result = await retryFailedRequests('campaign_1', 'X');
     expect(result).toEqual({ retried: 0, sent: 0, failed: 0 });
     expect(mockState.requestUpdate).not.toHaveBeenCalled();
+  });
+});
+
+// =============================================================================
+// WP-XX (Fase 10) — the channel dispatcher.
+//
+// The schema always said a new channel "needs no schema change". These
+// tests pin the three places that were nonetheless hard-wired to email,
+// and above all that adding WhatsApp did not change what the email path
+// does.
+// =============================================================================
+
+describe('isAddressable', () => {
+  it('judges a recipient by the channel it will be sent on', () => {
+    expect(isAddressable('email', 'ana@example.com')).toBe(true);
+    expect(isAddressable('email', '+34651234567')).toBe(false);
+    expect(isAddressable('whatsapp', '+34651234567')).toBe(true);
+    expect(isAddressable('whatsapp', '34651234567')).toBe(true);
+    // The old inline includes('@') made every channel an email channel,
+    // which would have let an address through as a phone number.
+    expect(isAddressable('whatsapp', 'ana@example.com')).toBe(false);
+    expect(isAddressable('whatsapp', '')).toBe(false);
+  });
+});
+
+describe('dispatchReviewRequest on whatsapp', () => {
+  beforeEach(() => {
+    mockState.sendTemplate.mockReset().mockResolvedValue({ ok: true, data: { messages: [{ id: 'wamid.1' }] } });
+  });
+
+  it('sends the approved template with the tracking id on the BUTTON, not in the body', async () => {
+    const result = await dispatchReviewRequest(
+      'whatsapp',
+      {
+        to: '+34651234567',
+        recipientName: null,
+        businessName: 'Fontanería Aurora',
+        trackingUrl: 'https://portal.kairikos.com/r/req_1',
+        trackingSuffix: 'req_1',
+      },
+      { token: 'tok', phoneNumberId: 'phone_1' },
+    );
+
+    expect(result).toEqual({ ok: true, messageId: 'wamid.1' });
+    const [token, phoneNumberId, to, template] = mockState.sendTemplate.mock.calls[0];
+    expect([token, phoneNumberId, to]).toEqual(['tok', 'phone_1', '+34651234567']);
+    expect(template.name).toBe(REVIEW_TEMPLATE.name);
+    expect(template.bodyParams).toEqual(['Fontanería Aurora']);
+    // A raw URL in a body parameter renders as plain text and Meta
+    // flags it; the dynamic URL button is the supported mechanism.
+    expect(template.buttonUrlSuffix).toBe('req_1');
+  });
+
+  it('treats a missing sender as skipped, not failed', async () => {
+    const result = await dispatchReviewRequest(
+      'whatsapp',
+      { to: '+34651234567', recipientName: null, businessName: 'X', trackingUrl: 'u' },
+    );
+    // Marking it failed would invite a retry that cannot work either —
+    // same treatment the email path gives a missing RESEND_API_KEY.
+    expect(result).toMatchObject({ ok: true, skipped: true, reason: 'no_api_key' });
+    expect(mockState.sendTemplate).not.toHaveBeenCalled();
+  });
+
+  it('skips a recipient that is not a number at all', async () => {
+    const result = await dispatchReviewRequest(
+      'whatsapp',
+      { to: 'ana@example.com', recipientName: null, businessName: 'X', trackingUrl: 'u' },
+      { token: 'tok', phoneNumberId: 'phone_1' },
+    );
+    expect(result).toMatchObject({ ok: true, skipped: true, reason: 'no_recipient' });
+  });
+
+  it('surfaces a Meta rejection as a failure the caller can persist', async () => {
+    mockState.sendTemplate.mockResolvedValue({ ok: false, error: 'template paused', code: 132015 });
+    const result = await dispatchReviewRequest(
+      'whatsapp',
+      { to: '+34651234567', recipientName: null, businessName: 'X', trackingUrl: 'u' },
+      { token: 'tok', phoneNumberId: 'phone_1' },
+    );
+    expect(result).toEqual({ ok: false, error: 'template paused' });
   });
 });

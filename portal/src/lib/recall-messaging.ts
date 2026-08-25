@@ -182,10 +182,26 @@ function businessNameOf(call: CallRow): string {
   return call.subscription.client.companyName ?? call.subscription.client.name;
 }
 
-/** The token for this call's sending number, or null when the connection
- *  is missing, inactive, or its ciphertext no longer decrypts. */
-function metaCredentialsFor(call: CallRow): { token: string; phoneNumberId: string } | null {
-  const connection = call.subscription.metaConnection;
+export interface MetaSender {
+  token: string;
+  phoneNumberId: string;
+}
+
+/** The credentials for a client's own WhatsApp number, or null when the
+ *  connection is missing, inactive, or its ciphertext no longer decrypts.
+ *  Exported because the digest (Fase 10) sends from the same number and
+ *  must make the same three checks — duplicating them is how one of the
+ *  two ends up sending on a revoked connection. */
+export function metaSenderFor(
+  connection: {
+    id: string;
+    externalId: string;
+    status: string;
+    accessTokenCiphertext: Buffer;
+    accessTokenIv: Buffer;
+    accessTokenTag: Buffer;
+  } | null,
+): MetaSender | null {
   if (!connection || connection.status !== 'active') return null;
   try {
     return {
@@ -200,6 +216,10 @@ function metaCredentialsFor(call: CallRow): { token: string; phoneNumberId: stri
     logError('recall_messaging.decrypt_failed', err, { connectionId: connection.id }, 'warn');
     return null;
   }
+}
+
+function metaCredentialsFor(call: CallRow): MetaSender | null {
+  return metaSenderFor(call.subscription.metaConnection);
 }
 
 // ---------------------------------------------------------------------------
