@@ -9,6 +9,7 @@ import { monthLabel } from '@/lib/recall-reports';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { ProductPitch } from '@/components/portal/ProductPitch';
 import { EmptyState } from '@/components/portal/EmptyState';
+import { SelfServeProductCard, type SelfServeTierOption } from '@/components/portal/SelfServeProductCard';
 
 export const dynamic = 'force-dynamic';
 
@@ -98,6 +99,14 @@ const DATE_FORMAT = new Intl.DateTimeFormat('es-ES', {
   minute: '2-digit',
 });
 
+/** Tier codes are English across the catalogue; 'recall' uses
+ *  solo/team/business. Same small local map /portal/productos keeps. */
+const TIER_LABEL: Record<string, string> = {
+  solo: 'Autónomo',
+  team: 'Equipo',
+  business: 'Empresa',
+};
+
 function notifyLabel(call: RecallCallSummary): string {
   if (call.callerNotifyChannel) {
     return NOTIFY_LABEL[call.callerNotifyChannel] ?? call.callerNotifyChannel;
@@ -143,6 +152,34 @@ export default async function PortalLlamadasPage() {
       : ({ state: 'not_contracted' } as const);
 
   if (view.state === 'not_contracted') {
+    // Read the catalogue rather than hard-coding whether this is
+    // sellable, so activating the product is a seed change and not a
+    // code change.
+    let tiers: SelfServeTierOption[] = [];
+    let pendingProductId: string | null = null;
+    if (isDatabaseConfigured && resolved.source === 'database') {
+      const [products, pendingRow] = await Promise.all([
+        prisma.product.findMany({
+          where: { code: 'recall', isActive: true },
+          orderBy: { priceCents: 'asc' },
+          select: { id: true, tier: true, priceCents: true, setupFeeCents: true, currency: true },
+        }),
+        prisma.clientProduct.findFirst({
+          where: { clientId: resolved.clientId, status: 'pending_payment', product: { code: 'recall' } },
+          select: { productId: true },
+        }),
+      ]);
+      tiers = products.map((p) => ({
+        productId: p.id,
+        tier: p.tier,
+        tierLabel: TIER_LABEL[p.tier] ?? p.tier,
+        priceCents: p.priceCents,
+        setupFeeCents: p.setupFeeCents,
+        currency: p.currency,
+      }));
+      pendingProductId = pendingRow?.productId ?? null;
+    }
+
     return (
       <div className="space-y-6">
         <PageHeading eyebrow="Portal" title="Llamadas recuperadas" />
@@ -156,15 +193,33 @@ export default async function PortalLlamadasPage() {
           ]}
           priceNote="Desde 149 €/mes. Se instala en 48 horas."
         >
-          <EmptyState
-            title="Habla con nosotros"
-            description="Todavía no lo puedes contratar tú mismo desde el portal. Escríbenos y lo dejamos montado."
-            action={
-              <Link href="/portal/support" className="btn-primary">
-                Quiero información
-              </Link>
-            }
-          />
+          {tiers.length > 0 ? (
+            pendingProductId ? (
+              <SelfServeProductCard
+                code="recall"
+                label="Llamadas perdidas"
+                status="pending"
+                productId={pendingProductId}
+              />
+            ) : (
+              <SelfServeProductCard code="recall" label="Llamadas perdidas" status="available" tiers={tiers} />
+            )
+          ) : (
+            // No active catalogue row: the three "recall" tiers are
+            // deliberately isActive: false until Coexistence is verified
+            // against a real Meta app AND real Stripe price ids exist.
+            // Offering a checkout here would take money for a service
+            // whose WhatsApp path has never run once.
+            <EmptyState
+              title="Habla con nosotros"
+              description="Todavía no se puede contratar solo desde el portal. Escríbenos y lo dejamos montado."
+              action={
+                <Link href="/portal/support" className="btn-primary">
+                  Quiero información
+                </Link>
+              }
+            />
+          )}
         </ProductPitch>
       </div>
     );

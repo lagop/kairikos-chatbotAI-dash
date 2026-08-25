@@ -39,7 +39,7 @@ export const PORTAL_NAV: readonly PortalNavItem[] = [
   // has somewhere to go, and so the portal home has a reason to show him
   // the rest of the catalogue while he is there. The page is read-only:
   // which calls became a job is decided by replying to the 19:00 digest.
-  { href: '/portal/llamadas', label: 'Llamadas' },
+  { href: '/portal/llamadas', label: 'Llamadas perdidas' },
   { href: '/portal/leads', label: 'Captación con IA' },
   { href: '/portal/resenas', label: 'Reseñas' },
   { href: '/portal/billing', label: 'Facturación' },
