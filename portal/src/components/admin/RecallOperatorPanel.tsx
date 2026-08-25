@@ -109,6 +109,20 @@ const DATE_FORMAT = new Intl.DateTimeFormat('es-ES', {
   minute: '2-digit',
 });
 
+/** What happened to the caller message, in words an operator can act on.
+ *
+ *  A withheld caller is the case worth spelling out: the generic
+ *  "pendiente" reads as "this will happen", and for a number nobody can
+ *  call back it never will. Saying so turns a question into an answer.
+ *  Derived rather than stored, because withheld already says it. */
+function callerNotifyLabel(call: RecallCallRow): string {
+  if (call.callerNotifyChannel) {
+    return CALLER_NOTIFY_LABEL[call.callerNotifyChannel] ?? call.callerNotifyChannel;
+  }
+  if (call.withheld) return 'Sin número al que avisar';
+  return 'Aviso al cliente pendiente';
+}
+
 function daysSince(iso: string): number {
   return Math.floor((Date.now() - new Date(iso).getTime()) / (24 * 60 * 60 * 1000));
 }
@@ -192,10 +206,11 @@ export function RecallOperatorPanel({ data }: { data: RecallPanelData | null }) 
                   <p className="mt-1 text-xs text-kairikos-muted">Transcripción pendiente.</p>
                 ) : null}
                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-kairikos-muted">
-                  <span data-testid="recall-call-caller-notify" data-channel={call.callerNotifyChannel ?? 'pending'}>
-                    {call.callerNotifyChannel
-                      ? (CALLER_NOTIFY_LABEL[call.callerNotifyChannel] ?? call.callerNotifyChannel)
-                      : 'Aviso al cliente pendiente'}
+                  <span
+                    data-testid="recall-call-caller-notify"
+                    data-channel={call.callerNotifyChannel ?? (call.withheld ? 'withheld' : 'pending')}
+                  >
+                    {callerNotifyLabel(call)}
                   </span>
                   <span data-testid="recall-call-owner-notify">
                     {call.notifiedOwnerAt ? 'Recado enviado al dueño' : 'Recado al dueño pendiente'}
