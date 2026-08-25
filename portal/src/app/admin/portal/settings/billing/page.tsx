@@ -25,13 +25,18 @@ export default async function AdminBillingSettingsPage() {
   const [credentials, productRows] = await Promise.all([
     getStripeCredentialStatus(),
     prisma.product.findMany({
-      where: { isActive: true },
-      orderBy: [{ code: 'asc' }, { priceCents: 'asc' }],
+      // Inactive products are listed too. Bootstrapping a product on
+      // Stripe has to be possible BEFORE it goes on sale — filtering
+      // them out here forced the operator to expose a product to
+      // clients in order to be allowed to give it prices, leaving a
+      // window where the checkout returns 502.
+      orderBy: [{ isActive: 'desc' }, { code: 'asc' }, { priceCents: 'asc' }],
       select: {
         id: true,
         code: true,
         tier: true,
         name: true,
+        isActive: true,
         priceCents: true,
         setupFeeCents: true,
         currency: true,
