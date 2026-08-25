@@ -20,6 +20,7 @@ vi.mock('@/lib/recall-reports', async () => {
 
 import {
   loadRecallClientView,
+  buildHistory,
   clampMonth,
   HISTORY_MONTHS,
   CALLS_PER_MONTH_CAP,
@@ -142,18 +143,19 @@ describe('loadRecallClientView — active', () => {
     expect(view).toMatchObject({ localMonth: '2026-08' });
   });
 
-  it('turns stored seconds into minutes for the history table', async () => {
+  it('turns stored seconds into minutes for the months it did not compute', async () => {
     state.usageFindMany.mockResolvedValue([
-      { localMonth: '2026-07', calls: 7, recordedCalls: 5, callSeconds: 305, reviewRequests: 3 },
       { localMonth: '2026-06', calls: 4, recordedCalls: 2, callSeconds: 60, reviewRequests: 1 },
     ]);
 
     const view = await load();
-    expect(view).toMatchObject({
-      history: [
-        { localMonth: '2026-07', calls: 7, recordedCalls: 5, minutes: 5, reviewRequests: 3 },
-        { localMonth: '2026-06', calls: 4, recordedCalls: 2, minutes: 1, reviewRequests: 1 },
-      ],
+    expect((view as { history: unknown[] }).history[1]).toEqual({
+      localMonth: '2026-06',
+      calls: 4,
+      recordedCalls: 2,
+      minutes: 1,
+      reviewRequests: 1,
+      isSelected: false,
     });
   });
 
@@ -164,12 +166,11 @@ describe('loadRecallClientView — active', () => {
     expect(query.take).toBe(HISTORY_MONTHS);
   });
 
-  it('leaves the month on screen out of the history table', async () => {
+  it('keeps every month in the table, including the one on screen', async () => {
     await load();
-    // Its figures are already above, computed live, while the row was
-    // written by the last roll-up — showing both would print the month
-    // twice and let the two disagree.
-    expect(state.usageFindMany.mock.calls[0][0].where.localMonth).toEqual({ not: '2026-07' });
+    // The table IS the navigation. Dropping its selected row would
+    // reshuffle the list every time the reader used it.
+    expect(state.usageFindMany.mock.calls[0][0].where).toEqual({ subscriptionId: 'sub_1' });
   });
 
   it('hides calls the client asked us to block', async () => {
@@ -302,5 +303,56 @@ describe('loadRecallClientView — truncation', () => {
     const view = await load();
     expect(view).toMatchObject({ truncated: true });
     expect((view as { calls: unknown[] }).calls).toHaveLength(CALLS_PER_MONTH_CAP);
+  });
+});
+
+describe('buildHistory', () => {
+  const rows = [
+    { localMonth: '2026-06', calls: 4, recordedCalls: 2, callSeconds: 120, reviewRequests: 1 },
+    { localMonth: '2026-05', calls: 9, recordedCalls: 7, callSeconds: 600, reviewRequests: 5 },
+  ];
+  const live = { calls: 12, recordedCalls: 8, callSeconds: 305, reviewRequests: 6 };
+
+  it('never drops the selected month', () => {
+    const out = buildHistory(rows, '2026-07', live);
+    expect(out.map((r) => r.localMonth)).toEqual(['2026-07', '2026-06', '2026-05']);
+  });
+
+  it('gives the selected month the LIVE figures, so it cannot disagree with the summary', () => {
+    const out = buildHistory(rows, '2026-06', live);
+    const june = out.find((r) => r.localMonth === '2026-06');
+    // The stored row said 4 calls; the summary above says 12. Showing
+    // the stored one here would print two numbers for one month.
+    expect(june).toEqual({
+      localMonth: '2026-06',
+      calls: 12,
+      recordedCalls: 8,
+      minutes: 5,
+      reviewRequests: 6,
+      isSelected: true,
+    });
+  });
+
+  it('marks exactly one row as selected', () => {
+    const out = buildHistory(rows, '2026-05', live);
+    expect(out.filter((r) => r.isSelected)).toHaveLength(1);
+  });
+
+  it('sorts newest first whichever month is selected', () => {
+    expect(buildHistory(rows, '2026-05', live).map((r) => r.localMonth)).toEqual([
+      '2026-06',
+      '2026-05',
+    ]);
+    expect(buildHistory(rows, '2026-12', live).map((r) => r.localMonth)).toEqual([
+      '2026-12',
+      '2026-06',
+      '2026-05',
+    ]);
+  });
+
+  it('synthesises the selected month when no roll-up row exists yet', () => {
+    // The normal state of a month that started this morning.
+    const out = buildHistory([], '2026-07', live);
+    expect(out).toEqual([{ localMonth: '2026-07', calls: 12, recordedCalls: 8, minutes: 5, reviewRequests: 6, isSelected: true }]);
   });
 });

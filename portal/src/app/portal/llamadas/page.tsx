@@ -342,15 +342,29 @@ export default async function PortalLlamadasPage({
               </thead>
               <tbody>
                 {history.map((row) => (
-                  <tr key={row.localMonth} className="border-b border-kairikos-border last:border-0">
+                  <tr
+                    key={row.localMonth}
+                    className={`border-b border-kairikos-border last:border-0 ${
+                      row.isSelected ? 'bg-kairikos-surface2 font-medium' : ''
+                    }`}
+                    data-testid="recall-client-history-row"
+                    data-selected={row.isSelected ? 'true' : 'false'}
+                    aria-current={row.isSelected ? 'true' : undefined}
+                  >
                     <th scope="row" className="px-4 py-2 text-left font-normal">
-                      <Link
-                        href={`/portal/llamadas?mes=${row.localMonth}`}
-                        className="capitalize text-kairikos-accent2 hover:underline"
-                        data-testid="recall-client-history-link"
-                      >
-                        {monthLabel(row.localMonth)}
-                      </Link>
+                      {row.isSelected ? (
+                        // The month you are already looking at: shown, but
+                        // not a link to itself.
+                        <span className="capitalize">{monthLabel(row.localMonth)}</span>
+                      ) : (
+                        <Link
+                          href={`/portal/llamadas?mes=${row.localMonth}`}
+                          className="capitalize text-kairikos-accent2 hover:underline"
+                          data-testid="recall-client-history-link"
+                        >
+                          {monthLabel(row.localMonth)}
+                        </Link>
+                      )}
                     </th>
                     <td className="px-4 py-2 text-right tabular-nums">{row.calls}</td>
                     <td className="px-4 py-2 text-right tabular-nums">{row.recordedCalls}</td>

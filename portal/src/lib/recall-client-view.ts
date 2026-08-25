@@ -62,6 +62,9 @@ export interface RecallMonthSummary {
   recordedCalls: number;
   minutes: number;
   reviewRequests: number;
+  /** The month currently on screen. The page renders it unlinked and
+   *  marked, rather than removing it from the list. */
+  isSelected: boolean;
 }
 
 export type RecallClientView =
@@ -165,14 +168,10 @@ export async function loadRecallClientView(
   const [metrics, historyRows, callRows] = await Promise.all([
     computeMonthlyMetrics(prisma, subscription, since, until),
     prisma.recallUsageMonth.findMany({
-      where: {
-        subscriptionId: subscription.id,
-        // Every month EXCEPT the one on screen. Its figures are already
-        // above, computed live, and this row was written by the last
-        // roll-up — showing both would print the month twice and let
-        // the two disagree by whatever came in since that tick.
-        localMonth: { not: localMonth },
-      },
+      // EVERY month, including the one on screen: this table is the
+      // navigation, and a list that drops its own selected row
+      // reshuffles under the reader every time they use it.
+      where: { subscriptionId: subscription.id },
       orderBy: { localMonth: 'desc' },
       take: HISTORY_MONTHS,
       select: {
@@ -217,19 +216,61 @@ export async function loadRecallClientView(
     previousMonth,
     nextMonth,
     metrics,
-    history: historyRows.map((row) => ({
-      localMonth: row.localMonth,
-      calls: row.calls,
-      recordedCalls: row.recordedCalls,
-      minutes: Math.round(row.callSeconds / 60),
-      reviewRequests: row.reviewRequests,
-    })),
+    history: buildHistory(historyRows, localMonth, metrics),
     calls: truncated ? callRows.slice(0, CALLS_PER_MONTH_CAP) : callRows,
     truncated,
     // Surfaced rather than hard-coded in the page so the number the client
     // is told always matches the number the purge job actually enforces.
     recordingRetentionDays: RECORDING_RETENTION_DAYS,
   };
+}
+
+interface UsageRow {
+  localMonth: string;
+  calls: number;
+  recordedCalls: number;
+  callSeconds: number;
+  reviewRequests: number;
+}
+
+/**
+ * The month list, newest first, with the selected month always present.
+ *
+ * Its figures come from the LIVE metrics rather than from its roll-up
+ * row, so the row and the summary above it can never show two numbers
+ * for the same month. The other rows are the stored roll-up, which for
+ * a month that isn't on screen is exactly what it should be — and for
+ * the current month, when some other month is selected, lags by at most
+ * one scheduler tick.
+ *
+ * The selected month is synthesised when no roll-up row exists yet,
+ * which is the normal state of a month that started this morning.
+ */
+export function buildHistory(
+  rows: readonly UsageRow[],
+  selectedMonth: string,
+  metrics: { calls: number; recordedCalls: number; callSeconds: number; reviewRequests: number },
+): RecallMonthSummary[] {
+  const mapped = rows.map((row) => ({
+    localMonth: row.localMonth,
+    calls: row.calls,
+    recordedCalls: row.recordedCalls,
+    minutes: Math.round(row.callSeconds / 60),
+    reviewRequests: row.reviewRequests,
+    isSelected: false,
+  }));
+
+  const selected: RecallMonthSummary = {
+    localMonth: selectedMonth,
+    calls: metrics.calls,
+    recordedCalls: metrics.recordedCalls,
+    minutes: Math.round(metrics.callSeconds / 60),
+    reviewRequests: metrics.reviewRequests,
+    isSelected: true,
+  };
+
+  const withoutSelected = mapped.filter((row) => row.localMonth !== selectedMonth);
+  return [...withoutSelected, selected].sort((a, b) => (a.localMonth < b.localMonth ? 1 : -1));
 }
 
 const MONTH_KEY = /^\d{4}-(0[1-9]|1[0-2])$/;
