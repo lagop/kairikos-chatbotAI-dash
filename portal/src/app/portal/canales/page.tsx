@@ -11,7 +11,7 @@ import { WebChannelCard, type WebEmbedSummary } from '@/components/portal/WebCha
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Canales · Portal Kairikos',
+  title: 'Canales',
   description: 'Conecta tu chatbot a los canales por los que tus clientes te contactan.',
   alternates: { canonical: '/portal/canales' },
   robots: { index: false, follow: false },
