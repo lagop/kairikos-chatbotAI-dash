@@ -91,6 +91,16 @@ services:
       NEXT_PUBLIC_PORTAL_URL: ${NEXT_PUBLIC_PORTAL_URL:-}
       N8N_API_KEY: ${N8N_API_KEY:-}
       N8N_BASE_URL: ${N8N_BASE_URL:-}
+      # Telefonía del producto 'recall'. Sin las dos primeras, el pool de
+      # números queda deshabilitado y sus rutas de operador devuelven 503;
+      # nada más del portal se ve afectado. El bundle/address regulatorio
+      # es del prestador del servicio y se da de alta una sola vez, no por
+      # cliente — ver .env.production.example.
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_BUNDLE_SID: ${TWILIO_BUNDLE_SID:-}
+      TWILIO_ADDRESS_SID: ${TWILIO_ADDRESS_SID:-}
+      TWILIO_VOICE_WEBHOOK_URL: ${TWILIO_VOICE_WEBHOOK_URL:-}
       # Stripe already has an admin-configurable fallback
       # (/admin/portal/settings/billing → StripeOperatorCredential) — these
       # env vars are only the pre-UI fallback, not required to boot billing.

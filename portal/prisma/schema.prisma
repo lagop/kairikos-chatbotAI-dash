@@ -2065,6 +2065,10 @@ model RecallSubscription {
   metaConnection   MetaChannelConnection?    @relation(fields: [metaConnectionId], references: [id], onDelete: SetNull)
   googleConnection GoogleBusinessConnection? @relation(fields: [googleConnectionId], references: [id], onDelete: SetNull)
   auditLogs        RecallSubscriptionAudit[]
+  // The FK lives on VirtualNumber, not here — the number is the pooled
+  // resource and it is the pool row that records who currently holds it,
+  // so claiming and releasing are each a single write on one row.
+  virtualNumber    VirtualNumber?
 
   @@index([clientId])
   @@index([status])
@@ -2105,4 +2109,68 @@ model RecallSubscriptionAudit {
   @@index([subscriptionId, createdAt])
   @@index([clientId, createdAt])
   @@index([action])
+}
+
+// =============================================================================
+// WP-XX — Virtual numbers for the 'recall' product, managed as a POOL.
+//
+// Why a pool and not provision-on-demand: buying Spanish numbering is not
+// instant (it needs a regulatory bundle, and the provider call can fail or
+// rate-limit), and the one thing this product's onboarding cannot afford
+// is a step that blocks on a third party while the client is on the phone
+// with us. So numbers are bought in batches ahead of time, sit here as
+// `available`, and assignment at alta is a local UPDATE that always
+// succeeds in milliseconds.
+//
+// The regulatory bundle is registered ONCE, by us, as the service
+// provider — never per client. Doing it per client would recreate exactly
+// the manual bottleneck the pool exists to remove.
+//
+// One number per client is deliberate and not a cost decision (~1-2 €/mo
+// against a 149-399 € subscription). A shared number would have to
+// identify the client from Twilio's `ForwardedFrom`, which Twilio's own
+// docs say "depends on the caller's carrier... Not all carriers support
+// passing this information" — and we need the identity BEFORE answering,
+// to play that owner's own recorded greeting. A shared number would also
+// make one flagged number take the whole book down at once.
+// =============================================================================
+model VirtualNumber {
+  id          String @id @default(uuid()) @db.Uuid
+  // 'twilio' today. Free string rather than an enum so a second provider
+  // needs no migration — see src/lib/telephony/.
+  provider    String @default("twilio")
+  // The provider's own identifier for this number (Twilio: the PN… SID).
+  // Unique so a double-provision cannot create two rows for one number.
+  providerSid String @unique @map("provider_sid")
+  e164        String @unique
+  countryCode String @map("country_code")
+
+  // 'available' | 'assigned' | 'released'. `released` rows are kept
+  // rather than deleted: knowing which number a client used to have is
+  // exactly what you need six months later when a caller says they rang
+  // and nobody answered.
+  status String @default("available")
+
+  // Nullable = sitting in the pool. @unique enforces one number per
+  // subscription at the database level, not just in application code.
+  subscriptionId String? @unique @map("subscription_id") @db.Uuid
+
+  provisionedAt DateTime  @default(now()) @map("provisioned_at")
+  assignedAt    DateTime? @map("assigned_at")
+  releasedAt    DateTime? @map("released_at")
+
+  // Last provider-side failure (e.g. a release that the provider
+  // rejected), same convention as MetaChannelConnection.lastSyncError.
+  // A row can be locally `released` while the provider still bills us
+  // for it; this is where that shows up.
+  lastError String? @map("last_error")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  subscription RecallSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([provider])
+  @@index([countryCode, status])
 }
