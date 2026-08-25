@@ -58,6 +58,7 @@ import {
   reconcileStripeProductForTier,
   countActiveSubscriptionsForProduct,
   updateDraftPricing,
+  resetForModeMismatch,
 } from '@/lib/stripe-catalog';
 
 const ACTOR = { operatorId: 'op_1', operatorEmail: 'lucia@kairikos.com' };
@@ -237,6 +238,86 @@ describe('updateDraftPricing', () => {
     await updateDraftPricing(DRAFT_INPUT, ACTOR);
 
     expect(mockState.resolveActiveStripeSecret).not.toHaveBeenCalled();
+  });
+});
+
+describe('resetForModeMismatch', () => {
+  const MISMATCHED_PRODUCT = { ...BOOTSTRAPPED_PRODUCT, stripePriceMode: 'live' };
+
+  it('clears the Stripe pointer and audits mode_mismatch_reset when the stored mode disagrees', async () => {
+    mockState.findUniqueOrThrow.mockResolvedValueOnce(MISMATCHED_PRODUCT);
+    mockState.resolveActiveStripeSecret.mockResolvedValueOnce({ mode: 'test', key: 'sk_test_x' });
+    mockState.subscriptionCount.mockResolvedValueOnce(0);
+    mockState.update.mockResolvedValueOnce({
+      ...MISMATCHED_PRODUCT,
+      stripeProductId: null,
+      stripeRecurringPriceId: null,
+      stripeSetupPriceId: null,
+      stripePriceMode: null,
+    });
+
+    const result = await resetForModeMismatch('prod_reviews_basic', ACTOR);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.product.stripeProductId).toBeNull();
+    expect(mockState.auditCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: 'mode_mismatch_reset' }) }),
+    );
+    // Never calls Stripe — this is a pure DB unlink.
+    expect(mockState.productsCreate).not.toHaveBeenCalled();
+  });
+
+  it('refuses a tier that was never bootstrapped, before checking anything else', async () => {
+    mockState.findUniqueOrThrow.mockResolvedValueOnce(UNBOOTSTRAPPED_PRODUCT);
+
+    const result = await resetForModeMismatch('prod_reviews_basic', ACTOR);
+
+    expect(result).toEqual({ ok: false, error: { kind: 'not_bootstrapped_yet' } });
+    expect(mockState.resolveActiveStripeSecret).not.toHaveBeenCalled();
+    expect(mockState.update).not.toHaveBeenCalled();
+  });
+
+  it('refuses when the stored mode already matches the active one — nothing to fix', async () => {
+    mockState.findUniqueOrThrow.mockResolvedValueOnce(BOOTSTRAPPED_PRODUCT); // mode: 'test'
+    mockState.resolveActiveStripeSecret.mockResolvedValueOnce({ mode: 'test', key: 'sk_test_x' });
+
+    const result = await resetForModeMismatch('prod_reviews_basic', ACTOR);
+
+    expect(result).toEqual({ ok: false, error: { kind: 'no_mode_mismatch' } });
+    expect(mockState.update).not.toHaveBeenCalled();
+  });
+
+  it('treats a row with no recorded mode as UNKNOWN, never as a mismatch', async () => {
+    // Bootstrapped before the mode column existed, or reconciled after a
+    // partial failure (reconcileStripeProductForTier never sets it).
+    // Claiming a mismatch here would offer to sever a working pointer
+    // for no reason.
+    mockState.findUniqueOrThrow.mockResolvedValueOnce({ ...BOOTSTRAPPED_PRODUCT, stripePriceMode: null });
+    mockState.resolveActiveStripeSecret.mockResolvedValueOnce({ mode: 'test', key: 'sk_test_x' });
+
+    const result = await resetForModeMismatch('prod_reviews_basic', ACTOR);
+
+    expect(result).toEqual({ ok: false, error: { kind: 'no_mode_mismatch' } });
+  });
+
+  it('refuses when no Stripe credential is configured at all — nothing to compare against', async () => {
+    mockState.findUniqueOrThrow.mockResolvedValueOnce(MISMATCHED_PRODUCT);
+    mockState.resolveActiveStripeSecret.mockResolvedValueOnce(null);
+
+    const result = await resetForModeMismatch('prod_reviews_basic', ACTOR);
+
+    expect(result).toEqual({ ok: false, error: { kind: 'no_mode_mismatch' } });
+  });
+
+  it('refuses to unlink a tier with active subscribers, and reports how many', async () => {
+    mockState.findUniqueOrThrow.mockResolvedValueOnce(MISMATCHED_PRODUCT);
+    mockState.resolveActiveStripeSecret.mockResolvedValueOnce({ mode: 'test', key: 'sk_test_x' });
+    mockState.subscriptionCount.mockResolvedValueOnce(3);
+
+    const result = await resetForModeMismatch('prod_reviews_basic', ACTOR);
+
+    expect(result).toEqual({ ok: false, error: { kind: 'has_active_subscriptions', count: 3 } });
+    expect(mockState.update).not.toHaveBeenCalled();
   });
 });
 

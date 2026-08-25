@@ -14,6 +14,13 @@ export type CatalogMutationError =
   | { kind: 'already_bootstrapped' }
   | { kind: 'not_bootstrapped_yet' }
   | { kind: 'concurrent_modification' }
+  // No STORED mode to compare against (never bootstrapped, or the row
+  // predates the mode column), or the stored mode already matches
+  // what is active — nothing for resetForModeMismatch to fix.
+  | { kind: 'no_mode_mismatch' }
+  // Refuses to null out the pointer to a Stripe object real clients are
+  // actively paying against.
+  | { kind: 'has_active_subscriptions'; count: number }
   | {
       kind: 'partial_failure';
       stripeProductId: string;
@@ -194,6 +201,76 @@ export async function updateDraftPricing(
   ]);
   return { ok: true, product: updated };
 }
+
+/**
+ * Clears the Stripe pointer on a tier whose stored stripePriceMode no
+ * longer matches the currently active credential — the state the panel
+ * shows as "⚠️ creado en test, activo es live", with nothing to click.
+ *
+ * Test and live are fully separate namespaces in Stripe: a Product/Price
+ * id from one is meaningless — and errors — under the other mode's key.
+ * There is no migrate-in-place; the only way forward is a fresh
+ * bootstrapStripeProductForTier call. This function is what reopens that
+ * door: nulling stripeProductId/stripeRecurringPriceId/
+ * stripeSetupPriceId/stripePriceMode makes bootstrapped=false again, so
+ * "Crear en Stripe" reappears in the panel exactly as if the tier had
+ * never been touched — including the option to edit its price first via
+ * updateDraftPricing before committing it live.
+ *
+ * Refuses when there are active subscribers: they are real clients
+ * paying against the Stripe object this would unlink, and in practice
+ * that should never happen for a TEST-mode object (nobody pays with a
+ * test key) — this is the safety net for the case that assumption is
+ * wrong.
+ */
+export async function resetForModeMismatch(
+  productId: string,
+  actor: CatalogActor,
+): Promise<CatalogMutationResult> {
+  const product = await prisma.product.findUniqueOrThrow({ where: { id: productId } });
+  if (!product.stripeProductId) {
+    return { ok: false, error: { kind: 'not_bootstrapped_yet' } };
+  }
+
+  const resolved = await resolveActiveStripeSecret();
+  // A row with no recorded mode (bootstrapped before this column existed,
+  // or reconciled after a partial failure — reconcileStripeProductForTier
+  // never sets it) is UNKNOWN, not mismatched. Claiming a mismatch there
+  // would offer to sever a working live pointer for no reason.
+  if (!resolved || product.stripePriceMode === null || product.stripePriceMode === resolved.mode) {
+    return { ok: false, error: { kind: 'no_mode_mismatch' } };
+  }
+
+  const activeSubscriptions = await countActiveSubscriptionsForProduct(productId);
+  if (activeSubscriptions > 0) {
+    return { ok: false, error: { kind: 'has_active_subscriptions', count: activeSubscriptions } };
+  }
+
+  const before = auditSnapshot(product, product.stripePriceMode);
+  const [updated] = await prisma.$transaction([
+    prisma.product.update({
+      where: { id: product.id },
+      data: {
+        stripeProductId: null,
+        stripeRecurringPriceId: null,
+        stripeSetupPriceId: null,
+        stripePriceMode: null,
+      },
+    }),
+    prisma.stripeCatalogAudit.create({
+      data: {
+        productId: product.id,
+        action: 'mode_mismatch_reset',
+        before,
+        after: { stripeProductId: null, stripeRecurringPriceId: null, stripeSetupPriceId: null, stripePriceMode: null },
+        actorOperatorId: actor.operatorId,
+        actorEmail: actor.operatorEmail,
+      },
+    }),
+  ]);
+  return { ok: true, product: updated };
+}
+
 export interface RepriceInput {
   productId: string;
   newPriceCents: number;
