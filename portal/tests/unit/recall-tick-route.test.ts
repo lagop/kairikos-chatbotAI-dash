@@ -1,0 +1,116 @@
+// =============================================================================
+// WP-XX — unit tests for GET /api/cron/recall-tick.
+//
+// Two properties matter here beyond auth: every job must be ISOLATED (one
+// throwing must not cost the others their turn), and the endpoint must
+// stay useful when telephony is unconfigured rather than failing whole.
+// =============================================================================
+
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { NextRequest } from 'next/server';
+
+const mockState = vi.hoisted(() => ({
+  sweepPendingTranscriptions: vi.fn(),
+  purgeExpiredRecordings: vi.fn(),
+  notifyStuckOnboardings: vi.fn(),
+}));
+
+vi.mock('@/lib/recall-transcription', () => ({
+  sweepPendingTranscriptions: (...a: unknown[]) => mockState.sweepPendingTranscriptions(...a),
+}));
+vi.mock('@/lib/recall-retention', () => ({
+  purgeExpiredRecordings: (...a: unknown[]) => mockState.purgeExpiredRecordings(...a),
+  RECORDING_RETENTION_DAYS: 30,
+}));
+vi.mock('@/lib/recall-stuck-alerts', () => ({
+  notifyStuckOnboardings: (...a: unknown[]) => mockState.notifyStuckOnboardings(...a),
+}));
+vi.mock('@/lib/prisma', () => ({ isDatabaseConfigured: true, prisma: {} }));
+
+const SECRET = 'cron_secret_value';
+
+function makeRequest(auth: string | null = `Bearer ${SECRET}`) {
+  return { headers: new Headers(auth ? { authorization: auth } : {}) } as unknown as NextRequest;
+}
+
+async function get(req: NextRequest) {
+  const { GET } = await import('@/app/api/cron/recall-tick/route');
+  return GET(req);
+}
+
+beforeEach(() => {
+  process.env.CRON_SECRET = SECRET;
+  process.env.TWILIO_ACCOUNT_SID = 'AC1';
+  process.env.TWILIO_AUTH_TOKEN = 'tok';
+  mockState.sweepPendingTranscriptions.mockReset().mockResolvedValue({ scanned: 0, transcribed: 0, failed: 0 });
+  mockState.purgeExpiredRecordings.mockReset().mockResolvedValue({ scanned: 0, purged: 0, failed: 0 });
+  mockState.notifyStuckOnboardings.mockReset().mockResolvedValue({ scanned: 0, stuck: 0, notified: 0, deduped: 0, failed: 0 });
+});
+
+describe('GET /api/cron/recall-tick', () => {
+  it('401s without the bearer secret', async () => {
+    expect((await get(makeRequest(null))).status).toBe(401);
+    expect((await get(makeRequest('Bearer wrong'))).status).toBe(401);
+    expect(mockState.purgeExpiredRecordings).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when CRON_SECRET is unset — an unset secret must not open the door', async () => {
+    delete process.env.CRON_SECRET;
+    expect((await get(makeRequest('Bearer '))).status).toBe(401);
+  });
+
+  it('runs all three jobs on a valid tick', async () => {
+    const res = await get(makeRequest());
+    const body = await res.clone().json();
+
+    expect(res.status).toBe(200);
+    expect(Object.keys(body.jobs)).toEqual(['purgeRecordings', 'transcriptions', 'stuckAlerts']);
+    expect(mockState.purgeExpiredRecordings).toHaveBeenCalled();
+    expect(mockState.sweepPendingTranscriptions).toHaveBeenCalled();
+    expect(mockState.notifyStuckOnboardings).toHaveBeenCalled();
+  });
+
+  it('runs retention FIRST — it is the job with a legal deadline attached', async () => {
+    const order: string[] = [];
+    mockState.purgeExpiredRecordings.mockImplementation(async () => {
+      order.push('purge');
+      return {};
+    });
+    mockState.sweepPendingTranscriptions.mockImplementation(async () => {
+      order.push('transcribe');
+      return {};
+    });
+
+    await get(makeRequest());
+    expect(order[0]).toBe('purge');
+  });
+
+  it('skips the purge but still runs the rest when Twilio is unconfigured', async () => {
+    delete process.env.TWILIO_ACCOUNT_SID;
+    const body = await (await get(makeRequest())).clone().json();
+
+    expect(body.jobs.purgeRecordings).toEqual({ skipped: 'twilio_not_configured' });
+    // The stuck alerts need no telephony at all and must still fire.
+    expect(mockState.notifyStuckOnboardings).toHaveBeenCalled();
+  });
+
+  it('isolates a throwing job so the others still run', async () => {
+    mockState.purgeExpiredRecordings.mockRejectedValue(new Error('twilio exploded'));
+
+    const res = await get(makeRequest());
+    const body = await res.clone().json();
+
+    // A failing job reports its error in the payload; it does not take
+    // the tick down with it.
+    expect(res.status).toBe(200);
+    expect(body.jobs.purgeRecordings).toEqual({ ok: false, error: 'twilio exploded' });
+    expect(mockState.sweepPendingTranscriptions).toHaveBeenCalled();
+    expect(mockState.notifyStuckOnboardings).toHaveBeenCalled();
+  });
+
+  it('returns each job result as telemetry the scheduler can log', async () => {
+    mockState.sweepPendingTranscriptions.mockResolvedValue({ scanned: 3, transcribed: 2, failed: 1 });
+    const body = await (await get(makeRequest())).clone().json();
+    expect(body.jobs.transcriptions).toEqual({ ok: true, result: { scanned: 3, transcribed: 2, failed: 1 } });
+  });
+});
