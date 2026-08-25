@@ -21,15 +21,15 @@ import {
 import { WIZARD_STEP_CATALOG } from '@/lib/wizard-catalog';
 
 describe('PRODUCT_CATALOGS', () => {
-  it('has exactly the five ProductCode keys', () => {
+  it('has exactly the six ProductCode keys', () => {
     expect(Object.keys(PRODUCT_CATALOGS).sort()).toEqual(
-      ['chatbot', 'leads', 'reviews', 'seo', 'web'].sort(),
+      ['chatbot', 'leads', 'recall', 'reviews', 'seo', 'web'].sort(),
     );
-    expect(PRODUCT_CODES).toEqual(['chatbot', 'web', 'leads', 'seo', 'reviews']);
+    expect(PRODUCT_CODES).toEqual(['chatbot', 'web', 'leads', 'seo', 'reviews', 'recall']);
   });
 
-  it('web / leads / seo / reviews are valid empty catalogs, not omitted or throwing', () => {
-    for (const code of ['web', 'leads', 'seo', 'reviews'] as ProductCode[]) {
+  it('every non-chatbot product is a valid empty catalog, not omitted or throwing', () => {
+    for (const code of ['web', 'leads', 'seo', 'reviews', 'recall'] as ProductCode[]) {
       const catalog = PRODUCT_CATALOGS[code];
       expect(catalog.code).toBe(code);
       expect(catalog.label).toBeTruthy();
@@ -38,6 +38,19 @@ describe('PRODUCT_CATALOGS', () => {
       expect(catalog.requiredStepKeys).toEqual([]);
       expect(catalog.milestones.length).toBeGreaterThan(0);
     }
+  });
+
+  it("recall's catalog is empty BY DESIGN, not pending — its onboarding is a state machine, not a wizard", () => {
+    // web/leads/seo/reviews are empty because WP-16 hasn't given them step
+    // content yet. 'recall' is different: its onboarding is gated on
+    // external systems (Meta's review queue, Twilio provisioning, the
+    // client dialling MMI codes on his handset), which the wizard's
+    // draft→submitted→approved vocabulary cannot express. That state lives
+    // on RecallSubscription — see src/lib/recall.ts. If a future change
+    // adds wizard steps here, it is almost certainly modelling the wrong
+    // thing.
+    expect(PRODUCT_CATALOGS.recall.stepKeys).toEqual([]);
+    expect(PRODUCT_CATALOGS.recall.label).toBe('Recuperación de llamadas y reseñas');
   });
 });
 

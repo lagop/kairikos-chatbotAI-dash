@@ -131,6 +131,8 @@ model ChatbotClient {
   conversationDigestSchedule ConversationDigestSchedule?
   leads                     Lead[]
   leadAudits                LeadAudit[]
+  recallSubscriptions       RecallSubscription[]
+  recallSubscriptionAudits  RecallSubscriptionAudit[]
 
   @@index([stripeCustomerId])
   @@index([tier])
@@ -326,6 +328,7 @@ model Operator {
   webQuotesSent       WebQuote[]              @relation("WebQuoteSentBy")
   webQuoteAudits      WebQuoteAudit[]
   invoicesMarkedPaid  Invoice[]
+  recallSubscriptionAudits RecallSubscriptionAudit[]
 
   @@index([email])
   @@index([isActive])
@@ -502,6 +505,7 @@ model Tenant {
   conversationDigestSchedules ConversationDigestSchedule[]
   leads                     Lead[]
   leadAudits                LeadAudit[]
+  recallSubscriptions       RecallSubscription[]
 
   @@index([slug])
   @@index([status])
@@ -686,6 +690,7 @@ model ClientProduct {
   invoices     Invoice[]
   webQuote     WebQuote?
   webBrief     WebBrief?
+  recallSubscription RecallSubscription?
 
   // Real DB-level uniqueness for every code except 'web' lives in a raw-SQL
   // partial unique index (see this migration's .sql) — Prisma can't express
@@ -1294,6 +1299,7 @@ model GoogleBusinessConnection {
   tenant    Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   reviews   GoogleReview[]
   campaigns ReviewRequestCampaign[]
+  recallSubscriptions RecallSubscription[]
 
   @@unique([clientId, locationId])
   @@index([tenantId])
@@ -1785,6 +1791,7 @@ model MetaChannelConnection {
 
   client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  recallSubscriptions RecallSubscription[]
 
   @@unique([clientId, channel, externalId])
   @@index([tenantId])
@@ -1966,4 +1973,136 @@ model LeadAudit {
   @@index([leadId, changedAt])
   @@index([clientId, changedAt])
   @@index([tenantId])
+}
+
+// =============================================================================
+// WP-XX — Recuperación de llamadas perdidas + reseñas (product code 'recall').
+//
+// Satellite model, 1:1 with ClientProduct — the same shape WebQuote uses
+// (clientProductId @unique, fine-grained state here while
+// ClientProduct.status stays coarse). The difference from WebQuote: 'web'
+// needed a coarse 'quote_pending' value on ClientProduct because payment
+// came AFTER the quote. Here payment comes FIRST, so ClientProduct.status
+// is left exactly as billing dictates ('active' = paying) and ALL
+// operational readiness lives on this row's `status`. isProductContracted()
+// returning true means "he pays", which is correct; whether the service is
+// actually live is `RecallSubscription.status === 'active'`.
+//
+// Deliberately NOT modelled on ChatbotConfigStep/the wizard engine: this
+// onboarding is gated on external systems (Meta's review queue, number
+// provisioning, template approval, and the client dialling MMI forwarding
+// codes on his own handset), which draft→submitted→approved cannot express.
+// See src/lib/recall.ts for the transition predicates.
+// =============================================================================
+model RecallSubscription {
+  id              String  @id @default(uuid()) @db.Uuid
+  clientId        String  @map("client_id")
+  clientProductId String  @unique @map("client_product_id") @db.Uuid
+  tenantId        String? @map("tenant_id") @db.Uuid
+
+  // 'paid' | 'contract_signed' | 'meta_connected' | 'number_assigned' |
+  // 'templates_approved' | 'forwarding_pending' | 'forwarding_verified' |
+  // 'active', plus 'paused' | 'cancelled' as side exits. Free string, same
+  // convention as every other status column here — enforced by the pure
+  // predicates in src/lib/recall.ts, not by the DB.
+  status String @default("paid")
+
+  // One timestamp sealed per transition. These are what the operator's
+  // stuck-detection queue reads: "client 14 has been in forwarding_pending
+  // for four days" is only answerable because the transition is dated.
+  contractSignedAt   DateTime? @map("contract_signed_at")
+  metaConnectedAt    DateTime? @map("meta_connected_at")
+  numberAssignedAt   DateTime? @map("number_assigned_at")
+  templatesApprovedAt DateTime? @map("templates_approved_at")
+  forwardingVerifiedAt DateTime? @map("forwarding_verified_at")
+  activatedAt        DateTime? @map("activated_at")
+  pausedAt           DateTime? @map("paused_at")
+  cancelledAt        DateTime? @map("cancelled_at")
+
+  // Where the owner receives his own notifications (daily digest, the
+  // transcribed message, the monthly report). Deliberately NOT derived
+  // from MetaChannelConnection.externalId: that is the BUSINESS's public
+  // WhatsApp number, which may be a shared line or a landline-backed
+  // number, while this is the phone in the owner's pocket. E.164.
+  ownerWhatsapp String? @map("owner_whatsapp")
+
+  // Which WhatsApp number sends on this client's behalf (Coexistence).
+  // Nullable until META_CONNECTED.
+  metaConnectionId String? @map("meta_connection_id") @db.Uuid
+
+  // Which Google Business location the review half asks against. The
+  // review requests reuse ReviewRequestCampaign/ReviewRequest with a
+  // 'whatsapp' channel — see src/lib/review-request-campaign.ts.
+  googleConnectionId String? @map("google_connection_id") @db.Uuid
+
+  // The owner's own recorded greeting, 20s or so, recorded on his phone
+  // and sent in over WhatsApp at onboarding. Stored inline rather than in
+  // object storage: ~200KB each, ~10MB for a 50-client book — not worth
+  // introducing a storage dependency the portal doesn't otherwise have.
+  // NOTE: call recordings are NOT stored here; those stay on Twilio and
+  // are deleted via their API at 30 days (see CallEvent, Fase 3).
+  greetingAudio    Bytes?    @map("greeting_audio")
+  greetingMimeType String?   @map("greeting_mime_type")
+  greetingRecordedAt DateTime? @map("greeting_recorded_at")
+
+  // Scheduling. `timezone` drives the digest slot boundary the same way
+  // ConversationDigestSchedule.timezone does; `digestHour` is 19 by
+  // default (end of the working day). The two cursors let the scheduler
+  // be coarser than the target cadence — see isDigestDue's pattern in
+  // src/lib/conversation-digest.ts.
+  timezone      String    @default("Europe/Madrid")
+  digestHour    Int       @default(19) @map("digest_hour")
+  businessHours Json?     @map("business_hours")
+  lastDigestAt  DateTime? @map("last_digest_at")
+  lastReportAt  DateTime? @map("last_report_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  client           ChatbotClient             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientProduct    ClientProduct             @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
+  tenant           Tenant?                   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  metaConnection   MetaChannelConnection?    @relation(fields: [metaConnectionId], references: [id], onDelete: SetNull)
+  googleConnection GoogleBusinessConnection? @relation(fields: [googleConnectionId], references: [id], onDelete: SetNull)
+  auditLogs        RecallSubscriptionAudit[]
+
+  @@index([clientId])
+  @@index([status])
+  @@index([tenantId])
+  @@index([metaConnectionId])
+  @@index([googleConnectionId])
+}
+
+// Append-only audit trail for RecallSubscription transitions — mirrors
+// WebQuoteAudit. before/after are JSON blobs rather than plain status
+// strings because a transition often seals a timestamp and binds a
+// resource (number, Meta connection) at the same time, and reconstructing
+// "what did this row look like on the day the client complained" is the
+// whole point.
+model RecallSubscriptionAudit {
+  id         String @id @default(uuid()) @db.Uuid
+  subscriptionId String @map("subscription_id") @db.Uuid
+  clientId   String @map("client_id")
+  // 'created' | 'contract_signed' | 'meta_connected' | 'number_assigned' |
+  // 'templates_approved' | 'forwarding_pending' | 'forwarding_verified' |
+  // 'activated' | 'paused' | 'resumed' | 'cancelled'
+  action     String
+  before     Json?
+  after      Json?
+
+  // 'operator' | 'client' | 'system'
+  actorType       String  @default("operator") @map("actor_type")
+  actorOperatorId String? @map("actor_operator_id") @db.Uuid
+  // operator email, 'client:<clientId>', or 'system:<source>'.
+  actorEmail      String? @map("actor_email")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  subscription RecallSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  client       ChatbotClient      @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  operator     Operator?          @relation(fields: [actorOperatorId], references: [id], onDelete: SetNull)
+
+  @@index([subscriptionId, createdAt])
+  @@index([clientId, createdAt])
+  @@index([action])
 }

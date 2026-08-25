@@ -35,8 +35,19 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+// Tier codes are English across the whole catalog (starter/pro/premium,
+// basic, standard, solo/team/business) — this maps the ones whose
+// capitalised form would read wrong in a Spanish UI. Anything unmapped
+// falls back to Capitalised, which is right for starter/pro/premium.
+const TIER_DISPLAY: Record<string, string> = {
+  standard: 'Estándar',
+  solo: 'Autónomo',
+  team: 'Equipo',
+  business: 'Empresa',
+};
+
 function tierLabel(tier: string): string {
-  return tier === 'standard' ? 'Estándar' : tier.charAt(0).toUpperCase() + tier.slice(1);
+  return TIER_DISPLAY[tier] ?? tier.charAt(0).toUpperCase() + tier.slice(1);
 }
 
 function isProductCode(value: string): value is ProductCode {

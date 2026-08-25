@@ -161,6 +161,39 @@ export const PRODUCT_CATALOG: ProductCatalogEntry[] = [
     priceCents: 14900, setupFeeCents: 0, currency: 'EUR', isActive: true,
     stripeRecurringPriceId: 'price_reviews_pro', stripeSetupPriceId: null,
   },
+  // WP-XX — Missed-call recovery + review requests. Three tiers priced by
+  // BUSINESS SIZE, not by included minutes: metering minutes is what every
+  // Spanish competitor does (Recepcionista.com 500/750/1.500 min,
+  // IONOS 0,49 €/llamada extra) and the resulting variable bill is exactly
+  // the anxiety this product sells against. Flat rate is affordable here
+  // because "Modo Recado" takes a 30-60s message rather than holding a
+  // conversation — ~25-30 min/month/client, an order of magnitude under
+  // those packages. That stops being true if "Modo Recepción" (full
+  // conversational AI) ever ships; revisit the flat rate then.
+  //
+  // Bundling the review half is the deliberate differentiator: no Spanish
+  // AI-receptionist competitor offers reputation at all. The separate
+  // 'reviews' product above stays for a different segment (email channel,
+  // panel-driven, no telephony) — see /portal/productos.
+  //
+  // isActive: false until Fase 8 (Coexistence verified against a real Meta
+  // app) — the product must not be sellable before its WhatsApp path is
+  // proven. Flip to true when that lands.
+  {
+    code: 'recall', tier: 'solo', name: 'Recuperación de llamadas — Autónomo',
+    priceCents: 14900, setupFeeCents: 29000, currency: 'EUR', isActive: false,
+    stripeRecurringPriceId: 'price_recall_solo', stripeSetupPriceId: 'price_recall_solo_setup',
+  },
+  {
+    code: 'recall', tier: 'team', name: 'Recuperación de llamadas — Equipo',
+    priceCents: 24900, setupFeeCents: 39000, currency: 'EUR', isActive: false,
+    stripeRecurringPriceId: 'price_recall_team', stripeSetupPriceId: 'price_recall_team_setup',
+  },
+  {
+    code: 'recall', tier: 'business', name: 'Recuperación de llamadas — Empresa',
+    priceCents: 39900, setupFeeCents: 49000, currency: 'EUR', isActive: false,
+    stripeRecurringPriceId: 'price_recall_business', stripeSetupPriceId: 'price_recall_business_setup',
+  },
 ];
 
 async function seedProductCatalog(): Promise<void> {
