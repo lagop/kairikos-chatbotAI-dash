@@ -3,6 +3,8 @@ import type {
   ProvisionNumberOptions,
   ProvisionedNumber,
   SearchNumbersOptions,
+  SendSmsOptions,
+  SentSms,
   TelephonyProvider,
   TelephonyResult,
 } from './types';
@@ -23,8 +25,13 @@ import type {
 export interface FakeTelephonyProvider extends TelephonyProvider {
   /** Numbers currently provisioned, keyed by providerSid. */
   readonly provisioned: Map<string, ProvisionedNumber>;
+  /** Every SMS the fake was asked to send, in order. Asserting on the
+   *  BODY matters here: the out-of-hours wording is a promise the
+   *  business has to keep, so a test that only counted sends would pass
+   *  on an engine that told everyone the wrong thing. */
+  readonly sentSms: SendSmsOptions[];
   /** Queue a failure for the next call to the named method. */
-  failNext(method: 'search' | 'provision' | 'release', error: string): void;
+  failNext(method: 'search' | 'provision' | 'release' | 'sms', error: string): void;
   reset(): void;
 }
 
@@ -34,9 +41,11 @@ export function createFakeTelephonyProvider(
   const provisioned = new Map<string, ProvisionedNumber>();
   let available = [...availablePool];
   let sidCounter = 0;
-  const failures: Partial<Record<'search' | 'provision' | 'release', string>> = {};
+  const failures: Partial<Record<'search' | 'provision' | 'release' | 'sms', string>> = {};
+  const sentSms: SendSmsOptions[] = [];
+  let messageCounter = 0;
 
-  function takeFailure(method: 'search' | 'provision' | 'release'): string | null {
+  function takeFailure(method: 'search' | 'provision' | 'release' | 'sms'): string | null {
     const error = failures[method];
     if (error === undefined) return null;
     delete failures[method];
@@ -46,6 +55,7 @@ export function createFakeTelephonyProvider(
   return {
     name: 'fake',
     provisioned,
+    sentSms,
 
     failNext(method, error) {
       failures[method] = error;
@@ -55,6 +65,8 @@ export function createFakeTelephonyProvider(
       provisioned.clear();
       available = [...availablePool];
       sidCounter = 0;
+      messageCounter = 0;
+      sentSms.length = 0;
       for (const key of Object.keys(failures)) {
         delete failures[key as keyof typeof failures];
       }
@@ -102,6 +114,16 @@ export function createFakeTelephonyProvider(
       }
       // Idempotent: releasing an unknown SID is success, per the contract.
       return { ok: true, data: null };
+    },
+
+    async sendSms(opts: SendSmsOptions): Promise<TelephonyResult<SentSms>> {
+      const failure = takeFailure('sms');
+      // Recorded even when it fails: "we tried and the provider refused"
+      // is exactly what the fallback path needs to be testable.
+      sentSms.push(opts);
+      if (failure) return { ok: false, error: failure };
+      messageCounter += 1;
+      return { ok: true, data: { providerSid: `SMfake${String(messageCounter).padStart(4, '0')}` } };
     },
   };
 }

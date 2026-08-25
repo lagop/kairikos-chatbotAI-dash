@@ -1,7 +1,14 @@
 import { type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { verifyTwilioSignature, resolveWebhookUrl, formDataToParams } from '@/lib/telephony/twilio-signature';
-import { resolveCallTarget, recordIncomingCall, buildRecordTwiml, buildUnavailableTwiml } from '@/lib/recall-calls';
+import {
+  resolveCallTarget,
+  recordIncomingCall,
+  buildRecordTwiml,
+  buildUnavailableTwiml,
+  isWithheldCaller,
+} from '@/lib/recall-calls';
+import { isNumberBlocked } from '@/lib/recall-blocklist';
 import { logError } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
@@ -72,7 +79,25 @@ export async function POST(req: NextRequest) {
       return twiml(buildUnavailableTwiml());
     }
 
-    await recordIncomingCall(prisma, target, { callSid, from: params.From ?? null, to });
+    // The blocklist is checked HERE, before anything is recorded, not
+    // just at send time. A known sales robot should not have its voice
+    // captured, stored on Twilio for thirty days, and pushed through
+    // Whisper — the cheapest and most defensible thing to do with data
+    // we already know we will never use is to not collect it.
+    const from = params.From ?? null;
+    // Failing this ONE query must not cost a legitimate caller the
+    // greeting: erring towards "not blocked" risks messaging a robot
+    // once, while erring the other way breaks every real call.
+    const blocked =
+      from !== null &&
+      !isWithheldCaller(from) &&
+      (await isNumberBlocked(prisma, target.subscriptionId, from).catch(() => false));
+    if (blocked && from) {
+      await recordIncomingCall(prisma, target, { callSid, from, to, outcome: 'blocked' });
+      return twiml(buildUnavailableTwiml());
+    }
+
+    await recordIncomingCall(prisma, target, { callSid, from, to });
 
     const base = resolveWebhookUrl(req, '');
     return twiml(

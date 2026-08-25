@@ -24,6 +24,18 @@ export interface RecallCallRow {
   transcript: string | null;
   recordingDurationSeconds: number | null;
   leadId: string | null;
+  // Fase 9 — what happened to each of the two messages the call owes.
+  callerNotifyChannel: string | null;
+  callerNotifyError: string | null;
+  notifiedCallerAt: string | null;
+  notifiedOwnerAt: string | null;
+}
+
+export interface RecallBlockedRow {
+  id: string;
+  e164: string;
+  reason: string | null;
+  createdAt: string;
 }
 
 export interface RecallPanelData {
@@ -36,6 +48,7 @@ export interface RecallPanelData {
   hasGreeting: boolean;
   ownerWhatsapp: string | null;
   calls: RecallCallRow[];
+  blockedNumbers: RecallBlockedRow[];
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -63,6 +76,18 @@ const OUTCOME_LABEL: Record<string, string> = {
   no_message: 'Sin recado',
   withheld: 'Número oculto',
   blocked: 'Bloqueado',
+};
+
+// How the caller-notification resolved. The three "did not send" values
+// are shown as plainly as the two "did send" ones on purpose: an
+// operator asked "por qué no le escribisteis?" needs the answer on the
+// row, not in a log.
+const CALLER_NOTIFY_LABEL: Record<string, string> = {
+  whatsapp: 'Avisado por WhatsApp',
+  sms: 'Avisado por SMS',
+  blocked: 'No avisado: número bloqueado',
+  throttled: 'No avisado: ya se le escribió hoy',
+  unreachable: 'No se pudo avisar',
 };
 
 const DATE_FORMAT = new Intl.DateTimeFormat('es-ES', {
@@ -154,6 +179,21 @@ export function RecallOperatorPanel({ data }: { data: RecallPanelData | null }) 
                 ) : call.outcome === 'recorded' ? (
                   <p className="mt-1 text-xs text-kairikos-muted">Transcripción pendiente.</p>
                 ) : null}
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-kairikos-muted">
+                  <span data-testid="recall-call-caller-notify" data-channel={call.callerNotifyChannel ?? 'pending'}>
+                    {call.callerNotifyChannel
+                      ? (CALLER_NOTIFY_LABEL[call.callerNotifyChannel] ?? call.callerNotifyChannel)
+                      : 'Aviso al cliente pendiente'}
+                  </span>
+                  <span data-testid="recall-call-owner-notify">
+                    {call.notifiedOwnerAt ? 'Recado enviado al dueño' : 'Recado al dueño pendiente'}
+                  </span>
+                  {call.callerNotifyError ? (
+                    <span className="text-kairikos-danger" data-testid="recall-call-caller-error">
+                      {call.callerNotifyError}
+                    </span>
+                  ) : null}
+                </div>
                 {call.leadId ? (
                   <Link
                     href="/portal/leads"
@@ -163,6 +203,30 @@ export function RecallOperatorPanel({ data }: { data: RecallPanelData | null }) 
                     Generó un lead →
                   </Link>
                 ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div>
+        <h3 className="mb-2 text-sm font-semibold">Números bloqueados</h3>
+        {data.blockedNumbers.length === 0 ? (
+          <p className="text-sm text-kairikos-muted" data-testid="recall-panel-no-blocked">
+            Ninguno. Se añaden desde la API de operador.
+          </p>
+        ) : (
+          <ul className="space-y-1" data-testid="recall-blocked-list">
+            {data.blockedNumbers.map((row) => (
+              <li
+                key={row.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-kairikos-border px-3 py-1.5 text-sm"
+                data-testid="recall-blocked-row"
+              >
+                <span className="font-medium">{row.e164}</span>
+                <span className="text-xs text-kairikos-muted">
+                  {row.reason ?? 'Sin motivo anotado'} · {DATE_FORMAT.format(new Date(row.createdAt))}
+                </span>
               </li>
             ))}
           </ul>

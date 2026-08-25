@@ -3,6 +3,7 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { verifyTwilioSignature, resolveWebhookUrl, formDataToParams } from '@/lib/telephony/twilio-signature';
 import { attachRecording } from '@/lib/recall-calls';
 import { transcribeCallEventInBackground } from '@/lib/recall-transcription';
+import { notifyOwnerInBackground } from '@/lib/recall-messaging';
 import { logError } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
@@ -80,11 +81,20 @@ export async function POST(req: NextRequest) {
     // return promptly, or Twilio treats it as failed and re-delivers.
     // Whatever this misses, the scheduler's sweep picks up — which is why
     // it is safe not to await, and why the sweep exists at all.
+    // The owner's message is chained after the transcription attempt
+    // rather than left to the sweep, because "se enteró en segundos" is
+    // the thing the client is actually paying for. It runs even when
+    // transcription failed: notifyOwner has its own grace period and
+    // "alguien llamó y dejó un mensaje" still beats silence.
+    //
+    // The CALLER's message is deliberately NOT sent here — it owes a
+    // 90-second pause, and the sweep is what serves it.
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
     transcribeCallEventInBackground(
       prisma,
       result.callEventId,
       accountSid ? { accountSid, authToken } : undefined,
+      () => notifyOwnerInBackground(prisma, result.callEventId),
     );
 
     return new Response(JSON.stringify({ status: 'ok' }), {

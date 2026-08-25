@@ -3,6 +3,7 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { sweepPendingTranscriptions } from '@/lib/recall-transcription';
 import { purgeExpiredRecordings } from '@/lib/recall-retention';
 import { notifyStuckOnboardings } from '@/lib/recall-stuck-alerts';
+import { sweepPendingNotifications } from '@/lib/recall-messaging';
 import { syncTemplateStatuses, warnExpiringTokens } from '@/lib/whatsapp-health';
 import { logError } from '@/lib/observability';
 
@@ -80,11 +81,18 @@ export async function GET(req: NextRequest) {
     sweepPendingTranscriptions(prisma, twilioAuth ? { auth: twilioAuth } : {}),
   );
 
-  // 3. Push stalled altas at an operator. Deduped per (client, day) by
+  // 3. The outbound messages a missed call owes: one to the person who
+  //    rang and one to the owner. This is the job the product is sold
+  //    on, and the reason the tick cadence matters — the caller message
+  //    waits 90 seconds deliberately, so "due" is a query answered here
+  //    rather than a timer that would not survive a restart.
+  jobs.notifications = await runJob('notifications', () => sweepPendingNotifications(prisma));
+
+  // 4. Push stalled altas at an operator. Deduped per (client, day) by
   //    operator-notify, so running this every tick is safe.
   jobs.stuckAlerts = await runJob('stuckAlerts', () => notifyStuckOnboardings(prisma));
 
-  // 4. Meta changes state without telling us. A token that dies at 60
+  // 5. Meta changes state without telling us. A token that dies at 60
   //    days and a template Meta paused for quality both fail silently —
   //    the product keeps looking fine until a client's messages stop
   //    arriving. These two jobs are how that gets noticed in advance.

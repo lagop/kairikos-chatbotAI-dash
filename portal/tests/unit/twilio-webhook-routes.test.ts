@@ -26,6 +26,8 @@ const mockState = vi.hoisted(() => ({
   recordIncomingCall: vi.fn(),
   attachRecording: vi.fn(),
   recallSubscriptionFindUnique: vi.fn(),
+  isNumberBlocked: vi.fn(),
+  notifyOwnerInBackground: vi.fn(),
 }));
 
 vi.mock('@/lib/recall-calls', async () => {
@@ -37,6 +39,14 @@ vi.mock('@/lib/recall-calls', async () => {
     attachRecording: (...a: unknown[]) => mockState.attachRecording(...a),
   };
 });
+
+vi.mock('@/lib/recall-blocklist', () => ({
+  isNumberBlocked: (...a: unknown[]) => mockState.isNumberBlocked(...a),
+}));
+
+vi.mock('@/lib/recall-messaging', () => ({
+  notifyOwnerInBackground: (...a: unknown[]) => mockState.notifyOwnerInBackground(...a),
+}));
 
 vi.mock('@/lib/prisma', () => ({
   isDatabaseConfigured: true,
@@ -60,6 +70,7 @@ beforeEach(() => {
   process.env.TWILIO_AUTH_TOKEN = AUTH_TOKEN;
   process.env.TWILIO_WEBHOOK_BASE_URL = BASE;
   for (const fn of Object.values(mockState)) fn.mockReset();
+  mockState.isNumberBlocked.mockResolvedValue(false);
 });
 
 describe('POST /api/webhooks/twilio/voice', () => {
@@ -111,6 +122,52 @@ describe('POST /api/webhooks/twilio/voice', () => {
     expect(res.headers.get('content-type')).toContain('text/xml');
     expect(xml).toContain(`<Play>${BASE}/api/webhooks/twilio/greeting/sub_1</Play>`);
     expect(xml).toContain(`recordingStatusCallback="${BASE}/api/webhooks/twilio/recording"`);
+  });
+
+  // --- Fase 9: the blocklist gate --------------------------------------
+
+  it('refuses a blocked caller WITHOUT recording them', async () => {
+    mockState.resolveCallTarget.mockResolvedValue(TARGET);
+    mockState.isNumberBlocked.mockResolvedValue(true);
+    mockState.recordIncomingCall.mockResolvedValue({ id: 'ce_1', outcome: 'blocked' });
+
+    const xml = await (await post(makeRequest(PATH, CALL))).text();
+
+    // No <Record>: the cheapest and most defensible thing to do with a
+    // third party's voice we already know we will never use is to not
+    // capture it at all.
+    expect(xml).not.toContain('<Record');
+    expect(xml).toContain('<Say');
+    // The call is still logged, as evidence, with a terminal outcome so
+    // no later step treats it as a message waiting to be handled.
+    expect(mockState.recordIncomingCall.mock.calls[0][2]).toMatchObject({ outcome: 'blocked' });
+  });
+
+  it('checks the blocklist against the SUBSCRIPTION, not globally', async () => {
+    mockState.resolveCallTarget.mockResolvedValue(TARGET);
+    mockState.recordIncomingCall.mockResolvedValue({ id: 'ce_1', outcome: 'pending' });
+    await post(makeRequest(PATH, CALL));
+    expect(mockState.isNumberBlocked.mock.calls[0].slice(1)).toEqual(['sub_1', '+34600111222']);
+  });
+
+  it('never asks the blocklist about a withheld caller', async () => {
+    mockState.resolveCallTarget.mockResolvedValue(TARGET);
+    mockState.recordIncomingCall.mockResolvedValue({ id: 'ce_1', outcome: 'withheld' });
+    await post(makeRequest(PATH, { ...CALL, From: 'anonymous' }));
+    // There is no number to match, and a lookup on the literal string
+    // 'anonymous' would be nonsense.
+    expect(mockState.isNumberBlocked).not.toHaveBeenCalled();
+  });
+
+  it('still takes the message when the blocklist query itself fails', async () => {
+    mockState.resolveCallTarget.mockResolvedValue(TARGET);
+    mockState.isNumberBlocked.mockRejectedValue(new Error('db blip'));
+    mockState.recordIncomingCall.mockResolvedValue({ id: 'ce_1', outcome: 'pending' });
+
+    const xml = await (await post(makeRequest(PATH, CALL))).text();
+    // Erring towards "not blocked" risks messaging a robot once; erring
+    // the other way would break every legitimate call.
+    expect(xml).toContain('<Record');
   });
 
   it('falls back to the neutral spoken greeting when the owner has not recorded one', async () => {
@@ -185,6 +242,20 @@ describe('POST /api/webhooks/twilio/recording', () => {
       expect.anything(),
       expect.objectContaining({ callSid: 'CA1', recordingSid: 'RE1', durationSeconds: 17 }),
     );
+  });
+
+  it('chains the owner notification after the transcription attempt', async () => {
+    mockState.attachRecording.mockResolvedValue({ ok: true, callEventId: 'ce_1' });
+    await post(makeRequest(PATH, REC));
+
+    // Fire-and-forget, so let the microtask queue drain before asserting.
+    await new Promise((resolve) => setImmediate(resolve));
+
+    // Waiting for the five-minute sweep would break the one promise the
+    // client actually bought: that he hears about the lost call in
+    // seconds. The CALLER's message is deliberately not sent here — it
+    // owes a 90-second pause, and the sweep is what serves it.
+    expect(mockState.notifyOwnerInBackground).toHaveBeenCalledWith(expect.anything(), 'ce_1');
   });
 
   it('treats an unparseable duration as unknown rather than zero', async () => {

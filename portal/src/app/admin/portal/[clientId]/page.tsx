@@ -575,7 +575,20 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
                   transcript: true,
                   recordingDurationSeconds: true,
                   leadId: true,
+                  // Fase 9 — whether each of the two messages actually
+                  // went out. Without this the panel shows a transcript
+                  // and says nothing about whether anyone was told, which
+                  // is the first thing an operator is asked.
+                  callerNotifyChannel: true,
+                  callerNotifyError: true,
+                  notifiedCallerAt: true,
+                  notifiedOwnerAt: true,
                 },
+              },
+              blockedNumbers: {
+                orderBy: { createdAt: 'desc' },
+                take: 20,
+                select: { id: true, e164: true, reason: true, createdAt: true },
               },
             },
           });
@@ -609,6 +622,16 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
                 transcript: call.transcript,
                 recordingDurationSeconds: call.recordingDurationSeconds,
                 leadId: call.leadId,
+                callerNotifyChannel: call.callerNotifyChannel,
+                callerNotifyError: call.callerNotifyError,
+                notifiedCallerAt: call.notifiedCallerAt?.toISOString() ?? null,
+                notifiedOwnerAt: call.notifiedOwnerAt?.toISOString() ?? null,
+              })),
+              blockedNumbers: subscription.blockedNumbers.map((row) => ({
+                id: row.id,
+                e164: row.e164,
+                reason: row.reason,
+                createdAt: row.createdAt.toISOString(),
               })),
             };
           }

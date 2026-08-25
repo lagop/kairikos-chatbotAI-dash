@@ -126,15 +126,31 @@ export async function transcribeCallEvent(
 /** Fire-and-forget wrapper for the recording webhook. Twilio's callback
  *  must return promptly — a slow transcription would push it into retry,
  *  which then re-delivers and duplicates work. Errors are swallowed
- *  because the sweep is what guarantees eventual completion. */
+ *  because the sweep is what guarantees eventual completion.
+ *
+ *  `onSettled` runs after the attempt finishes, success or failure. It is
+ *  how the owner notification is chained on without this module having to
+ *  know that messaging exists — the caller wires the two together, so the
+ *  dependency stays one-way and there is no import cycle. It fires even
+ *  on failure because notifyOwner has its own grace period: a transcript
+ *  that never arrives should delay the owner's message, not cancel it. */
 export function transcribeCallEventInBackground(
   prisma: PrismaClient,
   callEventId: string,
   auth?: { accountSid: string; authToken: string },
+  onSettled?: () => void,
 ): void {
-  void transcribeCallEvent(prisma, callEventId, auth).catch((err) => {
-    logError('recall_transcription.background_failed', err, { callEventId }, 'warn');
-  });
+  void transcribeCallEvent(prisma, callEventId, auth)
+    .catch((err) => {
+      logError('recall_transcription.background_failed', err, { callEventId }, 'warn');
+    })
+    .finally(() => {
+      try {
+        onSettled?.();
+      } catch (err) {
+        logError('recall_transcription.on_settled_failed', err, { callEventId }, 'warn');
+      }
+    });
 }
 
 export interface SweepResult {

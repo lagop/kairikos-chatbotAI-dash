@@ -104,37 +104,38 @@ model ChatbotClient {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  activities                ChatbotActivity[]
-  conversations             ChatbotConversation[]
-  users                     ChatbotClientUser[]
-  operatorNotifications     OperatorNotification[]
-  n8nExecutions             N8nExecution[]
-  configSteps               ChatbotConfigStep[]
-  intakeSubmissions         IntakeSubmission[]
-  supportRequests           SupportRequest[]
-  tenant                    Tenant?                    @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  clientProducts            ClientProduct[]
-  productAudits             ClientProductAudit[]
-  subscriptions             Subscription[]
-  invoices                  Invoice[]
-  operatorActions           OperatorAction[]
-  googleBusinessConnections GoogleBusinessConnection[]
-  googleReviews             GoogleReview[]
-  reviewRequestCampaigns    ReviewRequestCampaign[]
-  webBriefs                 WebBrief[]
-  webQuotes                 WebQuote[]
-  chatWebEmbeds             ChatWebEmbed[]
-  telegramConnections       TelegramConnection[]
-  metaChannelConnections    MetaChannelConnection[]
-  channelWebhookDeliveries  ChannelWebhookDelivery[]
-  conversationDigests       ConversationDigest[]
+  activities                 ChatbotActivity[]
+  conversations              ChatbotConversation[]
+  users                      ChatbotClientUser[]
+  operatorNotifications      OperatorNotification[]
+  n8nExecutions              N8nExecution[]
+  configSteps                ChatbotConfigStep[]
+  intakeSubmissions          IntakeSubmission[]
+  supportRequests            SupportRequest[]
+  tenant                     Tenant?                     @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  clientProducts             ClientProduct[]
+  productAudits              ClientProductAudit[]
+  subscriptions              Subscription[]
+  invoices                   Invoice[]
+  operatorActions            OperatorAction[]
+  googleBusinessConnections  GoogleBusinessConnection[]
+  googleReviews              GoogleReview[]
+  reviewRequestCampaigns     ReviewRequestCampaign[]
+  webBriefs                  WebBrief[]
+  webQuotes                  WebQuote[]
+  chatWebEmbeds              ChatWebEmbed[]
+  telegramConnections        TelegramConnection[]
+  metaChannelConnections     MetaChannelConnection[]
+  channelWebhookDeliveries   ChannelWebhookDelivery[]
+  conversationDigests        ConversationDigest[]
   conversationDigestSchedule ConversationDigestSchedule?
-  leads                     Lead[]
-  leadAudits                LeadAudit[]
-  recallSubscriptions       RecallSubscription[]
-  recallSubscriptionAudits  RecallSubscriptionAudit[]
-  callEvents                CallEvent[]
-  whatsappTemplates         WhatsappTemplate[]
+  leads                      Lead[]
+  leadAudits                 LeadAudit[]
+  recallSubscriptions        RecallSubscription[]
+  recallSubscriptionAudits   RecallSubscriptionAudit[]
+  callEvents                 CallEvent[]
+  whatsappTemplates          WhatsappTemplate[]
+  recallBlockedNumbers       RecallBlockedNumber[]
 
   @@index([stripeCustomerId])
   @@index([tier])
@@ -321,15 +322,15 @@ model Operator {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  sessions            OperatorSession[]
-  recoveryCodes       OperatorRecoveryCode[]
-  auditLogs           OperatorSettingsAudit[]
-  approvedConfigSteps ChatbotConfigStep[]
-  stripeCatalogAudits StripeCatalogAudit[]
-  webQuotesCreated    WebQuote[]              @relation("WebQuoteCreatedBy")
-  webQuotesSent       WebQuote[]              @relation("WebQuoteSentBy")
-  webQuoteAudits      WebQuoteAudit[]
-  invoicesMarkedPaid  Invoice[]
+  sessions                 OperatorSession[]
+  recoveryCodes            OperatorRecoveryCode[]
+  auditLogs                OperatorSettingsAudit[]
+  approvedConfigSteps      ChatbotConfigStep[]
+  stripeCatalogAudits      StripeCatalogAudit[]
+  webQuotesCreated         WebQuote[]                @relation("WebQuoteCreatedBy")
+  webQuotesSent            WebQuote[]                @relation("WebQuoteSentBy")
+  webQuoteAudits           WebQuoteAudit[]
+  invoicesMarkedPaid       Invoice[]
   recallSubscriptionAudits RecallSubscriptionAudit[]
 
   @@index([email])
@@ -480,35 +481,35 @@ model Tenant {
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  profiles                  Profile[]
-  chatbotClients            ChatbotClient[]
-  chatbotClientUsers        ChatbotClientUser[]
-  chatbotActivities         ChatbotActivity[]
-  chatbotConversations      ChatbotConversation[]
-  chatbotConfigSteps        ChatbotConfigStep[]
-  chatbotConfigStepAudits   ChatbotConfigStepAudit[]
-  intakeSubmissions         IntakeSubmission[]
-  operatorNotifications     OperatorNotification[]
-  supportRequests           SupportRequest[]
-  n8nExecutions             N8nExecution[]
-  clientProducts            ClientProduct[]
-  productAudits             ClientProductAudit[]
-  subscriptions             Subscription[]
-  invoices                  Invoice[]
-  googleBusinessConnections GoogleBusinessConnection[]
-  googleReviews             GoogleReview[]
-  reviewRequestCampaigns    ReviewRequestCampaign[]
-  webBriefs                 WebBrief[]
-  webQuotes                 WebQuote[]
-  chatWebEmbeds             ChatWebEmbed[]
-  telegramConnections       TelegramConnection[]
-  metaChannelConnections    MetaChannelConnection[]
-  conversationDigests       ConversationDigest[]
+  profiles                    Profile[]
+  chatbotClients              ChatbotClient[]
+  chatbotClientUsers          ChatbotClientUser[]
+  chatbotActivities           ChatbotActivity[]
+  chatbotConversations        ChatbotConversation[]
+  chatbotConfigSteps          ChatbotConfigStep[]
+  chatbotConfigStepAudits     ChatbotConfigStepAudit[]
+  intakeSubmissions           IntakeSubmission[]
+  operatorNotifications       OperatorNotification[]
+  supportRequests             SupportRequest[]
+  n8nExecutions               N8nExecution[]
+  clientProducts              ClientProduct[]
+  productAudits               ClientProductAudit[]
+  subscriptions               Subscription[]
+  invoices                    Invoice[]
+  googleBusinessConnections   GoogleBusinessConnection[]
+  googleReviews               GoogleReview[]
+  reviewRequestCampaigns      ReviewRequestCampaign[]
+  webBriefs                   WebBrief[]
+  webQuotes                   WebQuote[]
+  chatWebEmbeds               ChatWebEmbed[]
+  telegramConnections         TelegramConnection[]
+  metaChannelConnections      MetaChannelConnection[]
+  conversationDigests         ConversationDigest[]
   conversationDigestSchedules ConversationDigestSchedule[]
-  leads                     Lead[]
-  leadAudits                LeadAudit[]
-  recallSubscriptions       RecallSubscription[]
-  callEvents                CallEvent[]
+  leads                       Lead[]
+  leadAudits                  LeadAudit[]
+  recallSubscriptions         RecallSubscription[]
+  callEvents                  CallEvent[]
 
   @@index([slug])
   @@index([status])
@@ -682,17 +683,17 @@ model ClientProduct {
   onboardingState String    @default("in-progress") @map("onboarding_state")
   goLiveAt        DateTime? @map("go_live_at")
 
-  client       ChatbotClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  product      Product              @relation(fields: [productId], references: [id], onDelete: Restrict)
-  tenant       Tenant?              @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  auditLogs    ClientProductAudit[]
-  subscription Subscription?
+  client             ChatbotClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  product            Product              @relation(fields: [productId], references: [id], onDelete: Restrict)
+  tenant             Tenant?              @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  auditLogs          ClientProductAudit[]
+  subscription       Subscription?
   // WP-19 — one-time-purchase products (no recurring price) invoice
   // directly against the ClientProduct instead of through a Subscription
   // — see Invoice.clientProductId.
-  invoices     Invoice[]
-  webQuote     WebQuote?
-  webBrief     WebBrief?
+  invoices           Invoice[]
+  webQuote           WebQuote?
+  webBrief           WebBrief?
   recallSubscription RecallSubscription?
 
   // Real DB-level uniqueness for every code except 'web' lives in a raw-SQL
@@ -919,31 +920,31 @@ model ChatbotActivity {
 // One row per chatbot conversation. Read-only on the portal in v1
 // (writes come from the chatbot platform via n8n).
 model ChatbotConversation {
-  id         String        @id @default(cuid())
-  clientId   String
+  id                String        @id @default(cuid())
+  clientId          String
   // KAIA-4258: tenant isolation FK (denormalized from ChatbotClient for
   // query plans that filter by tenant_id directly). NULL for
   // pre-multi-tenant rows; the backfill migration sets it.
-  tenantId   String?       @map("tenant_id") @db.Uuid
-  startedAt  DateTime
+  tenantId          String?       @map("tenant_id") @db.Uuid
+  startedAt         DateTime
   // Duration in seconds. NULL while the conversation is still open.
-  duration   Int?
+  duration          Int?
   // Outcome / resolution status. Free-form string so the chatbot platform
   // can extend without a schema migration. Conventional values:
   //   resolved | escalated | abandoned | fallback | unknown
-  outcome    String?
+  outcome           String?
   // Full transcript as JSON — message list, metadata, tool calls, etc.
-  transcript Json?
+  transcript        Json?
   // Canales Fase 4 — the widget/n8n side's own session identifier
   // (crypto-random, generated client-side per pageview). Lets
   // POST /api/internal/channels/web/message upsert one row per session
   // instead of creating a new row per turn — NULL for every
   // pre-Fase-4 row (Telegram/WhatsApp conversations, seed data), which
   // is fine since Postgres treats NULL as distinct in a unique index.
-  externalSessionId String? @map("external_session_id")
-  client     ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant     Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  leads      Lead[]
+  externalSessionId String?       @map("external_session_id")
+  client            ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant            Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  leads             Lead[]
 
   @@unique([clientId, externalSessionId])
   @@index([clientId, startedAt])
@@ -1298,10 +1299,10 @@ model GoogleBusinessConnection {
   autoPublishRepliesChangedBy String?   @map("auto_publish_replies_changed_by")
   autoPublishRepliesChangedAt DateTime? @map("auto_publish_replies_changed_at")
 
-  client    ChatbotClient           @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant    Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  reviews   GoogleReview[]
-  campaigns ReviewRequestCampaign[]
+  client              ChatbotClient           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant              Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  reviews             GoogleReview[]
+  campaigns           ReviewRequestCampaign[]
   recallSubscriptions RecallSubscription[]
 
   @@unique([clientId, locationId])
@@ -1801,25 +1802,25 @@ model MetaChannelConnection {
   // every connection. NULL means "unknown" — rows connected before this
   // column existed, which are treated as needing a re-check rather than
   // assumed fine.
-  tokenExpiresAt        DateTime? @map("token_expires_at")
+  tokenExpiresAt DateTime? @map("token_expires_at")
   // Set when the operator has already been told this connection is about
   // to die, so the warning is not repeated on every scheduler tick.
-  expiryWarnedAt        DateTime? @map("expiry_warned_at")
+  expiryWarnedAt DateTime? @map("expiry_warned_at")
 
   // WP-XX — the business's REAL number in E.164, from
   // GET /{phone_number_id}. Previously the portal only stored
   // phone_number_id and a label of 'WhatsApp (<wabaId>)', so nobody could
   // answer "which number does this client send from". WhatsApp only.
-  displayPhoneNumber    String?  @map("display_phone_number")
-  verifiedName          String?  @map("verified_name")
+  displayPhoneNumber String? @map("display_phone_number")
+  verifiedName       String? @map("verified_name")
   // Meta's own rating of the number ('GREEN' | 'YELLOW' | 'RED'). It
   // degrades when recipients report or block the business, and a RED
   // number gets restricted — which for this product means the client
   // loses the WhatsApp they work with every day, so it is worth watching.
-  qualityRating         String?  @map("quality_rating")
+  qualityRating      String? @map("quality_rating")
 
-  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  client              ChatbotClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant              Tenant?              @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   recallSubscriptions RecallSubscription[]
   whatsappTemplates   WhatsappTemplate[]
 
@@ -1863,8 +1864,8 @@ model WhatsappTemplate {
   // 'PENDING' | 'APPROVED' | 'REJECTED' | 'PAUSED' | 'DISABLED' —
   // Meta's vocabulary, uppercased as Meta returns it, so a value we do
   // not recognise still round-trips honestly instead of being coerced.
-  status   String  @default("PENDING")
-  category String?
+  status         String  @default("PENDING")
+  category       String?
   // Meta's reason when it rejects. This is what an operator needs to fix
   // the copy and resubmit, and it is not derivable from anything else.
   rejectedReason String? @map("rejected_reason")
@@ -1989,41 +1990,41 @@ model ConversationDigestSchedule {
 // money to track.
 // =============================================================================
 model Lead {
-  id             String    @id @default(uuid()) @db.Uuid
-  clientId       String    @map("client_id")
+  id             String  @id @default(uuid()) @db.Uuid
+  clientId       String  @map("client_id")
   // KAIA-4258: tenant isolation FK, same convention as every other model.
-  tenantId       String?   @map("tenant_id") @db.Uuid
+  tenantId       String? @map("tenant_id") @db.Uuid
   // Nullable, SetNull — deleting the source conversation must not delete
   // the lead it produced. Also leaves room for a future non-conversation
   // capture path (e.g. a form) without a migration.
-  conversationId String?   @map("conversation_id")
+  conversationId String? @map("conversation_id")
 
   // All three nullable — the AI classifier doesn't always extract all of
   // them from a single turn.
-  contactName    String?   @map("contact_name")
-  contactPhone   String?   @map("contact_phone")
-  contactEmail   String?   @map("contact_email")
+  contactName  String? @map("contact_name")
+  contactPhone String? @map("contact_phone")
+  contactEmail String? @map("contact_email")
   // LLM-extracted summary of what the prospect asked for.
-  summary        String?
+  summary      String?
   // 0-100, set by the n8n classifier. Nullable — no scoring pipeline is
   // guaranteed to run for every lead.
-  score          Int?
+  score        Int?
 
   // 'nuevo' | 'contactado' | 'convertido' | 'descartado'. See
   // src/lib/leads.ts for the transition predicates.
-  status         String    @default("nuevo")
+  status  String  @default("nuevo")
   // 'telegram' | 'whatsapp' | 'messenger' | 'instagram' | 'web' | 'phone'.
   // Free string, same convention as ChannelWebhookDelivery.connectionType.
   // 'phone' is the 'recall' product: a missed call whose caller left a
   // message IS a lead, so it reuses this model rather than duplicating it
   // — see CallEvent.leadId and src/lib/recall-transcription.ts.
-  channel        String?
+  channel String?
 
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
-  contactedAt    DateTime? @map("contacted_at")
-  convertedAt    DateTime? @map("converted_at")
-  discardedAt    DateTime? @map("discarded_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  contactedAt DateTime? @map("contacted_at")
+  convertedAt DateTime? @map("converted_at")
+  discardedAt DateTime? @map("discarded_at")
 
   client       ChatbotClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant       Tenant?              @relation(fields: [tenantId], references: [id], onDelete: SetNull)
@@ -2096,14 +2097,14 @@ model RecallSubscription {
   // One timestamp sealed per transition. These are what the operator's
   // stuck-detection queue reads: "client 14 has been in forwarding_pending
   // for four days" is only answerable because the transition is dated.
-  contractSignedAt   DateTime? @map("contract_signed_at")
-  metaConnectedAt    DateTime? @map("meta_connected_at")
-  numberAssignedAt   DateTime? @map("number_assigned_at")
-  templatesApprovedAt DateTime? @map("templates_approved_at")
+  contractSignedAt     DateTime? @map("contract_signed_at")
+  metaConnectedAt      DateTime? @map("meta_connected_at")
+  numberAssignedAt     DateTime? @map("number_assigned_at")
+  templatesApprovedAt  DateTime? @map("templates_approved_at")
   forwardingVerifiedAt DateTime? @map("forwarding_verified_at")
-  activatedAt        DateTime? @map("activated_at")
-  pausedAt           DateTime? @map("paused_at")
-  cancelledAt        DateTime? @map("cancelled_at")
+  activatedAt          DateTime? @map("activated_at")
+  pausedAt             DateTime? @map("paused_at")
+  cancelledAt          DateTime? @map("cancelled_at")
 
   // Where the owner receives his own notifications (daily digest, the
   // transcribed message, the monthly report). Deliberately NOT derived
@@ -2127,8 +2128,8 @@ model RecallSubscription {
   // introducing a storage dependency the portal doesn't otherwise have.
   // NOTE: call recordings are NOT stored here; those stay on Twilio and
   // are deleted via their API at 30 days (see CallEvent, Fase 3).
-  greetingAudio    Bytes?    @map("greeting_audio")
-  greetingMimeType String?   @map("greeting_mime_type")
+  greetingAudio      Bytes?    @map("greeting_audio")
+  greetingMimeType   String?   @map("greeting_mime_type")
   greetingRecordedAt DateTime? @map("greeting_recorded_at")
 
   // Scheduling. `timezone` drives the digest slot boundary the same way
@@ -2156,6 +2157,7 @@ model RecallSubscription {
   // so claiming and releasing are each a single write on one row.
   virtualNumber    VirtualNumber?
   callEvents       CallEvent[]
+  blockedNumbers   RecallBlockedNumber[]
 
   @@index([clientId])
   @@index([status])
@@ -2171,15 +2173,15 @@ model RecallSubscription {
 // "what did this row look like on the day the client complained" is the
 // whole point.
 model RecallSubscriptionAudit {
-  id         String @id @default(uuid()) @db.Uuid
+  id             String @id @default(uuid()) @db.Uuid
   subscriptionId String @map("subscription_id") @db.Uuid
-  clientId   String @map("client_id")
+  clientId       String @map("client_id")
   // 'created' | 'contract_signed' | 'meta_connected' | 'number_assigned' |
   // 'templates_approved' | 'forwarding_pending' | 'forwarding_verified' |
   // 'activated' | 'paused' | 'resumed' | 'cancelled'
-  action     String
-  before     Json?
-  after      Json?
+  action         String
+  before         Json?
+  after          Json?
 
   // 'operator' | 'client' | 'system'
   actorType       String  @default("operator") @map("actor_type")
@@ -2291,11 +2293,11 @@ model CallEvent {
   // called" and "we haven't parsed it yet" are different states and only
   // the first is un-recoverable — a withheld call can never be called
   // back, so it must not be counted as a recoverable missed call.
-  fromNumber String?  @map("from_number")
-  withheld   Boolean  @default(false)
+  fromNumber String? @map("from_number")
+  withheld   Boolean @default(false)
   // The virtual number that was dialled, denormalised as text so the
   // history survives that number later being released and reassigned.
-  toNumber   String   @map("to_number")
+  toNumber   String  @map("to_number")
 
   virtualNumberId String? @map("virtual_number_id") @db.Uuid
 
@@ -2310,9 +2312,9 @@ model CallEvent {
   recordingDeletedAt       DateTime? @map("recording_deleted_at")
 
   // Filled by the transcription step (Fase 4).
-  transcript        String?   @db.Text
-  transcribedAt     DateTime? @map("transcribed_at")
-  transcriptionError String?  @map("transcription_error")
+  transcript         String?   @db.Text
+  transcribedAt      DateTime? @map("transcribed_at")
+  transcriptionError String?   @map("transcription_error")
 
   // 'pending'    — call in progress, no outcome yet
   // 'recorded'   — the caller left a message
@@ -2333,6 +2335,29 @@ model CallEvent {
   notifiedOwnerAt  DateTime? @map("notified_owner_at")
   notifiedCallerAt DateTime? @map("notified_caller_at")
 
+  // WP-XX (Fase 9) — per-direction delivery state. Columns rather than a
+  // RecallMessage table because the relationship really is one message per
+  // direction per call, and it is the same treatment transcriptionError
+  // already gets: the error belongs to the row it happened to.
+  //
+  // callerNotifyChannel records how the caller-notification RESOLVED,
+  // and NULL is the only "not decided yet" value — it is what the
+  // sweep filters on. 'whatsapp' | 'sms' mean a message went out
+  // (~10-15% of callers are on landlines with no WhatsApp, and that
+  // fallback is invisible otherwise); 'blocked' | 'throttled' |
+  // 'unreachable' are terminal decisions NOT to send.
+  //
+  // Recording the skips here rather than faking notifiedCallerAt is the
+  // point: that column feeds the 24h throttle, so a call we chose to
+  // stay silent about must not also silence the next one.
+  callerNotifyChannel  String? @map("caller_notify_channel")
+  callerNotifyError    String? @map("caller_notify_error")
+  // Bounded, so a permanently-failing send cannot be retried forever by a
+  // sweep that runs every five minutes.
+  callerNotifyAttempts Int     @default(0) @map("caller_notify_attempts")
+  ownerNotifyError     String? @map("owner_notify_error")
+  ownerNotifyAttempts  Int     @default(0) @map("owner_notify_attempts")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -2349,4 +2374,48 @@ model CallEvent {
   // Drives the 30-day purge sweep: find recordings still present past
   // their retention window.
   @@index([recordingDeletedAt, startedAt])
+  // Drives the Fase 9 notification sweep — "which calls still owe someone
+  // a message". The null-able stamp leads because that is the selective
+  // part: almost every historical row is already notified.
+  @@index([notifiedCallerAt, startedAt])
+  @@index([notifiedOwnerAt, startedAt])
+  // The 24h caller throttle: the most recent message this client sent to
+  // this number.
+  @@index([clientId, fromNumber, notifiedCallerAt])
+}
+
+// WP-XX (Fase 9) — numbers this client never wants messaged back.
+//
+// The population is specific and predictable: cold-call sales, robocalls,
+// and the odd wrong number that keeps ringing. Without this the product
+// answers a sales robot with a warm "how can we help you" from the
+// business's own WhatsApp, which is worse than doing nothing at all —
+// it burns the number's quality rating on traffic that will never convert.
+//
+// Scoped to the subscription rather than the client because the number is
+// the thing being protected and the subscription is what owns it; the
+// clientId column is denormalised alongside for the operator's own
+// cross-client lookups.
+model RecallBlockedNumber {
+  id             String @id @default(uuid()) @db.Uuid
+  clientId       String @map("client_id")
+  subscriptionId String @map("subscription_id") @db.Uuid
+
+  // E.164, normalised on the way in. A blocklist that stores what the
+  // operator typed would silently never match what Twilio sends.
+  e164 String
+
+  // Free text — 'spam', 'comercial', or whatever the operator wrote. It
+  // exists so a block can be explained months later, not to be branched on.
+  reason String?
+
+  // operator email, or 'client:<clientId>' when the owner asked for it.
+  createdBy String?  @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  client       ChatbotClient      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  subscription RecallSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriptionId, e164])
+  @@index([clientId])
 }

@@ -9,6 +9,8 @@ export type {
   ProvisionedNumber,
   SearchNumbersOptions,
   ProvisionNumberOptions,
+  SendSmsOptions,
+  SentSms,
 } from './types';
 
 // =============================================================================
