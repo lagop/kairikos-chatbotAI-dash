@@ -46,11 +46,25 @@ export function localMonthFor(at: Date, timezone: string): string {
 }
 
 /** The month before the one `at` falls in, in the same timezone. */
+/**
+ * Move a 'YYYY-MM' key by whole months.
+ *
+ * String arithmetic rather than Date arithmetic on purpose: a month key
+ * is a calendar label, and building a Date from it just to add a month
+ * would drag a timezone into a question that has none.
+ */
+export function shiftLocalMonth(localMonth: string, delta: number): string {
+  const [year, month] = localMonth.split('-').map(Number);
+  // Months as a zero-based running count, so the year rolls over on its
+  // own in both directions.
+  const total = year * 12 + (month - 1) + delta;
+  const y = Math.floor(total / 12);
+  const m = total - y * 12 + 1;
+  return `${y}-${String(m).padStart(2, '0')}`;
+}
+
 export function previousLocalMonth(at: Date, timezone: string): string {
-  const [year, month] = localMonthFor(at, timezone).split('-').map(Number);
-  return month === 1
-    ? `${year - 1}-12`
-    : `${year}-${String(month - 1).padStart(2, '0')}`;
+  return shiftLocalMonth(localMonthFor(at, timezone), -1);
 }
 
 /**

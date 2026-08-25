@@ -9,6 +9,7 @@ import { monthLabel } from '@/lib/recall-reports';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { ProductPitch } from '@/components/portal/ProductPitch';
 import { EmptyState } from '@/components/portal/EmptyState';
+import { SelfServeProductCard, type SelfServeTierOption } from '@/components/portal/SelfServeProductCard';
 
 export const dynamic = 'force-dynamic';
 
@@ -98,6 +99,14 @@ const DATE_FORMAT = new Intl.DateTimeFormat('es-ES', {
   minute: '2-digit',
 });
 
+/** Tier codes are English across the catalogue; 'recall' uses
+ *  solo/team/business. Same small local map /portal/productos keeps. */
+const TIER_LABEL: Record<string, string> = {
+  solo: 'Autónomo',
+  team: 'Equipo',
+  business: 'Empresa',
+};
+
 function notifyLabel(call: RecallCallSummary): string {
   if (call.callerNotifyChannel) {
     return NOTIFY_LABEL[call.callerNotifyChannel] ?? call.callerNotifyChannel;
@@ -106,6 +115,68 @@ function notifyLabel(call: RecallCallSummary): string {
   // a promise that cannot be kept.
   if (call.withheld) return 'Sin número al que escribir';
   return 'Le escribiremos en unos minutos';
+}
+
+/** One arrow of the month navigation. Rendered as disabled text rather
+ *  than hidden at the ends of the range, so the control does not move
+ *  under the reader as they page back. */
+function MonthLink({
+  month,
+  label,
+  testId,
+}: {
+  month: string | null;
+  label: string;
+  testId: string;
+}) {
+  if (!month) {
+    return (
+      <span className="px-2 py-1 text-xs text-kairikos-muted opacity-40" aria-disabled="true">
+        {label}
+      </span>
+    );
+  }
+  return (
+    <Link
+      href={`/portal/llamadas?mes=${month}`}
+      className="rounded-lg px-2 py-1 text-xs text-kairikos-accent2 hover:underline"
+      data-testid={testId}
+    >
+      {label}
+    </Link>
+  );
+}
+
+/** One arrow of the in-month pager. Disabled text at the ends rather
+ *  than a hidden control, same reasoning as MonthLink: the pager must
+ *  not move under the reader as they page. */
+function PageLink({
+  month,
+  page,
+  label,
+  testId,
+}: {
+  month: string;
+  page: number | null;
+  label: string;
+  testId: string;
+}) {
+  if (page === null) {
+    return (
+      <span className="px-2 py-1 text-xs text-kairikos-muted opacity-40" aria-disabled="true">
+        {label}
+      </span>
+    );
+  }
+  return (
+    <Link
+      href={`/portal/llamadas?mes=${month}&p=${page}`}
+      className="rounded-lg px-2 py-1 text-xs text-kairikos-accent2 hover:underline"
+      data-testid={testId}
+    >
+      {label}
+    </Link>
+  );
 }
 
 function Metric({
@@ -130,7 +201,11 @@ function Metric({
   );
 }
 
-export default async function PortalLlamadasPage() {
+export default async function PortalLlamadasPage({
+  searchParams,
+}: {
+  searchParams?: { mes?: string; p?: string };
+}) {
   await requirePortalSession();
   const resolved = await resolveClientFromSession();
   if (!resolved) {
@@ -139,10 +214,41 @@ export default async function PortalLlamadasPage() {
 
   const view =
     isDatabaseConfigured && resolved.source === 'database'
-      ? await loadRecallClientView(prisma, resolved.clientId)
+      ? await loadRecallClientView(prisma, resolved.clientId, {
+          month: searchParams?.mes ?? null,
+          page: searchParams?.p ?? null,
+        })
       : ({ state: 'not_contracted' } as const);
 
   if (view.state === 'not_contracted') {
+    // Read the catalogue rather than hard-coding whether this is
+    // sellable, so activating the product is a seed change and not a
+    // code change.
+    let tiers: SelfServeTierOption[] = [];
+    let pendingProductId: string | null = null;
+    if (isDatabaseConfigured && resolved.source === 'database') {
+      const [products, pendingRow] = await Promise.all([
+        prisma.product.findMany({
+          where: { code: 'recall', isActive: true },
+          orderBy: { priceCents: 'asc' },
+          select: { id: true, tier: true, priceCents: true, setupFeeCents: true, currency: true },
+        }),
+        prisma.clientProduct.findFirst({
+          where: { clientId: resolved.clientId, status: 'pending_payment', product: { code: 'recall' } },
+          select: { productId: true },
+        }),
+      ]);
+      tiers = products.map((p) => ({
+        productId: p.id,
+        tier: p.tier,
+        tierLabel: TIER_LABEL[p.tier] ?? p.tier,
+        priceCents: p.priceCents,
+        setupFeeCents: p.setupFeeCents,
+        currency: p.currency,
+      }));
+      pendingProductId = pendingRow?.productId ?? null;
+    }
+
     return (
       <div className="space-y-6">
         <PageHeading eyebrow="Portal" title="Llamadas recuperadas" />
@@ -156,15 +262,33 @@ export default async function PortalLlamadasPage() {
           ]}
           priceNote="Desde 149 €/mes. Se instala en 48 horas."
         >
-          <EmptyState
-            title="Habla con nosotros"
-            description="Todavía no lo puedes contratar tú mismo desde el portal. Escríbenos y lo dejamos montado."
-            action={
-              <Link href="/portal/support" className="btn-primary">
-                Quiero información
-              </Link>
-            }
-          />
+          {tiers.length > 0 ? (
+            pendingProductId ? (
+              <SelfServeProductCard
+                code="recall"
+                label="Llamadas perdidas"
+                status="pending"
+                productId={pendingProductId}
+              />
+            ) : (
+              <SelfServeProductCard code="recall" label="Llamadas perdidas" status="available" tiers={tiers} />
+            )
+          ) : (
+            // No active catalogue row: the three "recall" tiers are
+            // deliberately isActive: false until Coexistence is verified
+            // against a real Meta app AND real Stripe price ids exist.
+            // Offering a checkout here would take money for a service
+            // whose WhatsApp path has never run once.
+            <EmptyState
+              title="Habla con nosotros"
+              description="Todavía no se puede contratar solo desde el portal. Escríbenos y lo dejamos montado."
+              action={
+                <Link href="/portal/support" className="btn-primary">
+                  Quiero información
+                </Link>
+              }
+            />
+          )}
         </ProductPitch>
       </div>
     );
@@ -191,7 +315,10 @@ export default async function PortalLlamadasPage() {
     );
   }
 
-  const { metrics, history, calls } = view;
+  const { metrics, history, calls, previousMonth, nextMonth } = view;
+  const { page, pageCount, totalCalls, pageSize } = view;
+  const firstShown = totalCalls === 0 ? 0 : (page - 1) * pageSize + 1;
+  const lastShown = (page - 1) * pageSize + calls.length;
 
   return (
     <div className="space-y-6">
@@ -202,7 +329,15 @@ export default async function PortalLlamadasPage() {
       />
 
       <section aria-label={`Resumen de ${monthLabel(view.localMonth)}`}>
-        <h2 className="mb-2 text-sm font-semibold capitalize">{monthLabel(view.localMonth)}</h2>
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold capitalize" data-testid="recall-client-month">
+            {monthLabel(view.localMonth)}
+          </h2>
+          <nav className="flex items-center gap-1" aria-label="Cambiar de mes">
+            <MonthLink month={previousMonth} label="← Mes anterior" testId="recall-client-prev-month" />
+            <MonthLink month={nextMonth} label="Mes siguiente →" testId="recall-client-next-month" />
+          </nav>
+        </div>
         <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="recall-client-metrics">
           <Metric
             label="Llamadas recuperadas"
@@ -245,9 +380,29 @@ export default async function PortalLlamadasPage() {
               </thead>
               <tbody>
                 {history.map((row) => (
-                  <tr key={row.localMonth} className="border-b border-kairikos-border last:border-0">
-                    <th scope="row" className="px-4 py-2 text-left font-normal capitalize">
-                      {monthLabel(row.localMonth)}
+                  <tr
+                    key={row.localMonth}
+                    className={`border-b border-kairikos-border last:border-0 ${
+                      row.isSelected ? 'bg-kairikos-surface2 font-medium' : ''
+                    }`}
+                    data-testid="recall-client-history-row"
+                    data-selected={row.isSelected ? 'true' : 'false'}
+                    aria-current={row.isSelected ? 'true' : undefined}
+                  >
+                    <th scope="row" className="px-4 py-2 text-left font-normal">
+                      {row.isSelected ? (
+                        // The month you are already looking at: shown, but
+                        // not a link to itself.
+                        <span className="capitalize">{monthLabel(row.localMonth)}</span>
+                      ) : (
+                        <Link
+                          href={`/portal/llamadas?mes=${row.localMonth}`}
+                          className="capitalize text-kairikos-accent2 hover:underline"
+                          data-testid="recall-client-history-link"
+                        >
+                          {monthLabel(row.localMonth)}
+                        </Link>
+                      )}
                     </th>
                     <td className="px-4 py-2 text-right tabular-nums">{row.calls}</td>
                     <td className="px-4 py-2 text-right tabular-nums">{row.recordedCalls}</td>
@@ -260,11 +415,16 @@ export default async function PortalLlamadasPage() {
         </section>
       ) : null}
 
-      <section aria-label="Últimas llamadas">
-        <h2 className="mb-2 text-sm font-semibold">Últimas llamadas</h2>
+      <section aria-label={`Llamadas de ${monthLabel(view.localMonth)}`}>
+        <h2 className="mb-2 text-sm font-semibold">
+          Llamadas de <span className="capitalize">{monthLabel(view.localMonth)}</span>
+          {totalCalls > 0 ? (
+            <span className="ml-2 font-normal text-kairikos-muted tabular-nums">({totalCalls})</span>
+          ) : null}
+        </h2>
         {calls.length === 0 ? (
           <EmptyState
-            title="Todavía no ha entrado ninguna llamada"
+            title="Ninguna llamada este mes"
             description="Cuando alguien te llame y no puedas atender, aparecerá aquí y te llegará por WhatsApp."
           />
         ) : (
@@ -295,6 +455,31 @@ export default async function PortalLlamadasPage() {
             ))}
           </ul>
         )}
+        {pageCount > 1 ? (
+          <nav
+            className="mt-3 flex flex-wrap items-center justify-between gap-2"
+            aria-label="Paginación de llamadas"
+            data-testid="recall-client-pager"
+          >
+            <p className="text-xs text-kairikos-muted tabular-nums" data-testid="recall-client-range">
+              {firstShown}–{lastShown} de {totalCalls}
+            </p>
+            <div className="flex items-center gap-1">
+              <PageLink
+                month={view.localMonth}
+                page={page > 1 ? page - 1 : null}
+                label="← Anteriores"
+                testId="recall-client-prev-page"
+              />
+              <PageLink
+                month={view.localMonth}
+                page={page < pageCount ? page + 1 : null}
+                label="Siguientes →"
+                testId="recall-client-next-page"
+              />
+            </div>
+          </nav>
+        ) : null}
       </section>
 
       <p className="text-xs text-kairikos-muted" data-testid="recall-client-retention">

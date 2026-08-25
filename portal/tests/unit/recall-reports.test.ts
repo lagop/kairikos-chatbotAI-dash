@@ -37,6 +37,7 @@ vi.mock('@/lib/operator-notify', async () => {
 import {
   localMonthFor,
   previousLocalMonth,
+  shiftLocalMonth,
   monthBounds,
   monthLabel,
   isReportDue,
@@ -402,5 +403,45 @@ describe('rollUpUsage', () => {
     mockState.resolveOperatorRecipients.mockReturnValue([]);
 
     await expect(rollUpUsage(prisma, { now: FIRST_OF_MONTH })).resolves.toMatchObject({ updated: 1, alerted: 0 });
+  });
+});
+
+// =============================================================================
+// WP-XX — month arithmetic on the 'YYYY-MM' key itself, added for the
+// client page's month navigation. String arithmetic on purpose: a month
+// key is a calendar label, and a Date would drag a timezone into a
+// question that has none.
+// =============================================================================
+
+describe('shiftLocalMonth', () => {
+  it('moves whole months in both directions', () => {
+    expect(shiftLocalMonth('2026-07', -1)).toBe('2026-06');
+    expect(shiftLocalMonth('2026-07', 1)).toBe('2026-08');
+    expect(shiftLocalMonth('2026-07', 0)).toBe('2026-07');
+  });
+
+  it('rolls the year over at both boundaries', () => {
+    expect(shiftLocalMonth('2026-01', -1)).toBe('2025-12');
+    expect(shiftLocalMonth('2026-12', 1)).toBe('2027-01');
+  });
+
+  it('handles a jump of more than a year', () => {
+    expect(shiftLocalMonth('2026-03', -14)).toBe('2025-01');
+    expect(shiftLocalMonth('2026-03', 24)).toBe('2028-03');
+  });
+
+  it('keeps producing keys that sort as dates', () => {
+    // The whole navigation compares these with < and >, so a lost zero
+    // would silently reorder the client's months.
+    expect(shiftLocalMonth('2026-10', 1)).toBe('2026-11');
+    expect(shiftLocalMonth('2026-09', 1)).toBe('2026-10');
+    expect(shiftLocalMonth('2026-10', -2)).toBe('2026-08');
+    expect(shiftLocalMonth('2026-01', 0) < shiftLocalMonth('2026-02', 0)).toBe(true);
+  });
+
+  it('agrees with previousLocalMonth, which is now built on it', () => {
+    expect(shiftLocalMonth(localMonthFor(new Date('2026-01-15T12:00:00.000Z'), MADRID), -1)).toBe(
+      previousLocalMonth(new Date('2026-01-15T12:00:00.000Z'), MADRID),
+    );
   });
 });
