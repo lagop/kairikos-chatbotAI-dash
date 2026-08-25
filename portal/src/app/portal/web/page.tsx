@@ -12,7 +12,7 @@ import { RequestWebQuoteCard } from '@/components/portal/RequestWebQuoteCard';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Plataforma web profesional · Portal Kairikos',
+  title: 'Plataforma web profesional',
   robots: { index: false, follow: false },
 };
 

@@ -13,7 +13,7 @@ import { LeadStatusControls } from '@/components/portal/LeadStatusControls';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Captación con IA · Portal Kairikos',
+  title: 'Captación con IA',
   robots: { index: false, follow: false },
 };
 

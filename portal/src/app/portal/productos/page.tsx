@@ -29,7 +29,7 @@ const WEB_STATUS_PILL: Record<string, string> = {
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Añadir producto · Portal Kairikos',
+  title: 'Añadir producto',
   description: 'Contrata un producto adicional sin pasar por un operador.',
   alternates: { canonical: '/portal/productos' },
   robots: { index: false, follow: false },

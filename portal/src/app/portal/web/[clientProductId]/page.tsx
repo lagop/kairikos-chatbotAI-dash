@@ -14,7 +14,7 @@ import { GOAL_LABELS, CONTENT_PROVIDED_BY_LABELS, type GOAL_OPTIONS, type CONTEN
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Plataforma web profesional · Portal Kairikos',
+  title: 'Plataforma web profesional',
   robots: { index: false, follow: false },
 };
 
