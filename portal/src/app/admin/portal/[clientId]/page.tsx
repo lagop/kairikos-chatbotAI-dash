@@ -27,6 +27,8 @@ import {
 } from '@/components/admin/ChannelsOperatorPanel';
 import { getAllowedChannelsForClient } from '@/lib/channel-access';
 import { LeadsSummaryPanel, type LeadSummaryRow } from '@/components/admin/LeadsSummaryPanel';
+import { RecallOperatorPanel, type RecallPanelData } from '@/components/admin/RecallOperatorPanel';
+import { isStuck, stuckThresholdDays } from '@/lib/recall';
 
 export const dynamic = 'force-dynamic';
 
@@ -344,6 +346,9 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
   // Leads Fase 5 — populated only when productCode === 'leads', same
   // pattern as the Canales/WebQuote blocks above.
   let leads: LeadSummaryRow[] = [];
+  // Recall Fase 5 — populated only when productCode === 'recall', same
+  // three-part pattern as every block above.
+  let recall: RecallPanelData | null = null;
   if (isDatabaseConfigured) {
     try {
       const client = await prisma.chatbotClient.findUnique({
@@ -538,6 +543,75 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
             where: { clientId: client.id },
             orderBy: [{ createdAt: 'desc' }],
           });
+        }
+
+        if (productCode === 'recall') {
+          const subscription = await prisma.recallSubscription.findFirst({
+            where: { clientId: client.id },
+            orderBy: { createdAt: 'desc' },
+            select: {
+              id: true,
+              status: true,
+              createdAt: true,
+              contractSignedAt: true,
+              metaConnectedAt: true,
+              numberAssignedAt: true,
+              templatesApprovedAt: true,
+              forwardingVerifiedAt: true,
+              greetingRecordedAt: true,
+              ownerWhatsapp: true,
+              virtualNumber: { select: { e164: true } },
+              // Bounded: the panel answers "what did the last few callers
+              // say", not "give me the whole call history".
+              callEvents: {
+                orderBy: { startedAt: 'desc' },
+                take: 10,
+                select: {
+                  id: true,
+                  startedAt: true,
+                  fromNumber: true,
+                  withheld: true,
+                  outcome: true,
+                  transcript: true,
+                  recordingDurationSeconds: true,
+                  leadId: true,
+                },
+              },
+            },
+          });
+          if (subscription) {
+            // Same clock the queue uses: the stamp of the transition that
+            // put the row in its current state, never `updatedAt`, which
+            // an unrelated edit would reset and thereby hide a stall.
+            const since =
+              (subscription.status === 'contract_signed' && subscription.contractSignedAt) ||
+              (subscription.status === 'meta_connected' && subscription.metaConnectedAt) ||
+              (subscription.status === 'number_assigned' && subscription.numberAssignedAt) ||
+              ((subscription.status === 'templates_approved' || subscription.status === 'forwarding_pending') &&
+                subscription.templatesApprovedAt) ||
+              (subscription.status === 'forwarding_verified' && subscription.forwardingVerifiedAt) ||
+              subscription.createdAt;
+            recall = {
+              subscriptionId: subscription.id,
+              status: subscription.status,
+              since: since.toISOString(),
+              stuck: isStuck(subscription.status, since),
+              stuckThresholdDays: stuckThresholdDays(subscription.status),
+              e164: subscription.virtualNumber?.e164 ?? null,
+              hasGreeting: subscription.greetingRecordedAt !== null,
+              ownerWhatsapp: subscription.ownerWhatsapp,
+              calls: subscription.callEvents.map((call) => ({
+                id: call.id,
+                startedAt: call.startedAt.toISOString(),
+                fromNumber: call.fromNumber,
+                withheld: call.withheld,
+                outcome: call.outcome,
+                transcript: call.transcript,
+                recordingDurationSeconds: call.recordingDurationSeconds,
+                leadId: call.leadId,
+              })),
+            };
+          }
         }
 
         const activities = await prisma.chatbotActivity.findMany({
@@ -812,6 +886,23 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
                 <p className="mt-1 text-xs text-kairikos-muted">Solo lectura — el ciclo de vida de cada lead lo maneja el equipo del cliente.</p>
               </header>
               <LeadsSummaryPanel leads={leads} />
+            </section>
+          ) : null}
+
+          {productCode === 'recall' ? (
+            <section className="card" aria-label="Recuperación de llamadas" data-testid="client-recall-section">
+              <header className="mb-4 flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold">Recuperación de llamadas</h2>
+                  <p className="mt-1 text-xs text-kairikos-muted">
+                    Estado del alta y últimas llamadas recuperadas.
+                  </p>
+                </div>
+                <Link href="/admin/portal/recall" className="text-sm text-kairikos-accent2 hover:underline">
+                  Ver la cola →
+                </Link>
+              </header>
+              <RecallOperatorPanel data={recall} />
             </section>
           ) : null}
 

@@ -1,4 +1,5 @@
 import 'server-only';
+import type { PrismaClient } from '@prisma/client';
 
 // =============================================================================
 // WP-XX — transition rules for the 'recall' product (missed-call recovery
@@ -182,4 +183,106 @@ export function isStuck(status: string, since: Date, now: Date = new Date()): bo
   if (threshold === null) return false;
   const elapsedDays = (now.getTime() - since.getTime()) / (24 * 60 * 60 * 1000);
   return elapsedDays >= threshold;
+}
+
+// --- Operator queue ------------------------------------------------------
+
+export interface RecallQueueRow {
+  subscriptionId: string;
+  clientId: string;
+  clientName: string;
+  clientEmail: string;
+  status: string;
+  /** When the subscription entered its CURRENT state — the clock the
+   *  stuck badge reads. */
+  since: Date;
+  e164: string | null;
+  hasGreeting: boolean;
+}
+
+/**
+ * Every subscription still mid-onboarding, for the operator's inbox.
+ *
+ * ONE query, deliberately. The nearest precedent in this codebase,
+ * wizard-funnel's loadRowsFromDb, issues a query per client inside a
+ * loop; listWebQuoteQueue is the shape to copy instead, and this follows
+ * it. Nothing here is computed in SQL that could be computed at render
+ * time — `isStuck` runs against the returned rows, so there is no date
+ * arithmetic in the query and the thresholds stay in one testable place.
+ *
+ * `greetingAudio` is selected as a boolean-ish presence check rather than
+ * pulled down: it is a BYTEA of a couple hundred KB per row and the queue
+ * only needs to know whether it exists.
+ */
+export async function listRecallQueue(prisma: PrismaClient): Promise<RecallQueueRow[]> {
+  const rows = await prisma.recallSubscription.findMany({
+    where: { status: { in: ONBOARDING_SEQUENCE.filter((s) => s !== 'active') } },
+    orderBy: { updatedAt: 'asc' },
+    select: {
+      id: true,
+      clientId: true,
+      status: true,
+      updatedAt: true,
+      contractSignedAt: true,
+      metaConnectedAt: true,
+      numberAssignedAt: true,
+      templatesApprovedAt: true,
+      forwardingVerifiedAt: true,
+      createdAt: true,
+      greetingRecordedAt: true,
+      client: { select: { name: true, companyName: true, email: true } },
+      virtualNumber: { select: { e164: true } },
+    },
+  });
+
+  return rows.map((row) => ({
+    subscriptionId: row.id,
+    clientId: row.clientId,
+    clientName: row.client.companyName ?? row.client.name,
+    clientEmail: row.client.email,
+    status: row.status,
+    since: enteredCurrentStateAt(row),
+    e164: row.virtualNumber?.e164 ?? null,
+    hasGreeting: row.greetingRecordedAt !== null,
+  }));
+}
+
+/**
+ * When this subscription entered the state it is in now.
+ *
+ * Each transition seals its own timestamp (see the schema), so the clock
+ * for "stuck in X" is the stamp of the transition that PUT it in X — not
+ * `updatedAt`, which any unrelated edit would reset and thereby hide a
+ * client who has been stalled for a week.
+ */
+function enteredCurrentStateAt(row: {
+  status: string;
+  createdAt: Date;
+  contractSignedAt: Date | null;
+  metaConnectedAt: Date | null;
+  numberAssignedAt: Date | null;
+  templatesApprovedAt: Date | null;
+  forwardingVerifiedAt: Date | null;
+}): Date {
+  switch (row.status) {
+    case 'paid':
+      return row.createdAt;
+    case 'contract_signed':
+      return row.contractSignedAt ?? row.createdAt;
+    case 'meta_connected':
+      return row.metaConnectedAt ?? row.createdAt;
+    case 'number_assigned':
+      return row.numberAssignedAt ?? row.createdAt;
+    case 'templates_approved':
+      return row.templatesApprovedAt ?? row.createdAt;
+    // forwarding_pending is entered by the same act that approved the
+    // templates — there is no separate stamp, and adding one would record
+    // the same instant twice.
+    case 'forwarding_pending':
+      return row.templatesApprovedAt ?? row.createdAt;
+    case 'forwarding_verified':
+      return row.forwardingVerifiedAt ?? row.createdAt;
+    default:
+      return row.createdAt;
+  }
 }
