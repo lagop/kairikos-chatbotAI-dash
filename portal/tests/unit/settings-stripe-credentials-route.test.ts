@@ -125,4 +125,24 @@ describe('POST /api/admin/portal/settings/stripe/credentials', () => {
     // The response body itself must never contain the full plaintext key.
     expect(JSON.stringify(body)).not.toContain('sk_test_abcd1234WXYZ');
   });
+
+  it('500s cleanly, rather than crashing, when persisting the key throws', async () => {
+    // Regression: a misconfigured STRIPE_CREDENTIAL_ENCRYPTION_KEY (unset
+    // or the wrong length — see operator-crypto.ts's parseHexKey) threw
+    // synchronously inside saveStripeCredential, unguarded. The route
+    // crashed as an unhandled exception instead of returning JSON, the
+    // panel's safeJson() fell back to {}, and the operator saw the
+    // generic 'No se pudo completar la operación' with nothing pointing
+    // at the real cause.
+    mockState.saveStripeCredential.mockRejectedValueOnce(
+      new Error('STRIPE_CREDENTIAL_ENCRYPTION_KEY is not set'),
+    );
+    const { POST } = await import('@/app/api/admin/portal/settings/stripe/credentials/route');
+    const res = await POST(makeRequest(VALID_BODY));
+    expect(res.status).toBe(500);
+    const body = await res.clone().json();
+    expect(body).toEqual({ error: 'internal_error' });
+    // Still never echoes the key back, even on the failure path.
+    expect(JSON.stringify(body)).not.toContain('sk_test_abcd1234WXYZ');
+  });
 });

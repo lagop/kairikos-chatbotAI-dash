@@ -6,6 +6,7 @@ import { authenticateAdminRequest } from '@/lib/operator-session';
 import { requireTotpStepUp } from '@/lib/operator-totp-stepup';
 import { getStripeApiVersion } from '@/lib/stripe';
 import { getStripeCredentialStatus, saveStripeCredential, type StripeMode } from '@/lib/stripe-credentials';
+import { logError } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -63,9 +64,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'invalid_stripe_key' }, { status: 400 });
   }
 
-  const operator = await prisma.operator.findUnique({ where: { id: stepUp.operatorId }, select: { email: true } });
-
-  await saveStripeCredential(mode, secretKey, { operatorId: stepUp.operatorId, operatorEmail: operator?.email ?? null });
+  // Everything past this point (encrypting and persisting the key) is
+  // NOT wrapped by the try/catch above — that one is scoped to 'did
+  // Stripe reject the key', a distinct failure. A misconfigured
+  // encryption key (STRIPE_CREDENTIAL_ENCRYPTION_KEY unset or the wrong
+  // length — see operator-crypto.ts's parseHexKey) throws synchronously
+  // and, unguarded, would crash this route as an unhandled exception:
+  // the client's fetch never gets a JSON body, safeJson() in the panel
+  // falls back to {}, and the operator sees the generic 'No se pudo
+  // completar la operación' with nothing pointing at the real cause.
+  // Caught here so a server misconfiguration reads as a clear error
+  // instead of a silent dead end.
+  try {
+    const operator = await prisma.operator.findUnique({ where: { id: stepUp.operatorId }, select: { email: true } });
+    await saveStripeCredential(mode, secretKey, { operatorId: stepUp.operatorId, operatorEmail: operator?.email ?? null });
+  } catch (err) {
+    logError('stripe_credentials.save_failed', err, { mode });
+    return NextResponse.json({ error: 'internal_error' }, { status: 500 });
+  }
 
   return NextResponse.json({ ok: true, mode, lastFour: secretKey.slice(-4) });
 }
