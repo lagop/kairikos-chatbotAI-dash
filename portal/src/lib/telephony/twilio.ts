@@ -5,6 +5,8 @@ import type {
   ProvisionNumberOptions,
   ProvisionedNumber,
   SearchNumbersOptions,
+  SendSmsOptions,
+  SentSms,
   TelephonyProvider,
   TelephonyResult,
 } from './types';
@@ -114,6 +116,10 @@ interface TwilioAvailableNumbersResponse {
   }>;
 }
 
+interface TwilioMessageResponse {
+  sid?: string;
+}
+
 interface TwilioIncomingNumberResponse {
   sid?: string;
   phone_number?: string;
@@ -183,5 +189,16 @@ export const twilioProvider: TelephonyProvider = {
       return { ok: true, data: null };
     }
     return result;
+  },
+
+  async sendSms(opts: SendSmsOptions): Promise<TelephonyResult<SentSms>> {
+    const result = await twilioRequest<TwilioMessageResponse>('POST', '/Messages.json', {
+      To: opts.to,
+      From: opts.from,
+      Body: opts.body,
+    });
+    if (!result.ok) return result;
+    if (!result.data.sid) return { ok: false, error: 'twilio_response_missing_message_sid' };
+    return { ok: true, data: { providerSid: result.data.sid } };
   },
 };

@@ -54,6 +54,26 @@ export interface ProvisionNumberOptions {
   friendlyName?: string;
 }
 
+export interface SendSmsOptions {
+  /** E.164 recipient. */
+  to: string;
+  /**
+   * E.164 sender — the client's own virtual number.
+   *
+   * Not an alphanumeric sender ID (which Spain does support and which
+   * would read more clearly as the business name), because those cannot
+   * RECEIVE. This product exists to start a conversation, so the message
+   * has to come from something the caller can reply to.
+   */
+  from: string;
+  body: string;
+}
+
+export interface SentSms {
+  /** The provider's message SID. */
+  providerSid: string;
+}
+
 export interface TelephonyProvider {
   readonly name: string;
   searchAvailableNumbers(opts: SearchNumbersOptions): Promise<TelephonyResult<AvailableNumber[]>>;
@@ -61,4 +81,13 @@ export interface TelephonyProvider {
   /** Idempotent by contract: releasing an already-released SID must
    *  resolve ok, not error. Callers retry this after partial failures. */
   releaseNumber(providerSid: string): Promise<TelephonyResult<null>>;
+  /**
+   * SMS fallback for callers with no WhatsApp.
+   *
+   * Roughly one caller in seven rings from a landline or a phone with no
+   * WhatsApp account. Meta answers those with 131026 and no amount of
+   * retrying changes it, so the only way that caller hears back at all is
+   * a channel the portal already pays a provider for.
+   */
+  sendSms(opts: SendSmsOptions): Promise<TelephonyResult<SentSms>>;
 }

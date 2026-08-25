@@ -165,7 +165,16 @@ export async function resolveCallTarget(
 export async function recordIncomingCall(
   prisma: PrismaClient,
   target: ResolvedCallTarget,
-  call: { callSid: string; from: string | null; to: string; startedAt?: Date },
+  call: {
+    callSid: string;
+    from: string | null;
+    to: string;
+    startedAt?: Date;
+    /** Forced terminal outcome. Only the blocklist path uses it, to
+     *  record that the call happened while making sure nothing later
+     *  treats it as a message waiting to be handled. */
+    outcome?: 'blocked';
+  },
 ): Promise<{ id: string; outcome: string }> {
   const withheld = isWithheldCaller(call.from);
   return prisma.callEvent.upsert({
@@ -183,7 +192,7 @@ export async function recordIncomingCall(
       // 'withheld' is terminal from the start: there is no number to
       // message back, so no later step can improve on it. Everything
       // else stays 'pending' until the recording callback decides.
-      outcome: withheld ? 'withheld' : 'pending',
+      outcome: call.outcome ?? (withheld ? 'withheld' : 'pending'),
     },
     update: {},
     select: { id: true, outcome: true },
