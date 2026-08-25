@@ -137,6 +137,7 @@ model ChatbotClient {
   whatsappTemplates          WhatsappTemplate[]
   recallBlockedNumbers       RecallBlockedNumber[]
   recallDigests              RecallDigest[]
+  recallUsageMonths          RecallUsageMonth[]
 
   @@index([stripeCustomerId])
   @@index([tier])
@@ -2165,6 +2166,7 @@ model RecallSubscription {
   callEvents       CallEvent[]
   blockedNumbers   RecallBlockedNumber[]
   digests          RecallDigest[]
+  usageMonths      RecallUsageMonth[]
 
   @@index([clientId])
   @@index([status])
@@ -2488,4 +2490,59 @@ model RecallDigest {
   // Drives the reply router: 'is there a digest this owner could be
   // answering right now?'
   @@index([subscriptionId, sentAt])
+}
+
+// WP-XX (Fase 11) — what each client actually consumes, per month.
+//
+// The pack is sold flat rate, so this is not billing. It is how we
+// notice the one client whose usage stops resembling the others before
+// the provider invoice does. Modo Recado runs at roughly 25-30 minutes a
+// month; the risk only becomes real if Modo Recepción (out of scope for
+// v1) is ever sold, and by then the measurement has to already exist.
+//
+// A rollup rather than a live aggregation: the operator queue asks "who
+// is over budget this month" across every client at once, and answering
+// that with one indexed read beats N aggregations that get slower every
+// month the product succeeds.
+//
+// Every figure here is derived from rows that already exist (CallEvent,
+// ReviewRequest), so a rollup can always be recomputed and nothing new
+// has to be written on the hot path.
+model RecallUsageMonth {
+  id             String @id @default(uuid()) @db.Uuid
+  clientId       String @map("client_id")
+  subscriptionId String @map("subscription_id") @db.Uuid
+
+  // 'YYYY-MM' in the subscription's own timezone, for the same reason
+  // RecallDigest.localDate is wall-clock: a month boundary is a calendar
+  // fact, not an interval of UTC.
+  localMonth String @map("local_month")
+
+  calls         Int @default(0)
+  recordedCalls Int @default(0) @map("recorded_calls")
+  // Sum of recorded seconds. Survives the 30-day purge, which deletes
+  // the audio at Twilio and leaves the duration behind — so history
+  // stays measurable without keeping a single third-party voice.
+  callSeconds   Int @default(0) @map("call_seconds")
+
+  whatsappMessages Int @default(0) @map("whatsapp_messages")
+  smsMessages      Int @default(0) @map("sms_messages")
+  reviewRequests   Int @default(0) @map("review_requests")
+
+  // Set when an operator has been told this month looks abnormal, so
+  // the alert fires once rather than on every tick for the rest of the
+  // month.
+  alertedAt  DateTime? @map("alerted_at")
+  computedAt DateTime  @map("computed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  client       ChatbotClient      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  subscription RecallSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriptionId, localMonth])
+  @@index([clientId])
+  // "Who is over budget this month" — the whole reason this is a rollup.
+  @@index([localMonth, callSeconds])
 }

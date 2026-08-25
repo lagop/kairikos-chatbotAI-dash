@@ -38,6 +38,17 @@ export interface RecallBlockedRow {
   createdAt: string;
 }
 
+export interface RecallUsageSummary {
+  localMonth: string;
+  calls: number;
+  minutes: number;
+  whatsappMessages: number;
+  smsMessages: number;
+  reviewRequests: number;
+  /** An operator has already been told this month looks abnormal. */
+  alerted: boolean;
+}
+
 export interface RecallPanelData {
   subscriptionId: string;
   status: string;
@@ -49,6 +60,7 @@ export interface RecallPanelData {
   ownerWhatsapp: string | null;
   calls: RecallCallRow[];
   blockedNumbers: RecallBlockedRow[];
+  usage: RecallUsageSummary | null;
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -96,6 +108,20 @@ const DATE_FORMAT = new Intl.DateTimeFormat('es-ES', {
   hour: '2-digit',
   minute: '2-digit',
 });
+
+/** What happened to the caller message, in words an operator can act on.
+ *
+ *  A withheld caller is the case worth spelling out: the generic
+ *  "pendiente" reads as "this will happen", and for a number nobody can
+ *  call back it never will. Saying so turns a question into an answer.
+ *  Derived rather than stored, because withheld already says it. */
+function callerNotifyLabel(call: RecallCallRow): string {
+  if (call.callerNotifyChannel) {
+    return CALLER_NOTIFY_LABEL[call.callerNotifyChannel] ?? call.callerNotifyChannel;
+  }
+  if (call.withheld) return 'Sin número al que avisar';
+  return 'Aviso al cliente pendiente';
+}
 
 function daysSince(iso: string): number {
   return Math.floor((Date.now() - new Date(iso).getTime()) / (24 * 60 * 60 * 1000));
@@ -180,10 +206,11 @@ export function RecallOperatorPanel({ data }: { data: RecallPanelData | null }) 
                   <p className="mt-1 text-xs text-kairikos-muted">Transcripción pendiente.</p>
                 ) : null}
                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-kairikos-muted">
-                  <span data-testid="recall-call-caller-notify" data-channel={call.callerNotifyChannel ?? 'pending'}>
-                    {call.callerNotifyChannel
-                      ? (CALLER_NOTIFY_LABEL[call.callerNotifyChannel] ?? call.callerNotifyChannel)
-                      : 'Aviso al cliente pendiente'}
+                  <span
+                    data-testid="recall-call-caller-notify"
+                    data-channel={call.callerNotifyChannel ?? (call.withheld ? 'withheld' : 'pending')}
+                  >
+                    {callerNotifyLabel(call)}
                   </span>
                   <span data-testid="recall-call-owner-notify">
                     {call.notifiedOwnerAt ? 'Recado enviado al dueño' : 'Recado al dueño pendiente'}
@@ -206,6 +233,45 @@ export function RecallOperatorPanel({ data }: { data: RecallPanelData | null }) 
               </li>
             ))}
           </ul>
+        )}
+      </div>
+
+      <div>
+        <h3 className="mb-2 text-sm font-semibold">Consumo del mes</h3>
+        {data.usage === null ? (
+          <p className="text-sm text-kairikos-muted" data-testid="recall-panel-no-usage">
+            Todavía sin datos de este mes.
+          </p>
+        ) : (
+          <dl
+            className="grid grid-cols-2 gap-3 sm:grid-cols-4"
+            data-testid="recall-usage"
+            data-alerted={data.usage.alerted ? 'true' : 'false'}
+          >
+            <div>
+              <dt className="text-xs text-kairikos-muted">Minutos ({data.usage.localMonth})</dt>
+              <dd
+                className={`mt-1 text-sm font-medium tabular-nums ${data.usage.alerted ? 'text-kairikos-danger' : ''}`}
+                data-testid="recall-usage-minutes"
+              >
+                {data.usage.minutes}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-kairikos-muted">Llamadas</dt>
+              <dd className="mt-1 text-sm font-medium tabular-nums">{data.usage.calls}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-kairikos-muted">Mensajes</dt>
+              <dd className="mt-1 text-sm font-medium tabular-nums">
+                {data.usage.whatsappMessages} WhatsApp · {data.usage.smsMessages} SMS
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-kairikos-muted">Reseñas pedidas</dt>
+              <dd className="mt-1 text-sm font-medium tabular-nums">{data.usage.reviewRequests}</dd>
+            </div>
+          </dl>
         )}
       </div>
 

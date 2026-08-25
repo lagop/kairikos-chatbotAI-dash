@@ -44,7 +44,12 @@ export type NotificationKind =
   | 'review-overdue-warning'
   | 'review-overdue-escalation'
   | 'help-request'
-  | 'go-live-ready';
+  | 'go-live-ready'
+  // WP-XX (Fase 11) — a recall client whose consumption stopped
+  // resembling the others. Its own kind rather than reusing 'stuck',
+  // because the dedup key is (clientId, kind, day): sharing a kind
+  // would let one alert silence the other for that client that day.
+  | 'usage-spike';
 
 export const ALLOWED_KINDS: ReadonlySet<NotificationKind> = new Set([
   'stuck',
@@ -54,6 +59,7 @@ export const ALLOWED_KINDS: ReadonlySet<NotificationKind> = new Set([
   'review-overdue-escalation',
   'help-request',
   'go-live-ready',
+  'usage-spike',
 ]);
 
 // Severity → NotificationKind. Used by review-overdue/fire so the route
@@ -146,6 +152,16 @@ export interface StuckContext {
   portalUrl?: string;
 }
 
+export interface UsageSpikeContext {
+  clientId: string;
+  clientName: string;
+  localMonth: string; // 'YYYY-MM' in the client's own timezone
+  minutes: number;
+  expectedMinutes: number;
+  calls: number;
+  portalUrl?: string;
+}
+
 export interface ExecutionFailedContext {
   clientId?: string | null;
   clientName?: string | null;
@@ -233,6 +249,31 @@ export function renderStuck(ctx: StuckContext): { subject: string; text: string;
     'Cliente atascado',
     `<p>El cliente <strong>${escapeHtml(ctx.clientName)}</strong> (${escapeHtml(ctx.clientId)}) lleva <strong>${ctx.hoursSince} horas</strong> sin actividad en el milestone <strong>${escapeHtml(ctx.milestone)}</strong>.</p>
      <p style="margin: 24px 0;">${portalLink(ctx.portalUrl, 'Abrir en el portal')}</p>`,
+  );
+  return { subject, text, html };
+}
+
+// ----- usage-spike ----------------------------------------------------------
+// WP-XX (Fase 11). The pack is flat rate, so this is not a bill — it is
+// the early warning that one client is consuming unlike every other, in
+// time to look at why before the provider invoice says so.
+export function renderUsageSpike(ctx: UsageSpikeContext): { subject: string; text: string; html: string } {
+  const subject = `[Kairikos] Consumo alto: ${ctx.clientName} — ${ctx.minutes} min en ${ctx.localMonth}`;
+  const text = [
+    'Hola,',
+    '',
+    `El cliente "${ctx.clientName}" (${ctx.clientId}) lleva ${ctx.minutes} minutos de llamadas en ${ctx.localMonth}, frente a los ~${ctx.expectedMinutes} habituales del Modo Recado (${ctx.calls} llamadas).`,
+    '',
+    'La tarifa es plana, así que esto no es un cargo: es para mirar si el desvío está bien configurado, si le está entrando spam, o si este cliente necesita otro tramo.',
+    `Portal: ${ctx.portalUrl ?? `${PORTAL_BASE_URL}/admin/portal/recall`}`,
+    '',
+    '— Kairikos Ops',
+  ].join('\n');
+  const html = renderShell(
+    'Consumo alto',
+    `<p>El cliente <strong>${escapeHtml(ctx.clientName)}</strong> (${escapeHtml(ctx.clientId)}) lleva <strong>${ctx.minutes} minutos</strong> de llamadas en ${escapeHtml(ctx.localMonth)}, frente a los ~${ctx.expectedMinutes} habituales (${ctx.calls} llamadas).</p>
+     <p>La tarifa es plana: esto no es un cargo, es para mirar si el desvío está bien configurado, si le está entrando spam, o si necesita otro tramo.</p>
+     <p style="margin: 24px 0;">${portalLink(ctx.portalUrl, 'Abrir la cola de recall')}</p>`,
   );
   return { subject, text, html };
 }
