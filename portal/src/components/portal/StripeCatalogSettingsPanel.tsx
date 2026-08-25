@@ -54,6 +54,7 @@ const ERROR_LABEL: Record<string, string> = {
   credential_not_configured_for_mode: 'Primero guarda una clave para ese modo.',
   already_bootstrapped: 'Este tier ya está creado en Stripe.',
   not_bootstrapped_yet: 'Este tier todavía no está creado en Stripe.',
+  no_mode_mismatch: 'Ya coincide con el modo activo — nada que reiniciar.',
   concurrent_modification: 'El precio cambió mientras editabas — recarga la página.',
   service_unavailable: 'No disponible en este momento.',
   stripe_error: 'Stripe devolvió un error inesperado.',
@@ -76,6 +77,23 @@ function formatPrice(cents: number, currency: string): string {
 function formatDate(iso: string | null): string {
   if (!iso) return '';
   return new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(iso));
+}
+
+/**
+ * A tier is mismatched when it was created on Stripe under a mode that no
+ * longer matches the operator's active credential. `stripePriceMode: null`
+ * (never recorded, or reconciled after a partial failure) is UNKNOWN, not
+ * mismatched — claiming otherwise would offer to sever a working pointer
+ * for no reason. Shared by the per-row badge and the bulk action so the
+ * two can never disagree on which tiers need a reset.
+ */
+function isModeMismatch(product: ProductRow, activeMode: StripeMode | null): boolean {
+  return (
+    Boolean(product.stripeProductId) &&
+    activeMode !== null &&
+    product.stripePriceMode !== null &&
+    product.stripePriceMode !== activeMode
+  );
 }
 
 async function safeJson(res: Response): Promise<Record<string, unknown>> {
@@ -111,37 +129,52 @@ export function StripeCatalogSettingsPanel({
   const [repriceDrafts, setRepriceDrafts] = useState<Record<string, { priceEuros: string; setupFeeEuros: string }>>({});
   const [impact, setImpact] = useState<Record<string, number>>({});
   const [partialFailures, setPartialFailures] = useState<Record<string, PartialFailure>>({});
+  const [bulkResetBusy, setBulkResetBusy] = useState(false);
 
   const showToast = (next: ToastState) => {
     setToast(next);
     setTimeout(() => setToast((current) => (current === next ? null : current)), 5000);
   };
 
+  /**
+   * Resolves with { cancelled: true } if the operator dismisses the
+   * step-up modal instead of completing it, rather than resolving as
+   * soon as the modal appears — a bulk caller looping over several
+   * mutations needs to know whether to stop, not just that a fetch
+   * happened. Existing single-mutation callers ignore the return value,
+   * so this is purely additive for them.
+   */
   async function requestWithStepUp(
     key: string,
     doFetch: () => Promise<Response>,
     onDone: (res: Response) => Promise<void> | void,
-  ) {
+  ): Promise<{ cancelled: boolean }> {
     setBusyKey(key);
+    let res: Response;
     try {
-      const res = await doFetch();
-      if (res.status === 403) {
-        const body = await res.clone().json().catch(() => ({}));
-        if ((body as { error?: string }).error === 'totp_step_up_required') {
-          setStepUp({
-            onVerified: () => {
-              setStepUp(null);
-              void requestWithStepUp(key, doFetch, onDone);
-            },
-            onCancel: () => setStepUp(null),
-          });
-          return;
-        }
-      }
-      await onDone(res);
+      res = await doFetch();
     } finally {
       setBusyKey(null);
     }
+    if (res.status === 403) {
+      const body = await res.clone().json().catch(() => ({}));
+      if ((body as { error?: string }).error === 'totp_step_up_required') {
+        return new Promise<{ cancelled: boolean }>((resolve) => {
+          setStepUp({
+            onVerified: () => {
+              setStepUp(null);
+              void requestWithStepUp(key, doFetch, onDone).then(resolve);
+            },
+            onCancel: () => {
+              setStepUp(null);
+              resolve({ cancelled: true });
+            },
+          });
+        });
+      }
+    }
+    await onDone(res);
+    return { cancelled: false };
   }
 
   async function saveCredential(mode: StripeMode) {
@@ -259,7 +292,9 @@ export function StripeCatalogSettingsPanel({
         setupFeeEuros: (product.setupFeeCents / 100).toFixed(2),
       },
     }));
-    void loadImpact(product.id);
+    // Pre-bootstrap there is no Stripe object yet, so there cannot be a
+    // subscriber on the current price to protect — nothing to load.
+    if (product.stripeProductId) void loadImpact(product.id);
   }
 
   async function confirmReprice(product: ProductRow) {
@@ -300,10 +335,154 @@ export function StripeCatalogSettingsPanel({
     );
   }
 
+  /**
+   * The pre-bootstrap sibling of confirmReprice: writes straight to the
+   * Product row, no Stripe call and no subscriber-impact figure (nothing
+   * can be subscribed to a tier that has never existed on Stripe).
+   * Whatever is saved here is exactly what Bootstrap creates the Stripe
+   * Price objects WITH.
+   */
+  async function confirmDraftPrice(product: ProductRow) {
+    const draft = repriceDrafts[product.id];
+    if (!draft) return;
+    const newPriceCents = Math.round(parseFloat(draft.priceEuros) * 100);
+    const newSetupFeeCents = Math.round(parseFloat(draft.setupFeeEuros) * 100);
+    if (!Number.isFinite(newPriceCents) || newPriceCents < 0) {
+      showToast({ kind: 'error', message: 'Precio inválido.' });
+      return;
+    }
+    if (!Number.isFinite(newSetupFeeCents) || newSetupFeeCents < 0) {
+      showToast({ kind: 'error', message: 'Cuota de alta inválida.' });
+      return;
+    }
+    await requestWithStepUp(
+      `draft-price-${product.id}`,
+      () =>
+        fetch(`/api/admin/portal/settings/products/${product.id}/draft-price`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            priceCents: newPriceCents,
+            setupFeeCents: newSetupFeeCents,
+            expectedPriceCents: product.priceCents,
+            expectedSetupFeeCents: product.setupFeeCents,
+          }),
+        }),
+      async (res) => {
+        const body = await safeJson(res);
+        if (res.ok) {
+          setProducts((rows) => rows.map((r) => (r.id === product.id ? { ...r, ...(body.product as object) } : r)));
+          setRepriceOpenFor(null);
+          showToast({ kind: 'success', message: `${product.name}: precio guardado.` });
+        } else if (body.error === 'concurrent_modification') {
+          showToast({ kind: 'error', message: errorLabel('concurrent_modification') });
+          router.refresh();
+        } else if (body.error === 'already_bootstrapped') {
+          // Someone else ran Bootstrap in the meantime — this row is
+          // stale. Refresh so the button set matches reality instead of
+          // offering an edit path that no longer applies.
+          showToast({ kind: 'error', message: 'Ya se creó en Stripe mientras editabas — usa "Cambiar precio".' });
+          router.refresh();
+        } else {
+          showToast({ kind: 'error', message: errorLabel(body.error as string) });
+        }
+      },
+    );
+  }
+
+  /**
+   * Clears the stored Stripe pointer on a tier whose stripePriceMode no
+   * longer matches the active credential, so Bootstrap reopens for it —
+   * the only way forward, since test/live are separate Stripe
+   * namespaces and there is no migrate-in-place. See
+   * resetForModeMismatch for the full reasoning and the
+   * zero-active-subscribers safety check.
+   */
+  async function resetModeMismatch(product: ProductRow) {
+    await requestWithStepUp(
+      `reset-mode-${product.id}`,
+      () => fetch(`/api/admin/portal/settings/products/${product.id}/reset-mode`, { method: 'POST' }),
+      async (res) => {
+        const body = await safeJson(res);
+        if (res.ok) {
+          setProducts((rows) => rows.map((r) => (r.id === product.id ? { ...r, ...(body.product as object) } : r)));
+          showToast({
+            kind: 'success',
+            message: `${product.name}: listo para crear de nuevo en ${credentials.activeMode}.`,
+          });
+        } else if (body.error === 'has_active_subscriptions') {
+          // Should not happen in practice — nobody pays with a test
+          // key — but this is exactly the case the count exists to
+          // catch.
+          const count = body.count as number;
+          showToast({
+            kind: 'error',
+            message: `${count} cliente${count === 1 ? '' : 's'} activo${count === 1 ? '' : 's'} en este precio — no se puede reiniciar.`,
+          });
+        } else {
+          showToast({ kind: 'error', message: errorLabel(body.error as string) });
+          router.refresh();
+        }
+      },
+    );
+  }
+
+  /**
+   * The bulk counterpart of resetModeMismatch: same route, same
+   * one-at-a-time safety checks (has_active_subscriptions still blocks
+   * each tier individually), just looped instead of clicked N times.
+   * Sequential, not parallel — the FIRST request is the one that may
+   * need TOTP step-up, and step-up is a session-level flag (see
+   * operator-totp-stepup.ts), so once it clears, the rest of the batch
+   * sails through without re-prompting. If the operator dismisses the
+   * modal, the whole batch stops rather than re-prompting per tier.
+   */
+  async function resetAllMismatched() {
+    if (bulkResetBusy) return;
+    const mismatched = products.filter((p) => isModeMismatch(p, credentials.activeMode));
+    if (mismatched.length === 0) return;
+
+    setBulkResetBusy(true);
+    let succeeded = 0;
+    let blocked = 0;
+    let failed = 0;
+    try {
+      for (const product of mismatched) {
+        const { cancelled } = await requestWithStepUp(
+          `reset-mode-${product.id}`,
+          () => fetch(`/api/admin/portal/settings/products/${product.id}/reset-mode`, { method: 'POST' }),
+          async (res) => {
+            const body = await safeJson(res);
+            if (res.ok) {
+              setProducts((rows) => rows.map((r) => (r.id === product.id ? { ...r, ...(body.product as object) } : r)));
+              succeeded += 1;
+            } else if (body.error === 'has_active_subscriptions') {
+              blocked += 1;
+            } else {
+              failed += 1;
+            }
+          },
+        );
+        if (cancelled) break;
+      }
+    } finally {
+      setBulkResetBusy(false);
+    }
+
+    const parts: string[] = [];
+    if (succeeded > 0) parts.push(`${succeeded} recreado${succeeded === 1 ? '' : 's'}`);
+    if (blocked > 0) parts.push(`${blocked} con suscriptores activos, sin tocar`);
+    if (failed > 0) parts.push(`${failed} con error`);
+    if (parts.length > 0) {
+      showToast({ kind: blocked > 0 || failed > 0 ? 'error' : 'success', message: parts.join(' · ') + '.' });
+    }
+  }
+
   const grouped = new Map<string, ProductRow[]>();
   for (const p of products) {
     grouped.set(p.code, [...(grouped.get(p.code) ?? []), p]);
   }
+  const mismatchedCount = products.filter((p) => isModeMismatch(p, credentials.activeMode)).length;
 
   return (
     <div className="space-y-6">
@@ -391,17 +570,29 @@ export function StripeCatalogSettingsPanel({
       </section>
 
       <section className="card space-y-4" aria-label="Catálogo de productos">
-        <h2 className="text-lg font-semibold">Catálogo</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold">Catálogo</h2>
+          {mismatchedCount > 0 ? (
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={bulkResetBusy}
+              onClick={() => resetAllMismatched()}
+              data-testid="stripe-reset-all-mismatched"
+              title="Reinicia, uno por uno, todos los tramos creados bajo el otro modo — cada uno sigue comprobando por su cuenta que no tenga suscriptores activos."
+            >
+              {bulkResetBusy
+                ? 'Reiniciando…'
+                : `Recrear todos en ${credentials.activeMode} (${mismatchedCount})`}
+            </button>
+          ) : null}
+        </div>
         {[...grouped.entries()].map(([code, rows]) => (
           <div key={code} className="space-y-3">
             <p className="text-xs font-semibold uppercase tracking-wider text-kairikos-muted">{code}</p>
             {rows.map((product) => {
               const bootstrapped = Boolean(product.stripeProductId);
-              const modeMismatch =
-                bootstrapped &&
-                credentials.activeMode !== null &&
-                product.stripePriceMode !== null &&
-                product.stripePriceMode !== credentials.activeMode;
+              const modeMismatch = isModeMismatch(product, credentials.activeMode);
               const pf = partialFailures[product.id];
               const draft = repriceDrafts[product.id];
               return (
@@ -446,14 +637,39 @@ export function StripeCatalogSettingsPanel({
                         </span>
                       )}
                       {!bootstrapped ? (
+                        <>
+                          {/* Pre-bootstrap: price is still just a number on
+                             this row, so it can be edited without ever
+                             touching Stripe — see updateDraftPricing. */}
+                          <button type="button" className="btn-ghost" onClick={() => toggleReprice(product)}>
+                            {repriceOpenFor === product.id ? 'Cancelar' : 'Editar precio'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-primary"
+                            disabled={busyKey === `bootstrap-${product.id}`}
+                            onClick={() => bootstrapTier(product)}
+                            data-testid={`stripe-bootstrap-${product.id}`}
+                          >
+                            {busyKey === `bootstrap-${product.id}` ? 'Creando…' : 'Crear en Stripe'}
+                          </button>
+                        </>
+                      ) : modeMismatch ? (
+                        // Deliberately NOT "Cambiar precio" here: that
+                        // action would call Stripe with the ACTIVE key
+                        // against an id that only exists under the OTHER
+                        // mode's key, and fail. This is the only path
+                        // forward.
                         <button
                           type="button"
                           className="btn-primary"
-                          disabled={busyKey === `bootstrap-${product.id}`}
-                          onClick={() => bootstrapTier(product)}
-                          data-testid={`stripe-bootstrap-${product.id}`}
+                          disabled={busyKey === `reset-mode-${product.id}`}
+                          onClick={() => resetModeMismatch(product)}
+                          data-testid={`stripe-reset-mode-${product.id}`}
                         >
-                          {busyKey === `bootstrap-${product.id}` ? 'Creando…' : 'Crear en Stripe'}
+                          {busyKey === `reset-mode-${product.id}`
+                            ? 'Reiniciando…'
+                            : `Recrear en ${credentials.activeMode}`}
                         </button>
                       ) : (
                         <button type="button" className="btn-ghost" onClick={() => toggleReprice(product)}>
@@ -480,7 +696,11 @@ export function StripeCatalogSettingsPanel({
 
                   {repriceOpenFor === product.id && draft ? (
                     <div className="mt-3 space-y-2 rounded-lg border border-kairikos-border/60 bg-kairikos-surface2 p-3">
-                      {impact[product.id] !== undefined ? (
+                      {!bootstrapped ? (
+                        <p className="text-xs text-kairikos-muted" data-testid={`stripe-draft-price-note-${product.id}`}>
+                          Todavía no está creado en Stripe: esto es el precio con el que se creará.
+                        </p>
+                      ) : impact[product.id] !== undefined ? (
                         <p className="text-xs text-kairikos-muted">
                           {impact[product.id]} cliente{impact[product.id] === 1 ? '' : 's'} activo
                           {impact[product.id] === 1 ? '' : 's'} mantiene{impact[product.id] === 1 ? '' : 'n'} su precio actual.
@@ -524,11 +744,15 @@ export function StripeCatalogSettingsPanel({
                         <button
                           type="button"
                           className="btn-primary"
-                          disabled={busyKey === `reprice-${product.id}`}
-                          onClick={() => confirmReprice(product)}
+                          disabled={busyKey === `${bootstrapped ? 'reprice' : 'draft-price'}-${product.id}`}
+                          onClick={() => (bootstrapped ? confirmReprice(product) : confirmDraftPrice(product))}
                           data-testid={`stripe-reprice-confirm-${product.id}`}
                         >
-                          {busyKey === `reprice-${product.id}` ? 'Guardando…' : 'Confirmar cambio de precio'}
+                          {busyKey === `${bootstrapped ? 'reprice' : 'draft-price'}-${product.id}`
+                            ? 'Guardando…'
+                            : bootstrapped
+                              ? 'Confirmar cambio de precio'
+                              : 'Guardar precio'}
                         </button>
                       </div>
                     </div>
