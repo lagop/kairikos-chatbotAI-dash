@@ -259,7 +259,9 @@ export function StripeCatalogSettingsPanel({
         setupFeeEuros: (product.setupFeeCents / 100).toFixed(2),
       },
     }));
-    void loadImpact(product.id);
+    // Pre-bootstrap there is no Stripe object yet, so there cannot be a
+    // subscriber on the current price to protect — nothing to load.
+    if (product.stripeProductId) void loadImpact(product.id);
   }
 
   async function confirmReprice(product: ProductRow) {
@@ -293,6 +295,61 @@ export function StripeCatalogSettingsPanel({
         } else if (body.error === 'partial_failure') {
           setPartialFailures((m) => ({ ...m, [product.id]: body as unknown as PartialFailure }));
           showToast({ kind: 'error', message: 'Se creó en Stripe pero no se guardó aquí — usa "Recuperar".' });
+        } else {
+          showToast({ kind: 'error', message: errorLabel(body.error as string) });
+        }
+      },
+    );
+  }
+
+  /**
+   * The pre-bootstrap sibling of confirmReprice: writes straight to the
+   * Product row, no Stripe call and no subscriber-impact figure (nothing
+   * can be subscribed to a tier that has never existed on Stripe).
+   * Whatever is saved here is exactly what Bootstrap creates the Stripe
+   * Price objects WITH.
+   */
+  async function confirmDraftPrice(product: ProductRow) {
+    const draft = repriceDrafts[product.id];
+    if (!draft) return;
+    const newPriceCents = Math.round(parseFloat(draft.priceEuros) * 100);
+    const newSetupFeeCents = Math.round(parseFloat(draft.setupFeeEuros) * 100);
+    if (!Number.isFinite(newPriceCents) || newPriceCents < 0) {
+      showToast({ kind: 'error', message: 'Precio inválido.' });
+      return;
+    }
+    if (!Number.isFinite(newSetupFeeCents) || newSetupFeeCents < 0) {
+      showToast({ kind: 'error', message: 'Cuota de alta inválida.' });
+      return;
+    }
+    await requestWithStepUp(
+      `draft-price-${product.id}`,
+      () =>
+        fetch(`/api/admin/portal/settings/products/${product.id}/draft-price`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            priceCents: newPriceCents,
+            setupFeeCents: newSetupFeeCents,
+            expectedPriceCents: product.priceCents,
+            expectedSetupFeeCents: product.setupFeeCents,
+          }),
+        }),
+      async (res) => {
+        const body = await safeJson(res);
+        if (res.ok) {
+          setProducts((rows) => rows.map((r) => (r.id === product.id ? { ...r, ...(body.product as object) } : r)));
+          setRepriceOpenFor(null);
+          showToast({ kind: 'success', message: `${product.name}: precio guardado.` });
+        } else if (body.error === 'concurrent_modification') {
+          showToast({ kind: 'error', message: errorLabel('concurrent_modification') });
+          router.refresh();
+        } else if (body.error === 'already_bootstrapped') {
+          // Someone else ran Bootstrap in the meantime — this row is
+          // stale. Refresh so the button set matches reality instead of
+          // offering an edit path that no longer applies.
+          showToast({ kind: 'error', message: 'Ya se creó en Stripe mientras editabas — usa "Cambiar precio".' });
+          router.refresh();
         } else {
           showToast({ kind: 'error', message: errorLabel(body.error as string) });
         }
@@ -446,15 +503,23 @@ export function StripeCatalogSettingsPanel({
                         </span>
                       )}
                       {!bootstrapped ? (
-                        <button
-                          type="button"
-                          className="btn-primary"
-                          disabled={busyKey === `bootstrap-${product.id}`}
-                          onClick={() => bootstrapTier(product)}
-                          data-testid={`stripe-bootstrap-${product.id}`}
-                        >
-                          {busyKey === `bootstrap-${product.id}` ? 'Creando…' : 'Crear en Stripe'}
-                        </button>
+                        <>
+                          {/* Pre-bootstrap: price is still just a number on
+                             this row, so it can be edited without ever
+                             touching Stripe — see updateDraftPricing. */}
+                          <button type="button" className="btn-ghost" onClick={() => toggleReprice(product)}>
+                            {repriceOpenFor === product.id ? 'Cancelar' : 'Editar precio'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-primary"
+                            disabled={busyKey === `bootstrap-${product.id}`}
+                            onClick={() => bootstrapTier(product)}
+                            data-testid={`stripe-bootstrap-${product.id}`}
+                          >
+                            {busyKey === `bootstrap-${product.id}` ? 'Creando…' : 'Crear en Stripe'}
+                          </button>
+                        </>
                       ) : (
                         <button type="button" className="btn-ghost" onClick={() => toggleReprice(product)}>
                           {repriceOpenFor === product.id ? 'Cancelar' : 'Cambiar precio'}
@@ -480,7 +545,11 @@ export function StripeCatalogSettingsPanel({
 
                   {repriceOpenFor === product.id && draft ? (
                     <div className="mt-3 space-y-2 rounded-lg border border-kairikos-border/60 bg-kairikos-surface2 p-3">
-                      {impact[product.id] !== undefined ? (
+                      {!bootstrapped ? (
+                        <p className="text-xs text-kairikos-muted" data-testid={`stripe-draft-price-note-${product.id}`}>
+                          Todavía no está creado en Stripe: esto es el precio con el que se creará.
+                        </p>
+                      ) : impact[product.id] !== undefined ? (
                         <p className="text-xs text-kairikos-muted">
                           {impact[product.id]} cliente{impact[product.id] === 1 ? '' : 's'} activo
                           {impact[product.id] === 1 ? '' : 's'} mantiene{impact[product.id] === 1 ? '' : 'n'} su precio actual.
@@ -524,11 +593,15 @@ export function StripeCatalogSettingsPanel({
                         <button
                           type="button"
                           className="btn-primary"
-                          disabled={busyKey === `reprice-${product.id}`}
-                          onClick={() => confirmReprice(product)}
+                          disabled={busyKey === `${bootstrapped ? 'reprice' : 'draft-price'}-${product.id}`}
+                          onClick={() => (bootstrapped ? confirmReprice(product) : confirmDraftPrice(product))}
                           data-testid={`stripe-reprice-confirm-${product.id}`}
                         >
-                          {busyKey === `reprice-${product.id}` ? 'Guardando…' : 'Confirmar cambio de precio'}
+                          {busyKey === `${bootstrapped ? 'reprice' : 'draft-price'}-${product.id}`
+                            ? 'Guardando…'
+                            : bootstrapped
+                              ? 'Confirmar cambio de precio'
+                              : 'Guardar precio'}
                         </button>
                       </div>
                     </div>

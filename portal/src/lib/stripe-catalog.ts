@@ -137,6 +137,63 @@ export async function bootstrapStripeProductForTier(
   }
 }
 
+export interface DraftPricingInput {
+  productId: string;
+  newPriceCents: number;
+  newSetupFeeCents: number;
+  /** Optimistic-concurrency guard — must match the row's CURRENT values. */
+  expectedPriceCents: number;
+  expectedSetupFeeCents: number;
+}
+
+/**
+ * Sets the price a tier will bootstrap WITH — before it has ever touched
+ * Stripe. Writes straight to the Product row; there is no Stripe object
+ * yet to keep in sync, which is what makes this safe to call with no
+ * Stripe credential configured at all.
+ *
+ * Once bootstrapStripeProductForTier runs, it reads priceCents/
+ * setupFeeCents off this same row — so a price set here is exactly what
+ * gets bootstrapped, with no separate 'launch price' concept to keep in
+ * sync. After bootstrap, this function refuses (already_bootstrapped):
+ * repriceStripeTier is the only path from there, because changing a
+ * live tier's price has to create new immutable Stripe Price objects,
+ * not just edit a number.
+ */
+export async function updateDraftPricing(
+  input: DraftPricingInput,
+  actor: CatalogActor,
+): Promise<CatalogMutationResult> {
+  const product = await prisma.product.findUniqueOrThrow({ where: { id: input.productId } });
+  if (product.stripeProductId) {
+    return { ok: false, error: { kind: 'already_bootstrapped' } };
+  }
+  if (
+    product.priceCents !== input.expectedPriceCents ||
+    product.setupFeeCents !== input.expectedSetupFeeCents
+  ) {
+    return { ok: false, error: { kind: 'concurrent_modification' } };
+  }
+
+  const before = auditSnapshot(product, null);
+  const [updated] = await prisma.$transaction([
+    prisma.product.update({
+      where: { id: product.id },
+      data: { priceCents: input.newPriceCents, setupFeeCents: input.newSetupFeeCents },
+    }),
+    prisma.stripeCatalogAudit.create({
+      data: {
+        productId: product.id,
+        action: 'draft_price_changed',
+        before,
+        after: { priceCents: input.newPriceCents, setupFeeCents: input.newSetupFeeCents },
+        actorOperatorId: actor.operatorId,
+        actorEmail: actor.operatorEmail,
+      },
+    }),
+  ]);
+  return { ok: true, product: updated };
+}
 export interface RepriceInput {
   productId: string;
   newPriceCents: number;

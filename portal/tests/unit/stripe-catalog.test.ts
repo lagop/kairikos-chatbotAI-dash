@@ -57,6 +57,7 @@ import {
   repriceStripeTier,
   reconcileStripeProductForTier,
   countActiveSubscriptionsForProduct,
+  updateDraftPricing,
 } from '@/lib/stripe-catalog';
 
 const ACTOR = { operatorId: 'op_1', operatorEmail: 'lucia@kairikos.com' };
@@ -162,6 +163,80 @@ describe('bootstrapStripeProductForTier', () => {
       },
     });
     expect(mockState.productsCreate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('updateDraftPricing', () => {
+  const DRAFT_INPUT = {
+    productId: 'prod_reviews_basic',
+    newPriceCents: 15900,
+    newSetupFeeCents: 29000,
+    expectedPriceCents: 9900,
+    expectedSetupFeeCents: 9900,
+  };
+
+  it('writes straight to the row and never touches Stripe', async () => {
+    mockState.findUniqueOrThrow.mockResolvedValueOnce(UNBOOTSTRAPPED_PRODUCT);
+    mockState.updateMany.mockResolvedValueOnce({ count: 1 });
+    mockState.update.mockResolvedValueOnce({
+      ...UNBOOTSTRAPPED_PRODUCT,
+      priceCents: 15900,
+      setupFeeCents: 29000,
+    });
+
+    const result = await updateDraftPricing(DRAFT_INPUT, ACTOR);
+
+    expect(result).toEqual({
+      ok: true,
+      product: { ...UNBOOTSTRAPPED_PRODUCT, priceCents: 15900, setupFeeCents: 29000 },
+    });
+    expect(mockState.productsCreate).not.toHaveBeenCalled();
+    expect(mockState.pricesCreate).not.toHaveBeenCalled();
+  });
+
+  it('audits the change as draft_price_changed, with a before/after snapshot', async () => {
+    mockState.findUniqueOrThrow.mockResolvedValueOnce(UNBOOTSTRAPPED_PRODUCT);
+    mockState.update.mockResolvedValueOnce({ ...UNBOOTSTRAPPED_PRODUCT, priceCents: 15900, setupFeeCents: 29000 });
+
+    await updateDraftPricing(DRAFT_INPUT, ACTOR);
+
+    expect(mockState.auditCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'draft_price_changed',
+          before: expect.objectContaining({ priceCents: 9900, setupFeeCents: 9900 }),
+          after: { priceCents: 15900, setupFeeCents: 29000 },
+        }),
+      }),
+    );
+  });
+
+  it('refuses once the tier is on Stripe — reprice is the only path from there', async () => {
+    mockState.findUniqueOrThrow.mockResolvedValueOnce(BOOTSTRAPPED_PRODUCT);
+
+    const result = await updateDraftPricing(DRAFT_INPUT, ACTOR);
+
+    expect(result).toEqual({ ok: false, error: { kind: 'already_bootstrapped' } });
+    expect(mockState.update).not.toHaveBeenCalled();
+    expect(mockState.auditCreate).not.toHaveBeenCalled();
+  });
+
+  it('rejects a stale expected price without writing anything', async () => {
+    mockState.findUniqueOrThrow.mockResolvedValueOnce({ ...UNBOOTSTRAPPED_PRODUCT, priceCents: 14900 });
+
+    const result = await updateDraftPricing(DRAFT_INPUT, ACTOR);
+
+    expect(result).toEqual({ ok: false, error: { kind: 'concurrent_modification' } });
+    expect(mockState.update).not.toHaveBeenCalled();
+  });
+
+  it('never calls resolveActiveStripeSecret — this has to work with no Stripe key saved', async () => {
+    mockState.findUniqueOrThrow.mockResolvedValueOnce(UNBOOTSTRAPPED_PRODUCT);
+    mockState.update.mockResolvedValueOnce({ ...UNBOOTSTRAPPED_PRODUCT, priceCents: 15900, setupFeeCents: 29000 });
+
+    await updateDraftPricing(DRAFT_INPUT, ACTOR);
+
+    expect(mockState.resolveActiveStripeSecret).not.toHaveBeenCalled();
   });
 });
 
