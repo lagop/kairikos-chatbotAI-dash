@@ -16,6 +16,15 @@ export default defineConfig({
       ),
     },
   },
+  // tsconfig.json sets `jsx: 'preserve'` because Next transforms JSX
+  // itself, and Vite's transformer honours that — so a .tsx module
+  // reached vitest with its JSX untransformed and failed to parse. That
+  // is why no test in this repo could import a page or a component.
+  // Transform it here instead; files without JSX are unaffected.
+  //
+  // `oxc`, not `esbuild`: Vite 8 transforms with oxc, and the esbuild
+  // key is silently ignored.
+  oxc: { jsx: { runtime: 'automatic' } },
   test: {
     environment: 'node',
     include: ['tests/unit/**/*.test.ts'],

@@ -23,6 +23,10 @@ export interface ProductRow {
   code: string;
   tier: string;
   name: string;
+  /** False means the product exists in the catalogue but is not on
+   *  sale. It still belongs here: Stripe prices have to be created
+   *  before it goes live, not after. */
+  isActive: boolean;
   priceCents: number;
   setupFeeCents: number;
   currency: string;
@@ -397,7 +401,14 @@ export function StripeCatalogSettingsPanel({
               const pf = partialFailures[product.id];
               const draft = repriceDrafts[product.id];
               return (
-                <div key={product.id} className="rounded-xl border border-kairikos-border/60 p-4" data-testid="stripe-catalog-row">
+                <div
+                  key={product.id}
+                  className={`rounded-xl border p-4 ${
+                    product.isActive ? 'border-kairikos-border/60' : 'border-dashed border-kairikos-border'
+                  }`}
+                  data-testid="stripe-catalog-row"
+                  data-active={product.isActive ? 'true' : 'false'}
+                >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <p className="font-semibold">{product.name}</p>
@@ -408,6 +419,15 @@ export function StripeCatalogSettingsPanel({
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
+                      {!product.isActive ? (
+                        <span
+                          className="rounded-full border border-kairikos-border bg-kairikos-surface2 px-3 py-1 text-xs text-kairikos-muted"
+                          data-testid="stripe-catalog-inactive"
+                          title="Existe en el catálogo pero no se le ofrece a ningún cliente todavía."
+                        >
+                          No a la venta
+                        </span>
+                      ) : null}
                       {modeMismatch ? (
                         <span className="rounded-full border border-kairikos-warning/40 bg-kairikos-warning/10 px-3 py-1 text-xs text-kairikos-warning">
                           ⚠️ creado en {product.stripePriceMode}, activo es {credentials.activeMode}
