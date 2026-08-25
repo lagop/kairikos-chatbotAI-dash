@@ -32,8 +32,9 @@ export type {
 // Matches prisma/seed.ts's PRODUCT_CATALOG codes (WP-12/WP-15) — 'leads'
 // and 'reviews' are the Kairikos-internal codes for "Sistema IA de
 // captación" and "Reseñas en Google" respectively, not literal Spanish
-// translations of the product name.
-export type ProductCode = 'chatbot' | 'web' | 'leads' | 'seo' | 'reviews';
+// translations of the product name. Same for 'recall' — the missed-call
+// recovery + review-request pack.
+export type ProductCode = 'chatbot' | 'web' | 'leads' | 'seo' | 'reviews' | 'recall';
 
 export const PRODUCT_CODES: readonly ProductCode[] = Object.freeze([
   'chatbot',
@@ -41,6 +42,7 @@ export const PRODUCT_CODES: readonly ProductCode[] = Object.freeze([
   'leads',
   'seo',
   'reviews',
+  'recall',
 ]);
 
 export interface ProductCatalog {
@@ -101,6 +103,14 @@ export const PRODUCT_CATALOGS: Readonly<Record<ProductCode, ProductCatalog>> = O
   leads: emptyCatalog('leads', 'Sistema IA de captación'),
   seo: emptyCatalog('seo', 'SEO y contenido con IA'),
   reviews: emptyCatalog('reviews', 'Reseñas en Google'),
+  // WP-XX — 'recall' deliberately keeps an EMPTY catalog and always will:
+  // its onboarding is not a wizard the client fills in, it's a state
+  // machine gated on external systems (Meta approval, number assignment,
+  // template approval, the client dialling MMI forwarding codes on his
+  // own handset). That lives on RecallSubscription — see src/lib/recall.ts
+  // — not in ChatbotConfigStep, whose draft→submitted→approved vocabulary
+  // cannot express "waiting on Meta".
+  recall: emptyCatalog('recall', 'Recuperación de llamadas y reseñas'),
 });
 
 export class ProductCatalogError extends Error {
