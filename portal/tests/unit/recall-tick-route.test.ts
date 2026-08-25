@@ -13,6 +13,8 @@ const mockState = vi.hoisted(() => ({
   sweepPendingTranscriptions: vi.fn(),
   purgeExpiredRecordings: vi.fn(),
   notifyStuckOnboardings: vi.fn(),
+  syncTemplateStatuses: vi.fn(),
+  warnExpiringTokens: vi.fn(),
 }));
 
 vi.mock('@/lib/recall-transcription', () => ({
@@ -24,6 +26,10 @@ vi.mock('@/lib/recall-retention', () => ({
 }));
 vi.mock('@/lib/recall-stuck-alerts', () => ({
   notifyStuckOnboardings: (...a: unknown[]) => mockState.notifyStuckOnboardings(...a),
+}));
+vi.mock('@/lib/whatsapp-health', () => ({
+  syncTemplateStatuses: (...a: unknown[]) => mockState.syncTemplateStatuses(...a),
+  warnExpiringTokens: (...a: unknown[]) => mockState.warnExpiringTokens(...a),
 }));
 vi.mock('@/lib/prisma', () => ({ isDatabaseConfigured: true, prisma: {} }));
 
@@ -45,6 +51,8 @@ beforeEach(() => {
   mockState.sweepPendingTranscriptions.mockReset().mockResolvedValue({ scanned: 0, transcribed: 0, failed: 0 });
   mockState.purgeExpiredRecordings.mockReset().mockResolvedValue({ scanned: 0, purged: 0, failed: 0 });
   mockState.notifyStuckOnboardings.mockReset().mockResolvedValue({ scanned: 0, stuck: 0, notified: 0, deduped: 0, failed: 0 });
+  mockState.syncTemplateStatuses.mockReset().mockResolvedValue({ connections: 0, templates: 0, failed: 0 });
+  mockState.warnExpiringTokens.mockReset().mockResolvedValue({ scanned: 0, expiring: 0, warned: 0, expired: 0 });
 });
 
 describe('GET /api/cron/recall-tick', () => {
@@ -59,15 +67,32 @@ describe('GET /api/cron/recall-tick', () => {
     expect((await get(makeRequest('Bearer '))).status).toBe(401);
   });
 
-  it('runs all three jobs on a valid tick', async () => {
+  it('runs every job on a valid tick', async () => {
     const res = await get(makeRequest());
     const body = await res.clone().json();
 
     expect(res.status).toBe(200);
-    expect(Object.keys(body.jobs)).toEqual(['purgeRecordings', 'transcriptions', 'stuckAlerts']);
+    expect(Object.keys(body.jobs)).toEqual([
+      'purgeRecordings',
+      'transcriptions',
+      'stuckAlerts',
+      'tokenExpiry',
+      'templateSync',
+    ]);
     expect(mockState.purgeExpiredRecordings).toHaveBeenCalled();
     expect(mockState.sweepPendingTranscriptions).toHaveBeenCalled();
     expect(mockState.notifyStuckOnboardings).toHaveBeenCalled();
+    expect(mockState.warnExpiringTokens).toHaveBeenCalled();
+    expect(mockState.syncTemplateStatuses).toHaveBeenCalled();
+  });
+
+  it('runs the Meta health jobs, which need no telephony, even when Twilio is unconfigured', async () => {
+    delete process.env.TWILIO_ACCOUNT_SID;
+    await get(makeRequest());
+    // A token quietly expiring is a silent outage; it must not be
+    // conditional on an unrelated integration being set up.
+    expect(mockState.warnExpiringTokens).toHaveBeenCalled();
+    expect(mockState.syncTemplateStatuses).toHaveBeenCalled();
   });
 
   it('runs retention FIRST — it is the job with a legal deadline attached', async () => {
