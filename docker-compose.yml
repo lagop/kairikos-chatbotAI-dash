@@ -179,6 +179,40 @@ services:
     networks:
       - portal-net
 
+  # The scheduler. Same loop+sleep+trap idiom as `backup` and `certbot`.
+  #
+  # This stack has had /api/cron/* routes and a `crons` block in
+  # vercel.json for a long time — but vercel.json is inert under Docker,
+  # so nothing ever called them. Every scheduled behaviour the portal
+  # believed it had was silently not running. This is the missing caller.
+  #
+  # It knows nothing about what is due: it hits one endpoint on a fixed
+  # cadence and the application works out what that tick implies, so the
+  # scheduling logic stays in TypeScript where it is unit-tested rather
+  # than in a crontab nobody can test.
+  scheduler:
+    image: curlimages/curl:8.11.0
+    container_name: kairikos-portal-scheduler
+    restart: unless-stopped
+    environment:
+      # The app is only reachable on the internal network; there is no
+      # reason for scheduled work to leave the box and come back.
+      SCHEDULER_TARGET_URL: ${SCHEDULER_TARGET_URL:-http://app:3000}
+      SCHEDULER_INTERVAL_SECONDS: ${SCHEDULER_INTERVAL_SECONDS:-300}
+      SCHEDULER_TIMEOUT_SECONDS: ${SCHEDULER_TIMEOUT_SECONDS:-120}
+      # Same secret the /api/cron/* routes already expect. The script
+      # refuses to start without it rather than spinning on 401s, which
+      # would look exactly like working.
+      CRON_SECRET: ${CRON_SECRET}
+    volumes:
+      - ./scripts/scheduler.sh:/scheduler.sh:ro
+    entrypoint: ["/bin/sh", "/scheduler.sh"]
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - portal-net
+
   # Speech-to-text for the 'recall' product, self-hosted.
   #
   # On the VPS rather than a transcription API for two reasons that both
