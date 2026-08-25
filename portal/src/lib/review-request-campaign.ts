@@ -3,6 +3,7 @@ import type { GoogleBusinessConnection } from '@prisma/client';
 import { prisma } from './prisma';
 import { getValidAccessToken, fetchLocationReviewUrl } from './google-business';
 import { logError } from './observability';
+import { sendTemplate } from './whatsapp-api';
 
 // =============================================================================
 // WP-22b — review-request campaigns. AC: "la misma invitación se envía a
@@ -113,8 +114,96 @@ export async function sendReviewRequestEmail(input: {
   }
 }
 
+// ---------------------------------------------------------------------------
+// WP-XX (Fase 10) — channel dispatch.
+//
+// The schema comment on ReviewRequest.channel always said a new channel
+// "needs no schema change", and it was right: the campaign, the tracking
+// link at /r/{id}, the pending|sent|failed machine and the retry are all
+// channel-agnostic. Exactly three things were hard-wired to email — the
+// literal channel value, the send call, and an includes('@') guard — and
+// these are those three, parameterised.
+//
+// WhatsApp is for the 'recall' pack, whose clients live in WhatsApp and
+// never open a panel. The standalone reviews product keeps using email.
+// Both send the SAME invitation to every recipient; nothing here can
+// branch on who the recipient is.
+// ---------------------------------------------------------------------------
+
+export const REVIEW_CHANNELS = ['email', 'whatsapp'] as const;
+export type ReviewChannel = (typeof REVIEW_CHANNELS)[number];
+
+/** The approved template that carries a review invitation. Its single
+ *  body parameter is the business name; the tracking link rides in the
+ *  template's dynamic URL button, because a raw URL in a body parameter
+ *  renders as plain text and Meta flags it. */
+export const REVIEW_TEMPLATE = { name: 'recall_review_request', languageCode: 'es' } as const;
+
+export interface WhatsAppSenderCredentials {
+  token: string;
+  phoneNumberId: string;
+}
+
+/** Is this recipient addressable on the given channel at all? Replaces
+ *  the old inline includes('@'), which silently made every channel an
+ *  email channel. */
+export function isAddressable(channel: ReviewChannel, recipient: string): boolean {
+  const value = recipient.trim();
+  if (channel === 'email') return value.includes('@');
+  // E.164. Not a strict validator — Twilio gave us this number, so the
+  // job here is to reject an empty or obviously-not-a-number string, not
+  // to re-derive numbering plans.
+  return /^\+?\d{6,15}$/.test(value.replace(/[\s-]/g, ''));
+}
+
+export type SendReviewRequestResult = SendReviewRequestEmailResult;
+
+/**
+ * Send one invitation on whichever channel the campaign uses.
+ *
+ * Returns the email path's result shape unchanged so the caller's
+ * bookkeeping — including the "skipped" convention that keeps the flow
+ * demoable without provider credentials — stays identical for both.
+ */
+export async function dispatchReviewRequest(
+  channel: ReviewChannel,
+  input: {
+    to: string;
+    recipientName: string | null;
+    businessName: string;
+    trackingUrl: string;
+    /** The tail of trackingUrl, for the template button. */
+    trackingSuffix?: string;
+  },
+  whatsapp?: WhatsAppSenderCredentials,
+): Promise<SendReviewRequestResult> {
+  if (channel === 'email') return sendReviewRequestEmail(input);
+
+  if (!isAddressable('whatsapp', input.to)) {
+    return { ok: true, skipped: true, messageId: null, reason: 'no_recipient' };
+  }
+  if (!whatsapp) {
+    // Mirrors the email path with no RESEND_API_KEY: a missing sender is
+    // a configuration gap, not a failed send, and must not mark the
+    // request 'failed' and invite a retry that cannot work either.
+    return { ok: true, skipped: true, messageId: null, reason: 'no_api_key' };
+  }
+
+  const result = await sendTemplate(whatsapp.token, whatsapp.phoneNumberId, input.to, {
+    ...REVIEW_TEMPLATE,
+    bodyParams: [input.businessName],
+    buttonUrlSuffix: input.trackingSuffix ?? input.trackingUrl,
+  });
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true, messageId: result.data.messages?.[0]?.id ?? 'unknown' };
+}
+
 export interface CampaignRecipientInput {
-  email: string;
+  /** An email address or an E.164 number, depending on the campaign
+   *  channel. Named for what it is rather than for one channel's idea
+   *  of it — the old `email` field was the reason a WhatsApp recipient
+   *  had nowhere to go. */
+  recipient: string;
   name?: string | null;
 }
 
@@ -124,6 +213,10 @@ export interface CreateCampaignInput {
   campaignName: string;
   consentBasis: ConsentBasis;
   recipients: CampaignRecipientInput[];
+  /** Defaults to 'email', so every existing caller is unchanged. */
+  channel?: ReviewChannel;
+  /** Required for a whatsapp campaign; ignored otherwise. */
+  whatsapp?: WhatsAppSenderCredentials;
 }
 
 export type CreateCampaignResult =
@@ -139,10 +232,12 @@ export type CreateCampaignResult =
  * loses track of what was actually sent.
  */
 export async function createCampaignWithRequests(input: CreateCampaignInput): Promise<CreateCampaignResult> {
+  const channel = input.channel ?? 'email';
   const deduped = new Map<string, CampaignRecipientInput>();
   for (const r of input.recipients) {
-    const email = r.email.trim().toLowerCase();
-    if (email) deduped.set(email, { email, name: r.name ?? null });
+    // Lower-casing is right for an address and harmless for a number.
+    const recipient = r.recipient.trim().toLowerCase();
+    if (recipient) deduped.set(recipient, { recipient, name: r.name ?? null });
   }
   if (deduped.size === 0) {
     return { ok: false, error: 'no_recipients' };
@@ -181,8 +276,8 @@ export async function createCampaignWithRequests(input: CreateCampaignInput): Pr
     const request = await prisma.reviewRequest.create({
       data: {
         campaignId: campaign.id,
-        channel: 'email',
-        recipient: recipient.email,
+        channel,
+        recipient: recipient.recipient,
         recipientName: recipient.name,
         consentBasis: input.consentBasis,
         status: 'pending',
@@ -190,12 +285,17 @@ export async function createCampaignWithRequests(input: CreateCampaignInput): Pr
     });
 
     const trackingUrl = `${PORTAL_BASE_URL}/r/${request.id}`;
-    const result = await sendReviewRequestEmail({
-      to: recipient.email,
-      recipientName: recipient.name ?? null,
-      businessName: input.businessName,
-      trackingUrl,
-    });
+    const result = await dispatchReviewRequest(
+      channel,
+      {
+        to: recipient.recipient,
+        recipientName: recipient.name ?? null,
+        businessName: input.businessName,
+        trackingUrl,
+        trackingSuffix: request.id,
+      },
+      input.whatsapp,
+    );
 
     if (result.ok && !('skipped' in result)) {
       sent += 1;
@@ -239,6 +339,7 @@ export async function createCampaignWithRequests(input: CreateCampaignInput): Pr
 export async function retryFailedRequests(
   campaignId: string,
   businessName: string,
+  whatsapp?: WhatsAppSenderCredentials,
 ): Promise<{ retried: number; sent: number; failed: number }> {
   const failedRequests = await prisma.reviewRequest.findMany({
     where: { campaignId, status: 'failed' },
@@ -248,12 +349,19 @@ export async function retryFailedRequests(
   let failed = 0;
   for (const request of failedRequests) {
     const trackingUrl = `${PORTAL_BASE_URL}/r/${request.id}`;
-    const result = await sendReviewRequestEmail({
-      to: request.recipient,
-      recipientName: request.recipientName,
-      businessName,
-      trackingUrl,
-    });
+    // The row records which channel it was sent on, so a retry cannot
+    // silently switch a WhatsApp invitation to email.
+    const result = await dispatchReviewRequest(
+      request.channel === 'whatsapp' ? 'whatsapp' : 'email',
+      {
+        to: request.recipient,
+        recipientName: request.recipientName,
+        businessName,
+        trackingUrl,
+        trackingSuffix: request.id,
+      },
+      whatsapp,
+    );
     if (result.ok) {
       sent += 1;
       await prisma.reviewRequest.update({

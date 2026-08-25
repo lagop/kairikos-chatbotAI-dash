@@ -14,6 +14,8 @@ const mockState = vi.hoisted(() => ({
   purgeExpiredRecordings: vi.fn(),
   notifyStuckOnboardings: vi.fn(),
   sweepPendingNotifications: vi.fn(),
+  sendDailyDigests: vi.fn(),
+  sweepReviewReminders: vi.fn(),
   syncTemplateStatuses: vi.fn(),
   warnExpiringTokens: vi.fn(),
 }));
@@ -27,6 +29,10 @@ vi.mock('@/lib/recall-retention', () => ({
 }));
 vi.mock('@/lib/recall-stuck-alerts', () => ({
   notifyStuckOnboardings: (...a: unknown[]) => mockState.notifyStuckOnboardings(...a),
+}));
+vi.mock('@/lib/recall-reviews', () => ({
+  sendDailyDigests: (...a: unknown[]) => mockState.sendDailyDigests(...a),
+  sweepReviewReminders: (...a: unknown[]) => mockState.sweepReviewReminders(...a),
 }));
 vi.mock('@/lib/recall-messaging', () => ({
   sweepPendingNotifications: (...a: unknown[]) => mockState.sweepPendingNotifications(...a),
@@ -55,6 +61,10 @@ beforeEach(() => {
   mockState.sweepPendingTranscriptions.mockReset().mockResolvedValue({ scanned: 0, transcribed: 0, failed: 0 });
   mockState.purgeExpiredRecordings.mockReset().mockResolvedValue({ scanned: 0, purged: 0, failed: 0 });
   mockState.notifyStuckOnboardings.mockReset().mockResolvedValue({ scanned: 0, stuck: 0, notified: 0, deduped: 0, failed: 0 });
+  mockState.sendDailyDigests
+    .mockReset()
+    .mockResolvedValue({ scanned: 0, sent: 0, skippedNoCalls: 0, failed: 0 });
+  mockState.sweepReviewReminders.mockReset().mockResolvedValue({ scanned: 0, reminded: 0, failed: 0 });
   mockState.sweepPendingNotifications.mockReset().mockResolvedValue({
     callersScanned: 0, callersSent: 0, callersSkipped: 0, callersFailed: 0,
     ownersScanned: 0, ownersSent: 0, ownersFailed: 0,
@@ -84,6 +94,8 @@ describe('GET /api/cron/recall-tick', () => {
       'purgeRecordings',
       'transcriptions',
       'notifications',
+      'dailyDigests',
+      'reviewReminders',
       'stuckAlerts',
       'tokenExpiry',
       'templateSync',
@@ -91,6 +103,8 @@ describe('GET /api/cron/recall-tick', () => {
     expect(mockState.purgeExpiredRecordings).toHaveBeenCalled();
     expect(mockState.sweepPendingTranscriptions).toHaveBeenCalled();
     expect(mockState.sweepPendingNotifications).toHaveBeenCalled();
+    expect(mockState.sendDailyDigests).toHaveBeenCalled();
+    expect(mockState.sweepReviewReminders).toHaveBeenCalled();
     expect(mockState.notifyStuckOnboardings).toHaveBeenCalled();
     expect(mockState.warnExpiringTokens).toHaveBeenCalled();
     expect(mockState.syncTemplateStatuses).toHaveBeenCalled();

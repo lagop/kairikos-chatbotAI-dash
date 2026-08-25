@@ -136,6 +136,7 @@ model ChatbotClient {
   callEvents                 CallEvent[]
   whatsappTemplates          WhatsappTemplate[]
   recallBlockedNumbers       RecallBlockedNumber[]
+  recallDigests              RecallDigest[]
 
   @@index([stripeCustomerId])
   @@index([tier])
@@ -1415,6 +1416,11 @@ model ReviewRequest {
   // "conversion rate" measure. Never records anything about the review
   // itself, only that the link was opened.
   clickedAt       DateTime? @map("clicked_at")
+  // WP-XX (Fase 10) — the ONE follow-up a recipient ever gets, four days
+  // later, and only if they never opened the link. Its presence is what
+  // makes a second reminder impossible to send: there is nowhere to
+  // record one, so no code path can invent it.
+  remindedAt      DateTime? @map("reminded_at")
   createdAt       DateTime  @default(now()) @map("created_at")
 
   campaign ReviewRequestCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
@@ -2158,6 +2164,7 @@ model RecallSubscription {
   virtualNumber    VirtualNumber?
   callEvents       CallEvent[]
   blockedNumbers   RecallBlockedNumber[]
+  digests          RecallDigest[]
 
   @@index([clientId])
   @@index([status])
@@ -2418,4 +2425,67 @@ model RecallBlockedNumber {
 
   @@unique([subscriptionId, e164])
   @@index([clientId])
+}
+
+// WP-XX (Fase 10) — the 19:00 message that closes the owner's day.
+//
+// It lists the calls we recovered today, numbered, and asks which of them
+// turned into an actual job. He replies "1 y 3" and those two callers get
+// a review request.
+//
+// THE SELECTION IS 'WHO DID I SERVE', NEVER 'WHO WAS HAPPY'. That
+// distinction is the whole legal and ethical footing of the review half:
+// you may only ask someone you actually did work for, and you may not
+// filter by expected sentiment. This model makes gating INEXPRESSIBLE —
+// there is no satisfaction, rating, or sentiment column anywhere for a
+// future well-meaning change to start branching on, which is the same
+// property ReviewRequest was built with.
+//
+// rawResponse keeps what the owner actually typed, verbatim. If he later
+// says "yo nunca dije que le escribierais al 3", that string is the
+// answer — the same reason WebBriefAudit exists.
+model RecallDigest {
+  id             String @id @default(uuid()) @db.Uuid
+  clientId       String @map("client_id")
+  subscriptionId String @map("subscription_id") @db.Uuid
+
+  // The local day covered, 'YYYY-MM-DD' in the subscription's own
+  // timezone. A DATE column would be the obvious choice and the wrong
+  // one: 'the owner's Tuesday' is a wall-clock concept, and storing it as
+  // an instant would shift the day boundary twice a year.
+  localDate String @map("local_date")
+
+  // Ordered. The number the owner sees IS the index plus one, which is
+  // why the order has to be persisted rather than recomputed — a later
+  // query returning a different order would silently remap his reply.
+  callEventIds Json @map("call_event_ids")
+
+  sentAt    DateTime? @map("sent_at")
+  sendError String?   @map("send_error")
+  attempts  Int       @default(0)
+
+  rawResponse          String?   @map("raw_response")
+  selectedCallEventIds Json?     @map("selected_call_event_ids")
+  respondedAt          DateTime? @map("responded_at")
+  // Set when we asked once for a clarification. We never ask twice: a
+  // second nag for a message he chose to ignore is how a client starts
+  // muting the number he is paying us for.
+  clarifiedAt          DateTime? @map("clarified_at")
+
+  // The review campaign this digest's reply produced, if any.
+  campaignId String? @map("campaign_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  client       ChatbotClient      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  subscription RecallSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  // One digest per owner per day. This is the idempotency key: the tick
+  // runs every five minutes and must never send the same summary twice.
+  @@unique([subscriptionId, localDate])
+  @@index([clientId])
+  // Drives the reply router: 'is there a digest this owner could be
+  // answering right now?'
+  @@index([subscriptionId, sentAt])
 }

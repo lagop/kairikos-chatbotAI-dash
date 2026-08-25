@@ -138,21 +138,66 @@ export function sendMessage(
  * which is a bug in the caller rather than a transient error — see
  * isRetryableWhatsAppError.
  */
+/**
+ * Make a string safe to pass as a template parameter.
+ *
+ * Meta rejects the whole send with
+ * "Param text cannot have new-line/tab characters or more than 4
+ * consecutive spaces". That is not a soft warning — it is a hard 400,
+ * and isRetryableWhatsAppError correctly refuses to retry it, so an
+ * unsanitised newline means the message is simply never delivered.
+ *
+ * It bites hardest where you would least expect it: a transcript of a
+ * recorded message, or a numbered digest, both naturally contain
+ * newlines. Callers that build parameters from free text MUST run them
+ * through this.
+ */
+export function sanitiseTemplateParam(value: string): string {
+  return value.replace(/[\r\n\t]+/g, ' ').replace(/ {4,}/g, '   ').trim();
+}
+
+export interface TemplateSpec {
+  name: string;
+  languageCode: string;
+  bodyParams?: readonly string[];
+  /**
+   * Suffix for a template's dynamic URL button. The base URL is fixed in
+   * the template Meta approved and only the tail varies, which is how a
+   * per-recipient tracking link is sent without putting a raw URL in a
+   * body parameter (Meta flags those, and they render as plain text
+   * rather than a button).
+   */
+  buttonUrlSuffix?: string;
+}
+
 export function sendTemplate(
   accessToken: string,
   phoneNumberId: string,
   to: string,
-  template: { name: string; languageCode: string; bodyParams?: readonly string[] },
+  template: TemplateSpec,
 ): Promise<WhatsAppApiResult<{ messages?: Array<{ id: string }> }>> {
-  const components =
-    template.bodyParams && template.bodyParams.length > 0
-      ? [
-          {
-            type: 'body',
-            parameters: template.bodyParams.map((text) => ({ type: 'text', text })),
-          },
-        ]
-      : undefined;
+  const components: Array<Record<string, unknown>> = [];
+
+  if (template.bodyParams && template.bodyParams.length > 0) {
+    components.push({
+      type: 'body',
+      parameters: template.bodyParams.map((text) => ({
+        type: 'text',
+        text: sanitiseTemplateParam(text),
+      })),
+    });
+  }
+
+  if (template.buttonUrlSuffix !== undefined) {
+    components.push({
+      type: 'button',
+      sub_type: 'url',
+      // Button components are addressed by position, and this product's
+      // templates carry exactly one button.
+      index: '0',
+      parameters: [{ type: 'text', text: sanitiseTemplateParam(template.buttonUrlSuffix) }],
+    });
+  }
 
   return callGraphApi<{ messages?: Array<{ id: string }> }>(accessToken, `/${phoneNumberId}/messages`, 'POST', {
     messaging_product: 'whatsapp',
@@ -161,7 +206,8 @@ export function sendTemplate(
     template: {
       name: template.name,
       language: { code: template.languageCode },
-      ...(components ? { components } : {}),
+      // Omitted entirely when empty: Meta rejects an empty array.
+      ...(components.length > 0 ? { components } : {}),
     },
   });
 }

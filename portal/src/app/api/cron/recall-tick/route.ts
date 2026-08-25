@@ -4,6 +4,7 @@ import { sweepPendingTranscriptions } from '@/lib/recall-transcription';
 import { purgeExpiredRecordings } from '@/lib/recall-retention';
 import { notifyStuckOnboardings } from '@/lib/recall-stuck-alerts';
 import { sweepPendingNotifications } from '@/lib/recall-messaging';
+import { sendDailyDigests, sweepReviewReminders } from '@/lib/recall-reviews';
 import { syncTemplateStatuses, warnExpiringTokens } from '@/lib/whatsapp-health';
 import { logError } from '@/lib/observability';
 
@@ -88,11 +89,18 @@ export async function GET(req: NextRequest) {
   //    rather than a timer that would not survive a restart.
   jobs.notifications = await runJob('notifications', () => sweepPendingNotifications(prisma));
 
-  // 4. Push stalled altas at an operator. Deduped per (client, day) by
+  // 4. The review half. The digest closes the owner's day and the
+  //    reminder chases a link nobody opened; both re-check their own
+  //    due-ness, so a coarse or missed tick delays them rather than
+  //    skipping them.
+  jobs.dailyDigests = await runJob('dailyDigests', () => sendDailyDigests(prisma));
+  jobs.reviewReminders = await runJob('reviewReminders', () => sweepReviewReminders(prisma));
+
+  // 5. Push stalled altas at an operator. Deduped per (client, day) by
   //    operator-notify, so running this every tick is safe.
   jobs.stuckAlerts = await runJob('stuckAlerts', () => notifyStuckOnboardings(prisma));
 
-  // 5. Meta changes state without telling us. A token that dies at 60
+  // 6. Meta changes state without telling us. A token that dies at 60
   //    days and a template Meta paused for quality both fail silently —
   //    the product keeps looking fine until a client's messages stop
   //    arriving. These two jobs are how that gets noticed in advance.

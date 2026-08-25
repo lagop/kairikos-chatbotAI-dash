@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
     businessName,
     campaignName: body.data.name,
     consentBasis: body.data.consentBasis,
-    recipients: body.data.recipients.map((r) => ({ email: r.email, name: r.name ?? null })),
+    recipients: body.data.recipients.map((r) => ({ recipient: r.email, name: r.name ?? null })),
   });
 
   if (!result.ok) {
