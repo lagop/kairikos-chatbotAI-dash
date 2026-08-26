@@ -135,6 +135,8 @@ model ChatbotClient {
   recallSubscriptionAudits   RecallSubscriptionAudit[]
   callEvents                 CallEvent[]
   whatsappTemplates          WhatsappTemplate[]
+  prospectingCampaigns       ProspectingCampaign[]
+  prospectingCampaignAudits  ProspectingCampaignAudit[]
   recallBlockedNumbers       RecallBlockedNumber[]
   recallDigests              RecallDigest[]
   recallUsageMonths          RecallUsageMonth[]
@@ -512,6 +514,8 @@ model Tenant {
   leadAudits                  LeadAudit[]
   recallSubscriptions         RecallSubscription[]
   callEvents                  CallEvent[]
+  prospectingCampaigns        ProspectingCampaign[]
+  prospectingCampaignAudits   ProspectingCampaignAudit[]
 
   @@index([slug])
   @@index([status])
@@ -685,18 +689,19 @@ model ClientProduct {
   onboardingState String    @default("in-progress") @map("onboarding_state")
   goLiveAt        DateTime? @map("go_live_at")
 
-  client             ChatbotClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  product            Product              @relation(fields: [productId], references: [id], onDelete: Restrict)
-  tenant             Tenant?              @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  auditLogs          ClientProductAudit[]
-  subscription       Subscription?
+  client              ChatbotClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  product             Product              @relation(fields: [productId], references: [id], onDelete: Restrict)
+  tenant              Tenant?              @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  auditLogs           ClientProductAudit[]
+  subscription        Subscription?
   // WP-19 — one-time-purchase products (no recurring price) invoice
   // directly against the ClientProduct instead of through a Subscription
   // — see Invoice.clientProductId.
-  invoices           Invoice[]
-  webQuote           WebQuote?
-  webBrief           WebBrief?
-  recallSubscription RecallSubscription?
+  invoices            Invoice[]
+  webQuote            WebQuote?
+  webBrief            WebBrief?
+  recallSubscription  RecallSubscription?
+  prospectingCampaign ProspectingCampaign?
 
   // Real DB-level uniqueness for every code except 'web' lives in a raw-SQL
   // partial unique index (see this migration's .sql) — Prisma can't express
@@ -2032,7 +2037,7 @@ model Lead {
   summary      String?
   // 0-100, set by the n8n classifier. Nullable — no scoring pipeline is
   // guaranteed to run for every lead.
-  score       Int?
+  score        Int?
   // Leads Fase 9 — the classifier's OWN short justification for that
   // number ("pregunta precio y quiere cita esta semana"), not a second
   // score. A bare 0-100 with no reasoning is a number the client either
@@ -2040,17 +2045,33 @@ model Lead {
   // rests on this being visible next to the score, not just computed
   // behind it. Nullable for the same reason `score` is: not every run of
   // the classifier is guaranteed to produce one.
-  scoreReason String? @map("score_reason")
+  scoreReason  String? @map("score_reason")
 
   // 'nuevo' | 'contactado' | 'convertido' | 'descartado'. See
   // src/lib/leads.ts for the transition predicates.
   status  String  @default("nuevo")
-  // 'telegram' | 'whatsapp' | 'messenger' | 'instagram' | 'web' | 'phone'.
-  // Free string, same convention as ChannelWebhookDelivery.connectionType.
-  // 'phone' is the 'recall' product: a missed call whose caller left a
-  // message IS a lead, so it reuses this model rather than duplicating it
-  // — see CallEvent.leadId and src/lib/recall-transcription.ts.
+  // 'telegram' | 'whatsapp' | 'messenger' | 'instagram' | 'web' | 'phone' |
+  // 'places'. Free string, same convention as
+  // ChannelWebhookDelivery.connectionType. 'phone' is the 'recall'
+  // product: a missed call whose caller left a message IS a lead, so it
+  // reuses this model rather than duplicating it — see CallEvent.leadId
+  // and src/lib/recall-transcription.ts. 'places' is 'prospecting'
+  // Fase A: a business discovered via Google Places, never a
+  // conversation — see conversationId/source below.
   channel String?
+
+  // Prospección con IA, Fase A — 'inbound' (default: someone wrote in,
+  // captured via conversationId) | 'outbound' (we found them via
+  // src/lib/prospecting.ts, no conversation exists). Distinguishing this
+  // matters because the two are very different trust levels for the
+  // client's sales team — the badge in /portal/leads reads this.
+  source          String  @default("inbound")
+  // Google Place id, when source='outbound'. Scoped per-client (not
+  // globally unique) — two different clients legitimately prospecting
+  // the same area can both discover the same real business, and that is
+  // not a duplicate. Prevents re-creating the same Lead when a later
+  // campaign run re-discovers a business already found for this client.
+  externalPlaceId String? @map("external_place_id")
 
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
@@ -2064,6 +2085,7 @@ model Lead {
   auditLogs    LeadAudit[]
   callEvents   CallEvent[]
 
+  @@unique([clientId, externalPlaceId])
   @@index([clientId, status])
   @@index([clientId, createdAt])
   @@index([tenantId])
@@ -2080,7 +2102,8 @@ model LeadAudit {
   statusBefore String?  @map("status_before")
   statusAfter  String?  @map("status_after")
   // Operator UUID, 'client:<clientId>' (client-initiated status change),
-  // or 'system:n8n' (ingestion route) — same actorId string convention as
+  // 'system:n8n' (ingestion route), or 'system:prospecting'
+  // (src/lib/prospecting.ts, Fase A) — same actorId string convention as
   // ClientProductAudit.
   actorId      String   @map("actor_id")
   changedAt    DateTime @default(now()) @map("changed_at")
@@ -2090,6 +2113,91 @@ model LeadAudit {
   tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([leadId, changedAt])
+  @@index([clientId, changedAt])
+  @@index([tenantId])
+}
+
+// =============================================================================
+// Prospección con IA, Fase A (product code 'prospecting') — active lead
+// discovery via Google Places, feeding into the SAME Lead model above
+// (source='outbound', channel='places'). Satellite model, same shape as
+// RecallSubscription below: 1:1 with ClientProduct via
+// clientProductId @unique, fine-grained operational state here while
+// ClientProduct.status stays exactly what billing dictates.
+//
+// The target profile (category + zone) is owned by the CLIENT, not the
+// operator — a plain settings form in /portal/leads, same self-serve
+// spirit as the rest of 'leads'. See leads-fase-a plan for why: unlike
+// Meta Coexistence, there is no technical complexity here that would
+// justify operator hand-holding, and interposing one would work against
+// the whole point of this product line — scaling without a human in the
+// loop per client.
+// =============================================================================
+
+model ProspectingCampaign {
+  id              String  @id @default(uuid()) @db.Uuid
+  clientId        String  @map("client_id")
+  clientProductId String  @unique @map("client_product_id") @db.Uuid
+  tenantId        String? @map("tenant_id") @db.Uuid
+
+  // What the client is looking for. `category` maps loosely to Google
+  // Places `type` values (e.g. 'hair_care', 'restaurant') — validated at
+  // the lib layer, not the DB, same posture as every other free-string
+  // status column in this schema.
+  category      String?
+  locationQuery String? @map("location_query")
+  radiusMeters  Int?    @default(10000) @map("radius_meters")
+
+  // 'active' | 'paused'. No onboarding state machine like
+  // RecallSubscription's — there is no external system to wait on here,
+  // just a profile and a schedule.
+  status String @default("active")
+
+  lastRunAt DateTime? @map("last_run_at")
+
+  // Usage/cost control. leadsFoundThisMonth is what actually costs
+  // money (1 Place Details call per unique lead) — NOT raw search call
+  // count, which is cheap and incidental. monthlyLeadCap is set from the
+  // client's tier at Bootstrap time (100/300/800 — see the product
+  // catalog). alertedAt follows RecallUsageMonth's pattern: warn once
+  // per cap breach, not once per tick.
+  leadsFoundThisMonth Int       @default(0) @map("leads_found_this_month")
+  monthlyLeadCap      Int       @map("monthly_lead_cap")
+  usageResetAt        DateTime  @default(now()) @map("usage_reset_at")
+  alertedAt           DateTime? @map("alerted_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  client        ChatbotClient              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientProduct ClientProduct              @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
+  tenant        Tenant?                    @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  auditLogs     ProspectingCampaignAudit[]
+
+  @@index([clientId])
+  @@index([tenantId])
+  @@index([status])
+}
+
+model ProspectingCampaignAudit {
+  id         String   @id @default(uuid()) @db.Uuid
+  campaignId String   @map("campaign_id") @db.Uuid
+  clientId   String   @map("client_id")
+  tenantId   String?  @map("tenant_id") @db.Uuid
+  // 'created' | 'profile_updated' | 'paused' | 'resumed' | 'cap_reached'
+  action     String
+  before     Json?
+  after      Json?
+  // 'client:<clientId>' (self-serve profile edit) or 'system:prospecting'
+  // (the cron run that hit the cap) — same convention as LeadAudit.
+  actorId    String   @map("actor_id")
+  changedAt  DateTime @default(now()) @map("changed_at")
+
+  campaign ProspectingCampaign @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  client   ChatbotClient       @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  tenant   Tenant?             @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([campaignId, changedAt])
   @@index([clientId, changedAt])
   @@index([tenantId])
 }

@@ -32,6 +32,7 @@ export interface LeadSummaryRow {
   score: number | null;
   scoreReason: string | null;
   channel: string | null;
+  source: string;
   createdAt: Date;
 }
 
@@ -45,7 +46,13 @@ export function LeadsSummaryPanel({ leads }: { leads: LeadSummaryRow[] }) {
       {leads.map((lead) => {
         const contactParts = [lead.contactName, lead.contactPhone, lead.contactEmail].filter(Boolean);
         return (
-          <li key={lead.id} className="rounded-md border border-kairikos-border p-3" data-testid="leads-summary-row" data-status={lead.status}>
+          <li
+            key={lead.id}
+            className="rounded-md border border-kairikos-border p-3"
+            data-testid="leads-summary-row"
+            data-status={lead.status}
+            data-source={lead.source}
+          >
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
                 <p className="text-xs uppercase tracking-wider text-kairikos-muted">
@@ -57,6 +64,11 @@ export function LeadsSummaryPanel({ leads }: { leads: LeadSummaryRow[] }) {
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                {lead.source === 'outbound' ? (
+                  <span className="pill-muted" data-testid="leads-summary-source-outbound">
+                    Prospección
+                  </span>
+                ) : null}
                 {lead.score !== null ? <span className="pill-muted">Prioridad {lead.score}</span> : null}
                 <span className={STATUS_PILL[lead.status] ?? 'pill-muted'}>{STATUS_LABEL[lead.status] ?? lead.status}</span>
               </div>

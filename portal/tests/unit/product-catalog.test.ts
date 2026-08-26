@@ -10,9 +10,9 @@ import { describe, it, expect } from 'vitest';
 import { PRODUCT_CATALOG } from '../../prisma/seed';
 
 describe('PRODUCT_CATALOG', () => {
-  it('has exactly six distinct product codes', () => {
+  it('has exactly seven distinct product codes', () => {
     const codes = new Set(PRODUCT_CATALOG.map((p) => p.code));
-    expect(codes).toEqual(new Set(['chatbot', 'web', 'leads', 'seo', 'reviews', 'recall']));
+    expect(codes).toEqual(new Set(['chatbot', 'web', 'leads', 'seo', 'reviews', 'recall', 'prospecting']));
   });
 
   it('every (code, tier) pair is unique — matches the Product.@@unique([code, tier]) constraint', () => {
@@ -69,6 +69,29 @@ describe('PRODUCT_CATALOG', () => {
     expect(bySize.map((p) => p.setupFeeCents)).toEqual([29000, 39000, 49000]);
 
     for (const p of recall) {
+      // Product.stripeRecurringPriceId is @unique — a copied placeholder
+      // id would break the seed on the second row.
+      expect(p.stripeRecurringPriceId).toBeTruthy();
+      expect(p.stripeSetupPriceId).toBeTruthy();
+    }
+  });
+
+  it('prospecting (active lead discovery) has three tiers priced above leads, each with its own Stripe price ids', () => {
+    const prospecting = PRODUCT_CATALOG.filter((p) => p.code === 'prospecting');
+    expect(prospecting.map((p) => p.tier).sort()).toEqual(['business', 'solo', 'team']);
+
+    const bySize = ['solo', 'team', 'business'].map((t) => prospecting.find((p) => p.tier === t)!);
+    expect(bySize.map((p) => p.priceCents)).toEqual([12900, 21900, 34900]);
+    // Setup fee is flat across tiers — unlike recall, Fase A's onboarding
+    // is client self-serve (a form), not operator provisioning work that
+    // scales with tier.
+    expect(bySize.every((p) => p.setupFeeCents === 9900)).toBe(true);
+
+    const leadsPriceCents = PRODUCT_CATALOG.find((p) => p.code === 'leads')!.priceCents;
+    expect(bySize[1].priceCents).toBeGreaterThan(leadsPriceCents);
+    expect(bySize[2].priceCents).toBeGreaterThan(leadsPriceCents);
+
+    for (const p of prospecting) {
       // Product.stripeRecurringPriceId is @unique — a copied placeholder
       // id would break the seed on the second row.
       expect(p.stripeRecurringPriceId).toBeTruthy();

@@ -4,8 +4,8 @@ import { redirect } from 'next/navigation';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { requirePortalSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
-import { isProductContracted } from '@/lib/client-product-access';
 import {
+  hasLeadsInboxAccess,
   parseLeadStatusFilter,
   parseLeadSort,
   LEAD_STATUS_FILTERS,
@@ -56,16 +56,18 @@ export default async function PortalLeadsPage({
     redirect('/portal/login?next=/portal/leads');
   }
 
-  const hasLeads =
+  const hasInboxAccess =
     isDatabaseConfigured && resolved.source === 'database'
-      ? await isProductContracted(prisma, resolved.clientId, 'leads')
+      ? await hasLeadsInboxAccess(prisma, resolved.clientId)
       : false;
 
-  if (!hasLeads) {
-    let tiers: SelfServeTierOption[] = [];
-    let pendingProductId: string | null = null;
+  if (!hasInboxAccess) {
+    let leadsTiers: SelfServeTierOption[] = [];
+    let leadsPendingProductId: string | null = null;
+    let prospectingTiers: SelfServeTierOption[] = [];
+    let prospectingPendingProductId: string | null = null;
     if (isDatabaseConfigured && resolved.source === 'database') {
-      const [products, pendingRow] = await Promise.all([
+      const [leadsProducts, leadsPendingRow, prospectingProducts, prospectingPendingRow] = await Promise.all([
         prisma.product.findMany({
           where: { code: 'leads', isActive: true },
           orderBy: { priceCents: 'asc' },
@@ -75,8 +77,22 @@ export default async function PortalLeadsPage({
           where: { clientId: resolved.clientId, status: 'pending_payment', product: { code: 'leads' } },
           select: { productId: true },
         }),
+        // Fase A de "Prospección con IA" — mostrado como upsell aquí en
+        // vez de una segunda página de venta separada. Ambos productos
+        // alimentan el mismo buzón de leads (hasLeadsInboxAccess), así
+        // que la puerta de entrada económica ('leads') y la de más
+        // valor ('prospecting') tienen sentido en la misma pitch.
+        prisma.product.findMany({
+          where: { code: 'prospecting', isActive: true },
+          orderBy: { priceCents: 'asc' },
+          select: { id: true, tier: true, priceCents: true, setupFeeCents: true, currency: true },
+        }),
+        prisma.clientProduct.findFirst({
+          where: { clientId: resolved.clientId, status: 'pending_payment', product: { code: 'prospecting' } },
+          select: { productId: true },
+        }),
       ]);
-      tiers = products.map((p) => ({
+      leadsTiers = leadsProducts.map((p) => ({
         productId: p.id,
         tier: p.tier,
         tierLabel: tierLabel(p.tier),
@@ -84,7 +100,16 @@ export default async function PortalLeadsPage({
         setupFeeCents: p.setupFeeCents,
         currency: p.currency,
       }));
-      pendingProductId = pendingRow?.productId ?? null;
+      leadsPendingProductId = leadsPendingRow?.productId ?? null;
+      prospectingTiers = prospectingProducts.map((p) => ({
+        productId: p.id,
+        tier: p.tier,
+        tierLabel: tierLabel(p.tier),
+        priceCents: p.priceCents,
+        setupFeeCents: p.setupFeeCents,
+        currency: p.currency,
+      }));
+      prospectingPendingProductId = prospectingPendingRow?.productId ?? null;
     }
 
     return (
@@ -102,11 +127,11 @@ export default async function PortalLeadsPage({
             'Configuración incluida en el alta — no hace falta que tu equipo aprenda nada nuevo.',
           ]}
         >
-          {isDatabaseConfigured && resolved.source === 'database' && tiers.length > 0 ? (
-            pendingProductId ? (
-              <SelfServeProductCard code="leads" label="Captación con IA" status="pending" productId={pendingProductId} />
+          {isDatabaseConfigured && resolved.source === 'database' && leadsTiers.length > 0 ? (
+            leadsPendingProductId ? (
+              <SelfServeProductCard code="leads" label="Captación con IA" status="pending" productId={leadsPendingProductId} />
             ) : (
-              <SelfServeProductCard code="leads" label="Captación con IA" status="available" tiers={tiers} />
+              <SelfServeProductCard code="leads" label="Captación con IA" status="available" tiers={leadsTiers} />
             )
           ) : (
             <EmptyState
@@ -115,6 +140,23 @@ export default async function PortalLeadsPage({
             />
           )}
         </ProductPitch>
+
+        {isDatabaseConfigured && resolved.source === 'database' && prospectingTiers.length > 0 ? (
+          <ProductPitch
+            tagline="¿Y si además saliéramos a buscarte clientes nuevos? Prospección con IA."
+            features={[
+              'Encontramos negocios reales en tu zona y tu rubro — no solo priorizamos, buscamos.',
+              'Los prospectos aparecen aquí mismo, en la misma lista, junto a los que ya te escriben.',
+              'Tú decides el rubro y la zona desde tu propio panel — sin esperar a nadie.',
+            ]}
+          >
+            {prospectingPendingProductId ? (
+              <SelfServeProductCard code="prospecting" label="Prospección con IA" status="pending" productId={prospectingPendingProductId} />
+            ) : (
+              <SelfServeProductCard code="prospecting" label="Prospección con IA" status="available" tiers={prospectingTiers} />
+            )}
+          </ProductPitch>
+        ) : null}
       </div>
     );
   }
@@ -262,12 +304,13 @@ function LeadRow({
     score: number | null;
     scoreReason: string | null;
     channel: string | null;
+    source: string;
     createdAt: Date;
   };
 }) {
   const contactParts = [lead.contactName, lead.contactPhone, lead.contactEmail].filter(Boolean);
   return (
-    <div className="card space-y-2" data-testid="lead-row" data-status={lead.status}>
+    <div className="card space-y-2" data-testid="lead-row" data-status={lead.status} data-source={lead.source}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="text-xs uppercase tracking-wider text-kairikos-muted">
@@ -279,6 +322,15 @@ function LeadRow({
           </h3>
         </div>
         <div className="flex items-center gap-2">
+          {lead.source === 'outbound' ? (
+            <span
+              className="pill-muted"
+              data-testid="lead-source-outbound"
+              title="Lo encontramos nosotros — Prospección con IA, no te escribió."
+            >
+              Prospección
+            </span>
+          ) : null}
           {lead.score !== null ? (
             <span className="pill-muted" data-testid="lead-score" title={lead.scoreReason ?? undefined}>
               Prioridad {lead.score}

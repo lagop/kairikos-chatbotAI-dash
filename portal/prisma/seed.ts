@@ -205,6 +205,30 @@ export const PRODUCT_CATALOG: ProductCatalogEntry[] = [
     priceCents: 39900, setupFeeCents: 49000, currency: 'EUR', isActive: true,
     stripeRecurringPriceId: 'price_recall_business', stripeSetupPriceId: 'price_recall_business_setup',
   },
+  // Fase A de "Prospección con IA" — investigación activa de leads
+  // (Google Places + web propia), producto separado de 'leads' porque
+  // tiene un coste marginal real por prospecto que 'leads' no tiene. Ver
+  // el plan de la sesión para el desglose de coste por tier.
+  //
+  // stripeRecurringPriceId/stripeSetupPriceId son PLACEHOLDERS, mismo
+  // aviso que 'recall' arriba: requiere Bootstrap en
+  // /admin/portal/settings/billing antes de que Contratar funcione de
+  // verdad para un cliente real.
+  {
+    code: 'prospecting', tier: 'solo', name: 'Prospección con IA — Autónomo',
+    priceCents: 12900, setupFeeCents: 9900, currency: 'EUR', isActive: true,
+    stripeRecurringPriceId: 'price_prospecting_solo', stripeSetupPriceId: 'price_prospecting_solo_setup',
+  },
+  {
+    code: 'prospecting', tier: 'team', name: 'Prospección con IA — Equipo',
+    priceCents: 21900, setupFeeCents: 9900, currency: 'EUR', isActive: true,
+    stripeRecurringPriceId: 'price_prospecting_team', stripeSetupPriceId: 'price_prospecting_team_setup',
+  },
+  {
+    code: 'prospecting', tier: 'business', name: 'Prospección con IA — Empresa',
+    priceCents: 34900, setupFeeCents: 9900, currency: 'EUR', isActive: true,
+    stripeRecurringPriceId: 'price_prospecting_business', stripeSetupPriceId: 'price_prospecting_business_setup',
+  },
 ];
 
 async function seedProductCatalog(): Promise<void> {
