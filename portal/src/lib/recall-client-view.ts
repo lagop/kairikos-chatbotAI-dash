@@ -70,7 +70,17 @@ export type RecallClientView =
   /** Contracted and paid, but the service is not answering calls yet —
    *  usually waiting on the client to set up the divert on his own line.
    *  Showing an empty dashboard here would read as "we sold you nothing". */
-  | { state: 'onboarding'; status: string; since: Date; virtualNumber: string | null }
+  | {
+      state: 'onboarding';
+      status: string;
+      since: Date;
+      virtualNumber: string | null;
+      /** Fase 8 — null until the Coexistence connect completes. Once set,
+       *  the onboarding page shows this instead of the connect button —
+       *  there is nothing to disconnect and reconnect here (see
+       *  RecallMetaConnectCard's header). */
+      metaConnection: { displayPhoneNumber: string | null } | null;
+    }
   | {
       state: 'active';
       virtualNumber: string | null;
@@ -128,6 +138,7 @@ export async function loadRecallClientView(
       timezone: true,
       googleConnectionId: true,
       virtualNumber: { select: { e164: true } },
+      metaConnection: { select: { displayPhoneNumber: true } },
     },
   });
 
@@ -144,6 +155,9 @@ export async function loadRecallClientView(
       status: subscription.status,
       since: subscription.activatedAt ?? subscription.createdAt,
       virtualNumber,
+      metaConnection: subscription.metaConnection
+        ? { displayPhoneNumber: subscription.metaConnection.displayPhoneNumber }
+        : null,
     };
   }
 

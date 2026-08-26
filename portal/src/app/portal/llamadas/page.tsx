@@ -6,10 +6,12 @@ import { requirePortalSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { loadRecallClientView, type RecallCallSummary } from '@/lib/recall-client-view';
 import { monthLabel } from '@/lib/recall-reports';
+import { canBindMetaConnection } from '@/lib/recall';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { ProductPitch } from '@/components/portal/ProductPitch';
 import { EmptyState } from '@/components/portal/EmptyState';
 import { SelfServeProductCard, type SelfServeTierOption } from '@/components/portal/SelfServeProductCard';
+import { RecallMetaConnectCard } from '@/components/portal/RecallMetaConnectCard';
 
 export const dynamic = 'force-dynamic';
 
@@ -274,11 +276,12 @@ export default async function PortalLlamadasPage({
               <SelfServeProductCard code="recall" label="Llamadas perdidas" status="available" tiers={tiers} />
             )
           ) : (
-            // No active catalogue row: the three "recall" tiers are
-            // deliberately isActive: false until Coexistence is verified
-            // against a real Meta app AND real Stripe price ids exist.
-            // Offering a checkout here would take money for a service
-            // whose WhatsApp path has never run once.
+            // No active catalogue row. The three "recall" tiers are
+            // isActive: true (a deliberate business call — sell before
+            // Coexistence is verified against a real Meta app, made
+            // explicit in prisma/seed.ts) so this branch is now a
+            // genuine configuration gap (seed not run, or the row
+            // toggled off) rather than an expected state.
             <EmptyState
               title="Habla con nosotros"
               description="Todavía no se puede contratar solo desde el portal. Escríbenos y lo dejamos montado."
@@ -311,6 +314,13 @@ export default async function PortalLlamadasPage({
             </p>
           ) : null}
         </div>
+        {canBindMetaConnection(view.status) ? (
+          <RecallMetaConnectCard
+            metaAppId={process.env.META_APP_ID ?? null}
+            coexistenceConfigId={process.env.META_COEXISTENCE_CONFIG_ID ?? null}
+            connected={view.metaConnection}
+          />
+        ) : null}
       </div>
     );
   }

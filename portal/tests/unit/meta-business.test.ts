@@ -24,6 +24,7 @@ vi.mock('@/lib/observability', () => ({
 
 import {
   isMetaSignupConfigured,
+  isCoexistenceSignupConfigured,
   exchangeCodeForToken,
   exchangeForLongLivedToken,
   fetchPagesWithInstagram,
@@ -32,7 +33,14 @@ import {
   decryptMetaToken,
 } from '@/lib/meta-business';
 
-const ENV_KEYS = ['META_APP_ID', 'META_APP_SECRET', 'META_CONFIG_ID', 'META_GRAPH_API_VERSION', 'CHANNEL_CREDENTIAL_ENCRYPTION_KEY'] as const;
+const ENV_KEYS = [
+  'META_APP_ID',
+  'META_APP_SECRET',
+  'META_CONFIG_ID',
+  'META_COEXISTENCE_CONFIG_ID',
+  'META_GRAPH_API_VERSION',
+  'CHANNEL_CREDENTIAL_ENCRYPTION_KEY',
+] as const;
 
 function jsonResponse(body: unknown, ok = true, status = 200) {
   return { ok, status, json: async () => body } as unknown as Response;
@@ -59,6 +67,25 @@ describe('isMetaSignupConfigured', () => {
   it('false when META_CONFIG_ID is missing', () => {
     delete process.env.META_CONFIG_ID;
     expect(isMetaSignupConfigured()).toBe(false);
+  });
+});
+
+describe('isCoexistenceSignupConfigured', () => {
+  it('false by default — a SEPARATE Configuration from META_CONFIG_ID, not implied by it', () => {
+    expect(isCoexistenceSignupConfigured()).toBe(false);
+  });
+
+  it('true once META_COEXISTENCE_CONFIG_ID is set alongside the app credentials', () => {
+    process.env.META_COEXISTENCE_CONFIG_ID = 'coexistence_config_123';
+    expect(isCoexistenceSignupConfigured()).toBe(true);
+    // The standard flow's gate is unaffected either way.
+    expect(isMetaSignupConfigured()).toBe(true);
+  });
+
+  it('false when the app id/secret are missing even if the coexistence config id is set', () => {
+    process.env.META_COEXISTENCE_CONFIG_ID = 'coexistence_config_123';
+    delete process.env.META_APP_ID;
+    expect(isCoexistenceSignupConfigured()).toBe(false);
   });
 });
 

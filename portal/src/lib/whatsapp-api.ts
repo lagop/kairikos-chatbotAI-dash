@@ -217,6 +217,9 @@ export interface WhatsAppPhoneNumberInfo {
   display_phone_number?: string;
   verified_name?: string;
   quality_rating?: string;
+  /** 'CLOUD_API' | 'ON_PREMISE' | 'NOT_APPLICABLE' — see
+   *  MetaChannelConnection.platformType's schema comment. */
+  platform_type?: string;
 }
 
 /**
@@ -236,9 +239,53 @@ export function getPhoneNumberInfo(
 ): Promise<WhatsAppApiResult<WhatsAppPhoneNumberInfo>> {
   return callGraphApi<WhatsAppPhoneNumberInfo>(
     accessToken,
-    `/${phoneNumberId}?fields=id,display_phone_number,verified_name,quality_rating`,
+    `/${phoneNumberId}?fields=id,display_phone_number,verified_name,quality_rating,platform_type`,
     'GET',
   );
+}
+
+export interface WhatsAppPhoneNumberSummary {
+  id?: string;
+  display_phone_number?: string;
+}
+
+/**
+ * Fase 8 ('recall') — Coexistence. The FINISH_WHATSAPP_BUSINESS_APP_
+ * ONBOARDING popup event carries only a `waba_id`, never a
+ * `phone_number_id` — unlike the standard FINISH event, which returns
+ * both. recall-meta.ts resolves the id itself from here. A WABA reached
+ * through this onboarding path has exactly one number (the one already
+ * live on the owner's phone), so the caller can safely take the first
+ * result; a WABA with more would be a signal something unexpected
+ * happened, worth surfacing rather than silently picking one.
+ */
+export function getPhoneNumbersForWaba(
+  accessToken: string,
+  wabaId: string,
+): Promise<WhatsAppApiResult<{ data?: WhatsAppPhoneNumberSummary[] }>> {
+  return callGraphApi<{ data?: WhatsAppPhoneNumberSummary[] }>(
+    accessToken,
+    `/${wabaId}/phone_numbers?fields=id,display_phone_number`,
+    'GET',
+  );
+}
+
+/**
+ * Fase 8 ('recall') — Coexistence. Kicks off Meta's one-time sync of the
+ * owner's existing contacts and message history from the WhatsApp
+ * Business app into the Cloud API side of the connection. Best-effort by
+ * every caller (same posture as subscribeWaba/getPhoneNumberInfo above):
+ * the connection is already valid without it, and a sync that starts a
+ * few minutes late is a support ticket, not a broken product.
+ */
+export function syncSmbAppState(
+  accessToken: string,
+  phoneNumberId: string,
+): Promise<WhatsAppApiResult<{ success?: boolean }>> {
+  return callGraphApi<{ success?: boolean }>(accessToken, `/${phoneNumberId}/smb_app_data`, 'POST', {
+    messaging_product: 'whatsapp',
+    sync_type: 'smb_app_state_sync',
+  });
 }
 
 export interface WhatsAppTemplateSummary {
