@@ -39,6 +39,10 @@ const BodySchema = z.object({
   contactEmail: z.string().trim().email().max(200).optional(),
   summary: z.string().trim().min(1).max(2000).optional(),
   score: z.number().int().min(0).max(100).optional(),
+  // Leads Fase 9 — the classifier's own justification for `score`, shown
+  // next to it everywhere the score is shown. Same length ceiling as
+  // `summary`: both are LLM-extracted free text of the same rough shape.
+  scoreReason: z.string().trim().min(1).max(2000).optional(),
   channel: z.enum(['telegram', 'whatsapp', 'messenger', 'instagram', 'web']).optional(),
 });
 
@@ -76,6 +80,7 @@ export async function POST(req: NextRequest) {
           contactEmail: data.contactEmail ?? existing.contactEmail,
           summary: data.summary ?? existing.summary,
           score: data.score ?? existing.score,
+          scoreReason: data.scoreReason ?? existing.scoreReason,
           channel: data.channel ?? existing.channel,
         },
       });
@@ -106,6 +111,7 @@ export async function POST(req: NextRequest) {
         contactEmail: data.contactEmail ?? null,
         summary: data.summary ?? null,
         score: data.score ?? null,
+        scoreReason: data.scoreReason ?? null,
         channel: data.channel ?? null,
       },
     });
@@ -148,6 +154,7 @@ export async function POST(req: NextRequest) {
           contactEmail: created.contactEmail,
           summary: created.summary,
           score: created.score,
+          scoreReason: created.scoreReason,
           channel: created.channel,
         });
         if (!emailResult.ok) {

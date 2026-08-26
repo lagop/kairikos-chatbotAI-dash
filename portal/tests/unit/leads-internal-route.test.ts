@@ -173,12 +173,18 @@ describe('POST /api/internal/leads', () => {
       contactEmail: null,
       summary: 'primer mensaje',
       score: 40,
+      scoreReason: 'razón original',
       channel: 'telegram',
     });
     const { POST } = await import('@/app/api/internal/leads/route');
     const res = await POST(
       makeRequest(
-        { conversationId: 'conv_1', summary: 'ahora pidió precio exacto', score: 90 },
+        {
+          conversationId: 'conv_1',
+          summary: 'ahora pidió precio exacto',
+          score: 90,
+          scoreReason: 'pidió precio exacto y disponibilidad',
+        },
         { 'x-kairikos-internal-key': VALID_KEY },
       ),
     );
@@ -189,7 +195,11 @@ describe('POST /api/internal/leads', () => {
     expect(mockState.leadUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'lead_existing' },
-        data: expect.objectContaining({ summary: 'ahora pidió precio exacto', score: 90 }),
+        data: expect.objectContaining({
+          summary: 'ahora pidió precio exacto',
+          score: 90,
+          scoreReason: 'pidió precio exacto y disponibilidad',
+        }),
       }),
     );
     expect(mockState.leadAuditCreate).toHaveBeenCalledWith(
@@ -229,7 +239,14 @@ describe('POST /api/internal/leads', () => {
     const { POST } = await import('@/app/api/internal/leads/route');
     const res = await POST(
       makeRequest(
-        { conversationId: 'conv_1', contactName: 'Marcos', summary: 'quiere presupuesto', score: 80, channel: 'telegram' },
+        {
+          conversationId: 'conv_1',
+          contactName: 'Marcos',
+          summary: 'quiere presupuesto',
+          score: 80,
+          scoreReason: 'Pide precio exacto y disponibilidad esta semana.',
+          channel: 'telegram',
+        },
         { 'x-kairikos-internal-key': VALID_KEY },
       ),
     );
@@ -241,6 +258,7 @@ describe('POST /api/internal/leads', () => {
         businessName: 'Peluquería Aurora',
         contactName: 'Marcos',
         score: 80,
+        scoreReason: 'Pide precio exacto y disponibilidad esta semana.',
         channel: 'telegram',
       }),
     );

@@ -21,6 +21,7 @@ const VARS = {
   contactEmail: null,
   summary: 'Pregunta por presupuesto de reforma de baño completo.',
   score: 78,
+  scoreReason: 'Pregunta precio exacto y quiere cita esta semana.',
   channel: 'whatsapp',
 };
 
@@ -68,5 +69,19 @@ describe('buildNewLeadEmail', () => {
     const { html } = buildNewLeadEmail({ ...VARS, summary: '<script>alert(1)</script>' });
     expect(html).not.toContain('<script>');
     expect(html).toContain('&lt;script&gt;');
+  });
+
+  it('includes the score reason next to the score, and escapes HTML in it too', () => {
+    const { text, html } = buildNewLeadEmail(VARS);
+    expect(text).toContain('Pregunta precio exacto');
+    expect(html).toContain('Pregunta precio exacto');
+
+    const { html: escapedHtml } = buildNewLeadEmail({ ...VARS, scoreReason: '<img src=x onerror=alert(1)>' });
+    expect(escapedHtml).not.toContain('<img');
+  });
+
+  it('omits the score-reason line entirely when there is none', () => {
+    const { text } = buildNewLeadEmail({ ...VARS, scoreReason: null });
+    expect(text).not.toContain('Por qué esta puntuación');
   });
 });
