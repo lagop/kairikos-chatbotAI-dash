@@ -14,6 +14,8 @@ import {
   stuckThresholdDays,
   isStuck,
   listLeadsQueue,
+  parseLeadStatusFilter,
+  parseLeadSort,
 } from '@/lib/leads';
 
 describe('canMarkContacted (nuevo -> contactado)', () => {
@@ -195,5 +197,37 @@ describe('listLeadsQueue', () => {
 
     const rows = await listLeadsQueue(prisma);
     expect(rows[0].since).toEqual(createdAt);
+  });
+});
+
+describe('parseLeadStatusFilter', () => {
+  it('accepts each known status', () => {
+    expect(parseLeadStatusFilter('nuevo')).toBe('nuevo');
+    expect(parseLeadStatusFilter('contactado')).toBe('contactado');
+    expect(parseLeadStatusFilter('convertido')).toBe('convertido');
+    expect(parseLeadStatusFilter('descartado')).toBe('descartado');
+  });
+
+  it('falls back to null ("todos") for undefined, empty, or hostile input — never crashes', () => {
+    expect(parseLeadStatusFilter(undefined)).toBeNull();
+    expect(parseLeadStatusFilter('')).toBeNull();
+    expect(parseLeadStatusFilter('DROP TABLE leads;')).toBeNull();
+    expect(parseLeadStatusFilter('Nuevo')).toBeNull(); // case-sensitive, not a fuzzy match
+  });
+
+  it('takes the first value when the query string repeats the param', () => {
+    expect(parseLeadStatusFilter(['contactado', 'convertido'])).toBe('contactado');
+  });
+});
+
+describe('parseLeadSort', () => {
+  it('accepts "prioridad"', () => {
+    expect(parseLeadSort('prioridad')).toBe('prioridad');
+  });
+
+  it('defaults to "recientes" for undefined, empty, or hostile input', () => {
+    expect(parseLeadSort(undefined)).toBe('recientes');
+    expect(parseLeadSort('')).toBe('recientes');
+    expect(parseLeadSort('nonsense')).toBe('recientes');
   });
 });

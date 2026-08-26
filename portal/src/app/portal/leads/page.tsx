@@ -1,9 +1,17 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { requirePortalSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { isProductContracted } from '@/lib/client-product-access';
+import {
+  parseLeadStatusFilter,
+  parseLeadSort,
+  LEAD_STATUS_FILTERS,
+  type LeadStatusFilter,
+  type LeadSortOption,
+} from '@/lib/leads';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { EmptyState } from '@/components/portal/EmptyState';
 import { ProductPitch } from '@/components/portal/ProductPitch';
@@ -37,7 +45,11 @@ function tierLabel(tier: string): string {
   return tier === 'standard' ? 'Estándar' : tier.charAt(0).toUpperCase() + tier.slice(1);
 }
 
-export default async function PortalLeadsPage() {
+export default async function PortalLeadsPage({
+  searchParams,
+}: {
+  searchParams?: { estado?: string; orden?: string };
+}) {
   await requirePortalSession();
   const resolved = await resolveClientFromSession();
   if (!resolved) {
@@ -112,9 +124,20 @@ export default async function PortalLeadsPage() {
   // nunca llega a 'live' para 'leads' — el único código que lo escribe
   // está hardcodeado a chatbot). En cuanto isProductContracted es true, el
   // panel real se muestra directamente, sin esperar ningún estado extra.
+  //
+  // Leads Fase 8 — estado y orden vienen de la query string, validados
+  // con la misma disciplina que recall-client-view.ts: un valor
+  // desconocido u hostil nunca rompe la página, cae al valor por
+  // defecto (todos los estados, más recientes primero).
+  const statusFilter = parseLeadStatusFilter(searchParams?.estado);
+  const sort = parseLeadSort(searchParams?.orden);
+
   const leads = await prisma.lead.findMany({
-    where: { clientId: resolved.clientId },
-    orderBy: [{ createdAt: 'desc' }],
+    where: { clientId: resolved.clientId, ...(statusFilter ? { status: statusFilter } : {}) },
+    orderBy:
+      sort === 'prioridad'
+        ? [{ score: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }]
+        : [{ createdAt: 'desc' }],
   });
 
   return (
@@ -124,10 +147,17 @@ export default async function PortalLeadsPage() {
         title="Captación con IA"
         description="Los contactos que la IA ha priorizado para ti."
       />
+
+      <LeadsFilterBar statusFilter={statusFilter} sort={sort} />
+
       {leads.length === 0 ? (
         <EmptyState
-          title="Sin leads todavía"
-          description="En cuanto la IA detecte un contacto interesado en una conversación, aparecerá aquí."
+          title={statusFilter ? 'Ningún lead con ese estado' : 'Sin leads todavía'}
+          description={
+            statusFilter
+              ? 'Prueba a quitar el filtro para ver el resto de tus leads.'
+              : 'En cuanto la IA detecte un contacto interesado en una conversación, aparecerá aquí.'
+          }
         />
       ) : (
         <section className="space-y-3" data-testid="leads-list">
@@ -136,6 +166,69 @@ export default async function PortalLeadsPage() {
           ))}
         </section>
       )}
+    </div>
+  );
+}
+
+const STATUS_FILTER_LABEL: Record<LeadStatusFilter, string> = {
+  nuevo: 'Nuevo',
+  contactado: 'Contactado',
+  convertido: 'Convertido',
+  descartado: 'Descartado',
+};
+
+/** Plain query-param navigation, same convention as MonthLink/PageLink
+ *  in /portal/llamadas — no client component needed for a set of links
+ *  that just change which page renders. */
+function LeadsFilterBar({ statusFilter, sort }: { statusFilter: LeadStatusFilter | null; sort: LeadSortOption }) {
+  function href(overrides: { estado?: LeadStatusFilter | null; orden?: LeadSortOption }): string {
+    const params = new URLSearchParams();
+    const nextStatus = 'estado' in overrides ? overrides.estado : statusFilter;
+    const nextSort = overrides.orden ?? sort;
+    if (nextStatus) params.set('estado', nextStatus);
+    if (nextSort !== 'recientes') params.set('orden', nextSort);
+    const qs = params.toString();
+    return qs ? `/portal/leads?${qs}` : '/portal/leads';
+  }
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+      <nav className="flex flex-wrap items-center gap-2" aria-label="Filtrar por estado" data-testid="leads-status-filter">
+        <Link
+          href={href({ estado: null })}
+          className={statusFilter === null ? 'pill-success' : 'pill-muted'}
+          data-testid="leads-filter-todos"
+        >
+          Todos
+        </Link>
+        {LEAD_STATUS_FILTERS.map((status) => (
+          <Link
+            key={status}
+            href={href({ estado: status })}
+            className={statusFilter === status ? 'pill-success' : 'pill-muted'}
+            data-testid={`leads-filter-${status}`}
+          >
+            {STATUS_FILTER_LABEL[status]}
+          </Link>
+        ))}
+      </nav>
+      <nav className="flex items-center gap-2" aria-label="Ordenar" data-testid="leads-sort">
+        <Link
+          href={href({ orden: 'recientes' })}
+          className={sort === 'recientes' ? 'font-semibold text-kairikos-text' : 'text-kairikos-accent2 hover:underline'}
+          data-testid="leads-sort-recientes"
+        >
+          Más recientes
+        </Link>
+        <span className="text-kairikos-muted">·</span>
+        <Link
+          href={href({ orden: 'prioridad' })}
+          className={sort === 'prioridad' ? 'font-semibold text-kairikos-text' : 'text-kairikos-accent2 hover:underline'}
+          data-testid="leads-sort-prioridad"
+        >
+          Mayor prioridad
+        </Link>
+      </nav>
     </div>
   );
 }

@@ -27,6 +27,39 @@ export function canDiscard(status: string): boolean {
   return status === 'nuevo' || status === 'contactado';
 }
 
+// --- Client-facing list: sort/filter --------------------------------------
+// Leads Fase 8 — the client's own /portal/leads was a flat, newest-first
+// list with no way to sort by priority or filter down to one status.
+// Fine while a client has a handful of leads; once volume grows, a
+// high-score lead from last week is buried under a wall of low-score
+// ones from this morning — exactly the "which ones matter" question the
+// product's whole pitch is built on answering.
+
+export const LEAD_STATUS_FILTERS = ['nuevo', 'contactado', 'convertido', 'descartado'] as const;
+export type LeadStatusFilter = (typeof LEAD_STATUS_FILTERS)[number];
+
+/** Validates a status filter from the query string. `null` means "todos"
+ *  — the default, and the only fallback for anything unrecognised, so a
+ *  malformed or hostile value never breaks the page, it just shows
+ *  everything. Same clamp-don't-crash posture as recall-client-view.ts's
+ *  clampMonth/clampPage. */
+export function parseLeadStatusFilter(raw: string | string[] | undefined): LeadStatusFilter | null {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return value !== undefined && (LEAD_STATUS_FILTERS as readonly string[]).includes(value)
+    ? (value as LeadStatusFilter)
+    : null;
+}
+
+export const LEAD_SORT_OPTIONS = ['recientes', 'prioridad'] as const;
+export type LeadSortOption = (typeof LEAD_SORT_OPTIONS)[number];
+
+/** 'recientes' (newest first) is the only sensible default for anything
+ *  not recognised — same reasoning as the status filter above. */
+export function parseLeadSort(raw: string | string[] | undefined): LeadSortOption {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return value === 'prioridad' ? 'prioridad' : 'recientes';
+}
+
 // --- Stuck detection -----------------------------------------------------
 // Leads Fase 5 deliberately shipped this queue as read-only support
 // visibility per-client only, on the reasoning that "the client's own
