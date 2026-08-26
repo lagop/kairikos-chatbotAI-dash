@@ -117,6 +117,14 @@ services:
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       STRIPE_CREDENTIAL_ENCRYPTION_KEY: ${STRIPE_CREDENTIAL_ENCRYPTION_KEY:-}
+      # 'prospecting' — Google Places has the same admin-configurable
+      # fallback pattern as Stripe above (/admin/portal/settings/integrations
+      # → IntegrationCredential). GOOGLE_PLACES_API_KEY was never wired in
+      # here when Fase A shipped it — same class of gap as Stripe's own
+      # env vars, fixed alongside the new encryption key it now shares
+      # this pattern with.
+      GOOGLE_PLACES_API_KEY: ${GOOGLE_PLACES_API_KEY:-}
+      INTEGRATION_CREDENTIAL_ENCRYPTION_KEY: ${INTEGRATION_CREDENTIAL_ENCRYPTION_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
