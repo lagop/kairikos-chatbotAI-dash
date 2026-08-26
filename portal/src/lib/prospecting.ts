@@ -18,6 +18,17 @@ import { logError } from './observability';
 // its tier's price was set to cover.
 // =============================================================================
 
+/** monthlyLeadCap for a freshly-created ProspectingCampaign, by
+ *  Product.tier — matches the "Prospectos/mes" column of the pricing
+ *  table in prisma/seed.ts exactly. Single source of truth so the cap a
+ *  client's campaign gets on first save can never drift from what their
+ *  tier was priced to cover. */
+export const TIER_LEAD_CAP: Readonly<Record<string, number>> = Object.freeze({
+  solo: 100,
+  team: 300,
+  business: 800,
+});
+
 export interface ProspectingCampaignInput {
   id: string;
   clientId: string;
@@ -46,6 +57,21 @@ export type RunProspectingSearchResult =
  *  recall-reports.ts's timezone precision. */
 function isNewCalendarMonth(usageResetAt: Date, now: Date): boolean {
   return usageResetAt.getUTCFullYear() !== now.getUTCFullYear() || usageResetAt.getUTCMonth() !== now.getUTCMonth();
+}
+
+/** Prospects don't need to be found in real time — a weekly cadence is
+ *  the target, and this is the isDigestDue-equivalent that decides
+ *  whether THIS tick is the one that runs it: null lastRunAt (never
+ *  run) is always due. Revalidated on every cron tick rather than
+ *  trusted from the scheduler's own cadence, same reasoning as
+ *  conversation-digest.ts's isDigestDue — the scheduler can be coarser
+ *  than the target without a campaign ever getting skipped outright. */
+export const PROSPECTING_RUN_INTERVAL_DAYS = 7;
+
+export function isProspectingRunDue(lastRunAt: Date | null, now: Date = new Date()): boolean {
+  if (lastRunAt === null) return true;
+  const elapsedDays = (now.getTime() - lastRunAt.getTime()) / (24 * 60 * 60 * 1000);
+  return elapsedDays >= PROSPECTING_RUN_INTERVAL_DAYS;
 }
 
 /**

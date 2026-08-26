@@ -12,11 +12,13 @@ import {
   type LeadStatusFilter,
   type LeadSortOption,
 } from '@/lib/leads';
+import { isProductContracted } from '@/lib/client-product-access';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { EmptyState } from '@/components/portal/EmptyState';
 import { ProductPitch } from '@/components/portal/ProductPitch';
 import { SelfServeProductCard, type SelfServeTierOption } from '@/components/portal/SelfServeProductCard';
 import { LeadStatusControls } from '@/components/portal/LeadStatusControls';
+import { ProspectingProfileCard } from '@/components/portal/ProspectingProfileCard';
 
 export const dynamic = 'force-dynamic';
 
@@ -174,13 +176,26 @@ export default async function PortalLeadsPage({
   const statusFilter = parseLeadStatusFilter(searchParams?.estado);
   const sort = parseLeadSort(searchParams?.orden);
 
-  const leads = await prisma.lead.findMany({
-    where: { clientId: resolved.clientId, ...(statusFilter ? { status: statusFilter } : {}) },
-    orderBy:
-      sort === 'prioridad'
-        ? [{ score: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }]
-        : [{ createdAt: 'desc' }],
-  });
+  const [leads, hasProspecting] = await Promise.all([
+    prisma.lead.findMany({
+      where: { clientId: resolved.clientId, ...(statusFilter ? { status: statusFilter } : {}) },
+      orderBy:
+        sort === 'prioridad'
+          ? [{ score: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }]
+          : [{ createdAt: 'desc' }],
+    }),
+    isProductContracted(prisma, resolved.clientId, 'prospecting'),
+  ]);
+
+  // Fase A — the profile card only makes sense for a client who actually
+  // bought 'prospecting'; a 'leads'-only client (the common case) never
+  // pays for this extra query.
+  const prospectingProfile = hasProspecting
+    ? await prisma.prospectingCampaign.findFirst({
+        where: { clientId: resolved.clientId },
+        select: { category: true, locationQuery: true, radiusMeters: true },
+      })
+    : null;
 
   return (
     <div className="space-y-6">
@@ -189,6 +204,8 @@ export default async function PortalLeadsPage({
         title="Captación con IA"
         description="Los contactos que la IA ha priorizado para ti."
       />
+
+      {hasProspecting ? <ProspectingProfileCard profile={prospectingProfile} /> : null}
 
       <LeadsFilterBar statusFilter={statusFilter} sort={sort} />
 
