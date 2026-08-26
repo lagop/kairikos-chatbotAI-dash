@@ -10,12 +10,16 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const mockState = vi.hoisted(() => ({ fetch: vi.fn(), logError: vi.fn() }));
+const mockState = vi.hoisted(() => ({ fetch: vi.fn(), logError: vi.fn(), resolveIntegrationSecret: vi.fn() }));
 
 vi.stubGlobal('fetch', mockState.fetch);
 
 vi.mock('@/lib/observability', () => ({
   logError: (...args: unknown[]) => mockState.logError(...args),
+}));
+
+vi.mock('@/lib/integration-credentials', () => ({
+  resolveIntegrationSecret: (...args: unknown[]) => mockState.resolveIntegrationSecret(...args),
 }));
 
 import { isGooglePlacesConfigured, searchPlaces, getPlaceDetails } from '@/lib/google-places';
@@ -27,6 +31,9 @@ function jsonResponse(body: unknown, ok = true, status = 200) {
 beforeEach(() => {
   mockState.fetch.mockReset();
   mockState.logError.mockReset();
+  // No credential saved through the settings page by default — the
+  // env var is what most of this file's tests exercise.
+  mockState.resolveIntegrationSecret.mockReset().mockResolvedValue(null);
   process.env.GOOGLE_PLACES_API_KEY = 'test_key_123';
 });
 
@@ -35,13 +42,28 @@ afterEach(() => {
 });
 
 describe('isGooglePlacesConfigured', () => {
-  it('true when GOOGLE_PLACES_API_KEY is set', () => {
-    expect(isGooglePlacesConfigured()).toBe(true);
+  it('true when GOOGLE_PLACES_API_KEY (env) is set and no credential is saved', async () => {
+    expect(await isGooglePlacesConfigured()).toBe(true);
   });
 
-  it('false when unset', () => {
+  it('false when neither the saved credential nor the env var is set', async () => {
     delete process.env.GOOGLE_PLACES_API_KEY;
-    expect(isGooglePlacesConfigured()).toBe(false);
+    expect(await isGooglePlacesConfigured()).toBe(false);
+  });
+
+  it('true from the saved credential alone, even with no env var', async () => {
+    delete process.env.GOOGLE_PLACES_API_KEY;
+    mockState.resolveIntegrationSecret.mockResolvedValue('AIzaSaved123');
+    expect(await isGooglePlacesConfigured()).toBe(true);
+  });
+
+  it('a saved credential takes precedence over the env var', async () => {
+    mockState.resolveIntegrationSecret.mockResolvedValue('AIzaSaved123');
+    await searchPlaces({ textQuery: 'panaderías en Tenerife' });
+    expect(mockState.fetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ headers: expect.objectContaining({ 'X-Goog-Api-Key': 'AIzaSaved123' }) }),
+    );
   });
 });
 
