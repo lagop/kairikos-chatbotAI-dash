@@ -2090,6 +2090,15 @@ model Lead {
   // machine. Null is exactly "eligible for the next enrichment sweep".
   enrichmentRequestedAt DateTime? @map("enrichment_requested_at")
 
+  // Prospección con IA, Fase C — give-up budget for automatic first
+  // contact, same shape as CallEvent.callerNotifyAttempts/
+  // callerNotifyError in recall-messaging.ts. A permanently-failing
+  // number (bad format, no WhatsApp) must stop being retried every tick
+  // forever, but status stays 'nuevo' regardless — a send failure is
+  // never claimed as a client decision the way marked_discarded is.
+  autoContactAttempts Int     @default(0) @map("auto_contact_attempts")
+  autoContactError    String? @map("auto_contact_error")
+
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   contactedAt DateTime? @map("contacted_at")
@@ -2116,7 +2125,8 @@ model LeadAudit {
   tenantId     String?  @map("tenant_id") @db.Uuid
   // 'created' | 'refreshed' | 'marked_contacted' | 'marked_converted' |
   // 'marked_discarded' | 'enriched' (Fase B — n8n's website-enrichment
-  // callback via PATCH /api/internal/leads/[id]/enrich)
+  // callback via PATCH /api/internal/leads/[id]/enrich) | 'contacted_auto'
+  // (Fase C — automatic first WhatsApp contact, actorId 'system:prospecting')
   action       String
   statusBefore String?  @map("status_before")
   statusAfter  String?  @map("status_after")
@@ -2185,6 +2195,23 @@ model ProspectingCampaign {
   usageResetAt        DateTime  @default(now()) @map("usage_reset_at")
   alertedAt           DateTime? @map("alerted_at")
 
+  // Prospección con IA, Fase C — first automatic WhatsApp contact stays
+  // off until the client explicitly opts in here; nothing sends without
+  // both set. consentVersion is checked against PROSPECTING_CONSENT_VERSION
+  // (src/lib/prospecting-contact.ts) at send time, not just at consent
+  // time — a future change to the consent copy makes old consent stop
+  // counting automatically instead of silently grandfathering it in.
+  consentAcknowledgedAt DateTime? @map("consent_acknowledged_at")
+  consentVersion        String?   @map("consent_version")
+  // Stamped once, automatically, the moment a live quality-rating check
+  // (not the possibly-stale MetaChannelConnection.qualityRating mirror)
+  // comes back YELLOW/RED right before a send batch — see
+  // runProspectingContact. Does NOT clear itself when quality recovers:
+  // re-consenting (PATCH .../consent) is what clears it, deliberately,
+  // so a degraded number gets a human look before contact resumes rather
+  // than silently starting back up on its own.
+  autoContactPausedAt DateTime? @map("auto_contact_paused_at")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -2203,7 +2230,8 @@ model ProspectingCampaignAudit {
   campaignId String   @map("campaign_id") @db.Uuid
   clientId   String   @map("client_id")
   tenantId   String?  @map("tenant_id") @db.Uuid
-  // 'created' | 'profile_updated' | 'paused' | 'resumed' | 'cap_reached'
+  // 'created' | 'profile_updated' | 'paused' | 'resumed' | 'cap_reached' |
+  // 'consent_given' | 'consent_revoked' (Fase C)
   action     String
   before     Json?
   after      Json?

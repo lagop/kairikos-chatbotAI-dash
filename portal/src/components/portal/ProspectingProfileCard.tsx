@@ -15,12 +15,16 @@ const ERROR_LABEL: Record<string, string> = {
   invalid_body: 'Revisa los datos — falta el rubro o la zona.',
   forbidden: 'Este producto no está disponible en tu cuenta ahora mismo.',
   internal_error: 'Algo falló al guardar. Si persiste, contacta con el equipo técnico.',
+  not_found: 'Guarda tu perfil de búsqueda antes de activar el contacto automático.',
 };
 
 export interface ProspectingProfile {
   category: string | null;
   locationQuery: string | null;
   radiusMeters: number | null;
+  // Fase C
+  consentAcknowledgedAt: Date | null;
+  autoContactPausedAt: Date | null;
 }
 
 export function ProspectingProfileCard({ profile }: { profile: ProspectingProfile | null }) {
@@ -31,6 +35,11 @@ export function ProspectingProfileCard({ profile }: { profile: ProspectingProfil
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+
+  const [consentBusy, setConsentBusy] = useState(false);
+  const [consentError, setConsentError] = useState<string | null>(null);
+  const [consentGiven, setConsentGiven] = useState(Boolean(profile?.consentAcknowledgedAt));
+  const [autoPaused, setAutoPaused] = useState(Boolean(profile?.autoContactPausedAt));
 
   const configured = Boolean(profile?.category && profile?.locationQuery);
 
@@ -63,6 +72,30 @@ export function ProspectingProfileCard({ profile }: { profile: ProspectingProfil
       setError(`Error de red: ${err instanceof Error ? err.message : 'desconocido'}`);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function toggleConsent(next: boolean) {
+    setConsentError(null);
+    setConsentBusy(true);
+    try {
+      const res = await fetch('/api/portal/prospecting/campaign/consent', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ consent: next }),
+      });
+      if (!res.ok) {
+        const detail = await res.json().catch(() => null);
+        setConsentError(ERROR_LABEL[detail?.error] ?? 'No se pudo actualizar el contacto automático.');
+        return;
+      }
+      setConsentGiven(next);
+      setAutoPaused(false);
+      router.refresh();
+    } catch (err) {
+      setConsentError(`Error de red: ${err instanceof Error ? err.message : 'desconocido'}`);
+    } finally {
+      setConsentBusy(false);
     }
   }
 
@@ -132,6 +165,64 @@ export function ProspectingProfileCard({ profile }: { profile: ProspectingProfil
         <p className="text-sm text-kairikos-success" data-testid="prospecting-profile-saved">
           Guardado.
         </p>
+      ) : null}
+
+      {configured ? (
+        <div className="border-t border-kairikos-border pt-4" data-testid="prospecting-consent-section">
+          {autoPaused ? (
+            <div className="space-y-2">
+              <p className="text-sm text-kairikos-danger" data-testid="prospecting-auto-paused-banner">
+                El contacto automático se pausó porque la calidad de tu número de WhatsApp bajó. Revísalo antes de
+                reanudar.
+              </p>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => toggleConsent(true)}
+                disabled={consentBusy}
+                data-testid="prospecting-consent-resume"
+              >
+                {consentBusy ? 'Reanudando…' : 'Reanudar contacto automático'}
+              </button>
+            </div>
+          ) : consentGiven ? (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm" data-testid="prospecting-consent-active">
+                Contacto automático por WhatsApp: activo.
+              </p>
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => toggleConsent(false)}
+                disabled={consentBusy}
+                data-testid="prospecting-consent-revoke"
+              >
+                {consentBusy ? 'Desactivando…' : 'Desactivar'}
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-sm text-kairikos-muted">
+                Con tu autorización, contactamos automáticamente por WhatsApp a cada prospecto nuevo desde tu propio
+                número. Eres responsable de este contacto.
+              </p>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => toggleConsent(true)}
+                disabled={consentBusy}
+                data-testid="prospecting-consent-give"
+              >
+                {consentBusy ? 'Activando…' : 'Autorizar contacto automático'}
+              </button>
+            </div>
+          )}
+          {consentError ? (
+            <p className="mt-2 text-sm text-kairikos-danger" data-testid="prospecting-consent-error">
+              {consentError}
+            </p>
+          ) : null}
+        </div>
       ) : null}
     </section>
   );
