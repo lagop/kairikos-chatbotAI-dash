@@ -86,7 +86,7 @@ export async function runProspectingSearch(
   campaign: ProspectingCampaignInput,
   now: Date = new Date(),
 ): Promise<RunProspectingSearchResult> {
-  if (!isGooglePlacesConfigured()) {
+  if (!(await isGooglePlacesConfigured())) {
     return { ok: false, error: 'not_configured' };
   }
   if (!campaign.category || !campaign.locationQuery) {

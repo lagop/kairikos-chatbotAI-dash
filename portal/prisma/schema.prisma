@@ -336,6 +336,7 @@ model Operator {
   webQuoteAudits           WebQuoteAudit[]
   invoicesMarkedPaid       Invoice[]
   recallSubscriptionAudits RecallSubscriptionAudit[]
+  integrationCredentialAudits IntegrationCredentialAudit[]
 
   @@index([email])
   @@index([isActive])
@@ -1610,6 +1611,68 @@ model StripeCatalogAudit {
 
   @@index([productId])
   @@index([action])
+  @@index([createdAt])
+}
+
+// =============================================================================
+// Generic encrypted credential storage for the operator's own third-party
+// API keys, shown at /admin/portal/settings/integrations — first user is
+// GOOGLE_PLACES_API_KEY ('prospecting'). Same encrypted-in-DB pattern as
+// StripeOperatorCredential above (AES-256-GCM, src/lib/operator-crypto.ts),
+// with its OWN dedicated encryption key (INTEGRATION_CREDENTIAL_ENCRYPTION_KEY)
+// — never shared with Stripe's or any other *_ENCRYPTION_KEY.
+//
+// Deliberately NOT the same model as OperatorSettings (KAIA-1106): that one
+// assumes secrets live in 1Password/env vars and stores only a reference —
+// it was built but never wired to a route or UI, and repurposing it to hold
+// an actual secret value would contradict its own documented design. One
+// row per `toolKey` ('google_places', and whatever integration comes next)
+// rather than one dedicated model per integration — a single simple API
+// key doesn't need Stripe's test/live-mode duality, so a generic row is
+// enough; a future integration with more structure can still get its own
+// dedicated model rather than being forced into this shape.
+model IntegrationCredential {
+  id          String @id @default(uuid()) @db.Uuid
+  // Stable key used in code and API routes, e.g. 'google_places'. Never
+  // changes after creation.
+  toolKey     String @unique @map("tool_key")
+  // Human label for the settings UI, e.g. "Google Places".
+  displayName String @map("display_name")
+
+  secretCiphertext Bytes @map("secret_ciphertext")
+  secretIv         Bytes @map("secret_iv")
+  secretTag        Bytes @map("secret_tag")
+  // Last 4 chars in cleartext — lets the UI show "•••• aBcD" without a
+  // decrypt, same as StripeOperatorCredential.testSecretKeyLastFour.
+  secretLastFour   String @map("secret_last_four")
+
+  savedAt   DateTime @map("saved_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  auditLogs IntegrationCredentialAudit[]
+}
+
+// Append-only. before/after must NEVER contain the plaintext key or
+// ciphertext — only non-sensitive fields (toolKey, lastFour, configured).
+model IntegrationCredentialAudit {
+  id           String @id @default(uuid()) @db.Uuid
+  credentialId String @map("credential_id") @db.Uuid
+  toolKey      String @map("tool_key")
+  // 'credential_saved' | 'credential_rotated'
+  action       String
+  before       Json?
+  after        Json?
+
+  actorOperatorId String?  @map("actor_operator_id") @db.Uuid
+  actorEmail      String?  @map("actor_email")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  credential IntegrationCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  operator   Operator?             @relation(fields: [actorOperatorId], references: [id], onDelete: SetNull)
+
+  @@index([credentialId])
+  @@index([toolKey])
   @@index([createdAt])
 }
 

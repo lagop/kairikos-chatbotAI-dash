@@ -1,5 +1,6 @@
 import 'server-only';
 import { logError } from './observability';
+import { resolveIntegrationSecret } from './integration-credentials';
 
 // =============================================================================
 // Prospección con IA, Fase A — thin fetch-direct client for the Google
@@ -26,11 +27,22 @@ import { logError } from './observability';
 // =============================================================================
 
 const API_BASE = 'https://places.googleapis.com/v1';
+const TOOL_KEY = 'google_places';
 
 export type GooglePlacesResult<T> = { ok: true; data: T } | { ok: false; error: string; status?: number };
 
-export function isGooglePlacesConfigured(): boolean {
-  return Boolean(process.env.GOOGLE_PLACES_API_KEY);
+/**
+ * The key an operator pasted at /admin/portal/settings/integrations takes
+ * precedence; GOOGLE_PLACES_API_KEY (env) is the fallback for an
+ * environment where nothing has been saved through the portal yet — same
+ * precedence as resolveActiveStripeSecret()'s DB-then-env fallback.
+ */
+async function resolveApiKey(): Promise<string | null> {
+  return (await resolveIntegrationSecret(TOOL_KEY)) ?? process.env.GOOGLE_PLACES_API_KEY ?? null;
+}
+
+export async function isGooglePlacesConfigured(): Promise<boolean> {
+  return (await resolveApiKey()) !== null;
 }
 
 interface GraphErrorBody {
@@ -43,7 +55,7 @@ async function callPlacesApi<T>(
   fieldMask: string,
   body?: Record<string, unknown>,
 ): Promise<GooglePlacesResult<T>> {
-  const key = process.env.GOOGLE_PLACES_API_KEY;
+  const key = await resolveApiKey();
   if (!key) {
     return { ok: false, error: 'GOOGLE_PLACES_API_KEY not configured' };
   }
