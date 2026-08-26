@@ -13,6 +13,10 @@ const mockState = vi.hoisted(() => ({
   leadCreate: vi.fn(),
   leadUpdate: vi.fn(),
   leadAuditCreate: vi.fn(),
+  chatbotClientFindUnique: vi.fn(),
+  isProductContracted: vi.fn(),
+  sendNewLeadEmail: vi.fn(),
+  logError: vi.fn(),
 }));
 
 const mockTx = {
@@ -31,7 +35,20 @@ vi.mock('@/lib/prisma', () => ({
     $transaction: (fn: (tx: typeof mockTx) => unknown) => fn(mockTx),
     chatbotConversation: { findUnique: (...args: unknown[]) => mockState.conversationFindUnique(...args) },
     lead: { findFirst: (...args: unknown[]) => mockState.leadFindFirst(...args) },
+    chatbotClient: { findUnique: (...args: unknown[]) => mockState.chatbotClientFindUnique(...args) },
   },
+}));
+
+vi.mock('@/lib/client-product-access', () => ({
+  isProductContracted: (...args: unknown[]) => mockState.isProductContracted(...args),
+}));
+
+vi.mock('@/lib/leads-email', () => ({
+  sendNewLeadEmail: (...args: unknown[]) => mockState.sendNewLeadEmail(...args),
+}));
+
+vi.mock('@/lib/observability', () => ({
+  logError: (...args: unknown[]) => mockState.logError(...args),
 }));
 
 function makeRequest(body: unknown, headers: Record<string, string> = {}) {
@@ -48,9 +65,23 @@ beforeEach(() => {
   mockState.isDatabaseConfigured = true;
   mockState.conversationFindUnique.mockReset();
   mockState.leadFindFirst.mockReset();
-  mockState.leadCreate.mockReset().mockResolvedValue({ id: 'lead_1', clientId: 'c1', tenantId: 't1' });
+  // Echoes back the fields the route asked to create, like the real
+  // Prisma `create()` — Fase 6's notification reads score/channel/etc
+  // off this return value, so a fixed stub would silently pass undefined
+  // for all of them.
+  mockState.leadCreate.mockReset().mockImplementation(({ data }: { data: Record<string, unknown> }) =>
+    Promise.resolve({ id: 'lead_1', ...data }),
+  );
   mockState.leadUpdate.mockReset().mockResolvedValue({ id: 'lead_existing', clientId: 'c1', tenantId: 't1' });
   mockState.leadAuditCreate.mockReset();
+  mockState.chatbotClientFindUnique.mockReset().mockResolvedValue({
+    email: 'aurora@example.com',
+    name: 'Aurora Owner',
+    companyName: 'Peluquería Aurora',
+  });
+  mockState.isProductContracted.mockReset().mockResolvedValue(true);
+  mockState.sendNewLeadEmail.mockReset().mockResolvedValue({ ok: true, messageId: 'msg_1' });
+  mockState.logError.mockReset();
   process.env.PORTAL_API_KEY = VALID_KEY;
 });
 
@@ -190,5 +221,71 @@ describe('POST /api/internal/leads', () => {
     );
     expect(mockState.leadCreate).toHaveBeenCalled();
     expect(mockState.leadUpdate).not.toHaveBeenCalled();
+  });
+
+  it('Fase 6 — emails the client once, on a genuinely new lead, when they have the leads product', async () => {
+    mockState.conversationFindUnique.mockResolvedValue(conversation);
+    mockState.leadFindFirst.mockResolvedValue(null);
+    const { POST } = await import('@/app/api/internal/leads/route');
+    const res = await POST(
+      makeRequest(
+        { conversationId: 'conv_1', contactName: 'Marcos', summary: 'quiere presupuesto', score: 80, channel: 'telegram' },
+        { 'x-kairikos-internal-key': VALID_KEY },
+      ),
+    );
+    expect(res.status).toBe(200);
+    expect(mockState.isProductContracted).toHaveBeenCalledWith(expect.anything(), 'c1', 'leads');
+    expect(mockState.sendNewLeadEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'aurora@example.com',
+        businessName: 'Peluquería Aurora',
+        contactName: 'Marcos',
+        score: 80,
+        channel: 'telegram',
+      }),
+    );
+  });
+
+  it('Fase 6 — does NOT email when the client does not have the leads product', async () => {
+    mockState.conversationFindUnique.mockResolvedValue(conversation);
+    mockState.leadFindFirst.mockResolvedValue(null);
+    mockState.isProductContracted.mockResolvedValue(false);
+    const { POST } = await import('@/app/api/internal/leads/route');
+    await POST(makeRequest({ conversationId: 'conv_1', summary: 'x' }, { 'x-kairikos-internal-key': VALID_KEY }));
+    expect(mockState.sendNewLeadEmail).not.toHaveBeenCalled();
+  });
+
+  it('Fase 6 — never re-notifies when refreshing an existing "nuevo" lead', async () => {
+    mockState.conversationFindUnique.mockResolvedValue(conversation);
+    mockState.leadFindFirst.mockResolvedValue({
+      id: 'lead_existing',
+      clientId: 'c1',
+      tenantId: 't1',
+      status: 'nuevo',
+      contactName: null,
+      contactPhone: null,
+      contactEmail: null,
+      summary: 'primer mensaje',
+      score: 40,
+      channel: 'telegram',
+    });
+    const { POST } = await import('@/app/api/internal/leads/route');
+    await POST(
+      makeRequest({ conversationId: 'conv_1', summary: 'ahora pidió precio exacto' }, { 'x-kairikos-internal-key': VALID_KEY }),
+    );
+    expect(mockState.sendNewLeadEmail).not.toHaveBeenCalled();
+    expect(mockState.isProductContracted).not.toHaveBeenCalled();
+  });
+
+  it('Fase 6 — a failed notification never fails the request the ingestion is waiting on', async () => {
+    mockState.conversationFindUnique.mockResolvedValue(conversation);
+    mockState.leadFindFirst.mockResolvedValue(null);
+    mockState.isProductContracted.mockRejectedValue(new Error('db down'));
+    const { POST } = await import('@/app/api/internal/leads/route');
+    const res = await POST(makeRequest({ conversationId: 'conv_1', summary: 'x' }, { 'x-kairikos-internal-key': VALID_KEY }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ ok: true, leadId: 'lead_1' });
+    expect(mockState.logError).toHaveBeenCalled();
   });
 });

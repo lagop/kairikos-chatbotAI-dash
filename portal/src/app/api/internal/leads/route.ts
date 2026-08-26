@@ -2,6 +2,9 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateInternalRequest, internalAuthFailureResponse } from '@/lib/internal-auth';
+import { isProductContracted } from '@/lib/client-product-access';
+import { sendNewLeadEmail } from '@/lib/leads-email';
+import { logError } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -119,6 +122,43 @@ export async function POST(req: NextRequest) {
     });
     return row;
   });
+
+  // Fase 6 — best-effort, never blocks the response the ingestion is
+  // waiting on. Only fires HERE, on a genuinely new lead — the refresh
+  // branch above must never re-notify on every later turn of the same
+  // conversation. Gated on 'leads' specifically: a Lead can exist for a
+  // client without that product (recall's phone-sourced leads reuse this
+  // same model — see the schema comment on Lead.channel), and those
+  // clients already get told about a missed call over WhatsApp by
+  // recall's own messaging engine, so a second, unrelated "captación"
+  // email would be redundant, not additive.
+  try {
+    const hasLeadsProduct = await isProductContracted(prisma, created.clientId, 'leads');
+    if (hasLeadsProduct) {
+      const client = await prisma.chatbotClient.findUnique({
+        where: { id: created.clientId },
+        select: { email: true, name: true, companyName: true },
+      });
+      if (client) {
+        const emailResult = await sendNewLeadEmail({
+          to: client.email,
+          businessName: client.companyName ?? client.name,
+          contactName: created.contactName,
+          contactPhone: created.contactPhone,
+          contactEmail: created.contactEmail,
+          summary: created.summary,
+          score: created.score,
+          channel: created.channel,
+        });
+        if (!emailResult.ok) {
+          logError('leads.new_lead_email_failed', new Error(emailResult.error), { leadId: created.id }, 'warn');
+        }
+      }
+    }
+  } catch (err) {
+    logError('leads.new_lead_notification_failed', err, { leadId: created.id }, 'warn');
+  }
+
   return NextResponse.json({ ok: true, leadId: created.id });
 }
 
