@@ -25,7 +25,12 @@ vi.mock('@/lib/observability', () => ({
   logError: (...a: unknown[]) => mockState.logError(...a),
 }));
 
-import { runProspectingSearch, type ProspectingCampaignInput } from '@/lib/prospecting';
+import {
+  runProspectingSearch,
+  isProspectingRunDue,
+  TIER_LEAD_CAP,
+  type ProspectingCampaignInput,
+} from '@/lib/prospecting';
 
 const state = {
   leadFindMany: vi.fn(),
@@ -263,5 +268,24 @@ describe('runProspectingSearch — Lead creation', () => {
     const result = await runProspectingSearch(prisma, campaign(), NOW);
     expect(result).toEqual({ ok: false, error: 'search_failed' });
     expect(state.campaignUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe('isProspectingRunDue', () => {
+  it('always due when never run before', () => {
+    expect(isProspectingRunDue(null, NOW)).toBe(true);
+  });
+
+  it('not due before 7 days have elapsed, due at or after', () => {
+    const sixDaysAgo = new Date(NOW.getTime() - 6 * 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(NOW.getTime() - 7 * 24 * 60 * 60 * 1000);
+    expect(isProspectingRunDue(sixDaysAgo, NOW)).toBe(false);
+    expect(isProspectingRunDue(sevenDaysAgo, NOW)).toBe(true);
+  });
+});
+
+describe('TIER_LEAD_CAP', () => {
+  it('matches the pricing table in prisma/seed.ts exactly', () => {
+    expect(TIER_LEAD_CAP).toEqual({ solo: 100, team: 300, business: 800 });
   });
 });

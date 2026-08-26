@@ -8,7 +8,12 @@
 // =============================================================================
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { sendNewLeadEmail, buildNewLeadEmail } from '@/lib/leads-email';
+import {
+  sendNewLeadEmail,
+  buildNewLeadEmail,
+  sendProspectingBatchEmail,
+  buildProspectingBatchEmail,
+} from '@/lib/leads-email';
 
 beforeEach(() => {
   delete process.env.RESEND_API_KEY;
@@ -83,5 +88,36 @@ describe('buildNewLeadEmail', () => {
   it('omits the score-reason line entirely when there is none', () => {
     const { text } = buildNewLeadEmail({ ...VARS, scoreReason: null });
     expect(text).not.toContain('Por qué esta puntuación');
+  });
+});
+
+describe('sendProspectingBatchEmail — skip branches', () => {
+  it('skips with reason no_recipient when "to" has no @', async () => {
+    const result = await sendProspectingBatchEmail({ to: '', businessName: 'Ferretería Central', count: 3 });
+    expect(result).toEqual({ ok: true, skipped: true, messageId: null, reason: 'no_recipient' });
+  });
+
+  it('skips with reason no_api_key when RESEND_API_KEY is not configured', async () => {
+    const result = await sendProspectingBatchEmail({ to: 'a@b.com', businessName: 'Ferretería Central', count: 3 });
+    expect(result).toEqual({ ok: true, skipped: true, messageId: null, reason: 'no_api_key' });
+  });
+});
+
+describe('buildProspectingBatchEmail', () => {
+  it('singular vs plural depending on count, always includes /portal/leads', () => {
+    const one = buildProspectingBatchEmail({ businessName: 'Aurora', count: 1 });
+    expect(one.subject).toContain('1 prospecto nuevo');
+    expect(one.subject).not.toContain('prospectos');
+
+    const many = buildProspectingBatchEmail({ businessName: 'Aurora', count: 5 });
+    expect(many.subject).toContain('5 prospectos nuevos');
+    expect(many.text).toContain('/portal/leads');
+    expect(many.html).toContain('/portal/leads');
+  });
+
+  it('escapes the business name in html', () => {
+    const { html } = buildProspectingBatchEmail({ businessName: '<b>Aurora</b>', count: 2 });
+    expect(html).not.toContain('<b>Aurora</b>');
+    expect(html).toContain('&lt;b&gt;');
   });
 });

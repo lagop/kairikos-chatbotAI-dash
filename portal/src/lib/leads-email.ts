@@ -118,3 +118,54 @@ export function buildNewLeadEmail(vars: NewLeadEmailVars): { subject: string; te
 export async function sendNewLeadEmail(input: { to: string } & NewLeadEmailVars): Promise<SendNewLeadEmailResult> {
   return sendEmail(input.to, buildNewLeadEmail(input));
 }
+
+// =============================================================================
+// Prospección con IA, Fase A — one email per campaign RUN, never per
+// lead. A run can surface a dozen businesses at once (unlike an inbound
+// lead, which always arrives one at a time from one conversation), so
+// sendNewLeadEmail's per-lead trigger is the wrong shape here — it would
+// mean a dozen emails landing in the same minute. Sent from
+// prospecting-tick's cron dispatch, only when a run actually created at
+// least one Lead.
+// =============================================================================
+
+export interface ProspectingBatchEmailVars {
+  businessName: string;
+  /** How many new Lead rows this run created — NOT detailsCallsMade;
+   *  the client cares about new prospects, not the API call count that
+   *  produced them. */
+  count: number;
+}
+
+export function buildProspectingBatchEmail(
+  vars: ProspectingBatchEmailVars,
+): { subject: string; text: string; html: string } {
+  const plural = vars.count === 1 ? 'prospecto nuevo' : 'prospectos nuevos';
+  const subject = `${vars.count} ${plural} encontrados`;
+  const text = [
+    `Hola ${vars.businessName},`,
+    '',
+    `Encontramos ${vars.count} ${plural} en tu zona. Los tienes en el portal, junto al resto de tus leads.`,
+    '',
+    `Puedes verlos y contactarlos desde el portal: ${PORTAL_LEADS_URL}`,
+    '',
+    '— Kairikos',
+  ].join('\n');
+  const html = [
+    `<p>Hola ${escapeHtml(vars.businessName)},</p>`,
+    `<p>Encontramos <strong>${vars.count} ${escapeHtml(plural)}</strong> en tu zona. Los tienes en el portal, junto al resto de tus leads.</p>`,
+    `<p><a href="${escapeHtml(PORTAL_LEADS_URL)}">Ver y contactar</a></p>`,
+    '<p>— Kairikos</p>',
+  ].join('\n');
+  return { subject, text, html };
+}
+
+/** Sent once per campaign run that produced at least one new Lead — the
+ *  caller (prospecting-tick) is responsible for that `count > 0` check;
+ *  this function doesn't skip on count:0 itself, since a caller might
+ *  legitimately want to test the zero-result copy path. */
+export async function sendProspectingBatchEmail(
+  input: { to: string } & ProspectingBatchEmailVars,
+): Promise<SendNewLeadEmailResult> {
+  return sendEmail(input.to, buildProspectingBatchEmail(input));
+}
