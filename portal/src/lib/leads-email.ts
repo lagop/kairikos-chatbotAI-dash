@@ -74,6 +74,10 @@ export interface NewLeadEmailVars {
   contactEmail: string | null;
   summary: string | null;
   score: number | null;
+  /** The classifier's own justification for `score` — see leads.ts's
+   *  header comment on why this exists alongside the number, not just
+   *  behind it. */
+  scoreReason: string | null;
   channel: string | null;
 }
 
@@ -90,6 +94,8 @@ export function buildNewLeadEmail(vars: NewLeadEmailVars): { subject: string; te
     `Tienes un lead nuevo${via ? ` por ${via}` : ''}${priority}: ${contactLine}.`,
     vars.summary ? '' : null,
     vars.summary ? vars.summary : null,
+    vars.scoreReason ? '' : null,
+    vars.scoreReason ? `Por qué esta puntuación: ${vars.scoreReason}` : null,
     '',
     `Puedes verlo y contactarlo desde el portal: ${PORTAL_LEADS_URL}`,
     '',
@@ -99,6 +105,7 @@ export function buildNewLeadEmail(vars: NewLeadEmailVars): { subject: string; te
     `<p>Hola ${escapeHtml(vars.businessName)},</p>`,
     `<p>Tienes un lead nuevo${via ? ` por ${escapeHtml(via)}` : ''}${escapeHtml(priority)}: <strong>${escapeHtml(contactLine)}</strong>.</p>`,
     vars.summary ? `<p>${escapeHtml(vars.summary)}</p>` : '',
+    vars.scoreReason ? `<p><em>Por qué esta puntuación:</em> ${escapeHtml(vars.scoreReason)}</p>` : '',
     `<p><a href="${escapeHtml(PORTAL_LEADS_URL)}">Ver y contactar el lead</a></p>`,
     '<p>— Kairikos</p>',
   ].filter((line) => line !== '').join('\n');

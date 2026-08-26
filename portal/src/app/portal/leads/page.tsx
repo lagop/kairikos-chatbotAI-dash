@@ -260,6 +260,7 @@ function LeadRow({
     contactEmail: string | null;
     summary: string | null;
     score: number | null;
+    scoreReason: string | null;
     channel: string | null;
     createdAt: Date;
   };
@@ -279,7 +280,7 @@ function LeadRow({
         </div>
         <div className="flex items-center gap-2">
           {lead.score !== null ? (
-            <span className="pill-muted" data-testid="lead-score">
+            <span className="pill-muted" data-testid="lead-score" title={lead.scoreReason ?? undefined}>
               Prioridad {lead.score}
             </span>
           ) : null}
@@ -289,6 +290,11 @@ function LeadRow({
         </div>
       </div>
       {lead.summary ? <p className="text-sm text-kairikos-text">{lead.summary}</p> : null}
+      {lead.scoreReason ? (
+        <p className="text-xs italic text-kairikos-muted" data-testid="lead-score-reason">
+          Por qué esta prioridad: {lead.scoreReason}
+        </p>
+      ) : null}
       <LeadStatusControls
         leadId={lead.id}
         status={lead.status as 'nuevo' | 'contactado' | 'convertido' | 'descartado'}

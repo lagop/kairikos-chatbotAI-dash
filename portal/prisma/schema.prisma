@@ -2032,7 +2032,15 @@ model Lead {
   summary      String?
   // 0-100, set by the n8n classifier. Nullable — no scoring pipeline is
   // guaranteed to run for every lead.
-  score        Int?
+  score       Int?
+  // Leads Fase 9 — the classifier's OWN short justification for that
+  // number ("pregunta precio y quiere cita esta semana"), not a second
+  // score. A bare 0-100 with no reasoning is a number the client either
+  // has to trust blindly or ignore; the whole product's credibility
+  // rests on this being visible next to the score, not just computed
+  // behind it. Nullable for the same reason `score` is: not every run of
+  // the classifier is guaranteed to produce one.
+  scoreReason String? @map("score_reason")
 
   // 'nuevo' | 'contactado' | 'convertido' | 'descartado'. See
   // src/lib/leads.ts for the transition predicates.

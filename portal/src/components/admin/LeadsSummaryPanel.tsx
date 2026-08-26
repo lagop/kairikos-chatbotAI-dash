@@ -30,6 +30,7 @@ export interface LeadSummaryRow {
   contactEmail: string | null;
   summary: string | null;
   score: number | null;
+  scoreReason: string | null;
   channel: string | null;
   createdAt: Date;
 }
@@ -61,6 +62,11 @@ export function LeadsSummaryPanel({ leads }: { leads: LeadSummaryRow[] }) {
               </div>
             </div>
             {lead.summary ? <p className="mt-2 text-sm text-kairikos-text">{lead.summary}</p> : null}
+            {lead.scoreReason ? (
+              <p className="mt-1 text-xs italic text-kairikos-muted" data-testid="leads-summary-score-reason">
+                Por qué esta prioridad: {lead.scoreReason}
+              </p>
+            ) : null}
           </li>
         );
       })}
