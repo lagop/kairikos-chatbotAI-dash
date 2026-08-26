@@ -179,6 +179,7 @@ export async function runProspectingSearch(
             externalPlaceId: candidate.id,
             contactName: details.data.name,
             contactPhone: details.data.phoneNumber,
+            website: details.data.websiteUri,
             summary: details.data.formattedAddress
               ? `Negocio encontrado en ${details.data.formattedAddress}.`
               : null,

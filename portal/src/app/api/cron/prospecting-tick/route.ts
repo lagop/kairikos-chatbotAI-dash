@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { runProspectingSearch, isProspectingRunDue } from '@/lib/prospecting';
+import { sweepPendingEnrichment } from '@/lib/prospecting-enrichment';
 import { sendProspectingBatchEmail } from '@/lib/leads-email';
 import { logError } from '@/lib/observability';
 
@@ -25,6 +26,12 @@ export const maxDuration = 60;
  * and every other campaign this tick still runs. A 200 with a `failed`
  * entry is the normal way a campaign reports trouble — telemetry the
  * scheduler logs, not a control signal.
+ *
+ * Fase B — after the per-campaign search loop, one more isolated step:
+ * sweepPendingEnrichment (src/lib/prospecting-enrichment.ts) crawls up to
+ * ENRICHMENT_BATCH_SIZE outbound leads' websites and hands them to n8n.
+ * This runs once per tick, not once per campaign — it's a flat sweep
+ * across leads, same shape as recall-tick's own non-campaign jobs.
  */
 function isAuthorizedCronRequest(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
@@ -110,5 +117,14 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, dueCount: due.length, results });
+  let enrichment: { ok: true; processed: number; delivered: number; crawlFailed: number } | { ok: false; error: string };
+  try {
+    const result = await sweepPendingEnrichment(prisma, now);
+    enrichment = { ok: true, ...result };
+  } catch (err) {
+    logError('prospecting_tick.enrichment_failed', err, {}, 'warn');
+    enrichment = { ok: false, error: err instanceof Error ? err.message : 'unknown error' };
+  }
+
+  return NextResponse.json({ ok: true, dueCount: due.length, results, enrichment });
 }
