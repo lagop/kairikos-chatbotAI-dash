@@ -17,6 +17,7 @@ const mockState = vi.hoisted(() => ({
   runProspectingSearch: vi.fn(),
   isProspectingRunDue: vi.fn(),
   sendProspectingBatchEmail: vi.fn(),
+  sweepPendingEnrichment: vi.fn(),
   logError: vi.fn(),
 }));
 
@@ -37,6 +38,10 @@ vi.mock('@/lib/prospecting', () => ({
 
 vi.mock('@/lib/leads-email', () => ({
   sendProspectingBatchEmail: (...a: unknown[]) => mockState.sendProspectingBatchEmail(...a),
+}));
+
+vi.mock('@/lib/prospecting-enrichment', () => ({
+  sweepPendingEnrichment: (...a: unknown[]) => mockState.sweepPendingEnrichment(...a),
 }));
 
 vi.mock('@/lib/observability', () => ({
@@ -65,6 +70,7 @@ beforeEach(() => {
   mockState.runProspectingSearch.mockReset().mockResolvedValue({ ok: true, created: 2, skippedDuplicate: 0, skippedClosed: 0, detailsCallsMade: 2, capReached: false });
   mockState.isProspectingRunDue.mockReset().mockImplementation((lastRunAt: Date | null) => lastRunAt === null);
   mockState.sendProspectingBatchEmail.mockReset().mockResolvedValue({ ok: true, messageId: 'm1' });
+  mockState.sweepPendingEnrichment.mockReset().mockResolvedValue({ processed: 0, delivered: 0, crawlFailed: 0 });
   mockState.logError.mockReset();
 });
 
@@ -142,5 +148,25 @@ describe('GET /api/cron/prospecting-tick', () => {
     mockState.isDatabaseConfigured = false;
     const res = await get(makeRequest());
     expect(res.status).toBe(503);
+  });
+
+  describe('Fase B — enrichment sweep', () => {
+    it('runs the enrichment sweep once per tick and reports it in the response', async () => {
+      mockState.sweepPendingEnrichment.mockResolvedValue({ processed: 3, delivered: 2, crawlFailed: 1 });
+      const res = await get(makeRequest());
+      const body = await res.json();
+      expect(mockState.sweepPendingEnrichment).toHaveBeenCalledTimes(1);
+      expect(body.enrichment).toEqual({ ok: true, processed: 3, delivered: 2, crawlFailed: 1 });
+    });
+
+    it('a throwing enrichment sweep does not fail the tick or the campaign results already computed', async () => {
+      mockState.sweepPendingEnrichment.mockRejectedValue(new Error('sweep boom'));
+      const res = await get(makeRequest());
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.results.camp_a.ok).toBe(true);
+      expect(body.enrichment).toEqual({ ok: false, error: 'sweep boom' });
+      expect(mockState.logError).toHaveBeenCalledWith('prospecting_tick.enrichment_failed', expect.anything(), {}, 'warn');
+    });
   });
 });

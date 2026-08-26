@@ -29,7 +29,12 @@ const MAX_ATTEMPTS = 6;
 // 5, 10, 20, 40, 80, capped at 240 for anything beyond that.
 const BACKOFF_MINUTES = [5, 10, 20, 40, 80, 240] as const;
 
-export type ChannelConnectionType = 'web' | 'telegram' | 'meta';
+// 'prospecting' (Fase B) is a Lead being enriched, not a channel
+// connection — connectionId is Lead.id, not a *ChannelConnection row.
+// Reusing this same delivery+retry plumbing means the enrichment
+// webhook gets the existing backoff/retry sweep (sync-channel-webhooks)
+// for free instead of needing one of its own.
+export type ChannelConnectionType = 'web' | 'telegram' | 'meta' | 'prospecting';
 
 export interface ChannelWebhookEvent {
   connectionType: ChannelConnectionType;

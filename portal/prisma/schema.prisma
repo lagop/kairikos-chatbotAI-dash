@@ -1921,7 +1921,9 @@ model WhatsappTemplate {
 // wizard-abandoned (scan + fire).
 model ChannelWebhookDelivery {
   id             String    @id @default(uuid()) @db.Uuid
-  // 'web' | 'telegram' | 'meta'
+  // 'web' | 'telegram' | 'meta' | 'prospecting' (Fase B — connectionId is
+  // the Lead.id being enriched, not a channel connection; deliverChannelEvent
+  // doesn't care which, it's the same delivery+retry plumbing either way)
   connectionType String    @map("connection_type")
   connectionId   String    @map("connection_id") @db.Uuid
   clientId       String    @map("client_id")
@@ -2073,6 +2075,21 @@ model Lead {
   // campaign run re-discovers a business already found for this client.
   externalPlaceId String? @map("external_place_id")
 
+  // Prospección con IA, Fase B — the business's own website, from Place
+  // Details (google-places.ts's websiteUri). Google Places already
+  // returns this during Fase A but it was discarded until now; Fase B
+  // is the reason to keep it: it's the crawl target for
+  // src/lib/prospecting-enrichment.ts. Null for any inbound lead, and
+  // for an outbound one Google had no website on file for.
+  website String?
+
+  // Prospección con IA, Fase B — stamped once src/lib/prospecting-
+  // enrichment.ts has attempted this lead (crawled + handed to n8n, or
+  // the crawl itself failed and was logged) — single-attempt-per-lead,
+  // same "once" posture as ProspectingCampaign.alertedAt, not a status
+  // machine. Null is exactly "eligible for the next enrichment sweep".
+  enrichmentRequestedAt DateTime? @map("enrichment_requested_at")
+
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   contactedAt DateTime? @map("contacted_at")
@@ -2097,7 +2114,9 @@ model LeadAudit {
   leadId       String   @map("lead_id") @db.Uuid
   clientId     String   @map("client_id")
   tenantId     String?  @map("tenant_id") @db.Uuid
-  // 'created' | 'refreshed' | 'marked_contacted' | 'marked_converted' | 'marked_discarded'
+  // 'created' | 'refreshed' | 'marked_contacted' | 'marked_converted' |
+  // 'marked_discarded' | 'enriched' (Fase B — n8n's website-enrichment
+  // callback via PATCH /api/internal/leads/[id]/enrich)
   action       String
   statusBefore String?  @map("status_before")
   statusAfter  String?  @map("status_after")

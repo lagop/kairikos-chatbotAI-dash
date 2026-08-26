@@ -263,6 +263,19 @@ describe('runProspectingSearch — Lead creation', () => {
     );
   });
 
+  it('Fase B — stores Place Details websiteUri as Lead.website, the crawl target for prospecting-enrichment.ts', async () => {
+    mockState.searchPlaces.mockResolvedValue({ ok: true, data: { results: [place('p1')], nextPageToken: null } });
+    mockState.getPlaceDetails.mockResolvedValue(details('p1', { websiteUri: 'https://ferreteria-central.example' }));
+
+    await runProspectingSearch(prisma, campaign(), NOW);
+
+    expect(state.leadCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ website: 'https://ferreteria-central.example' }),
+      }),
+    );
+  });
+
   it('search failure returns search_failed and touches nothing else', async () => {
     mockState.searchPlaces.mockResolvedValue({ ok: false, error: 'API key not valid' });
     const result = await runProspectingSearch(prisma, campaign(), NOW);
