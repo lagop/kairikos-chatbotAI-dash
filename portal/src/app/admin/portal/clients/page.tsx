@@ -38,11 +38,13 @@ export default async function AdminClientsPage({
         description="Vista de soporte de sólo lectura. Selecciona un cliente para ver el detalle en su portal."
         actions={
           <>
-            {/* WP-XX — the two operator queues were previously reachable
-                only by typing the URL: /admin/portal/web-quotes had no
-                link from anywhere in the UI. A queue nobody can click is
-                a queue nobody works. */}
+            {/* WP-XX — operator queues were previously reachable only by
+                typing the URL: /admin/portal/web-quotes had no link from
+                anywhere in the UI. A queue nobody can click is a queue
+                nobody works — /admin/portal/leads is linked here from the
+                day it was built, for the same reason. */}
             <Link href="/admin/portal/recall" className="btn-ghost">Altas de llamadas</Link>
+            <Link href="/admin/portal/leads" className="btn-ghost">Leads sin cerrar</Link>
             <Link href="/admin/portal/web-quotes" className="btn-ghost">Presupuestos de web</Link>
             <Link href="/admin/portal/settings/billing" className="btn-ghost">Configuración de Stripe</Link>
             <Link href="/admin/portal/support" className="btn-ghost">Solicitudes de ayuda</Link>
