@@ -34,7 +34,7 @@ export type {
 // captación" and "Reseñas en Google" respectively, not literal Spanish
 // translations of the product name. Same for 'recall' — the missed-call
 // recovery + review-request pack.
-export type ProductCode = 'chatbot' | 'web' | 'leads' | 'seo' | 'reviews' | 'recall';
+export type ProductCode = 'chatbot' | 'web' | 'leads' | 'seo' | 'reviews' | 'recall' | 'prospecting';
 
 export const PRODUCT_CODES: readonly ProductCode[] = Object.freeze([
   'chatbot',
@@ -43,6 +43,7 @@ export const PRODUCT_CODES: readonly ProductCode[] = Object.freeze([
   'seo',
   'reviews',
   'recall',
+  'prospecting',
 ]);
 
 export interface ProductCatalog {
@@ -111,6 +112,11 @@ export const PRODUCT_CATALOGS: Readonly<Record<ProductCode, ProductCatalog>> = O
   // — not in ChatbotConfigStep, whose draft→submitted→approved vocabulary
   // cannot express "waiting on Meta".
   recall: emptyCatalog('recall', 'Recuperación de llamadas y reseñas'),
+  // Fase A de "Prospección con IA" — mismo motivo que 'recall': el
+  // avance no lo maneja un wizard con pasos, lo maneja ProspectingCampaign
+  // directamente (perfil objetivo + contador de consumo mensual), un
+  // formulario simple en el propio /portal/leads, no un catálogo de pasos.
+  prospecting: emptyCatalog('prospecting', 'Prospección con IA'),
 });
 
 export class ProductCatalogError extends Error {

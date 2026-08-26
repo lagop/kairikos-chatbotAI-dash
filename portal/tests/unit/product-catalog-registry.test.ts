@@ -21,15 +21,15 @@ import {
 import { WIZARD_STEP_CATALOG } from '@/lib/wizard-catalog';
 
 describe('PRODUCT_CATALOGS', () => {
-  it('has exactly the six ProductCode keys', () => {
+  it('has exactly the seven ProductCode keys', () => {
     expect(Object.keys(PRODUCT_CATALOGS).sort()).toEqual(
-      ['chatbot', 'leads', 'recall', 'reviews', 'seo', 'web'].sort(),
+      ['chatbot', 'leads', 'prospecting', 'recall', 'reviews', 'seo', 'web'].sort(),
     );
-    expect(PRODUCT_CODES).toEqual(['chatbot', 'web', 'leads', 'seo', 'reviews', 'recall']);
+    expect(PRODUCT_CODES).toEqual(['chatbot', 'web', 'leads', 'seo', 'reviews', 'recall', 'prospecting']);
   });
 
   it('every non-chatbot product is a valid empty catalog, not omitted or throwing', () => {
-    for (const code of ['web', 'leads', 'seo', 'reviews', 'recall'] as ProductCode[]) {
+    for (const code of ['web', 'leads', 'seo', 'reviews', 'recall', 'prospecting'] as ProductCode[]) {
       const catalog = PRODUCT_CATALOGS[code];
       expect(catalog.code).toBe(code);
       expect(catalog.label).toBeTruthy();

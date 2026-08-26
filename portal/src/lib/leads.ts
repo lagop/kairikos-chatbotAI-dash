@@ -1,5 +1,6 @@
 import 'server-only';
 import type { PrismaClient } from '@prisma/client';
+import { isProductContracted } from './client-product-access';
 
 // =============================================================================
 // WP-XX — shared status-transition rules for Lead ("Captación con IA").
@@ -11,6 +12,23 @@ import type { PrismaClient } from '@prisma/client';
 // replicate the same string comparisons inline instead, same split
 // WebQuoteEditor.tsx already uses for web-quotes.ts's predicates.
 // =============================================================================
+
+/**
+ * Prospección con IA, Fase A — 'leads' and 'prospecting' feed the SAME
+ * Lead inbox (a business found via Google Places is source:'outbound' on
+ * the same model an inbound conversation lead uses), so either product
+ * alone unlocks it. Without this, a client who bought only `prospecting`
+ * would hit /portal/leads's "not contracted" pitch and have no way to
+ * see the leads that already exist for them — a real gap caught during
+ * planning, not a hypothetical one.
+ */
+export async function hasLeadsInboxAccess(prisma: PrismaClient, clientId: string): Promise<boolean> {
+  const [hasLeads, hasProspecting] = await Promise.all([
+    isProductContracted(prisma, clientId, 'leads'),
+    isProductContracted(prisma, clientId, 'prospecting'),
+  ]);
+  return hasLeads || hasProspecting;
+}
 
 /** nuevo -> contactado */
 export function canMarkContacted(status: string): boolean {

@@ -7,6 +7,13 @@
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
+
+const mockState = vi.hoisted(() => ({ isProductContracted: vi.fn() }));
+
+vi.mock('@/lib/client-product-access', () => ({
+  isProductContracted: (...a: unknown[]) => mockState.isProductContracted(...a),
+}));
+
 import {
   canDiscard,
   canMarkContacted,
@@ -16,6 +23,7 @@ import {
   listLeadsQueue,
   parseLeadStatusFilter,
   parseLeadSort,
+  hasLeadsInboxAccess,
 } from '@/lib/leads';
 
 describe('canMarkContacted (nuevo -> contactado)', () => {
@@ -229,5 +237,44 @@ describe('parseLeadSort', () => {
     expect(parseLeadSort(undefined)).toBe('recientes');
     expect(parseLeadSort('')).toBe('recientes');
     expect(parseLeadSort('nonsense')).toBe('recientes');
+  });
+});
+
+describe('hasLeadsInboxAccess', () => {
+  const prisma = {} as PrismaClient;
+
+  beforeEach(() => {
+    mockState.isProductContracted.mockReset();
+  });
+
+  it('true when only "leads" is contracted', async () => {
+    mockState.isProductContracted.mockImplementation((_p, _c, code: string) =>
+      Promise.resolve(code === 'leads'),
+    );
+    await expect(hasLeadsInboxAccess(prisma, 'client_1')).resolves.toBe(true);
+  });
+
+  it('true when only "prospecting" is contracted — the gap caught during planning', async () => {
+    mockState.isProductContracted.mockImplementation((_p, _c, code: string) =>
+      Promise.resolve(code === 'prospecting'),
+    );
+    await expect(hasLeadsInboxAccess(prisma, 'client_1')).resolves.toBe(true);
+  });
+
+  it('true when both are contracted', async () => {
+    mockState.isProductContracted.mockResolvedValue(true);
+    await expect(hasLeadsInboxAccess(prisma, 'client_1')).resolves.toBe(true);
+  });
+
+  it('false when neither is contracted', async () => {
+    mockState.isProductContracted.mockResolvedValue(false);
+    await expect(hasLeadsInboxAccess(prisma, 'client_1')).resolves.toBe(false);
+  });
+
+  it('checks both products, not just the first', async () => {
+    mockState.isProductContracted.mockResolvedValue(false);
+    await hasLeadsInboxAccess(prisma, 'client_1');
+    const checkedCodes = mockState.isProductContracted.mock.calls.map((call) => call[2]);
+    expect(checkedCodes.sort()).toEqual(['leads', 'prospecting']);
   });
 });
