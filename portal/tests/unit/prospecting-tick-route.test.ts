@@ -18,6 +18,7 @@ const mockState = vi.hoisted(() => ({
   isProspectingRunDue: vi.fn(),
   sendProspectingBatchEmail: vi.fn(),
   sweepPendingEnrichment: vi.fn(),
+  runProspectingContact: vi.fn(),
   logError: vi.fn(),
 }));
 
@@ -42,6 +43,10 @@ vi.mock('@/lib/leads-email', () => ({
 
 vi.mock('@/lib/prospecting-enrichment', () => ({
   sweepPendingEnrichment: (...a: unknown[]) => mockState.sweepPendingEnrichment(...a),
+}));
+
+vi.mock('@/lib/prospecting-contact', () => ({
+  runProspectingContact: (...a: unknown[]) => mockState.runProspectingContact(...a),
 }));
 
 vi.mock('@/lib/observability', () => ({
@@ -71,6 +76,7 @@ beforeEach(() => {
   mockState.isProspectingRunDue.mockReset().mockImplementation((lastRunAt: Date | null) => lastRunAt === null);
   mockState.sendProspectingBatchEmail.mockReset().mockResolvedValue({ ok: true, messageId: 'm1' });
   mockState.sweepPendingEnrichment.mockReset().mockResolvedValue({ processed: 0, delivered: 0, crawlFailed: 0 });
+  mockState.runProspectingContact.mockReset().mockResolvedValue({ ok: true, sent: 0, failed: 0, capReached: false });
   mockState.logError.mockReset();
 });
 
@@ -167,6 +173,55 @@ describe('GET /api/cron/prospecting-tick', () => {
       expect(body.results.camp_a.ok).toBe(true);
       expect(body.enrichment).toEqual({ ok: false, error: 'sweep boom' });
       expect(mockState.logError).toHaveBeenCalledWith('prospecting_tick.enrichment_failed', expect.anything(), {}, 'warn');
+    });
+  });
+
+  describe('Fase C — auto-contact dispatch', () => {
+    it('only runs contact for campaigns that have given consent, regardless of isProspectingRunDue', async () => {
+      // CAMPAIGN_B is NOT due (isProspectingRunDue only allows null lastRunAt
+      // by default in this file's mock) but consent must still be checked —
+      // contact is lead-driven, not tied to the weekly search cadence.
+      mockState.campaignFindMany.mockResolvedValue([
+        { ...CAMPAIGN_A, consentAcknowledgedAt: new Date('2026-09-01') },
+        { ...CAMPAIGN_B, consentAcknowledgedAt: new Date('2026-09-01') },
+      ]);
+      const res = await get(makeRequest());
+      const body = await res.json();
+      expect(mockState.runProspectingContact).toHaveBeenCalledTimes(2);
+      expect(Object.keys(body.contact)).toEqual(['camp_a', 'camp_b']);
+    });
+
+    it('never calls contact for a campaign with no consent', async () => {
+      mockState.campaignFindMany.mockResolvedValue([{ ...CAMPAIGN_A, consentAcknowledgedAt: null }]);
+      const res = await get(makeRequest());
+      const body = await res.json();
+      expect(mockState.runProspectingContact).not.toHaveBeenCalled();
+      expect(body.contact).toEqual({});
+    });
+
+    it('reports each campaign\'s contact outcome in the response', async () => {
+      mockState.campaignFindMany.mockResolvedValue([{ ...CAMPAIGN_A, consentAcknowledgedAt: new Date('2026-09-01') }]);
+      mockState.runProspectingContact.mockResolvedValue({ ok: true, sent: 2, failed: 0, capReached: false });
+      const res = await get(makeRequest());
+      const body = await res.json();
+      expect(body.contact.camp_a).toEqual({ ok: true, sent: 2, failed: 0, capReached: false });
+    });
+
+    it('one campaign throwing during contact does not stop the tick or lose the other campaigns\' outcomes', async () => {
+      mockState.campaignFindMany.mockResolvedValue([
+        { ...CAMPAIGN_A, id: 'camp_a', consentAcknowledgedAt: new Date('2026-09-01') },
+        { ...CAMPAIGN_B, id: 'camp_c', consentAcknowledgedAt: new Date('2026-09-01') },
+      ]);
+      mockState.runProspectingContact
+        .mockRejectedValueOnce(new Error('contact boom'))
+        .mockResolvedValueOnce({ ok: true, sent: 1, failed: 0, capReached: false });
+
+      const res = await get(makeRequest());
+      const body = await res.json();
+      expect(res.status).toBe(200);
+      expect(body.contact.camp_a).toEqual({ ok: false, error: 'contact boom' });
+      expect(body.contact.camp_c).toEqual({ ok: true, sent: 1, failed: 0, capReached: false });
+      expect(mockState.logError).toHaveBeenCalledWith('prospecting_tick.contact_failed', expect.anything(), { campaignId: 'camp_a' }, 'warn');
     });
   });
 });

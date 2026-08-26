@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { runProspectingSearch, isProspectingRunDue } from '@/lib/prospecting';
 import { sweepPendingEnrichment } from '@/lib/prospecting-enrichment';
+import { runProspectingContact } from '@/lib/prospecting-contact';
 import { sendProspectingBatchEmail } from '@/lib/leads-email';
 import { logError } from '@/lib/observability';
 
@@ -32,6 +33,13 @@ export const maxDuration = 60;
  * ENRICHMENT_BATCH_SIZE outbound leads' websites and hands them to n8n.
  * This runs once per tick, not once per campaign — it's a flat sweep
  * across leads, same shape as recall-tick's own non-campaign jobs.
+ *
+ * Fase C — runProspectingContact runs per CONSENTED campaign (not
+ * per-due, unlike the search loop above): whether there's a lead to
+ * message is driven by what Fase A/B already found, not by the weekly
+ * search cadence, so a campaign with consent is checked every tick. Its
+ * own daily cap and quality-rating gate are what actually bound the
+ * work — see prospecting-contact.ts.
  */
 function isAuthorizedCronRequest(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
@@ -66,6 +74,10 @@ export async function GET(req: NextRequest) {
       usageResetAt: true,
       alertedAt: true,
       lastRunAt: true,
+      status: true,
+      consentAcknowledgedAt: true,
+      consentVersion: true,
+      autoContactPausedAt: true,
     },
   });
 
@@ -126,5 +138,19 @@ export async function GET(req: NextRequest) {
     enrichment = { ok: false, error: err instanceof Error ? err.message : 'unknown error' };
   }
 
-  return NextResponse.json({ ok: true, dueCount: due.length, results, enrichment });
+  type ContactOutcome =
+    | { ok: true; sent: number; failed: number; capReached: boolean }
+    | { ok: false; error: string };
+  const contact: Record<string, ContactOutcome> = {};
+  const consented = campaigns.filter((c) => c.consentAcknowledgedAt !== null);
+  for (const campaign of consented) {
+    try {
+      contact[campaign.id] = await runProspectingContact(prisma, campaign, now);
+    } catch (err) {
+      logError('prospecting_tick.contact_failed', err, { campaignId: campaign.id }, 'warn');
+      contact[campaign.id] = { ok: false, error: err instanceof Error ? err.message : 'unknown error' };
+    }
+  }
+
+  return NextResponse.json({ ok: true, dueCount: due.length, results, enrichment, contact });
 }

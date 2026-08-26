@@ -193,7 +193,13 @@ export default async function PortalLeadsPage({
   const prospectingProfile = hasProspecting
     ? await prisma.prospectingCampaign.findFirst({
         where: { clientId: resolved.clientId },
-        select: { category: true, locationQuery: true, radiusMeters: true },
+        select: {
+          category: true,
+          locationQuery: true,
+          radiusMeters: true,
+          consentAcknowledgedAt: true,
+          autoContactPausedAt: true,
+        },
       })
     : null;
 
