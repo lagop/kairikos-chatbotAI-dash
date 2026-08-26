@@ -18,6 +18,8 @@ import {
   sendMessage,
   sendTemplate,
   getPhoneNumberInfo,
+  getPhoneNumbersForWaba,
+  syncSmbAppState,
   listMessageTemplates,
   isRetryableWhatsAppError,
   WHATSAPP_ERROR,
@@ -194,6 +196,54 @@ describe('getPhoneNumberInfo', () => {
       ok: true,
       data: { id: 'phone_1', display_phone_number: '+34 600 11 22 33', quality_rating: 'GREEN' },
     });
+  });
+
+  it('requests platform_type — how a coexistence connection is told apart from a plain Cloud API one', async () => {
+    mockState.fetch.mockResolvedValueOnce(jsonResponse({ id: 'phone_1', platform_type: 'CLOUD_API' }));
+    await getPhoneNumberInfo('token', 'phone_1');
+    expect(String(mockState.fetch.mock.calls[0][0])).toContain('platform_type');
+  });
+});
+
+describe('getPhoneNumbersForWaba', () => {
+  it('GETs the numbers on a WABA — coexistence FINISH events never carry a phone_number_id', async () => {
+    mockState.fetch.mockResolvedValueOnce(
+      jsonResponse({ data: [{ id: 'phone_9', display_phone_number: '+34 611 22 33 44' }] }),
+    );
+    const result = await getPhoneNumbersForWaba('token', 'waba_9');
+
+    expect(mockState.fetch.mock.calls[0][1].method).toBe('GET');
+    const url = String(mockState.fetch.mock.calls[0][0]);
+    expect(url).toContain('/waba_9/phone_numbers');
+    expect(result).toEqual({
+      ok: true,
+      data: { data: [{ id: 'phone_9', display_phone_number: '+34 611 22 33 44' }] },
+    });
+  });
+
+  it('returns an error result on a network failure, never throws', async () => {
+    mockState.fetch.mockRejectedValueOnce(new Error('down'));
+    const result = await getPhoneNumbersForWaba('token', 'waba_9');
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe('syncSmbAppState', () => {
+  it('POSTs the coexistence contact/history sync kickoff', async () => {
+    mockState.fetch.mockResolvedValueOnce(jsonResponse({ success: true }));
+    const result = await syncSmbAppState('token', 'phone_9');
+
+    const [url, init] = mockState.fetch.mock.calls[0];
+    expect(String(url)).toContain('/phone_9/smb_app_data');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({ messaging_product: 'whatsapp', sync_type: 'smb_app_state_sync' });
+    expect(result).toEqual({ ok: true, data: { success: true } });
+  });
+
+  it('returns an error result (never throws) when Meta rejects it', async () => {
+    mockState.fetch.mockResolvedValueOnce(jsonResponse({ error: { message: 'not eligible' } }, false, 400));
+    const result = await syncSmbAppState('token', 'phone_9');
+    expect(result).toMatchObject({ ok: false });
   });
 });
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { loadFacebookSdk, type FBLoginResponse } from '@/lib/meta-embedded-signup-sdk';
 
 // =============================================================================
 // WP: conexión de canales — Fase 3. WhatsApp Embedded Signup + Meta
@@ -22,8 +23,6 @@ import { useRouter } from 'next/navigation';
 // first-party npm package for it, matching the fetch-direct convention
 // the rest of this portal's third-party integrations already use.
 // =============================================================================
-
-const SDK_URL = 'https://connect.facebook.net/en_US/sdk.js';
 
 type MetaChannel = 'whatsapp' | 'messenger' | 'instagram';
 
@@ -49,46 +48,6 @@ const ERROR_LABEL: Record<string, string> = {
   not_configured: 'La conexión con Meta no está disponible ahora mismo.',
   service_unavailable: 'No disponible en este momento — contacta con soporte.',
 };
-
-interface FBLoginResponse {
-  authResponse?: { code?: string } | null;
-  status?: string;
-}
-
-declare global {
-  interface Window {
-    FB?: {
-      init: (opts: { appId: string; xfbml: boolean; version: string }) => void;
-      login: (
-        callback: (response: FBLoginResponse) => void,
-        opts: {
-          config_id: string;
-          response_type: 'code';
-          override_default_response_type: true;
-          extras?: Record<string, unknown>;
-        },
-      ) => void;
-    };
-    fbAsyncInit?: () => void;
-  }
-}
-
-function loadFacebookSdk(appId: string): Promise<void> {
-  if (window.FB) return Promise.resolve();
-  return new Promise((resolve) => {
-    window.fbAsyncInit = () => {
-      window.FB?.init({ appId, xfbml: false, version: 'v21.0' });
-      resolve();
-    };
-    if (document.getElementById('facebook-jssdk')) return;
-    const script = document.createElement('script');
-    script.id = 'facebook-jssdk';
-    script.src = SDK_URL;
-    script.async = true;
-    script.defer = true;
-    document.body.appendChild(script);
-  });
-}
 
 export function MetaChannelCard({
   metaAppId,

@@ -30,7 +30,40 @@ import { logError } from './observability';
 // "portal hands off the token, n8n does platform-specific activation"
 // boundary as Telegram (n8n calls WhatsApp's subscribed_apps/register
 // endpoints after receiving the token via the channel webhook bridge —
-// this module does not).
+// this module does not; recall-meta.ts's coexistence connect is the one
+// exception, since Coexistence's own rule — skip /register entirely — is
+// unsafe to leave to a separate system that doesn't know which
+// connections are coexistence-mode).
+//
+// Fase 8 ('recall') — Coexistence. Confirmed against Meta's current
+// (Aug 2026) published docs at developers.facebook.com/documentation/
+// business-messaging/whatsapp/embedded-signup/onboarding-business-app-
+// users/ — a step up from "written from training-data memory" but still
+// NOT the same as a live signup against a real App: Meta's own docs
+// there warn a completed FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING event
+// "does not prove that every backend step succeeded". What that source
+// confirms, that the rest of this file is built against:
+//   - Coexistence is selected by which Configuration (config_id) the
+//     popup was opened with — a SECOND config_id, created in the Meta
+//     App Dashboard against the "WhatsApp Embedded Signup Configuration
+//     With 60 Expiration Token" template (or a custom coexistence
+//     configuration), not a client-side flag. Hence META_COEXISTENCE_
+//     CONFIG_ID below, alongside META_CONFIG_ID rather than replacing it
+//     — a client can still connect Messenger/Instagram or a
+//     dedicated (non-coexistence) WhatsApp number through the standard
+//     config, and recall's coexistence connect is additive.
+//   - The popup posts `FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING` instead
+//     of `FINISH`, and — unlike FINISH — its payload carries ONLY
+//     `waba_id`, no `phone_number_id`. recall-meta.ts resolves the phone
+//     number id itself via GET /{waba_id}/phone_numbers, since a WABA
+//     being onboarded this way has exactly one number: the one already
+//     on the owner's phone.
+//   - POST /{phone_number_id}/register is explicitly wrong to call here
+//     ("skip the phone number registration step, as the number is
+//     already registered") — the opposite of the standard flow, where
+//     n8n calls it after connect. This is why isCoexistence exists on
+//     MetaChannelConnection: it is the one bit downstream consumers need
+//     to not break a client's number by registering it a second time.
 // =============================================================================
 
 function graphVersion(): string {
@@ -47,6 +80,15 @@ export function graphUrl(path: string): string {
 
 export function isMetaSignupConfigured(): boolean {
   return Boolean(process.env.META_APP_ID && process.env.META_APP_SECRET && process.env.META_CONFIG_ID);
+}
+
+/** Same app, a SEPARATE Configuration — see this file's header. Gates
+ *  recall's coexistence connect independently of the standard chatbot
+ *  channel connect, since a deployment can have one configured without
+ *  the other (e.g. while the coexistence Configuration is still being
+ *  set up in the Meta App Dashboard). */
+export function isCoexistenceSignupConfigured(): boolean {
+  return Boolean(process.env.META_APP_ID && process.env.META_APP_SECRET && process.env.META_COEXISTENCE_CONFIG_ID);
 }
 
 function getAppCredentials(): { appId: string; appSecret: string } {

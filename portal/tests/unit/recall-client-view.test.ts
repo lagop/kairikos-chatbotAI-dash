@@ -114,9 +114,20 @@ describe('loadRecallClientView — access', () => {
       status: 'forwarding_pending',
       since: new Date('2026-06-01T09:00:00.000Z'),
       virtualNumber: '+34910555123',
+      metaConnection: null,
     });
     // An empty dashboard here would read as "we sold you nothing".
     expect(mockState.computeMonthlyMetrics).not.toHaveBeenCalled();
+  });
+
+  it('Fase 8 — surfaces the bound Coexistence connection once one exists', async () => {
+    state.subFindFirst.mockResolvedValue(
+      subscription({ status: 'number_assigned', metaConnection: { displayPhoneNumber: '+34 611 22 33 44' } }),
+    );
+    await expect(load()).resolves.toMatchObject({
+      state: 'onboarding',
+      metaConnection: { displayPhoneNumber: '+34 611 22 33 44' },
+    });
   });
 
   it('treats paused and cancelled the same way — the client should see why', async () => {

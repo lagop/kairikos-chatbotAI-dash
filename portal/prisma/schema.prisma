@@ -1826,6 +1826,23 @@ model MetaChannelConnection {
   // loses the WhatsApp they work with every day, so it is worth watching.
   qualityRating      String? @map("quality_rating")
 
+  // Fase 8 ('recall') — Coexistence: the number was already live on the
+  // client's own phone in the WhatsApp Business app, and Embedded Signup
+  // linked the Cloud API alongside it instead of migrating it away. This
+  // is what tells the rest of the system (n8n's activation workflow, in
+  // particular) to SKIP POST /{phone_number_id}/register — Meta's docs
+  // are explicit that registering an already-coexisting number is wrong,
+  // not just redundant. WhatsApp only; always false for messenger/
+  // instagram rows.
+  isCoexistence Boolean @default(false) @map("is_coexistence")
+  // Raw value of GET /{phone_number_id}?fields=platform_type
+  // ('CLOUD_API' | 'ON_PREMISE' | 'NOT_APPLICABLE', per Meta). A
+  // coexistence connection that comes back CLOUD_API instead of the
+  // expected on-app value means the client's app-side link never
+  // actually took — worth surfacing rather than assuming the popup
+  // finishing was the whole story.
+  platformType  String? @map("platform_type")
+
   client              ChatbotClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant              Tenant?              @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   recallSubscriptions RecallSubscription[]
