@@ -28,6 +28,7 @@ import {
 import { getAllowedChannelsForClient } from '@/lib/channel-access';
 import { LeadsSummaryPanel, type LeadSummaryRow } from '@/components/admin/LeadsSummaryPanel';
 import { RecallOperatorPanel, type RecallPanelData } from '@/components/admin/RecallOperatorPanel';
+import { SeoTechnicalSetupPanel, type SeoProfilePanelData } from '@/components/admin/SeoTechnicalSetupPanel';
 import { isStuck, stuckThresholdDays } from '@/lib/recall';
 
 export const dynamic = 'force-dynamic';
@@ -349,6 +350,9 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
   // Recall Fase 5 — populated only when productCode === 'recall', same
   // three-part pattern as every block above.
   let recall: RecallPanelData | null = null;
+  // SEO con IA, Fase A — populated only when productCode === 'seo', same
+  // pattern as every block above.
+  let seoProfile: SeoProfilePanelData | null = null;
   if (isDatabaseConfigured) {
     try {
       const client = await prisma.chatbotClient.findUnique({
@@ -664,6 +668,42 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
           }
         }
 
+        if (productCode === 'seo') {
+          const profile = await prisma.seoProfile.findFirst({
+            where: { clientId: client.id },
+            orderBy: { createdAt: 'desc' },
+            select: {
+              id: true,
+              businessDescription: true,
+              targetAudience: true,
+              toneOfVoice: true,
+              siteUrl: true,
+              cmsType: true,
+              wordpressUrl: true,
+              wordpressUsername: true,
+              wordpressAppPasswordCiphertext: true,
+              technicalSetupNotes: true,
+              technicalSetupCompletedAt: true,
+              status: true,
+            },
+          });
+          if (profile) {
+            seoProfile = {
+              businessDescription: profile.businessDescription,
+              targetAudience: profile.targetAudience,
+              toneOfVoice: profile.toneOfVoice,
+              siteUrl: profile.siteUrl,
+              cmsType: profile.cmsType,
+              wordpressUrl: profile.wordpressUrl,
+              wordpressUsername: profile.wordpressUsername,
+              hasAppPassword: profile.wordpressAppPasswordCiphertext !== null,
+              technicalSetupNotes: profile.technicalSetupNotes,
+              technicalSetupCompletedAt: profile.technicalSetupCompletedAt?.toISOString() ?? null,
+              status: profile.status,
+            };
+          }
+        }
+
         const activities = await prisma.chatbotActivity.findMany({
           where: { clientId: client.id, productCode },
           orderBy: { completedAt: 'asc' },
@@ -953,6 +993,19 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
                 </Link>
               </header>
               <RecallOperatorPanel data={recall} />
+            </section>
+          ) : null}
+
+          {productCode === 'seo' ? (
+            <section className="card" aria-label="SEO con IA" data-testid="client-seo-section">
+              <header className="mb-4">
+                <h2 className="text-lg font-semibold">SEO con IA</h2>
+                <p className="mt-1 text-xs text-kairikos-muted">
+                  El contexto de negocio lo rellena el cliente. Completa aquí el acceso técnico de publicación
+                  cuando esté listo.
+                </p>
+              </header>
+              <SeoTechnicalSetupPanel clientId={params.clientId} profile={seoProfile} />
             </section>
           ) : null}
 

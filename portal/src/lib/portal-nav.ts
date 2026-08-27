@@ -41,6 +41,7 @@ export const PORTAL_NAV: readonly PortalNavItem[] = [
   // which calls became a job is decided by replying to the 19:00 digest.
   { href: '/portal/llamadas', label: 'Llamadas perdidas' },
   { href: '/portal/leads', label: 'Captación con IA' },
+  { href: '/portal/seo', label: 'SEO con IA' },
   { href: '/portal/resenas', label: 'Reseñas' },
   { href: '/portal/billing', label: 'Facturación' },
   { href: '/portal/support', label: 'Soporte' },

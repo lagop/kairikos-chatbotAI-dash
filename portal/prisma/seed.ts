@@ -118,11 +118,14 @@ export const PRODUCT_CATALOG: ProductCatalogEntry[] = [
     priceCents: 14900, setupFeeCents: 49900, currency: 'EUR', isActive: true,
     stripeRecurringPriceId: null, stripeSetupPriceId: null,
   },
-  // SEO — monthly only, no setup fee.
+  // SEO — monthly only, no setup fee. Placeholder Stripe price id, same
+  // convention as prospecting's own seed rows — the operator replaces it
+  // via Bootstrap at /admin/portal/settings/billing before this goes on
+  // sale for real.
   {
     code: 'seo', tier: 'standard', name: 'SEO y contenido con IA',
     priceCents: 19900, setupFeeCents: 0, currency: 'EUR', isActive: true,
-    stripeRecurringPriceId: null, stripeSetupPriceId: null,
+    stripeRecurringPriceId: 'price_seo_standard', stripeSetupPriceId: null,
   },
   // Google reviews — two self-serve tiers, matching the real published
   // pricing at kairikos.com/resenas-google (checked 2026-08-15). WP-15 —
