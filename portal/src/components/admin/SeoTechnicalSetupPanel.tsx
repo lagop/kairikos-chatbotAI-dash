@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { SeoAuditPanel, type SeoAuditResultData } from './SeoAuditPanel';
 
 // =============================================================================
 // SEO con IA, Fase A — the operator's half of SeoProfile's onboarding: the
@@ -23,6 +24,9 @@ export interface SeoProfilePanelData {
   technicalSetupNotes: string | null;
   technicalSetupCompletedAt: string | null;
   status: string;
+  lastAuditAt: string | null;
+  lastAuditResult: SeoAuditResultData | null;
+  lastAuditError: string | null;
 }
 
 const ERROR_LABEL: Record<string, string> = {
@@ -181,6 +185,14 @@ export function SeoTechnicalSetupPanel({
           </p>
         ) : null}
       </div>
+
+      <SeoAuditPanel
+        clientId={clientId}
+        hasSiteUrl={Boolean(profile.siteUrl)}
+        lastAuditAt={profile.lastAuditAt}
+        lastAuditResult={profile.lastAuditResult}
+        lastAuditError={profile.lastAuditError}
+      />
     </div>
   );
 }
