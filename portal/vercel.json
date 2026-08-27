@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/sync-seo-search-console",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/generate-seo-content",
+      "schedule": "0 6 * * *"
     }
   ]
 }

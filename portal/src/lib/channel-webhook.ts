@@ -34,7 +34,12 @@ const BACKOFF_MINUTES = [5, 10, 20, 40, 80, 240] as const;
 // Reusing this same delivery+retry plumbing means the enrichment
 // webhook gets the existing backoff/retry sweep (sync-channel-webhooks)
 // for free instead of needing one of its own.
-export type ChannelConnectionType = 'web' | 'telegram' | 'meta' | 'prospecting';
+//
+// 'seo_content' (SEO con IA, Fase C) is the same shape again —
+// connectionId is SeoContentDraft.id, requesting n8n write one article
+// draft. Same reasoning: reuse the existing retry sweep instead of
+// building a second one.
+export type ChannelConnectionType = 'web' | 'telegram' | 'meta' | 'prospecting' | 'seo_content';
 
 export interface ChannelWebhookEvent {
   connectionType: ChannelConnectionType;

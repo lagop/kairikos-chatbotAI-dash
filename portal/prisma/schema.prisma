@@ -140,6 +140,7 @@ model ChatbotClient {
   prospectingCampaignAudits  ProspectingCampaignAudit[]
   seoProfiles                SeoProfile[]
   seoProfileAudits           SeoProfileAudit[]
+  seoContentDrafts           SeoContentDraft[]
   recallBlockedNumbers       RecallBlockedNumber[]
   recallDigests              RecallDigest[]
   recallUsageMonths          RecallUsageMonth[]
@@ -524,6 +525,7 @@ model Tenant {
   prospectingCampaignAudits   ProspectingCampaignAudit[]
   seoProfiles                 SeoProfile[]
   seoProfileAudits            SeoProfileAudit[]
+  seoContentDrafts            SeoContentDraft[]
 
   @@index([slug])
   @@index([status])
@@ -2080,9 +2082,11 @@ model WhatsappTemplate {
 // wizard-abandoned (scan + fire).
 model ChannelWebhookDelivery {
   id             String    @id @default(uuid()) @db.Uuid
-  // 'web' | 'telegram' | 'meta' | 'prospecting' (Fase B — connectionId is
-  // the Lead.id being enriched, not a channel connection; deliverChannelEvent
-  // doesn't care which, it's the same delivery+retry plumbing either way)
+  // 'web' | 'telegram' | 'meta' | 'prospecting' | 'seo_content' — the
+  // last two aren't channel connections at all ('prospecting'
+  // connectionId is a Lead.id, 'seo_content' is a SeoContentDraft.id);
+  // deliverChannelEvent doesn't care which, it's the same delivery+retry
+  // plumbing either way.
   connectionType String    @map("connection_type")
   connectionId   String    @map("connection_id") @db.Uuid
   clientId       String    @map("client_id")
@@ -2474,6 +2478,12 @@ model SeoProfile {
   lastAuditResult Json?     @map("last_audit_result")
   lastAuditError  String?   @map("last_audit_error")
 
+  // SEO con IA, Fase C — stamped by lib/seo-content-generation.ts every
+  // time a draft is REQUESTED (not when it's generated/approved), same
+  // "when did we last kick this off" role as Lead.enrichmentRequestedAt.
+  // Gates the monthly cadence — see isGenerationDue in that module.
+  lastContentRequestedAt DateTime? @map("last_content_requested_at")
+
   // 'onboarding' | 'active' | 'paused'. Free string, same convention as
   // every other status column in this schema.
   status String @default("onboarding")
@@ -2481,10 +2491,11 @@ model SeoProfile {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  client        ChatbotClient     @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  clientProduct ClientProduct     @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
-  tenant        Tenant?           @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  client        ChatbotClient      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientProduct ClientProduct      @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
+  tenant        Tenant?            @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   auditLogs     SeoProfileAudit[]
+  contentDrafts SeoContentDraft[]
 
   @@index([clientId])
   @@index([tenantId])
@@ -2524,6 +2535,65 @@ model SeoProfileAudit {
   @@index([profileId, changedAt])
   @@index([clientId, changedAt])
   @@index([tenantId])
+}
+
+// =============================================================================
+// SEO con IA, Fase C — one AI-drafted article per row. Lifecycle:
+// 'pending_generation' (row created by lib/seo-content-generation.ts the
+// moment it dispatches the n8n request — so an operator sees "esto se
+// pidió, todavía no ha vuelto" as a real state, not silence) →
+// 'drafted' (n8n's callback, PATCH /api/internal/seo/content-drafts/[id],
+// filled in title/bodyHtml) → 'approved' | 'rejected' (operator decision
+// — the client never sees or approves a draft, per the session's own
+// design decision) → 'published' | 'publish_failed' (Fase C's later
+// publish step, WordPress REST API — see SeoProfile.wordpressUrl's
+// comment on why WordPress is the v1 publish target).
+//
+// current-state fields (reviewedBy/reviewedAt, publishedAt/wordpressPostId),
+// not a separate append-only audit table — same posture as
+// GoogleReview's aiDraftReply/replyApprovedBy/replyPublishedAt, which is
+// the direct precedent for "AI draft + human approval" in this schema.
+model SeoContentDraft {
+  id        String  @id @default(uuid()) @db.Uuid
+  profileId String  @map("profile_id") @db.Uuid
+  clientId  String  @map("client_id")
+  tenantId  String? @map("tenant_id") @db.Uuid
+
+  title           String?
+  bodyHtml        String? @map("body_html")
+  targetKeyword   String? @map("target_keyword")
+  metaDescription String? @map("meta_description")
+
+  // 'pending_generation' | 'drafted' | 'rejected' | 'approved' | 'published' | 'publish_failed'
+  status String @default("pending_generation")
+
+  // What lib/seo-content-generation.ts sent n8n to write this draft from
+  // (site audit summary + recent Search Console totals) — kept for the
+  // operator's review context. Frozen at request time; NOT re-derived on
+  // read, since the underlying signals may have moved on by review time.
+  sourceSignals Json? @map("source_signals")
+
+  requestedAt DateTime  @default(now()) @map("requested_at")
+  generatedAt DateTime? @map("generated_at")
+
+  // Operator email (the client never approves a draft — see the model
+  // comment above).
+  reviewedBy      String?   @map("reviewed_by")
+  reviewedAt      DateTime? @map("reviewed_at")
+  rejectionReason String?   @map("rejection_reason")
+
+  publishedAt      DateTime? @map("published_at")
+  wordpressPostId  String?   @map("wordpress_post_id")
+  wordpressPostUrl String?   @map("wordpress_post_url")
+  publishError     String?   @map("publish_error")
+
+  profile SeoProfile    @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  client  ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant  Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([profileId])
+  @@index([clientId])
+  @@index([status])
 }
 
 // =============================================================================
