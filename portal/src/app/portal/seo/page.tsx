@@ -10,6 +10,7 @@ import { ProductPitch } from '@/components/portal/ProductPitch';
 import { EmptyState } from '@/components/portal/EmptyState';
 import { SelfServeProductCard, type SelfServeTierOption } from '@/components/portal/SelfServeProductCard';
 import { SeoProfileCard } from '@/components/portal/SeoProfileCard';
+import { SeoTrendChart, type SeoTrendPoint } from '@/components/portal/SeoTrendChart';
 
 export const dynamic = 'force-dynamic';
 
@@ -130,8 +131,22 @@ export default async function PortalSeoPage({
 
   const connection = await prisma.googleSeoConnection.findUnique({
     where: { clientId: resolved.clientId },
-    select: { status: true, searchConsoleSiteUrl: true, connectedAt: true },
+    select: { id: true, status: true, searchConsoleSiteUrl: true, connectedAt: true },
   });
+
+  let trendPoints: SeoTrendPoint[] = [];
+  if (connection?.status === 'active') {
+    const metrics = await prisma.seoSearchConsoleMetric.findMany({
+      where: { connectionId: connection.id },
+      orderBy: { date: 'asc' },
+      select: { date: true, clicks: true, impressions: true },
+    });
+    trendPoints = metrics.map((m) => ({
+      date: m.date.toISOString().slice(0, 10),
+      clicks: m.clicks,
+      impressions: m.impressions,
+    }));
+  }
 
   return (
     <div className="space-y-6">
@@ -158,10 +173,16 @@ export default async function PortalSeoPage({
         ) : null}
 
         {connection?.status === 'active' ? (
-          <p className="text-sm" data-testid="seo-search-console-status">
-            Conectado a <span className="font-medium">{connection.searchConsoleSiteUrl}</span> desde el{' '}
-            {connection.connectedAt.toLocaleDateString('es-ES')}.
-          </p>
+          <div className="space-y-4">
+            <p className="text-sm" data-testid="seo-search-console-status">
+              Conectado a <span className="font-medium">{connection.searchConsoleSiteUrl}</span> desde el{' '}
+              {connection.connectedAt.toLocaleDateString('es-ES')}.
+            </p>
+            <div>
+              <p className="mb-2 text-sm font-semibold">Últimos 30 días</p>
+              <SeoTrendChart points={trendPoints} />
+            </div>
+          </div>
         ) : connection?.status === 'needs_reconnect' ? (
           <div className="space-y-2">
             <p className="text-sm text-kairikos-danger" data-testid="seo-search-console-status">

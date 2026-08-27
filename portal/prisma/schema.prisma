@@ -1373,11 +1373,45 @@ model GoogleSeoConnection {
   lastSyncAt             DateTime? @map("last_sync_at")
   lastSyncError          String?   @map("last_sync_error")
 
-  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  client  ChatbotClient            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant  Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  metrics SeoSearchConsoleMetric[]
 
   @@index([tenantId])
   @@index([status])
+}
+
+// =============================================================================
+// SEO con IA, Fase B — one row per DAY of site-wide Search Console
+// performance for a connected property, synced by
+// lib/seo-search-console-sync.ts. Unlike GoogleBusinessConnection's
+// "current state only" fields, the client report page needs an actual
+// trend (clicks/impressions over time — see GoogleSeoConnection's own
+// schema comment on why this product's report is a chart, not a list),
+// so this is genuinely a time-series table, not a latest-snapshot
+// column.
+//
+// `date` + `connectionId` is the idempotency key: a re-sync of an
+// already-synced day always upserts the same row rather than
+// duplicating it — necessary because Search Console data for a given
+// day keeps getting revised for a few days after it first appears
+// (documented ~2-3 day processing lag), so every sync re-fetches a
+// rolling window and overwrites, rather than only fetching "new" days.
+model SeoSearchConsoleMetric {
+  id           String   @id @default(uuid()) @db.Uuid
+  connectionId String   @map("connection_id") @db.Uuid
+  clientId     String   @map("client_id")
+  date         DateTime @db.Date
+  clicks       Int
+  impressions  Int
+  ctr          Float
+  position     Float
+  syncedAt     DateTime @default(now()) @map("synced_at")
+
+  connection GoogleSeoConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, date])
+  @@index([clientId])
 }
 
 // =============================================================================

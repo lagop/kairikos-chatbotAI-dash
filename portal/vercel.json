@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/generate-conversation-digests",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/sync-seo-search-console",
+      "schedule": "0 */6 * * *"
     }
   ]
 }
