@@ -21,13 +21,15 @@ export interface SeoContentDraftData {
   reviewedBy: string | null;
   reviewedAt: string | null;
   rejectionReason: string | null;
+  wordpressPostUrl: string | null;
+  publishError: string | null;
 }
 
 const STATUS_LABEL: Record<string, string> = {
   pending_generation: 'Generando…',
   drafted: 'Pendiente de revisión',
   rejected: 'Rechazado',
-  approved: 'Aprobado — pendiente de publicar',
+  approved: 'Aprobado',
   published: 'Publicado',
   publish_failed: 'Fallo al publicar',
 };
@@ -40,7 +42,7 @@ function DraftCard({ draft, clientId }: { draft: SeoContentDraftData; clientId: 
   const [rejectionReason, setRejectionReason] = useState('');
   const [expanded, setExpanded] = useState(false);
 
-  async function review(body: { action: 'approve' } | { action: 'reject'; rejectionReason: string }) {
+  async function review(body: { action: 'approve' } | { action: 'reject'; rejectionReason: string } | { action: 'retry_publish' }) {
     setError(null);
     setBusy(true);
     try {
@@ -100,6 +102,31 @@ function DraftCard({ draft, clientId }: { draft: SeoContentDraftData; clientId: 
         <p className="mb-3 text-xs text-kairikos-danger" data-testid="seo-content-draft-rejection-reason">
           Motivo: {draft.rejectionReason}
         </p>
+      ) : null}
+
+      {draft.status === 'published' && draft.wordpressPostUrl ? (
+        <p className="mb-3 text-xs" data-testid="seo-content-draft-published-link">
+          <a href={draft.wordpressPostUrl} target="_blank" rel="noreferrer" className="text-kairikos-accent underline">
+            Ver artículo publicado
+          </a>
+        </p>
+      ) : null}
+
+      {draft.status === 'publish_failed' ? (
+        <div className="mb-3 space-y-2">
+          <p className="text-xs text-kairikos-danger" data-testid="seo-content-draft-publish-error">
+            No se pudo publicar{draft.publishError ? `: ${draft.publishError}` : '.'}
+          </p>
+          <button
+            type="button"
+            className="btn-ghost"
+            disabled={busy}
+            onClick={() => review({ action: 'retry_publish' })}
+            data-testid="seo-content-draft-retry-publish"
+          >
+            Reintentar publicación
+          </button>
+        </div>
       ) : null}
 
       {error ? <p className="mb-2 text-xs text-kairikos-danger">{error}</p> : null}

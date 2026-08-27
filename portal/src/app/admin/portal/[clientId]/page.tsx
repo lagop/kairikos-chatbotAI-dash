@@ -724,6 +724,8 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
                 reviewedBy: true,
                 reviewedAt: true,
                 rejectionReason: true,
+                wordpressPostUrl: true,
+                publishError: true,
               },
             });
             seoContentDrafts = draftRows.map((d) => ({
@@ -737,6 +739,8 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
               reviewedBy: d.reviewedBy,
               reviewedAt: d.reviewedAt?.toISOString() ?? null,
               rejectionReason: d.rejectionReason,
+              wordpressPostUrl: d.wordpressPostUrl,
+              publishError: d.publishError,
             }));
           }
         }
