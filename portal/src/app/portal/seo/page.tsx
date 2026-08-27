@@ -22,9 +22,29 @@ export const metadata: Metadata = {
 // SEO con IA, Fase A — the client's own onboarding page. A single tier
 // ('standard'), so no month/tier picker like /portal/llamadas — just the
 // pitch when not contracted, or the SeoProfileCard form once it is.
+//
+// Fase B adds the Search Console connection status + connect link — same
+// query-param-driven connected/connect_error pattern as /portal/resenas's
+// own Google OAuth flow (WP-21).
 // =============================================================================
 
-export default async function PortalSeoPage() {
+const CONNECT_ERROR_LABEL: Record<string, string> = {
+  csrf: 'No se pudo verificar la solicitud — inténtalo de nuevo.',
+  token_exchange_failed: 'Google no pudo completar la conexión — inténtalo de nuevo.',
+  no_site_url: 'Indica primero la URL de tu sitio arriba, antes de conectar Search Console.',
+  site_not_verified:
+    'Esa cuenta de Google no tiene tu sitio verificado en Search Console. Verifícalo en Search Console y vuelve a intentarlo.',
+  no_tenant: 'No pudimos completar la conexión — escríbenos a soporte.',
+  not_configured: 'La conexión con Google no está disponible en este momento.',
+  not_available_in_dev_mode: 'La conexión con Google no está disponible en modo demo.',
+  forbidden: 'Este producto no está incluido en tu plan.',
+};
+
+export default async function PortalSeoPage({
+  searchParams,
+}: {
+  searchParams?: { connected?: string; connect_error?: string };
+}) {
   await requirePortalSession();
   const resolved = await resolveClientFromSession();
   if (!resolved) {
@@ -108,10 +128,55 @@ export default async function PortalSeoPage() {
     },
   });
 
+  const connection = await prisma.googleSeoConnection.findUnique({
+    where: { clientId: resolved.clientId },
+    select: { status: true, searchConsoleSiteUrl: true, connectedAt: true },
+  });
+
   return (
     <div className="space-y-6">
       <PageHeading eyebrow="Portal" title="SEO con IA" description="Cuéntanos de tu negocio para empezar." />
       <SeoProfileCard profile={profile} />
+
+      <section className="card space-y-3" aria-label="Search Console" data-testid="seo-search-console-card">
+        <div>
+          <p className="text-sm font-semibold">Google Search Console</p>
+          <p className="text-xs text-kairikos-muted">
+            Conecta tu cuenta de Google para que preparemos tu informe mensual de posicionamiento.
+          </p>
+        </div>
+
+        {searchParams?.connected === '1' ? (
+          <p className="text-sm text-kairikos-success" data-testid="seo-search-console-connected-banner">
+            Conectado correctamente.
+          </p>
+        ) : null}
+        {searchParams?.connect_error ? (
+          <p className="text-sm text-kairikos-danger" data-testid="seo-search-console-error-banner">
+            {CONNECT_ERROR_LABEL[searchParams.connect_error] ?? 'No se pudo completar la conexión con Google.'}
+          </p>
+        ) : null}
+
+        {connection?.status === 'active' ? (
+          <p className="text-sm" data-testid="seo-search-console-status">
+            Conectado a <span className="font-medium">{connection.searchConsoleSiteUrl}</span> desde el{' '}
+            {connection.connectedAt.toLocaleDateString('es-ES')}.
+          </p>
+        ) : connection?.status === 'needs_reconnect' ? (
+          <div className="space-y-2">
+            <p className="text-sm text-kairikos-danger" data-testid="seo-search-console-status">
+              La conexión dejó de funcionar — vuelve a conectarla.
+            </p>
+            <a href="/api/portal/seo/oauth/start" className="btn-primary" data-testid="seo-search-console-connect">
+              Reconectar Search Console
+            </a>
+          </div>
+        ) : (
+          <a href="/api/portal/seo/oauth/start" className="btn-primary" data-testid="seo-search-console-connect">
+            Conectar Search Console
+          </a>
+        )}
+      </section>
     </div>
   );
 }
