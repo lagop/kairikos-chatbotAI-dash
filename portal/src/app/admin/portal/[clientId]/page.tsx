@@ -29,6 +29,7 @@ import { getAllowedChannelsForClient } from '@/lib/channel-access';
 import { LeadsSummaryPanel, type LeadSummaryRow } from '@/components/admin/LeadsSummaryPanel';
 import { RecallOperatorPanel, type RecallPanelData } from '@/components/admin/RecallOperatorPanel';
 import { SeoTechnicalSetupPanel, type SeoProfilePanelData } from '@/components/admin/SeoTechnicalSetupPanel';
+import { SeoContentDraftsPanel, type SeoContentDraftData } from '@/components/admin/SeoContentDraftsPanel';
 import { isStuck, stuckThresholdDays } from '@/lib/recall';
 
 export const dynamic = 'force-dynamic';
@@ -353,6 +354,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
   // SEO con IA, Fase A — populated only when productCode === 'seo', same
   // pattern as every block above.
   let seoProfile: SeoProfilePanelData | null = null;
+  let seoContentDrafts: SeoContentDraftData[] = [];
   if (isDatabaseConfigured) {
     try {
       const client = await prisma.chatbotClient.findUnique({
@@ -707,6 +709,35 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
               lastAuditResult: profile.lastAuditResult as SeoProfilePanelData['lastAuditResult'],
               lastAuditError: profile.lastAuditError,
             };
+
+            const draftRows = await prisma.seoContentDraft.findMany({
+              where: { profileId: profile.id },
+              orderBy: { requestedAt: 'desc' },
+              select: {
+                id: true,
+                title: true,
+                bodyHtml: true,
+                targetKeyword: true,
+                status: true,
+                requestedAt: true,
+                generatedAt: true,
+                reviewedBy: true,
+                reviewedAt: true,
+                rejectionReason: true,
+              },
+            });
+            seoContentDrafts = draftRows.map((d) => ({
+              id: d.id,
+              title: d.title,
+              bodyHtml: d.bodyHtml,
+              targetKeyword: d.targetKeyword,
+              status: d.status,
+              requestedAt: d.requestedAt.toISOString(),
+              generatedAt: d.generatedAt?.toISOString() ?? null,
+              reviewedBy: d.reviewedBy,
+              reviewedAt: d.reviewedAt?.toISOString() ?? null,
+              rejectionReason: d.rejectionReason,
+            }));
           }
         }
 
@@ -1012,6 +1043,9 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
                 </p>
               </header>
               <SeoTechnicalSetupPanel clientId={params.clientId} profile={seoProfile} />
+              <div className="mt-4">
+                <SeoContentDraftsPanel clientId={params.clientId} drafts={seoContentDrafts} />
+              </div>
             </section>
           ) : null}
 
