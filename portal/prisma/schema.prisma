@@ -119,6 +119,7 @@ model ChatbotClient {
   invoices                   Invoice[]
   operatorActions            OperatorAction[]
   googleBusinessConnections  GoogleBusinessConnection[]
+  googleSeoConnection        GoogleSeoConnection?
   googleReviews              GoogleReview[]
   reviewRequestCampaigns     ReviewRequestCampaign[]
   webBriefs                  WebBrief[]
@@ -505,6 +506,7 @@ model Tenant {
   subscriptions               Subscription[]
   invoices                    Invoice[]
   googleBusinessConnections   GoogleBusinessConnection[]
+  googleSeoConnections        GoogleSeoConnection[]
   googleReviews               GoogleReview[]
   reviewRequestCampaigns      ReviewRequestCampaign[]
   webBriefs                   WebBrief[]
@@ -1320,6 +1322,60 @@ model GoogleBusinessConnection {
   recallSubscriptions RecallSubscription[]
 
   @@unique([clientId, locationId])
+  @@index([tenantId])
+  @@index([status])
+}
+
+// =============================================================================
+// SEO con IA, Fase B — a client's own Google account, connected via OAuth
+// so the portal can read Search Console data (rankings, impressions,
+// clicks, indexing status) for their site. Deliberately a SEPARATE OAuth
+// client (GOOGLE_SEO_OAUTH_CLIENT_ID/SECRET) from GoogleBusinessConnection's
+// business.manage scope above — different consent purpose, different
+// scope class, same "one OAuth client per integration purpose"
+// convention already established for every Google integration in this
+// schema (see that model's own comment for why).
+//
+// One row per client (@@unique([clientId])) — unlike
+// GoogleBusinessConnection's per-location cardinality, a client has one
+// website, not several locations to pick from.
+//
+// v1 covers Search Console only. searchConsoleSiteUrl is the matched
+// VERIFIED property from the connected account — 'https://example.com/'
+// (URL-prefix) or 'sc-domain:example.com' (Domain) format, whichever
+// Search Console returned as the match against SeoProfile.siteUrl; the
+// OAuth callback route redirects with an error rather than guessing when
+// no verified property matches. Analytics (GA4) needs its own
+// property-picker UI — a GA4 property is a numeric id with a display
+// name, not reliably URL-matchable the way a Search Console property is
+// — deferred to a later piece, not this one.
+//
+// Same encryption posture as GoogleBusinessConnection: AES-256-GCM,
+// ciphertext/iv/tag as separate Bytes columns, its own dedicated key
+// (GOOGLE_SEO_TOKEN_ENCRYPTION_KEY — never shared with
+// GOOGLE_TOKEN_ENCRYPTION_KEY, different secret classes).
+//
+// `status`: 'active' | 'needs_reconnect' | 'revoked' — same three-value
+// vocabulary and meaning as GoogleBusinessConnection's.
+// =============================================================================
+model GoogleSeoConnection {
+  id                     String    @id @default(uuid()) @db.Uuid
+  clientId               String    @unique @map("client_id")
+  tenantId               String    @map("tenant_id") @db.Uuid
+  googleAccountEmail     String?   @map("google_account_email")
+  searchConsoleSiteUrl   String    @map("search_console_site_url")
+  refreshTokenCiphertext Bytes     @map("refresh_token_ciphertext")
+  refreshTokenIv         Bytes     @map("refresh_token_iv")
+  refreshTokenTag        Bytes     @map("refresh_token_tag")
+  scopes                 String[]
+  status                 String    @default("active")
+  connectedAt            DateTime  @default(now()) @map("connected_at")
+  lastSyncAt             DateTime? @map("last_sync_at")
+  lastSyncError          String?   @map("last_sync_error")
+
+  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([tenantId])
   @@index([status])
 }
