@@ -137,6 +137,8 @@ model ChatbotClient {
   whatsappTemplates          WhatsappTemplate[]
   prospectingCampaigns       ProspectingCampaign[]
   prospectingCampaignAudits  ProspectingCampaignAudit[]
+  seoProfiles                SeoProfile[]
+  seoProfileAudits           SeoProfileAudit[]
   recallBlockedNumbers       RecallBlockedNumber[]
   recallDigests              RecallDigest[]
   recallUsageMonths          RecallUsageMonth[]
@@ -337,6 +339,7 @@ model Operator {
   invoicesMarkedPaid       Invoice[]
   recallSubscriptionAudits RecallSubscriptionAudit[]
   integrationCredentialAudits IntegrationCredentialAudit[]
+  seoProfileAudits         SeoProfileAudit[]
 
   @@index([email])
   @@index([isActive])
@@ -517,6 +520,8 @@ model Tenant {
   callEvents                  CallEvent[]
   prospectingCampaigns        ProspectingCampaign[]
   prospectingCampaignAudits   ProspectingCampaignAudit[]
+  seoProfiles                 SeoProfile[]
+  seoProfileAudits            SeoProfileAudit[]
 
   @@index([slug])
   @@index([status])
@@ -703,6 +708,7 @@ model ClientProduct {
   webBrief            WebBrief?
   recallSubscription  RecallSubscription?
   prospectingCampaign ProspectingCampaign?
+  seoProfile          SeoProfile?
 
   // Real DB-level uniqueness for every code except 'web' lives in a raw-SQL
   // partial unique index (see this migration's .sql) — Prisma can't express
@@ -2308,6 +2314,111 @@ model ProspectingCampaignAudit {
   tenant   Tenant?             @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([campaignId, changedAt])
+  @@index([clientId, changedAt])
+  @@index([tenantId])
+}
+
+// =============================================================================
+// SEO con IA (product code 'seo'). Satellite model, 1:1 with ClientProduct,
+// same shape as ProspectingCampaign/RecallSubscription. Onboarding is a
+// plain form, deliberately NOT the ChatbotConfigStep wizard engine — that
+// engine's block/tier types are hardcoded to the chatbot's own vocabulary
+// (WizardBlockProgress.tsx's own duplicated WizardBlock type + fixed
+// step-number ranges; the wizard routes' explicit `product !== 'chatbot'`
+// gate) — generalizing it is separate work this product doesn't need: a
+// handful of fields doesn't warrant the 12-step versioned/approved engine
+// built for the chatbot's much larger onboarding.
+//
+// Client and operator write DIFFERENT fields on the SAME row — same
+// column-segmentation precedent as RecallSubscription (client connects
+// WhatsApp, operator assigns the number): the client fills in what they
+// know about their own business and site; the operator fills in the
+// technical publish access (a WordPress Application Password) once it's
+// set up, since a non-technical client can't do that step alone. Neither
+// side ever overwrites the other's fields.
+// =============================================================================
+model SeoProfile {
+  id              String  @id @default(uuid()) @db.Uuid
+  clientId        String  @map("client_id")
+  clientProductId String  @unique @map("client_product_id") @db.Uuid
+  tenantId        String? @map("tenant_id") @db.Uuid
+
+  // Client-filled — business context the content-generation pipeline
+  // (Fase C) reads from. Free text, not a wizard step.
+  businessDescription String? @map("business_description")
+  targetAudience      String? @map("target_audience")
+  toneOfVoice         String? @map("tone_of_voice")
+
+  // Client-filled — which site, and what it runs on. cmsType is a free
+  // string ('wordpress' | 'wix' | 'squarespace' | 'other' | 'no_se') —
+  // validated at the lib layer, same posture as every other free-string
+  // status column in this schema. Only 'wordpress' is actually
+  // publishable as of Fase A/B — Fase C decides the real publish scope.
+  siteUrl String? @map("site_url")
+  cmsType String? @map("cms_type")
+
+  // Operator-filled — the technical publish access a non-technical
+  // client can't set up alone. Encrypted at rest (AES-256-GCM,
+  // SEO_CMS_CREDENTIAL_ENCRYPTION_KEY — its own dedicated key, never
+  // shared with any other *_ENCRYPTION_KEY, same convention as every
+  // other credential in this schema). Null until the operator has done
+  // this — Fase C's publish step is gated on these being present.
+  wordpressUrl                   String?   @map("wordpress_url")
+  wordpressUsername              String?   @map("wordpress_username")
+  wordpressAppPasswordCiphertext Bytes?    @map("wordpress_app_password_ciphertext")
+  wordpressAppPasswordIv         Bytes?    @map("wordpress_app_password_iv")
+  wordpressAppPasswordTag        Bytes?    @map("wordpress_app_password_tag")
+  technicalSetupNotes            String?   @map("technical_setup_notes")
+  technicalSetupCompletedAt      DateTime? @map("technical_setup_completed_at")
+
+  // 'onboarding' | 'active' | 'paused'. Free string, same convention as
+  // every other status column in this schema.
+  status String @default("onboarding")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  client        ChatbotClient     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientProduct ClientProduct     @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
+  tenant        Tenant?           @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  auditLogs     SeoProfileAudit[]
+
+  @@index([clientId])
+  @@index([tenantId])
+  @@index([status])
+}
+
+// Append-only. Dual-actor (client and operator both legitimately write
+// this row) — same actorType/actorOperatorId shape as
+// RecallSubscriptionAudit, not ProspectingCampaignAudit's single actorId
+// string, because here BOTH sides are real writers, not just the client.
+// before/after must NEVER contain the WordPress Application Password
+// (plaintext or ciphertext) — only non-sensitive metadata (e.g.
+// { wordpressUrl, wordpressUsername, hasAppPassword: true }).
+model SeoProfileAudit {
+  id        String  @id @default(uuid()) @db.Uuid
+  profileId String  @map("profile_id") @db.Uuid
+  clientId  String  @map("client_id")
+  tenantId  String? @map("tenant_id") @db.Uuid
+
+  // 'created' | 'business_info_updated' | 'technical_setup_updated'
+  action String
+  before Json?
+  after  Json?
+
+  // 'operator' | 'client'
+  actorType       String   @default("client") @map("actor_type")
+  actorOperatorId String?  @map("actor_operator_id") @db.Uuid
+  // Operator email, or 'client:<clientId>'.
+  actorEmail      String?  @map("actor_email")
+  changedAt       DateTime @default(now()) @map("changed_at")
+
+  profile  SeoProfile    @relation(fields: [profileId], references: [id], onDelete: Restrict)
+  client   ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  tenant   Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  operator Operator?     @relation(fields: [actorOperatorId], references: [id], onDelete: SetNull)
+
+  @@index([profileId, changedAt])
   @@index([clientId, changedAt])
   @@index([tenantId])
 }

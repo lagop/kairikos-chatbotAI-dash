@@ -195,24 +195,25 @@ describe('getDashboardData — source: prisma', () => {
     expect(chatbot.ctaHref).toBe('/portal/support');
   });
 
-  it('a contracted product with an empty catalog (WP-15) shows "Próximamente", no progress query', async () => {
+  it('a contracted product with an empty catalog (WP-15) and no page yet shows "Próximamente", no progress query', async () => {
     findUniqueClient.mockResolvedValueOnce({ companyName: 'Orly', name: 'Orly' });
     findManyClientProducts.mockResolvedValueOnce([
-      // 'seo' still has no dedicated page — 'web' is the one product
-      // with real content ahead of 'live' now (see the next test).
-      { onboardingState: 'in-progress', goLiveAt: null, product: { code: 'seo', name: 'SEO con IA' } },
+      // 'leads' still has no dedicated pre-live page — 'web' and 'seo'
+      // are the two products with real content ahead of 'live' now (see
+      // the next two tests).
+      { onboardingState: 'in-progress', goLiveAt: null, product: { code: 'leads', name: 'Captación con IA' } },
     ]);
 
     const data = await getDashboardData(RESOLVED);
 
     expect(data.products).toHaveLength(1);
-    const seo = data.products[0];
-    expect(seo.productCode).toBe('seo');
-    expect(seo.progressPercent).toBeNull();
-    expect(seo.turn).toBeNull();
-    expect(seo.ctaLabel).toBe('Próximamente');
-    expect(seo.ctaHref).toBeNull();
-    expect(seo.activity).toBeNull();
+    const leads = data.products[0];
+    expect(leads.productCode).toBe('leads');
+    expect(leads.progressPercent).toBeNull();
+    expect(leads.turn).toBeNull();
+    expect(leads.ctaLabel).toBe('Próximamente');
+    expect(leads.ctaHref).toBeNull();
+    expect(leads.activity).toBeNull();
     expect(findManyConfigSteps).not.toHaveBeenCalled();
   });
 
@@ -228,6 +229,20 @@ describe('getDashboardData — source: prisma', () => {
     expect(web.turn).toBe('client');
     expect(web.ctaLabel).toBe('Completa el brief');
     expect(web.ctaHref).toBe('/portal/web');
+  });
+
+  it('seo (empty catalog, not yet live) links to its own onboarding page, not "Próximamente"', async () => {
+    findUniqueClient.mockResolvedValueOnce({ companyName: 'Orly', name: 'Orly' });
+    findManyClientProducts.mockResolvedValueOnce([
+      { onboardingState: 'in-progress', goLiveAt: null, product: { code: 'seo', name: 'SEO con IA' } },
+    ]);
+
+    const data = await getDashboardData(RESOLVED);
+
+    const seo = data.products[0];
+    expect(seo.turn).toBe('client');
+    expect(seo.ctaLabel).toBe('Completa tu perfil de SEO');
+    expect(seo.ctaHref).toBe('/portal/seo');
   });
 
   it('live product other than chatbot → CTA links to its own portal page, not a dead end', async () => {

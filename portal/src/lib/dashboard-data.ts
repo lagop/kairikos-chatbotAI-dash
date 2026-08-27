@@ -253,9 +253,11 @@ async function buildProductCard(clientId: string, cp: ClientProductRow): Promise
       };
     }
     // 'web' has real content at /portal/web (its own brief form) even
-    // before the site itself goes live — unlike leads/seo, which still
-    // have nothing but the generic placeholder, so "Próximamente" with
-    // no link stays honest for those two.
+    // before the site itself goes live — unlike leads, which still has
+    // nothing but the generic placeholder, so "Próximamente" with no
+    // link stays honest for that one. 'seo' joins 'web' here as of its
+    // own Fase A: /portal/seo's SeoProfile onboarding form is real
+    // pre-live content too, same "already paid, no dead end" reasoning.
     if (cp.productCode === 'web') {
       return {
         ...base,
@@ -263,6 +265,17 @@ async function buildProductCard(clientId: string, cp: ClientProductRow): Promise
         turn: 'client',
         ctaLabel: 'Completa el brief',
         ctaHref: '/portal/web',
+        timeline: [],
+        activity: null,
+      };
+    }
+    if (cp.productCode === 'seo') {
+      return {
+        ...base,
+        progressPercent: null,
+        turn: 'client',
+        ctaLabel: 'Completa tu perfil de SEO',
+        ctaHref: '/portal/seo',
         timeline: [],
         activity: null,
       };
