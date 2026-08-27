@@ -685,6 +685,9 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
               technicalSetupNotes: true,
               technicalSetupCompletedAt: true,
               status: true,
+              lastAuditAt: true,
+              lastAuditResult: true,
+              lastAuditError: true,
             },
           });
           if (profile) {
@@ -700,6 +703,9 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
               technicalSetupNotes: profile.technicalSetupNotes,
               technicalSetupCompletedAt: profile.technicalSetupCompletedAt?.toISOString() ?? null,
               status: profile.status,
+              lastAuditAt: profile.lastAuditAt?.toISOString() ?? null,
+              lastAuditResult: profile.lastAuditResult as SeoProfilePanelData['lastAuditResult'],
+              lastAuditError: profile.lastAuditError,
             };
           }
         }

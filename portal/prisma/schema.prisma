@@ -2371,6 +2371,19 @@ model SeoProfile {
   technicalSetupNotes            String?   @map("technical_setup_notes")
   technicalSetupCompletedAt      DateTime? @map("technical_setup_completed_at")
 
+  // Operator-triggered technical audit (src/lib/seo-audit.ts) — the
+  // LATEST result only, not a history table: same posture as
+  // MetaChannelConnection.qualityRating/lastSyncAt, "what does it look
+  // like now" rather than "every run ever". lastAuditResult holds
+  // SeoAuditResult as JSON (title, meta description, heading/image/link
+  // signals — never anything from wordpressAppPassword). lastAuditError
+  // is the most recent FAILED attempt's error, cleared on the next
+  // success — lastAuditResult keeps the last successful audit visible
+  // even while a later attempt is failing.
+  lastAuditAt     DateTime? @map("last_audit_at")
+  lastAuditResult Json?     @map("last_audit_result")
+  lastAuditError  String?   @map("last_audit_error")
+
   // 'onboarding' | 'active' | 'paused'. Free string, same convention as
   // every other status column in this schema.
   status String @default("onboarding")
@@ -2401,7 +2414,7 @@ model SeoProfileAudit {
   clientId  String  @map("client_id")
   tenantId  String? @map("tenant_id") @db.Uuid
 
-  // 'created' | 'business_info_updated' | 'technical_setup_updated'
+  // 'created' | 'business_info_updated' | 'technical_setup_updated' | 'audit_run'
   action String
   before Json?
   after  Json?
