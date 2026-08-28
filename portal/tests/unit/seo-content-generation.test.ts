@@ -42,6 +42,7 @@ function baseProfile(overrides: Record<string, unknown> = {}) {
     siteUrl: 'https://ferreteriacentral.example',
     lastAuditResult: { title: 'Ferretería Central', h1Count: 1 },
     lastContentRequestedAt: null,
+    contentGenerationMinIntervalDaysOverride: null,
     ...overrides,
   };
 }
@@ -105,6 +106,34 @@ describe('sweepDueProfiles — cadence gating', () => {
     const result = await sweepDueProfiles(prisma);
     expect(result).toEqual({ processed: 0, requested: 0, deliveryFailed: 0 });
     expect(mockState.getContentGenerationMinIntervalDays).toHaveBeenCalledTimes(1);
+  });
+
+  it("a profile's own contentGenerationMinIntervalDaysOverride wins over the global value", async () => {
+    // Global says 10 days (not due at 5 days elapsed); the profile's own
+    // override says 3 days (due at 5 days elapsed) — the override must win.
+    mockState.getContentGenerationMinIntervalDays.mockResolvedValueOnce(10);
+    const prisma = makePrisma([
+      baseProfile({
+        id: 'overridden',
+        lastContentRequestedAt: new Date(Date.now() - 5 * 24 * 60 * 60_000),
+        contentGenerationMinIntervalDaysOverride: 3,
+      }),
+    ]);
+    const result = await sweepDueProfiles(prisma);
+    expect(result).toEqual({ processed: 1, requested: 1, deliveryFailed: 0 });
+  });
+
+  it('a profile with no override (NULL) falls back to the global value, not "always due"', async () => {
+    mockState.getContentGenerationMinIntervalDays.mockResolvedValueOnce(30);
+    const prisma = makePrisma([
+      baseProfile({
+        id: 'no_override',
+        lastContentRequestedAt: new Date(Date.now() - 5 * 24 * 60 * 60_000),
+        contentGenerationMinIntervalDaysOverride: null,
+      }),
+    ]);
+    const result = await sweepDueProfiles(prisma);
+    expect(result).toEqual({ processed: 0, requested: 0, deliveryFailed: 0 });
   });
 });
 

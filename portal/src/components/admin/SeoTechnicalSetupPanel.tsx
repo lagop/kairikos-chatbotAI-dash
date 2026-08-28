@@ -10,6 +10,14 @@ import { SeoAuditPanel, type SeoAuditResultData } from './SeoAuditPanel';
 // alone. Shows the client's own fields read-only for context, and an
 // editable form for the technical fields only — same column-segmentation
 // as the schema itself (SeoProfile's comment).
+//
+// Also includes the per-client content-cadence override — not a
+// WordPress field, but still an operator-only per-client setting on the
+// same row (see the technical-setup route's header for why it rides the
+// same PATCH). Shown against globalMinIntervalDays (from
+// /admin/portal/settings/seo) for context, with its own save action
+// since it needs an explicit "clear back to null" affordance the rest
+// of this form's fields don't.
 // =============================================================================
 
 export interface SeoProfilePanelData {
@@ -23,6 +31,7 @@ export interface SeoProfilePanelData {
   hasAppPassword: boolean;
   technicalSetupNotes: string | null;
   technicalSetupCompletedAt: string | null;
+  contentGenerationMinIntervalDaysOverride: number | null;
   status: string;
   lastAuditAt: string | null;
   lastAuditResult: SeoAuditResultData | null;
@@ -38,9 +47,11 @@ const ERROR_LABEL: Record<string, string> = {
 export function SeoTechnicalSetupPanel({
   clientId,
   profile,
+  globalMinIntervalDays,
 }: {
   clientId: string;
   profile: SeoProfilePanelData | null;
+  globalMinIntervalDays: number;
 }) {
   const router = useRouter();
   const [wordpressUrl, setWordpressUrl] = useState(profile?.wordpressUrl ?? '');
@@ -50,6 +61,15 @@ export function SeoTechnicalSetupPanel({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+
+  const [cadenceOverride, setCadenceOverride] = useState(
+    profile?.contentGenerationMinIntervalDaysOverride != null ? String(profile.contentGenerationMinIntervalDaysOverride) : '',
+  );
+  const [cadenceSaving, setCadenceSaving] = useState(false);
+  const [cadenceError, setCadenceError] = useState<string | null>(null);
+  const [cadenceSaved, setCadenceSaved] = useState(false);
+  const parsedCadence = Number(cadenceOverride);
+  const isCadenceValid = Number.isInteger(parsedCadence) && parsedCadence >= 1 && parsedCadence <= 90;
 
   if (!profile) {
     return (
@@ -87,6 +107,36 @@ export function SeoTechnicalSetupPanel({
       setError(`Error de red: ${err instanceof Error ? err.message : 'desconocido'}`);
     } finally {
       setSaving(false);
+    }
+  }
+
+  // Deliberately a separate save action from save() above — this field
+  // needs an explicit "clear back to null" affordance (revert to the
+  // global default) that the rest of the form's "leave blank = don't
+  // touch" fields don't need, so it can't share their all-in-one submit
+  // without creating ambiguity about what an empty input means.
+  async function saveCadence(days: number | null) {
+    setCadenceError(null);
+    setCadenceSaved(false);
+    setCadenceSaving(true);
+    try {
+      const res = await fetch(`/api/admin/portal/seo/${clientId}/technical-setup`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contentGenerationMinIntervalDaysOverride: days }),
+      });
+      if (!res.ok) {
+        const detail = await res.json().catch(() => null);
+        setCadenceError(ERROR_LABEL[detail?.error] ?? 'No se pudo guardar.');
+        return;
+      }
+      setCadenceOverride(days != null ? String(days) : '');
+      setCadenceSaved(true);
+      router.refresh();
+    } catch (err) {
+      setCadenceError(`Error de red: ${err instanceof Error ? err.message : 'desconocido'}`);
+    } finally {
+      setCadenceSaving(false);
     }
   }
 
@@ -181,6 +231,66 @@ export function SeoTechnicalSetupPanel({
         ) : null}
         {saved && !error ? (
           <p className="mt-2 text-sm text-kairikos-success" data-testid="seo-technical-setup-saved">
+            Guardado.
+          </p>
+        ) : null}
+      </div>
+
+      <div className="border-t border-kairikos-border pt-4" data-testid="seo-cadence-override-panel">
+        <p className="mb-1 text-sm font-semibold">Cadencia de contenido para este cliente</p>
+        <p className="mb-3 text-xs text-kairikos-muted">
+          {profile.contentGenerationMinIntervalDaysOverride != null ? (
+            <>
+              Personalizada: cada {profile.contentGenerationMinIntervalDaysOverride} días. (Valor global:{' '}
+              {globalMinIntervalDays} días.)
+            </>
+          ) : (
+            <>Usa el valor global ({globalMinIntervalDays} días).</>
+          )}
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              max={90}
+              step={1}
+              className="input w-24"
+              value={cadenceOverride}
+              onChange={(e) => setCadenceOverride(e.target.value)}
+              placeholder={String(globalMinIntervalDays)}
+              data-testid="seo-cadence-override-input"
+            />
+            <span className="text-sm text-kairikos-muted">días</span>
+          </div>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={!isCadenceValid || cadenceSaving}
+            onClick={() => saveCadence(parsedCadence)}
+            data-testid="seo-cadence-override-save"
+          >
+            {cadenceSaving ? 'Guardando…' : 'Guardar cadencia personalizada'}
+          </button>
+          {profile.contentGenerationMinIntervalDaysOverride != null ? (
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={cadenceSaving}
+              onClick={() => saveCadence(null)}
+              data-testid="seo-cadence-override-clear"
+            >
+              Usar el valor global
+            </button>
+          ) : null}
+        </div>
+        {cadenceError ? (
+          <p className="mt-2 text-sm text-kairikos-danger" data-testid="seo-cadence-override-error">
+            {cadenceError}
+          </p>
+        ) : null}
+        {cadenceSaved && !cadenceError ? (
+          <p className="mt-2 text-sm text-kairikos-success" data-testid="seo-cadence-override-saved">
             Guardado.
           </p>
         ) : null}

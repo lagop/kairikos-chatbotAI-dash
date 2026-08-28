@@ -66,6 +66,7 @@ const EXISTING_PROFILE = {
   wordpressAppPasswordCiphertext: null,
   technicalSetupNotes: null,
   technicalSetupCompletedAt: null,
+  contentGenerationMinIntervalDaysOverride: null,
 };
 const ENCRYPTED = { ciphertext: Buffer.from('c'), iv: Buffer.from('i'), tag: Buffer.from('t') };
 
@@ -172,6 +173,38 @@ describe('PATCH /api/admin/portal/seo/[clientId]/technical-setup', () => {
     expect(mockState.auditCreate).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ actorOperatorId: null, actorEmail: null }) }),
     );
+  });
+
+  it('sets a per-client cadence override', async () => {
+    const res = await patch('client_1', { contentGenerationMinIntervalDaysOverride: 5 });
+    expect(res.status).toBe(200);
+    expect(mockState.profileUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ contentGenerationMinIntervalDaysOverride: 5 }) }),
+    );
+  });
+
+  it('explicitly clears the override back to NULL (reverts to the global default) when sent as null', async () => {
+    mockState.profileFindFirst.mockResolvedValue({ ...EXISTING_PROFILE, contentGenerationMinIntervalDaysOverride: 5 });
+    const res = await patch('client_1', { contentGenerationMinIntervalDaysOverride: null });
+    expect(res.status).toBe(200);
+    expect(mockState.profileUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ contentGenerationMinIntervalDaysOverride: null }) }),
+    );
+  });
+
+  it('leaves the override untouched when the field is absent from the body entirely', async () => {
+    mockState.profileFindFirst.mockResolvedValue({ ...EXISTING_PROFILE, contentGenerationMinIntervalDaysOverride: 5 });
+    await patch('client_1', { technicalSetupNotes: 'solo una nota' });
+    const updateData = mockState.profileUpdate.mock.calls[0][0].data;
+    expect(updateData).not.toHaveProperty('contentGenerationMinIntervalDaysOverride');
+  });
+
+  it('400s when the override is outside the 1-90 day range', async () => {
+    const tooLow = await patch('client_1', { contentGenerationMinIntervalDaysOverride: 0 });
+    expect(tooLow.status).toBe(400);
+    const tooHigh = await patch('client_1', { contentGenerationMinIntervalDaysOverride: 91 });
+    expect(tooHigh.status).toBe(400);
+    expect(mockState.profileUpdate).not.toHaveBeenCalled();
   });
 
   it('503s when the database is not configured', async () => {

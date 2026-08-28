@@ -2484,6 +2484,14 @@ model SeoProfile {
   // Gates the monthly cadence — see isGenerationDue in that module.
   lastContentRequestedAt DateTime? @map("last_content_requested_at")
 
+  // Operator-set, per-client override of SeoSettings' global
+  // contentGenerationMinIntervalDays (see lib/seo-settings.ts). NULL
+  // (the common case) means "use the global default" — sweepDueProfiles
+  // resolves this ?? the global value per profile, every sweep, so
+  // clearing it back to NULL (not deleting a row, not a magic sentinel
+  // number) is how an operator reverts a client to the shared default.
+  contentGenerationMinIntervalDaysOverride Int? @map("content_generation_min_interval_days_override")
+
   // 'onboarding' | 'active' | 'paused'. Free string, same convention as
   // every other status column in this schema.
   status String @default("onboarding")

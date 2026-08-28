@@ -25,7 +25,10 @@ import { logError } from './observability';
 // v1 requests exactly one draft per due profile per cadence — scaling
 // toward the marketing copy's "8-12 artículos/mes" is the operator
 // lowering minIntervalDays via /admin/portal/settings/seo (see
-// lib/seo-settings.ts), not a different mechanism.
+// lib/seo-settings.ts), not a different mechanism. A client's own
+// SeoProfile.contentGenerationMinIntervalDaysOverride, when set, wins
+// over that global value for that one client (see the field's own
+// schema comment) — set from the operator's technical-setup panel.
 // =============================================================================
 
 /** Same one-place-enforces-the-cadence reasoning as every other
@@ -48,6 +51,7 @@ interface ProfileForGeneration {
   siteUrl: string | null;
   lastAuditResult: unknown;
   lastContentRequestedAt: Date | null;
+  contentGenerationMinIntervalDaysOverride: number | null;
 }
 
 async function buildSourceSignals(prisma: PrismaClient, profile: ProfileForGeneration): Promise<Record<string, unknown>> {
@@ -101,7 +105,7 @@ export interface GenerationSweepResult {
  * not by asking this sweep to try again next tick with a duplicate row.
  */
 export async function sweepDueProfiles(prisma: PrismaClient, now: Date = new Date()): Promise<GenerationSweepResult> {
-  const minIntervalDays = await getContentGenerationMinIntervalDays();
+  const globalMinIntervalDays = await getContentGenerationMinIntervalDays();
 
   const candidates = (await prisma.seoProfile.findMany({
     where: {
@@ -118,10 +122,16 @@ export async function sweepDueProfiles(prisma: PrismaClient, now: Date = new Dat
       siteUrl: true,
       lastAuditResult: true,
       lastContentRequestedAt: true,
+      contentGenerationMinIntervalDaysOverride: true,
     },
   })) as ProfileForGeneration[];
 
-  const due = candidates.filter((p) => isGenerationDue(p.lastContentRequestedAt, minIntervalDays));
+  // A per-client override (set on the operator's technical-setup panel)
+  // wins over the global default — NULL is "no override, use global",
+  // not "zero days"/"always due".
+  const due = candidates.filter((p) =>
+    isGenerationDue(p.lastContentRequestedAt, p.contentGenerationMinIntervalDaysOverride ?? globalMinIntervalDays),
+  );
 
   let requested = 0;
   let deliveryFailed = 0;
