@@ -120,6 +120,7 @@ model ChatbotClient {
   operatorActions            OperatorAction[]
   googleBusinessConnections  GoogleBusinessConnection[]
   googleSeoConnection        GoogleSeoConnection?
+  googleAnalyticsConnection  GoogleAnalyticsConnection?
   googleReviews              GoogleReview[]
   reviewRequestCampaigns     ReviewRequestCampaign[]
   webBriefs                  WebBrief[]
@@ -508,6 +509,7 @@ model Tenant {
   invoices                    Invoice[]
   googleBusinessConnections   GoogleBusinessConnection[]
   googleSeoConnections        GoogleSeoConnection[]
+  googleAnalyticsConnections  GoogleAnalyticsConnection[]
   googleReviews               GoogleReview[]
   reviewRequestCampaigns      ReviewRequestCampaign[]
   webBriefs                   WebBrief[]
@@ -1414,6 +1416,50 @@ model SeoSearchConsoleMetric {
 
   @@unique([connectionId, date])
   @@index([clientId])
+}
+
+// =============================================================================
+// SEO con IA — GA4/Analytics connection, deferred from the original Fase B
+// scope explicitly because of what makes it different from
+// GoogleSeoConnection: a GA4 property is a numeric resource id
+// ("properties/123456") with a display name, not a URL — it cannot be
+// auto-matched against SeoProfile.siteUrl the way a Search Console
+// property is (see GoogleSeoConnection's matchVerifiedSite). So the
+// connection has a real intermediate state: 'pending_property_selection'
+// — tokens are already saved, but the client still has to pick which of
+// their (possibly several) GA4 properties this is, from a live list
+// fetched via the Admin API.
+//
+// Own dedicated OAuth client (GOOGLE_GA4_OAUTH_CLIENT_ID/SECRET) and own
+// encryption key (GOOGLE_GA4_TOKEN_ENCRYPTION_KEY) — same "one OAuth
+// client per integration purpose, one key per credential class"
+// convention as every other Google integration in this schema. Mirrors
+// GoogleSeoConnection's shape/mechanism closely otherwise (encrypted
+// refresh token, invalid_grant -> needs_reconnect, one row per client).
+model GoogleAnalyticsConnection {
+  id                     String    @id @default(uuid()) @db.Uuid
+  clientId               String    @unique @map("client_id")
+  tenantId               String    @map("tenant_id") @db.Uuid
+  googleAccountEmail     String?   @map("google_account_email")
+  // NULL until the client completes property selection — see the
+  // 'pending_property_selection' status above.
+  propertyId             String?   @map("property_id")
+  propertyDisplayName    String?   @map("property_display_name")
+  refreshTokenCiphertext Bytes     @map("refresh_token_ciphertext")
+  refreshTokenIv         Bytes     @map("refresh_token_iv")
+  refreshTokenTag        Bytes     @map("refresh_token_tag")
+  scopes                 String[]
+  // 'pending_property_selection' | 'active' | 'needs_reconnect' | 'revoked'
+  status                 String    @default("pending_property_selection")
+  connectedAt            DateTime  @default(now()) @map("connected_at")
+  lastSyncAt             DateTime? @map("last_sync_at")
+  lastSyncError          String?   @map("last_sync_error")
+
+  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([status])
 }
 
 // =============================================================================

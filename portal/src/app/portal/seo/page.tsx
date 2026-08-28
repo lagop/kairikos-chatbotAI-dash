@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/portal/EmptyState';
 import { SelfServeProductCard, type SelfServeTierOption } from '@/components/portal/SelfServeProductCard';
 import { SeoProfileCard } from '@/components/portal/SeoProfileCard';
 import { SeoTrendChart, type SeoTrendPoint } from '@/components/portal/SeoTrendChart';
+import { SeoAnalyticsPicker } from '@/components/portal/SeoAnalyticsPicker';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +28,13 @@ export const metadata: Metadata = {
 // Fase B adds the Search Console connection status + connect link — same
 // query-param-driven connected/connect_error pattern as /portal/resenas's
 // own Google OAuth flow (WP-21).
+//
+// GA4/Analytics (deferred out of the original Fase B, built later) adds
+// a second, separate connection card with its own ga_connected/
+// ga_connect_error query params — it needs an extra step Search Console
+// doesn't (picking which GA4 property is theirs, see
+// SeoAnalyticsPicker), so it's its own section rather than folded into
+// the Search Console one.
 // =============================================================================
 
 const CONNECT_ERROR_LABEL: Record<string, string> = {
@@ -41,10 +49,24 @@ const CONNECT_ERROR_LABEL: Record<string, string> = {
   forbidden: 'Este producto no está incluido en tu plan.',
 };
 
+const GA_CONNECT_ERROR_LABEL: Record<string, string> = {
+  csrf: 'No se pudo verificar la solicitud — inténtalo de nuevo.',
+  token_exchange_failed: 'Google no pudo completar la conexión — inténtalo de nuevo.',
+  no_tenant: 'No pudimos completar la conexión — escríbenos a soporte.',
+  not_configured: 'La conexión con Google Analytics no está disponible en este momento.',
+  not_available_in_dev_mode: 'La conexión con Google no está disponible en modo demo.',
+  forbidden: 'Este producto no está incluido en tu plan.',
+};
+
 export default async function PortalSeoPage({
   searchParams,
 }: {
-  searchParams?: { connected?: string; connect_error?: string };
+  searchParams?: {
+    connected?: string;
+    connect_error?: string;
+    ga_connected?: string;
+    ga_connect_error?: string;
+  };
 }) {
   await requirePortalSession();
   const resolved = await resolveClientFromSession();
@@ -163,6 +185,11 @@ export default async function PortalSeoPage({
     }));
   }
 
+  const analyticsConnection = await prisma.googleAnalyticsConnection.findUnique({
+    where: { clientId: resolved.clientId },
+    select: { status: true, propertyDisplayName: true, connectedAt: true },
+  });
+
   return (
     <div className="space-y-6">
       <PageHeading eyebrow="Portal" title="SEO con IA" description="Cuéntanos de tu negocio para empezar." />
@@ -239,6 +266,46 @@ export default async function PortalSeoPage({
         ) : (
           <a href="/api/portal/seo/oauth/start" className="btn-primary" data-testid="seo-search-console-connect">
             Conectar Search Console
+          </a>
+        )}
+      </section>
+
+      <section className="card space-y-3" aria-label="Google Analytics" data-testid="seo-analytics-card">
+        <div>
+          <p className="text-sm font-semibold">Google Analytics</p>
+          <p className="text-xs text-kairikos-muted">Conecta tu cuenta de Google Analytics para completar tu informe.</p>
+        </div>
+
+        {searchParams?.ga_connected === '1' ? (
+          <p className="text-sm text-kairikos-success" data-testid="seo-analytics-connected-banner">
+            Conectado correctamente.
+          </p>
+        ) : null}
+        {searchParams?.ga_connect_error ? (
+          <p className="text-sm text-kairikos-danger" data-testid="seo-analytics-error-banner">
+            {GA_CONNECT_ERROR_LABEL[searchParams.ga_connect_error] ?? 'No se pudo completar la conexión con Google.'}
+          </p>
+        ) : null}
+
+        {analyticsConnection?.status === 'active' ? (
+          <p className="text-sm" data-testid="seo-analytics-status">
+            Conectado a <span className="font-medium">{analyticsConnection.propertyDisplayName}</span> desde el{' '}
+            {analyticsConnection.connectedAt.toLocaleDateString('es-ES')}.
+          </p>
+        ) : analyticsConnection?.status === 'pending_property_selection' ? (
+          <SeoAnalyticsPicker />
+        ) : analyticsConnection?.status === 'needs_reconnect' ? (
+          <div className="space-y-2">
+            <p className="text-sm text-kairikos-danger" data-testid="seo-analytics-status">
+              La conexión dejó de funcionar — vuelve a conectarla.
+            </p>
+            <a href="/api/portal/seo/analytics/oauth/start" className="btn-primary" data-testid="seo-analytics-connect">
+              Reconectar Google Analytics
+            </a>
+          </div>
+        ) : (
+          <a href="/api/portal/seo/analytics/oauth/start" className="btn-primary" data-testid="seo-analytics-connect">
+            Conectar Google Analytics
           </a>
         )}
       </section>
