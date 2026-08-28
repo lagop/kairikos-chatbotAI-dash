@@ -28,7 +28,7 @@ import {
 import { getAllowedChannelsForClient } from '@/lib/channel-access';
 import { LeadsSummaryPanel, type LeadSummaryRow } from '@/components/admin/LeadsSummaryPanel';
 import { RecallOperatorPanel, type RecallPanelData } from '@/components/admin/RecallOperatorPanel';
-import { SeoTechnicalSetupPanel, type SeoProfilePanelData } from '@/components/admin/SeoTechnicalSetupPanel';
+import { SeoTechnicalSetupPanel, type SeoProfilePanelData, type SeoQueryOpportunity } from '@/components/admin/SeoTechnicalSetupPanel';
 import { getContentGenerationMinIntervalDays } from '@/lib/seo-settings';
 import { SeoContentDraftsPanel, type SeoContentDraftData } from '@/components/admin/SeoContentDraftsPanel';
 import { isStuck, stuckThresholdDays } from '@/lib/recall';
@@ -356,6 +356,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
   // pattern as every block above.
   let seoProfile: SeoProfilePanelData | null = null;
   let seoContentDrafts: SeoContentDraftData[] = [];
+  let seoQueryOpportunities: SeoQueryOpportunity[] = [];
   let seoGlobalMinIntervalDays = 3;
   if (isDatabaseConfigured) {
     try {
@@ -715,6 +716,25 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
               lastAuditError: profile.lastAuditError,
             };
 
+            const seoConnection = await prisma.googleSeoConnection.findUnique({
+              where: { clientId: client.id },
+              select: { id: true },
+            });
+            if (seoConnection) {
+              const opportunityRows = await prisma.seoSearchConsoleQuery.findMany({
+                where: { connectionId: seoConnection.id, position: { gte: 4, lte: 20 } },
+                orderBy: { impressions: 'desc' },
+                take: 15,
+                select: { query: true, impressions: true, clicks: true, position: true },
+              });
+              seoQueryOpportunities = opportunityRows.map((o) => ({
+                query: o.query,
+                impressions: o.impressions,
+                clicks: o.clicks,
+                position: Math.round(o.position * 10) / 10,
+              }));
+            }
+
             const draftRows = await prisma.seoContentDraft.findMany({
               where: { profileId: profile.id },
               orderBy: { requestedAt: 'desc' },
@@ -1051,7 +1071,12 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
                   cuando esté listo.
                 </p>
               </header>
-              <SeoTechnicalSetupPanel clientId={params.clientId} profile={seoProfile} globalMinIntervalDays={seoGlobalMinIntervalDays} />
+              <SeoTechnicalSetupPanel
+                clientId={params.clientId}
+                profile={seoProfile}
+                globalMinIntervalDays={seoGlobalMinIntervalDays}
+                queryOpportunities={seoQueryOpportunities}
+              />
               <div className="mt-4">
                 <SeoContentDraftsPanel clientId={params.clientId} drafts={seoContentDrafts} />
               </div>

@@ -15,6 +15,12 @@ import { logError } from './observability';
 // I/O + already-stored data, writing an article is interpretation, and
 // interpretation is n8n's job, never done inline in the portal.
 //
+// Signals also include queryOpportunities — real queries the site
+// already shows up for at position 4-20 (page-1-bottom to page-2), the
+// "near-miss" content-opportunity signal SeoSearchConsoleQuery exists
+// for (see that model's own schema comment). Sorted by impressions so
+// n8n's prompt sees the highest-reach opportunities first.
+//
 // A SeoContentDraft row is created with status 'pending_generation' the
 // moment generation is REQUESTED, before n8n has replied — same
 // "request-time row, not response-time row" shape as this repo already
@@ -54,6 +60,16 @@ interface ProfileForGeneration {
   contentGenerationMinIntervalDaysOverride: number | null;
 }
 
+// Page-1-bottom to page-2: ranking well enough that Google already
+// considers the page relevant, but not well enough to reliably get
+// clicked — exactly the band a new or improved article can move.
+// Positions 1-3 are already-won queries (nothing to generate for);
+// positions past 20 are usually too far from ranking for one article
+// to fix.
+const OPPORTUNITY_MIN_POSITION = 4;
+const OPPORTUNITY_MAX_POSITION = 20;
+const MAX_OPPORTUNITIES_IN_SIGNAL = 15;
+
 async function buildSourceSignals(prisma: PrismaClient, profile: ProfileForGeneration): Promise<Record<string, unknown>> {
   const connection = await prisma.googleSeoConnection.findUnique({
     where: { clientId: profile.clientId },
@@ -61,6 +77,7 @@ async function buildSourceSignals(prisma: PrismaClient, profile: ProfileForGener
   });
 
   let searchConsoleSummary: { totalClicks: number; totalImpressions: number; days: number } | null = null;
+  let queryOpportunities: { query: string; impressions: number; clicks: number; position: number }[] = [];
   if (connection?.status === 'active') {
     const metrics = await prisma.seoSearchConsoleMetric.findMany({
       where: { connectionId: connection.id },
@@ -73,6 +90,19 @@ async function buildSourceSignals(prisma: PrismaClient, profile: ProfileForGener
         days: metrics.length,
       };
     }
+
+    const opportunities = await prisma.seoSearchConsoleQuery.findMany({
+      where: { connectionId: connection.id, position: { gte: OPPORTUNITY_MIN_POSITION, lte: OPPORTUNITY_MAX_POSITION } },
+      orderBy: { impressions: 'desc' },
+      take: MAX_OPPORTUNITIES_IN_SIGNAL,
+      select: { query: true, impressions: true, clicks: true, position: true },
+    });
+    queryOpportunities = opportunities.map((o) => ({
+      query: o.query,
+      impressions: o.impressions,
+      clicks: o.clicks,
+      position: Math.round(o.position * 10) / 10,
+    }));
   }
 
   return {
@@ -82,6 +112,7 @@ async function buildSourceSignals(prisma: PrismaClient, profile: ProfileForGener
     siteUrl: profile.siteUrl,
     siteAudit: profile.lastAuditResult ?? null,
     searchConsoleSummary,
+    queryOpportunities,
   };
 }
 
