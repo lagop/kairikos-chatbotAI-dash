@@ -1380,6 +1380,7 @@ model GoogleSeoConnection {
   client  ChatbotClient            @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant  Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   metrics SeoSearchConsoleMetric[]
+  queries SeoSearchConsoleQuery[]
 
   @@index([tenantId])
   @@index([status])
@@ -1416,6 +1417,43 @@ model SeoSearchConsoleMetric {
 
   @@unique([connectionId, date])
   @@index([clientId])
+}
+
+// =============================================================================
+// SEO con IA — per-QUERY Search Console performance for a connected
+// property: which search terms already bring traffic, and at what
+// position — the "near-miss" signal the original plan called for
+// (queries ranking around position 5-20 are concrete content
+// opportunities) but that never actually got built alongside
+// SeoSearchConsoleMetric's site-wide daily trend. Read by
+// lib/seo-content-generation.ts to steer what an article should be
+// about, and by the operator panel for visibility into why.
+//
+// Deliberately a SNAPSHOT, not a time series like SeoSearchConsoleMetric
+// — "which queries are opportunities right now" doesn't need history,
+// and letting queries silently accumulate forever (a site can rank for
+// thousands of distinct terms over time, most no longer relevant) would
+// make "opportunity" meaningless. Every sync REPLACES the whole set for
+// a connection (delete all + insert fresh — see
+// syncSearchConsoleForConnection) rather than upserting row-by-row, so
+// a query that stopped ranking simply disappears next sync instead of
+// lingering with a stale position forever.
+model SeoSearchConsoleQuery {
+  id           String   @id @default(uuid()) @db.Uuid
+  connectionId String   @map("connection_id") @db.Uuid
+  clientId     String   @map("client_id")
+  query        String
+  clicks       Int
+  impressions  Int
+  ctr          Float
+  position     Float
+  syncedAt     DateTime @default(now()) @map("synced_at")
+
+  connection GoogleSeoConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, query])
+  @@index([clientId])
+  @@index([position])
 }
 
 // =============================================================================

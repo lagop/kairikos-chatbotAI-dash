@@ -3,8 +3,18 @@
 //
 // Mirrors google-review-sync.test.ts's conventions closely. Covers: the
 // coarser (24h default) min-interval guard, idempotent upsert by
-// (connectionId, date), per-connection error isolation in the sweep,
-// and failure handling.
+// (connectionId, date) for the daily trend, the per-query "content
+// opportunity" snapshot refresh (delete-all + insert-fresh, best-effort
+// on top of the trend sync), per-connection error isolation in the
+// sweep, and failure handling.
+//
+// Every successful sync now makes TWO fetch calls (date-dimension trend,
+// then query-dimension opportunities) — tests that don't care about the
+// second call use a plain `{ rows: [] }` response for it, explicitly
+// queued, rather than relying on a fallback default: with two real
+// sync invocations in one test (e.g. syncAllDueConnections), an
+// implicit fallback would silently misassign which response belongs to
+// which call.
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -13,6 +23,8 @@ const mockState = vi.hoisted(() => ({
   fetch: vi.fn(),
   getValidAccessToken: vi.fn(),
   metricUpsert: vi.fn(),
+  queryDeleteMany: vi.fn(),
+  queryCreateMany: vi.fn(),
   connectionUpdate: vi.fn(),
   connectionFindMany: vi.fn(),
   logError: vi.fn(),
@@ -27,10 +39,15 @@ vi.mock('@/lib/google-search-console', () => ({
 vi.mock('@/lib/prisma', () => ({
   prisma: {
     seoSearchConsoleMetric: { upsert: (...args: unknown[]) => mockState.metricUpsert(...args) },
+    seoSearchConsoleQuery: {
+      deleteMany: (...args: unknown[]) => mockState.queryDeleteMany(...args),
+      createMany: (...args: unknown[]) => mockState.queryCreateMany(...args),
+    },
     googleSeoConnection: {
       update: (...args: unknown[]) => mockState.connectionUpdate(...args),
       findMany: (...args: unknown[]) => mockState.connectionFindMany(...args),
     },
+    $transaction: (ops: unknown[]) => Promise.all(ops),
   },
 }));
 
@@ -43,6 +60,8 @@ import { isSyncDue, syncSearchConsoleForConnection, syncAllDueConnections } from
 function jsonResponse(body: unknown, ok = true, status = 200) {
   return { ok, status, json: async () => body } as unknown as Response;
 }
+
+const EMPTY_ROWS = jsonResponse({ rows: [] });
 
 function baseConnection(overrides: Record<string, unknown> = {}) {
   return {
@@ -64,6 +83,8 @@ beforeEach(() => {
   mockState.fetch.mockReset();
   mockState.getValidAccessToken.mockReset().mockResolvedValue('at_1');
   mockState.metricUpsert.mockReset().mockResolvedValue({});
+  mockState.queryDeleteMany.mockReset().mockResolvedValue({ count: 0 });
+  mockState.queryCreateMany.mockReset().mockResolvedValue({ count: 0 });
   mockState.connectionUpdate.mockReset().mockResolvedValue({});
   mockState.connectionFindMany.mockReset();
   mockState.logError.mockReset();
@@ -103,7 +124,7 @@ describe('syncSearchConsoleForConnection — guards', () => {
   });
 
   it('runs anyway when forced, even if recently synced', async () => {
-    mockState.fetch.mockResolvedValueOnce(jsonResponse({ rows: [] }));
+    mockState.fetch.mockResolvedValueOnce(EMPTY_ROWS).mockResolvedValueOnce(EMPTY_ROWS);
     const result = await syncSearchConsoleForConnection(baseConnection({ lastSyncAt: new Date() }), { force: true });
     expect(result.synced).toBe(true);
   });
@@ -117,8 +138,8 @@ describe('syncSearchConsoleForConnection — guards', () => {
 });
 
 describe('syncSearchConsoleForConnection — request shape', () => {
-  it('URL-encodes the site URL into the path and dimensions by date', async () => {
-    mockState.fetch.mockResolvedValueOnce(jsonResponse({ rows: [] }));
+  it('URL-encodes the site URL into the path and dimensions by date for the first (trend) call', async () => {
+    mockState.fetch.mockResolvedValueOnce(EMPTY_ROWS).mockResolvedValueOnce(EMPTY_ROWS);
     await syncSearchConsoleForConnection(baseConnection({ searchConsoleSiteUrl: 'sc-domain:negocio.example' }));
     const [url, init] = mockState.fetch.mock.calls[0];
     expect(url).toBe('https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Anegocio.example/searchAnalytics/query');
@@ -126,18 +147,30 @@ describe('syncSearchConsoleForConnection — request shape', () => {
     expect(body.dimensions).toEqual(['date']);
     expect(body.aggregationType).toBe('byProperty');
   });
+
+  it('the second call dimensions by query, same site URL and aggregationType', async () => {
+    mockState.fetch.mockResolvedValueOnce(EMPTY_ROWS).mockResolvedValueOnce(EMPTY_ROWS);
+    await syncSearchConsoleForConnection(baseConnection());
+    const [url, init] = mockState.fetch.mock.calls[1];
+    expect(url).toBe('https://www.googleapis.com/webmasters/v3/sites/https%3A%2F%2Fnegocio.example%2F/searchAnalytics/query');
+    const body = JSON.parse(init.body);
+    expect(body.dimensions).toEqual(['query']);
+    expect(body.aggregationType).toBe('byProperty');
+  });
 });
 
 describe('syncSearchConsoleForConnection — idempotent upsert by (connectionId, date)', () => {
   it('upserts each day row keyed by connectionId + date', async () => {
-    mockState.fetch.mockResolvedValueOnce(
-      jsonResponse({
-        rows: [
-          { keys: ['2026-09-01'], clicks: 12, impressions: 340, ctr: 0.035, position: 8.2 },
-          { keys: ['2026-09-02'], clicks: 15, impressions: 400, ctr: 0.0375, position: 7.9 },
-        ],
-      }),
-    );
+    mockState.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          rows: [
+            { keys: ['2026-09-01'], clicks: 12, impressions: 340, ctr: 0.035, position: 8.2 },
+            { keys: ['2026-09-02'], clicks: 15, impressions: 400, ctr: 0.0375, position: 7.9 },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(EMPTY_ROWS);
     const result = await syncSearchConsoleForConnection(baseConnection());
 
     expect(result).toEqual({ synced: true, dayCount: 2 });
@@ -151,8 +184,11 @@ describe('syncSearchConsoleForConnection — idempotent upsert by (connectionId,
 
   it('a second sync run on the same day upserts (not inserts) — never a duplicate row', async () => {
     const row = { keys: ['2026-09-01'], clicks: 12, impressions: 340, ctr: 0.035, position: 8.2 };
-    mockState.fetch.mockResolvedValueOnce(jsonResponse({ rows: [row] }));
-    mockState.fetch.mockResolvedValueOnce(jsonResponse({ rows: [row] }));
+    mockState.fetch
+      .mockResolvedValueOnce(jsonResponse({ rows: [row] }))
+      .mockResolvedValueOnce(EMPTY_ROWS)
+      .mockResolvedValueOnce(jsonResponse({ rows: [row] }))
+      .mockResolvedValueOnce(EMPTY_ROWS);
 
     await syncSearchConsoleForConnection(baseConnection());
     await syncSearchConsoleForConnection(baseConnection(), { force: true });
@@ -163,15 +199,68 @@ describe('syncSearchConsoleForConnection — idempotent upsert by (connectionId,
   });
 
   it('skips a row missing the date key rather than upserting a broken row', async () => {
-    mockState.fetch.mockResolvedValueOnce(jsonResponse({ rows: [{ clicks: 5 }] }));
+    mockState.fetch.mockResolvedValueOnce(jsonResponse({ rows: [{ clicks: 5 }] })).mockResolvedValueOnce(EMPTY_ROWS);
     const result = await syncSearchConsoleForConnection(baseConnection());
     expect(result.dayCount).toBe(0);
     expect(mockState.metricUpsert).not.toHaveBeenCalled();
   });
 });
 
+describe('syncSearchConsoleForConnection — query opportunities snapshot', () => {
+  it('replaces the whole SeoSearchConsoleQuery set: delete-all then insert-fresh', async () => {
+    mockState.fetch.mockResolvedValueOnce(EMPTY_ROWS).mockResolvedValueOnce(
+      jsonResponse({
+        rows: [
+          { keys: ['cerrajero urgente'], clicks: 3, impressions: 120, ctr: 0.025, position: 9.4 },
+          { keys: ['candado alta seguridad'], clicks: 1, impressions: 80, ctr: 0.0125, position: 14.1 },
+        ],
+      }),
+    );
+    await syncSearchConsoleForConnection(baseConnection());
+
+    expect(mockState.queryDeleteMany).toHaveBeenCalledWith({ where: { connectionId: 'conn_1' } });
+    expect(mockState.queryCreateMany).toHaveBeenCalledWith({
+      data: [
+        { connectionId: 'conn_1', clientId: 'client_1', query: 'cerrajero urgente', clicks: 3, impressions: 120, ctr: 0.025, position: 9.4 },
+        { connectionId: 'conn_1', clientId: 'client_1', query: 'candado alta seguridad', clicks: 1, impressions: 80, ctr: 0.0125, position: 14.1 },
+      ],
+    });
+  });
+
+  it('only deletes (skips createMany) when Google returns zero query rows', async () => {
+    mockState.fetch.mockResolvedValueOnce(EMPTY_ROWS).mockResolvedValueOnce(EMPTY_ROWS);
+    await syncSearchConsoleForConnection(baseConnection());
+    expect(mockState.queryDeleteMany).toHaveBeenCalled();
+    expect(mockState.queryCreateMany).not.toHaveBeenCalled();
+  });
+
+  it('skips a query row missing the query key rather than inserting a broken row', async () => {
+    mockState.fetch.mockResolvedValueOnce(EMPTY_ROWS).mockResolvedValueOnce(jsonResponse({ rows: [{ clicks: 1 }] }));
+    await syncSearchConsoleForConnection(baseConnection());
+    expect(mockState.queryCreateMany).not.toHaveBeenCalled();
+  });
+
+  it("a query-opportunities failure does NOT fail the overall sync — the trend sync already succeeded", async () => {
+    mockState.fetch.mockResolvedValueOnce(EMPTY_ROWS).mockResolvedValueOnce(jsonResponse({}, false, 500));
+    const result = await syncSearchConsoleForConnection(baseConnection());
+    expect(result).toEqual({ synced: true, dayCount: 0 });
+    expect(mockState.logError).toHaveBeenCalledWith(
+      'seo_search_console_sync.query_opportunities_failed',
+      expect.any(Error),
+      expect.anything(),
+      'warn',
+    );
+  });
+
+  it('leaves the previous snapshot untouched (no delete) when the query-opportunities fetch itself fails', async () => {
+    mockState.fetch.mockResolvedValueOnce(EMPTY_ROWS).mockResolvedValueOnce(jsonResponse({}, false, 500));
+    await syncSearchConsoleForConnection(baseConnection());
+    expect(mockState.queryDeleteMany).not.toHaveBeenCalled();
+  });
+});
+
 describe('syncSearchConsoleForConnection — failure handling', () => {
-  it('records lastSyncError and does not throw when the API call fails', async () => {
+  it('records lastSyncError and does not throw when the primary (trend) API call fails', async () => {
     mockState.fetch.mockResolvedValueOnce(jsonResponse({}, false, 500));
     const result = await syncSearchConsoleForConnection(baseConnection());
     expect(result).toEqual({ synced: false, reason: 'api_error' });
@@ -181,7 +270,7 @@ describe('syncSearchConsoleForConnection — failure handling', () => {
   });
 
   it('clears lastSyncError on a subsequent successful sync', async () => {
-    mockState.fetch.mockResolvedValueOnce(jsonResponse({ rows: [] }));
+    mockState.fetch.mockResolvedValueOnce(EMPTY_ROWS).mockResolvedValueOnce(EMPTY_ROWS);
     await syncSearchConsoleForConnection(baseConnection());
     expect(mockState.connectionUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ lastSyncError: null }) }),
@@ -197,11 +286,12 @@ describe('syncAllDueConnections', () => {
       baseConnection({ id: 'due_2_fails', lastSyncAt: null }),
     ]);
     mockState.fetch
-      .mockResolvedValueOnce(jsonResponse({ rows: [] })) // due_1 succeeds
-      .mockResolvedValueOnce(jsonResponse({}, false, 500)); // due_2_fails fails
+      .mockResolvedValueOnce(EMPTY_ROWS) // due_1 trend succeeds
+      .mockResolvedValueOnce(EMPTY_ROWS) // due_1 query opportunities succeeds
+      .mockResolvedValueOnce(jsonResponse({}, false, 500)); // due_2_fails trend fails
 
     const result = await syncAllDueConnections();
     expect(result).toEqual({ swept: 3, synced: 1 });
-    expect(mockState.fetch).toHaveBeenCalledTimes(2);
+    expect(mockState.fetch).toHaveBeenCalledTimes(3);
   });
 });

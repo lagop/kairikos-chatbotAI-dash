@@ -16,6 +16,14 @@ import { logError } from './observability';
 // Endpoint shape (searchAnalytics.query) verified against Google's
 // current published docs (developers.google.com/webmaster-tools/v1/
 // searchanalytics/query, fetched Sep 2026).
+//
+// Also refreshes SeoSearchConsoleQuery — the per-query "content
+// opportunity" signal (queries ranking around position 5-20) the
+// original plan called for but that shipped without it. Fetched as a
+// second, best-effort request on the SAME sync cycle: if it fails, the
+// date-dimension sync above still counts as a success (the trend chart
+// is the primary, already-relied-upon feature) — see
+// syncQueryOpportunities's own comment.
 // =============================================================================
 
 const QUERY_URL = (siteUrl: string) =>
@@ -26,6 +34,13 @@ const QUERY_URL = (siteUrl: string) =>
 // this whole window and upserts, rather than only fetching days newer
 // than lastSyncAt.
 const SYNC_WINDOW_DAYS = 30;
+
+// Search Console's rowLimit maxes out at 25,000 — far more than a
+// small business site needs for "what are our content opportunities."
+// Capped well below that so the table stays small and every row stays
+// meaningful (a site with 1000+ distinct ranking queries is not this
+// product's target user).
+const MAX_QUERY_ROWS = 1000;
 
 function getMinSyncIntervalMs(): number {
   const hours = Number(process.env.SEO_SEARCH_CONSOLE_SYNC_MIN_INTERVAL_HOURS ?? '24');
@@ -133,6 +148,8 @@ export async function syncSearchConsoleForConnection(
       data: { lastSyncAt: new Date(), lastSyncError: null },
     });
 
+    await syncQueryOpportunities(connection, accessToken, startDate, endDate);
+
     return { synced: true, dayCount };
   } catch (err) {
     logError('seo_search_console_sync.sync_failed', err, {
@@ -150,6 +167,64 @@ export async function syncSearchConsoleForConnection(
       })
       .catch(() => null);
     return { synced: false, reason: 'api_error' };
+  }
+}
+
+/**
+ * Refreshes SeoSearchConsoleQuery: the FULL set of query rows for this
+ * connection, replaced wholesale (delete-all + insert-fresh) rather
+ * than upserted row-by-row — see the model's own schema comment for
+ * why a snapshot, not a time series. Best-effort: a failure here is
+ * logged and swallowed, never thrown — the caller's date-dimension
+ * sync (the trend chart) already succeeded by the time this runs and
+ * must not be reported as failed just because this secondary signal
+ * couldn't refresh this cycle. The previous snapshot is left in place
+ * on failure (not cleared), so content generation still has something
+ * to read from rather than nothing.
+ */
+async function syncQueryOpportunities(
+  connection: GoogleSeoConnection,
+  accessToken: string,
+  startDate: Date,
+  endDate: Date,
+): Promise<void> {
+  try {
+    const res = await fetch(QUERY_URL(connection.searchConsoleSiteUrl), {
+      method: 'POST',
+      headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        startDate: formatDate(startDate),
+        endDate: formatDate(endDate),
+        dimensions: ['query'],
+        aggregationType: 'byProperty',
+        rowLimit: MAX_QUERY_ROWS,
+      }),
+    });
+    if (!res.ok) {
+      throw new Error(`searchAnalytics.query (by query) failed with HTTP ${res.status}`);
+    }
+    const json = (await res.json()) as { rows?: SearchAnalyticsRow[] };
+    const rows = (json.rows ?? [])
+      .map((row) => ({
+        connectionId: connection.id,
+        clientId: connection.clientId,
+        query: row.keys?.[0],
+        clicks: Math.round(row.clicks ?? 0),
+        impressions: Math.round(row.impressions ?? 0),
+        ctr: row.ctr ?? 0,
+        position: row.position ?? 0,
+      }))
+      .filter((row): row is typeof row & { query: string } => Boolean(row.query));
+
+    await prisma.$transaction([
+      prisma.seoSearchConsoleQuery.deleteMany({ where: { connectionId: connection.id } }),
+      ...(rows.length > 0 ? [prisma.seoSearchConsoleQuery.createMany({ data: rows })] : []),
+    ]);
+  } catch (err) {
+    logError('seo_search_console_sync.query_opportunities_failed', err, {
+      route: 'lib/seo-search-console-sync.ts',
+      connectionId: connection.id,
+    }, 'warn');
   }
 }
 

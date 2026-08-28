@@ -20,6 +20,13 @@ import { SeoAuditPanel, type SeoAuditResultData } from './SeoAuditPanel';
 // of this form's fields don't.
 // =============================================================================
 
+export interface SeoQueryOpportunity {
+  query: string;
+  impressions: number;
+  clicks: number;
+  position: number;
+}
+
 export interface SeoProfilePanelData {
   businessDescription: string | null;
   targetAudience: string | null;
@@ -48,10 +55,12 @@ export function SeoTechnicalSetupPanel({
   clientId,
   profile,
   globalMinIntervalDays,
+  queryOpportunities,
 }: {
   clientId: string;
   profile: SeoProfilePanelData | null;
   globalMinIntervalDays: number;
+  queryOpportunities: SeoQueryOpportunity[];
 }) {
   const router = useRouter();
   const [wordpressUrl, setWordpressUrl] = useState(profile?.wordpressUrl ?? '');
@@ -303,6 +312,43 @@ export function SeoTechnicalSetupPanel({
         lastAuditResult={profile.lastAuditResult}
         lastAuditError={profile.lastAuditError}
       />
+
+      <div className="border-t border-kairikos-border pt-4" data-testid="seo-query-opportunities-panel">
+        <p className="mb-1 text-sm font-semibold">Oportunidades de contenido</p>
+        <p className="mb-3 text-xs text-kairikos-muted">
+          Consultas de Google donde el sitio ya aparece (posición 4-20) — la señal que usa la generación de
+          artículos para elegir sobre qué escribir. Solo lectura; requiere Search Console conectado y
+          sincronizado.
+        </p>
+        {queryOpportunities.length === 0 ? (
+          <p className="text-sm text-kairikos-muted" data-testid="seo-query-opportunities-empty">
+            Todavía no hay oportunidades detectadas.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" data-testid="seo-query-opportunities-table">
+              <thead>
+                <tr className="text-left text-xs text-kairikos-muted">
+                  <th className="pb-2 pr-4 font-medium">Consulta</th>
+                  <th className="pb-2 pr-4 font-medium">Posición</th>
+                  <th className="pb-2 pr-4 font-medium">Impresiones</th>
+                  <th className="pb-2 font-medium">Clics</th>
+                </tr>
+              </thead>
+              <tbody>
+                {queryOpportunities.map((o) => (
+                  <tr key={o.query} className="border-t border-kairikos-border" data-testid="seo-query-opportunity-row">
+                    <td className="py-1.5 pr-4">{o.query}</td>
+                    <td className="py-1.5 pr-4 tabular-nums">{o.position}</td>
+                    <td className="py-1.5 pr-4 tabular-nums">{o.impressions.toLocaleString('es-ES')}</td>
+                    <td className="py-1.5 tabular-nums">{o.clicks.toLocaleString('es-ES')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

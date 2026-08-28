@@ -54,6 +54,7 @@ function makePrisma(profiles: ReturnType<typeof baseProfile>[]) {
   );
   const googleSeoConnectionFindUnique = vi.fn().mockResolvedValue(null);
   const seoSearchConsoleMetricFindMany = vi.fn().mockResolvedValue([]);
+  const seoSearchConsoleQueryFindMany = vi.fn().mockResolvedValue([]);
 
   return {
     seoProfile: {
@@ -63,7 +64,14 @@ function makePrisma(profiles: ReturnType<typeof baseProfile>[]) {
     seoContentDraft: { create: seoContentDraftCreate },
     googleSeoConnection: { findUnique: googleSeoConnectionFindUnique },
     seoSearchConsoleMetric: { findMany: seoSearchConsoleMetricFindMany },
-    __mocks: { seoProfileUpdate, seoContentDraftCreate, googleSeoConnectionFindUnique, seoSearchConsoleMetricFindMany },
+    seoSearchConsoleQuery: { findMany: seoSearchConsoleQueryFindMany },
+    __mocks: {
+      seoProfileUpdate,
+      seoContentDraftCreate,
+      googleSeoConnectionFindUnique,
+      seoSearchConsoleMetricFindMany,
+      seoSearchConsoleQueryFindMany,
+    },
   } as never;
 }
 
@@ -181,11 +189,45 @@ describe('sweepDueProfiles — draft creation + delivery', () => {
     );
   });
 
-  it('leaves searchConsoleSummary null when there is no active Search Console connection', async () => {
+  it('leaves searchConsoleSummary null and queryOpportunities empty when there is no active Search Console connection', async () => {
     const prisma = makePrisma([baseProfile()]);
     await sweepDueProfiles(prisma);
     expect(mockState.deliverChannelEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ payload: expect.objectContaining({ searchConsoleSummary: null }) }),
+      expect.objectContaining({ payload: expect.objectContaining({ searchConsoleSummary: null, queryOpportunities: [] }) }),
+    );
+    const { seoSearchConsoleQueryFindMany } = (prisma as never as { __mocks: Record<string, ReturnType<typeof vi.fn>> }).__mocks;
+    expect(seoSearchConsoleQueryFindMany).not.toHaveBeenCalled();
+  });
+
+  it('includes queryOpportunities filtered to position 4-20, sorted by impressions, when the connection is active', async () => {
+    const prisma = makePrisma([baseProfile()]);
+    const { googleSeoConnectionFindUnique, seoSearchConsoleQueryFindMany } = (
+      prisma as never as { __mocks: Record<string, ReturnType<typeof vi.fn>> }
+    ).__mocks;
+    googleSeoConnectionFindUnique.mockResolvedValueOnce({ id: 'conn_1', status: 'active' });
+    seoSearchConsoleQueryFindMany.mockResolvedValueOnce([
+      { query: 'cerrajero urgente', impressions: 120, clicks: 3, position: 9.42 },
+      { query: 'candado alta seguridad', impressions: 80, clicks: 1, position: 14.07 },
+    ]);
+
+    await sweepDueProfiles(prisma);
+
+    expect(seoSearchConsoleQueryFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { connectionId: 'conn_1', position: { gte: 4, lte: 20 } },
+        orderBy: { impressions: 'desc' },
+        take: 15,
+      }),
+    );
+    expect(mockState.deliverChannelEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          queryOpportunities: [
+            { query: 'cerrajero urgente', impressions: 120, clicks: 3, position: 9.4 },
+            { query: 'candado alta seguridad', impressions: 80, clicks: 1, position: 14.1 },
+          ],
+        }),
+      }),
     );
   });
 
