@@ -231,15 +231,20 @@ export async function getValidAccessToken(connection: StoredConnection): Promise
     return null;
   }
 
-  const { clientId, clientSecret } = getClientCredentials();
-  const body = new URLSearchParams({
-    client_id: clientId,
-    client_secret: clientSecret,
-    refresh_token: refreshToken,
-    grant_type: 'refresh_token',
-  });
-
   try {
+    // getClientCredentials() throws when GOOGLE_SEO_OAUTH_CLIENT_ID/SECRET
+    // aren't set — deliberately inside this try, not called before it.
+    // A connection ROW can already exist (created while OAuth was
+    // configured) even after the env var is later unset, so this is a
+    // real reachable path, not a theoretical one.
+    const { clientId, clientSecret } = getClientCredentials();
+    const body = new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: 'refresh_token',
+    });
+
     const res = await fetch(TOKEN_URL, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
