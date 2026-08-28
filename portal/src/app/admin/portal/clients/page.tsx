@@ -48,6 +48,7 @@ export default async function AdminClientsPage({
             <Link href="/admin/portal/web-quotes" className="btn-ghost">Presupuestos de web</Link>
             <Link href="/admin/portal/settings/billing" className="btn-ghost">Configuración de Stripe</Link>
             <Link href="/admin/portal/settings/integrations" className="btn-ghost">Integraciones</Link>
+            <Link href="/admin/portal/settings/seo" className="btn-ghost">SEO con IA</Link>
             <Link href="/admin/portal/support" className="btn-ghost">Solicitudes de ayuda</Link>
             <form action="/api/portal/operator" method="post">
               <input type="hidden" name="mode" value="disable" />

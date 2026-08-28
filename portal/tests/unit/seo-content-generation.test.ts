@@ -2,21 +2,27 @@
 // SEO con IA, Fase C — unit tests for src/lib/seo-content-generation.ts.
 //
 // Mirrors prospecting-enrichment.test.ts's conventions. Covers: the
-// monthly cadence guard, signal-building from the latest audit +
-// Search Console totals, request-time draft row creation, delivery
-// failure isolation, and lastContentRequestedAt stamping regardless of
-// delivery outcome.
+// cadence guard (minIntervalDays is a plain parameter — the operator-
+// configured resolution itself is seo-settings.test.ts's job), signal-
+// building from the latest audit + Search Console totals, request-time
+// draft row creation, delivery failure isolation, and
+// lastContentRequestedAt stamping regardless of delivery outcome.
 // =============================================================================
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockState = vi.hoisted(() => ({
   deliverChannelEvent: vi.fn(),
+  getContentGenerationMinIntervalDays: vi.fn(),
   logError: vi.fn(),
 }));
 
 vi.mock('@/lib/channel-webhook', () => ({
   deliverChannelEvent: (...args: unknown[]) => mockState.deliverChannelEvent(...args),
+}));
+
+vi.mock('@/lib/seo-settings', () => ({
+  getContentGenerationMinIntervalDays: (...args: unknown[]) => mockState.getContentGenerationMinIntervalDays(...args),
 }));
 
 vi.mock('@/lib/observability', () => ({
@@ -62,26 +68,21 @@ function makePrisma(profiles: ReturnType<typeof baseProfile>[]) {
 
 beforeEach(() => {
   mockState.deliverChannelEvent.mockReset().mockResolvedValue({ ok: true, deliveryId: 'delivery_1', status: 'delivered' });
+  mockState.getContentGenerationMinIntervalDays.mockReset().mockResolvedValue(3);
   mockState.logError.mockReset();
-  delete process.env.SEO_CONTENT_GENERATION_MIN_INTERVAL_DAYS;
-});
-
-afterEach(() => {
-  delete process.env.SEO_CONTENT_GENERATION_MIN_INTERVAL_DAYS;
 });
 
 describe('isGenerationDue', () => {
   it('is due when there is no prior request', () => {
-    expect(isGenerationDue(null)).toBe(true);
+    expect(isGenerationDue(null, 3)).toBe(true);
   });
 
-  it('is NOT due within the default 30-day interval', () => {
-    expect(isGenerationDue(new Date(Date.now() - 5 * 24 * 60 * 60_000))).toBe(false);
+  it('is NOT due within the given interval', () => {
+    expect(isGenerationDue(new Date(Date.now() - 1 * 24 * 60 * 60_000), 3)).toBe(false);
   });
 
-  it('is due once the configured interval has elapsed', () => {
-    process.env.SEO_CONTENT_GENERATION_MIN_INTERVAL_DAYS = '7';
-    expect(isGenerationDue(new Date(Date.now() - 8 * 24 * 60 * 60_000))).toBe(true);
+  it('is due once the given interval has elapsed', () => {
+    expect(isGenerationDue(new Date(Date.now() - 8 * 24 * 60 * 60_000), 7)).toBe(true);
   });
 });
 
@@ -94,6 +95,16 @@ describe('sweepDueProfiles — cadence gating', () => {
     const result = await sweepDueProfiles(prisma);
     expect(result).toEqual({ processed: 1, requested: 1, deliveryFailed: 0 });
     expect((prisma as never as { __mocks: { seoContentDraftCreate: ReturnType<typeof vi.fn> } }).__mocks.seoContentDraftCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('resolves the operator-configured interval via getContentGenerationMinIntervalDays', async () => {
+    mockState.getContentGenerationMinIntervalDays.mockResolvedValueOnce(10);
+    const prisma = makePrisma([
+      baseProfile({ id: 'not_due_at_10', lastContentRequestedAt: new Date(Date.now() - 5 * 24 * 60 * 60_000) }),
+    ]);
+    const result = await sweepDueProfiles(prisma);
+    expect(result).toEqual({ processed: 0, requested: 0, deliveryFailed: 0 });
+    expect(mockState.getContentGenerationMinIntervalDays).toHaveBeenCalledTimes(1);
   });
 });
 

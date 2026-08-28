@@ -1,6 +1,7 @@
 import 'server-only';
 import type { PrismaClient, Prisma } from '@prisma/client';
 import { deliverChannelEvent } from './channel-webhook';
+import { getContentGenerationMinIntervalDays } from './seo-settings';
 import { logError } from './observability';
 
 // =============================================================================
@@ -21,21 +22,20 @@ import { logError } from './observability';
 // what lets an operator see "solicitado, todavía sin volver" as a real
 // state, and is also the same row the callback route PATCHes.
 //
-// v1 requests exactly one draft per due profile per cadence — the
-// marketing copy's "8-12 artículos/mes" is a LATER increase to either
-// the cadence or the count-per-tick, not a different mechanism.
+// v1 requests exactly one draft per due profile per cadence — scaling
+// toward the marketing copy's "8-12 artículos/mes" is the operator
+// lowering minIntervalDays via /admin/portal/settings/seo (see
+// lib/seo-settings.ts), not a different mechanism.
 // =============================================================================
 
-function getMinIntervalMs(): number {
-  const days = Number(process.env.SEO_CONTENT_GENERATION_MIN_INTERVAL_DAYS ?? '30');
-  return (Number.isFinite(days) && days > 0 ? days : 30) * 24 * 60 * 60_000;
-}
-
 /** Same one-place-enforces-the-cadence reasoning as every other
- *  isSyncDue/isDigestDue in this codebase. */
-export function isGenerationDue(lastContentRequestedAt: Date | null): boolean {
+ *  isSyncDue/isDigestDue in this codebase. minIntervalDays is passed in
+ *  (not read from settings internally) so this stays a pure, easily
+ *  tested function — sweepDueProfiles resolves the operator-configured
+ *  value once per sweep via getContentGenerationMinIntervalDays. */
+export function isGenerationDue(lastContentRequestedAt: Date | null, minIntervalDays: number): boolean {
   if (!lastContentRequestedAt) return true;
-  return Date.now() - lastContentRequestedAt.getTime() >= getMinIntervalMs();
+  return Date.now() - lastContentRequestedAt.getTime() >= minIntervalDays * 24 * 60 * 60_000;
 }
 
 interface ProfileForGeneration {
@@ -101,6 +101,8 @@ export interface GenerationSweepResult {
  * not by asking this sweep to try again next tick with a duplicate row.
  */
 export async function sweepDueProfiles(prisma: PrismaClient, now: Date = new Date()): Promise<GenerationSweepResult> {
+  const minIntervalDays = await getContentGenerationMinIntervalDays();
+
   const candidates = (await prisma.seoProfile.findMany({
     where: {
       businessDescription: { not: null },
@@ -119,7 +121,7 @@ export async function sweepDueProfiles(prisma: PrismaClient, now: Date = new Dat
     },
   })) as ProfileForGeneration[];
 
-  const due = candidates.filter((p) => isGenerationDue(p.lastContentRequestedAt));
+  const due = candidates.filter((p) => isGenerationDue(p.lastContentRequestedAt, minIntervalDays));
 
   let requested = 0;
   let deliveryFailed = 0;
