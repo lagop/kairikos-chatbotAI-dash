@@ -2597,6 +2597,26 @@ model SeoContentDraft {
 }
 
 // =============================================================================
+// SEO con IA — global, operator-configurable product settings. Singleton
+// row (fixed id, see SEO_SETTINGS_SINGLETON_ID in lib/seo-settings.ts) —
+// there is exactly one of these, upserted, never a real list. Started
+// with a single field (content generation cadence) rather than a
+// generic key-value table: every other config value in this schema
+// lives on its own typed column somewhere, and a JSON blob would trade
+// that for flexibility nothing here needs yet.
+//
+// contentGenerationMinIntervalDays gates lib/seo-content-generation.ts's
+// isGenerationDue — DB value wins when this row exists; falls back to
+// SEO_CONTENT_GENERATION_MIN_INTERVAL_DAYS, then a hardcoded default,
+// when it doesn't (see getContentGenerationMinIntervalDays).
+model SeoSettings {
+  id                               String   @id @db.Uuid
+  contentGenerationMinIntervalDays Int      @default(3) @map("content_generation_min_interval_days")
+  updatedAt                        DateTime @updatedAt @map("updated_at")
+  updatedBy                        String?  @map("updated_by")
+}
+
+// =============================================================================
 // WP-XX — Recuperación de llamadas perdidas + reseñas (product code 'recall').
 //
 // Satellite model, 1:1 with ClientProduct — the same shape WebQuote uses
