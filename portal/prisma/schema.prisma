@@ -1455,11 +1455,33 @@ model GoogleAnalyticsConnection {
   lastSyncAt             DateTime? @map("last_sync_at")
   lastSyncError          String?   @map("last_sync_error")
 
-  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  client  ChatbotClient            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant  Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  metrics SeoAnalyticsMetric[]
 
   @@index([tenantId])
   @@index([status])
+}
+
+// =============================================================================
+// SEO con IA — one row per DAY of site-wide GA4 performance for a
+// connected property, synced by lib/seo-analytics-sync.ts. Same
+// time-series shape (and same "re-fetch a rolling window and upsert"
+// reasoning) as SeoSearchConsoleMetric — GA4 data can also be revised
+// for a few days after it first appears.
+model SeoAnalyticsMetric {
+  id           String   @id @default(uuid()) @db.Uuid
+  connectionId String   @map("connection_id") @db.Uuid
+  clientId     String   @map("client_id")
+  date         DateTime @db.Date
+  users        Int
+  sessions     Int
+  syncedAt     DateTime @default(now()) @map("synced_at")
+
+  connection GoogleAnalyticsConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, date])
+  @@index([clientId])
 }
 
 // =============================================================================

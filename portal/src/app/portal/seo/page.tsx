@@ -180,15 +180,29 @@ export default async function PortalSeoPage({
     });
     trendPoints = metrics.map((m) => ({
       date: m.date.toISOString().slice(0, 10),
-      clicks: m.clicks,
-      impressions: m.impressions,
+      primary: m.clicks,
+      secondary: m.impressions,
     }));
   }
 
   const analyticsConnection = await prisma.googleAnalyticsConnection.findUnique({
     where: { clientId: resolved.clientId },
-    select: { status: true, propertyDisplayName: true, connectedAt: true },
+    select: { id: true, status: true, propertyDisplayName: true, connectedAt: true },
   });
+
+  let analyticsTrendPoints: SeoTrendPoint[] = [];
+  if (analyticsConnection?.status === 'active') {
+    const metrics = await prisma.seoAnalyticsMetric.findMany({
+      where: { connectionId: analyticsConnection.id },
+      orderBy: { date: 'asc' },
+      select: { date: true, users: true, sessions: true },
+    });
+    analyticsTrendPoints = metrics.map((m) => ({
+      date: m.date.toISOString().slice(0, 10),
+      primary: m.users,
+      secondary: m.sessions,
+    }));
+  }
 
   return (
     <div className="space-y-6">
@@ -251,7 +265,7 @@ export default async function PortalSeoPage({
             </p>
             <div>
               <p className="mb-2 text-sm font-semibold">Últimos 30 días</p>
-              <SeoTrendChart points={trendPoints} />
+              <SeoTrendChart points={trendPoints} primaryLabel="Clics" secondaryLabel="Impresiones" />
             </div>
           </div>
         ) : connection?.status === 'needs_reconnect' ? (
@@ -288,10 +302,16 @@ export default async function PortalSeoPage({
         ) : null}
 
         {analyticsConnection?.status === 'active' ? (
-          <p className="text-sm" data-testid="seo-analytics-status">
-            Conectado a <span className="font-medium">{analyticsConnection.propertyDisplayName}</span> desde el{' '}
-            {analyticsConnection.connectedAt.toLocaleDateString('es-ES')}.
-          </p>
+          <div className="space-y-4">
+            <p className="text-sm" data-testid="seo-analytics-status">
+              Conectado a <span className="font-medium">{analyticsConnection.propertyDisplayName}</span> desde el{' '}
+              {analyticsConnection.connectedAt.toLocaleDateString('es-ES')}.
+            </p>
+            <div>
+              <p className="mb-2 text-sm font-semibold">Últimos 30 días</p>
+              <SeoTrendChart points={analyticsTrendPoints} primaryLabel="Usuarios" secondaryLabel="Sesiones" />
+            </div>
+          </div>
         ) : analyticsConnection?.status === 'pending_property_selection' ? (
           <SeoAnalyticsPicker />
         ) : analyticsConnection?.status === 'needs_reconnect' ? (
