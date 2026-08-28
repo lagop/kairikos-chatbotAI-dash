@@ -1,0 +1,256 @@
+// =============================================================================
+// SEO con IA — unit tests for src/lib/google-analytics.ts.
+//
+// Mirrors google-search-console.test.ts's conventions closely (same
+// OAuth mechanism). Covers: config check, authorization URL, code→token
+// exchange, fetchAccessibleProperties' flattening across accounts,
+// revocation, the encrypt/decrypt refresh-token round-trip (real
+// AES-256-GCM), and getValidAccessToken's invalid_grant →
+// needs_reconnect degraded-state transition.
+// =============================================================================
+
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+const mockState = vi.hoisted(() => ({
+  fetch: vi.fn(),
+  connectionUpdate: vi.fn(),
+  logError: vi.fn(),
+}));
+
+vi.stubGlobal('fetch', mockState.fetch);
+
+vi.mock('@/lib/prisma', () => ({
+  prisma: {
+    googleAnalyticsConnection: {
+      update: (...args: unknown[]) => mockState.connectionUpdate(...args),
+    },
+  },
+}));
+
+vi.mock('@/lib/observability', () => ({
+  logError: (...args: unknown[]) => mockState.logError(...args),
+}));
+
+import {
+  isAnalyticsOAuthConfigured,
+  buildAuthorizationUrl,
+  exchangeCodeForTokens,
+  fetchAccessibleProperties,
+  revokeGoogleToken,
+  encryptRefreshToken,
+  decryptRefreshToken,
+  getValidAccessToken,
+} from '@/lib/google-analytics';
+
+const ENV_KEYS = [
+  'GOOGLE_GA4_OAUTH_CLIENT_ID',
+  'GOOGLE_GA4_OAUTH_CLIENT_SECRET',
+  'GOOGLE_GA4_OAUTH_REDIRECT_URI',
+  'GOOGLE_GA4_TOKEN_ENCRYPTION_KEY',
+  'NEXT_PUBLIC_PORTAL_URL',
+] as const;
+
+function jsonResponse(body: unknown, ok = true, status = 200) {
+  return { ok, status, json: async () => body } as unknown as Response;
+}
+
+beforeEach(() => {
+  mockState.fetch.mockReset();
+  mockState.connectionUpdate.mockReset().mockResolvedValue({});
+  mockState.logError.mockReset();
+  process.env.GOOGLE_GA4_OAUTH_CLIENT_ID = 'ga4_client_id_1';
+  process.env.GOOGLE_GA4_OAUTH_CLIENT_SECRET = 'ga4_client_secret_1';
+  process.env.GOOGLE_GA4_OAUTH_REDIRECT_URI = 'https://portal.kairikos.test/api/portal/seo/analytics/oauth/callback';
+  process.env.GOOGLE_GA4_TOKEN_ENCRYPTION_KEY = 'c'.repeat(64);
+  process.env.NEXT_PUBLIC_PORTAL_URL = 'https://portal.kairikos.test';
+});
+
+afterEach(() => {
+  for (const key of ENV_KEYS) delete process.env[key];
+});
+
+describe('isAnalyticsOAuthConfigured', () => {
+  it('true when all required env vars are set', () => {
+    expect(isAnalyticsOAuthConfigured()).toBe(true);
+  });
+
+  it('false when the encryption key is missing', () => {
+    delete process.env.GOOGLE_GA4_TOKEN_ENCRYPTION_KEY;
+    expect(isAnalyticsOAuthConfigured()).toBe(false);
+  });
+});
+
+describe('buildAuthorizationUrl', () => {
+  it('includes the analytics.readonly scope, offline+consent, and the caller-supplied state', () => {
+    const url = new URL(buildAuthorizationUrl('state-abc-123'));
+    expect(url.searchParams.get('scope')).toBe('https://www.googleapis.com/auth/analytics.readonly');
+    expect(url.searchParams.get('access_type')).toBe('offline');
+    expect(url.searchParams.get('prompt')).toBe('consent');
+    expect(url.searchParams.get('state')).toBe('state-abc-123');
+    expect(url.searchParams.get('client_id')).toBe('ga4_client_id_1');
+    expect(url.searchParams.get('redirect_uri')).toBe(process.env.GOOGLE_GA4_OAUTH_REDIRECT_URI);
+  });
+});
+
+describe('exchangeCodeForTokens', () => {
+  it('returns the parsed tokens on success', async () => {
+    mockState.fetch.mockResolvedValueOnce(
+      jsonResponse({ access_token: 'at_1', refresh_token: 'rt_1', expires_in: 3600, scope: 'analytics.readonly' }),
+    );
+    const result = await exchangeCodeForTokens('code_1');
+    expect(result).toEqual({ accessToken: 'at_1', refreshToken: 'rt_1', expiresIn: 3600, scope: 'analytics.readonly' });
+  });
+
+  it('returns null when Google responds non-ok', async () => {
+    mockState.fetch.mockResolvedValueOnce(jsonResponse({ error: 'invalid_grant' }, false, 400));
+    expect(await exchangeCodeForTokens('code_1')).toBeNull();
+  });
+
+  it('returns null and logs on network error, never throws', async () => {
+    mockState.fetch.mockRejectedValueOnce(new Error('network down'));
+    const result = await exchangeCodeForTokens('code_1');
+    expect(result).toBeNull();
+    expect(mockState.logError).toHaveBeenCalledWith('google_analytics.exchange_code', expect.any(Error), expect.anything(), 'warn');
+  });
+});
+
+describe('fetchAccessibleProperties', () => {
+  it('flattens propertySummaries across every account into one list', async () => {
+    mockState.fetch.mockResolvedValueOnce(
+      jsonResponse({
+        accountSummaries: [
+          {
+            displayName: 'Ferretería Central',
+            propertySummaries: [{ property: 'properties/1000', displayName: 'ferreteriacentral.example' }],
+          },
+          {
+            displayName: 'Otro negocio',
+            propertySummaries: [
+              { property: 'properties/2000', displayName: 'otronegocio.example' },
+              { property: 'properties/2001', displayName: 'otronegocio-tienda.example' },
+            ],
+          },
+        ],
+      }),
+    );
+    const result = await fetchAccessibleProperties('at_1');
+    expect(result).toEqual([
+      { propertyId: 'properties/1000', displayName: 'ferreteriacentral.example', accountDisplayName: 'Ferretería Central' },
+      { propertyId: 'properties/2000', displayName: 'otronegocio.example', accountDisplayName: 'Otro negocio' },
+      { propertyId: 'properties/2001', displayName: 'otronegocio-tienda.example', accountDisplayName: 'Otro negocio' },
+    ]);
+  });
+
+  it('skips a property summary missing property or displayName rather than including a broken entry', async () => {
+    mockState.fetch.mockResolvedValueOnce(
+      jsonResponse({
+        accountSummaries: [
+          { displayName: 'X', propertySummaries: [{ property: 'properties/1000' }, { displayName: 'sin id' }] },
+        ],
+      }),
+    );
+    expect(await fetchAccessibleProperties('at_1')).toEqual([]);
+  });
+
+  it('returns an empty array when the call fails', async () => {
+    mockState.fetch.mockResolvedValueOnce(jsonResponse({}, false, 403));
+    expect(await fetchAccessibleProperties('at_1')).toEqual([]);
+  });
+
+  it('returns an empty array and logs on network error, never throws', async () => {
+    mockState.fetch.mockRejectedValueOnce(new Error('network down'));
+    expect(await fetchAccessibleProperties('at_1')).toEqual([]);
+    expect(mockState.logError).toHaveBeenCalled();
+  });
+});
+
+describe('revokeGoogleToken', () => {
+  it('returns true when Google accepts the revoke call', async () => {
+    mockState.fetch.mockResolvedValueOnce(jsonResponse({}));
+    expect(await revokeGoogleToken('rt_1')).toBe(true);
+  });
+
+  it('returns false (not throw) when Google rejects the revoke call', async () => {
+    mockState.fetch.mockResolvedValueOnce(jsonResponse({}, false, 400));
+    expect(await revokeGoogleToken('rt_1')).toBe(false);
+  });
+});
+
+describe('encryptRefreshToken / decryptRefreshToken — round trip (real AES-256-GCM)', () => {
+  it('decrypts back to the exact original plaintext', () => {
+    const plaintext = '1//0g_a_real_looking_refresh_token_value';
+    const encrypted = encryptRefreshToken(plaintext);
+    expect(Buffer.isBuffer(encrypted.ciphertext)).toBe(true);
+    expect(encrypted.ciphertext.toString('utf8')).not.toContain(plaintext);
+    expect(decryptRefreshToken(encrypted)).toBe(plaintext);
+  });
+
+  it('produces a different ciphertext each time (random IV)', () => {
+    const a = encryptRefreshToken('same-plaintext');
+    const b = encryptRefreshToken('same-plaintext');
+    expect(a.ciphertext.equals(b.ciphertext)).toBe(false);
+    expect(a.iv.equals(b.iv)).toBe(false);
+  });
+});
+
+describe('getValidAccessToken', () => {
+  function storedConnection(plaintext: string, overrides: { id?: string } = {}) {
+    const enc = encryptRefreshToken(plaintext);
+    return {
+      id: overrides.id ?? 'conn_1',
+      refreshTokenCiphertext: enc.ciphertext,
+      refreshTokenIv: enc.iv,
+      refreshTokenTag: enc.tag,
+    };
+  }
+
+  it('returns a fresh access token on success', async () => {
+    mockState.fetch.mockResolvedValueOnce(jsonResponse({ access_token: 'at_fresh' }));
+    const result = await getValidAccessToken(storedConnection('rt_valid'));
+    expect(result).toBe('at_fresh');
+    expect(mockState.connectionUpdate).not.toHaveBeenCalled();
+  });
+
+  it('flips the connection to needs_reconnect on invalid_grant and returns null', async () => {
+    mockState.fetch.mockResolvedValueOnce(jsonResponse({ error: 'invalid_grant' }, false, 400));
+    const result = await getValidAccessToken(storedConnection('rt_revoked', { id: 'conn_42' }));
+    expect(result).toBeNull();
+    expect(mockState.connectionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'conn_42' },
+        data: expect.objectContaining({ status: 'needs_reconnect' }),
+      }),
+    );
+  });
+
+  it('does NOT touch the connection row for a non-invalid_grant failure (transient error)', async () => {
+    mockState.fetch.mockResolvedValueOnce(jsonResponse({ error: 'server_error' }, false, 500));
+    const result = await getValidAccessToken(storedConnection('rt_valid'));
+    expect(result).toBeNull();
+    expect(mockState.connectionUpdate).not.toHaveBeenCalled();
+  });
+
+  it('returns null without throwing when the stored ciphertext cannot be decrypted', async () => {
+    const result = await getValidAccessToken({
+      id: 'conn_bad',
+      refreshTokenCiphertext: Buffer.from('garbage'),
+      refreshTokenIv: Buffer.alloc(16, 1),
+      refreshTokenTag: Buffer.alloc(16, 2),
+    });
+    expect(result).toBeNull();
+    expect(mockState.fetch).not.toHaveBeenCalled();
+  });
+
+  it('returns null without throwing when GOOGLE_GA4_OAUTH_CLIENT_ID/SECRET are unset — a real reachable state, not theoretical: a connection row can already exist from when OAuth WAS configured', async () => {
+    delete process.env.GOOGLE_GA4_OAUTH_CLIENT_ID;
+    delete process.env.GOOGLE_GA4_OAUTH_CLIENT_SECRET;
+    const result = await getValidAccessToken(storedConnection('rt_valid'));
+    expect(result).toBeNull();
+    expect(mockState.fetch).not.toHaveBeenCalled();
+    expect(mockState.logError).toHaveBeenCalledWith(
+      'google_analytics.refresh_access_token',
+      expect.any(Error),
+      expect.anything(),
+    );
+  });
+});
