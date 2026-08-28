@@ -265,4 +265,17 @@ describe('getValidAccessToken', () => {
     expect(result).toBeNull();
     expect(mockState.fetch).not.toHaveBeenCalled();
   });
+
+  it('returns null without throwing when GOOGLE_SEO_OAUTH_CLIENT_ID/SECRET are unset — a real reachable state, not theoretical: a connection row can already exist from when OAuth WAS configured', async () => {
+    delete process.env.GOOGLE_SEO_OAUTH_CLIENT_ID;
+    delete process.env.GOOGLE_SEO_OAUTH_CLIENT_SECRET;
+    const result = await getValidAccessToken(storedConnection('rt_valid'));
+    expect(result).toBeNull();
+    expect(mockState.fetch).not.toHaveBeenCalled();
+    expect(mockState.logError).toHaveBeenCalledWith(
+      'google_search_console.refresh_access_token',
+      expect.any(Error),
+      expect.anything(),
+    );
+  });
 });
