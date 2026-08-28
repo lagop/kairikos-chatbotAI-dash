@@ -121,6 +121,7 @@ export default async function PortalSeoPage({
   const profile = await prisma.seoProfile.findFirst({
     where: { clientId: resolved.clientId },
     select: {
+      id: true,
       businessDescription: true,
       targetAudience: true,
       toneOfVoice: true,
@@ -128,6 +129,20 @@ export default async function PortalSeoPage({
       cmsType: true,
     },
   });
+
+  // SEO con IA, Fase C — only PUBLISHED articles are ever shown to the
+  // client. Drafts, pending review, rejected, and publish_failed are all
+  // operator-only internal states (see SeoContentDraftsPanel) — the
+  // client never sees or approves a draft, so surfacing anything short
+  // of 'published' here would leak unreviewed content or expose jargon
+  // ("pendiente de revisión") the client has no way to act on.
+  const publishedArticles = profile
+    ? await prisma.seoContentDraft.findMany({
+        where: { profileId: profile.id, status: 'published' },
+        orderBy: { publishedAt: 'desc' },
+        select: { id: true, title: true, publishedAt: true, wordpressPostUrl: true },
+      })
+    : [];
 
   const connection = await prisma.googleSeoConnection.findUnique({
     where: { clientId: resolved.clientId },
@@ -152,6 +167,35 @@ export default async function PortalSeoPage({
     <div className="space-y-6">
       <PageHeading eyebrow="Portal" title="SEO con IA" description="Cuéntanos de tu negocio para empezar." />
       <SeoProfileCard profile={profile} />
+
+      <section className="card space-y-3" aria-label="Tus artículos" data-testid="seo-articles-card">
+        <div>
+          <p className="text-sm font-semibold">Tus artículos</p>
+          <p className="text-xs text-kairikos-muted">Artículos que hemos redactado y publicado en tu sitio.</p>
+        </div>
+
+        {publishedArticles.length === 0 ? (
+          <p className="text-sm text-kairikos-muted" data-testid="seo-articles-empty">
+            Todavía no hay artículos publicados. En cuanto el primero esté listo y revisado, aparecerá aquí.
+          </p>
+        ) : (
+          <ul className="space-y-3" data-testid="seo-articles-list">
+            {publishedArticles.map((article) => (
+              <li key={article.id} className="rounded-xl border border-kairikos-border p-3" data-testid="seo-article-item">
+                <p className="text-sm font-semibold">{article.title}</p>
+                <div className="mt-1 flex items-center justify-between gap-3 text-xs text-kairikos-muted">
+                  <span>Publicado el {article.publishedAt?.toLocaleDateString('es-ES')}</span>
+                  {article.wordpressPostUrl ? (
+                    <a href={article.wordpressPostUrl} target="_blank" rel="noreferrer" className="font-medium text-kairikos-accent underline">
+                      Ver artículo
+                    </a>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section className="card space-y-3" aria-label="Search Console" data-testid="seo-search-console-card">
         <div>
