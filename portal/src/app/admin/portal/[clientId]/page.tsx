@@ -29,6 +29,7 @@ import { getAllowedChannelsForClient } from '@/lib/channel-access';
 import { LeadsSummaryPanel, type LeadSummaryRow } from '@/components/admin/LeadsSummaryPanel';
 import { RecallOperatorPanel, type RecallPanelData } from '@/components/admin/RecallOperatorPanel';
 import { SeoTechnicalSetupPanel, type SeoProfilePanelData } from '@/components/admin/SeoTechnicalSetupPanel';
+import { getContentGenerationMinIntervalDays } from '@/lib/seo-settings';
 import { SeoContentDraftsPanel, type SeoContentDraftData } from '@/components/admin/SeoContentDraftsPanel';
 import { isStuck, stuckThresholdDays } from '@/lib/recall';
 
@@ -355,6 +356,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
   // pattern as every block above.
   let seoProfile: SeoProfilePanelData | null = null;
   let seoContentDrafts: SeoContentDraftData[] = [];
+  let seoGlobalMinIntervalDays = 3;
   if (isDatabaseConfigured) {
     try {
       const client = await prisma.chatbotClient.findUnique({
@@ -671,6 +673,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
         }
 
         if (productCode === 'seo') {
+          seoGlobalMinIntervalDays = await getContentGenerationMinIntervalDays();
           const profile = await prisma.seoProfile.findFirst({
             where: { clientId: client.id },
             orderBy: { createdAt: 'desc' },
@@ -686,6 +689,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
               wordpressAppPasswordCiphertext: true,
               technicalSetupNotes: true,
               technicalSetupCompletedAt: true,
+              contentGenerationMinIntervalDaysOverride: true,
               status: true,
               lastAuditAt: true,
               lastAuditResult: true,
@@ -704,6 +708,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
               hasAppPassword: profile.wordpressAppPasswordCiphertext !== null,
               technicalSetupNotes: profile.technicalSetupNotes,
               technicalSetupCompletedAt: profile.technicalSetupCompletedAt?.toISOString() ?? null,
+              contentGenerationMinIntervalDaysOverride: profile.contentGenerationMinIntervalDaysOverride,
               status: profile.status,
               lastAuditAt: profile.lastAuditAt?.toISOString() ?? null,
               lastAuditResult: profile.lastAuditResult as SeoProfilePanelData['lastAuditResult'],
@@ -1046,7 +1051,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
                   cuando esté listo.
                 </p>
               </header>
-              <SeoTechnicalSetupPanel clientId={params.clientId} profile={seoProfile} />
+              <SeoTechnicalSetupPanel clientId={params.clientId} profile={seoProfile} globalMinIntervalDays={seoGlobalMinIntervalDays} />
               <div className="mt-4">
                 <SeoContentDraftsPanel clientId={params.clientId} drafts={seoContentDrafts} />
               </div>

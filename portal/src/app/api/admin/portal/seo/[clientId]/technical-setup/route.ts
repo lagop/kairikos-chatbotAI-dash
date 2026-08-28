@@ -20,6 +20,10 @@ export const runtime = 'nodejs';
 //
 // Requires an existing SeoProfile — the client has to have started
 // onboarding first; there is nothing to complement yet otherwise.
+//
+// Also carries contentGenerationMinIntervalDaysOverride — not a
+// WordPress field, but still an operator-only, per-client setting on
+// this same row, so it rides the same PATCH rather than a new route.
 // =============================================================================
 
 const BodySchema = z
@@ -28,6 +32,13 @@ const BodySchema = z
     wordpressUsername: z.string().trim().min(1).max(200).optional(),
     wordpressAppPassword: z.string().trim().min(1).max(500).optional(),
     technicalSetupNotes: z.string().trim().max(2000).optional(),
+    // Per-client override of SeoSettings' global content-generation
+    // cadence — see the field's own schema comment. `null` explicitly
+    // CLEARS the override (reverts to the global default); `undefined`
+    // (the field simply absent from the body) leaves it untouched —
+    // unlike every other field above, which only ever gets set, this one
+    // needs a real way to be un-set again.
+    contentGenerationMinIntervalDaysOverride: z.number().int().min(1).max(90).nullable().optional(),
   })
   .refine((body) => Object.values(body).some((v) => v !== undefined), {
     message: 'at least one field must be provided',
@@ -53,6 +64,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { clientId: 
       wordpressAppPasswordCiphertext: true,
       technicalSetupNotes: true,
       technicalSetupCompletedAt: true,
+      contentGenerationMinIntervalDaysOverride: true,
     },
   });
   if (!existing) {
@@ -81,6 +93,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { clientId: 
     wordpressUsername: existing.wordpressUsername,
     hasAppPassword: hasExistingPassword,
     technicalSetupNotes: existing.technicalSetupNotes,
+    contentGenerationMinIntervalDaysOverride: existing.contentGenerationMinIntervalDaysOverride,
   };
 
   const encrypted = hasNewPassword ? encryptWordPressAppPassword(body.data.wordpressAppPassword as string) : null;
@@ -106,6 +119,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { clientId: 
             : {}),
           technicalSetupNotes: body.data.technicalSetupNotes ?? existing.technicalSetupNotes,
           ...(justCompleted ? { technicalSetupCompletedAt: new Date() } : {}),
+          ...(body.data.contentGenerationMinIntervalDaysOverride !== undefined
+            ? { contentGenerationMinIntervalDaysOverride: body.data.contentGenerationMinIntervalDaysOverride }
+            : {}),
         },
       });
       await tx.seoProfileAudit.create({
@@ -120,6 +136,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { clientId: 
             wordpressUsername: row.wordpressUsername,
             hasAppPassword: nextHasPassword,
             technicalSetupNotes: row.technicalSetupNotes,
+            contentGenerationMinIntervalDaysOverride: row.contentGenerationMinIntervalDaysOverride,
           },
           actorType: 'operator',
           actorOperatorId,
@@ -137,6 +154,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { clientId: 
         hasAppPassword: nextHasPassword,
         technicalSetupNotes: updated.technicalSetupNotes,
         technicalSetupCompletedAt: updated.technicalSetupCompletedAt?.toISOString() ?? null,
+        contentGenerationMinIntervalDaysOverride: updated.contentGenerationMinIntervalDaysOverride,
       },
     });
   } catch (err) {
