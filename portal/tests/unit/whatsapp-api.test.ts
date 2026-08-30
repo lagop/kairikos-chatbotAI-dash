@@ -21,6 +21,7 @@ import {
   getPhoneNumbersForWaba,
   syncSmbAppState,
   listMessageTemplates,
+  createMessageTemplate,
   isRetryableWhatsAppError,
   WHATSAPP_ERROR,
 } from '@/lib/whatsapp-api';
@@ -259,5 +260,82 @@ describe('listMessageTemplates', () => {
     expect(url).toContain('/waba_1/message_templates');
     expect(url).toContain('rejected_reason');
     expect(result.ok).toBe(true);
+  });
+});
+
+describe('createMessageTemplate', () => {
+  it('POSTs a single-BODY-component template with the example filled from bodyExamples', async () => {
+    mockState.fetch.mockResolvedValueOnce(jsonResponse({ id: 'tmpl_1', status: 'PENDING', category: 'UTILITY' }));
+    const result = await createMessageTemplate('token', 'waba_1', {
+      name: 'recall_caller_open',
+      languageCode: 'es',
+      category: 'UTILITY',
+      bodyText: 'Hola, soy el asistente de {{1}}.',
+      bodyExamples: ['Peluquería Aurora'],
+    });
+
+    const url = String(mockState.fetch.mock.calls[0][0]);
+    expect(mockState.fetch.mock.calls[0][1].method).toBe('POST');
+    expect(url).toContain('/waba_1/message_templates');
+    const body = JSON.parse(mockState.fetch.mock.calls[0][1].body as string);
+    expect(body).toEqual({
+      name: 'recall_caller_open',
+      language: 'es',
+      category: 'UTILITY',
+      components: [
+        {
+          type: 'BODY',
+          text: 'Hola, soy el asistente de {{1}}.',
+          example: { body_text: [['Peluquería Aurora']] },
+        },
+      ],
+    });
+    expect(result).toEqual({ ok: true, data: { id: 'tmpl_1', status: 'PENDING', category: 'UTILITY' } });
+  });
+
+  it('omits the example entirely for a template with no placeholders, rather than sending an empty array', async () => {
+    mockState.fetch.mockResolvedValueOnce(jsonResponse({ id: 'tmpl_2', status: 'PENDING' }));
+    await createMessageTemplate('token', 'waba_1', {
+      name: 'recall_no_vars',
+      languageCode: 'es',
+      category: 'UTILITY',
+      bodyText: 'Texto fijo sin variables.',
+      bodyExamples: [],
+    });
+    const body = JSON.parse(mockState.fetch.mock.calls[0][1].body as string);
+    expect(body.components[0]).toEqual({ type: 'BODY', text: 'Texto fijo sin variables.' });
+  });
+
+  it('surfaces a rejected submission (e.g. already exists, or bad wording) as ok:false without throwing', async () => {
+    mockState.fetch.mockResolvedValueOnce(
+      jsonResponse({ error: { message: 'A template with this name already exists', code: 100 } }, false, 400),
+    );
+    const result = await createMessageTemplate('token', 'waba_1', {
+      name: 'recall_caller_open',
+      languageCode: 'es',
+      category: 'UTILITY',
+      bodyText: 'Hola, soy el asistente de {{1}}.',
+      bodyExamples: ['Peluquería Aurora'],
+    });
+    expect(result).toEqual({
+      ok: false,
+      error: 'A template with this name already exists',
+      code: 100,
+      subcode: undefined,
+      status: 400,
+    });
+  });
+
+  it('network failure never throws — logged and returned as ok:false', async () => {
+    mockState.fetch.mockRejectedValueOnce(new Error('down'));
+    const result = await createMessageTemplate('token', 'waba_1', {
+      name: 'recall_caller_open',
+      languageCode: 'es',
+      category: 'UTILITY',
+      bodyText: 'Hola, soy el asistente de {{1}}.',
+      bodyExamples: ['Peluquería Aurora'],
+    });
+    expect(result.ok).toBe(false);
+    expect(mockState.logError).toHaveBeenCalled();
   });
 });
