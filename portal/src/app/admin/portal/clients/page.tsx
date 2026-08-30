@@ -47,6 +47,7 @@ export default async function AdminClientsPage({
             <Link href="/admin/portal/leads" className="btn-ghost">Leads sin cerrar</Link>
             <Link href="/admin/portal/web-quotes" className="btn-ghost">Presupuestos de web</Link>
             <Link href="/admin/portal/settings/billing" className="btn-ghost">Configuración de Stripe</Link>
+            <Link href="/admin/portal/settings/telephony" className="btn-ghost">Telefonía</Link>
             <Link href="/admin/portal/settings/integrations" className="btn-ghost">Integraciones</Link>
             <Link href="/admin/portal/settings/seo" className="btn-ghost">SEO con IA</Link>
             <Link href="/admin/portal/support" className="btn-ghost">Solicitudes de ayuda</Link>

@@ -357,7 +357,7 @@ export async function notifyCaller(
   }
 
   // --- SMS fallback -----------------------------------------------------
-  const provider = deps.telephony ?? (isTelephonyConfigured() ? getTelephonyProvider() : null);
+  const provider = deps.telephony ?? ((await isTelephonyConfigured()) ? getTelephonyProvider() : null);
   const from = call.virtualNumber?.e164;
   if (!provider || !from) {
     return finishCallerFailure(prisma, call, `${lastError}; sms_unavailable`, false);

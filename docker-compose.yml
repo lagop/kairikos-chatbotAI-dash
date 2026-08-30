@@ -101,8 +101,14 @@ services:
       # nada más del portal se ve afectado. El bundle/address regulatorio
       # es del prestador del servicio y se da de alta una sola vez, no por
       # cliente — ver .env.production.example.
+      # Pre-UI fallback only — an operator can now paste these at
+      # /admin/portal/settings/telephony instead (encrypted at rest with
+      # TWILIO_CREDENTIAL_ENCRYPTION_KEY, stored in Postgres), same
+      # relationship STRIPE_SECRET_KEY has to Stripe's settings UI.
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      # Generate with: openssl rand -hex 32
+      TWILIO_CREDENTIAL_ENCRYPTION_KEY: ${TWILIO_CREDENTIAL_ENCRYPTION_KEY:-}
       TWILIO_BUNDLE_SID: ${TWILIO_BUNDLE_SID:-}
       TWILIO_ADDRESS_SID: ${TWILIO_ADDRESS_SID:-}
       TWILIO_VOICE_WEBHOOK_URL: ${TWILIO_VOICE_WEBHOOK_URL:-}

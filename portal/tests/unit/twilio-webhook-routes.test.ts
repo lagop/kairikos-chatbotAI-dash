@@ -29,6 +29,11 @@ const mockState = vi.hoisted(() => ({
   recallSubscriptionFindUnique: vi.fn(),
   isNumberBlocked: vi.fn(),
   notifyOwnerInBackground: vi.fn(),
+  resolveActiveTwilioCredentials: vi.fn(),
+}));
+
+vi.mock('@/lib/twilio-credentials', () => ({
+  resolveActiveTwilioCredentials: (...a: unknown[]) => mockState.resolveActiveTwilioCredentials(...a),
 }));
 
 vi.mock('@/lib/recall-calls', async () => {
@@ -69,11 +74,11 @@ function makeRequest(path: string, params: Record<string, string>, opts: { sign?
 }
 
 beforeEach(() => {
-  process.env.TWILIO_AUTH_TOKEN = AUTH_TOKEN;
   process.env.TWILIO_WEBHOOK_BASE_URL = BASE;
   for (const fn of Object.values(mockState)) fn.mockReset();
   mockState.isNumberBlocked.mockResolvedValue(false);
   mockState.verifyForwardingFromCall.mockResolvedValue(undefined);
+  mockState.resolveActiveTwilioCredentials.mockResolvedValue({ accountSid: 'AC1', authToken: AUTH_TOKEN });
 });
 
 describe('POST /api/webhooks/twilio/voice', () => {
@@ -230,7 +235,7 @@ describe('POST /api/webhooks/twilio/voice', () => {
   });
 
   it('answers politely rather than 503 when telephony is unconfigured', async () => {
-    delete process.env.TWILIO_AUTH_TOKEN;
+    mockState.resolveActiveTwilioCredentials.mockResolvedValueOnce(null);
     const res = await post(makeRequest(PATH, CALL, { sign: false }));
     expect(res.status).toBe(200);
     expect(await res.text()).toContain('<Say');
