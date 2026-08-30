@@ -4,6 +4,7 @@
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { PrismaClient } from '@prisma/client';
 
 const mockState = vi.hoisted(() => ({ createMessageTemplate: vi.fn(), logError: vi.fn() }));
 
@@ -15,11 +16,40 @@ vi.mock('@/lib/observability', () => ({
   logError: (...a: unknown[]) => mockState.logError(...a),
 }));
 
-import { submitAllRecallTemplates, RECALL_TEMPLATE_DEFINITIONS } from '@/lib/recall-templates';
+import {
+  submitAllRecallTemplates,
+  advanceSubscriptionsWithApprovedTemplates,
+  RECALL_TEMPLATE_DEFINITIONS,
+} from '@/lib/recall-templates';
+
+const state = {
+  recallSubscriptionFindMany: vi.fn(),
+  recallSubscriptionUpdate: vi.fn(),
+  whatsappTemplateCount: vi.fn(),
+  recallSubscriptionAuditCreate: vi.fn(),
+};
+
+const prisma = {
+  recallSubscription: {
+    findMany: (...a: unknown[]) => state.recallSubscriptionFindMany(...a),
+    update: (...a: unknown[]) => state.recallSubscriptionUpdate(...a),
+  },
+  whatsappTemplate: {
+    count: (...a: unknown[]) => state.whatsappTemplateCount(...a),
+  },
+  recallSubscriptionAudit: {
+    create: (...a: unknown[]) => state.recallSubscriptionAuditCreate(...a),
+  },
+} as unknown as PrismaClient;
 
 beforeEach(() => {
   mockState.createMessageTemplate.mockReset();
   mockState.logError.mockReset();
+  for (const fn of Object.values(state)) fn.mockReset();
+  state.recallSubscriptionFindMany.mockResolvedValue([]);
+  state.whatsappTemplateCount.mockResolvedValue(0);
+  state.recallSubscriptionUpdate.mockResolvedValue({ status: 'templates_approved' });
+  state.recallSubscriptionAuditCreate.mockResolvedValue({});
 });
 
 describe('RECALL_TEMPLATE_DEFINITIONS', () => {
@@ -89,5 +119,68 @@ describe('submitAllRecallTemplates', () => {
     const outcomes = await submitAllRecallTemplates('token', 'waba_1');
     expect(outcomes).toHaveLength(6);
     expect(outcomes.every((o) => !o.ok)).toBe(true);
+  });
+});
+
+describe('advanceSubscriptionsWithApprovedTemplates', () => {
+  const SUB = { id: 'sub_1', clientId: 'client_1', status: 'number_assigned', metaConnectionId: 'conn_1' };
+
+  it('scopes the candidate query to number_assigned subscriptions with a bound connection', async () => {
+    await advanceSubscriptionsWithApprovedTemplates(prisma);
+    expect(state.recallSubscriptionFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { status: 'number_assigned', metaConnectionId: { not: null } },
+      }),
+    );
+  });
+
+  it('advances to templates_approved once all 6 required templates are APPROVED', async () => {
+    state.recallSubscriptionFindMany.mockResolvedValue([SUB]);
+    state.whatsappTemplateCount.mockResolvedValue(RECALL_TEMPLATE_DEFINITIONS.length);
+
+    const result = await advanceSubscriptionsWithApprovedTemplates(prisma, { now: new Date('2026-09-01T00:00:00Z') });
+
+    expect(result).toEqual({ advanced: 1 });
+    expect(state.whatsappTemplateCount).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ connectionId: 'conn_1', status: 'APPROVED' }),
+      }),
+    );
+    expect(state.recallSubscriptionUpdate).toHaveBeenCalledWith({
+      where: { id: 'sub_1' },
+      data: { status: 'templates_approved', templatesApprovedAt: new Date('2026-09-01T00:00:00Z') },
+      select: { status: true },
+    });
+    expect(state.recallSubscriptionAuditCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          subscriptionId: 'sub_1',
+          action: 'templates_approved',
+          actorType: 'system',
+        }),
+      }),
+    );
+  });
+
+  it('does not advance when only some of the 6 required templates are approved', async () => {
+    state.recallSubscriptionFindMany.mockResolvedValue([SUB]);
+    state.whatsappTemplateCount.mockResolvedValue(RECALL_TEMPLATE_DEFINITIONS.length - 1);
+
+    const result = await advanceSubscriptionsWithApprovedTemplates(prisma);
+
+    expect(result).toEqual({ advanced: 0 });
+    expect(state.recallSubscriptionUpdate).not.toHaveBeenCalled();
+  });
+
+  it('one subscription failing its audit write does not stop the others from advancing', async () => {
+    const sub2 = { ...SUB, id: 'sub_2', clientId: 'client_2' };
+    state.recallSubscriptionFindMany.mockResolvedValue([SUB, sub2]);
+    state.whatsappTemplateCount.mockResolvedValue(RECALL_TEMPLATE_DEFINITIONS.length);
+    state.recallSubscriptionAuditCreate.mockRejectedValueOnce(new Error('db down'));
+
+    const result = await advanceSubscriptionsWithApprovedTemplates(prisma);
+
+    expect(result).toEqual({ advanced: 2 });
+    expect(state.recallSubscriptionUpdate).toHaveBeenCalledTimes(2);
   });
 });

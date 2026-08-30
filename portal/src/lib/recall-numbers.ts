@@ -1,6 +1,6 @@
 import 'server-only';
 import type { PrismaClient } from '@prisma/client';
-import { canBindVirtualNumber } from './recall';
+import { canBindVirtualNumber, nextOnboardingStatus } from './recall';
 import type { TelephonyProvider } from './telephony';
 import { logError } from './observability';
 
@@ -93,7 +93,7 @@ export async function provisionIntoPool(
 }
 
 export type AssignNumberResult =
-  | { ok: true; numberId: string; e164: string }
+  | { ok: true; numberId: string; e164: string; advancedTo: string | null }
   | { ok: false; error: 'subscription_not_found' | 'invalid_status' | 'already_assigned' | 'pool_empty' };
 
 /**
@@ -108,6 +108,14 @@ export type AssignNumberResult =
  * read-then-write, so two operators assigning at the same moment cannot
  * hand the same number to two clients: the second update matches zero
  * rows and retries against the next candidate.
+ *
+ * Also advances the subscription to `number_assigned` — the transition
+ * that was missing entirely before this, same gap as connectRecallWhatsapp
+ * had for `meta_connected` before that was fixed. Gated on
+ * nextOnboardingStatus, not run unconditionally: canBindVirtualNumber
+ * legitimately allows RE-assigning a number to an already-active
+ * subscription (one gone bad, needing a replacement), and that must not
+ * push status back through the onboarding sequence.
  */
 export async function assignNumberToSubscription(
   prisma: PrismaClient,
@@ -143,7 +151,15 @@ export async function assignNumberToSubscription(
       data: { status: 'assigned', subscriptionId, assignedAt: new Date() },
     });
     if (claimed.count === 1) {
-      return { ok: true, numberId: candidate.id, e164: candidate.e164 };
+      const advanceTo = nextOnboardingStatus(subscription.status);
+      const willAdvance = advanceTo === 'number_assigned';
+      if (willAdvance) {
+        await prisma.recallSubscription.update({
+          where: { id: subscriptionId },
+          data: { status: 'number_assigned', numberAssignedAt: new Date() },
+        });
+      }
+      return { ok: true, numberId: candidate.id, e164: candidate.e164, advancedTo: willAdvance ? 'number_assigned' : null };
     }
   }
 

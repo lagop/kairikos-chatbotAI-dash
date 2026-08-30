@@ -28,6 +28,7 @@ const state = {
   virtualNumberUpdateMany: vi.fn(),
   virtualNumberGroupBy: vi.fn(),
   recallSubscriptionFindUnique: vi.fn(),
+  recallSubscriptionUpdate: vi.fn(),
 };
 
 const prisma = {
@@ -41,6 +42,7 @@ const prisma = {
   },
   recallSubscription: {
     findUnique: (...a: unknown[]) => state.recallSubscriptionFindUnique(...a),
+    update: (...a: unknown[]) => state.recallSubscriptionUpdate(...a),
   },
 } as unknown as PrismaClient;
 
@@ -55,6 +57,7 @@ beforeEach(() => {
     return Promise.resolve({ id: `vn_${created}`, ...data });
   });
   state.virtualNumberUpdate.mockResolvedValue({});
+  state.recallSubscriptionUpdate.mockResolvedValue({});
 });
 
 describe('provisionIntoPool', () => {
@@ -153,7 +156,7 @@ describe('assignNumberToSubscription', () => {
 
     const result = await assignNumberToSubscription(prisma, '11111111-1111-1111-1111-111111111111');
 
-    expect(result).toEqual({ ok: true, numberId: 'vn_1', e164: '+34910000001' });
+    expect(result).toEqual({ ok: true, numberId: 'vn_1', e164: '+34910000001', advancedTo: 'number_assigned' });
     // The pool exists so the alta never waits on Twilio.
     expect(provider.provisioned.size).toBe(0);
     // Oldest first, so the pool drains in the order it was bought.
@@ -172,7 +175,7 @@ describe('assignNumberToSubscription', () => {
 
     const result = await assignNumberToSubscription(prisma, '11111111-1111-1111-1111-111111111111');
 
-    expect(result).toEqual({ ok: true, numberId: 'vn_2', e164: '+34910000002' });
+    expect(result).toEqual({ ok: true, numberId: 'vn_2', e164: '+34910000002', advancedTo: 'number_assigned' });
     // The predicates are what make it a CAS rather than a blind write.
     expect(state.virtualNumberUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -197,6 +200,32 @@ describe('assignNumberToSubscription', () => {
     const result = await assignNumberToSubscription(prisma, '11111111-1111-1111-1111-111111111111');
     expect(result).toEqual({ ok: false, error: 'pool_empty' });
     expect(state.virtualNumberUpdateMany.mock.calls.length).toBeLessThanOrEqual(5);
+  });
+
+  it('advances meta_connected → number_assigned and stamps numberAssignedAt', async () => {
+    state.recallSubscriptionFindUnique.mockResolvedValue({ id: 's1', status: 'meta_connected', virtualNumber: null });
+    state.virtualNumberFindFirst.mockResolvedValue({ id: 'vn_1', e164: '+34910000001' });
+    state.virtualNumberUpdateMany.mockResolvedValue({ count: 1 });
+
+    await assignNumberToSubscription(prisma, '11111111-1111-1111-1111-111111111111');
+
+    expect(state.recallSubscriptionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: '11111111-1111-1111-1111-111111111111' },
+        data: expect.objectContaining({ status: 'number_assigned' }),
+      }),
+    );
+  });
+
+  it('re-assigning a number to an already-active subscription does not move status backward', async () => {
+    state.recallSubscriptionFindUnique.mockResolvedValue({ id: 's1', status: 'active', virtualNumber: null });
+    state.virtualNumberFindFirst.mockResolvedValue({ id: 'vn_1', e164: '+34910000001' });
+    state.virtualNumberUpdateMany.mockResolvedValue({ count: 1 });
+
+    const result = await assignNumberToSubscription(prisma, '11111111-1111-1111-1111-111111111111');
+
+    expect(result).toEqual({ ok: true, numberId: 'vn_1', e164: '+34910000001', advancedTo: null });
+    expect(state.recallSubscriptionUpdate).not.toHaveBeenCalled();
   });
 });
 

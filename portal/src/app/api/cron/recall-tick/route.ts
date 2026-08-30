@@ -7,6 +7,7 @@ import { sweepPendingNotifications } from '@/lib/recall-messaging';
 import { sendDailyDigests, sweepReviewReminders } from '@/lib/recall-reviews';
 import { sendMonthlyReports, rollUpUsage } from '@/lib/recall-reports';
 import { syncTemplateStatuses, warnExpiringTokens } from '@/lib/whatsapp-health';
+import { advanceSubscriptionsWithApprovedTemplates } from '@/lib/recall-templates';
 import { logError } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
@@ -115,6 +116,10 @@ export async function GET(req: NextRequest) {
   //    arriving. These two jobs are how that gets noticed in advance.
   jobs.tokenExpiry = await runJob('tokenExpiry', () => warnExpiringTokens(prisma));
   jobs.templateSync = await runJob('templateSync', () => syncTemplateStatuses(prisma));
+  // Reads what templateSync just wrote — must run after it, same tick,
+  // so a client whose last template got approved this very minute
+  // advances immediately rather than waiting for the next one.
+  jobs.templateApproval = await runJob('templateApproval', () => advanceSubscriptionsWithApprovedTemplates(prisma));
 
   return NextResponse.json({ ok: true, jobs });
 }

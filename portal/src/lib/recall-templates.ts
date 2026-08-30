@@ -1,4 +1,5 @@
 import 'server-only';
+import type { PrismaClient } from '@prisma/client';
 import { RECALL_TEMPLATES } from './recall-messaging';
 import { DIGEST_TEMPLATES } from './recall-digest';
 import { REPORT_TEMPLATE } from './recall-reports';
@@ -122,4 +123,83 @@ export async function submitAllRecallTemplates(
     }
   }
   return outcomes;
+}
+
+const REQUIRED_TEMPLATE_NAMES = RECALL_TEMPLATE_DEFINITIONS.map((def) => def.name);
+
+/**
+ * Advances every `number_assigned` subscription whose bound connection
+ * now has all 6 required templates APPROVED to `templates_approved`.
+ *
+ * The missing half of the gap this module exists to close: submission
+ * (submitAllRecallTemplates, above) puts templates in front of Meta's
+ * reviewers; this is what notices they came back approved.
+ * syncTemplateStatuses (whatsapp-health.ts) already polls Meta and
+ * mirrors each template's status into WhatsappTemplate every ~5 minutes
+ * — this function only reads that table, it never calls Meta itself, so
+ * it belongs right after that sync in the same cron tick (recall-tick).
+ *
+ * WhatsappTemplate has no direct relation to RecallSubscription — the
+ * join is subscription.metaConnectionId → WhatsappTemplate.connectionId.
+ *
+ * Deliberately stops AT templates_approved rather than continuing to
+ * forwarding_pending: recall.ts's own STUCK_AFTER_DAYS models
+ * templates_approved as a real resting state with its own threshold, and
+ * enteredCurrentStateAt's comment on forwarding_pending ("entered by the
+ * same act that approved the templates") describes a SEPARATE later
+ * transition — presumably whatever sends the forwarding instructions —
+ * reusing this same templatesApprovedAt stamp, not this function jumping
+ * two steps at once.
+ */
+export async function advanceSubscriptionsWithApprovedTemplates(
+  prisma: PrismaClient,
+  opts: { now?: Date } = {},
+): Promise<{ advanced: number }> {
+  const now = opts.now ?? new Date();
+
+  const candidates = await prisma.recallSubscription.findMany({
+    where: { status: 'number_assigned', metaConnectionId: { not: null } },
+    select: { id: true, clientId: true, status: true, metaConnectionId: true },
+  });
+
+  let advanced = 0;
+  for (const subscription of candidates) {
+    if (!subscription.metaConnectionId) continue;
+
+    const approvedCount = await prisma.whatsappTemplate.count({
+      where: {
+        connectionId: subscription.metaConnectionId,
+        name: { in: REQUIRED_TEMPLATE_NAMES },
+        status: 'APPROVED',
+      },
+    });
+    if (approvedCount < REQUIRED_TEMPLATE_NAMES.length) continue;
+
+    const before = { status: subscription.status };
+    const updated = await prisma.recallSubscription.update({
+      where: { id: subscription.id },
+      data: { status: 'templates_approved', templatesApprovedAt: now },
+      select: { status: true },
+    });
+
+    await prisma.recallSubscriptionAudit
+      .create({
+        data: {
+          subscriptionId: subscription.id,
+          clientId: subscription.clientId,
+          action: 'templates_approved',
+          before,
+          after: { status: updated.status },
+          actorType: 'system',
+          actorEmail: 'system:whatsapp_health',
+        },
+      })
+      // The advance already happened — an audit-insert failure must not
+      // undo it or get retried as if the transition never occurred.
+      .catch(() => null);
+
+    advanced += 1;
+  }
+
+  return { advanced };
 }
