@@ -10,6 +10,7 @@ import {
   isWithheldCaller,
 } from '@/lib/recall-calls';
 import { isNumberBlocked } from '@/lib/recall-blocklist';
+import { resolveActiveTwilioCredentials } from '@/lib/twilio-credentials';
 import { logError } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
@@ -38,7 +39,7 @@ function twiml(body: string, status = 200): Response {
  * audible to the caller as a broken business.
  */
 export async function POST(req: NextRequest) {
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  const authToken = (await resolveActiveTwilioCredentials())?.authToken ?? null;
   if (!authToken || !isDatabaseConfigured) {
     // Deliberately not 503: see the header — the caller must hear a
     // polite message, not Twilio's error tone.

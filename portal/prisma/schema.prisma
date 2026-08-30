@@ -343,6 +343,7 @@ model Operator {
   recallSubscriptionAudits RecallSubscriptionAudit[]
   integrationCredentialAudits IntegrationCredentialAudit[]
   seoProfileAudits         SeoProfileAudit[]
+  twilioCredentialAudits   TwilioCredentialAudit[]
 
   @@index([email])
   @@index([isActive])
@@ -1781,6 +1782,49 @@ model StripeOperatorCredential {
   liveSavedAt             DateTime? @map("live_saved_at")
 
   updatedAt DateTime @updatedAt @map("updated_at")
+}
+
+// Singleton row for the operator's Twilio credentials — same shape and
+// reasoning as StripeOperatorCredential above, minus the test/live split
+// Twilio has no equivalent of. Two values, not one: accountSid pairs with
+// authToken for Basic Auth (see telephony/twilio.ts's authHeader()), and
+// while the SID alone is not a secret, storing it alongside its token —
+// cleartext, since it's also needed unencrypted for masked display and
+// for the Basic Auth header — keeps the pair together in one row rather
+// than splitting a paired credential across a DB column and an env var.
+// Only authToken is actually sensitive, so only it is encrypted.
+model TwilioOperatorCredential {
+  id         String  @id @default(uuid()) @db.Uuid
+  accountSid String? @map("account_sid")
+
+  authTokenCiphertext Bytes?  @map("auth_token_ciphertext")
+  authTokenIv         Bytes?  @map("auth_token_iv")
+  authTokenTag        Bytes?  @map("auth_token_tag")
+  // Last 4 chars in cleartext — lets the UI show "•••• aBcD" without a
+  // decrypt, same convention as StripeOperatorCredential's lastFour.
+  authTokenLastFour   String? @map("auth_token_last_four")
+
+  savedAt   DateTime? @map("saved_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+}
+
+// Append-only audit trail for saving/rotating the Twilio credential — no
+// FK to TwilioOperatorCredential needed (it's a singleton, nothing to
+// cascade), same posture as StripeCatalogAudit's credential-saved rows.
+model TwilioCredentialAudit {
+  id     String @id @default(uuid()) @db.Uuid
+  // 'credential_saved' | 'credential_rotated'
+  action String
+  before Json?
+  after  Json?
+
+  actorOperatorId String?  @map("actor_operator_id") @db.Uuid
+  actorEmail      String?  @map("actor_email")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  operator Operator? @relation(fields: [actorOperatorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
 }
 
 // Append-only audit trail for (a) saving/rotating a Stripe credential and

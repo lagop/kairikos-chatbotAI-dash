@@ -22,7 +22,7 @@ export type {
 // mocking gymnastics.
 // =============================================================================
 
-export function isTelephonyConfigured(): boolean {
+export function isTelephonyConfigured(): Promise<boolean> {
   return isTwilioConfigured();
 }
 

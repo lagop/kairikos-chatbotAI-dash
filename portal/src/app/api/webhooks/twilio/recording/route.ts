@@ -4,6 +4,7 @@ import { verifyTwilioSignature, resolveWebhookUrl, formDataToParams } from '@/li
 import { attachRecording } from '@/lib/recall-calls';
 import { transcribeCallEventInBackground } from '@/lib/recall-transcription';
 import { notifyOwnerInBackground } from '@/lib/recall-messaging';
+import { resolveActiveTwilioCredentials } from '@/lib/twilio-credentials';
 import { logError } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
@@ -30,7 +31,7 @@ const PATH = '/api/webhooks/twilio/recording';
  * promise is actually kept.
  */
 export async function POST(req: NextRequest) {
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  const authToken = (await resolveActiveTwilioCredentials())?.authToken ?? null;
   if (!authToken) return new Response('not_configured', { status: 503 });
   if (!isDatabaseConfigured) return new Response('service_unavailable', { status: 503 });
 

@@ -21,6 +21,7 @@ const mockState = vi.hoisted(() => ({
   syncTemplateStatuses: vi.fn(),
   warnExpiringTokens: vi.fn(),
   advanceSubscriptionsWithApprovedTemplates: vi.fn(),
+  resolveActiveTwilioCredentials: vi.fn(),
 }));
 
 vi.mock('@/lib/recall-transcription', () => ({
@@ -51,6 +52,9 @@ vi.mock('@/lib/whatsapp-health', () => ({
 vi.mock('@/lib/recall-templates', () => ({
   advanceSubscriptionsWithApprovedTemplates: (...a: unknown[]) => mockState.advanceSubscriptionsWithApprovedTemplates(...a),
 }));
+vi.mock('@/lib/twilio-credentials', () => ({
+  resolveActiveTwilioCredentials: (...a: unknown[]) => mockState.resolveActiveTwilioCredentials(...a),
+}));
 vi.mock('@/lib/prisma', () => ({ isDatabaseConfigured: true, prisma: {} }));
 
 const SECRET = 'cron_secret_value';
@@ -66,8 +70,7 @@ async function get(req: NextRequest) {
 
 beforeEach(() => {
   process.env.CRON_SECRET = SECRET;
-  process.env.TWILIO_ACCOUNT_SID = 'AC1';
-  process.env.TWILIO_AUTH_TOKEN = 'tok';
+  mockState.resolveActiveTwilioCredentials.mockReset().mockResolvedValue({ accountSid: 'AC1', authToken: 'tok' });
   mockState.sweepPendingTranscriptions.mockReset().mockResolvedValue({ scanned: 0, transcribed: 0, failed: 0 });
   mockState.purgeExpiredRecordings.mockReset().mockResolvedValue({ scanned: 0, purged: 0, failed: 0 });
   mockState.notifyStuckOnboardings.mockReset().mockResolvedValue({ scanned: 0, stuck: 0, notified: 0, deduped: 0, failed: 0 });
@@ -147,7 +150,7 @@ describe('GET /api/cron/recall-tick', () => {
   });
 
   it('runs the Meta health jobs, which need no telephony, even when Twilio is unconfigured', async () => {
-    delete process.env.TWILIO_ACCOUNT_SID;
+    mockState.resolveActiveTwilioCredentials.mockResolvedValueOnce(null);
     await get(makeRequest());
     // A token quietly expiring is a silent outage; it must not be
     // conditional on an unrelated integration being set up.
@@ -171,7 +174,7 @@ describe('GET /api/cron/recall-tick', () => {
   });
 
   it('skips the purge but still runs the rest when Twilio is unconfigured', async () => {
-    delete process.env.TWILIO_ACCOUNT_SID;
+    mockState.resolveActiveTwilioCredentials.mockResolvedValueOnce(null);
     const body = await (await get(makeRequest())).clone().json();
 
     expect(body.jobs.purgeRecordings).toEqual({ skipped: 'twilio_not_configured' });

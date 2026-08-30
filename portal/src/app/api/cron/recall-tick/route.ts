@@ -8,6 +8,7 @@ import { sendDailyDigests, sweepReviewReminders } from '@/lib/recall-reviews';
 import { sendMonthlyReports, rollUpUsage } from '@/lib/recall-reports';
 import { syncTemplateStatuses, warnExpiringTokens } from '@/lib/whatsapp-health';
 import { advanceSubscriptionsWithApprovedTemplates } from '@/lib/recall-templates';
+import { resolveActiveTwilioCredentials } from '@/lib/twilio-credentials';
 import { logError } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
@@ -65,9 +66,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
   }
 
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const twilioAuth = accountSid && authToken ? { accountSid, authToken } : null;
+  const twilioAuth = await resolveActiveTwilioCredentials();
 
   const jobs: Record<string, JobOutcome | { skipped: string }> = {};
 

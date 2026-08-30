@@ -1,5 +1,6 @@
 import 'server-only';
 import { logError } from '../observability';
+import { resolveActiveTwilioCredentials } from '../twilio-credentials';
 import type {
   AvailableNumber,
   ProvisionNumberOptions,
@@ -34,17 +35,18 @@ import type {
 
 const API_BASE = 'https://api.twilio.com/2010-04-01';
 
-export function isTwilioConfigured(): boolean {
-  return Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN);
+/** DB-first, TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN-env-fallback — see
+ *  twilio-credentials.ts's resolveActiveTwilioCredentials(). */
+export async function isTwilioConfigured(): Promise<boolean> {
+  return (await resolveActiveTwilioCredentials()) !== null;
 }
 
-function getCredentials(): { accountSid: string; authToken: string } {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  if (!accountSid || !authToken) {
-    throw new Error('TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN not configured');
+async function getCredentials(): Promise<{ accountSid: string; authToken: string }> {
+  const credentials = await resolveActiveTwilioCredentials();
+  if (!credentials) {
+    throw new Error('Twilio credentials not configured');
   }
-  return { accountSid, authToken };
+  return credentials;
 }
 
 function authHeader(accountSid: string, authToken: string): string {
@@ -74,7 +76,7 @@ async function twilioRequest<T>(
   let accountSid: string;
   let authToken: string;
   try {
-    ({ accountSid, authToken } = getCredentials());
+    ({ accountSid, authToken } = await getCredentials());
   } catch {
     return { ok: false, error: 'twilio_not_configured' };
   }
