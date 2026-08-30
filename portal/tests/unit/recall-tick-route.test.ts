@@ -20,6 +20,7 @@ const mockState = vi.hoisted(() => ({
   sweepReviewReminders: vi.fn(),
   syncTemplateStatuses: vi.fn(),
   warnExpiringTokens: vi.fn(),
+  advanceSubscriptionsWithApprovedTemplates: vi.fn(),
 }));
 
 vi.mock('@/lib/recall-transcription', () => ({
@@ -46,6 +47,9 @@ vi.mock('@/lib/recall-messaging', () => ({
 vi.mock('@/lib/whatsapp-health', () => ({
   syncTemplateStatuses: (...a: unknown[]) => mockState.syncTemplateStatuses(...a),
   warnExpiringTokens: (...a: unknown[]) => mockState.warnExpiringTokens(...a),
+}));
+vi.mock('@/lib/recall-templates', () => ({
+  advanceSubscriptionsWithApprovedTemplates: (...a: unknown[]) => mockState.advanceSubscriptionsWithApprovedTemplates(...a),
 }));
 vi.mock('@/lib/prisma', () => ({ isDatabaseConfigured: true, prisma: {} }));
 
@@ -81,6 +85,7 @@ beforeEach(() => {
   });
   mockState.syncTemplateStatuses.mockReset().mockResolvedValue({ connections: 0, templates: 0, failed: 0 });
   mockState.warnExpiringTokens.mockReset().mockResolvedValue({ scanned: 0, expiring: 0, warned: 0, expired: 0 });
+  mockState.advanceSubscriptionsWithApprovedTemplates.mockReset().mockResolvedValue({ advanced: 0 });
 });
 
 describe('GET /api/cron/recall-tick', () => {
@@ -111,6 +116,7 @@ describe('GET /api/cron/recall-tick', () => {
       'stuckAlerts',
       'tokenExpiry',
       'templateSync',
+      'templateApproval',
     ]);
     expect(mockState.purgeExpiredRecordings).toHaveBeenCalled();
     expect(mockState.sweepPendingTranscriptions).toHaveBeenCalled();
@@ -122,6 +128,22 @@ describe('GET /api/cron/recall-tick', () => {
     expect(mockState.notifyStuckOnboardings).toHaveBeenCalled();
     expect(mockState.warnExpiringTokens).toHaveBeenCalled();
     expect(mockState.syncTemplateStatuses).toHaveBeenCalled();
+    expect(mockState.advanceSubscriptionsWithApprovedTemplates).toHaveBeenCalled();
+  });
+
+  it('runs the template approval check AFTER the template sync, same tick', async () => {
+    const order: string[] = [];
+    mockState.syncTemplateStatuses.mockImplementation(async () => {
+      order.push('sync');
+      return { connections: 0, templates: 0, failed: 0 };
+    });
+    mockState.advanceSubscriptionsWithApprovedTemplates.mockImplementation(async () => {
+      order.push('approve');
+      return { advanced: 0 };
+    });
+
+    await get(makeRequest());
+    expect(order).toEqual(['sync', 'approve']);
   });
 
   it('runs the Meta health jobs, which need no telephony, even when Twilio is unconfigured', async () => {

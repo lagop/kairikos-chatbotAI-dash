@@ -187,11 +187,21 @@ describe('POST /api/admin/portal/recall/numbers/assign', () => {
   });
 
   it('assigns and writes an audit row naming the operator', async () => {
-    mockState.assignNumberToSubscription.mockResolvedValue({ ok: true, numberId: 'vn_1', e164: '+34910000001' });
+    mockState.assignNumberToSubscription.mockResolvedValue({
+      ok: true,
+      numberId: 'vn_1',
+      e164: '+34910000001',
+      advancedTo: 'number_assigned',
+    });
     const res = await callRoute({ subscriptionId: SUB_ID });
 
     expect(res.status).toBe(200);
-    expect(await res.clone().json()).toEqual({ ok: true, numberId: 'vn_1', e164: '+34910000001' });
+    expect(await res.clone().json()).toEqual({
+      ok: true,
+      numberId: 'vn_1',
+      e164: '+34910000001',
+      advancedTo: 'number_assigned',
+    });
     expect(mockState.recallSubscriptionAuditCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
         subscriptionId: SUB_ID,
@@ -199,7 +209,7 @@ describe('POST /api/admin/portal/recall/numbers/assign', () => {
         action: 'number_assigned',
         actorType: 'operator',
         actorOperatorId: 'op_1',
-        after: { virtualNumberId: 'vn_1', e164: '+34910000001' },
+        after: { virtualNumberId: 'vn_1', e164: '+34910000001', status: 'meta_connected' },
       }),
     });
   });

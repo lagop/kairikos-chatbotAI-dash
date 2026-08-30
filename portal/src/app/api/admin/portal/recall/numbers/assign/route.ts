@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
           subscriptionId: body.data.subscriptionId,
           clientId: subscription.clientId,
           action: 'number_assigned',
-          after: { virtualNumberId: result.numberId, e164: result.e164 },
+          after: { virtualNumberId: result.numberId, e164: result.e164, status: subscription.status },
           actorType: 'operator',
           actorOperatorId: auth.operatorId,
         },
@@ -76,5 +76,5 @@ export async function POST(req: NextRequest) {
       .catch(() => null);
   }
 
-  return NextResponse.json({ ok: true, numberId: result.numberId, e164: result.e164 });
+  return NextResponse.json({ ok: true, numberId: result.numberId, e164: result.e164, advancedTo: result.advancedTo });
 }
