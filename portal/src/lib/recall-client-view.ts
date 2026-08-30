@@ -93,6 +93,10 @@ export type RecallClientView =
       /** Always computed live for whichever month is shown, so a past
        *  month and the current one are produced the same way. */
       metrics: MonthlyMetrics;
+      /** Null until the client connects their Google Business Profile —
+       *  see RecallGoogleConnectCard's header for why this binding was
+       *  missing for the product's whole life until now. */
+      googleConnection: { locationName: string; status: string } | null;
       /** Every OTHER month, as the table that doubles as navigation. */
       history: RecallMonthSummary[];
       /** Just this page of the month, newest first. */
@@ -139,6 +143,7 @@ export async function loadRecallClientView(
       googleConnectionId: true,
       virtualNumber: { select: { e164: true } },
       metaConnection: { select: { displayPhoneNumber: true } },
+      googleConnection: { select: { locationName: true, status: true } },
     },
   });
 
@@ -241,6 +246,9 @@ export async function loadRecallClientView(
     previousMonth,
     nextMonth,
     metrics,
+    googleConnection: subscription.googleConnection
+      ? { locationName: subscription.googleConnection.locationName, status: subscription.googleConnection.status }
+      : null,
     history: buildHistory(historyRows, localMonth, metrics),
     calls: callRows,
     page,

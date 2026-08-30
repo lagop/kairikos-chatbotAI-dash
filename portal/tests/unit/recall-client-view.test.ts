@@ -130,6 +130,21 @@ describe('loadRecallClientView — access', () => {
     });
   });
 
+  it('surfaces the bound Google Business connection in the active state, null when unbound', async () => {
+    state.subFindFirst.mockResolvedValue(subscription());
+    let view = await load();
+    expect(view).toMatchObject({ state: 'active', googleConnection: null });
+
+    state.subFindFirst.mockResolvedValue(
+      subscription({ googleConnection: { locationName: 'Sede Centro', status: 'active' } }),
+    );
+    view = await load();
+    expect(view).toMatchObject({
+      state: 'active',
+      googleConnection: { locationName: 'Sede Centro', status: 'active' },
+    });
+  });
+
   it('treats paused and cancelled the same way — the client should see why', async () => {
     for (const status of ['paused', 'cancelled']) {
       state.subFindFirst.mockResolvedValue(subscription({ status }));
