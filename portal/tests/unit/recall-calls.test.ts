@@ -11,6 +11,7 @@ import {
   resolveCallTarget,
   recordIncomingCall,
   attachRecording,
+  verifyForwardingFromCall,
 } from '@/lib/recall-calls';
 
 const state = {
@@ -18,6 +19,9 @@ const state = {
   callEventUpsert: vi.fn(),
   callEventFindUnique: vi.fn(),
   callEventUpdate: vi.fn(),
+  recallSubscriptionUpdateMany: vi.fn(),
+  recallSubscriptionUpdate: vi.fn(),
+  recallSubscriptionAuditCreate: vi.fn(),
 };
 
 const prisma = {
@@ -26,6 +30,13 @@ const prisma = {
     upsert: (...a: unknown[]) => state.callEventUpsert(...a),
     findUnique: (...a: unknown[]) => state.callEventFindUnique(...a),
     update: (...a: unknown[]) => state.callEventUpdate(...a),
+  },
+  recallSubscription: {
+    updateMany: (...a: unknown[]) => state.recallSubscriptionUpdateMany(...a),
+    update: (...a: unknown[]) => state.recallSubscriptionUpdate(...a),
+  },
+  recallSubscriptionAudit: {
+    create: (...a: unknown[]) => state.recallSubscriptionAuditCreate(...a),
   },
 } as unknown as PrismaClient;
 
@@ -127,8 +138,21 @@ describe('resolveCallTarget', () => {
       tenantId: 'tenant_1',
       virtualNumberId: 'vn_1',
       hasGreeting: true,
+      subscriptionStatus: 'active',
     });
   });
+
+  it.each(['forwarding_pending', 'forwarding_verified'])(
+    'also answers a %s subscription — a real call landing here IS the forwarding proof',
+    async (status) => {
+      state.virtualNumberFindUnique.mockResolvedValue({
+        ...ASSIGNED,
+        subscription: { ...ASSIGNED.subscription, status },
+      });
+      const target = await resolveCallTarget(prisma, '+34910000001');
+      expect(target).toMatchObject({ subscriptionStatus: status });
+    },
+  );
 
   it('reports no greeting when the owner has not recorded one', async () => {
     state.virtualNumberFindUnique.mockResolvedValue({
@@ -149,7 +173,7 @@ describe('resolveCallTarget', () => {
     await expect(resolveCallTarget(prisma, '+34910000001')).resolves.toBeNull();
   });
 
-  it.each(['paused', 'forwarding_pending', 'cancelled'])(
+  it.each(['paid', 'contract_signed', 'meta_connected', 'number_assigned', 'templates_approved', 'paused', 'cancelled'])(
     'refuses a subscription in %s — taking a message nobody watches is worse than not answering',
     async (status) => {
       state.virtualNumberFindUnique.mockResolvedValue({
@@ -159,6 +183,65 @@ describe('resolveCallTarget', () => {
       await expect(resolveCallTarget(prisma, '+34910000001')).resolves.toBeNull();
     },
   );
+});
+
+describe('verifyForwardingFromCall', () => {
+  const TARGET = { subscriptionId: 'sub_1', clientId: 'client_1', subscriptionStatus: 'forwarding_pending' };
+
+  it('is a no-op for any status other than forwarding_pending', async () => {
+    for (const subscriptionStatus of ['active', 'forwarding_verified', 'number_assigned']) {
+      await verifyForwardingFromCall(prisma, { ...TARGET, subscriptionStatus });
+    }
+    expect(state.recallSubscriptionUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('advances forwarding_pending → forwarding_verified → active on the first call, stamping both timestamps to the same instant', async () => {
+    state.recallSubscriptionUpdateMany.mockResolvedValue({ count: 1 });
+    state.recallSubscriptionUpdate.mockResolvedValue({});
+    state.recallSubscriptionAuditCreate.mockResolvedValue({});
+    const now = new Date('2026-09-01T12:00:00Z');
+
+    await verifyForwardingFromCall(prisma, TARGET, now);
+
+    expect(state.recallSubscriptionUpdateMany).toHaveBeenCalledWith({
+      where: { id: 'sub_1', status: 'forwarding_pending' },
+      data: { status: 'forwarding_verified', forwardingVerifiedAt: now },
+    });
+    expect(state.recallSubscriptionUpdate).toHaveBeenCalledWith({
+      where: { id: 'sub_1' },
+      data: { status: 'active', activatedAt: now },
+    });
+    expect(state.recallSubscriptionAuditCreate).toHaveBeenCalledTimes(2);
+    expect(state.recallSubscriptionAuditCreate).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ data: expect.objectContaining({ action: 'forwarding_verified' }) }),
+    );
+    expect(state.recallSubscriptionAuditCreate).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ data: expect.objectContaining({ action: 'activated' }) }),
+    );
+  });
+
+  it('does not double-advance when another delivery of the same call already verified it — the CAS lost', async () => {
+    state.recallSubscriptionUpdateMany.mockResolvedValue({ count: 0 });
+
+    await verifyForwardingFromCall(prisma, TARGET);
+
+    expect(state.recallSubscriptionUpdate).not.toHaveBeenCalled();
+    expect(state.recallSubscriptionAuditCreate).not.toHaveBeenCalled();
+  });
+
+  it('still activates when the first audit write fails', async () => {
+    state.recallSubscriptionUpdateMany.mockResolvedValue({ count: 1 });
+    state.recallSubscriptionAuditCreate.mockResolvedValue({}).mockRejectedValueOnce(new Error('db down'));
+    state.recallSubscriptionUpdate.mockResolvedValue({});
+
+    await verifyForwardingFromCall(prisma, TARGET);
+
+    expect(state.recallSubscriptionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'active' }) }),
+    );
+  });
 });
 
 describe('recordIncomingCall', () => {
