@@ -2,6 +2,7 @@ import 'server-only';
 import { prisma } from './prisma';
 import { encryptBuffer, decryptBuffer, parseHexKey, type EncryptedBuffer } from './operator-crypto';
 import { logError } from './observability';
+import { isProductContracted } from './client-product-access';
 
 // =============================================================================
 // WP-21 — OAuth connection to a client's own Google Business Profile, so
@@ -39,6 +40,24 @@ const SCOPE = 'https://www.googleapis.com/auth/business.manage';
  *  imported cross-route-file so neither route.ts module has to import
  *  from the other's. */
 export const OAUTH_STATE_COOKIE = 'gb_oauth_state';
+
+/** Which page started the flow, so the callback can send the client
+ *  back where they came from. Set alongside OAUTH_STATE_COOKIE, same
+ *  lifetime and path. */
+export const OAUTH_RETURN_COOKIE = 'gb_oauth_return';
+
+/** The standalone 'reviews' product owns /portal/resenas; 'recall'
+ *  bundles the same review-request flow over WhatsApp (see
+ *  recall-reviews.ts) and needs the same connection but has no other
+ *  screen to get it from — this is that flow's single access check,
+ *  mirroring hasLeadsInboxAccess's "either product unlocks it" shape. */
+export async function hasGoogleBusinessConnectAccess(clientId: string): Promise<boolean> {
+  const [hasReviews, hasRecall] = await Promise.all([
+    isProductContracted(prisma, clientId, 'reviews'),
+    isProductContracted(prisma, clientId, 'recall'),
+  ]);
+  return hasReviews || hasRecall;
+}
 
 export function isGoogleBusinessOAuthConfigured(): boolean {
   return Boolean(

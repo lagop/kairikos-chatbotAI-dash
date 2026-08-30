@@ -12,6 +12,7 @@ import { ProductPitch } from '@/components/portal/ProductPitch';
 import { EmptyState } from '@/components/portal/EmptyState';
 import { SelfServeProductCard, type SelfServeTierOption } from '@/components/portal/SelfServeProductCard';
 import { RecallMetaConnectCard } from '@/components/portal/RecallMetaConnectCard';
+import { RecallGoogleConnectCard } from '@/components/portal/RecallGoogleConnectCard';
 
 export const dynamic = 'force-dynamic';
 
@@ -203,10 +204,20 @@ function Metric({
   );
 }
 
+const GOOGLE_CONNECT_ERROR_LABEL: Record<string, string> = {
+  forbidden: 'Este producto no está disponible en tu cuenta ahora mismo.',
+  not_configured: 'La conexión con Google no está disponible ahora mismo. Contacta con soporte.',
+  csrf: 'La conexión caducó antes de terminar. Inténtalo de nuevo.',
+  token_exchange_failed: 'No se pudo completar la conexión con Google. Intenta de nuevo en un momento.',
+  no_locations: 'No se encontró ninguna ficha de Google Business en esa cuenta.',
+  multiple_locations_unsupported: 'Esa cuenta de Google tiene más de una ficha — contacta con soporte para conectarla.',
+  no_tenant: 'Algo falló en el servidor. Si persiste, contacta con el equipo técnico.',
+};
+
 export default async function PortalLlamadasPage({
   searchParams,
 }: {
-  searchParams?: { mes?: string; p?: string };
+  searchParams?: { mes?: string; p?: string; connected?: string; connect_error?: string };
 }) {
   await requirePortalSession();
   const resolved = await resolveClientFromSession();
@@ -337,6 +348,29 @@ export default async function PortalLlamadasPage({
         title="Llamadas recuperadas"
         description="Todo esto también te llega por WhatsApp. Esta página es solo para consultarlo cuando quieras."
       />
+
+      {searchParams?.connected ? (
+        <p
+          role="status"
+          data-testid="recall-google-connected-banner"
+          className="rounded-xl border border-kairikos-success/40 bg-kairikos-success/10 px-4 py-3 text-sm text-kairikos-success"
+        >
+          Cuenta de Google conectada.
+        </p>
+      ) : null}
+      {searchParams?.connect_error ? (
+        <p
+          role="status"
+          data-testid="recall-google-connect-error-banner"
+          className="rounded-xl border border-kairikos-danger/40 bg-kairikos-danger/10 px-4 py-3 text-sm text-kairikos-danger"
+        >
+          {GOOGLE_CONNECT_ERROR_LABEL[searchParams.connect_error] ?? 'No se pudo conectar con Google.'}
+        </p>
+      ) : null}
+
+      {view.googleConnection?.status !== 'active' ? (
+        <RecallGoogleConnectCard connection={view.googleConnection} />
+      ) : null}
 
       <section aria-label={`Resumen de ${monthLabel(view.localMonth)}`}>
         <div className="mb-2 flex items-center justify-between gap-3">

@@ -28,7 +28,9 @@ const mockState = vi.hoisted(() => ({
   connectionUpsert: vi.fn(),
   connectionFindUnique: vi.fn(),
   connectionUpdate: vi.fn(),
+  recallSubscriptionUpdateMany: vi.fn(),
   isProductContracted: vi.fn(),
+  hasGoogleBusinessConnectAccess: vi.fn(),
   logError: vi.fn(),
 }));
 
@@ -55,12 +57,17 @@ vi.mock('@/lib/prisma', () => ({
       findUnique: (...args: unknown[]) => mockState.connectionFindUnique(...args),
       update: (...args: unknown[]) => mockState.connectionUpdate(...args),
     },
+    recallSubscription: {
+      updateMany: (...args: unknown[]) => mockState.recallSubscriptionUpdateMany(...args),
+    },
   },
 }));
 
 vi.mock('@/lib/google-business', () => ({
   OAUTH_STATE_COOKIE: 'gb_oauth_state',
+  OAUTH_RETURN_COOKIE: 'gb_oauth_return',
   isGoogleBusinessOAuthConfigured: () => mockState.isGoogleBusinessOAuthConfigured(),
+  hasGoogleBusinessConnectAccess: (...args: unknown[]) => mockState.hasGoogleBusinessConnectAccess(...args),
   buildAuthorizationUrl: (...args: unknown[]) => mockState.buildAuthorizationUrl(...args),
   exchangeCodeForTokens: (...args: unknown[]) => mockState.exchangeCodeForTokens(...args),
   fetchAccessibleLocations: (...args: unknown[]) => mockState.fetchAccessibleLocations(...args),
@@ -94,13 +101,17 @@ beforeEach(() => {
   mockState.connectionUpsert.mockReset().mockResolvedValue({ id: 'conn_1' });
   mockState.connectionFindUnique.mockReset();
   mockState.connectionUpdate.mockReset().mockResolvedValue({});
+  mockState.recallSubscriptionUpdateMany.mockReset().mockResolvedValue({ count: 0 });
   mockState.isProductContracted.mockReset().mockResolvedValue(true);
+  mockState.hasGoogleBusinessConnectAccess.mockReset().mockResolvedValue(true);
   mockState.logError.mockReset();
 });
 
 describe('GET /api/portal/google-business/oauth/start', () => {
-  function makeRequest() {
-    return { url: 'https://portal.kairikos.test/api/portal/google-business/oauth/start' } as unknown as NextRequest;
+  function makeRequest(from?: string) {
+    const url = new URL('https://portal.kairikos.test/api/portal/google-business/oauth/start');
+    if (from) url.searchParams.set('from', from);
+    return { url: url.toString(), nextUrl: url } as unknown as NextRequest;
   }
 
   it('redirects to login when there is no session', async () => {
@@ -117,8 +128,8 @@ describe('GET /api/portal/google-business/oauth/start', () => {
     expect(res.headers.get('location')).toContain('connect_error=not_available_in_dev_mode');
   });
 
-  it('redirects with connect_error=forbidden (WP-22a) when the client has not contracted the reviews product', async () => {
-    mockState.isProductContracted.mockResolvedValueOnce(false);
+  it('redirects with connect_error=forbidden (WP-22a) when the client has neither reviews nor recall contracted', async () => {
+    mockState.hasGoogleBusinessConnectAccess.mockResolvedValueOnce(false);
     const { GET } = await import('@/app/api/portal/google-business/oauth/start/route');
     const res = await GET(makeRequest());
     expect(res.headers.get('location')).toContain('connect_error=forbidden');
@@ -139,16 +150,40 @@ describe('GET /api/portal/google-business/oauth/start', () => {
     expect(cookie?.value).toBeTruthy();
     expect(res.headers.get('location')).toContain(`state=${cookie?.value}`);
   });
+
+  it('defaults the return cookie to resenas when ?from= is absent', async () => {
+    const { GET } = await import('@/app/api/portal/google-business/oauth/start/route');
+    const res = await GET(makeRequest());
+    expect(res.cookies.get('gb_oauth_return')?.value).toBe('resenas');
+  });
+
+  it('records ?from=llamadas in the return cookie so recall clients come back to their own page', async () => {
+    const { GET } = await import('@/app/api/portal/google-business/oauth/start/route');
+    const res = await GET(makeRequest('llamadas'));
+    expect(res.cookies.get('gb_oauth_return')?.value).toBe('llamadas');
+  });
+
+  it('ignores an unrecognized ?from= value rather than trusting it as a redirect target', async () => {
+    const { GET } = await import('@/app/api/portal/google-business/oauth/start/route');
+    const res = await GET(makeRequest('https://evil.example.com'));
+    expect(res.cookies.get('gb_oauth_return')?.value).toBe('resenas');
+  });
 });
 
 describe('GET /api/portal/google-business/oauth/callback', () => {
-  function makeRequest(params: Record<string, string>, cookieValue?: string) {
+  function makeRequest(params: Record<string, string>, cookieValue?: string, returnCookieValue?: string) {
     const url = new URL('https://portal.kairikos.test/api/portal/google-business/oauth/callback');
     for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
     return {
       nextUrl: url,
       url: url.toString(),
-      cookies: { get: (name: string) => (name === 'gb_oauth_state' && cookieValue ? { name, value: cookieValue } : undefined) },
+      cookies: {
+        get: (name: string) => {
+          if (name === 'gb_oauth_state' && cookieValue) return { name, value: cookieValue };
+          if (name === 'gb_oauth_return' && returnCookieValue) return { name, value: returnCookieValue };
+          return undefined;
+        },
+      },
     } as unknown as NextRequest;
   }
 
@@ -223,6 +258,37 @@ describe('GET /api/portal/google-business/oauth/callback', () => {
       }),
     );
     expect(res.headers.get('location')).toContain('connected=1');
+  });
+
+  it('binds the new connection onto an active recall subscription still missing googleConnectionId', async () => {
+    mockState.exchangeCodeForTokens.mockResolvedValueOnce({ accessToken: 'at', refreshToken: 'rt_plain', expiresIn: 3600, scope: 'business.manage' });
+    mockState.fetchAccessibleLocations.mockResolvedValueOnce([
+      { accountId: 'accounts/1', accountName: 'A', locationId: 'accounts/1/locations/1', locationName: 'Sede Centro' },
+    ]);
+    mockState.connectionUpsert.mockResolvedValueOnce({ id: 'conn_recall_1' });
+    const { GET } = await import('@/app/api/portal/google-business/oauth/callback/route');
+    await GET(makeRequest({ code: 'code_1', state: 'state_a' }, 'state_a'));
+
+    expect(mockState.recallSubscriptionUpdateMany).toHaveBeenCalledWith({
+      where: { clientId: 'client_1', status: 'active', googleConnectionId: null },
+      data: { googleConnectionId: 'conn_recall_1' },
+    });
+  });
+
+  it('redirects back to /portal/llamadas when the client started the flow from there', async () => {
+    mockState.exchangeCodeForTokens.mockResolvedValueOnce({ accessToken: 'at', refreshToken: 'rt_plain', expiresIn: 3600, scope: 'business.manage' });
+    mockState.fetchAccessibleLocations.mockResolvedValueOnce([
+      { accountId: 'accounts/1', accountName: 'A', locationId: 'accounts/1/locations/1', locationName: 'Sede Centro' },
+    ]);
+    const { GET } = await import('@/app/api/portal/google-business/oauth/callback/route');
+    const res = await GET(makeRequest({ code: 'code_1', state: 'state_a' }, 'state_a', 'llamadas'));
+    expect(res.headers.get('location')).toContain('/portal/llamadas?connected=1');
+  });
+
+  it('clears the return cookie on every outcome', async () => {
+    const { GET } = await import('@/app/api/portal/google-business/oauth/callback/route');
+    const res = await GET(makeRequest({ code: 'code_1', state: 'state_a' }, 'state_a', 'llamadas'));
+    expect(res.cookies.get('gb_oauth_return')?.value).toBe('');
   });
 });
 
