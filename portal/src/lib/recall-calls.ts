@@ -21,6 +21,13 @@ import { logError } from './observability';
 // of elements and the alternative is a dependency whose main value
 // (fluent builders) does not pay for itself here. Everything
 // caller-controlled that reaches the XML is escaped — see escapeXml.
+//
+// verifyForwardingFromCall closes the last onboarding gap: a subscription
+// in forwarding_pending has been sent the MMI codes (recall-templates.ts)
+// but nothing until now ever noticed they were dialled. There is no
+// test-call flow — the first real call that arrives here while
+// forwarding_pending IS the evidence, and this same function advances the
+// subscription straight to active on the strength of it.
 // =============================================================================
 
 /** Twilio's placeholder for a withheld caller ID, plus the values seen
@@ -102,21 +109,34 @@ export function buildUnavailableTwiml(): string {
   ].join('');
 }
 
+/** Statuses that answer the phone. `forwarding_pending` and
+ *  `forwarding_verified` are included on purpose — see
+ *  verifyForwardingFromCall below: the client cannot possibly have a
+ *  real call land here before that, since he has not been told the
+ *  virtual number to forward to yet, but from forwarding_pending onward
+ *  a real call IS the proof forwarding works. Anything earlier (still
+ *  onboarding) or `paused`/`cancelled` gets the unavailable message —
+ *  answering with a half-configured flow would take a message nobody is
+ *  watching. */
+const ANSWERABLE_STATUSES = new Set(['active', 'forwarding_pending', 'forwarding_verified']);
+
 export interface ResolvedCallTarget {
   subscriptionId: string;
   clientId: string;
   tenantId: string | null;
   virtualNumberId: string;
   hasGreeting: boolean;
+  /** The subscription's status AT RESOLUTION TIME — the caller uses this
+   *  to decide whether this call is also the one that verifies forwarding
+   *  (see verifyForwardingFromCall). */
+  subscriptionStatus: string;
 }
 
 /**
  * Which client owns the number that was dialled.
  *
- * Only an `assigned` number belonging to a subscription that is actually
- * live answers. A number still in the pool, or one whose subscription is
- * paused or half-onboarded, gets the unavailable message — answering
- * with a half-configured flow would take a message nobody is watching.
+ * Only an `assigned` number belonging to a subscription in an answerable
+ * state answers at all — see ANSWERABLE_STATUSES.
  */
 export async function resolveCallTarget(
   prisma: PrismaClient,
@@ -140,8 +160,7 @@ export async function resolveCallTarget(
   });
   if (!number || number.status !== 'assigned' || !number.subscription) return null;
   const sub = number.subscription;
-  // 'active' only: a paused subscription is a client who asked us to stop.
-  if (sub.status !== 'active') return null;
+  if (!ANSWERABLE_STATUSES.has(sub.status)) return null;
 
   return {
     subscriptionId: sub.id,
@@ -149,7 +168,72 @@ export async function resolveCallTarget(
     tenantId: sub.tenantId,
     virtualNumberId: number.id,
     hasGreeting: sub.greetingAudio !== null,
+    subscriptionStatus: sub.status,
   };
+}
+
+/**
+ * The first real forwarded call IS the proof forwarding works — no
+ * separate test-call flow needed, and none was ever built (see the
+ * module this was designed alongside). Walks the state machine one step
+ * at a time, same as every other transition in this product
+ * (nextOnboardingStatus's invariant), reusing one timestamp for both
+ * stamps since both facts — forwarding verified, service now live — are
+ * established by this exact same call.
+ *
+ * Compare-and-swap via updateMany, same discipline as
+ * assignNumberToSubscription's number claim: Twilio delivers webhooks
+ * at-least-once, and two calls landing within the same tick must not
+ * both think they were the one that verified it.
+ *
+ * A no-op for anything already past forwarding_pending (an `active`
+ * subscription's tenth call does not need to re-verify itself).
+ */
+export async function verifyForwardingFromCall(
+  prisma: PrismaClient,
+  target: { subscriptionId: string; clientId: string; subscriptionStatus: string },
+  now: Date = new Date(),
+): Promise<void> {
+  if (target.subscriptionStatus !== 'forwarding_pending') return;
+
+  const verified = await prisma.recallSubscription.updateMany({
+    where: { id: target.subscriptionId, status: 'forwarding_pending' },
+    data: { status: 'forwarding_verified', forwardingVerifiedAt: now },
+  });
+  if (verified.count !== 1) return; // another delivery of the same call already did this
+
+  await prisma.recallSubscriptionAudit
+    .create({
+      data: {
+        subscriptionId: target.subscriptionId,
+        clientId: target.clientId,
+        action: 'forwarding_verified',
+        before: { status: 'forwarding_pending' },
+        after: { status: 'forwarding_verified' },
+        actorType: 'system',
+        actorEmail: 'system:first_forwarded_call',
+      },
+    })
+    .catch(() => null);
+
+  await prisma.recallSubscription.update({
+    where: { id: target.subscriptionId },
+    data: { status: 'active', activatedAt: now },
+  });
+
+  await prisma.recallSubscriptionAudit
+    .create({
+      data: {
+        subscriptionId: target.subscriptionId,
+        clientId: target.clientId,
+        action: 'activated',
+        before: { status: 'forwarding_verified' },
+        after: { status: 'active' },
+        actorType: 'system',
+        actorEmail: 'system:first_forwarded_call',
+      },
+    })
+    .catch(() => null);
 }
 
 /**

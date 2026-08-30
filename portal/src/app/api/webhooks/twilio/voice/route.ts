@@ -4,6 +4,7 @@ import { verifyTwilioSignature, resolveWebhookUrl, formDataToParams } from '@/li
 import {
   resolveCallTarget,
   recordIncomingCall,
+  verifyForwardingFromCall,
   buildRecordTwiml,
   buildUnavailableTwiml,
   isWithheldCaller,
@@ -94,10 +95,18 @@ export async function POST(req: NextRequest) {
       (await isNumberBlocked(prisma, target.subscriptionId, from).catch(() => false));
     if (blocked && from) {
       await recordIncomingCall(prisma, target, { callSid, from, to, outcome: 'blocked' });
+      // The call still reached our number — forwarding worked — whether
+      // or not the caller turned out to be someone we block.
+      await verifyForwardingFromCall(prisma, target).catch((err) => {
+        logError('twilio_voice.forwarding_verification_failed', err, { callSid, subscriptionId: target.subscriptionId }, 'warn');
+      });
       return twiml(buildUnavailableTwiml());
     }
 
     await recordIncomingCall(prisma, target, { callSid, from, to });
+    await verifyForwardingFromCall(prisma, target).catch((err) => {
+      logError('twilio_voice.forwarding_verification_failed', err, { callSid, subscriptionId: target.subscriptionId }, 'warn');
+    });
 
     const base = resolveWebhookUrl(req, '');
     return twiml(

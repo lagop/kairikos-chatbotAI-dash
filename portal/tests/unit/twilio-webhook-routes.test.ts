@@ -25,6 +25,7 @@ const mockState = vi.hoisted(() => ({
   resolveCallTarget: vi.fn(),
   recordIncomingCall: vi.fn(),
   attachRecording: vi.fn(),
+  verifyForwardingFromCall: vi.fn(),
   recallSubscriptionFindUnique: vi.fn(),
   isNumberBlocked: vi.fn(),
   notifyOwnerInBackground: vi.fn(),
@@ -37,6 +38,7 @@ vi.mock('@/lib/recall-calls', async () => {
     resolveCallTarget: (...a: unknown[]) => mockState.resolveCallTarget(...a),
     recordIncomingCall: (...a: unknown[]) => mockState.recordIncomingCall(...a),
     attachRecording: (...a: unknown[]) => mockState.attachRecording(...a),
+    verifyForwardingFromCall: (...a: unknown[]) => mockState.verifyForwardingFromCall(...a),
   };
 });
 
@@ -71,6 +73,7 @@ beforeEach(() => {
   process.env.TWILIO_WEBHOOK_BASE_URL = BASE;
   for (const fn of Object.values(mockState)) fn.mockReset();
   mockState.isNumberBlocked.mockResolvedValue(false);
+  mockState.verifyForwardingFromCall.mockResolvedValue(undefined);
 });
 
 describe('POST /api/webhooks/twilio/voice', () => {
@@ -82,6 +85,7 @@ describe('POST /api/webhooks/twilio/voice', () => {
     tenantId: 't1',
     virtualNumberId: 'vn_1',
     hasGreeting: true,
+    subscriptionStatus: 'active',
   };
 
   async function post(req: NextRequest) {
@@ -124,6 +128,28 @@ describe('POST /api/webhooks/twilio/voice', () => {
     expect(xml).toContain(`recordingStatusCallback="${BASE}/api/webhooks/twilio/recording"`);
   });
 
+  it('checks whether this call verifies forwarding, after recording it', async () => {
+    mockState.resolveCallTarget.mockResolvedValue({ ...TARGET, subscriptionStatus: 'forwarding_pending' });
+    mockState.recordIncomingCall.mockResolvedValue({ id: 'ce_1', outcome: 'pending' });
+
+    await post(makeRequest(PATH, CALL));
+
+    expect(mockState.verifyForwardingFromCall).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ subscriptionId: 'sub_1', subscriptionStatus: 'forwarding_pending' }),
+    );
+  });
+
+  it('still answers normally when the forwarding-verification check itself fails', async () => {
+    mockState.resolveCallTarget.mockResolvedValue(TARGET);
+    mockState.recordIncomingCall.mockResolvedValue({ id: 'ce_1', outcome: 'pending' });
+    mockState.verifyForwardingFromCall.mockRejectedValue(new Error('db blip'));
+
+    const res = await post(makeRequest(PATH, CALL));
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('<Record');
+  });
+
   // --- Fase 9: the blocklist gate --------------------------------------
 
   it('refuses a blocked caller WITHOUT recording them', async () => {
@@ -141,6 +167,9 @@ describe('POST /api/webhooks/twilio/voice', () => {
     // The call is still logged, as evidence, with a terminal outcome so
     // no later step treats it as a message waiting to be handled.
     expect(mockState.recordIncomingCall.mock.calls[0][2]).toMatchObject({ outcome: 'blocked' });
+    // The call still reached our number — forwarding worked — whether or
+    // not the caller turned out to be someone we block.
+    expect(mockState.verifyForwardingFromCall).toHaveBeenCalled();
   });
 
   it('checks the blocklist against the SUBSCRIPTION, not globally', async () => {

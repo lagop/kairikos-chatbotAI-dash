@@ -1,21 +1,22 @@
 import 'server-only';
 import type { PrismaClient } from '@prisma/client';
-import { RECALL_TEMPLATES } from './recall-messaging';
+import { RECALL_TEMPLATES, metaSenderFor } from './recall-messaging';
 import { DIGEST_TEMPLATES } from './recall-digest';
 import { REPORT_TEMPLATE } from './recall-reports';
-import { createMessageTemplate } from './whatsapp-api';
+import { createMessageTemplate, sendTemplate } from './whatsapp-api';
 import { logError } from './observability';
 
 // =============================================================================
-// WP-XX — submits recall's 6 WhatsApp templates to a client's own WABA the
+// WP-XX — submits recall's 7 WhatsApp templates to a client's own WABA the
 // first time it connects, instead of an operator re-typing them into Meta
 // Business Manager for every new client.
 //
-// The name/language pairs are NOT redefined here — they're imported from
-// RECALL_TEMPLATES/DIGEST_TEMPLATES/REPORT_TEMPLATE, the same constants
-// sendTemplate's callers use, so submission can never name-drift from what
-// is actually sent. Only the body copy and category, which sendTemplate's
-// callers have no need to know, live here.
+// The name/language pairs for the first 6 are NOT redefined here — they're
+// imported from RECALL_TEMPLATES/DIGEST_TEMPLATES/REPORT_TEMPLATE, the same
+// constants sendTemplate's callers use, so submission can never name-drift
+// from what is actually sent. The 7th, FORWARDING_INSTRUCTIONS_TEMPLATE,
+// has no other sender — it belongs here, next to the only function that
+// ever sends it (advanceSubscriptionsWithApprovedTemplates, below).
 //
 // BODY TEXT WAS AUTHORED FOR THIS TASK, NOT CARRIED OVER FROM ANY EXISTING
 // SPEC — no template wording existed anywhere in the repo before this
@@ -27,9 +28,27 @@ import { logError } from './observability';
 // have whoever owns the product voice read it before the first client
 // goes live.
 //
+// FORWARDING_INSTRUCTIONS_TEMPLATE IS A DIFFERENT CLASS OF RISK FROM THE
+// OTHER 6: it contains real GSM call-forwarding (MMI) codes, and a wrong
+// code silently breaks the product for a paying client rather than just
+// reading awkwardly. No such codes existed anywhere in this repo before
+// this — the closest prior art was two bare fragments (`##61#` in
+// recall.ts's cancel comment, `**61*` in recall-calls.ts's forwarding
+// comment). The three codes used here (**61*, **67*, **62* — no-answer,
+// busy, unreachable) are the standard GSM/3GPP conditional-forwarding
+// codes, chosen deliberately over unconditional forwarding (**21*)
+// because this product should only intercept calls the client could not
+// take himself. They are consistent with both of those existing
+// fragments and with recall.ts's own "three MMI codes" description, but
+// are UNVERIFIED AGAINST A REAL PHONE LINE — test against one real
+// number before relying on this for a paying client.
+//
 // UNVERIFIED AGAINST A REAL META APP — same standing caveat as
 // meta-business.ts and whatsapp-api.ts.
 // =============================================================================
+
+/** No other sender exists for this one — see the header. */
+export const FORWARDING_INSTRUCTIONS_TEMPLATE = { name: 'recall_forwarding_instructions', languageCode: 'es' } as const;
 
 export interface RecallTemplateDefinition {
   name: string;
@@ -83,6 +102,13 @@ export const RECALL_TEMPLATE_DEFINITIONS: readonly RecallTemplateDefinition[] = 
     bodyText: 'Tu resumen de {{1}}: {{2}} llamadas recuperadas, {{3}} contactadas, {{4}} reseñas nuevas (valoración media {{5}}).',
     bodyExamples: ['agosto', '12', '10', '3', '4.8'],
   },
+  {
+    ...FORWARDING_INSTRUCTIONS_TEMPLATE,
+    category: 'UTILITY',
+    bodyText:
+      'Para activar el desvío de llamadas a tu línea de Kairikos, marca estos 3 códigos desde tu móvil (uno detrás de otro, pulsando llamar después de cada uno):\n\n1) **61*{{1}}#\n2) **67*{{1}}#\n3) **62*{{1}}#\n\nTu teléfono sigue funcionando igual que siempre — solo se desvían las llamadas que no coges, comunicas o no tienen cobertura.',
+    bodyExamples: ['+34910123456'],
+  },
 ];
 
 export interface TemplateSubmissionOutcome {
@@ -129,7 +155,12 @@ const REQUIRED_TEMPLATE_NAMES = RECALL_TEMPLATE_DEFINITIONS.map((def) => def.nam
 
 /**
  * Advances every `number_assigned` subscription whose bound connection
- * now has all 6 required templates APPROVED to `templates_approved`.
+ * now has all 7 required templates APPROVED (the 6 messaging ones plus
+ * FORWARDING_INSTRUCTIONS_TEMPLATE) through `templates_approved` and
+ * straight on to `forwarding_pending` — sending the forwarding
+ * instructions as the same act, per recall.ts's own comment on why
+ * forwarding_pending has no separate timestamp column ("entered by the
+ * same act that approved the templates").
  *
  * The missing half of the gap this module exists to close: submission
  * (submitAllRecallTemplates, above) puts templates in front of Meta's
@@ -142,14 +173,13 @@ const REQUIRED_TEMPLATE_NAMES = RECALL_TEMPLATE_DEFINITIONS.map((def) => def.nam
  * WhatsappTemplate has no direct relation to RecallSubscription — the
  * join is subscription.metaConnectionId → WhatsappTemplate.connectionId.
  *
- * Deliberately stops AT templates_approved rather than continuing to
- * forwarding_pending: recall.ts's own STUCK_AFTER_DAYS models
- * templates_approved as a real resting state with its own threshold, and
- * enteredCurrentStateAt's comment on forwarding_pending ("entered by the
- * same act that approved the templates") describes a SEPARATE later
- * transition — presumably whatever sends the forwarding instructions —
- * reusing this same templatesApprovedAt stamp, not this function jumping
- * two steps at once.
+ * The forwarding_pending advance happens REGARDLESS of whether the
+ * WhatsApp send succeeds — same posture as every other best-effort step
+ * in this product (connectRecallWhatsapp's subscribeWaba/syncSmbAppState):
+ * the state fact (templates are approved, onboarding should proceed) is
+ * independent of a notification's delivery. A send failure here still
+ * surfaces to an operator within a day via notifyStuckOnboardings, since
+ * forwarding_pending's own STUCK_AFTER_DAYS threshold is 1.
  */
 export async function advanceSubscriptionsWithApprovedTemplates(
   prisma: PrismaClient,
@@ -159,7 +189,24 @@ export async function advanceSubscriptionsWithApprovedTemplates(
 
   const candidates = await prisma.recallSubscription.findMany({
     where: { status: 'number_assigned', metaConnectionId: { not: null } },
-    select: { id: true, clientId: true, status: true, metaConnectionId: true },
+    select: {
+      id: true,
+      clientId: true,
+      status: true,
+      metaConnectionId: true,
+      ownerWhatsapp: true,
+      virtualNumber: { select: { e164: true } },
+      metaConnection: {
+        select: {
+          id: true,
+          externalId: true,
+          status: true,
+          accessTokenCiphertext: true,
+          accessTokenIv: true,
+          accessTokenTag: true,
+        },
+      },
+    },
   });
 
   let advanced = 0;
@@ -196,6 +243,45 @@ export async function advanceSubscriptionsWithApprovedTemplates(
       })
       // The advance already happened — an audit-insert failure must not
       // undo it or get retried as if the transition never occurred.
+      .catch(() => null);
+
+    const sender = metaSenderFor(subscription.metaConnection);
+    const virtualNumber = subscription.virtualNumber?.e164;
+    if (sender && virtualNumber && subscription.ownerWhatsapp) {
+      const sent = await sendTemplate(sender.token, sender.phoneNumberId, subscription.ownerWhatsapp, {
+        ...FORWARDING_INSTRUCTIONS_TEMPLATE,
+        bodyParams: [virtualNumber],
+      });
+      if (!sent.ok) {
+        logError('recall_templates.forwarding_instructions_send_failed', new Error(sent.error), { subscriptionId: subscription.id }, 'warn');
+      }
+    } else {
+      logError(
+        'recall_templates.forwarding_instructions_send_skipped',
+        new Error('missing sender, virtual number, or owner WhatsApp'),
+        { subscriptionId: subscription.id },
+        'warn',
+      );
+    }
+
+    const advancedFurther = await prisma.recallSubscription.update({
+      where: { id: subscription.id },
+      data: { status: 'forwarding_pending' },
+      select: { status: true },
+    });
+
+    await prisma.recallSubscriptionAudit
+      .create({
+        data: {
+          subscriptionId: subscription.id,
+          clientId: subscription.clientId,
+          action: 'forwarding_pending',
+          before: { status: updated.status },
+          after: { status: advancedFurther.status },
+          actorType: 'system',
+          actorEmail: 'system:whatsapp_health',
+        },
+      })
       .catch(() => null);
 
     advanced += 1;
