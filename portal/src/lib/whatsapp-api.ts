@@ -318,3 +318,51 @@ export function listMessageTemplates(
     'GET',
   );
 }
+
+export interface CreateTemplateResult {
+  id?: string;
+  status?: string;
+  category?: string;
+}
+
+/**
+ * Submit one message template to a WABA for Meta's review.
+ *
+ * Every template this product uses has a single BODY component — none
+ * carry a header, footer, or button (see sendTemplate's callers, all of
+ * which pass bodyParams only). `bodyExamples` fills Meta's required
+ * `example.body_text`: a template with {{n}} placeholders and no example
+ * is rejected outright, since Meta's reviewer has nothing concrete to
+ * check the placeholder against.
+ *
+ * The response's `status` is Meta's IMMEDIATE placement on submission —
+ * almost always 'PENDING'. The real approved/rejected outcome only shows
+ * up later and must be discovered by polling listMessageTemplates (see
+ * whatsapp-health.ts's syncTemplateStatuses); this call never returns it.
+ */
+export function createMessageTemplate(
+  accessToken: string,
+  wabaId: string,
+  spec: {
+    name: string;
+    languageCode: string;
+    category: 'UTILITY' | 'MARKETING' | 'AUTHENTICATION';
+    bodyText: string;
+    bodyExamples?: readonly string[];
+  },
+): Promise<WhatsAppApiResult<CreateTemplateResult>> {
+  return callGraphApi<CreateTemplateResult>(accessToken, `/${wabaId}/message_templates`, 'POST', {
+    name: spec.name,
+    language: spec.languageCode,
+    category: spec.category,
+    components: [
+      {
+        type: 'BODY',
+        text: spec.bodyText,
+        ...(spec.bodyExamples && spec.bodyExamples.length > 0
+          ? { example: { body_text: [spec.bodyExamples] } }
+          : {}),
+      },
+    ],
+  });
+}

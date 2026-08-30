@@ -3,6 +3,7 @@ import type { PrismaClient } from '@prisma/client';
 import { canBindMetaConnection, nextOnboardingStatus } from './recall';
 import { exchangeCodeForToken, exchangeForLongLivedToken, encryptMetaToken } from './meta-business';
 import { subscribeWaba, getPhoneNumbersForWaba, getPhoneNumberInfo, syncSmbAppState } from './whatsapp-api';
+import { submitAllRecallTemplates, type TemplateSubmissionOutcome } from './recall-templates';
 import { deliverChannelEvent } from './channel-webhook';
 import { logError } from './observability';
 
@@ -37,6 +38,10 @@ export type ConnectRecallWhatsappResult =
       connectionId: string;
       displayPhoneNumber: string | null;
       advancedTo: string | null;
+      /** Only attempted on the WABA's first connect — see the submission
+       *  call below. Null on a reconnect, where the WABA's templates from
+       *  its original connect already exist. */
+      templatesSubmitted: TemplateSubmissionOutcome[] | null;
     }
   | {
       ok: false;
@@ -53,10 +58,12 @@ export type ConnectRecallWhatsappResult =
  * exchanges the code, resolves the phone number id (the coexistence
  * FINISH event never carries one — see meta-business.ts), stores the
  * connection with isCoexistence=true, subscribes the WABA to the app
- * webhook, starts the one-time contacts/history sync, and — the part
- * that was missing entirely before this — binds the connection to the
- * subscription and advances its status, exactly the way
- * assignNumberToSubscription binds a virtual number.
+ * webhook, starts the one-time contacts/history sync, submits this
+ * client's 6 WhatsApp templates for Meta's review on a first connect
+ * (see recall-templates.ts), and — the part that was missing entirely
+ * before this — binds the connection to the subscription and advances
+ * its status, exactly the way assignNumberToSubscription binds a virtual
+ * number.
  *
  * NEVER calls POST /{phone_number_id}/register. Coexistence explicitly
  * forbids it: the number is already registered via the app. This is the
@@ -197,6 +204,16 @@ export async function connectRecallWhatsapp(
     select: { status: true },
   });
 
+  // Submitting templates is safe to redo (Meta just re-reports "already
+  // exists"), but pointless on a reconnect — the WABA is unchanged, so
+  // its templates from the original connect are already there. Gated on
+  // willAdvance rather than run unconditionally like subscribeWaba/
+  // syncSmbAppState above, which stay useful to repeat every time.
+  let templatesSubmitted: TemplateSubmissionOutcome[] | null = null;
+  if (willAdvance) {
+    templatesSubmitted = await submitAllRecallTemplates(accessToken, params.wabaId);
+  }
+
   await prisma.recallSubscriptionAudit
     .create({
       data: {
@@ -204,7 +221,12 @@ export async function connectRecallWhatsapp(
         clientId: params.clientId,
         action: 'meta_connected',
         before,
-        after: { status: updated.status, metaConnectionId: connectionId, isCoexistence: true },
+        after: {
+          status: updated.status,
+          metaConnectionId: connectionId,
+          isCoexistence: true,
+          templatesSubmitted: templatesSubmitted?.map((t) => ({ name: t.name, ok: t.ok })) ?? null,
+        },
         actorType: 'client',
         actorEmail: `client:${params.clientId}`,
       },
@@ -233,5 +255,6 @@ export async function connectRecallWhatsapp(
     connectionId,
     displayPhoneNumber,
     advancedTo: willAdvance ? 'meta_connected' : null,
+    templatesSubmitted,
   };
 }

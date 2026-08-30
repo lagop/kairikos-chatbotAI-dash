@@ -21,6 +21,7 @@ const mockState = vi.hoisted(() => ({
   getPhoneNumbersForWaba: vi.fn(),
   getPhoneNumberInfo: vi.fn(),
   syncSmbAppState: vi.fn(),
+  submitAllRecallTemplates: vi.fn(),
   deliverChannelEvent: vi.fn(),
   logError: vi.fn(),
 }));
@@ -36,6 +37,10 @@ vi.mock('@/lib/whatsapp-api', () => ({
   getPhoneNumbersForWaba: (...a: unknown[]) => mockState.getPhoneNumbersForWaba(...a),
   getPhoneNumberInfo: (...a: unknown[]) => mockState.getPhoneNumberInfo(...a),
   syncSmbAppState: (...a: unknown[]) => mockState.syncSmbAppState(...a),
+}));
+
+vi.mock('@/lib/recall-templates', () => ({
+  submitAllRecallTemplates: (...a: unknown[]) => mockState.submitAllRecallTemplates(...a),
 }));
 
 vi.mock('@/lib/channel-webhook', () => ({
@@ -87,6 +92,14 @@ beforeEach(() => {
     data: { display_phone_number: '+34 611 22 33 44', verified_name: 'Fontanería Ruiz', quality_rating: 'GREEN', platform_type: 'CLOUD_API' },
   });
   mockState.syncSmbAppState.mockResolvedValue({ ok: true, data: { success: true } });
+  mockState.submitAllRecallTemplates.mockResolvedValue([
+    { name: 'recall_caller_open', ok: true, status: 'PENDING' },
+    { name: 'recall_caller_closed', ok: true, status: 'PENDING' },
+    { name: 'recall_owner_message', ok: true, status: 'PENDING' },
+    { name: 'recall_daily_digest', ok: true, status: 'PENDING' },
+    { name: 'recall_digest_clarify', ok: true, status: 'PENDING' },
+    { name: 'recall_monthly_report', ok: true, status: 'PENDING' },
+  ]);
   mockState.deliverChannelEvent.mockResolvedValue({ ok: true, deliveryId: 'd1', status: 'delivered' });
 
   state.metaChannelConnectionUpsert.mockResolvedValue({ id: 'conn_1' });
@@ -104,7 +117,9 @@ describe('connectRecallWhatsapp', () => {
       connectionId: 'conn_1',
       displayPhoneNumber: '+34 611 22 33 44',
       advancedTo: 'meta_connected',
+      templatesSubmitted: expect.arrayContaining([expect.objectContaining({ name: 'recall_caller_open', ok: true })]),
     });
+    expect(mockState.submitAllRecallTemplates).toHaveBeenCalledWith('long_lived', 'waba_1');
     expect(state.metaChannelConnectionUpsert).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({ channel: 'whatsapp', externalId: 'phone_1', isCoexistence: true }),
@@ -130,12 +145,15 @@ describe('connectRecallWhatsapp', () => {
 
     const result = await connectRecallWhatsapp(prisma, PARAMS);
 
-    expect(result).toMatchObject({ ok: true, advancedTo: null });
+    expect(result).toMatchObject({ ok: true, advancedTo: null, templatesSubmitted: null });
     expect(state.recallSubscriptionUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: { metaConnectionId: 'conn_1' },
       }),
     );
+    // The WABA is unchanged on a reconnect — its templates from the
+    // original connect already exist, so resubmitting is pointless.
+    expect(mockState.submitAllRecallTemplates).not.toHaveBeenCalled();
   });
 
   it('rejects a subscription that belongs to a different client', async () => {
@@ -185,5 +203,40 @@ describe('connectRecallWhatsapp', () => {
     state.recallSubscriptionAuditCreate.mockRejectedValue(new Error('db down'));
     const result = await connectRecallWhatsapp(prisma, PARAMS);
     expect(result.ok).toBe(true);
+  });
+
+  it('records which templates were submitted in the audit row, name+ok only', async () => {
+    mockState.submitAllRecallTemplates.mockResolvedValue([
+      { name: 'recall_caller_open', ok: true, status: 'PENDING' },
+      { name: 'recall_caller_closed', ok: false, error: 'template already exists' },
+    ]);
+    await connectRecallWhatsapp(prisma, PARAMS);
+    expect(state.recallSubscriptionAuditCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          after: expect.objectContaining({
+            templatesSubmitted: [
+              { name: 'recall_caller_open', ok: true },
+              { name: 'recall_caller_closed', ok: false },
+            ],
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('still connects and binds when some templates fail submission — one bad template must not cost the others', async () => {
+    mockState.submitAllRecallTemplates.mockResolvedValue([
+      { name: 'recall_caller_open', ok: false, error: 'invalid wording' },
+      { name: 'recall_caller_closed', ok: true, status: 'PENDING' },
+    ]);
+    const result = await connectRecallWhatsapp(prisma, PARAMS);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.templatesSubmitted).toEqual([
+        { name: 'recall_caller_open', ok: false, error: 'invalid wording' },
+        { name: 'recall_caller_closed', ok: true, status: 'PENDING' },
+      ]);
+    }
   });
 });
