@@ -91,6 +91,11 @@ services:
       NEXT_PUBLIC_PORTAL_URL: ${NEXT_PUBLIC_PORTAL_URL:-}
       N8N_API_KEY: ${N8N_API_KEY:-}
       N8N_BASE_URL: ${N8N_BASE_URL:-}
+      # WhatsApp Coexistence de 'recall' — Embedded Signup Configuration
+      # separada de META_CONFIG_ID (esa es para los canales normales del
+      # chatbot). isCoexistenceSignupConfigured() la comprueba junto a
+      # META_APP_ID/META_APP_SECRET, ya wireados arriba — ver lib/meta-business.ts.
+      META_COEXISTENCE_CONFIG_ID: ${META_COEXISTENCE_CONFIG_ID:-}
       # Telefonía del producto 'recall'. Sin las dos primeras, el pool de
       # números queda deshabilitado y sus rutas de operador devuelven 503;
       # nada más del portal se ve afectado. El bundle/address regulatorio
