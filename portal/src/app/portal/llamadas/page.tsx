@@ -368,9 +368,7 @@ export default async function PortalLlamadasPage({
         </p>
       ) : null}
 
-      {view.googleConnection?.status !== 'active' ? (
-        <RecallGoogleConnectCard connection={view.googleConnection} />
-      ) : null}
+      <RecallGoogleConnectCard connection={view.googleConnection} />
 
       <section aria-label={`Resumen de ${monthLabel(view.localMonth)}`}>
         <div className="mb-2 flex items-center justify-between gap-3">
