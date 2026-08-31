@@ -60,12 +60,12 @@ export async function GET(req: NextRequest) {
   if (!hasAccess) {
     return NextResponse.redirect(new URL(`${returnTo}?connect_error=forbidden`, req.url));
   }
-  if (!isGoogleBusinessOAuthConfigured()) {
+  if (!(await isGoogleBusinessOAuthConfigured())) {
     return NextResponse.redirect(new URL(`${returnTo}?connect_error=not_configured`, req.url));
   }
 
   const state = crypto.randomBytes(32).toString('hex');
-  const res = NextResponse.redirect(buildAuthorizationUrl(state));
+  const res = NextResponse.redirect(await buildAuthorizationUrl(state));
   const cookieOpts = {
     httpOnly: true,
     sameSite: 'lax' as const,

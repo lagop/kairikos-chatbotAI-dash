@@ -21,7 +21,12 @@ export default async function AdminIntegrationsSettingsPage() {
     redirect('/portal/login?next=/admin/portal/settings/integrations');
   }
 
-  const googlePlaces = await getIntegrationCredentialStatus('google_places');
+  const [googlePlaces, googleBusiness, googleSeo, googleGa4] = await Promise.all([
+    getIntegrationCredentialStatus('google_places'),
+    getIntegrationCredentialStatus('google_business'),
+    getIntegrationCredentialStatus('google_seo'),
+    getIntegrationCredentialStatus('google_ga4'),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -35,7 +40,12 @@ export default async function AdminIntegrationsSettingsPage() {
           </Link>
         }
       />
-      <IntegrationCredentialsPanel initialGooglePlaces={googlePlaces} />
+      <IntegrationCredentialsPanel
+        initialGooglePlaces={googlePlaces}
+        initialGoogleBusiness={googleBusiness}
+        initialGoogleSeo={googleSeo}
+        initialGoogleGa4={googleGa4}
+      />
     </div>
   );
 }

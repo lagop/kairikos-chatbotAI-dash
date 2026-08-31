@@ -29,6 +29,8 @@ export interface IntegrationCredentialStatus {
   configured: boolean;
   lastFour: string | null;
   savedAt: string | null;
+  // Cleartext, unlike lastFour — null for a single-secret tool (google_places).
+  clientId: string | null;
 }
 
 function getEncryptionKey(): Buffer {
@@ -42,6 +44,7 @@ export async function getIntegrationCredentialStatus(toolKey: string): Promise<I
     configured: row !== null,
     lastFour: row?.secretLastFour ?? null,
     savedAt: row?.savedAt ? row.savedAt.toISOString() : null,
+    clientId: row?.clientId ?? null,
   };
 }
 
@@ -50,6 +53,7 @@ export async function saveIntegrationCredential(
   displayName: string,
   secretValue: string,
   actor: IntegrationActor,
+  clientId?: string,
 ): Promise<void> {
   const key = getEncryptionKey();
   const { ciphertext, iv, tag } = encryptBuffer(secretValue, key);
@@ -64,6 +68,7 @@ export async function saveIntegrationCredential(
       create: {
         toolKey,
         displayName,
+        clientId: clientId ?? null,
         secretCiphertext: ciphertext,
         secretIv: iv,
         secretTag: tag,
@@ -71,6 +76,7 @@ export async function saveIntegrationCredential(
         savedAt: now,
       },
       update: {
+        clientId: clientId ?? null,
         secretCiphertext: ciphertext,
         secretIv: iv,
         secretTag: tag,
@@ -84,8 +90,11 @@ export async function saveIntegrationCredential(
         toolKey,
         action: existing ? 'credential_rotated' : 'credential_saved',
         // Never the key or ciphertext — only non-sensitive metadata.
-        before: existing ? { configured: true, lastFour: existing.secretLastFour } : Prisma.JsonNull,
-        after: { configured: true, lastFour },
+        // clientId is cleartext (not a secret), safe to audit in full.
+        before: existing
+          ? { configured: true, lastFour: existing.secretLastFour, clientId: existing.clientId }
+          : Prisma.JsonNull,
+        after: { configured: true, lastFour, clientId: clientId ?? null },
         actorOperatorId: actor.operatorId,
         actorEmail: actor.operatorEmail,
       },
@@ -97,6 +106,7 @@ export async function saveIntegrationCredential(
 
 interface CachedSecret {
   value: string;
+  clientId: string | null;
   cachedAt: number;
 }
 
@@ -115,9 +125,26 @@ const cache = new Map<string, CachedSecret>();
  * round-trip plus a decrypt per call.
  */
 export async function resolveIntegrationSecret(toolKey: string): Promise<string | null> {
+  const cached = await getCached(toolKey);
+  return cached?.value ?? null;
+}
+
+/**
+ * Resolves the DB-stored, cleartext client_id for `toolKey` — the public
+ * half of an OAuth-client-style credential (google_business/google_seo/
+ * google_ga4). Null for a single-secret tool (google_places) or when
+ * nothing has been saved. Shares the same cache entry as
+ * resolveIntegrationSecret since both come off the same row.
+ */
+export async function resolveIntegrationClientId(toolKey: string): Promise<string | null> {
+  const cached = await getCached(toolKey);
+  return cached?.clientId ?? null;
+}
+
+async function getCached(toolKey: string): Promise<CachedSecret | null> {
   const cached = cache.get(toolKey);
   if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
-    return cached.value;
+    return cached;
   }
 
   if (!isDatabaseConfigured) return null;
@@ -126,8 +153,9 @@ export async function resolveIntegrationSecret(toolKey: string): Promise<string 
   if (!row) return null;
 
   const value = decryptBuffer({ ciphertext: row.secretCiphertext, iv: row.secretIv, tag: row.secretTag }, getEncryptionKey());
-  cache.set(toolKey, { value, cachedAt: Date.now() });
-  return value;
+  const entry: CachedSecret = { value, clientId: row.clientId, cachedAt: Date.now() };
+  cache.set(toolKey, entry);
+  return entry;
 }
 
 export function invalidateIntegrationCredentialCache(toolKey: string): void {

@@ -1896,6 +1896,12 @@ model IntegrationCredential {
   // Human label for the settings UI, e.g. "Google Places".
   displayName String @map("display_name")
 
+  // Cleartext public identifier for tools with an OAuth-client-style pair
+  // (e.g. GOOGLE_BUSINESS_OAUTH_CLIENT_ID) — null for a plain single-secret
+  // tool like google_places. Not sensitive on its own, so no encryption:
+  // same reasoning as TwilioOperatorCredential.accountSid.
+  clientId String? @map("client_id")
+
   secretCiphertext Bytes @map("secret_ciphertext")
   secretIv         Bytes @map("secret_iv")
   secretTag        Bytes @map("secret_tag")
