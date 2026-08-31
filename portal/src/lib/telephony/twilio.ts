@@ -1,6 +1,6 @@
 import 'server-only';
 import { logError } from '../observability';
-import { resolveActiveTwilioCredentials } from '../twilio-credentials';
+import { resolveActiveTwilioCredentials, type TwilioCredentials } from '../twilio-credentials';
 import type {
   AvailableNumber,
   ProvisionNumberOptions,
@@ -23,8 +23,9 @@ import type {
 // Spanish numbering has a regulatory requirement: Twilio will reject
 // provisioning without a Bundle (and usually an Address) proving who the
 // service provider is. That registration is done ONCE, by us, in the
-// Twilio console — never per client. TWILIO_BUNDLE_SID/TWILIO_ADDRESS_SID
-// carry those ids into the provisioning call.
+// Twilio console — never per client. resolveActiveTwilioCredentials()
+// carries those ids into the provisioning call (DB-first, falling back
+// to TWILIO_BUNDLE_SID/TWILIO_ADDRESS_SID — see twilio-credentials.ts).
 //
 // UNVERIFIED AGAINST A REAL TWILIO ACCOUNT at the time of writing — the
 // endpoint shapes follow Twilio's documented, long-stable 2010-04-01 API,
@@ -41,7 +42,7 @@ export async function isTwilioConfigured(): Promise<boolean> {
   return (await resolveActiveTwilioCredentials()) !== null;
 }
 
-async function getCredentials(): Promise<{ accountSid: string; authToken: string }> {
+async function getCredentials(): Promise<TwilioCredentials> {
   const credentials = await resolveActiveTwilioCredentials();
   if (!credentials) {
     throw new Error('Twilio credentials not configured');
@@ -164,9 +165,12 @@ export const twilioProvider: TelephonyProvider = {
     if (opts.friendlyName) form.FriendlyName = opts.friendlyName;
     // Spanish (and most EU) numbering: Twilio rejects the purchase without
     // the service provider's regulatory bundle. Registered once by us, not
-    // per client — see this module's header.
-    if (process.env.TWILIO_BUNDLE_SID) form.BundleSid = process.env.TWILIO_BUNDLE_SID;
-    if (process.env.TWILIO_ADDRESS_SID) form.AddressSid = process.env.TWILIO_ADDRESS_SID;
+    // per client — see this module's header. DB-first, env-fallback, same
+    // resolver as the account credentials (cached, so this second call is
+    // a cache hit in practice).
+    const regulatory = await resolveActiveTwilioCredentials();
+    if (regulatory?.bundleSid) form.BundleSid = regulatory.bundleSid;
+    if (regulatory?.addressSid) form.AddressSid = regulatory.addressSid;
 
     const result = await twilioRequest<TwilioIncomingNumberResponse>('POST', '/IncomingPhoneNumbers.json', form);
     if (!result.ok) return result;

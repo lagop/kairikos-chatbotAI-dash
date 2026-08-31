@@ -17,6 +17,8 @@ export interface TwilioCredentialStatus {
   accountSid: string | null;
   authTokenLastFour: string | null;
   savedAt: string | null;
+  bundleSid: string | null;
+  addressSid: string | null;
 }
 
 type ToastKind = 'success' | 'error';
@@ -33,8 +35,19 @@ const ERROR_LABEL: Record<string, string> = {
   internal_error: 'Algo falló en el servidor. Si persiste, contacta con el equipo técnico.',
 };
 
+const REGULATORY_ERROR_LABEL: Record<string, string> = {
+  invalid_body: 'Rellena los dos campos.',
+  service_unavailable: 'No disponible en este momento.',
+  unauthorized: 'Tu sesión expiró — vuelve a iniciar sesión.',
+  internal_error: 'Algo falló en el servidor. Si persiste, contacta con el equipo técnico.',
+};
+
 function errorLabel(code: string | undefined): string {
   return (code && ERROR_LABEL[code]) || 'No se pudo completar la operación.';
+}
+
+function regulatoryErrorLabel(code: string | undefined): string {
+  return (code && REGULATORY_ERROR_LABEL[code]) || 'No se pudo completar la operación.';
 }
 
 function formatDate(iso: string | null): string {
@@ -63,6 +76,9 @@ export function TwilioCredentialsPanel({ initialStatus }: { initialStatus: Twili
   const [accountSid, setAccountSid] = useState('');
   const [authToken, setAuthToken] = useState('');
   const [stepUp, setStepUp] = useState<StepUpPending | null>(null);
+  const [bundleSid, setBundleSid] = useState(initialStatus.bundleSid ?? '');
+  const [addressSid, setAddressSid] = useState(initialStatus.addressSid ?? '');
+  const [regulatoryBusy, setRegulatoryBusy] = useState(false);
 
   const showToast = (next: ToastState) => {
     setToast(next);
@@ -118,18 +134,41 @@ export function TwilioCredentialsPanel({ initialStatus }: { initialStatus: Twili
           showToast({ kind: 'success', message: 'Credenciales de Twilio guardadas.' });
           setAccountSid('');
           setAuthToken('');
-          setStatus({
+          setStatus((s) => ({
+            ...s,
             configured: true,
             accountSid: body.accountSid as string,
             authTokenLastFour: body.lastFour as string,
             savedAt: new Date().toISOString(),
-          });
+          }));
           router.refresh();
         } else {
           showToast({ kind: 'error', message: errorLabel(body.error as string) });
         }
       },
     );
+  }
+
+  async function saveRegulatoryIds() {
+    if (!bundleSid || !addressSid) return;
+    setRegulatoryBusy(true);
+    try {
+      const res = await fetch('/api/admin/portal/settings/twilio/regulatory-ids', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bundleSid, addressSid }),
+      });
+      const body = await safeJson(res);
+      if (res.ok) {
+        showToast({ kind: 'success', message: 'Identificadores regulatorios guardados.' });
+        setStatus((s) => ({ ...s, bundleSid, addressSid }));
+        router.refresh();
+      } else {
+        showToast({ kind: 'error', message: regulatoryErrorLabel(body.error as string) });
+      }
+    } finally {
+      setRegulatoryBusy(false);
+    }
   }
 
   return (
@@ -196,6 +235,57 @@ export function TwilioCredentialsPanel({ initialStatus }: { initialStatus: Twili
           data-testid="twilio-credential-save"
         >
           {busy ? 'Guardando…' : 'Guardar'}
+        </button>
+      </section>
+
+      <section className="card space-y-4" aria-label="Identificadores regulatorios">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Numeración española (Bundle / Address)</h2>
+          <p className="text-sm text-kairikos-muted" data-testid="twilio-regulatory-status">
+            {status.bundleSid && status.addressSid ? `${status.bundleSid} · ${status.addressSid}` : 'Sin configurar'}
+          </p>
+        </div>
+        <p className="text-sm text-kairikos-muted">
+          No son secretos — se registran una sola vez en la consola de Twilio para todo el negocio, no por cliente.
+        </p>
+        <div className="space-y-2">
+          <label className="label" htmlFor="twilio-bundle-sid">
+            Bundle SID
+          </label>
+          <input
+            id="twilio-bundle-sid"
+            type="text"
+            className="input"
+            placeholder="BUxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            value={bundleSid}
+            onChange={(e) => setBundleSid(e.target.value)}
+            data-testid="twilio-regulatory-bundle-sid"
+            autoComplete="off"
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="label" htmlFor="twilio-address-sid">
+            Address SID
+          </label>
+          <input
+            id="twilio-address-sid"
+            type="text"
+            className="input"
+            placeholder="ADxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            value={addressSid}
+            onChange={(e) => setAddressSid(e.target.value)}
+            data-testid="twilio-regulatory-address-sid"
+            autoComplete="off"
+          />
+        </div>
+        <button
+          type="button"
+          className="btn-primary"
+          disabled={!bundleSid || !addressSid || regulatoryBusy}
+          onClick={() => saveRegulatoryIds()}
+          data-testid="twilio-regulatory-save"
+        >
+          {regulatoryBusy ? 'Guardando…' : 'Guardar'}
         </button>
       </section>
 

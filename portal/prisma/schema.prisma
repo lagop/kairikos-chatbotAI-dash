@@ -1804,6 +1804,15 @@ model TwilioOperatorCredential {
   // decrypt, same convention as StripeOperatorCredential's lastFour.
   authTokenLastFour   String? @map("auth_token_last_four")
 
+  // Spanish numbering regulatory registration — NOT secret (they're
+  // opaque ids copied from the Twilio console, not credentials), stored
+  // cleartext for the same reason accountSid is: display + no verify-
+  // before-save round trip needs them decrypted first. Registered once
+  // for the whole business, never per client — see telephony/twilio.ts's
+  // header.
+  bundleSid  String? @map("bundle_sid")
+  addressSid String? @map("address_sid")
+
   savedAt   DateTime? @map("saved_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
 }

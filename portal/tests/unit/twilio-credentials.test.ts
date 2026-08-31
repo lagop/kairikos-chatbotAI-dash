@@ -34,6 +34,8 @@ const EMPTY_ROW = {
   authTokenIv: null,
   authTokenTag: null,
   authTokenLastFour: null,
+  bundleSid: null,
+  addressSid: null,
   savedAt: null,
 };
 
@@ -61,7 +63,14 @@ describe('getTwilioCredentialStatus', () => {
 
     const status = await getTwilioCredentialStatus();
 
-    expect(status).toEqual({ configured: false, accountSid: null, authTokenLastFour: null, savedAt: null });
+    expect(status).toEqual({
+      configured: false,
+      accountSid: null,
+      authTokenLastFour: null,
+      savedAt: null,
+      bundleSid: null,
+      addressSid: null,
+    });
   });
 });
 
@@ -149,7 +158,7 @@ describe('resolveActiveTwilioCredentials', () => {
 
     const result = await resolveActiveTwilioCredentials();
 
-    expect(result).toEqual({ accountSid: 'AC_env', authToken: 'tok_env' });
+    expect(result).toEqual({ accountSid: 'AC_env', authToken: 'tok_env', bundleSid: null, addressSid: null });
   });
 
   it('decrypts and returns the DB-stored pair (real round-trip)', async () => {
@@ -167,7 +176,7 @@ describe('resolveActiveTwilioCredentials', () => {
 
     const result = await resolveActiveTwilioCredentials();
 
-    expect(result).toEqual({ accountSid: 'AC_db', authToken: 'real_auth_token' });
+    expect(result).toEqual({ accountSid: 'AC_db', authToken: 'real_auth_token', bundleSid: null, addressSid: null });
   });
 
   it('prefers the DB-stored pair over the env fallback when both exist', async () => {
@@ -181,7 +190,7 @@ describe('resolveActiveTwilioCredentials', () => {
 
     const result = await resolveActiveTwilioCredentials();
 
-    expect(result).toEqual({ accountSid: 'AC_db', authToken: 'db_token' });
+    expect(result).toEqual({ accountSid: 'AC_db', authToken: 'db_token', bundleSid: null, addressSid: null });
   });
 
   it('caches the resolved credentials for the TTL window — a second call within it does not re-query the DB', async () => {
@@ -220,5 +229,96 @@ describe('resolveActiveTwilioCredentials', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('resolves bundleSid/addressSid independently of the account pair — DB pair + env regulatory ids both present', async () => {
+    upsert.mockResolvedValueOnce({
+      ...EMPTY_ROW,
+      accountSid: 'AC_db',
+      authTokenCiphertext: null, // no DB pair — falls back to env for the pair
+    });
+    process.env.TWILIO_ACCOUNT_SID = 'AC_env';
+    process.env.TWILIO_AUTH_TOKEN = 'tok_env';
+    process.env.TWILIO_BUNDLE_SID = 'BU_env';
+    process.env.TWILIO_ADDRESS_SID = 'AD_env';
+    const { resolveActiveTwilioCredentials } = await import('@/lib/twilio-credentials');
+
+    const result = await resolveActiveTwilioCredentials();
+
+    expect(result).toEqual({
+      accountSid: 'AC_env',
+      authToken: 'tok_env',
+      bundleSid: 'BU_env',
+      addressSid: 'AD_env',
+    });
+  });
+
+  it('prefers DB-stored bundleSid/addressSid over the env fallback when both exist', async () => {
+    upsert.mockResolvedValueOnce({
+      ...EMPTY_ROW,
+      accountSid: 'AC_env',
+      bundleSid: 'BU_db',
+      addressSid: 'AD_db',
+    });
+    process.env.TWILIO_ACCOUNT_SID = 'AC_env';
+    process.env.TWILIO_AUTH_TOKEN = 'tok_env';
+    process.env.TWILIO_BUNDLE_SID = 'BU_env';
+    process.env.TWILIO_ADDRESS_SID = 'AD_env';
+    const { resolveActiveTwilioCredentials } = await import('@/lib/twilio-credentials');
+
+    const result = await resolveActiveTwilioCredentials();
+
+    expect(result).toMatchObject({ bundleSid: 'BU_db', addressSid: 'AD_db' });
+  });
+});
+
+describe('saveTwilioRegulatoryIds', () => {
+  it('upserts bundleSid/addressSid and audits regulatory_ids_saved without touching the credential pair', async () => {
+    upsert
+      .mockResolvedValueOnce(EMPTY_ROW) // the before-read inside saveTwilioRegulatoryIds
+      .mockResolvedValueOnce({ ...EMPTY_ROW, bundleSid: 'BU1', addressSid: 'AD1' }); // the write itself
+    const { saveTwilioRegulatoryIds } = await import('@/lib/twilio-credentials');
+
+    await saveTwilioRegulatoryIds('BU1', 'AD1', ACTOR);
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    const writeCall = upsert.mock.calls[1][0];
+    expect(writeCall.update).toEqual({ bundleSid: 'BU1', addressSid: 'AD1' });
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'regulatory_ids_saved',
+          before: { bundleSid: null, addressSid: null },
+          after: { bundleSid: 'BU1', addressSid: 'AD1' },
+        }),
+      }),
+    );
+  });
+
+  it('accepts a null operatorId (legacy-key caller) without touching the actorOperatorId FK', async () => {
+    upsert.mockResolvedValue(EMPTY_ROW);
+    const { saveTwilioRegulatoryIds } = await import('@/lib/twilio-credentials');
+
+    await saveTwilioRegulatoryIds('BU1', 'AD1', { operatorId: null, operatorEmail: null });
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ actorOperatorId: null }) }),
+    );
+  });
+
+  it('invalidates the resolution cache', async () => {
+    upsert.mockResolvedValue(EMPTY_ROW);
+    process.env.TWILIO_ACCOUNT_SID = 'AC_env';
+    process.env.TWILIO_AUTH_TOKEN = 'tok_env';
+    process.env.TWILIO_BUNDLE_SID = 'BU_env';
+    const mod = await import('@/lib/twilio-credentials');
+
+    await mod.resolveActiveTwilioCredentials();
+    const callsBeforeSave = upsert.mock.calls.length;
+
+    await mod.saveTwilioRegulatoryIds('BU1', 'AD1', ACTOR);
+    upsert.mockResolvedValueOnce({ ...EMPTY_ROW, bundleSid: 'BU1', addressSid: 'AD1' });
+    await mod.resolveActiveTwilioCredentials();
+    expect(upsert.mock.calls.length).toBeGreaterThan(callsBeforeSave);
   });
 });
