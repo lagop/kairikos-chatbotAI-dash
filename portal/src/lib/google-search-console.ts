@@ -2,6 +2,11 @@ import 'server-only';
 import { prisma } from './prisma';
 import { encryptBuffer, decryptBuffer, parseHexKey, type EncryptedBuffer } from './operator-crypto';
 import { logError } from './observability';
+import { resolveIntegrationClientId, resolveIntegrationSecret } from './integration-credentials';
+
+// DB-first, env-fallback for the OAuth client pair — see google-business.ts's
+// identical resolveClientCredentials() for the reasoning.
+const TOOL_KEY = 'google_seo';
 
 // =============================================================================
 // SEO con IA, Fase B — OAuth connection to a client's own Google Search
@@ -39,17 +44,24 @@ const VERIFIED_PERMISSION_LEVELS = new Set(['siteFullUser', 'siteOwner', 'siteRe
 
 export const OAUTH_STATE_COOKIE = 'seo_gsc_oauth_state';
 
-export function isSearchConsoleOAuthConfigured(): boolean {
-  return Boolean(
-    process.env.GOOGLE_SEO_OAUTH_CLIENT_ID &&
-      process.env.GOOGLE_SEO_OAUTH_CLIENT_SECRET &&
-      process.env.GOOGLE_SEO_TOKEN_ENCRYPTION_KEY,
-  );
+export async function isSearchConsoleOAuthConfigured(): Promise<boolean> {
+  const { clientId, clientSecret } = await resolveClientCredentials();
+  return Boolean(clientId && clientSecret && process.env.GOOGLE_SEO_TOKEN_ENCRYPTION_KEY);
 }
 
-function getClientCredentials(): { clientId: string; clientSecret: string } {
-  const clientId = process.env.GOOGLE_SEO_OAUTH_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_SEO_OAUTH_CLIENT_SECRET;
+async function resolveClientCredentials(): Promise<{ clientId: string | null; clientSecret: string | null }> {
+  const [clientId, clientSecret] = await Promise.all([
+    resolveIntegrationClientId(TOOL_KEY),
+    resolveIntegrationSecret(TOOL_KEY),
+  ]);
+  return {
+    clientId: clientId ?? process.env.GOOGLE_SEO_OAUTH_CLIENT_ID ?? null,
+    clientSecret: clientSecret ?? process.env.GOOGLE_SEO_OAUTH_CLIENT_SECRET ?? null,
+  };
+}
+
+async function getClientCredentials(): Promise<{ clientId: string; clientSecret: string }> {
+  const { clientId, clientSecret } = await resolveClientCredentials();
   if (!clientId || !clientSecret) {
     throw new Error('GOOGLE_SEO_OAUTH_CLIENT_ID/GOOGLE_SEO_OAUTH_CLIENT_SECRET not configured');
   }
@@ -67,8 +79,8 @@ function getRedirectUri(): string {
   return `${base.replace(/\/$/, '')}/api/portal/seo/oauth/callback`;
 }
 
-export function buildAuthorizationUrl(state: string): string {
-  const { clientId } = getClientCredentials();
+export async function buildAuthorizationUrl(state: string): Promise<string> {
+  const { clientId } = await getClientCredentials();
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: getRedirectUri(),
@@ -90,7 +102,7 @@ export interface ExchangedTokens {
 }
 
 export async function exchangeCodeForTokens(code: string): Promise<ExchangedTokens | null> {
-  const { clientId, clientSecret } = getClientCredentials();
+  const { clientId, clientSecret } = await getClientCredentials();
   const body = new URLSearchParams({
     code,
     client_id: clientId,
@@ -237,7 +249,7 @@ export async function getValidAccessToken(connection: StoredConnection): Promise
     // A connection ROW can already exist (created while OAuth was
     // configured) even after the env var is later unset, so this is a
     // real reachable path, not a theoretical one.
-    const { clientId, clientSecret } = getClientCredentials();
+    const { clientId, clientSecret } = await getClientCredentials();
     const body = new URLSearchParams({
       client_id: clientId,
       client_secret: clientSecret,

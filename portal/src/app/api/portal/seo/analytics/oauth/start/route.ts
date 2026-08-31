@@ -36,12 +36,12 @@ export async function GET(req: NextRequest) {
   if (!hasSeo) {
     return NextResponse.redirect(new URL('/portal/seo?ga_connect_error=forbidden', req.url));
   }
-  if (!isAnalyticsOAuthConfigured()) {
+  if (!(await isAnalyticsOAuthConfigured())) {
     return NextResponse.redirect(new URL('/portal/seo?ga_connect_error=not_configured', req.url));
   }
 
   const state = crypto.randomBytes(32).toString('hex');
-  const res = NextResponse.redirect(buildAuthorizationUrl(state));
+  const res = NextResponse.redirect(await buildAuthorizationUrl(state));
   res.cookies.set(OAUTH_STATE_COOKIE, state, {
     httpOnly: true,
     sameSite: 'lax',

@@ -41,6 +41,7 @@ import {
   getIntegrationCredentialStatus,
   saveIntegrationCredential,
   resolveIntegrationSecret,
+  resolveIntegrationClientId,
   invalidateIntegrationCredentialCache,
 } from '@/lib/integration-credentials';
 
@@ -58,22 +59,35 @@ beforeEach(() => {
   mockState.decryptBuffer.mockReset().mockReturnValue('decrypted_secret');
   mockState.parseHexKey.mockReset().mockReturnValue(Buffer.from('k'));
   invalidateIntegrationCredentialCache('google_places');
+  invalidateIntegrationCredentialCache('google_business');
+  invalidateIntegrationCredentialCache('some_other_tool');
 });
 
 describe('getIntegrationCredentialStatus', () => {
   it('not configured when no row exists for this toolKey', async () => {
     const status = await getIntegrationCredentialStatus('google_places');
-    expect(status).toEqual({ configured: false, lastFour: null, savedAt: null });
+    expect(status).toEqual({ configured: false, lastFour: null, savedAt: null, clientId: null });
   });
 
   it('configured, with lastFour and savedAt, when a row exists — never decrypts', async () => {
     mockState.credentialFindUnique.mockResolvedValue({
       secretLastFour: 'wxyz',
       savedAt: new Date('2026-09-06T00:00:00.000Z'),
+      clientId: null,
     });
     const status = await getIntegrationCredentialStatus('google_places');
-    expect(status).toEqual({ configured: true, lastFour: 'wxyz', savedAt: '2026-09-06T00:00:00.000Z' });
+    expect(status).toEqual({ configured: true, lastFour: 'wxyz', savedAt: '2026-09-06T00:00:00.000Z', clientId: null });
     expect(mockState.decryptBuffer).not.toHaveBeenCalled();
+  });
+
+  it('includes the cleartext clientId for an OAuth-client-style tool', async () => {
+    mockState.credentialFindUnique.mockResolvedValue({
+      secretLastFour: 'wxyz',
+      savedAt: new Date('2026-09-06T00:00:00.000Z'),
+      clientId: '123-abc.apps.googleusercontent.com',
+    });
+    const status = await getIntegrationCredentialStatus('google_business');
+    expect(status.clientId).toBe('123-abc.apps.googleusercontent.com');
   });
 });
 
@@ -105,13 +119,39 @@ describe('saveIntegrationCredential', () => {
   });
 
   it('audits "credential_rotated" when a row already existed — never logs the old or new secret', async () => {
-    mockState.credentialFindUnique.mockResolvedValue({ secretLastFour: 'oldK' });
+    mockState.credentialFindUnique.mockResolvedValue({ secretLastFour: 'oldK', clientId: null });
     await saveIntegrationCredential('google_places', 'Google Places', 'AIzaReplacementKey', ACTOR);
 
     const auditCall = mockState.auditCreate.mock.calls[0][0].data;
     expect(auditCall.action).toBe('credential_rotated');
-    expect(auditCall.before).toEqual({ configured: true, lastFour: 'oldK' });
+    expect(auditCall.before).toEqual({ configured: true, lastFour: 'oldK', clientId: null });
     expect(JSON.stringify(auditCall)).not.toContain('AIzaReplacementKey');
+  });
+
+  it('stores the cleartext clientId for an OAuth-client-style tool and audits it in full (not a secret)', async () => {
+    await saveIntegrationCredential(
+      'google_business',
+      'Google Business',
+      'gocspx-real-secret-value',
+      ACTOR,
+      '123-abc.apps.googleusercontent.com',
+    );
+
+    expect(mockState.credentialUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ clientId: '123-abc.apps.googleusercontent.com' }),
+        update: expect.objectContaining({ clientId: '123-abc.apps.googleusercontent.com' }),
+      }),
+    );
+    const auditCall = mockState.auditCreate.mock.calls[0][0].data;
+    expect(auditCall.after).toEqual({ configured: true, lastFour: 'alue', clientId: '123-abc.apps.googleusercontent.com' });
+  });
+
+  it('stores a null clientId for a plain single-secret tool', async () => {
+    await saveIntegrationCredential('google_places', 'Google Places', 'AIzaBrandNewKey', ACTOR);
+    expect(mockState.credentialUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({ create: expect.objectContaining({ clientId: null }) }),
+    );
   });
 });
 
@@ -181,5 +221,49 @@ describe('resolveIntegrationSecret', () => {
     await resolveIntegrationSecret('google_places');
     await resolveIntegrationSecret('some_other_tool');
     expect(mockState.credentialFindUnique).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('resolveIntegrationClientId', () => {
+  it('returns null when the database is not configured', async () => {
+    mockState.isDatabaseConfigured = false;
+    expect(await resolveIntegrationClientId('google_business')).toBeNull();
+  });
+
+  it('returns null when no credential row exists', async () => {
+    expect(await resolveIntegrationClientId('google_business')).toBeNull();
+  });
+
+  it('returns the cleartext clientId when a row exists — never decrypts', async () => {
+    mockState.credentialFindUnique.mockResolvedValue({
+      secretCiphertext: CIPHER.ciphertext,
+      secretIv: CIPHER.iv,
+      secretTag: CIPHER.tag,
+      clientId: '123-abc.apps.googleusercontent.com',
+    });
+    expect(await resolveIntegrationClientId('google_business')).toBe('123-abc.apps.googleusercontent.com');
+    expect(mockState.decryptBuffer).toHaveBeenCalledTimes(1); // for the secret half of the same cached row
+  });
+
+  it('returns null for a single-secret tool with no clientId column value', async () => {
+    mockState.credentialFindUnique.mockResolvedValue({
+      secretCiphertext: CIPHER.ciphertext,
+      secretIv: CIPHER.iv,
+      secretTag: CIPHER.tag,
+      clientId: null,
+    });
+    expect(await resolveIntegrationClientId('google_places')).toBeNull();
+  });
+
+  it('shares the same cache entry as resolveIntegrationSecret — one row fetch covers both', async () => {
+    mockState.credentialFindUnique.mockResolvedValue({
+      secretCiphertext: CIPHER.ciphertext,
+      secretIv: CIPHER.iv,
+      secretTag: CIPHER.tag,
+      clientId: '123-abc.apps.googleusercontent.com',
+    });
+    await resolveIntegrationSecret('google_business');
+    await resolveIntegrationClientId('google_business');
+    expect(mockState.credentialFindUnique).toHaveBeenCalledTimes(1);
   });
 });

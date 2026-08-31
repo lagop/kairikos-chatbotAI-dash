@@ -2,6 +2,11 @@ import 'server-only';
 import { prisma } from './prisma';
 import { encryptBuffer, decryptBuffer, parseHexKey, type EncryptedBuffer } from './operator-crypto';
 import { logError } from './observability';
+import { resolveIntegrationClientId, resolveIntegrationSecret } from './integration-credentials';
+
+// DB-first, env-fallback for the OAuth client pair — see google-business.ts's
+// identical resolveClientCredentials() for the reasoning.
+const TOOL_KEY = 'google_ga4';
 
 // =============================================================================
 // SEO con IA — GA4/Analytics OAuth connection. Mirrors
@@ -33,17 +38,24 @@ const SCOPE = 'https://www.googleapis.com/auth/analytics.readonly';
 
 export const OAUTH_STATE_COOKIE = 'seo_ga4_oauth_state';
 
-export function isAnalyticsOAuthConfigured(): boolean {
-  return Boolean(
-    process.env.GOOGLE_GA4_OAUTH_CLIENT_ID &&
-      process.env.GOOGLE_GA4_OAUTH_CLIENT_SECRET &&
-      process.env.GOOGLE_GA4_TOKEN_ENCRYPTION_KEY,
-  );
+export async function isAnalyticsOAuthConfigured(): Promise<boolean> {
+  const { clientId, clientSecret } = await resolveClientCredentials();
+  return Boolean(clientId && clientSecret && process.env.GOOGLE_GA4_TOKEN_ENCRYPTION_KEY);
 }
 
-function getClientCredentials(): { clientId: string; clientSecret: string } {
-  const clientId = process.env.GOOGLE_GA4_OAUTH_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_GA4_OAUTH_CLIENT_SECRET;
+async function resolveClientCredentials(): Promise<{ clientId: string | null; clientSecret: string | null }> {
+  const [clientId, clientSecret] = await Promise.all([
+    resolveIntegrationClientId(TOOL_KEY),
+    resolveIntegrationSecret(TOOL_KEY),
+  ]);
+  return {
+    clientId: clientId ?? process.env.GOOGLE_GA4_OAUTH_CLIENT_ID ?? null,
+    clientSecret: clientSecret ?? process.env.GOOGLE_GA4_OAUTH_CLIENT_SECRET ?? null,
+  };
+}
+
+async function getClientCredentials(): Promise<{ clientId: string; clientSecret: string }> {
+  const { clientId, clientSecret } = await resolveClientCredentials();
   if (!clientId || !clientSecret) {
     throw new Error('GOOGLE_GA4_OAUTH_CLIENT_ID/GOOGLE_GA4_OAUTH_CLIENT_SECRET not configured');
   }
@@ -61,8 +73,8 @@ function getRedirectUri(): string {
   return `${base.replace(/\/$/, '')}/api/portal/seo/analytics/oauth/callback`;
 }
 
-export function buildAuthorizationUrl(state: string): string {
-  const { clientId } = getClientCredentials();
+export async function buildAuthorizationUrl(state: string): Promise<string> {
+  const { clientId } = await getClientCredentials();
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: getRedirectUri(),
@@ -84,7 +96,7 @@ export interface ExchangedTokens {
 }
 
 export async function exchangeCodeForTokens(code: string): Promise<ExchangedTokens | null> {
-  const { clientId, clientSecret } = getClientCredentials();
+  const { clientId, clientSecret } = await getClientCredentials();
   const body = new URLSearchParams({
     code,
     client_id: clientId,
@@ -223,7 +235,7 @@ export async function getValidAccessToken(connection: StoredConnection): Promise
     // configured) even after the env var is later unset, so this is a
     // real reachable path, not a theoretical one — caught live via this
     // feature's own browser verification, where it 500'd before this fix.
-    const { clientId, clientSecret } = getClientCredentials();
+    const { clientId, clientSecret } = await getClientCredentials();
     const body = new URLSearchParams({
       client_id: clientId,
       client_secret: clientSecret,

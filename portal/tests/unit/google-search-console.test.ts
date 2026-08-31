@@ -16,6 +16,8 @@ const mockState = vi.hoisted(() => ({
   fetch: vi.fn(),
   connectionUpdate: vi.fn(),
   logError: vi.fn(),
+  resolveIntegrationClientId: vi.fn(),
+  resolveIntegrationSecret: vi.fn(),
 }));
 
 vi.stubGlobal('fetch', mockState.fetch);
@@ -30,6 +32,14 @@ vi.mock('@/lib/prisma', () => ({
 
 vi.mock('@/lib/observability', () => ({
   logError: (...args: unknown[]) => mockState.logError(...args),
+}));
+
+// DB-first resolution for the OAuth client pair — defaults to null (no
+// DB row) so these tests exercise the env-var fallback, same as before
+// this pair moved to /admin/portal/settings/integrations.
+vi.mock('@/lib/integration-credentials', () => ({
+  resolveIntegrationClientId: (...args: unknown[]) => mockState.resolveIntegrationClientId(...args),
+  resolveIntegrationSecret: (...args: unknown[]) => mockState.resolveIntegrationSecret(...args),
 }));
 
 import {
@@ -60,6 +70,8 @@ beforeEach(() => {
   mockState.fetch.mockReset();
   mockState.connectionUpdate.mockReset().mockResolvedValue({});
   mockState.logError.mockReset();
+  mockState.resolveIntegrationClientId.mockReset().mockResolvedValue(null);
+  mockState.resolveIntegrationSecret.mockReset().mockResolvedValue(null);
   process.env.GOOGLE_SEO_OAUTH_CLIENT_ID = 'seo_client_id_1';
   process.env.GOOGLE_SEO_OAUTH_CLIENT_SECRET = 'seo_client_secret_1';
   process.env.GOOGLE_SEO_OAUTH_REDIRECT_URI = 'https://portal.kairikos.test/api/portal/seo/oauth/callback';
@@ -72,30 +84,45 @@ afterEach(() => {
 });
 
 describe('isSearchConsoleOAuthConfigured', () => {
-  it('true when all required env vars are set', () => {
-    expect(isSearchConsoleOAuthConfigured()).toBe(true);
+  it('true when all required env vars are set', async () => {
+    expect(await isSearchConsoleOAuthConfigured()).toBe(true);
   });
 
-  it('false when the encryption key is missing', () => {
+  it('false when the encryption key is missing', async () => {
     delete process.env.GOOGLE_SEO_TOKEN_ENCRYPTION_KEY;
-    expect(isSearchConsoleOAuthConfigured()).toBe(false);
+    expect(await isSearchConsoleOAuthConfigured()).toBe(false);
   });
 
-  it('false when the client secret is missing', () => {
+  it('false when the client secret is missing', async () => {
     delete process.env.GOOGLE_SEO_OAUTH_CLIENT_SECRET;
-    expect(isSearchConsoleOAuthConfigured()).toBe(false);
+    expect(await isSearchConsoleOAuthConfigured()).toBe(false);
+  });
+
+  it('true from a DB-stored pair alone, with no env vars set', async () => {
+    delete process.env.GOOGLE_SEO_OAUTH_CLIENT_ID;
+    delete process.env.GOOGLE_SEO_OAUTH_CLIENT_SECRET;
+    mockState.resolveIntegrationClientId.mockResolvedValue('db_client_id');
+    mockState.resolveIntegrationSecret.mockResolvedValue('db_client_secret');
+    expect(await isSearchConsoleOAuthConfigured()).toBe(true);
   });
 });
 
 describe('buildAuthorizationUrl', () => {
-  it('includes the webmasters.readonly scope, offline+consent, and the caller-supplied state', () => {
-    const url = new URL(buildAuthorizationUrl('state-abc-123'));
+  it('includes the webmasters.readonly scope, offline+consent, and the caller-supplied state', async () => {
+    const url = new URL(await buildAuthorizationUrl('state-abc-123'));
     expect(url.searchParams.get('scope')).toBe('https://www.googleapis.com/auth/webmasters.readonly');
     expect(url.searchParams.get('access_type')).toBe('offline');
     expect(url.searchParams.get('prompt')).toBe('consent');
     expect(url.searchParams.get('state')).toBe('state-abc-123');
     expect(url.searchParams.get('client_id')).toBe('seo_client_id_1');
     expect(url.searchParams.get('redirect_uri')).toBe(process.env.GOOGLE_SEO_OAUTH_REDIRECT_URI);
+  });
+
+  it('prefers a DB-stored client_id over the env var', async () => {
+    mockState.resolveIntegrationClientId.mockResolvedValue('db_client_id');
+    mockState.resolveIntegrationSecret.mockResolvedValue('db_client_secret');
+    const url = new URL(await buildAuthorizationUrl('state-abc-123'));
+    expect(url.searchParams.get('client_id')).toBe('db_client_id');
   });
 });
 
