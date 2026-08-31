@@ -344,6 +344,7 @@ model Operator {
   integrationCredentialAudits IntegrationCredentialAudit[]
   seoProfileAudits         SeoProfileAudit[]
   twilioCredentialAudits   TwilioCredentialAudit[]
+  metaCredentialAudits     MetaCredentialAudit[]
 
   @@index([email])
   @@index([isActive])
@@ -1823,6 +1824,55 @@ model TwilioOperatorCredential {
 model TwilioCredentialAudit {
   id     String @id @default(uuid()) @db.Uuid
   // 'credential_saved' | 'credential_rotated'
+  action String
+  before Json?
+  after  Json?
+
+  actorOperatorId String?  @map("actor_operator_id") @db.Uuid
+  actorEmail      String?  @map("actor_email")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  operator Operator? @relation(fields: [actorOperatorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+}
+
+// Operator-managed Meta app credentials, saved through
+// /admin/portal/settings/meta instead of only ever being set via
+// META_APP_ID/META_APP_SECRET/META_CONFIG_ID/META_COEXISTENCE_CONFIG_ID
+// on the VPS .env. Four fields, not two — unlike Google's OAuth pairs
+// (client_id + client_secret only), Meta ALSO needs two Configuration
+// ids: one for the standard chatbot-channel Embedded Signup flow
+// (configId) and a separate one for recall's Coexistence flow
+// (coexistenceConfigId) — see meta-business.ts's header for why these
+// can't be the same value. Same shape as TwilioOperatorCredential
+// (singleton, secret encrypted, the rest cleartext) for that reason.
+model MetaOperatorCredential {
+  id    String  @id @default(uuid()) @db.Uuid
+  // Not secret — sent to the browser to init Meta's JS SDK.
+  appId String? @map("app_id")
+
+  appSecretCiphertext Bytes?  @map("app_secret_ciphertext")
+  appSecretIv         Bytes?  @map("app_secret_iv")
+  appSecretTag        Bytes?  @map("app_secret_tag")
+  appSecretLastFour   String? @map("app_secret_last_four")
+
+  // Not secret — Configuration ids copied from the Meta App Dashboard,
+  // not credentials. configId is the standard chatbot-channel flow;
+  // coexistenceConfigId is recall's Coexistence flow.
+  configId            String? @map("config_id")
+  coexistenceConfigId String? @map("coexistence_config_id")
+
+  savedAt   DateTime? @map("saved_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+}
+
+// Append-only audit trail for the Meta credential — no FK to
+// MetaOperatorCredential needed (it's a singleton, nothing to cascade),
+// same posture as TwilioCredentialAudit.
+model MetaCredentialAudit {
+  id     String @id @default(uuid()) @db.Uuid
+  // 'credential_saved' | 'credential_rotated' | 'config_ids_saved'
   action String
   before Json?
   after  Json?

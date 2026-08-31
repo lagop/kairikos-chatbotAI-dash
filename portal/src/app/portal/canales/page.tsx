@@ -7,6 +7,7 @@ import { PageHeading } from '@/components/portal/PageHeading';
 import { TelegramChannelCard, type TelegramConnectionSummary } from '@/components/portal/TelegramChannelCard';
 import { MetaChannelCard, type MetaConnectionSummary } from '@/components/portal/MetaChannelCard';
 import { WebChannelCard, type WebEmbedSummary } from '@/components/portal/WebChannelCard';
+import { resolveActiveMetaCredentials } from '@/lib/meta-credentials';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,6 +76,8 @@ export default async function PortalCanalesPage() {
       : null;
   }
 
+  const metaCreds = await resolveActiveMetaCredentials();
+
   return (
     <div className="space-y-6">
       <PageHeading
@@ -85,8 +88,8 @@ export default async function PortalCanalesPage() {
       <WebChannelCard embed={webEmbed} allowed={allowedChannels.includes('web')} />
       <TelegramChannelCard connection={telegramConnection} allowed={allowedChannels.includes('telegram')} />
       <MetaChannelCard
-        metaAppId={process.env.META_APP_ID ?? null}
-        metaConfigId={process.env.META_CONFIG_ID ?? null}
+        metaAppId={metaCreds?.appId ?? null}
+        metaConfigId={metaCreds?.configId ?? null}
         connections={metaConnections}
         allowedChannels={allowedChannels}
       />

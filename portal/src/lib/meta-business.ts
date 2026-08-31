@@ -2,6 +2,7 @@ import 'server-only';
 import { encryptChannelCredential, decryptChannelCredential } from './channel-crypto';
 import type { EncryptedBuffer } from './operator-crypto';
 import { logError } from './observability';
+import { resolveActiveMetaCredentials } from './meta-credentials';
 
 // =============================================================================
 // WP: conexión de canales — Meta (WhatsApp/Messenger/Instagram), Fase 3.
@@ -78,8 +79,9 @@ export function graphUrl(path: string): string {
   return `https://graph.facebook.com/${graphVersion()}${path}`;
 }
 
-export function isMetaSignupConfigured(): boolean {
-  return Boolean(process.env.META_APP_ID && process.env.META_APP_SECRET && process.env.META_CONFIG_ID);
+export async function isMetaSignupConfigured(): Promise<boolean> {
+  const creds = await resolveActiveMetaCredentials();
+  return Boolean(creds?.appId && creds.appSecret && creds.configId);
 }
 
 /** Same app, a SEPARATE Configuration — see this file's header. Gates
@@ -87,17 +89,17 @@ export function isMetaSignupConfigured(): boolean {
  *  channel connect, since a deployment can have one configured without
  *  the other (e.g. while the coexistence Configuration is still being
  *  set up in the Meta App Dashboard). */
-export function isCoexistenceSignupConfigured(): boolean {
-  return Boolean(process.env.META_APP_ID && process.env.META_APP_SECRET && process.env.META_COEXISTENCE_CONFIG_ID);
+export async function isCoexistenceSignupConfigured(): Promise<boolean> {
+  const creds = await resolveActiveMetaCredentials();
+  return Boolean(creds?.appId && creds.appSecret && creds.coexistenceConfigId);
 }
 
-function getAppCredentials(): { appId: string; appSecret: string } {
-  const appId = process.env.META_APP_ID;
-  const appSecret = process.env.META_APP_SECRET;
-  if (!appId || !appSecret) {
+async function getAppCredentials(): Promise<{ appId: string; appSecret: string }> {
+  const creds = await resolveActiveMetaCredentials();
+  if (!creds?.appId || !creds.appSecret) {
     throw new Error('META_APP_ID/META_APP_SECRET not configured');
   }
-  return { appId, appSecret };
+  return { appId: creds.appId, appSecret: creds.appSecret };
 }
 
 export interface ExchangedMetaToken {
@@ -112,7 +114,7 @@ export interface ExchangedMetaToken {
  * bound to the app + the SDK session that produced it, not to a URL.
  */
 export async function exchangeCodeForToken(code: string): Promise<ExchangedMetaToken | null> {
-  const { appId, appSecret } = getAppCredentials();
+  const { appId, appSecret } = await getAppCredentials();
   const params = new URLSearchParams({ client_id: appId, client_secret: appSecret, code });
   try {
     const res = await fetch(`${graphUrl('/oauth/access_token')}?${params.toString()}`);
@@ -135,7 +137,7 @@ export async function exchangeCodeForToken(code: string): Promise<ExchangedMetaT
  * background refresh.
  */
 export async function exchangeForLongLivedToken(shortLivedToken: string): Promise<ExchangedMetaToken | null> {
-  const { appId, appSecret } = getAppCredentials();
+  const { appId, appSecret } = await getAppCredentials();
   const params = new URLSearchParams({
     grant_type: 'fb_exchange_token',
     client_id: appId,

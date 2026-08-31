@@ -7,6 +7,7 @@ import { resolveClientFromSession } from '@/lib/portal-session';
 import { loadRecallClientView, type RecallCallSummary } from '@/lib/recall-client-view';
 import { monthLabel } from '@/lib/recall-reports';
 import { canBindMetaConnection } from '@/lib/recall';
+import { resolveActiveMetaCredentials } from '@/lib/meta-credentials';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { ProductPitch } from '@/components/portal/ProductPitch';
 import { EmptyState } from '@/components/portal/EmptyState';
@@ -309,6 +310,7 @@ export default async function PortalLlamadasPage({
   }
 
   if (view.state === 'onboarding') {
+    const metaCreds = canBindMetaConnection(view.status) ? await resolveActiveMetaCredentials() : null;
     const copy = STATUS_COPY[view.status] ?? {
       title: 'Estamos configurando tu servicio',
       description: 'Te avisamos por WhatsApp en cuanto esté listo.',
@@ -327,8 +329,8 @@ export default async function PortalLlamadasPage({
         </div>
         {canBindMetaConnection(view.status) ? (
           <RecallMetaConnectCard
-            metaAppId={process.env.META_APP_ID ?? null}
-            coexistenceConfigId={process.env.META_COEXISTENCE_CONFIG_ID ?? null}
+            metaAppId={metaCreds?.appId ?? null}
+            coexistenceConfigId={metaCreds?.coexistenceConfigId ?? null}
             connected={view.metaConnection}
           />
         ) : null}

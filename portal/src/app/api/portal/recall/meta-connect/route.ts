@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
   if (!isDatabaseConfigured) {
     return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
   }
-  if (!isCoexistenceSignupConfigured()) {
+  if (!(await isCoexistenceSignupConfigured())) {
     return NextResponse.json({ error: 'not_configured' }, { status: 503 });
   }
 

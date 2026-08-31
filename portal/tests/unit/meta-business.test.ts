@@ -14,12 +14,21 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const mockState = vi.hoisted(() => ({
   fetch: vi.fn(),
   logError: vi.fn(),
+  resolveActiveMetaCredentials: vi.fn(),
 }));
 
 vi.stubGlobal('fetch', mockState.fetch);
 
 vi.mock('@/lib/observability', () => ({
   logError: (...args: unknown[]) => mockState.logError(...args),
+}));
+
+// DB-first resolution for the app id/secret pair — defaults (in
+// beforeEach) to resolving straight from process.env, so these tests
+// exercise the same env-driven behavior they did before this pair
+// moved to /admin/portal/settings/meta.
+vi.mock('@/lib/meta-credentials', () => ({
+  resolveActiveMetaCredentials: (...args: unknown[]) => mockState.resolveActiveMetaCredentials(...args),
 }));
 
 import {
@@ -49,6 +58,21 @@ function jsonResponse(body: unknown, ok = true, status = 200) {
 beforeEach(() => {
   mockState.fetch.mockReset();
   mockState.logError.mockReset();
+  // Mirrors resolveActiveMetaCredentials' own env-fallback behavior, so
+  // tests below that set/delete these env vars mid-test still exercise
+  // the same "unconfigured" / "configured" transitions they did before
+  // this pair moved to /admin/portal/settings/meta.
+  mockState.resolveActiveMetaCredentials.mockReset().mockImplementation(async () => {
+    const appId = process.env.META_APP_ID;
+    const appSecret = process.env.META_APP_SECRET;
+    if (!appId || !appSecret) return null;
+    return {
+      appId,
+      appSecret,
+      configId: process.env.META_CONFIG_ID ?? null,
+      coexistenceConfigId: process.env.META_COEXISTENCE_CONFIG_ID ?? null,
+    };
+  });
   process.env.META_APP_ID = 'app_123';
   process.env.META_APP_SECRET = 'app_secret_123';
   process.env.META_CONFIG_ID = 'config_123';
@@ -60,32 +84,45 @@ afterEach(() => {
 });
 
 describe('isMetaSignupConfigured', () => {
-  it('true when all three env vars are set', () => {
-    expect(isMetaSignupConfigured()).toBe(true);
+  it('true when all three env vars are set', async () => {
+    expect(await isMetaSignupConfigured()).toBe(true);
   });
 
-  it('false when META_CONFIG_ID is missing', () => {
+  it('false when META_CONFIG_ID is missing', async () => {
     delete process.env.META_CONFIG_ID;
-    expect(isMetaSignupConfigured()).toBe(false);
+    expect(await isMetaSignupConfigured()).toBe(false);
+  });
+
+  it('true from a DB-stored pair alone, with no env vars set', async () => {
+    delete process.env.META_APP_ID;
+    delete process.env.META_APP_SECRET;
+    delete process.env.META_CONFIG_ID;
+    mockState.resolveActiveMetaCredentials.mockResolvedValue({
+      appId: 'db_app_id',
+      appSecret: 'db_app_secret',
+      configId: 'db_config_id',
+      coexistenceConfigId: null,
+    });
+    expect(await isMetaSignupConfigured()).toBe(true);
   });
 });
 
 describe('isCoexistenceSignupConfigured', () => {
-  it('false by default — a SEPARATE Configuration from META_CONFIG_ID, not implied by it', () => {
-    expect(isCoexistenceSignupConfigured()).toBe(false);
+  it('false by default — a SEPARATE Configuration from META_CONFIG_ID, not implied by it', async () => {
+    expect(await isCoexistenceSignupConfigured()).toBe(false);
   });
 
-  it('true once META_COEXISTENCE_CONFIG_ID is set alongside the app credentials', () => {
+  it('true once META_COEXISTENCE_CONFIG_ID is set alongside the app credentials', async () => {
     process.env.META_COEXISTENCE_CONFIG_ID = 'coexistence_config_123';
-    expect(isCoexistenceSignupConfigured()).toBe(true);
+    expect(await isCoexistenceSignupConfigured()).toBe(true);
     // The standard flow's gate is unaffected either way.
-    expect(isMetaSignupConfigured()).toBe(true);
+    expect(await isMetaSignupConfigured()).toBe(true);
   });
 
-  it('false when the app id/secret are missing even if the coexistence config id is set', () => {
+  it('false when the app id/secret are missing even if the coexistence config id is set', async () => {
     process.env.META_COEXISTENCE_CONFIG_ID = 'coexistence_config_123';
     delete process.env.META_APP_ID;
-    expect(isCoexistenceSignupConfigured()).toBe(false);
+    expect(await isCoexistenceSignupConfigured()).toBe(false);
   });
 });
 

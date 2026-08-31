@@ -96,6 +96,11 @@ services:
       # chatbot). isCoexistenceSignupConfigured() la comprueba junto a
       # META_APP_ID/META_APP_SECRET, ya wireados arriba — ver lib/meta-business.ts.
       META_COEXISTENCE_CONFIG_ID: ${META_COEXISTENCE_CONFIG_ID:-}
+      # Pre-UI fallback only — un operador puede pegar los cuatro valores
+      # de Meta de arriba en /admin/portal/settings/meta en su lugar
+      # (cifrado en Postgres con esta clave). Generar con:
+      # openssl rand -hex 32
+      META_CREDENTIAL_ENCRYPTION_KEY: ${META_CREDENTIAL_ENCRYPTION_KEY:-}
       # Telefonía del producto 'recall'. Sin las dos primeras, el pool de
       # números queda deshabilitado y sus rutas de operador devuelven 503;
       # nada más del portal se ve afectado. El bundle/address regulatorio
@@ -158,6 +163,11 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-kairikos_portal}
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # Runs once, only on a genuinely empty data directory — see the
+      # file's own header for why this exists (a legacy migration
+      # depends on Supabase-only roles this plain Postgres image
+      # doesn't have).
+      - ./scripts/postgres-init:/docker-entrypoint-initdb.d:ro
     networks:
       - portal-net
     healthcheck:
