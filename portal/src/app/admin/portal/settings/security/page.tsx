@@ -5,6 +5,7 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { TotpEnrollmentPanel } from '@/components/portal/TotpEnrollmentPanel';
+import { EncryptionKeyStatusTable } from '@/components/portal/EncryptionKeyStatusTable';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,6 +43,7 @@ export default async function AdminSecuritySettingsPage() {
         }
       />
       <TotpEnrollmentPanel initiallyEnrolled={Boolean(operator?.totpEnrolledAt)} />
+      <EncryptionKeyStatusTable />
     </div>
   );
 }
