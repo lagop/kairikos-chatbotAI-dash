@@ -211,7 +211,7 @@ export async function connectRecallWhatsapp(
   // syncSmbAppState above, which stay useful to repeat every time.
   let templatesSubmitted: TemplateSubmissionOutcome[] | null = null;
   if (willAdvance) {
-    templatesSubmitted = await submitAllRecallTemplates(accessToken, params.wabaId);
+    templatesSubmitted = await submitAllRecallTemplates(prisma, accessToken, params.wabaId);
   }
 
   await prisma.recallSubscriptionAudit

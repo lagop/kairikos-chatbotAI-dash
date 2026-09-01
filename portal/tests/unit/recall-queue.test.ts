@@ -14,7 +14,13 @@ import type { PrismaClient } from '@prisma/client';
 import { listRecallQueue } from '@/lib/recall';
 
 const findMany = vi.fn();
-const prisma = { recallSubscription: { findMany: (...a: unknown[]) => findMany(...a) } } as unknown as PrismaClient;
+const templateDefinitionCount = vi.fn();
+const whatsappTemplateFindMany = vi.fn();
+const prisma = {
+  recallSubscription: { findMany: (...a: unknown[]) => findMany(...a) },
+  recallTemplateDefinition: { count: (...a: unknown[]) => templateDefinitionCount(...a) },
+  whatsappTemplate: { findMany: (...a: unknown[]) => whatsappTemplateFindMany(...a) },
+} as unknown as PrismaClient;
 
 const CREATED = new Date('2026-09-01T09:00:00.000Z');
 const SIGNED = new Date('2026-09-03T09:00:00.000Z');
@@ -35,6 +41,7 @@ function row(overrides: Record<string, unknown> = {}) {
     templatesApprovedAt: null,
     forwardingVerifiedAt: null,
     greetingRecordedAt: null,
+    metaConnectionId: null,
     client: { name: 'Juan', companyName: 'Fontanería Aurora', email: 'a@b.com' },
     virtualNumber: null,
     ...overrides,
@@ -43,6 +50,8 @@ function row(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   findMany.mockReset().mockResolvedValue([]);
+  templateDefinitionCount.mockReset().mockResolvedValue(7);
+  whatsappTemplateFindMany.mockReset().mockResolvedValue([]);
 });
 
 describe('listRecallQueue', () => {
@@ -131,5 +140,61 @@ describe('listRecallQueue', () => {
     findMany.mockResolvedValue([row({ status: 'meta_connected', metaConnectedAt: null })]);
     const [r] = await listRecallQueue(prisma);
     expect(r.since).toEqual(CREATED);
+  });
+
+  describe('templateProgress', () => {
+    it('is null when the row has no WhatsApp connection yet', async () => {
+      findMany.mockResolvedValue([row({ metaConnectionId: null })]);
+      const [r] = await listRecallQueue(prisma);
+      expect(r.templateProgress).toBeNull();
+      expect(whatsappTemplateFindMany).not.toHaveBeenCalled();
+    });
+
+    it('resolves 0/total with no rejections when a connection exists but nothing has synced yet', async () => {
+      findMany.mockResolvedValue([row({ metaConnectionId: 'conn_1' })]);
+      const [r] = await listRecallQueue(prisma);
+      expect(r.templateProgress).toEqual({ approved: 0, total: 7, rejected: [] });
+    });
+
+    it('counts APPROVED and collects REJECTED with its reason, ignoring PENDING', async () => {
+      findMany.mockResolvedValue([row({ metaConnectionId: 'conn_1' })]);
+      whatsappTemplateFindMany.mockResolvedValue([
+        { connectionId: 'conn_1', name: 'recall_caller_open', status: 'APPROVED', rejectedReason: null },
+        { connectionId: 'conn_1', name: 'recall_caller_closed', status: 'APPROVED', rejectedReason: null },
+        { connectionId: 'conn_1', name: 'recall_owner_message', status: 'PENDING', rejectedReason: null },
+        { connectionId: 'conn_1', name: 'recall_daily_digest', status: 'REJECTED', rejectedReason: 'texto genérico' },
+      ]);
+      const [r] = await listRecallQueue(prisma);
+      expect(r.templateProgress).toEqual({
+        approved: 2,
+        total: 7,
+        rejected: [{ name: 'recall_daily_digest', reason: 'texto genérico' }],
+      });
+    });
+
+    it('is ONE batched query for every row with a connection, not one per row', async () => {
+      findMany.mockResolvedValue([
+        row({ id: 'sub_1', metaConnectionId: 'conn_1' }),
+        row({ id: 'sub_2', clientId: 'client_2', metaConnectionId: 'conn_2' }),
+      ]);
+      await listRecallQueue(prisma);
+      expect(whatsappTemplateFindMany).toHaveBeenCalledTimes(1);
+      expect(whatsappTemplateFindMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { connectionId: { in: ['conn_1', 'conn_2'] } } }),
+      );
+    });
+
+    it('keeps each connection independent — one connection is unaffected by another connection in the same batch', async () => {
+      findMany.mockResolvedValue([
+        row({ id: 'sub_1', metaConnectionId: 'conn_1' }),
+        row({ id: 'sub_2', clientId: 'client_2', metaConnectionId: 'conn_2' }),
+      ]);
+      whatsappTemplateFindMany.mockResolvedValue([
+        { connectionId: 'conn_1', name: 'recall_caller_open', status: 'APPROVED', rejectedReason: null },
+      ]);
+      const [r1, r2] = await listRecallQueue(prisma);
+      expect(r1.templateProgress).toEqual({ approved: 1, total: 7, rejected: [] });
+      expect(r2.templateProgress).toEqual({ approved: 0, total: 7, rejected: [] });
+    });
   });
 });

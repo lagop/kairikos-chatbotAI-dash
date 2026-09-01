@@ -19,11 +19,6 @@ vi.mock('@/lib/whatsapp-api', () => ({
 }));
 
 vi.mock('@/lib/recall-messaging', () => ({
-  RECALL_TEMPLATES: {
-    callerOpen: { name: 'recall_caller_open', languageCode: 'es' },
-    callerClosed: { name: 'recall_caller_closed', languageCode: 'es' },
-    ownerMessage: { name: 'recall_owner_message', languageCode: 'es' },
-  },
   metaSenderFor: (...a: unknown[]) => mockState.metaSenderFor(...a),
 }));
 
@@ -34,14 +29,34 @@ vi.mock('@/lib/observability', () => ({
 import {
   submitAllRecallTemplates,
   advanceSubscriptionsWithApprovedTemplates,
-  RECALL_TEMPLATE_DEFINITIONS,
+  validateTemplateBody,
 } from '@/lib/recall-templates';
+
+// Mirrors the migration's seed data (20260913090000_recall_template_definitions)
+// — the shape submitAllRecallTemplates/advanceSubscriptionsWithApprovedTemplates
+// now read via prisma.recallTemplateDefinition, instead of a hardcoded array.
+const SEEDED_DEFINITIONS = [
+  { name: 'recall_caller_open', languageCode: 'es', category: 'UTILITY', bodyText: 'Hola {{1}}', bodyExamples: ['Aurora'] },
+  { name: 'recall_caller_closed', languageCode: 'es', category: 'UTILITY', bodyText: 'Cerrado {{1}} {{2}}', bodyExamples: ['Aurora', 'mañana'] },
+  { name: 'recall_owner_message', languageCode: 'es', category: 'UTILITY', bodyText: 'Recado {{1}}: {{2}}', bodyExamples: ['+34600', 'texto'] },
+  { name: 'recall_daily_digest', languageCode: 'es', category: 'UTILITY', bodyText: '{{1}} llamadas: {{2}}', bodyExamples: ['3', 'lista'] },
+  { name: 'recall_digest_clarify', languageCode: 'es', category: 'UTILITY', bodyText: '¿Cuál? {{1}}', bodyExamples: ['lista'] },
+  { name: 'recall_monthly_report', languageCode: 'es', category: 'UTILITY', bodyText: '{{1}} {{2}} {{3}} {{4}} {{5}}', bodyExamples: ['a', 'b', 'c', 'd', 'e'] },
+  {
+    name: 'recall_forwarding_instructions',
+    languageCode: 'es',
+    category: 'UTILITY',
+    bodyText: 'Marca **61*{{1}}# **67*{{1}}# **62*{{1}}# para activar',
+    bodyExamples: ['+34910123456'],
+  },
+];
 
 const state = {
   recallSubscriptionFindMany: vi.fn(),
   recallSubscriptionUpdate: vi.fn(),
   whatsappTemplateCount: vi.fn(),
   recallSubscriptionAuditCreate: vi.fn(),
+  recallTemplateDefinitionFindMany: vi.fn(),
 };
 
 const prisma = {
@@ -55,6 +70,9 @@ const prisma = {
   recallSubscriptionAudit: {
     create: (...a: unknown[]) => state.recallSubscriptionAuditCreate(...a),
   },
+  recallTemplateDefinition: {
+    findMany: (...a: unknown[]) => state.recallTemplateDefinitionFindMany(...a),
+  },
 } as unknown as PrismaClient;
 
 beforeEach(() => {
@@ -67,50 +85,42 @@ beforeEach(() => {
   state.whatsappTemplateCount.mockResolvedValue(0);
   state.recallSubscriptionUpdate.mockImplementation(({ data }) => Promise.resolve({ status: data.status }));
   state.recallSubscriptionAuditCreate.mockResolvedValue({});
+  state.recallTemplateDefinitionFindMany.mockResolvedValue(SEEDED_DEFINITIONS);
 });
 
-describe('RECALL_TEMPLATE_DEFINITIONS', () => {
-  it('defines exactly the 7 templates the product actually sends, all Spanish UTILITY', () => {
-    expect(RECALL_TEMPLATE_DEFINITIONS).toHaveLength(7);
-    const names = RECALL_TEMPLATE_DEFINITIONS.map((t) => t.name);
-    expect(names).toEqual([
-      'recall_caller_open',
-      'recall_caller_closed',
-      'recall_owner_message',
-      'recall_daily_digest',
-      'recall_digest_clarify',
-      'recall_monthly_report',
-      'recall_forwarding_instructions',
-    ]);
-    for (const def of RECALL_TEMPLATE_DEFINITIONS) {
-      expect(def.languageCode).toBe('es');
-      expect(def.category).toBe('UTILITY');
-    }
+describe('validateTemplateBody', () => {
+  it('accepts a body whose unique placeholders exactly match the example count, numbered sequentially from 1', () => {
+    expect(validateTemplateBody('Hola {{1}}, hoy {{2}}', ['a', 'b'])).toEqual({ ok: true });
   });
 
-  it('gives every UNIQUE {{n}} placeholder in the body text a matching example — a repeated placeholder reuses one example, not one per occurrence', () => {
-    for (const def of RECALL_TEMPLATE_DEFINITIONS) {
-      const uniquePlaceholders = new Set(def.bodyText.match(/\{\{\d+\}\}/g) ?? []);
-      expect(def.bodyExamples).toHaveLength(uniquePlaceholders.size);
-    }
+  it('accepts a repeated placeholder reusing one example, not one per occurrence', () => {
+    expect(validateTemplateBody('{{1}} y otra vez {{1}}', ['a'])).toEqual({ ok: true });
   });
 
-  it('the forwarding-instructions template uses the 3 conditional-forwarding MMI codes, never unconditional forwarding', () => {
-    const def = RECALL_TEMPLATE_DEFINITIONS.find((t) => t.name === 'recall_forwarding_instructions');
-    expect(def?.bodyText).toContain('**61*');
-    expect(def?.bodyText).toContain('**67*');
-    expect(def?.bodyText).toContain('**62*');
-    // Unconditional forwarding (**21*) would forward EVERY call, defeating
-    // a missed-call product's whole point — the client must keep
-    // answering calls himself when he can.
-    expect(def?.bodyText).not.toContain('**21*');
+  it('rejects when the example count does not match the unique placeholder count', () => {
+    const result = validateTemplateBody('Hola {{1}}, hoy {{2}}', ['a']);
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects a gap in the placeholder numbering ({{1}}, {{3}} without {{2}})', () => {
+    const result = validateTemplateBody('Hola {{1}}, hoy {{3}}', ['a', 'b']);
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects an empty example', () => {
+    const result = validateTemplateBody('Hola {{1}}', ['   ']);
+    expect(result.ok).toBe(false);
+  });
+
+  it('accepts text with no placeholders at all, given no examples', () => {
+    expect(validateTemplateBody('Texto fijo sin variables', [])).toEqual({ ok: true });
   });
 });
 
 describe('submitAllRecallTemplates', () => {
   it('submits all 7 templates to the given WABA', async () => {
     mockState.createMessageTemplate.mockResolvedValue({ ok: true, data: { status: 'PENDING' } });
-    const outcomes = await submitAllRecallTemplates('token', 'waba_1');
+    const outcomes = await submitAllRecallTemplates(prisma, 'token', 'waba_1');
 
     expect(mockState.createMessageTemplate).toHaveBeenCalledTimes(7);
     expect(outcomes).toHaveLength(7);
@@ -129,7 +139,7 @@ describe('submitAllRecallTemplates', () => {
       return Promise.resolve({ ok: true, data: { status: 'PENDING' } });
     });
 
-    const outcomes = await submitAllRecallTemplates('token', 'waba_1');
+    const outcomes = await submitAllRecallTemplates(prisma, 'token', 'waba_1');
 
     expect(mockState.createMessageTemplate).toHaveBeenCalledTimes(7);
     const failed = outcomes.find((o) => o.name === 'recall_caller_closed');
@@ -145,7 +155,7 @@ describe('submitAllRecallTemplates', () => {
 
   it('never throws — a network failure on every call still returns 7 outcomes', async () => {
     mockState.createMessageTemplate.mockResolvedValue({ ok: false, error: 'network down' });
-    const outcomes = await submitAllRecallTemplates('token', 'waba_1');
+    const outcomes = await submitAllRecallTemplates(prisma, 'token', 'waba_1');
     expect(outcomes).toHaveLength(7);
     expect(outcomes.every((o) => !o.ok)).toBe(true);
   });
@@ -180,7 +190,7 @@ describe('advanceSubscriptionsWithApprovedTemplates', () => {
 
   it('advances templates_approved → forwarding_pending once all 7 required templates are APPROVED, sending the forwarding instructions in between', async () => {
     state.recallSubscriptionFindMany.mockResolvedValue([SUB]);
-    state.whatsappTemplateCount.mockResolvedValue(RECALL_TEMPLATE_DEFINITIONS.length);
+    state.whatsappTemplateCount.mockResolvedValue(SEEDED_DEFINITIONS.length);
     const now = new Date('2026-09-01T00:00:00Z');
 
     const result = await advanceSubscriptionsWithApprovedTemplates(prisma, { now });
@@ -224,7 +234,7 @@ describe('advanceSubscriptionsWithApprovedTemplates', () => {
 
   it('does not advance when only some of the 7 required templates are approved', async () => {
     state.recallSubscriptionFindMany.mockResolvedValue([SUB]);
-    state.whatsappTemplateCount.mockResolvedValue(RECALL_TEMPLATE_DEFINITIONS.length - 1);
+    state.whatsappTemplateCount.mockResolvedValue(SEEDED_DEFINITIONS.length - 1);
 
     const result = await advanceSubscriptionsWithApprovedTemplates(prisma);
 
@@ -235,7 +245,7 @@ describe('advanceSubscriptionsWithApprovedTemplates', () => {
 
   it('still advances to forwarding_pending when the WhatsApp send fails — the state fact does not depend on the notification', async () => {
     state.recallSubscriptionFindMany.mockResolvedValue([SUB]);
-    state.whatsappTemplateCount.mockResolvedValue(RECALL_TEMPLATE_DEFINITIONS.length);
+    state.whatsappTemplateCount.mockResolvedValue(SEEDED_DEFINITIONS.length);
     mockState.sendTemplate.mockResolvedValue({ ok: false, error: 'template paused' });
 
     const result = await advanceSubscriptionsWithApprovedTemplates(prisma);
@@ -255,7 +265,7 @@ describe('advanceSubscriptionsWithApprovedTemplates', () => {
 
   it('still advances, skipping the send, when there is no valid sender/number/owner WhatsApp', async () => {
     state.recallSubscriptionFindMany.mockResolvedValue([{ ...SUB, ownerWhatsapp: null }]);
-    state.whatsappTemplateCount.mockResolvedValue(RECALL_TEMPLATE_DEFINITIONS.length);
+    state.whatsappTemplateCount.mockResolvedValue(SEEDED_DEFINITIONS.length);
 
     const result = await advanceSubscriptionsWithApprovedTemplates(prisma);
 
@@ -272,7 +282,7 @@ describe('advanceSubscriptionsWithApprovedTemplates', () => {
   it('one subscription failing its audit write does not stop the others from advancing', async () => {
     const sub2 = { ...SUB, id: 'sub_2', clientId: 'client_2' };
     state.recallSubscriptionFindMany.mockResolvedValue([SUB, sub2]);
-    state.whatsappTemplateCount.mockResolvedValue(RECALL_TEMPLATE_DEFINITIONS.length);
+    state.whatsappTemplateCount.mockResolvedValue(SEEDED_DEFINITIONS.length);
     state.recallSubscriptionAuditCreate.mockRejectedValueOnce(new Error('db down'));
 
     const result = await advanceSubscriptionsWithApprovedTemplates(prisma);

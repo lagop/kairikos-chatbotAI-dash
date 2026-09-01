@@ -187,6 +187,12 @@ export function isStuck(status: string, since: Date, now: Date = new Date()): bo
 
 // --- Operator queue ------------------------------------------------------
 
+export interface RecallTemplateProgress {
+  approved: number;
+  total: number;
+  rejected: { name: string; reason: string | null }[];
+}
+
 export interface RecallQueueRow {
   subscriptionId: string;
   clientId: string;
@@ -198,6 +204,8 @@ export interface RecallQueueRow {
   since: Date;
   e164: string | null;
   hasGreeting: boolean;
+  /** null until a WhatsApp connection exists to submit templates to. */
+  templateProgress: RecallTemplateProgress | null;
 }
 
 /**
@@ -230,10 +238,16 @@ export async function listRecallQueue(prisma: PrismaClient): Promise<RecallQueue
       forwardingVerifiedAt: true,
       createdAt: true,
       greetingRecordedAt: true,
+      metaConnectionId: true,
       client: { select: { name: true, companyName: true, email: true } },
       virtualNumber: { select: { e164: true } },
     },
   });
+
+  const progressByConnection = await templateProgressByConnection(
+    prisma,
+    rows.map((r) => r.metaConnectionId).filter((id): id is string => typeof id === 'string'),
+  );
 
   return rows.map((row) => ({
     subscriptionId: row.id,
@@ -244,7 +258,43 @@ export async function listRecallQueue(prisma: PrismaClient): Promise<RecallQueue
     since: enteredCurrentStateAt(row),
     e164: row.virtualNumber?.e164 ?? null,
     hasGreeting: row.greetingRecordedAt !== null,
+    templateProgress: row.metaConnectionId ? (progressByConnection.get(row.metaConnectionId) ?? null) : null,
   }));
+}
+
+/**
+ * Batches the WhatsApp template approval status for every connection in
+ * one call, instead of one query per queue row — same "ONE query"
+ * discipline as listRecallQueue itself. Returns a map so a connection
+ * with zero WhatsappTemplate rows yet (submission hasn't run, or the
+ * cron hasn't synced Meta's response) still resolves to a real entry
+ * (0/total, no rejections) rather than being silently absent.
+ */
+async function templateProgressByConnection(
+  prisma: PrismaClient,
+  connectionIds: string[],
+): Promise<Map<string, RecallTemplateProgress>> {
+  const map = new Map<string, RecallTemplateProgress>();
+  if (connectionIds.length === 0) return map;
+
+  const [totalRow, templates] = await Promise.all([
+    prisma.recallTemplateDefinition.count(),
+    prisma.whatsappTemplate.findMany({
+      where: { connectionId: { in: connectionIds } },
+      select: { connectionId: true, name: true, status: true, rejectedReason: true },
+    }),
+  ]);
+
+  for (const id of connectionIds) {
+    map.set(id, { approved: 0, total: totalRow, rejected: [] });
+  }
+  for (const t of templates) {
+    const entry = map.get(t.connectionId);
+    if (!entry) continue;
+    if (t.status === 'APPROVED') entry.approved += 1;
+    else if (t.status === 'REJECTED') entry.rejected.push({ name: t.name, reason: t.rejectedReason });
+  }
+  return map;
 }
 
 /**

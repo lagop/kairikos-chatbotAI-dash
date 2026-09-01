@@ -119,7 +119,7 @@ describe('connectRecallWhatsapp', () => {
       advancedTo: 'meta_connected',
       templatesSubmitted: expect.arrayContaining([expect.objectContaining({ name: 'recall_caller_open', ok: true })]),
     });
-    expect(mockState.submitAllRecallTemplates).toHaveBeenCalledWith('long_lived', 'waba_1');
+    expect(mockState.submitAllRecallTemplates).toHaveBeenCalledWith(prisma, 'long_lived', 'waba_1');
     expect(state.metaChannelConnectionUpsert).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({ channel: 'whatsapp', externalId: 'phone_1', isCoexistence: true }),

@@ -49,6 +49,7 @@ export default async function AdminClientsPage({
             <Link href="/admin/portal/settings/billing" className="btn-ghost">Configuración de Stripe</Link>
             <Link href="/admin/portal/settings/telephony" className="btn-ghost">Telefonía</Link>
             <Link href="/admin/portal/settings/meta" className="btn-ghost">Meta</Link>
+            <Link href="/admin/portal/settings/recall-templates" className="btn-ghost">Plantillas WhatsApp</Link>
             <Link href="/admin/portal/settings/integrations" className="btn-ghost">Integraciones</Link>
             <Link href="/admin/portal/settings/seo" className="btn-ghost">SEO con IA</Link>
             <Link href="/admin/portal/support" className="btn-ghost">Solicitudes de ayuda</Link>

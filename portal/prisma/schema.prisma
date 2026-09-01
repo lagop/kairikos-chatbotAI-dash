@@ -345,6 +345,8 @@ model Operator {
   seoProfileAudits         SeoProfileAudit[]
   twilioCredentialAudits   TwilioCredentialAudit[]
   metaCredentialAudits     MetaCredentialAudit[]
+  recallTemplateDefinitionsUpdated RecallTemplateDefinition[]
+  recallTemplateDefinitionAudits   RecallTemplateDefinitionAudit[]
 
   @@index([email])
   @@index([isActive])
@@ -2285,6 +2287,63 @@ model WhatsappTemplate {
   @@unique([connectionId, name, languageCode])
   @@index([clientId])
   @@index([status])
+}
+
+// Operator-editable copy of the 7 WhatsApp templates recall submits to
+// each client's WABA (see recall-templates.ts's header — previously a
+// hardcoded TS array, RECALL_TEMPLATE_DEFINITIONS). name/languageCode/
+// category are NOT editable from the settings UI on purpose: other code
+// (recall-messaging.ts's RECALL_TEMPLATES, FORWARDING_INSTRUCTIONS_TEMPLATE)
+// references templates BY NAME to send an already-approved one — renaming
+// here would silently desync submission from sending. sortOrder is a
+// plain display order (matches the product's own fixed sequence), not a
+// business rule.
+//
+// Editing bodyText/bodyExamples here does NOT retroactively touch any
+// client's already-approved template on Meta's side — a WABA that
+// already has the old wording approved keeps it until that client
+// reconnects. This only changes what gets submitted to clients who
+// connect AFTER the edit. Surfaced as a warning in the settings UI, not
+// just this comment, because it is the single most likely
+// misunderstanding an operator could have about what "editing" does here.
+model RecallTemplateDefinition {
+  id           String @id @default(uuid()) @db.Uuid
+  name         String @unique
+  languageCode String @map("language_code")
+  category     String
+
+  bodyText     String   @map("body_text")
+  bodyExamples String[] @map("body_examples")
+  sortOrder    Int      @map("sort_order")
+
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  updatedByOperatorId String?  @map("updated_by_operator_id") @db.Uuid
+  updatedByEmail      String?  @map("updated_by_email")
+
+  updatedByOperator Operator? @relation(fields: [updatedByOperatorId], references: [id], onDelete: SetNull)
+
+  @@index([sortOrder])
+}
+
+// Append-only audit trail for editing a template's body — same
+// before/after-JSON-snapshot posture as every other *Audit model in this
+// schema. Unlike a credential audit, before/after here legitimately
+// include the full text (it's product copy shown to real customers, not
+// a secret) — that is the whole point of keeping history on this one.
+model RecallTemplateDefinitionAudit {
+  id           String @id @default(uuid()) @db.Uuid
+  templateName String @map("template_name")
+  before       Json
+  after        Json
+
+  actorOperatorId String?  @map("actor_operator_id") @db.Uuid
+  actorEmail      String?  @map("actor_email")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  operator Operator? @relation(fields: [actorOperatorId], references: [id], onDelete: SetNull)
+
+  @@index([templateName])
+  @@index([createdAt])
 }
 
 // El puente hacia n8n — portal → n8n únicamente (no hay lectura directa

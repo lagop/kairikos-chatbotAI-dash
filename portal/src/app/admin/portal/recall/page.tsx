@@ -7,6 +7,28 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { listRecallQueue, isStuck, stuckThresholdDays, type RecallQueueRow } from '@/lib/recall';
 
+function TemplateProgress({ progress }: { progress: RecallQueueRow['templateProgress'] }) {
+  if (!progress) return null;
+  const { approved, total, rejected } = progress;
+  const done = approved >= total && total > 0;
+  return (
+    <div className="border-t border-kairikos-border pt-3 text-xs" data-testid="recall-queue-template-progress">
+      <span className={done ? 'text-kairikos-success' : 'text-kairikos-muted'}>
+        Plantillas de WhatsApp: {approved}/{total} aprobadas
+      </span>
+      {rejected.length > 0 ? (
+        <ul className="mt-1 space-y-0.5 text-kairikos-danger">
+          {rejected.map((r) => (
+            <li key={r.name}>
+              <span className="font-mono">{r.name}</span> rechazada{r.reason ? ` — ${r.reason}` : ''}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
@@ -99,6 +121,8 @@ function RecallQueueCard({ row }: { row: RecallQueueRow }) {
           Ver cliente →
         </Link>
       </div>
+
+      <TemplateProgress progress={row.templateProgress} />
     </li>
   );
 }
