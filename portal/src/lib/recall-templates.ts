@@ -1,8 +1,6 @@
 import 'server-only';
 import type { PrismaClient } from '@prisma/client';
-import { RECALL_TEMPLATES, metaSenderFor } from './recall-messaging';
-import { DIGEST_TEMPLATES } from './recall-digest';
-import { REPORT_TEMPLATE } from './recall-reports';
+import { metaSenderFor } from './recall-messaging';
 import { createMessageTemplate, sendTemplate } from './whatsapp-api';
 import { logError } from './observability';
 
@@ -11,21 +9,27 @@ import { logError } from './observability';
 // first time it connects, instead of an operator re-typing them into Meta
 // Business Manager for every new client.
 //
-// The name/language pairs for the first 6 are NOT redefined here — they're
-// imported from RECALL_TEMPLATES/DIGEST_TEMPLATES/REPORT_TEMPLATE, the same
-// constants sendTemplate's callers use, so submission can never name-drift
-// from what is actually sent. The 7th, FORWARDING_INSTRUCTIONS_TEMPLATE,
-// has no other sender — it belongs here, next to the only function that
-// ever sends it (advanceSubscriptionsWithApprovedTemplates, below).
+// The definitions themselves live in Postgres (RecallTemplateDefinition,
+// see schema.prisma), editable at /admin/portal/settings/recall-templates
+// — this file used to hold them as a hardcoded RECALL_TEMPLATE_DEFINITIONS
+// array; that array is now only the migration's seed data (see
+// 20260913090000_recall_template_definitions), not read at runtime.
+// name/languageCode are NOT editable from that settings UI: other code
+// (recall-messaging.ts's RECALL_TEMPLATES, FORWARDING_INSTRUCTIONS_TEMPLATE
+// below) references templates BY NAME to send an already-approved one —
+// changing a name in the DB without updating those constants would
+// silently desync submission from sending, so the settings UI only ever
+// touches bodyText/bodyExamples.
 //
 // BODY TEXT WAS AUTHORED FOR THIS TASK, NOT CARRIED OVER FROM ANY EXISTING
 // SPEC — no template wording existed anywhere in the repo before this
-// (only names, languages, and {{n}} meanings, as comments). Treat this
-// copy as a first draft: it matches the documented placeholder meanings
-// and follows Meta's UTILITY-template content rules (informational,
-// tied to an existing customer relationship, no promotional language),
-// but real customers see it verbatim and Meta reviews the exact wording —
-// have whoever owns the product voice read it before the first client
+// (only names, languages, and {{n}} meanings, as comments). Treat the
+// seeded copy as a first draft: it matches the documented placeholder
+// meanings and follows Meta's UTILITY-template content rules
+// (informational, tied to an existing customer relationship, no
+// promotional language), but real customers see it verbatim and Meta
+// reviews the exact wording — have whoever owns the product voice read
+// it (and edit it via the settings UI if needed) before the first client
 // goes live.
 //
 // FORWARDING_INSTRUCTIONS_TEMPLATE IS A DIFFERENT CLASS OF RISK FROM THE
@@ -45,71 +49,73 @@ import { logError } from './observability';
 //
 // UNVERIFIED AGAINST A REAL META APP — same standing caveat as
 // meta-business.ts and whatsapp-api.ts.
+//
+// EDITING A DEFINITION HERE DOES NOT RETROACTIVELY TOUCH ANY CLIENT'S
+// ALREADY-APPROVED TEMPLATE ON META'S SIDE — a WABA that already has the
+// old wording approved keeps it until that client reconnects. An edit
+// only changes what gets submitted to clients who connect AFTER it.
 // =============================================================================
 
 /** No other sender exists for this one — see the header. */
 export const FORWARDING_INSTRUCTIONS_TEMPLATE = { name: 'recall_forwarding_instructions', languageCode: 'es' } as const;
 
-export interface RecallTemplateDefinition {
+export interface RecallTemplateSpec {
   name: string;
   languageCode: string;
-  category: 'UTILITY';
+  category: string;
   bodyText: string;
   /** Meta requires one example per {{n}} placeholder, in order. */
   bodyExamples: readonly string[];
 }
 
-// buildDigestList (recall-digest.ts) joins entries with ' · ', never a
-// newline — the examples below match that shape rather than showing a
-// line break Meta would never actually see.
-export const RECALL_TEMPLATE_DEFINITIONS: readonly RecallTemplateDefinition[] = [
-  {
-    ...RECALL_TEMPLATES.callerOpen,
-    category: 'UTILITY',
-    bodyText:
-      'Hola, soy el asistente de {{1}}. Vimos tu llamada y no pudimos contestar — te escribimos en cuanto podamos.',
-    bodyExamples: ['Peluquería Aurora'],
-  },
-  {
-    ...RECALL_TEMPLATES.callerClosed,
-    category: 'UTILITY',
-    bodyText:
-      'Hola, soy el asistente de {{1}}. Ahora mismo estamos cerrados, abrimos {{2}}. En cuanto abramos te contestamos.',
-    bodyExamples: ['Peluquería Aurora', 'mañana a las 9:00'],
-  },
-  {
-    ...RECALL_TEMPLATES.ownerMessage,
-    category: 'UTILITY',
-    bodyText: 'Recado de {{1}}: {{2}}',
-    bodyExamples: ['+34611223344', 'Quiere reservar cita para el sábado por la mañana'],
-  },
-  {
-    ...DIGEST_TEMPLATES.daily,
-    category: 'UTILITY',
-    bodyText:
-      'Hoy tuviste {{1}} llamadas perdidas: {{2}}. Responde con el número de la llamada para marcarla como gestionada.',
-    bodyExamples: ['3', '1) 611223344 – Quiere reservar cita · 2) número oculto – sin recado'],
-  },
-  {
-    ...DIGEST_TEMPLATES.clarify,
-    category: 'UTILITY',
-    bodyText: 'No entendí tu respuesta. ¿A cuál de estas llamadas te refieres? {{1}}',
-    bodyExamples: ['1) 611223344 – Quiere reservar cita · 2) 622334455 – Pregunta por horario'],
-  },
-  {
-    ...REPORT_TEMPLATE,
-    category: 'UTILITY',
-    bodyText: 'Tu resumen de {{1}}: {{2}} llamadas recuperadas, {{3}} contactadas, {{4}} reseñas nuevas (valoración media {{5}}).',
-    bodyExamples: ['agosto', '12', '10', '3', '4.8'],
-  },
-  {
-    ...FORWARDING_INSTRUCTIONS_TEMPLATE,
-    category: 'UTILITY',
-    bodyText:
-      'Para activar el desvío de llamadas a tu línea de Kairikos, marca estos 3 códigos desde tu móvil (uno detrás de otro, pulsando llamar después de cada uno):\n\n1) **61*{{1}}#\n2) **67*{{1}}#\n3) **62*{{1}}#\n\nTu teléfono sigue funcionando igual que siempre — solo se desvían las llamadas que no coges, comunicas o no tienen cobertura.',
-    bodyExamples: ['+34910123456'],
-  },
-];
+/** Reads the 7 template definitions from Postgres, in the product's
+ *  fixed display order — never the hardcoded array this file used to
+ *  export (see the header). */
+export async function getTemplateDefinitions(prisma: PrismaClient): Promise<RecallTemplateSpec[]> {
+  const rows = await prisma.recallTemplateDefinition.findMany({ orderBy: { sortOrder: 'asc' } });
+  return rows.map((row) => ({
+    name: row.name,
+    languageCode: row.languageCode,
+    category: row.category,
+    bodyText: row.bodyText,
+    bodyExamples: row.bodyExamples,
+  }));
+}
+
+/**
+ * Enforces Meta's placeholder contract server-side, before a save can
+ * ever reach the DB: one example per UNIQUE {{n}} placeholder (a
+ * repeated placeholder still needs only one), numbered sequentially from
+ * {{1}} with no gaps. A save that violates this doesn't fail loudly at
+ * submission time — it fails PERMANENTLY on every send after Meta
+ * approves the mismatched version (error 132000, not reintentable) — see
+ * this file's header and the settings route's own comment.
+ */
+export function validateTemplateBody(
+  bodyText: string,
+  bodyExamples: readonly string[],
+): { ok: true } | { ok: false; error: string } {
+  const placeholders = [...new Set(bodyText.match(/\{\{\d+\}\}/g) ?? [])];
+  if (placeholders.length !== bodyExamples.length) {
+    return {
+      ok: false,
+      error: `El texto tiene ${placeholders.length} variable(s) única(s) (${placeholders.join(', ') || 'ninguna'}), pero se dieron ${bodyExamples.length} ejemplo(s). Deben coincidir exactamente.`,
+    };
+  }
+  const numbers = placeholders.map((p) => Number(p.slice(2, -2))).sort((a, b) => a - b);
+  for (let i = 0; i < numbers.length; i++) {
+    if (numbers[i] !== i + 1) {
+      return {
+        ok: false,
+        error: `Las variables deben numerarse {{1}}, {{2}}, ... sin huecos. Encontrado: ${numbers.map((n) => `{{${n}}}`).join(', ') || 'ninguna'}.`,
+      };
+    }
+  }
+  if (bodyExamples.some((ex) => !ex.trim())) {
+    return { ok: false, error: 'Ningún ejemplo puede quedar vacío.' };
+  }
+  return { ok: true };
+}
 
 export interface TemplateSubmissionOutcome {
   name: string;
@@ -129,15 +135,22 @@ export interface TemplateSubmissionOutcome {
  * sweepPendingNotifications (recall-messaging.ts).
  */
 export async function submitAllRecallTemplates(
+  prisma: PrismaClient,
   accessToken: string,
   wabaId: string,
 ): Promise<TemplateSubmissionOutcome[]> {
+  const definitions = await getTemplateDefinitions(prisma);
   const outcomes: TemplateSubmissionOutcome[] = [];
-  for (const def of RECALL_TEMPLATE_DEFINITIONS) {
+  for (const def of definitions) {
     const result = await createMessageTemplate(accessToken, wabaId, {
       name: def.name,
       languageCode: def.languageCode,
-      category: def.category,
+      // category is TEXT in the DB (not editable from the settings UI,
+      // always seeded as 'UTILITY' — see the migration) — narrowed here
+      // rather than in the DB column so a genuinely unexpected value
+      // fails loudly against Meta's API instead of silently at the type
+      // level.
+      category: def.category as 'UTILITY' | 'MARKETING' | 'AUTHENTICATION',
       bodyText: def.bodyText,
       bodyExamples: def.bodyExamples,
     });
@@ -150,8 +163,6 @@ export async function submitAllRecallTemplates(
   }
   return outcomes;
 }
-
-const REQUIRED_TEMPLATE_NAMES = RECALL_TEMPLATE_DEFINITIONS.map((def) => def.name);
 
 /**
  * Advances every `number_assigned` subscription whose bound connection
@@ -186,6 +197,9 @@ export async function advanceSubscriptionsWithApprovedTemplates(
   opts: { now?: Date } = {},
 ): Promise<{ advanced: number }> {
   const now = opts.now ?? new Date();
+  const requiredNames = (await prisma.recallTemplateDefinition.findMany({ select: { name: true } })).map(
+    (row) => row.name,
+  );
 
   const candidates = await prisma.recallSubscription.findMany({
     where: { status: 'number_assigned', metaConnectionId: { not: null } },
@@ -216,11 +230,11 @@ export async function advanceSubscriptionsWithApprovedTemplates(
     const approvedCount = await prisma.whatsappTemplate.count({
       where: {
         connectionId: subscription.metaConnectionId,
-        name: { in: REQUIRED_TEMPLATE_NAMES },
+        name: { in: requiredNames },
         status: 'APPROVED',
       },
     });
-    if (approvedCount < REQUIRED_TEMPLATE_NAMES.length) continue;
+    if (approvedCount < requiredNames.length) continue;
 
     const before = { status: subscription.status };
     const updated = await prisma.recallSubscription.update({
