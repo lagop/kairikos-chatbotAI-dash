@@ -16,6 +16,7 @@ const mockState = vi.hoisted(() => ({
   embedFindUnique: vi.fn(),
   clientFindUnique: vi.fn(),
   stepFindFirst: vi.fn(),
+  stepFindMany: vi.fn(),
   conversationFindUnique: vi.fn(),
   conversationCreate: vi.fn(),
   conversationUpdate: vi.fn(),
@@ -28,7 +29,10 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     chatWebEmbed: { findUnique: (...args: unknown[]) => mockState.embedFindUnique(...args) },
     chatbotClient: { findUnique: (...args: unknown[]) => mockState.clientFindUnique(...args) },
-    chatbotConfigStep: { findFirst: (...args: unknown[]) => mockState.stepFindFirst(...args) },
+    chatbotConfigStep: {
+      findFirst: (...args: unknown[]) => mockState.stepFindFirst(...args),
+      findMany: (...args: unknown[]) => mockState.stepFindMany(...args),
+    },
     chatbotConversation: {
       findUnique: (...args: unknown[]) => mockState.conversationFindUnique(...args),
       create: (...args: unknown[]) => mockState.conversationCreate(...args),
@@ -51,6 +55,7 @@ beforeEach(() => {
   mockState.embedFindUnique.mockReset();
   mockState.clientFindUnique.mockReset().mockResolvedValue({ companyName: 'Clínica Orly', name: 'Orly' });
   mockState.stepFindFirst.mockReset().mockResolvedValue(null);
+  mockState.stepFindMany.mockReset().mockResolvedValue([]);
   mockState.conversationFindUnique.mockReset();
   mockState.conversationCreate.mockReset().mockResolvedValue({ id: 'conv_1' });
   mockState.conversationUpdate.mockReset().mockResolvedValue({ id: 'conv_1' });
@@ -98,7 +103,7 @@ describe('POST /api/internal/channels/web/context', () => {
 
   it('returns a safe default welcome message when no Paso 9 payload is active yet', async () => {
     mockState.embedFindUnique.mockResolvedValue({ clientId: 'c1', tenantId: 't1', status: 'active', primaryColor: '#0E6B5E', position: 'bottom-right' });
-    mockState.stepFindFirst.mockResolvedValue(null);
+    mockState.stepFindMany.mockResolvedValue([]);
     const { POST } = await import('@/app/api/internal/channels/web/context/route');
     const res = await POST(makeRequest({ publicToken: 'wgt_1' }, { 'x-kairikos-internal-key': VALID_KEY }));
     const body = await res.json();
@@ -110,9 +115,12 @@ describe('POST /api/internal/channels/web/context', () => {
 
   it('returns the active Paso 9 copy when present', async () => {
     mockState.embedFindUnique.mockResolvedValue({ clientId: 'c1', tenantId: 't1', status: 'active', primaryColor: '#FF0000', position: 'bottom-left' });
-    mockState.stepFindFirst.mockResolvedValue({
-      payload: { mensaje_bienvenida: '¡Bienvenido a Clínica Orly!', mensaje_despedida: 'Hasta pronto', prompts_sugeridos: ['Pide cita', 'Horarios'] },
-    });
+    mockState.stepFindMany.mockResolvedValue([
+      {
+        stepKey: '9',
+        payload: { mensaje_bienvenida: '¡Bienvenido a Clínica Orly!', mensaje_despedida: 'Hasta pronto', prompts_sugeridos: ['Pide cita', 'Horarios'] },
+      },
+    ]);
     const { POST } = await import('@/app/api/internal/channels/web/context/route');
     const res = await POST(makeRequest({ publicToken: 'wgt_1' }, { 'x-kairikos-internal-key': VALID_KEY }));
     const body = await res.json();
@@ -123,13 +131,31 @@ describe('POST /api/internal/channels/web/context', () => {
     expect(body.position).toBe('bottom-left');
   });
 
-  it('queries the step scoped to activeForBot=true, not just the latest version', async () => {
+  it('queries only steps scoped to activeForBot=true, not just the latest version', async () => {
     mockState.embedFindUnique.mockResolvedValue({ clientId: 'c1', tenantId: null, status: 'active', primaryColor: '#000', position: 'bottom-right' });
     const { POST } = await import('@/app/api/internal/channels/web/context/route');
     await POST(makeRequest({ publicToken: 'wgt_1' }, { 'x-kairikos-internal-key': VALID_KEY }));
-    expect(mockState.stepFindFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ activeForBot: true, stepKey: '9' }) }),
+    expect(mockState.stepFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ activeForBot: true, clientId: 'c1' }) }),
     );
+  });
+
+  // Fase 1.1 — antes de esto, al bot solo le llegaba el paso 9.
+  it('serves the whole approved wizard config, not just the Paso 9 copy', async () => {
+    mockState.embedFindUnique.mockResolvedValue({ clientId: 'c1', tenantId: 't1', status: 'active', primaryColor: '#000', position: 'bottom-right' });
+    mockState.clientFindUnique.mockResolvedValue({ companyName: 'Clínica Orly', name: 'Orly', tier: 'pro' });
+    mockState.stepFindMany.mockResolvedValue([
+      { stepKey: '5', payload: { dias: [], zona_horaria: 'Europe/Madrid', fuera_horario: 'mensaje' } },
+    ]);
+    const { POST } = await import('@/app/api/internal/channels/web/context/route');
+    const res = await POST(makeRequest({ publicToken: 'wgt_1' }, { 'x-kairikos-internal-key': VALID_KEY }));
+    const body = await res.json();
+    expect(body.config).toBeDefined();
+    expect(body.config.configVersion).toMatch(/^[0-9a-f]{12}$/);
+    expect(Object.keys(body.config)).toEqual(
+      expect.arrayContaining(['perfil', 'personalidad', 'servicios', 'faq', 'horario', 'captacion', 'derivacion', 'mensajes', 'cumplimiento', 'readiness']),
+    );
+    expect(body.config.readiness.ready).toBe(false);
   });
 });
 

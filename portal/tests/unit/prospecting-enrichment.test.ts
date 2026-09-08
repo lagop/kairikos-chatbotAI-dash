@@ -9,24 +9,31 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
 
 const mockState = vi.hoisted(() => ({
-  deliverChannelEvent: vi.fn(),
+  applyLeadEnrichment: vi.fn(),
   logError: vi.fn(),
 }));
 
-vi.mock('@/lib/channel-webhook', () => ({
-  deliverChannelEvent: (...a: unknown[]) => mockState.deliverChannelEvent(...a),
+vi.mock('@/lib/leads', () => ({
+  applyLeadEnrichment: (...a: unknown[]) => mockState.applyLeadEnrichment(...a),
 }));
 
 vi.mock('@/lib/observability', () => ({
   logError: (...a: unknown[]) => mockState.logError(...a),
 }));
 
-import { crawlWebsite, sweepPendingEnrichment, ENRICHMENT_BATCH_SIZE } from '@/lib/prospecting-enrichment';
+import {
+  crawlWebsite,
+  sweepPendingEnrichment,
+  extractContactFromText,
+  extractEmail,
+  extractPhone,
+  ENRICHMENT_BATCH_SIZE,
+} from '@/lib/prospecting-enrichment';
 
 const originalFetch = global.fetch;
 
 beforeEach(() => {
-  mockState.deliverChannelEvent.mockReset().mockResolvedValue({ ok: true, deliveryId: 'd1', status: 'delivered' });
+  mockState.applyLeadEnrichment.mockReset().mockResolvedValue({ leadId: 'lead_1', changed: true });
   mockState.logError.mockReset();
 });
 
@@ -110,6 +117,88 @@ describe('crawlWebsite', () => {
   });
 });
 
+// =============================================================================
+// Fase 1.4 — la extracción es determinista a propósito: en un producto que
+// luego contacta solo por WhatsApp, un teléfono alucinado sería un mensaje
+// a un desconocido. Lo que protegen estos tests es justo eso.
+// =============================================================================
+
+describe('extractEmail', () => {
+  it('encuentra el email de contacto', () => {
+    expect(extractEmail('Escríbenos a hola@peluqueria.example y te contamos')).toBe('hola@peluqueria.example');
+  });
+
+  it('prefiere el buzón genérico del negocio antes que el personal de alguien', () => {
+    expect(extractEmail('marta.lopez@negocio.example · info@negocio.example')).toBe('info@negocio.example');
+  });
+
+  it('descarta buzones que no son un contacto real', () => {
+    expect(extractEmail('noreply@negocio.example')).toBeNull();
+    expect(extractEmail('postmaster@negocio.example')).toBeNull();
+  });
+
+  it('descarta dominios de ejemplo y ficheros que parecen emails', () => {
+    expect(extractEmail('correo@example.com')).toBeNull();
+    expect(extractEmail('tu@tudominio.com')).toBeNull();
+    expect(extractEmail('logo@2x.png')).toBeNull();
+  });
+
+  it('normaliza a minúsculas', () => {
+    expect(extractEmail('INFO@Negocio.Example')).toBe('info@negocio.example');
+  });
+
+  it('devuelve null cuando no hay ninguno', () => {
+    expect(extractEmail('Bienvenidos a nuestra web')).toBeNull();
+  });
+});
+
+describe('extractPhone', () => {
+  it('encuentra móviles y fijos españoles con los separadores habituales', () => {
+    expect(extractPhone('Llámanos al 622 33 44 55')).toBe('+34622334455');
+    expect(extractPhone('Tel. 928-45-67-89')).toBe('+34928456789');
+    expect(extractPhone('Teléfono: 911.22.33.44')).toBe('+34911223344');
+  });
+
+  it('acepta el prefijo internacional y lo normaliza igual', () => {
+    expect(extractPhone('+34 622 334 455')).toBe('+34622334455');
+    expect(extractPhone('0034622334455')).toBe('+34622334455');
+  });
+
+  it('no confunde con un teléfono una cifra más larga', () => {
+    // Un IBAN, un número de pedido o un NIF pegado a más dígitos.
+    expect(extractPhone('ES6621000418401234567891')).toBeNull();
+    expect(extractPhone('pedido 9112233445566')).toBeNull();
+  });
+
+  it('descarta números que no empiezan por 6, 7, 8 o 9', () => {
+    expect(extractPhone('código 123456789')).toBeNull();
+  });
+
+  it('devuelve null cuando no hay ninguno', () => {
+    expect(extractPhone('Abierto de lunes a viernes')).toBeNull();
+  });
+});
+
+describe('extractContactFromText', () => {
+  it('nunca devuelve algo que no esté literalmente en el texto', () => {
+    const texto = 'Peluquería Aurora · Calle Mayor 4 · info@aurora.example · 622 33 44 55';
+    const { contactEmail, contactPhone } = extractContactFromText(texto);
+    expect(texto).toContain(contactEmail!);
+    expect(texto.replace(/\s/g, '')).toContain(contactPhone!.replace('+34', ''));
+  });
+
+  it('devuelve null en los campos que no aparecen, sin inventarlos', () => {
+    expect(extractContactFromText('Solo tenemos email: hola@x.example')).toEqual({
+      contactEmail: 'hola@x.example',
+      contactPhone: null,
+    });
+    expect(extractContactFromText('Solo teléfono: 622334455')).toEqual({
+      contactEmail: null,
+      contactPhone: '+34622334455',
+    });
+  });
+});
+
 const state = {
   leadFindMany: vi.fn(),
   leadUpdate: vi.fn(),
@@ -144,56 +233,60 @@ describe('sweepPendingEnrichment', () => {
     );
   });
 
-  it('crawls, delivers to n8n under connectionType prospecting, and stamps enrichmentRequestedAt', async () => {
+  it('extrae los contactos de la web y los guarda, marcando el intento', async () => {
     state.leadFindMany.mockResolvedValue([candidate()]);
     mockFetchOnce(() =>
-      Promise.resolve(new Response('<p>Hola</p>', { status: 200, headers: { 'content-type': 'text/html' } })),
+      Promise.resolve(new Response('<p>Escríbenos a info@negocio.example o llama al 622 33 44 55</p>', {
+        status: 200, headers: { 'content-type': 'text/html' },
+      })),
     );
 
     const result = await sweepPendingEnrichment(prisma, NOW);
 
-    expect(mockState.deliverChannelEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        connectionType: 'prospecting',
-        connectionId: 'lead_1',
-        clientId: 'client_1',
-        payload: { leadId: 'lead_1', rawText: 'Hola' },
-      }),
+    expect(mockState.applyLeadEnrichment).toHaveBeenCalledWith(
+      prisma,
+      'lead_1',
+      { contactEmail: 'info@negocio.example', contactPhone: '+34622334455' },
+      'system:prospecting',
     );
     expect(state.leadUpdate).toHaveBeenCalledWith({ where: { id: 'lead_1' }, data: { enrichmentRequestedAt: NOW } });
-    expect(result).toEqual({ processed: 1, delivered: 1, crawlFailed: 0 });
+    expect(result).toEqual({ processed: 1, enriched: 1, crawlFailed: 0, noContactFound: 0 });
   });
 
-  it('a crawl failure still stamps enrichmentRequestedAt (single attempt, not retried) and never calls deliverChannelEvent', async () => {
+  it('una web sin contactos se marca igual: volver mañana no cambiaría el texto', async () => {
+    state.leadFindMany.mockResolvedValue([candidate()]);
+    mockFetchOnce(() =>
+      Promise.resolve(new Response('<p>Bienvenidos a nuestra web</p>', { status: 200, headers: { 'content-type': 'text/html' } })),
+    );
+
+    const result = await sweepPendingEnrichment(prisma, NOW);
+
+    expect(mockState.applyLeadEnrichment).not.toHaveBeenCalled();
+    expect(state.leadUpdate).toHaveBeenCalledWith({ where: { id: 'lead_1' }, data: { enrichmentRequestedAt: NOW } });
+    expect(result).toEqual({ processed: 1, enriched: 0, crawlFailed: 0, noContactFound: 1 });
+  });
+
+  it('un rastreo fallido se marca y no escribe nada (un intento, sin reintentos)', async () => {
     state.leadFindMany.mockResolvedValue([candidate()]);
     mockFetchOnce(() => Promise.resolve(new Response('gone', { status: 404 })));
 
     const result = await sweepPendingEnrichment(prisma, NOW);
 
-    expect(mockState.deliverChannelEvent).not.toHaveBeenCalled();
+    expect(mockState.applyLeadEnrichment).not.toHaveBeenCalled();
     expect(state.leadUpdate).toHaveBeenCalledWith({ where: { id: 'lead_1' }, data: { enrichmentRequestedAt: NOW } });
     expect(mockState.logError).toHaveBeenCalledWith('prospecting_enrichment.crawl_failed', expect.anything(), { leadId: 'lead_1' }, 'warn');
-    expect(result).toEqual({ processed: 1, delivered: 0, crawlFailed: 1 });
+    expect(result).toEqual({ processed: 1, enriched: 0, crawlFailed: 1, noContactFound: 0 });
   });
 
-  it('a delivery failure to n8n still stamps enrichmentRequestedAt — sync-channel-webhooks retries it, not this sweep', async () => {
-    state.leadFindMany.mockResolvedValue([candidate()]);
-    mockFetchOnce(() => Promise.resolve(new Response('<p>Hola</p>', { status: 200, headers: { 'content-type': 'text/html' } })));
-    mockState.deliverChannelEvent.mockResolvedValue({ ok: false, deliveryId: 'd1', status: 'failed', error: 'n8n down' });
-
-    const result = await sweepPendingEnrichment(prisma, NOW);
-
-    expect(state.leadUpdate).toHaveBeenCalledWith({ where: { id: 'lead_1' }, data: { enrichmentRequestedAt: NOW } });
-    expect(result).toEqual({ processed: 1, delivered: 0, crawlFailed: 0 });
-  });
-
-  it('processes multiple candidates independently', async () => {
+  it('procesa varios candidatos de forma independiente', async () => {
     state.leadFindMany.mockResolvedValue([candidate({ id: 'lead_1' }), candidate({ id: 'lead_2' })]);
-    mockFetchOnce(() => Promise.resolve(new Response('<p>x</p>', { status: 200, headers: { 'content-type': 'text/html' } })));
+    mockFetchOnce(() =>
+      Promise.resolve(new Response('<p>info@x.example</p>', { status: 200, headers: { 'content-type': 'text/html' } })),
+    );
 
     const result = await sweepPendingEnrichment(prisma, NOW);
 
-    expect(mockState.deliverChannelEvent).toHaveBeenCalledTimes(2);
+    expect(mockState.applyLeadEnrichment).toHaveBeenCalledTimes(2);
     expect(result.processed).toBe(2);
   });
 });

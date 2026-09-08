@@ -14,6 +14,7 @@ const mockState = vi.hoisted(() => ({
   leadUpdate: vi.fn(),
   leadAuditCreate: vi.fn(),
   chatbotClientFindUnique: vi.fn(),
+  leadQualificationProfileFindUnique: vi.fn(),
   isProductContracted: vi.fn(),
   sendNewLeadEmail: vi.fn(),
   logError: vi.fn(),
@@ -36,6 +37,7 @@ vi.mock('@/lib/prisma', () => ({
     chatbotConversation: { findUnique: (...args: unknown[]) => mockState.conversationFindUnique(...args) },
     lead: { findFirst: (...args: unknown[]) => mockState.leadFindFirst(...args) },
     chatbotClient: { findUnique: (...args: unknown[]) => mockState.chatbotClientFindUnique(...args) },
+    leadQualificationProfile: { findUnique: (...args: unknown[]) => mockState.leadQualificationProfileFindUnique(...args) },
   },
 }));
 
@@ -80,6 +82,7 @@ beforeEach(() => {
     companyName: 'Peluquería Aurora',
   });
   mockState.isProductContracted.mockReset().mockResolvedValue(true);
+  mockState.leadQualificationProfileFindUnique.mockReset().mockResolvedValue(null);
   mockState.sendNewLeadEmail.mockReset().mockResolvedValue({ ok: true, messageId: 'msg_1' });
   mockState.logError.mockReset();
   process.env.PORTAL_API_KEY = VALID_KEY;
@@ -261,6 +264,19 @@ describe('POST /api/internal/leads', () => {
         scoreReason: 'Pide precio exacto y disponibilidad esta semana.',
         channel: 'telegram',
       }),
+    );
+  });
+
+  it('emails emailAviso from the qualification profile instead of the account email when set', async () => {
+    mockState.conversationFindUnique.mockResolvedValue(conversation);
+    mockState.leadFindFirst.mockResolvedValue(null);
+    mockState.leadQualificationProfileFindUnique.mockResolvedValue({ emailAviso: 'ventas@aurora.example.com' });
+    const { POST } = await import('@/app/api/internal/leads/route');
+    await POST(
+      makeRequest({ conversationId: 'conv_1', summary: 'quiere presupuesto' }, { 'x-kairikos-internal-key': VALID_KEY }),
+    );
+    expect(mockState.sendNewLeadEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'ventas@aurora.example.com' }),
     );
   });
 

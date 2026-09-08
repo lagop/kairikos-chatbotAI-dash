@@ -2,8 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateInternalRequest, internalAuthFailureResponse } from '@/lib/internal-auth';
-import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
-import { step9Schema } from '@/lib/wizard-schemas';
+import { buildChatbotContext } from '@/lib/chatbot-config';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -43,24 +42,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'disabled' }, { status: 403 });
   }
 
-  const client = await prisma.chatbotClient.findUnique({
-    where: { id: connection.clientId },
-    select: { companyName: true, name: true },
-  });
-
-  const step9 = await prisma.chatbotConfigStep.findFirst({
-    where: { clientId: connection.clientId, productCode: CHATBOT_PRODUCT_CODE, stepKey: '9', activeForBot: true },
-    select: { payload: true },
-  });
-  const parsedStep9 = step9Schema.safeParse(step9?.payload ?? {});
+  // Fase 1.1 — los cuatro campos de siempre más `config`, la
+  // configuración completa del wizard. Ver lib/chatbot-config.ts.
+  const context = await buildChatbotContext(prisma, connection.clientId);
 
   return NextResponse.json({
     ok: true,
     clientId: connection.clientId,
-    businessName: client?.companyName ?? client?.name ?? 'nuestro negocio',
-    welcomeMessage: parsedStep9.success ? parsedStep9.data.mensaje_bienvenida : '¡Hola! ¿En qué puedo ayudarte?',
-    farewellMessage: parsedStep9.success ? (parsedStep9.data.mensaje_despedida ?? null) : null,
-    suggestedPrompts: parsedStep9.success ? parsedStep9.data.prompts_sugeridos : [],
+    ...context,
   });
 }
 

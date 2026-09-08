@@ -14,6 +14,7 @@ const mockState = vi.hoisted(() => ({
   metaFindFirst: vi.fn(),
   clientFindUnique: vi.fn(),
   stepFindFirst: vi.fn(),
+  stepFindMany: vi.fn(),
   conversationFindFirst: vi.fn(),
   conversationCreate: vi.fn(),
   conversationUpdate: vi.fn(),
@@ -28,7 +29,10 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     metaChannelConnection: { findFirst: (...args: unknown[]) => mockState.metaFindFirst(...args) },
     chatbotClient: { findUnique: (...args: unknown[]) => mockState.clientFindUnique(...args) },
-    chatbotConfigStep: { findFirst: (...args: unknown[]) => mockState.stepFindFirst(...args) },
+    chatbotConfigStep: {
+      findFirst: (...args: unknown[]) => mockState.stepFindFirst(...args),
+      findMany: (...args: unknown[]) => mockState.stepFindMany(...args),
+    },
     chatbotConversation: {
       findFirst: (...args: unknown[]) => mockState.conversationFindFirst(...args),
       create: (...args: unknown[]) => mockState.conversationCreate(...args),
@@ -70,6 +74,7 @@ beforeEach(() => {
   mockState.metaFindFirst.mockReset();
   mockState.clientFindUnique.mockReset().mockResolvedValue({ companyName: 'Clínica Orly', name: 'Orly' });
   mockState.stepFindFirst.mockReset().mockResolvedValue(null);
+  mockState.stepFindMany.mockReset().mockResolvedValue([]);
   mockState.conversationFindFirst.mockReset();
   mockState.conversationCreate.mockReset().mockResolvedValue({ id: 'conv_1' });
   mockState.conversationUpdate.mockReset().mockResolvedValue({ id: 'conv_1' });
