@@ -47,6 +47,13 @@ export const ICON_BY_HREF: Record<string, ReactNode> = {
       <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 4v-4H6.5A2.5 2.5 0 0 1 4 13.5v-7z" />
     </svg>
   ),
+  // Fase 3 — un libro abierto: lo que el bot "ha leído".
+  '/portal/conocimiento': (
+    <svg {...ICON_PROPS}>
+      <path d="M12 6.5C10.5 5 8.5 4.5 4 4.5v13c4.5 0 6.5.5 8 2 1.5-1.5 3.5-2 8-2v-13c-4.5 0-6.5.5-8 2z" />
+      <path d="M12 6.5v13" />
+    </svg>
+  ),
   '/portal/canales': (
     <svg {...ICON_PROPS}>
       <path d="M9 3v4M15 3v4" />

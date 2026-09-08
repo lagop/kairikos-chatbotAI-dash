@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateInternalRequest, internalAuthFailureResponse } from '@/lib/internal-auth';
 import { applyDigestReply } from '@/lib/recall-reviews';
+import { applyCallbackReply, callbackReplyText, sendCallbackReply } from '@/lib/recall-callbacks';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -40,6 +41,10 @@ const BodySchema = z.object({
  *  omits the leading '+' that we store, and a client may have typed his
  *  own number with spaces — so a naive === would silently never match the
  *  owner and every digest reply would fall through as conversation. */
+function businessNameOf(subscription: { client: { name: string; companyName: string | null } }): string {
+  return subscription.client.companyName ?? subscription.client.name;
+}
+
 function sameNumber(a: string, b: string): boolean {
   const digits = (value: string) => value.replace(/\D/g, '');
   const x = digits(a);
@@ -73,7 +78,9 @@ export async function POST(req: NextRequest) {
 
   const subscription = await prisma.recallSubscription.findFirst({
     where: { clientId: connection.clientId, status: 'active' },
-    select: { id: true, ownerWhatsapp: true },
+    // Fase 3 — el nombre del negocio hace falta para el acuse que recibe
+    // quien llamó; el mensaje lo lee un desconocido y firmarlo importa.
+    select: { id: true, ownerWhatsapp: true, client: { select: { name: true, companyName: true } } },
   });
   if (!subscription?.ownerWhatsapp) {
     return NextResponse.json({ handled: false, reason: 'no_subscription' });
@@ -82,8 +89,32 @@ export async function POST(req: NextRequest) {
   // Only the owner can answer his own digest. Without this check any
   // customer replying "1" to an unrelated message would be requesting
   // review invitations on the client's behalf.
+  //
+  // Fase 3 — quien NO es el dueño puede estar contestando a la oferta de
+  // huecos para que le devuelvan la llamada, que es lo único que un
+  // desconocido puede contestarnos por aquí. Se comprueba antes de dar el
+  // mensaje por conversación normal.
   if (!sameNumber(subscription.ownerWhatsapp, body.data.from)) {
-    return NextResponse.json({ handled: false, reason: 'not_owner' });
+    const callback = await applyCallbackReply(prisma, {
+      subscriptionId: subscription.id,
+      from: body.data.from,
+      text: body.data.text,
+    });
+
+    if (callback.status === 'ignored') {
+      // No tenía ninguna oferta abierta: esto era conversación normal.
+      return NextResponse.json({ handled: false, reason: 'not_owner' });
+    }
+
+    // El acuse va por mensaje libre, no por plantilla: acaba de
+    // escribirnos, así que la ventana de 24 horas está abierta. Si falla,
+    // la devolución ya quedó apuntada de todos modos.
+    const text = callbackReplyText(callback, businessNameOf(subscription));
+    if (text) {
+      await sendCallbackReply(prisma, { clientId: connection.clientId, to: body.data.from, text });
+    }
+
+    return NextResponse.json({ handled: true, outcome: callback });
   }
 
   const outcome = await applyDigestReply(prisma, {

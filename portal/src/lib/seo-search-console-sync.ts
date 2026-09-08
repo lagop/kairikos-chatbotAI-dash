@@ -3,6 +3,7 @@ import type { GoogleSeoConnection } from '@prisma/client';
 import { prisma } from './prisma';
 import { getValidAccessToken } from './google-search-console';
 import { logError } from './observability';
+import { snapshotKeywordPositions } from './seo-keywords';
 
 // =============================================================================
 // SEO con IA, Fase B — pulls daily site-wide performance
@@ -220,6 +221,12 @@ async function syncQueryOpportunities(
       prisma.seoSearchConsoleQuery.deleteMany({ where: { connectionId: connection.id } }),
       ...(rows.length > 0 ? [prisma.seoSearchConsoleQuery.createMany({ data: rows })] : []),
     ]);
+
+    // Fase 3.1 — archivar la posición de hoy para las palabras que el
+    // cliente persigue. Tiene que ocurrir AQUÍ, con las filas todavía en
+    // memoria: la tabla de arriba es una foto que la próxima
+    // sincronización borra, así que después ya sería tarde.
+    await snapshotKeywordPositions(prisma, connection.clientId, rows);
   } catch (err) {
     logError('seo_search_console_sync.query_opportunities_failed', err, {
       route: 'lib/seo-search-console-sync.ts',

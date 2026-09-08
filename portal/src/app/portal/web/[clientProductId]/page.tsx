@@ -9,6 +9,8 @@ import { resolveWebQuoteContext } from '@/lib/web-quotes';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { WebBriefForm, type WebBriefFormValues } from '@/components/portal/WebBriefForm';
 import { WebQuoteCard, type ClientWebQuoteData, type ClientWebQuoteInvoiceData } from '@/components/portal/WebQuoteCard';
+import { WebDeliveryCard } from '@/components/portal/WebDeliveryCard';
+import { buildDeliveryProgress, hasDeliveryTracking, type DeliveryProgress } from '@/lib/web-delivery';
 import { GOAL_LABELS, CONTENT_PROVIDED_BY_LABELS, type GOAL_OPTIONS, type CONTENT_PROVIDED_BY_OPTIONS } from '@/lib/web-brief-schema';
 
 export const dynamic = 'force-dynamic';
@@ -61,7 +63,29 @@ export default async function PortalWebProjectPage({
   let isQuotePending = false;
   let webQuote: ClientWebQuoteData | null = null;
   let webQuoteInvoice: ClientWebQuoteInvoiceData | null = null;
+  let delivery: {
+    progress: DeliveryProgress;
+    previewUrl: string | null;
+    deliveredAt: string | null;
+    deliveryAcceptedAt: string | null;
+  } | null = null;
   const context = await resolveWebQuoteContext(prisma, webClientProduct.id);
+
+  // Fase 3 — el seguimiento de la entrega. Va FUERA del bloque de
+  // 'quote_pending' a propósito: eso es el estado PREVIO al pago, y la
+  // entrega solo existe después. Estuvo dentro y por eso no se veía nunca.
+  if (context?.webQuote && hasDeliveryTracking(context.webQuote.status)) {
+    const rows = await prisma.webProjectMilestone.findMany({
+      where: { webQuoteId: context.webQuote.id },
+      select: { key: true, status: true, startedAt: true, completedAt: true, note: true },
+    });
+    delivery = {
+      progress: buildDeliveryProgress(rows),
+      previewUrl: context.webQuote.previewUrl,
+      deliveredAt: context.webQuote.deliveredAt?.toISOString() ?? null,
+      deliveryAcceptedAt: context.webQuote.deliveryAcceptedAt?.toISOString() ?? null,
+    };
+  }
   if (context?.clientProduct.status === 'quote_pending') {
     isQuotePending = true;
     webQuote = context.webQuote
@@ -84,6 +108,7 @@ export default async function PortalWebProjectPage({
       });
       webQuoteInvoice = invoiceRow ? { hostInvoiceUrl: invoiceRow.hostInvoiceUrl } : null;
     }
+
   }
 
   const brief = await prisma.webBrief.findUnique({ where: { clientProductId: webClientProduct.id } });
@@ -105,6 +130,14 @@ export default async function PortalWebProjectPage({
           }
         />
         {isQuotePending ? <WebQuoteCard clientProductId={webClientProduct.id} webQuote={webQuote} invoice={webQuoteInvoice} /> : null}
+        {delivery ? (
+          <WebDeliveryCard
+            progress={delivery.progress}
+            previewUrl={delivery.previewUrl}
+            deliveredAt={delivery.deliveredAt}
+            deliveryAcceptedAt={delivery.deliveryAcceptedAt}
+          />
+        ) : null}
         <div className="card space-y-4" data-testid="web-brief-summary">
           <SummaryRow label="Negocio" value={brief.businessName} />
           <SummaryRow label="Sector" value={brief.vertical} />

@@ -21,6 +21,13 @@ import { logError } from './observability';
 // recall-meta.ts — so trusting it here could mean gating on a
 // months-stale value for exactly the check that matters most). A
 // check that fails outright fails CLOSED: skip sending, never send blind.
+//
+// Fase 3.3 — dejó de ser un solo mensaje. La secuencia (PROSPECTING_SEQUENCE)
+// son tres toques espaciados que se cortan en seco en cuanto el prospecto
+// contesta; quien detecta esa respuesta es prospecting-replies.ts, no este
+// módulo, que solo lee `repliedAt`. Los tres toques comparten el mismo cupo
+// diario y la misma puerta de calidad que el primero: para el número del
+// cliente son todos igual de mensaje en frío.
 // =============================================================================
 
 /** Bumping this string is how a future change to the consent copy in
@@ -38,7 +45,51 @@ export const PROSPECTING_CONSENT_VERSION = 'v1';
  */
 export const PROSPECTING_TEMPLATES = {
   firstContact: { name: 'prospecting_first_contact', languageCode: 'es' },
+  // Fase 3.3 — los dos toques de seguimiento. Mismos dos parámetros que el
+  // primero a propósito: un único contrato que revisar al enviarlos a
+  // aprobación, y una sola forma de equivocarse en vez de tres.
+  //
+  // BLOQUEO EXTERNO: como `prospecting_first_contact`, estas dos plantillas
+  // necesitan aprobación de Meta antes de que la secuencia envíe nada. Sin
+  // aprobar, sendTemplate falla y el lead consume presupuesto de reintentos
+  // (autoContactAttempts) sin gastar toque — que es el comportamiento
+  // correcto, pero conviene saber que es esto y no un número malo.
+  followUp1: { name: 'prospecting_follow_up_1', languageCode: 'es' },
+  followUp2: { name: 'prospecting_follow_up_2', languageCode: 'es' },
 } as const;
+
+export interface ProspectingSequenceStep {
+  /** 1 es el primer contacto. Coincide con el valor que toma
+   *  Lead.followUpCount UNA VEZ enviado este toque. */
+  step: number;
+  template: { name: string; languageCode: string };
+  /** Días de espera desde el toque anterior. El primero no espera. */
+  delayDays: number;
+}
+
+/**
+ * La cadencia. Tres toques es el estándar del sector para prospección en
+ * frío y también el techo: a partir del cuarto, la tasa de respuesta ya no
+ * sube y la de denuncias sí — y aquí el que se juega la reputación del
+ * número es el cliente, no nosotros.
+ *
+ * Los huecos (3 y 7 días) se miden desde el toque anterior, no desde el
+ * primer contacto, para que un tick perdido retrase la secuencia en vez de
+ * amontonar dos toques seguidos.
+ */
+export const PROSPECTING_SEQUENCE: readonly ProspectingSequenceStep[] = Object.freeze([
+  { step: 1, template: PROSPECTING_TEMPLATES.firstContact, delayDays: 0 },
+  { step: 2, template: PROSPECTING_TEMPLATES.followUp1, delayDays: 3 },
+  { step: 3, template: PROSPECTING_TEMPLATES.followUp2, delayDays: 7 },
+]);
+
+export const MAX_SEQUENCE_TOUCHES = PROSPECTING_SEQUENCE.length;
+
+/** El toque que le toca a un lead que ya ha recibido `followUpCount`.
+ *  `null` = secuencia agotada, no se le escribe más. */
+export function nextSequenceStep(followUpCount: number): ProspectingSequenceStep | null {
+  return PROSPECTING_SEQUENCE.find((s) => s.step === followUpCount + 1) ?? null;
+}
 
 /** Hard, product-wide ceiling — not tier-scaled, deliberately. This is a
  *  number-reputation safety brake, not a revenue lever: a burst of cold
@@ -59,6 +110,8 @@ function startOfUtcDay(now: Date): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 export interface ProspectingContactCampaignInput {
   id: string;
   clientId: string;
@@ -70,7 +123,7 @@ export interface ProspectingContactCampaignInput {
 }
 
 export type RunProspectingContactResult =
-  | { ok: true; sent: number; failed: number; capReached: boolean }
+  | { ok: true; sent: number; followedUp: number; failed: number; capReached: boolean }
   | {
       ok: false;
       error:
@@ -87,6 +140,10 @@ export type RunProspectingContactResult =
  * the daily cap and per-lead attempt cap are re-derived from the DB each
  * time, never trusted from a timer, same posture as every other job in
  * this product.
+ *
+ * Fase 3.3 — atiende la secuencia entera, no solo el primer contacto:
+ * dentro del cupo diario, primero los seguimientos que ya cumplieron su
+ * espera y después los prospectos nuevos con lo que quede.
  */
 export async function runProspectingContact(
   prisma: PrismaClient,
@@ -145,12 +202,19 @@ export async function runProspectingContact(
     return { ok: false, error: 'quality_degraded' };
   }
 
+  // El tope diario cuenta los toques de seguimiento igual que los primeros
+  // contactos: para el número del cliente, y para quien lo recibe, un
+  // seguimiento es exactamente igual de "mensaje en frío" que el primero.
   const sentToday = await prisma.leadAudit.count({
-    where: { clientId: campaign.clientId, action: 'contacted_auto', changedAt: { gte: startOfUtcDay(now) } },
+    where: {
+      clientId: campaign.clientId,
+      action: { in: ['contacted_auto', 'followed_up_auto'] },
+      changedAt: { gte: startOfUtcDay(now) },
+    },
   });
   const remaining = MAX_AUTO_CONTACTS_PER_DAY - sentToday;
   if (remaining <= 0) {
-    return { ok: true, sent: 0, failed: 0, capReached: true };
+    return { ok: true, sent: 0, followedUp: 0, failed: 0, capReached: true };
   }
 
   const client = await prisma.chatbotClient.findUnique({
@@ -159,50 +223,105 @@ export async function runProspectingContact(
   });
   const businessName = client?.companyName ?? client?.name ?? '';
 
-  const candidates = await prisma.lead.findMany({
+  // Los seguimientos van ANTES que los primeros contactos dentro del cupo
+  // diario. Terminar una secuencia empezada vale más que empezar otra: al
+  // que ya recibió un mensaje se le prometió implícitamente una cadencia, y
+  // dejarla a medias por haber gastado el cupo en prospectos nuevos es
+  // justo el fallo que esta fase viene a arreglar.
+  //
+  // La condición de "le toca ya" se arma en SQL, un OR por escalón, porque
+  // cada escalón tiene su propia espera: así `take: remaining` devuelve
+  // exactamente los que hay que enviar, sin filtrar en memoria un lote que
+  // luego se quedaría corto.
+  const followUpDue = PROSPECTING_SEQUENCE.filter((s) => s.step > 1).map((s) => ({
+    followUpCount: s.step - 1,
+    lastAutoContactAt: { lte: new Date(now.getTime() - s.delayDays * DAY_MS) },
+  }));
+
+  const followUps = await prisma.lead.findMany({
     where: {
       clientId: campaign.clientId,
       source: 'outbound',
-      status: 'nuevo',
+      status: 'contactado',
+      // El corte: en cuanto contesta, no recibe nada más.
+      repliedAt: null,
       contactPhone: { not: null },
       autoContactAttempts: { lt: MAX_AUTO_CONTACT_ATTEMPTS },
+      OR: followUpDue,
     },
-    orderBy: { createdAt: 'asc' },
+    // El que lleva más tiempo esperando su siguiente toque, primero.
+    orderBy: { lastAutoContactAt: 'asc' },
     take: remaining,
   });
 
+  const firstContacts =
+    followUps.length >= remaining
+      ? []
+      : await prisma.lead.findMany({
+          where: {
+            clientId: campaign.clientId,
+            source: 'outbound',
+            status: 'nuevo',
+            contactPhone: { not: null },
+            autoContactAttempts: { lt: MAX_AUTO_CONTACT_ATTEMPTS },
+          },
+          orderBy: { createdAt: 'asc' },
+          take: remaining - followUps.length,
+        });
+
   let sent = 0;
+  let followedUp = 0;
   let failed = 0;
 
-  for (const lead of candidates) {
+  for (const lead of [...followUps, ...firstContacts]) {
     const phone = lead.contactPhone;
     if (!phone) continue;
 
+    const step = nextSequenceStep(lead.followUpCount);
+    if (!step) {
+      // Secuencia agotada. No debería llegar aquí (la consulta ya lo
+      // excluye), pero enviar un toque que no existe sería peor que
+      // saltárselo en silencio.
+      continue;
+    }
+
     const result = await sendTemplate(sender.token, sender.phoneNumberId, phone, {
-      ...PROSPECTING_TEMPLATES.firstContact,
+      ...step.template,
       bodyParams: [lead.contactName ?? 'equipo', businessName],
     });
 
     if (result.ok) {
+      const isFirst = step.step === 1;
       await prisma.$transaction(async (tx) => {
         await tx.lead.update({
           where: { id: lead.id },
-          data: { status: 'contactado', contactedAt: now, autoContactError: null },
+          data: {
+            followUpCount: step.step,
+            lastAutoContactAt: now,
+            autoContactError: null,
+            // Solo el primer toque mueve el estado y estampa contactedAt:
+            // los siguientes son el mismo contacto, continuado.
+            ...(isFirst ? { status: 'contactado', contactedAt: now } : {}),
+          },
         });
         await tx.leadAudit.create({
           data: {
             leadId: lead.id,
             clientId: campaign.clientId,
             tenantId: campaign.tenantId,
-            action: 'contacted_auto',
-            statusBefore: 'nuevo',
+            action: isFirst ? 'contacted_auto' : 'followed_up_auto',
+            statusBefore: isFirst ? 'nuevo' : 'contactado',
             statusAfter: 'contactado',
             actorId: 'system:prospecting',
           },
         });
       });
-      sent += 1;
+      if (isFirst) sent += 1;
+      else followedUp += 1;
     } else {
+      // Un envío fallido no gasta toque: el prospecto no ha recibido nada,
+      // así que followUpCount se queda donde estaba y el escalón se
+      // reintenta el tick siguiente, hasta agotar el presupuesto de fallos.
       const attempts = lead.autoContactAttempts + 1;
       await prisma.lead.update({
         where: { id: lead.id },
@@ -213,5 +332,11 @@ export async function runProspectingContact(
     }
   }
 
-  return { ok: true, sent, failed, capReached: sentToday + sent >= MAX_AUTO_CONTACTS_PER_DAY };
+  return {
+    ok: true,
+    sent,
+    followedUp,
+    failed,
+    capReached: sentToday + sent + followedUp >= MAX_AUTO_CONTACTS_PER_DAY,
+  };
 }

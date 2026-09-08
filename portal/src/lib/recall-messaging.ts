@@ -1,5 +1,5 @@
 import 'server-only';
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClient, Prisma } from '@prisma/client';
 import { decryptMetaToken } from './meta-business';
 import { sendTemplate, isRetryableWhatsAppError, WHATSAPP_ERROR } from './whatsapp-api';
 import { getTelephonyProvider, isTelephonyConfigured } from './telephony';
@@ -8,7 +8,16 @@ import {
   parseBusinessHours,
   isWithinBusinessHours,
   describeNextOpening,
+  type BusinessHours,
 } from './recall-hours';
+import {
+  buildCallbackSlots,
+  buildSlotList,
+  slotsToJson,
+  MIN_OFFERED_SLOTS,
+  SLOT_HORIZON_DAYS,
+  type CallbackSlot,
+} from './recall-slots';
 import { isNumberBlocked } from './recall-blocklist';
 import { summarise } from './recall-transcription';
 import { logError } from './observability';
@@ -78,6 +87,32 @@ export const RECALL_TEMPLATES = {
   callerClosed: { name: 'recall_caller_closed', languageCode: 'es' },
   /** {{1}} caller number, {{2}} the message. */
   ownerMessage: { name: 'recall_owner_message', languageCode: 'es' },
+  /**
+   * Fase 3 — {{1}} business name, {{2}} the numbered slot list
+   * ('1) hoy a las 17:30 · 2) mañana a las 9:00').
+   *
+   * BLOQUEO EXTERNO: como el resto de RECALL_TEMPLATES, necesita
+   * aprobación de Meta. Mientras no la tenga, sendTemplate falla y
+   * notifyCaller cae en el mensaje de siempre por la vía de error
+   * normal — la oferta de huecos degrada al comportamiento anterior en
+   * vez de dejar al que llamó sin mensaje.
+   */
+  callerSlots: { name: 'recall_caller_slots', languageCode: 'es' },
+  /**
+   * Fase 3 — el recordatorio al dueño antes de la devolución.
+   * {{1}} a quién llamar, {{2}} a qué hora ('a las 9:00').
+   *
+   * Hace falta plantilla y no vale un mensaje libre: esto sale en frío,
+   * horas después de que él nos escribiera, así que su ventana de 24 horas
+   * está cerrada. Es la diferencia con el acuse a quien llamó, que sí
+   * responde dentro de la ventana (ver recall-callbacks.ts).
+   *
+   * BLOQUEO EXTERNO: pendiente de aprobación de Meta, como las demás. Sin
+   * ella el barrido registra el fallo y la devolución sigue estando en
+   * /portal/llamadas — el dueño se entera igual, solo que no le llega el
+   * aviso al bolsillo.
+   */
+  ownerCallback: { name: 'recall_owner_callback', languageCode: 'es' },
 } as const;
 
 /** Used when a client has no open hours at all in the coming week, so
@@ -123,6 +158,7 @@ interface CallRow {
   ownerNotifyAttempts: number;
   notifiedCallerAt: Date | null;
   notifiedOwnerAt: Date | null;
+  callbackSlotAt: Date | null;
   virtualNumber: { e164: string } | null;
   subscription: {
     id: string;
@@ -155,6 +191,9 @@ const CALL_SELECT = {
   ownerNotifyAttempts: true,
   notifiedCallerAt: true,
   notifiedOwnerAt: true,
+  // Fase 3 — lo necesita el barrido de recordatorios, que reutiliza este
+  // mismo select para no mantener dos formas de leer una llamada.
+  callbackSlotAt: true,
   virtualNumber: { select: { e164: true } },
   subscription: {
     select: {
@@ -277,6 +316,34 @@ async function resolveCaller(
 }
 
 /**
+ * Fase 3 — los huecos que se le pueden ofrecer a esta persona, ya
+ * descontados los que otra ya se ha llevado.
+ *
+ * Solo se consultan los huecos comprometidos DESDE AHORA hacia delante y
+ * dentro del horizonte: los de ayer no chocan con nada, y traerlos todos
+ * haría que la consulta creciera con el histórico del cliente.
+ */
+async function offerableSlots(
+  prisma: PrismaClient,
+  call: CallRow,
+  hours: BusinessHours,
+  now: Date,
+): Promise<CallbackSlot[]> {
+  const horizon = new Date(now.getTime() + SLOT_HORIZON_DAYS * 24 * 60 * 60_000);
+  const booked = await prisma.callEvent.findMany({
+    where: {
+      subscriptionId: call.subscriptionId,
+      callbackSlotAt: { gte: now, lte: horizon },
+    },
+    select: { callbackSlotAt: true },
+  });
+
+  return buildCallbackSlots(hours, now, call.subscription.timezone, {
+    taken: booked.map((row) => row.callbackSlotAt!).filter(Boolean),
+  });
+}
+
+/**
  * Message the person who rang.
  *
  * Order matters: the cheap local refusals (blocked, throttled) come
@@ -332,15 +399,46 @@ export async function notifyCaller(
     if (!credentials) {
       lastError = 'meta_connection_unavailable';
     } else {
-      const template = open
-        ? { ...RECALL_TEMPLATES.callerOpen, bodyParams: [business] }
-        : {
-            ...RECALL_TEMPLATES.callerClosed,
-            bodyParams: [business, describeNextOpening(hours, now, call.subscription.timezone) ?? VAGUE_OPENING],
-          };
+      // Fase 3 — los huecos se ofrecen SOLO con el negocio cerrado, y esa
+      // restricción es la decisión de producto, no una simplificación.
+      //
+      // Con el negocio abierto el dueño suele devolver la llamada él mismo
+      // en minutos — es la misma observación que justifica los 90 segundos
+      // de espera de este módulo—, así que cambiar «te contestamos
+      // enseguida» por «elige un hueco dentro de 45 minutos» convertiría
+      // una llamada inmediata en una cita más tarde: peor servicio con más
+      // pasos. Cerrado es justo donde el mensaje de antes era flojo: «el
+      // lunes a las 8:00» no es una hora que nadie se haya comprometido a
+      // cumplir, y elegir una sí.
+      //
+      // Con menos de MIN_OFFERED_SLOTS opciones se manda el mensaje de
+      // siempre: una sola «opción» no es elegir.
+      const slots = open ? [] : await offerableSlots(prisma, call, hours, now);
+      const template =
+        slots.length >= MIN_OFFERED_SLOTS
+          ? { ...RECALL_TEMPLATES.callerSlots, bodyParams: [business, buildSlotList(slots)] }
+          : open
+            ? { ...RECALL_TEMPLATES.callerOpen, bodyParams: [business] }
+            : {
+                ...RECALL_TEMPLATES.callerClosed,
+                bodyParams: [business, describeNextOpening(hours, now, call.subscription.timezone) ?? VAGUE_OPENING],
+              };
 
       const sent = await sendTemplate(credentials.token, credentials.phoneNumberId, call.fromNumber, template);
       if (sent.ok) {
+        // Los huecos se guardan DESPUÉS de que el envío haya salido, y solo
+        // los que de verdad viajaron en el mensaje: guardarlos antes
+        // dejaría a alguien con una oferta abierta que nunca recibió, y su
+        // «2» se resolvería contra una lista que no ha visto.
+        if (slots.length >= MIN_OFFERED_SLOTS) {
+          await prisma.callEvent.update({
+            where: { id: call.id },
+            data: {
+              callbackOfferedSlots: slotsToJson(slots) as unknown as Prisma.InputJsonValue,
+              callbackOfferedAt: now,
+            },
+          });
+        }
         await resolveCaller(prisma, call.id, 'whatsapp', { sent: now });
         return { status: 'sent', channel: 'whatsapp' };
       }
@@ -590,4 +688,125 @@ export function notifyOwnerInBackground(prisma: PrismaClient, callId: string): v
   void notifyOwner(prisma, callId).catch((err) => {
     logError('recall_messaging.background_owner_failed', err, { callEventId: callId }, 'warn');
   });
+}
+
+// ---------------------------------------------------------------------------
+// Fase 3 — el recordatorio de la devolución de llamada
+// ---------------------------------------------------------------------------
+
+/** Cuánto antes del hueco se avisa. El tick corre cada cinco minutos, así
+ *  que el aviso real cae entre diez y quince minutos antes: tiempo para
+ *  coger el teléfono, no tanto como para olvidarlo otra vez. */
+export const CALLBACK_REMINDER_LEAD_MINUTES = 15;
+
+/** Cuánto se sigue avisando después de la hora. Un recordatorio con diez
+ *  minutos de retraso todavía sirve; con dos horas ya no es un aviso, es
+ *  un reproche. Pasado esto se estampa sin enviar, para que la fila deje
+ *  de aparecer en cada tick. */
+export const CALLBACK_REMINDER_GRACE_MINUTES = 20;
+
+export interface CallbackReminderSweepResult {
+  scanned: number;
+  sent: number;
+  expired: number;
+  failed: number;
+}
+
+/**
+ * Avisa al dueño de las devoluciones que le tocan ahora.
+ *
+ * No lleva contador de intentos, a diferencia del resto de este módulo, y
+ * es deliberado: esto es un aviso con fecha de caducidad, así que lo que
+ * acota los reintentos es la propia ventana
+ * (`CALLBACK_REMINDER_GRACE_MINUTES`), no un presupuesto. Un fallo
+ * pasajero se reintenta en el tick siguiente mientras la hora siga siendo
+ * relevante, y deja de intentarse solo cuando ya no lo es — que es
+ * exactamente el comportamiento que se quiere, y sin una columna más.
+ */
+export async function sweepDueCallbackReminders(
+  prisma: PrismaClient,
+  deps: MessagingDeps & { limit?: number } = {},
+): Promise<CallbackReminderSweepResult> {
+  const now = deps.now ?? new Date();
+  const limit = deps.limit ?? 25;
+
+  const result: CallbackReminderSweepResult = { scanned: 0, sent: 0, expired: 0, failed: 0 };
+
+  const rows = await prisma.callEvent.findMany({
+    where: {
+      callbackRemindedAt: null,
+      callbackSlotAt: {
+        not: null,
+        // Desde el margen de aviso hacia delante, y hacia atrás solo lo
+        // que dure la gracia: una devolución de la semana pasada que
+        // nunca se avisó no puede resucitar aquí.
+        lte: new Date(now.getTime() + CALLBACK_REMINDER_LEAD_MINUTES * 60_000),
+        gte: new Date(now.getTime() - CALLBACK_REMINDER_GRACE_MINUTES * 60_000 - 7 * 24 * 60 * 60_000),
+      },
+    },
+    orderBy: { callbackSlotAt: 'asc' },
+    take: limit,
+    select: CALL_SELECT,
+  });
+
+  result.scanned = rows.length;
+
+  for (const row of rows as unknown as Array<CallRow & { callbackSlotAt: Date }>) {
+    try {
+      const outcome = await sendCallbackReminder(prisma, row, now);
+      if (outcome === 'sent') result.sent += 1;
+      else if (outcome === 'expired') result.expired += 1;
+      else result.failed += 1;
+    } catch (err) {
+      result.failed += 1;
+      logError('recall_messaging.callback_reminder_failed', err, { callEventId: row.id }, 'warn');
+    }
+  }
+
+  return result;
+}
+
+async function sendCallbackReminder(
+  prisma: PrismaClient,
+  call: CallRow & { callbackSlotAt: Date },
+  now: Date,
+): Promise<'sent' | 'expired' | 'failed'> {
+  const expired = call.callbackSlotAt.getTime() + CALLBACK_REMINDER_GRACE_MINUTES * 60_000 < now.getTime();
+
+  // Se estampa sin enviar cuando ya no toca. Una suscripción pausada es un
+  // cliente que pidió que paremos, y parar significa parar también con los
+  // avisos que quedaban en cola.
+  if (expired || call.subscription.status !== 'active') {
+    await prisma.callEvent.update({ where: { id: call.id }, data: { callbackRemindedAt: now } });
+    return 'expired';
+  }
+
+  const owner = call.subscription.ownerWhatsapp;
+  const credentials = metaCredentialsFor(call);
+  if (!owner || !credentials) {
+    // Sin a quién avisar o sin por dónde: no hay nada que reintentar en el
+    // tick siguiente, así que se cierra en vez de mirarlo cada cinco
+    // minutos hasta que caduque.
+    await prisma.callEvent.update({ where: { id: call.id }, data: { callbackRemindedAt: now } });
+    return 'expired';
+  }
+
+  const at = new Intl.DateTimeFormat('es-ES', {
+    timeZone: call.subscription.timezone,
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(call.callbackSlotAt);
+
+  const sent = await sendTemplate(credentials.token, credentials.phoneNumberId, owner, {
+    ...RECALL_TEMPLATES.ownerCallback,
+    bodyParams: [describeCaller(call), `a las ${at}`],
+  });
+
+  if (!sent.ok) {
+    logError('recall_messaging.callback_reminder_send_failed', new Error(sent.error), { callEventId: call.id }, 'warn');
+    return 'failed';
+  }
+
+  await prisma.callEvent.update({ where: { id: call.id }, data: { callbackRemindedAt: now } });
+  return 'sent';
 }

@@ -26,6 +26,9 @@ const mockState = vi.hoisted(() => ({
   revokeGoogleToken: vi.fn(),
   findUniqueClient: vi.fn(),
   connectionUpsert: vi.fn(),
+  connectionFindMany: vi.fn(),
+  connectionCount: vi.fn(),
+  clientProductFindFirst: vi.fn(),
   connectionFindUnique: vi.fn(),
   connectionUpdate: vi.fn(),
   recallSubscriptionUpdateMany: vi.fn(),
@@ -55,8 +58,12 @@ vi.mock('@/lib/prisma', () => ({
     googleBusinessConnection: {
       upsert: (...args: unknown[]) => mockState.connectionUpsert(...args),
       findUnique: (...args: unknown[]) => mockState.connectionFindUnique(...args),
+      findMany: (...args: unknown[]) => mockState.connectionFindMany(...args),
+      count: (...args: unknown[]) => mockState.connectionCount(...args),
       update: (...args: unknown[]) => mockState.connectionUpdate(...args),
     },
+    // Fase 3 — de aquí sale la tarifa que fija el tope de ubicaciones.
+    clientProduct: { findFirst: (...args: unknown[]) => mockState.clientProductFindFirst(...args) },
     recallSubscription: {
       updateMany: (...args: unknown[]) => mockState.recallSubscriptionUpdateMany(...args),
     },
@@ -98,6 +105,9 @@ beforeEach(() => {
   mockState.decryptRefreshToken.mockReset().mockReturnValue('rt_plain');
   mockState.revokeGoogleToken.mockReset().mockResolvedValue(true);
   mockState.findUniqueClient.mockReset().mockResolvedValue({ tenantId: 'tenant_1' });
+  mockState.connectionFindMany.mockReset().mockResolvedValue([]);
+  mockState.connectionCount.mockReset().mockResolvedValue(0);
+  mockState.clientProductFindFirst.mockReset().mockResolvedValue({ product: { tier: 'pro' } });
   mockState.connectionUpsert.mockReset().mockResolvedValue({ id: 'conn_1' });
   mockState.connectionFindUnique.mockReset();
   mockState.connectionUpdate.mockReset().mockResolvedValue({});
@@ -222,16 +232,62 @@ describe('GET /api/portal/google-business/oauth/callback', () => {
     expect(mockState.connectionUpsert).not.toHaveBeenCalled();
   });
 
-  it('redirects with multiple_locations_unsupported rather than guessing which location to connect', async () => {
+  // Fase 3 — antes se rechazaba una cuenta con varias fichas, porque no
+  // había dónde elegir. Ahora se conectan todas las que quepan en la
+  // tarifa y el cliente elige después en /portal/resenas.
+  it('connects every location the tier allows instead of refusing', async () => {
     mockState.exchangeCodeForTokens.mockResolvedValueOnce({ accessToken: 'at', refreshToken: 'rt', expiresIn: 3600, scope: 'business.manage' });
     mockState.fetchAccessibleLocations.mockResolvedValueOnce([
       { accountId: 'accounts/1', accountName: 'A', locationId: 'accounts/1/locations/1', locationName: 'Sede 1' },
       { accountId: 'accounts/1', accountName: 'A', locationId: 'accounts/1/locations/2', locationName: 'Sede 2' },
     ]);
+
     const { GET } = await import('@/app/api/portal/google-business/oauth/callback/route');
     const res = await GET(makeRequest({ code: 'code_1', state: 'state_a' }, 'state_a'));
-    expect(res.headers.get('location')).toContain('connect_error=multiple_locations_unsupported');
+
+    expect(res.headers.get('location')).toContain('connected=1');
+    expect(mockState.connectionUpsert).toHaveBeenCalledTimes(2);
+    // Una fila por ficha, claveada por (clientId, locationId).
+    const upserted = mockState.connectionUpsert.mock.calls.map(
+      (c) => (c[0] as { where: { clientId_locationId: { locationId: string } } }).where.clientId_locationId.locationId,
+    );
+    expect(upserted).toEqual(['accounts/1/locations/1', 'accounts/1/locations/2']);
+  });
+
+  it('refuses the WHOLE connection when the account has more locations than the tier includes', async () => {
+    // Tarifa basic: una sola ubicación. Dejarle una de dos conectada, sin
+    // decir por qué falta la otra, es peor que no conectar ninguna.
+    mockState.clientProductFindFirst.mockResolvedValue({ product: { tier: 'basic' } });
+    mockState.exchangeCodeForTokens.mockResolvedValueOnce({ accessToken: 'at', refreshToken: 'rt', expiresIn: 3600, scope: 'business.manage' });
+    mockState.fetchAccessibleLocations.mockResolvedValueOnce([
+      { accountId: 'accounts/1', accountName: 'A', locationId: 'accounts/1/locations/1', locationName: 'Sede 1' },
+      { accountId: 'accounts/1', accountName: 'A', locationId: 'accounts/1/locations/2', locationName: 'Sede 2' },
+    ]);
+
+    const { GET } = await import('@/app/api/portal/google-business/oauth/callback/route');
+    const res = await GET(makeRequest({ code: 'code_1', state: 'state_a' }, 'state_a'));
+
+    expect(res.headers.get('location')).toContain('connect_error=location_limit');
     expect(mockState.connectionUpsert).not.toHaveBeenCalled();
+  });
+
+  it('reconnecting an already-known location does not consume tier headroom', async () => {
+    // Tarifa basic con su única ficha ya conectada: volver a pasar por el
+    // OAuth (por ejemplo, tras un needs_reconnect) tiene que refrescar el
+    // token, no chocar contra el tope.
+    mockState.clientProductFindFirst.mockResolvedValue({ product: { tier: 'basic' } });
+    mockState.connectionCount.mockResolvedValue(1);
+    mockState.connectionFindMany.mockResolvedValue([{ locationId: 'accounts/1/locations/1' }]);
+    mockState.exchangeCodeForTokens.mockResolvedValueOnce({ accessToken: 'at', refreshToken: 'rt', expiresIn: 3600, scope: 'business.manage' });
+    mockState.fetchAccessibleLocations.mockResolvedValueOnce([
+      { accountId: 'accounts/1', accountName: 'A', locationId: 'accounts/1/locations/1', locationName: 'Sede 1' },
+    ]);
+
+    const { GET } = await import('@/app/api/portal/google-business/oauth/callback/route');
+    const res = await GET(makeRequest({ code: 'code_1', state: 'state_a' }, 'state_a'));
+
+    expect(res.headers.get('location')).toContain('connected=1');
+    expect(mockState.connectionUpsert).toHaveBeenCalledTimes(1);
   });
 
   it('creates the GoogleBusinessConnection with the encrypted token parts for a single-location account', async () => {

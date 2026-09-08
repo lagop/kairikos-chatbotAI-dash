@@ -3,7 +3,7 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { sweepPendingTranscriptions } from '@/lib/recall-transcription';
 import { purgeExpiredRecordings } from '@/lib/recall-retention';
 import { notifyStuckOnboardings } from '@/lib/recall-stuck-alerts';
-import { sweepPendingNotifications } from '@/lib/recall-messaging';
+import { sweepPendingNotifications, sweepDueCallbackReminders } from '@/lib/recall-messaging';
 import { sendDailyDigests, sweepReviewReminders } from '@/lib/recall-reviews';
 import { sendMonthlyReports, rollUpUsage } from '@/lib/recall-reports';
 import { syncTemplateStatuses, warnExpiringTokens } from '@/lib/whatsapp-health';
@@ -89,6 +89,13 @@ export async function GET(req: NextRequest) {
   //    waits 90 seconds deliberately, so "due" is a query answered here
   //    rather than a timer that would not survive a restart.
   jobs.notifications = await runJob('notifications', () => sweepPendingNotifications(prisma));
+
+  // 3b. Fase 3 — el recordatorio de las devoluciones que el propio cliente
+  //     eligió. Va aquí y no en otro cron porque es el único trabajo del
+  //     producto con hora fijada por un tercero: si el tick no corre, la
+  //     hora pasa y el aviso ya no sirve. Su ventana de gracia es lo que
+  //     acota los reintentos — ver sweepDueCallbackReminders.
+  jobs.callbackReminders = await runJob('callbackReminders', () => sweepDueCallbackReminders(prisma));
 
   // 4. The review half. The digest closes the owner's day and the
   //    reminder chases a link nobody opened; both re-check their own

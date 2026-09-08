@@ -47,6 +47,13 @@ vi.mock('@/lib/prisma', () => ({
     googleBusinessConnection: {
       findUnique: (...args: unknown[]) => mockState.connectionFindUnique(...args),
       findFirst: (...args: unknown[]) => mockState.connectionFindFirst(...args),
+      // Fase 3 — resolveReviewConnection lista para distinguir «un local»
+      // de «varios»; estos tests describen un cliente de un solo local, así
+      // que devuelve lo mismo que findFirst, envuelto.
+      findMany: async (...args: unknown[]) => {
+        const one = await mockState.connectionFindFirst(...args);
+        return one ? [one] : [];
+      },
       update: (...args: unknown[]) => mockState.connectionUpdate(...args),
     },
     chatbotClient: { findUnique: (...args: unknown[]) => mockState.findUniqueClient(...args) },

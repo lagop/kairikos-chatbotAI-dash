@@ -1,9 +1,10 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
+import { resolveReviewConnection } from '@/lib/review-locations';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { getSession } from '@/lib/session';
-import { isProductContracted } from '@/lib/client-product-access';
+import { hasGoogleBusinessConnectAccess } from '@/lib/google-business';
 import {
   createCampaignWithRequests,
   isConsentBasis,
@@ -19,6 +20,9 @@ const RecipientSchema = z.object({
 });
 
 const BodySchema = z.object({
+  // Fase 3 — a qué local pide reseñas esta campaña. Opcional: con un solo
+  // local se resuelve el suyo.
+  connectionId: z.string().uuid().optional(),
   name: z.string().trim().min(1).max(200),
   consentBasis: z.string().refine(isConsentBasis, { message: 'invalid consentBasis' }),
   recipients: z.array(RecipientSchema).min(1).max(MAX_RECIPIENTS_PER_CAMPAIGN),
@@ -44,18 +48,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'service_unavailable', detail: 'not_available_in_dev_mode' }, { status: 503 });
   }
 
-  const hasReviews = await isProductContracted(prisma, resolved.clientId, 'reviews');
-  if (!hasReviews) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const hasAccess = await hasGoogleBusinessConnectAccess(resolved.clientId);
+  if (!hasAccess) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   const body = BodySchema.safeParse(await req.json().catch(() => null));
   if (!body.success) {
     return NextResponse.json({ error: 'invalid_body', details: body.error.flatten() }, { status: 400 });
   }
 
-  const connection = await prisma.googleBusinessConnection.findFirst({
-    where: { clientId: resolved.clientId, status: 'active' },
-  });
-  if (!connection) return NextResponse.json({ error: 'not_connected' }, { status: 404 });
+  // Fase 3 — una campaña pide reseñas PARA UN LOCAL: su enlace de reseña
+  // (reviewUrl) es el de esa ubicación concreta, así que mandar el del
+  // local equivocado manda a los clientes a valorar otra tienda.
+  const connection = await resolveReviewConnection(prisma, resolved.clientId, body.data.connectionId);
+  if (!connection) {
+    return NextResponse.json({ error: body.data.connectionId ? 'not_connected' : 'location_required' }, { status: 404 });
+  }
 
   const client = await prisma.chatbotClient.findUnique({
     where: { id: resolved.clientId },
@@ -87,8 +94,8 @@ export async function GET() {
   if (!resolved) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   if (!isDatabaseConfigured || resolved.source !== 'database') return NextResponse.json([]);
 
-  const hasReviews = await isProductContracted(prisma, resolved.clientId, 'reviews');
-  if (!hasReviews) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const hasAccess = await hasGoogleBusinessConnectAccess(resolved.clientId);
+  if (!hasAccess) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   const campaigns = await prisma.reviewRequestCampaign.findMany({
     where: { clientId: resolved.clientId },

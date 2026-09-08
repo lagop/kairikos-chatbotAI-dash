@@ -1,14 +1,17 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
+import { resolveReviewConnection } from '@/lib/review-locations';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { getSession } from '@/lib/session';
-import { isProductContracted } from '@/lib/client-product-access';
+import { hasGoogleBusinessConnectAccess } from '@/lib/google-business';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const BodySchema = z.object({ enabled: z.boolean() });
+// Fase 3 — `connectionId` es opcional: un cliente de un solo local no lo
+// manda y se resuelve el suyo, que es lo que mantiene la ruta compatible.
+const BodySchema = z.object({ enabled: z.boolean(), connectionId: z.string().uuid().optional() });
 
 /**
  * WP-22c — PATCH /api/portal/google-business/connection/auto-publish
@@ -29,18 +32,21 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'service_unavailable', detail: 'not_available_in_dev_mode' }, { status: 503 });
   }
 
-  const hasReviews = await isProductContracted(prisma, resolved.clientId, 'reviews');
-  if (!hasReviews) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const hasAccess = await hasGoogleBusinessConnectAccess(resolved.clientId);
+  if (!hasAccess) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   const body = BodySchema.safeParse(await req.json().catch(() => null));
   if (!body.success) {
     return NextResponse.json({ error: 'invalid_body', details: body.error.flatten() }, { status: 400 });
   }
 
-  const connection = await prisma.googleBusinessConnection.findFirst({
-    where: { clientId: resolved.clientId, status: 'active' },
-  });
-  if (!connection) return NextResponse.json({ error: 'not_connected' }, { status: 404 });
+  // Fase 3 — publicar respuestas solo se activa para el local que se
+  // indique: es un ajuste POR UBICACIÓN (la columna vive en la conexión),
+  // y aplicarlo al local equivocado publica en el Google de otro negocio.
+  const connection = await resolveReviewConnection(prisma, resolved.clientId, body.data.connectionId);
+  if (!connection) {
+    return NextResponse.json({ error: body.data.connectionId ? 'not_connected' : 'location_required' }, { status: 404 });
+  }
 
   const updated = await prisma.googleBusinessConnection.update({
     where: { id: connection.id },

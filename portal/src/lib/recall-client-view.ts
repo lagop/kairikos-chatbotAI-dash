@@ -52,6 +52,9 @@ export interface RecallCallSummary {
   /** 'whatsapp' | 'sms' | 'blocked' | 'throttled' | 'unreachable' | null */
   callerNotifyChannel: string | null;
   notifiedCallerAt: Date | null;
+  /** Fase 3 — cuándo se ha comprometido devolverle la llamada, si eligió
+   *  hueco. NULL si no se le ofrecieron opciones o no contestó. */
+  callbackSlotAt: Date | null;
 }
 
 export interface RecallMonthSummary {
@@ -236,6 +239,7 @@ export async function loadRecallClientView(
       transcript: true,
       callerNotifyChannel: true,
       notifiedCallerAt: true,
+      callbackSlotAt: true,
     },
   });
 

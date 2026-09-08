@@ -14,6 +14,7 @@ const mockState = vi.hoisted(() => ({
   purgeExpiredRecordings: vi.fn(),
   notifyStuckOnboardings: vi.fn(),
   sweepPendingNotifications: vi.fn(),
+  sweepDueCallbackReminders: vi.fn(),
   sendDailyDigests: vi.fn(),
   sendMonthlyReports: vi.fn(),
   rollUpUsage: vi.fn(),
@@ -44,6 +45,7 @@ vi.mock('@/lib/recall-reviews', () => ({
 }));
 vi.mock('@/lib/recall-messaging', () => ({
   sweepPendingNotifications: (...a: unknown[]) => mockState.sweepPendingNotifications(...a),
+  sweepDueCallbackReminders: (...a: unknown[]) => mockState.sweepDueCallbackReminders(...a),
 }));
 vi.mock('@/lib/whatsapp-health', () => ({
   syncTemplateStatuses: (...a: unknown[]) => mockState.syncTemplateStatuses(...a),
@@ -86,6 +88,9 @@ beforeEach(() => {
     callersScanned: 0, callersSent: 0, callersSkipped: 0, callersFailed: 0,
     ownersScanned: 0, ownersSent: 0, ownersFailed: 0,
   });
+  mockState.sweepDueCallbackReminders.mockReset().mockResolvedValue({
+    scanned: 0, sent: 0, expired: 0, failed: 0,
+  });
   mockState.syncTemplateStatuses.mockReset().mockResolvedValue({ connections: 0, templates: 0, failed: 0 });
   mockState.warnExpiringTokens.mockReset().mockResolvedValue({ scanned: 0, expiring: 0, warned: 0, expired: 0 });
   mockState.advanceSubscriptionsWithApprovedTemplates.mockReset().mockResolvedValue({ advanced: 0 });
@@ -112,6 +117,8 @@ describe('GET /api/cron/recall-tick', () => {
       'purgeRecordings',
       'transcriptions',
       'notifications',
+      // Fase 3 — el recordatorio de las devoluciones que eligió quien llamó.
+      'callbackReminders',
       'dailyDigests',
       'reviewReminders',
       'monthlyReports',

@@ -12,6 +12,10 @@ import { SelfServeProductCard, type SelfServeTierOption } from '@/components/por
 import { SeoProfileCard } from '@/components/portal/SeoProfileCard';
 import { SeoTrendChart, type SeoTrendPoint } from '@/components/portal/SeoTrendChart';
 import { SeoAnalyticsPicker } from '@/components/portal/SeoAnalyticsPicker';
+import { SeoKeywordsCard } from '@/components/portal/SeoKeywordsCard';
+import { SeoRecommendationsCard } from '@/components/portal/SeoRecommendationsCard';
+import { buildKeywordTrends } from '@/lib/seo-keywords';
+import { buildRecommendations, parseAuditResult } from '@/lib/seo-recommendations';
 
 export const dynamic = 'force-dynamic';
 
@@ -149,8 +153,18 @@ export default async function PortalSeoPage({
       toneOfVoice: true,
       siteUrl: true,
       cmsType: true,
+      // Fase 3.2 — la auditoría técnica existía desde Fase A pero solo la
+      // veía un operador, y en crudo. Aquí se traduce a recomendaciones.
+      lastAuditResult: true,
     },
   });
+
+  // Fase 3.1 — las palabras que el cliente persigue y cómo van.
+  const keywordTrends = profile ? await buildKeywordTrends(prisma, resolved.clientId) : [];
+
+  // Fase 3.2 — señales crudas del audit → qué hacer, en su idioma.
+  const audit = profile ? parseAuditResult(profile.lastAuditResult) : null;
+  const recommendations = audit ? buildRecommendations(audit) : null;
 
   // SEO con IA, Fase C — only PUBLISHED articles are ever shown to the
   // client. Drafts, pending review, rejected, and publish_failed are all
@@ -208,6 +222,12 @@ export default async function PortalSeoPage({
     <div className="space-y-6">
       <PageHeading eyebrow="Portal" title="SEO con IA" description="Cuéntanos de tu negocio para empezar." />
       <SeoProfileCard profile={profile} />
+
+      {profile ? <SeoKeywordsCard trends={keywordTrends} /> : null}
+
+      {recommendations ? (
+        <SeoRecommendationsCard recommendations={recommendations} checkedAt={audit?.checkedAt ?? null} />
+      ) : null}
 
       <section className="card space-y-3" aria-label="Tus artículos" data-testid="seo-articles-card">
         <div>
