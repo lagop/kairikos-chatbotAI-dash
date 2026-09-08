@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateInternalRequest, internalAuthFailureResponse } from '@/lib/internal-auth';
+import { applyLeadEnrichment } from '@/lib/leads';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -48,36 +49,24 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
   const data = body.data;
 
-  const existing = await prisma.lead.findUnique({ where: { id: params.id } });
-  if (!existing) {
+  // La escritura y su auditoría viven en applyLeadEnrichment (lib/leads.ts),
+  // compartidas con el barrido de prospección desde la Fase 1.4.
+  const result = await applyLeadEnrichment(
+    prisma,
+    params.id,
+    {
+      contactEmail: data.contactEmail,
+      contactPhone: data.contactPhone,
+      contactName: data.contactName,
+      scoreReason: data.scoreReason,
+    },
+    'system:n8n',
+  );
+  if (!result) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
 
-  const updated = await prisma.$transaction(async (tx) => {
-    const row = await tx.lead.update({
-      where: { id: existing.id },
-      data: {
-        contactEmail: data.contactEmail ?? existing.contactEmail,
-        contactPhone: data.contactPhone ?? existing.contactPhone,
-        contactName: data.contactName ?? existing.contactName,
-        scoreReason: data.scoreReason ?? existing.scoreReason,
-      },
-    });
-    await tx.leadAudit.create({
-      data: {
-        leadId: row.id,
-        clientId: row.clientId,
-        tenantId: row.tenantId,
-        action: 'enriched',
-        statusBefore: existing.status,
-        statusAfter: existing.status,
-        actorId: 'system:n8n',
-      },
-    });
-    return row;
-  });
-
-  return NextResponse.json({ ok: true, leadId: updated.id });
+  return NextResponse.json({ ok: true, leadId: result.leadId });
 }
 
 export function GET() {

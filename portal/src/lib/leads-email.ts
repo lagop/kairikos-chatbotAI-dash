@@ -120,6 +120,71 @@ export async function sendNewLeadEmail(input: { to: string } & NewLeadEmailVars)
 }
 
 // =============================================================================
+// Fase 2.4 — un correo por cliente con TODOS sus leads parados, no uno por
+// lead: cinco avisos sueltos el mismo minuto se leen como spam; uno con
+// cinco nombres se lee como una lista de tareas. El tono es el de un
+// recordatorio operativo, no el de una reprimenda: el equipo del cliente ya
+// tiene bastante con su día.
+// =============================================================================
+
+export interface StaleLeadLine {
+  description: string;
+  /** 'nuevo' | 'contactado'. */
+  status: string;
+  days: number;
+  thresholdDays: number;
+}
+
+export interface StaleLeadEmailVars {
+  businessName: string;
+  leads: StaleLeadLine[];
+}
+
+const STALE_STATUS_LABEL: Record<string, string> = {
+  nuevo: 'sin contactar',
+  contactado: 'contactado, sin cerrar',
+};
+
+export function buildStaleLeadEmail(vars: StaleLeadEmailVars): { subject: string; text: string; html: string } {
+  const count = vars.leads.length;
+  const plural = count === 1 ? 'lead' : 'leads';
+  const subject = `${count} ${plural} esperando en tu bandeja`;
+
+  const line = (lead: StaleLeadLine) =>
+    `${lead.description} — ${STALE_STATUS_LABEL[lead.status] ?? lead.status} desde hace ${lead.days} ${lead.days === 1 ? 'día' : 'días'}`;
+
+  const text = [
+    `Hola ${vars.businessName},`,
+    '',
+    count === 1
+      ? 'Tienes un lead que lleva un tiempo parado:'
+      : `Tienes ${count} leads que llevan un tiempo parados:`,
+    '',
+    ...vars.leads.map((lead) => `· ${line(lead)}`),
+    '',
+    `Puedes verlos y actualizarlos aquí: ${PORTAL_LEADS_URL}`,
+    '',
+    '— Kairikos',
+  ].join('\n');
+
+  const html = [
+    `<p>Hola ${escapeHtml(vars.businessName)},</p>`,
+    `<p>${count === 1 ? 'Tienes un lead que lleva un tiempo parado:' : `Tienes <strong>${count} leads</strong> que llevan un tiempo parados:`}</p>`,
+    `<ul>${vars.leads.map((lead) => `<li>${escapeHtml(line(lead))}</li>`).join('')}</ul>`,
+    `<p><a href="${escapeHtml(PORTAL_LEADS_URL)}">Verlos y actualizarlos</a></p>`,
+    '<p>— Kairikos</p>',
+  ].join('\n');
+
+  return { subject, text, html };
+}
+
+export async function sendStaleLeadEmail(
+  input: { to: string } & StaleLeadEmailVars,
+): Promise<SendNewLeadEmailResult> {
+  return sendEmail(input.to, buildStaleLeadEmail(input));
+}
+
+// =============================================================================
 // Prospección con IA, Fase A — one email per campaign RUN, never per
 // lead. A run can surface a dozen businesses at once (unlike an inbound
 // lead, which always arrives one at a time from one conversation), so
