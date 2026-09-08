@@ -16,12 +16,32 @@ import { logError } from './observability';
 //      50-client book is ~12 hours of audio a month, which a CPU handles
 //      without noticing.
 //
-// The service is a `faster-whisper` container in docker-compose.yml
-// speaking the OpenAI-compatible /v1/audio/transcriptions shape, which is
-// what most self-hosted Whisper images expose. That compatibility is
-// deliberate: if self-hosting ever becomes a burden, pointing
-// WHISPER_BASE_URL at a hosted OpenAI-compatible endpoint is a config
-// change, not a rewrite.
+// La compatibilidad con la forma /v1/audio/transcriptions de OpenAI se
+// eligió para poder cambiar de proveedor con una variable de entorno en
+// vez de una reescritura. **Es justo lo que se ha usado.**
+//
+// ---------------------------------------------------------------------
+// ESTADO ACTUAL (2026-09-08) Y AVISO DE PROTECCIÓN DE DATOS
+// ---------------------------------------------------------------------
+// En local y en producción esto apunta HOY a **Groq**
+// (WHISPER_BASE_URL=https://api.groq.com/openai, modelo
+// whisper-large-v3), no al contenedor de aquí al lado. El autoalojado se
+// resolverá más adelante; su contenedor sigue definido en
+// docker-compose.yml, detrás de un perfil, por ese camino de vuelta.
+//
+// Lo que eso cambia, y que NO se arregla en el código:
+//
+//   1. Groq pasa a ser SUBENCARGADO del tratamiento. Hay que declararlo
+//      en el contrato de encargo de cada cliente.
+//   2. Sus servidores están en EE. UU.: es una transferencia
+//      internacional que hay que amparar y documentar.
+//
+// El punto 1 del párrafo de arriba —«la voz no sale de una
+// infraestructura que el contrato del cliente ya cubre»— deja de ser
+// cierto mientras esto apunte a Groq. Se conserva escrito porque explica
+// por qué el diseño es como es y qué se recupera al volver al
+// autoalojado: entonces las dos obligaciones desaparecen y este bloque
+// habrá que reescribirlo otra vez.
 // =============================================================================
 
 export type TranscriptionResult =
