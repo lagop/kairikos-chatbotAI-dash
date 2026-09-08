@@ -86,6 +86,16 @@ services:
       GOOGLE_SEO_OAUTH_CLIENT_SECRET: ${GOOGLE_SEO_OAUTH_CLIENT_SECRET:-}
       GOOGLE_SEO_OAUTH_REDIRECT_URI: ${GOOGLE_SEO_OAUTH_REDIRECT_URI:-}
       GOOGLE_SEO_TOKEN_ENCRYPTION_KEY: ${GOOGLE_SEO_TOKEN_ENCRYPTION_KEY:-}
+      # Cifra la Application Password de WordPress en SeoProfile. SIN valor
+      # por defecto a propósito, al contrario que las tres de arriba: éstas
+      # degradan (la conexión OAuth simplemente no se ofrece), pero
+      # parseHexKey LANZA cuando ésta falta, así que sin ella guardar o
+      # publicar en WordPress devuelve un 500. Dejarla sin `:-` hace que
+      # `docker compose up` avise si no está puesta, que es justo lo que
+      # faltó aquí: estuvo declarada en el código desde la Fase A de 'seo'
+      # y nunca llegó al contenedor — el mismo hueco que tuvo
+      # GOOGLE_PLACES_API_KEY. Generar con: openssl rand -hex 32
+      SEO_CMS_CREDENTIAL_ENCRYPTION_KEY: ${SEO_CMS_CREDENTIAL_ENCRYPTION_KEY}
       GOOGLE_GA4_OAUTH_CLIENT_ID: ${GOOGLE_GA4_OAUTH_CLIENT_ID:-}
       GOOGLE_GA4_OAUTH_CLIENT_SECRET: ${GOOGLE_GA4_OAUTH_CLIENT_SECRET:-}
       GOOGLE_GA4_OAUTH_REDIRECT_URI: ${GOOGLE_GA4_OAUTH_REDIRECT_URI:-}
