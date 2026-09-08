@@ -35,7 +35,16 @@ vi.mock('@/lib/prisma', () => ({
     return mockState.isDatabaseConfigured;
   },
   prisma: {
-    googleBusinessConnection: { findFirst: (...args: unknown[]) => mockState.connectionFindFirst(...args) },
+    googleBusinessConnection: {
+      findFirst: (...args: unknown[]) => mockState.connectionFindFirst(...args),
+      // Fase 3 — resolveReviewConnection lista para distinguir «un local»
+      // de «varios»; estos tests describen un cliente de un solo local, así
+      // que devuelve lo mismo que findFirst, envuelto.
+      findMany: async (...args: unknown[]) => {
+        const one = await mockState.connectionFindFirst(...args);
+        return one ? [one] : [];
+      },
+    },
   },
 }));
 
@@ -59,8 +68,13 @@ beforeEach(() => {
 });
 
 describe('POST /api/portal/google-business/sync', () => {
-  function makeRequest() {
-    return {} as unknown as NextRequest;
+  // Fase 3 — la ruta lee ?connectionId para saber en qué local sincronizar,
+  // así que la petición falsa necesita una URL de verdad. Sin parámetro se
+  // resuelve el único local del cliente, que es lo que describen estos tests.
+  function makeRequest(connectionId?: string) {
+    const base = 'https://portal.test/api/portal/google-business/sync';
+    const url = connectionId ? `${base}?connectionId=${connectionId}` : base;
+    return { url } as unknown as NextRequest;
   }
 
   it('401s when there is no session', async () => {
@@ -70,12 +84,30 @@ describe('POST /api/portal/google-business/sync', () => {
     expect(res.status).toBe(401);
   });
 
-  it('403s when the client does not have the reviews product contracted', async () => {
-    mockState.isProductContracted.mockResolvedValueOnce(false);
+  // La puerta de esta ruta es hasGoogleBusinessConnectAccess: 'reviews' O
+  // 'recall'. Este test llevaba roto desde que la ruta pasó de comprobar
+  // solo 'reviews' a comprobar las dos, porque usaba mockResolvedValueOnce:
+  // el helper llama a isProductContracted DOS veces (Promise.all), la
+  // primera devolvía false, la segunda el true por defecto, y el OR dejaba
+  // pasar. Hacen falta las dos en false para negar el acceso.
+  it('403s when the client has neither the reviews nor the recall product', async () => {
+    mockState.isProductContracted.mockResolvedValue(false);
     const { POST } = await import('@/app/api/portal/google-business/sync/route');
     const res = await POST(makeRequest());
     expect(res.status).toBe(403);
     expect(mockState.connectionFindFirst).not.toHaveBeenCalled();
+  });
+
+  // La mitad de la regla que NADIE probaba, y por eso la deriva pasó
+  // desapercibida: un cliente de 'recall' sin 'reviews' también sincroniza,
+  // porque su mitad de invitaciones a reseñar depende de esto.
+  it('lets a recall-only client through: the gate is reviews OR recall', async () => {
+    mockState.isProductContracted.mockImplementation((_p: unknown, _c: unknown, code: string) =>
+      Promise.resolve(code === 'recall'),
+    );
+    const { POST } = await import('@/app/api/portal/google-business/sync/route');
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(200);
   });
 
   it('404s when the client has no active connection', async () => {

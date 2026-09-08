@@ -48,7 +48,16 @@ vi.mock('@/lib/prisma', () => ({
     return mockState.isDatabaseConfigured;
   },
   prisma: {
-    googleBusinessConnection: { findFirst: (...args: unknown[]) => mockState.connectionFindFirst(...args) },
+    googleBusinessConnection: {
+      findFirst: (...args: unknown[]) => mockState.connectionFindFirst(...args),
+      // Fase 3 — resolveReviewConnection lista para distinguir «un local»
+      // de «varios»; estos tests describen un cliente de un solo local, así
+      // que devuelve lo mismo que findFirst, envuelto.
+      findMany: async (...args: unknown[]) => {
+        const one = await mockState.connectionFindFirst(...args);
+        return one ? [one] : [];
+      },
+    },
     chatbotClient: { findUnique: (...args: unknown[]) => mockState.findUniqueClient(...args) },
     reviewRequestCampaign: {
       findMany: (...args: unknown[]) => mockState.campaignFindMany(...args),
@@ -102,8 +111,12 @@ describe('POST /api/portal/google-business/campaigns', () => {
     expect(res.status).toBe(401);
   });
 
-  it('403s when the reviews product is not contracted', async () => {
-    mockState.isProductContracted.mockResolvedValueOnce(false);
+  // Mismo caso que en google-review-sync-routes: la puerta es
+  // hasGoogleBusinessConnectAccess ('reviews' O 'recall'), que consulta
+  // isProductContracted dos veces. Con mockResolvedValueOnce solo caía la
+  // primera y el OR dejaba pasar.
+  it('403s when the client has neither the reviews nor the recall product', async () => {
+    mockState.isProductContracted.mockResolvedValue(false);
     const { POST } = await import('@/app/api/portal/google-business/campaigns/route');
     const res = await POST(makeRequest(VALID_BODY));
     expect(res.status).toBe(403);
