@@ -64,7 +64,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const updated = await prisma.$transaction(async (tx) => {
     const row = await tx.lead.update({
       where: { id: lead.id },
-      data: { status: target, [TIMESTAMP_FIELD[target]]: new Date() },
+      // Fase 2.4 — al cambiar de estado se limpia el aviso de lead frío:
+      // volver a atascarse en el estado siguiente es una noticia nueva,
+      // no una repetición de la anterior.
+      data: { status: target, [TIMESTAMP_FIELD[target]]: new Date(), staleAlertSentAt: null },
     });
     await tx.leadAudit.create({
       data: {
