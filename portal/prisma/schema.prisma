@@ -104,47 +104,54 @@ model ChatbotClient {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  activities                 ChatbotActivity[]
-  conversations              ChatbotConversation[]
-  users                      ChatbotClientUser[]
-  operatorNotifications      OperatorNotification[]
-  n8nExecutions              N8nExecution[]
-  configSteps                ChatbotConfigStep[]
-  intakeSubmissions          IntakeSubmission[]
-  supportRequests            SupportRequest[]
-  tenant                     Tenant?                     @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  clientProducts             ClientProduct[]
-  productAudits              ClientProductAudit[]
-  subscriptions              Subscription[]
-  invoices                   Invoice[]
-  operatorActions            OperatorAction[]
-  googleBusinessConnections  GoogleBusinessConnection[]
-  googleSeoConnection        GoogleSeoConnection?
-  googleAnalyticsConnection  GoogleAnalyticsConnection?
-  googleReviews              GoogleReview[]
-  reviewRequestCampaigns     ReviewRequestCampaign[]
-  webBriefs                  WebBrief[]
-  webQuotes                  WebQuote[]
-  chatWebEmbeds              ChatWebEmbed[]
-  telegramConnections        TelegramConnection[]
-  metaChannelConnections     MetaChannelConnection[]
-  channelWebhookDeliveries   ChannelWebhookDelivery[]
-  conversationDigests        ConversationDigest[]
-  conversationDigestSchedule ConversationDigestSchedule?
-  leads                      Lead[]
-  leadAudits                 LeadAudit[]
-  recallSubscriptions        RecallSubscription[]
-  recallSubscriptionAudits   RecallSubscriptionAudit[]
-  callEvents                 CallEvent[]
-  whatsappTemplates          WhatsappTemplate[]
-  prospectingCampaigns       ProspectingCampaign[]
-  prospectingCampaignAudits  ProspectingCampaignAudit[]
-  seoProfiles                SeoProfile[]
-  seoProfileAudits           SeoProfileAudit[]
-  seoContentDrafts           SeoContentDraft[]
-  recallBlockedNumbers       RecallBlockedNumber[]
-  recallDigests              RecallDigest[]
-  recallUsageMonths          RecallUsageMonth[]
+  activities                     ChatbotActivity[]
+  conversations                  ChatbotConversation[]
+  users                          ChatbotClientUser[]
+  operatorNotifications          OperatorNotification[]
+  n8nExecutions                  N8nExecution[]
+  configSteps                    ChatbotConfigStep[]
+  intakeSubmissions              IntakeSubmission[]
+  supportRequests                SupportRequest[]
+  tenant                         Tenant?                         @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  clientProducts                 ClientProduct[]
+  productAudits                  ClientProductAudit[]
+  subscriptions                  Subscription[]
+  invoices                       Invoice[]
+  operatorActions                OperatorAction[]
+  googleBusinessConnections      GoogleBusinessConnection[]
+  googleSeoConnection            GoogleSeoConnection?
+  googleAnalyticsConnection      GoogleAnalyticsConnection?
+  googleReviews                  GoogleReview[]
+  reviewRequestCampaigns         ReviewRequestCampaign[]
+  webBriefs                      WebBrief[]
+  webQuotes                      WebQuote[]
+  chatWebEmbeds                  ChatWebEmbed[]
+  telegramConnections            TelegramConnection[]
+  metaChannelConnections         MetaChannelConnection[]
+  channelWebhookDeliveries       ChannelWebhookDelivery[]
+  conversationDigests            ConversationDigest[]
+  conversationDigestSchedule     ConversationDigestSchedule?
+  leads                          Lead[]
+  leadAudits                     LeadAudit[]
+  recallSubscriptions            RecallSubscription[]
+  recallSubscriptionAudits       RecallSubscriptionAudit[]
+  callEvents                     CallEvent[]
+  whatsappTemplates              WhatsappTemplate[]
+  prospectingCampaigns           ProspectingCampaign[]
+  prospectingCampaignAudits      ProspectingCampaignAudit[]
+  seoProfiles                    SeoProfile[]
+  seoProfileAudits               SeoProfileAudit[]
+  seoContentDrafts               SeoContentDraft[]
+  recallBlockedNumbers           RecallBlockedNumber[]
+  recallDigests                  RecallDigest[]
+  recallUsageMonths              RecallUsageMonth[]
+  leadQualificationProfiles      LeadQualificationProfile[]
+  leadQualificationProfileAudits LeadQualificationProfileAudit[]
+  seoTargetKeywords              SeoTargetKeyword[]
+  knowledgeDocuments             ChatbotKnowledgeDocument[]
+  knowledgeDocumentAudits        ChatbotKnowledgeDocumentAudit[]
+  webProjectMilestones           WebProjectMilestone[]
+  leadWebhook                    LeadWebhook?
 
   @@index([stripeCustomerId])
   @@index([tier])
@@ -331,20 +338,20 @@ model Operator {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  sessions                 OperatorSession[]
-  recoveryCodes            OperatorRecoveryCode[]
-  auditLogs                OperatorSettingsAudit[]
-  approvedConfigSteps      ChatbotConfigStep[]
-  stripeCatalogAudits      StripeCatalogAudit[]
-  webQuotesCreated         WebQuote[]                @relation("WebQuoteCreatedBy")
-  webQuotesSent            WebQuote[]                @relation("WebQuoteSentBy")
-  webQuoteAudits           WebQuoteAudit[]
-  invoicesMarkedPaid       Invoice[]
-  recallSubscriptionAudits RecallSubscriptionAudit[]
+  sessions                    OperatorSession[]
+  recoveryCodes               OperatorRecoveryCode[]
+  auditLogs                   OperatorSettingsAudit[]
+  approvedConfigSteps         ChatbotConfigStep[]
+  stripeCatalogAudits         StripeCatalogAudit[]
+  webQuotesCreated            WebQuote[]                   @relation("WebQuoteCreatedBy")
+  webQuotesSent               WebQuote[]                   @relation("WebQuoteSentBy")
+  webQuoteAudits              WebQuoteAudit[]
+  invoicesMarkedPaid          Invoice[]
+  recallSubscriptionAudits    RecallSubscriptionAudit[]
   integrationCredentialAudits IntegrationCredentialAudit[]
-  seoProfileAudits         SeoProfileAudit[]
-  twilioCredentialAudits   TwilioCredentialAudit[]
-  metaCredentialAudits     MetaCredentialAudit[]
+  seoProfileAudits            SeoProfileAudit[]
+  twilioCredentialAudits      TwilioCredentialAudit[]
+  metaCredentialAudits        MetaCredentialAudit[]
 
   @@index([email])
   @@index([isActive])
@@ -494,42 +501,49 @@ model Tenant {
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  profiles                    Profile[]
-  chatbotClients              ChatbotClient[]
-  chatbotClientUsers          ChatbotClientUser[]
-  chatbotActivities           ChatbotActivity[]
-  chatbotConversations        ChatbotConversation[]
-  chatbotConfigSteps          ChatbotConfigStep[]
-  chatbotConfigStepAudits     ChatbotConfigStepAudit[]
-  intakeSubmissions           IntakeSubmission[]
-  operatorNotifications       OperatorNotification[]
-  supportRequests             SupportRequest[]
-  n8nExecutions               N8nExecution[]
-  clientProducts              ClientProduct[]
-  productAudits               ClientProductAudit[]
-  subscriptions               Subscription[]
-  invoices                    Invoice[]
-  googleBusinessConnections   GoogleBusinessConnection[]
-  googleSeoConnections        GoogleSeoConnection[]
-  googleAnalyticsConnections  GoogleAnalyticsConnection[]
-  googleReviews               GoogleReview[]
-  reviewRequestCampaigns      ReviewRequestCampaign[]
-  webBriefs                   WebBrief[]
-  webQuotes                   WebQuote[]
-  chatWebEmbeds               ChatWebEmbed[]
-  telegramConnections         TelegramConnection[]
-  metaChannelConnections      MetaChannelConnection[]
-  conversationDigests         ConversationDigest[]
-  conversationDigestSchedules ConversationDigestSchedule[]
-  leads                       Lead[]
-  leadAudits                  LeadAudit[]
-  recallSubscriptions         RecallSubscription[]
-  callEvents                  CallEvent[]
-  prospectingCampaigns        ProspectingCampaign[]
-  prospectingCampaignAudits   ProspectingCampaignAudit[]
-  seoProfiles                 SeoProfile[]
-  seoProfileAudits            SeoProfileAudit[]
-  seoContentDrafts            SeoContentDraft[]
+  profiles                       Profile[]
+  chatbotClients                 ChatbotClient[]
+  chatbotClientUsers             ChatbotClientUser[]
+  chatbotActivities              ChatbotActivity[]
+  chatbotConversations           ChatbotConversation[]
+  chatbotConfigSteps             ChatbotConfigStep[]
+  chatbotConfigStepAudits        ChatbotConfigStepAudit[]
+  intakeSubmissions              IntakeSubmission[]
+  operatorNotifications          OperatorNotification[]
+  supportRequests                SupportRequest[]
+  n8nExecutions                  N8nExecution[]
+  clientProducts                 ClientProduct[]
+  productAudits                  ClientProductAudit[]
+  subscriptions                  Subscription[]
+  invoices                       Invoice[]
+  googleBusinessConnections      GoogleBusinessConnection[]
+  googleSeoConnections           GoogleSeoConnection[]
+  googleAnalyticsConnections     GoogleAnalyticsConnection[]
+  googleReviews                  GoogleReview[]
+  reviewRequestCampaigns         ReviewRequestCampaign[]
+  webBriefs                      WebBrief[]
+  webQuotes                      WebQuote[]
+  chatWebEmbeds                  ChatWebEmbed[]
+  telegramConnections            TelegramConnection[]
+  metaChannelConnections         MetaChannelConnection[]
+  conversationDigests            ConversationDigest[]
+  conversationDigestSchedules    ConversationDigestSchedule[]
+  leads                          Lead[]
+  leadAudits                     LeadAudit[]
+  recallSubscriptions            RecallSubscription[]
+  callEvents                     CallEvent[]
+  prospectingCampaigns           ProspectingCampaign[]
+  prospectingCampaignAudits      ProspectingCampaignAudit[]
+  seoProfiles                    SeoProfile[]
+  seoProfileAudits               SeoProfileAudit[]
+  seoContentDrafts               SeoContentDraft[]
+  leadQualificationProfiles      LeadQualificationProfile[]
+  leadQualificationProfileAudits LeadQualificationProfileAudit[]
+  seoTargetKeywords              SeoTargetKeyword[]
+  knowledgeDocuments             ChatbotKnowledgeDocument[]
+  knowledgeDocumentAudits        ChatbotKnowledgeDocumentAudit[]
+  webProjectMilestones           WebProjectMilestone[]
+  leadWebhooks                   LeadWebhook[]
 
   @@index([slug])
   @@index([status])
@@ -703,20 +717,21 @@ model ClientProduct {
   onboardingState String    @default("in-progress") @map("onboarding_state")
   goLiveAt        DateTime? @map("go_live_at")
 
-  client              ChatbotClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  product             Product              @relation(fields: [productId], references: [id], onDelete: Restrict)
-  tenant              Tenant?              @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  auditLogs           ClientProductAudit[]
-  subscription        Subscription?
+  client                   ChatbotClient             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  product                  Product                   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  tenant                   Tenant?                   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  auditLogs                ClientProductAudit[]
+  subscription             Subscription?
   // WP-19 — one-time-purchase products (no recurring price) invoice
   // directly against the ClientProduct instead of through a Subscription
   // — see Invoice.clientProductId.
-  invoices            Invoice[]
-  webQuote            WebQuote?
-  webBrief            WebBrief?
-  recallSubscription  RecallSubscription?
-  prospectingCampaign ProspectingCampaign?
-  seoProfile          SeoProfile?
+  invoices                 Invoice[]
+  webQuote                 WebQuote?
+  webBrief                 WebBrief?
+  recallSubscription       RecallSubscription?
+  prospectingCampaign      ProspectingCampaign?
+  seoProfile               SeoProfile?
+  leadQualificationProfile LeadQualificationProfile?
 
   // Real DB-level uniqueness for every code except 'web' lives in a raw-SQL
   // partial unique index (see this migration's .sql) — Prisma can't express
@@ -942,12 +957,12 @@ model ChatbotActivity {
 // One row per chatbot conversation. Read-only on the portal in v1
 // (writes come from the chatbot platform via n8n).
 model ChatbotConversation {
-  id                String        @id @default(cuid())
+  id                String    @id @default(cuid())
   clientId          String
   // KAIA-4258: tenant isolation FK (denormalized from ChatbotClient for
   // query plans that filter by tenant_id directly). NULL for
   // pre-multi-tenant rows; the backfill migration sets it.
-  tenantId          String?       @map("tenant_id") @db.Uuid
+  tenantId          String?   @map("tenant_id") @db.Uuid
   startedAt         DateTime
   // Duration in seconds. NULL while the conversation is still open.
   duration          Int?
@@ -963,14 +978,172 @@ model ChatbotConversation {
   // instead of creating a new row per turn — NULL for every
   // pre-Fase-4 row (Telegram/WhatsApp conversations, seed data), which
   // is fine since Postgres treats NULL as distinct in a unique index.
-  externalSessionId String?       @map("external_session_id")
-  client            ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant            Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  leads             Lead[]
+  externalSessionId String?   @map("external_session_id")
+  // Fase 1.5 — de qué canal vino la conversación: 'web' | 'telegram' |
+  // 'whatsapp' | 'messenger' | 'instagram'. Cada ruta /message y /reply lo
+  // sabe por definición (es su propio canal), así que no viaja en el
+  // cuerpo. Antes no se guardaba, y por eso los leads que crea el
+  // clasificador salían con channel:null y el cliente veía "sin canal"
+  // donde debería ver WhatsApp o Instagram. NULL en las filas anteriores a
+  // este campo, que siguen funcionando igual.
+  channel           String?
+  // "Sistema IA de captación" — stamped by the classify-leads cron sweep
+  // (lib/leads.ts's sweepDueConversationsForClassification) the moment a
+  // conversation has been run through the classifier, whether or not it
+  // produced a Lead. NULL forever for a conversation that never gets an
+  // `outcome` set — the sweep only considers closed conversations, a
+  // known v1 limitation (see the sweep's own header comment). Deliberately
+  // NOT stamped when a client's classification cap is hit for the month —
+  // that conversation is left for the next sweep after usageResetAt so
+  // work is delayed, never lost.
+  leadsClassifiedAt DateTime? @map("leads_classified_at")
+
+  // Fase 3 — bandeja de traspaso a humano.
+  //
+  // El paso 7 del wizard lleva desde el principio preguntando CUÁNDO
+  // derivar a una persona, y el motor marca `outcome: 'escalated'` cuando
+  // toca... y ahí se acababa: no había ningún sitio donde esa persona
+  // retomara la conversación. Se configuraba una derivación sin destino.
+  //
+  // Tres marcas de tiempo en vez de una columna de estado, igual que
+  // Lead.contactedAt/convertedAt/discardedAt. El estado se deriva:
+  //   pendiente  = requestedAt != null, takenAt == null, closedAt == null
+  //   atendiendo = takenAt != null, closedAt == null
+  //   cerrada    = closedAt != null
+  //
+  // **Mientras un humano la tiene, el bot se calla.** Es la regla que
+  // justifica todo esto: dos respuestas a la vez, una del bot y otra de una
+  // persona, es peor que no tener traspaso. Lo comprueba
+  // replyToIncomingMessage, que sigue guardando el turno del cliente pero
+  // no genera respuesta.
+  //
+  // Mientras está PENDIENTE el bot sí sigue respondiendo, deliberadamente:
+  // si nadie la toma en una hora, callar al bot deja al cliente final
+  // hablando solo, que es peor que una respuesta imperfecta — y su prompt
+  // ya le dice que ofrezca pasar con una persona.
+  handoffRequestedAt DateTime? @map("handoff_requested_at")
+  handoffTakenAt     DateTime? @map("handoff_taken_at")
+  /// Email del usuario del portal que la tomó. No es una FK a User: quien
+  /// atiende puede dejar de tener cuenta y el registro de quién contestó
+  /// tiene que sobrevivir a eso.
+  handoffTakenBy     String?   @map("handoff_taken_by")
+  handoffClosedAt    DateTime? @map("handoff_closed_at")
+
+  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  leads  Lead[]
 
   @@unique([clientId, externalSessionId])
   @@index([clientId, startedAt])
   @@index([clientId, outcome])
+  @@index([clientId, leadsClassifiedAt])
+  // Fase 3 — la consulta de la bandeja: las que esperan a alguien, primero
+  // las que llevan más tiempo esperando.
+  @@index([clientId, handoffRequestedAt])
+  @@index([tenantId])
+}
+
+// =============================================================================
+// Fase 3 — base de conocimiento del chatbot.
+//
+// Hasta ahora TODO lo que el bot sabía del negocio era la lista de FAQ que
+// cupiera en el paso 4 del wizard: una docena de pares pregunta/respuesta
+// escritos a mano. Eso es un bot de guion. Aquí el cliente añade material
+// de verdad — texto que pega, o su propia web rastreada — y el motor
+// recupera los fragmentos relevantes para cada mensaje.
+//
+// Por qué dos tablas y no un campo de texto largo: la recuperación es por
+// FRAGMENTO, no por documento. Meter un documento entero en el prompt
+// gastaría el contexto en material irrelevante y diluiría lo que sí
+// importa; y la búsqueda de texto completo de Postgres puntúa fragmentos,
+// no ficheros.
+// =============================================================================
+
+model ChatbotKnowledgeDocument {
+  id       String  @id @default(uuid()) @db.Uuid
+  clientId String  @map("client_id")
+  tenantId String? @map("tenant_id") @db.Uuid
+
+  /// 'manual' (el cliente pegó el texto) | 'web' (rastreado de su propia web).
+  source    String
+  title     String
+  /// Solo en source='web': la URL de la que salió.
+  sourceUrl String? @map("source_url")
+
+  /// 'ready' | 'pending' (rastreo encolado) | 'failed'. Texto libre con los
+  /// valores documentados, misma convención que el resto del esquema.
+  status String  @default("ready")
+  /// El motivo del último fallo de rastreo, para poder enseñárselo al
+  /// cliente en su idioma en vez de dejar el documento en silencio.
+  error  String?
+
+  charCount Int       @default(0) @map("char_count")
+  crawledAt DateTime? @map("crawled_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  client ChatbotClient                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant Tenant?                         @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  chunks ChatbotKnowledgeChunk[]
+  audits ChatbotKnowledgeDocumentAudit[]
+
+  @@index([clientId, status])
+  @@index([tenantId])
+}
+
+model ChatbotKnowledgeChunk {
+  id         String @id @default(uuid()) @db.Uuid
+  documentId String @map("document_id") @db.Uuid
+  /// Denormalizado del documento: toda búsqueda filtra por cliente antes
+  /// que por nada, y sin esta columna cada consulta necesitaría un JOIN
+  /// para lo primero que hace.
+  clientId   String @map("client_id")
+  ordinal    Int
+  content    String
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  document ChatbotKnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  /// Columna GENERADA en Postgres: to_tsvector('spanish', content). Prisma
+  /// no modela tsvector, así que la crea la migración a mano y la consulta
+  /// va por $queryRaw — puntuar por relevancia (ts_rank) no se puede
+  /// expresar con la API de Prisma. Aparece aquí solo para que el esquema
+  /// no se considere desincronizado con la base de datos.
+  searchVector Unsupported("tsvector")? @map("search_vector")
+
+  @@index([clientId])
+  @@index([documentId, ordinal])
+}
+
+model ChatbotKnowledgeDocumentAudit {
+  id         String  @id @default(uuid()) @db.Uuid
+  documentId String  @map("document_id") @db.Uuid
+  clientId   String  @map("client_id")
+  tenantId   String? @map("tenant_id") @db.Uuid
+  /// 'created' | 'recrawled' | 'crawl_failed'.
+  ///
+  /// No hay acción 'deleted': la fila cuelga del documento con Cascade, así
+  /// que al borrarlo se va también su historial. Es deliberado —  el sujeto
+  /// de esta auditoría es UN documento, y conservar su historia sin él
+  /// dejaría filas huérfanas que no se pueden leer. Lo que sí queda
+  /// registrado del borrado es que el documento ya no está.
+  action     String
+  /// Metadatos, nunca el contenido: una auditoría no es una segunda copia
+  /// del documento.
+  after      Json?
+  /// 'client:<clientId>' o 'system:knowledge' (el cron de rastreo).
+  actorId    String  @map("actor_id")
+
+  changedAt DateTime @default(now()) @map("changed_at")
+
+  document ChatbotKnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  client   ChatbotClient            @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  tenant   Tenant?                  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([documentId, changedAt])
+  @@index([clientId, changedAt])
   @@index([tenantId])
 }
 
@@ -1495,8 +1668,8 @@ model GoogleAnalyticsConnection {
   lastSyncAt             DateTime? @map("last_sync_at")
   lastSyncError          String?   @map("last_sync_error")
 
-  client  ChatbotClient            @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant  Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  client  ChatbotClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant  Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   metrics SeoAnalyticsMetric[]
 
   @@index([tenantId])
@@ -1562,12 +1735,20 @@ model GoogleReview {
   // stamps replyPublishedAt.
   aiDraftReply       String?   @map("ai_draft_reply")
   aiDraftGeneratedAt DateTime? @map("ai_draft_generated_at")
+
+  // Fase 2.2 — cuándo se avisó al dueño de que esta reseña era negativa.
+  // Se sella SIEMPRE que el barrido la mira, aunque no llegue a mandar
+  // nada (una reseña vieja del histórico no es una noticia: ver
+  // NEGATIVE_ALERT_MAX_AGE_DAYS en lib/review-alerts.ts). Así el aviso es
+  // exactamente-una-vez y activar la función no dispara una avalancha de
+  // correos por reseñas de hace meses.
+  negativeAlertSentAt DateTime? @map("negative_alert_sent_at")
   // 'client:<clientId>' for a human approval, 'auto' when
   // autoPublishReplies published it without a human in the loop — the
   // AC's "si fue auto-publicada" audit trail.
-  replyApprovedBy    String?   @map("reply_approved_by")
-  replyApprovedAt    DateTime? @map("reply_approved_at")
-  replyPublishedAt   DateTime? @map("reply_published_at")
+  replyApprovedBy     String?   @map("reply_approved_by")
+  replyApprovedAt     DateTime? @map("reply_approved_at")
+  replyPublishedAt    DateTime? @map("reply_published_at")
 
   connection GoogleBusinessConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   client     ChatbotClient            @relation(fields: [clientId], references: [id], onDelete: Cascade)
@@ -1952,9 +2133,9 @@ model IntegrationCredential {
   // same reasoning as TwilioOperatorCredential.accountSid.
   clientId String? @map("client_id")
 
-  secretCiphertext Bytes @map("secret_ciphertext")
-  secretIv         Bytes @map("secret_iv")
-  secretTag        Bytes @map("secret_tag")
+  secretCiphertext Bytes  @map("secret_ciphertext")
+  secretIv         Bytes  @map("secret_iv")
+  secretTag        Bytes  @map("secret_tag")
   // Last 4 chars in cleartext — lets the UI show "•••• aBcD" without a
   // decrypt, same as StripeOperatorCredential.testSecretKeyLastFour.
   secretLastFour   String @map("secret_last_four")
@@ -2042,18 +2223,79 @@ model WebQuote {
   acceptedAt          DateTime? @map("accepted_at")
   cancelledAt         DateTime? @map("cancelled_at")
 
+  // Fase 3 — seguimiento de la entrega. El ciclo comercial acababa en el
+  // cobro y ahí se apagaba el portal, justo cuando el cliente más mira.
+  //
+  // `previewUrl` es el enlace privado con el que ve la web antes de
+  // publicarla. No se valida como URL de la que fiarse: la escribe un
+  // operador, no un desconocido, y la pantalla del cliente la enseña como
+  // enlace externo.
+  previewUrl         String?   @map("preview_url")
+  /// Cuándo se le entregó, es decir, cuándo el operador dio el trabajo por
+  /// terminado. NO es lo mismo que `deliveryAcceptedAt`: entre las dos está
+  /// el tiempo que el cliente tarda en revisarla, que es el dato que hace
+  /// falta cuando un proyecto se atasca esperándole a él.
+  deliveredAt        DateTime? @map("delivered_at")
+  /// Cuándo dio el cliente la entrega por buena. Distinto de `acceptedAt`,
+  /// que es la aceptación del PRESUPUESTO, al principio de todo.
+  deliveryAcceptedAt DateTime? @map("delivery_accepted_at")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  client        ChatbotClient   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  clientProduct ClientProduct   @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
-  tenant        Tenant?         @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  createdBy     Operator?       @relation("WebQuoteCreatedBy", fields: [createdByOperatorId], references: [id], onDelete: SetNull)
-  sentBy        Operator?       @relation("WebQuoteSentBy", fields: [sentByOperatorId], references: [id], onDelete: SetNull)
+  client        ChatbotClient         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientProduct ClientProduct         @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
+  tenant        Tenant?               @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  createdBy     Operator?             @relation("WebQuoteCreatedBy", fields: [createdByOperatorId], references: [id], onDelete: SetNull)
+  sentBy        Operator?             @relation("WebQuoteSentBy", fields: [sentByOperatorId], references: [id], onDelete: SetNull)
   auditLogs     WebQuoteAudit[]
+  milestones    WebProjectMilestone[]
 
   @@index([clientId])
   @@index([status])
+  @@index([tenantId])
+}
+
+// =============================================================================
+// Fase 3 — las etapas de un proyecto web.
+//
+// Una fila por etapa y no un puntero a «la etapa actual», porque la
+// pregunta que genera la llamada del cliente no es «¿por dónde vas?» sino
+// «¿cuándo terminasteis el diseño?», y con un puntero esa respuesta no
+// existe.
+//
+// El catálogo de etapas vive en src/lib/web-delivery.ts, no aquí: es fijo
+// y compartido por todos los proyectos, así que una etapa nueva aparece en
+// todos como 'pending' sin migrar nada, y una fila de una etapa retirada
+// se ignora al leer en vez de dibujar un paso fantasma.
+// =============================================================================
+model WebProjectMilestone {
+  id         String  @id @default(uuid()) @db.Uuid
+  webQuoteId String  @map("web_quote_id") @db.Uuid
+  clientId   String  @map("client_id")
+  tenantId   String? @map("tenant_id") @db.Uuid
+
+  /// Una de MILESTONE_KEYS: 'brief' | 'design' | 'build' | 'review' | 'launch'.
+  key    String
+  /// 'pending' | 'in_progress' | 'done'.
+  status String @default("pending")
+
+  /// Se estampan una sola vez y no se reescriben: son el registro de cuándo
+  /// pasó cada cosa, y el cliente ya las ha visto.
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  /// Nota del operador que ve el cliente, p. ej. «esperando tus fotos».
+  note        String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  webQuote WebQuote      @relation(fields: [webQuoteId], references: [id], onDelete: Cascade)
+  client   ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant   Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@unique([webQuoteId, key])
+  @@index([clientId])
   @@index([tenantId])
 }
 
@@ -2066,7 +2308,10 @@ model WebQuoteAudit {
   // 'created' | 'edited' | 'sent' | 'accepted' | 'cancelled' |
   // 'reset_to_draft' | 'invoiced' | 'invoiced_deposit' | 'deposit_paid' |
   // 'invoiced_final' | 'invoice_voided' | 'mark_paid_started' |
-  // 'mark_paid_succeeded' | 'mark_paid_failed' | 'paid'
+  // 'mark_paid_succeeded' | 'mark_paid_failed' | 'paid' |
+  // Fase 3, seguimiento de la entrega:
+  // 'milestone_updated' | 'preview_published' | 'delivered' |
+  // 'delivery_accepted'
   action     String
   before     Json?
   after      Json?
@@ -2295,9 +2540,54 @@ model WhatsappTemplate {
 // polimórficas. Reintento con backoff vía el cron
 // /api/cron/sync-channel-webhooks, mismo shape que review-overdue /
 // wizard-abandoned (scan + fire).
+// =============================================================================
+// Fase 4 — el webhook saliente hacia el CRM del cliente.
+//
+// Los leads se quedaban en el portal. Para un negocio con CRM propio eso
+// no es una función que falte: es un motivo real para no renovar, porque
+// le obligamos a copiar a mano lo que ya le hemos cobrado.
+//
+// **El secreto se guarda en claro, y es una excepción deliberada** a la
+// regla de «cada clase de secreto con su propia clave de cifrado». El
+// motivo: esto no es una credencial del cliente contra otro sistema —es un
+// token que generamos NOSOTROS para que él pueda comprobar que la llamada
+// viene de nosotros—, y su compromiso permite falsificarle un aviso de
+// lead a ese cliente, no acceder a nada nuestro. Cifrarlo exigiría una
+// novena clave de cifrado, con su variable de entorno y su línea en
+// docker-compose.yml, que es justo la clase de hueco que ya ha mordido dos
+// veces en este repo. Si algún día se decide lo contrario, el cambio vive
+// solo en lead-webhook.ts.
+// =============================================================================
+model LeadWebhook {
+  id       String  @id @default(uuid()) @db.Uuid
+  clientId String  @unique @map("client_id")
+  tenantId String? @map("tenant_id") @db.Uuid
+
+  /// A dónde se entrega. Muchos CRM y automatizadores (Zapier, Make, n8n)
+  /// dan una URL que ya lleva su token dentro, así que esta columna es en
+  /// la práctica tan sensible como el secreto de al lado.
+  url    String
+  /// Se firma cada entrega con él en la cabecera x-kairikos-signature.
+  secret String
+
+  enabled Boolean @default(true)
+
+  lastDeliveryAt    DateTime? @map("last_delivery_at")
+  lastDeliveryError String?   @map("last_delivery_error")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+}
+
 model ChannelWebhookDelivery {
   id             String    @id @default(uuid()) @db.Uuid
-  // 'web' | 'telegram' | 'meta' | 'prospecting' | 'seo_content' — the
+  // 'web' | 'telegram' | 'meta' | 'prospecting' | 'seo_content' |
+  // 'lead_crm' (Fase 4: connectionId es un LeadWebhook.id) — the
   // last two aren't channel connections at all ('prospecting'
   // connectionId is a Lead.id, 'seo_content' is a SeoContentDraft.id);
   // deliverChannelEvent doesn't care which, it's the same delivery+retry
@@ -2477,11 +2767,51 @@ model Lead {
   autoContactAttempts Int     @default(0) @map("auto_contact_attempts")
   autoContactError    String? @map("auto_contact_error")
 
+  // Fase 3.3 — secuencia de seguimiento. Hasta ahora la prospección era un
+  // solo toque: si el prospecto no contestaba al primer WhatsApp, ahí
+  // moría. El estándar del sector son dos o tres toques espaciados.
+  //
+  // followUpCount cuenta TOQUES ENVIADOS (el primer contacto es 1), no
+  // intentos: autoContactAttempts sigue siendo el presupuesto de fallos
+  // de envío y son dos cosas distintas — un envío que falla no gasta
+  // toque, porque el prospecto no ha recibido nada.
+  //
+  // lastAutoContactAt es de dónde se mide la espera hasta el toque
+  // siguiente. No se reutiliza contactedAt para esto: contactedAt
+  // significa "cuándo se contactó por primera vez" en todo el producto
+  // (leads.ts lo usa para detectar leads atascados) y machacarlo en cada
+  // toque haría que un lead en secuencia no pareciera atascado nunca.
+  followUpCount     Int       @default(0) @map("follow_up_count")
+  lastAutoContactAt DateTime? @map("last_auto_contact_at")
+  // El corte duro de la secuencia: en cuanto el prospecto escribe, no se
+  // le manda ni un toque más. Lo estampa markProspectReplied
+  // (prospecting-replies.ts) desde la ruta de mensaje entrante de
+  // WhatsApp. El estado NO cambia a 'convertido' al responder — responder
+  // no es comprar, y decidir eso es del comercial del cliente.
+  repliedAt         DateTime? @map("replied_at")
+
+  // Fase 3.4 — qué búsqueda encontró a este prospecto, congelado en el
+  // momento del hallazgo. La campaña solo guarda su rubro y zona ACTUALES,
+  // así que sin esto, en cuanto el cliente cambia de zona, deja de poder
+  // comparar cuál le funcionó mejor: todos sus leads antiguos parecerían
+  // venir de la zona nueva. Null en los leads inbound y en los outbound
+  // anteriores a esta fase.
+  searchCategory String? @map("search_category")
+  searchLocation String? @map("search_location")
+
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   contactedAt DateTime? @map("contacted_at")
   convertedAt DateTime? @map("converted_at")
   discardedAt DateTime? @map("discarded_at")
+
+  // Fase 2.4 — cuándo se avisó al equipo del cliente de que este lead
+  // llevaba demasiado tiempo parado. La detección de leads atascados
+  // existía desde Leads Fase 5, pero solo la veía el operador de Kairikos:
+  // quien puede actuar (el comercial del cliente) no se enteraba. Un aviso
+  // por lead y por estado — al pasar de 'nuevo' a 'contactado' se limpia,
+  // porque volver a atascarse en el estado siguiente es una noticia nueva.
+  staleAlertSentAt DateTime? @map("stale_alert_sent_at")
 
   client       ChatbotClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant       Tenant?              @relation(fields: [tenantId], references: [id], onDelete: SetNull)
@@ -2492,6 +2822,10 @@ model Lead {
   @@unique([clientId, externalPlaceId])
   @@index([clientId, status])
   @@index([clientId, createdAt])
+  // Fase 3.3/3.4 — los tres accesos nuevos son todos "los outbound de este
+  // cliente, por fecha de contacto": buscar a quién toca seguir, buscar a
+  // quién pertenece un mensaje entrante, y agregar las métricas.
+  @@index([clientId, source, contactedAt])
   @@index([tenantId])
   @@index([conversationId])
 }
@@ -2505,6 +2839,9 @@ model LeadAudit {
   // 'marked_discarded' | 'enriched' (Fase B — n8n's website-enrichment
   // callback via PATCH /api/internal/leads/[id]/enrich) | 'contacted_auto'
   // (Fase C — automatic first WhatsApp contact, actorId 'system:prospecting')
+  // | 'followed_up_auto' (Fase 3.3 — un toque de seguimiento; el número de
+  // toque va en Lead.followUpCount) | 'replied' (Fase 3.3 — el prospecto
+  // escribió y la secuencia se corta)
   action       String
   statusBefore String?  @map("status_before")
   statusAfter  String?  @map("status_after")
@@ -2520,6 +2857,85 @@ model LeadAudit {
   tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([leadId, changedAt])
+  @@index([clientId, changedAt])
+  @@index([tenantId])
+}
+
+// =============================================================================
+// "Sistema IA de captación" (product code 'leads') — the client's own
+// qualification profile, so lib/lead-classification-ai.ts's classifier
+// knows what a good lead looks like for THIS client instead of scoring
+// generically. Own table, same shape as SeoProfile/ProspectingCampaign —
+// never bolted onto ChatbotClient. Deliberately NOT routed through the
+// chatbot wizard engine (ChatbotConfigStep/wizard-visibility.ts): that
+// machinery exists for operator-reviewed, tier-gated, versioned bot
+// config, none of which applies here — this is a single client-owned
+// settings row, saved immediately, no approval step. Same posture as
+// SeoProfile's client-filled columns / ProspectingCampaign's profile
+// fields, both of which skip the wizard engine for the same reason.
+// =============================================================================
+model LeadQualificationProfile {
+  id              String  @id @default(uuid()) @db.Uuid
+  clientId        String  @unique @map("client_id")
+  clientProductId String  @unique @map("client_product_id") @db.Uuid
+  tenantId        String? @map("tenant_id") @db.Uuid
+
+  // Free text: who this client wants to sell to. Read directly into the
+  // classifier's prompt — the row can exist without it (e.g. mid-edit)
+  // since this is a single PATCH, not a required/optional step system.
+  perfilClienteIdeal String? @map("perfil_cliente_ideal")
+  // Free text: what disqualifies a contact. Optional — many clients have
+  // nothing to exclude.
+  senalesDescarte    String? @map("senales_descarte")
+  // Where to email new-lead notifications. NULL = fall back to
+  // ChatbotClient.email (today's only behavior) — see
+  // sendNewLeadEmail's call site in lib/leads.ts's ingestClassifiedLead.
+  emailAviso         String? @map("email_aviso")
+
+  // Usage/cost control — same shape as ProspectingCampaign's
+  // leadsFoundThisMonth/usageResetAt. classificationsThisMonth is what
+  // actually costs money (1 Anthropic call per due conversation), reset
+  // monthly (see LEADS_CLASSIFICATION_MONTHLY_CAP in lib/leads.ts) so a
+  // quiet month doesn't carry unused headroom forward or a busy one stay
+  // capped past its reset.
+  classificationsThisMonth Int      @default(0) @map("classifications_this_month")
+  usageResetAt             DateTime @default(now()) @map("usage_reset_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  client        ChatbotClient                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientProduct ClientProduct                   @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
+  tenant        Tenant?                         @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  auditLogs     LeadQualificationProfileAudit[]
+
+  @@index([clientId])
+  @@index([tenantId])
+}
+
+// Append-only, client-only writer (no operator half like SeoProfileAudit —
+// this row has no operator-managed columns), so a single actorEmail
+// string is enough; no actorType/actorOperatorId split.
+model LeadQualificationProfileAudit {
+  id        String  @id @default(uuid()) @db.Uuid
+  profileId String  @map("profile_id") @db.Uuid
+  clientId  String  @map("client_id")
+  tenantId  String? @map("tenant_id") @db.Uuid
+
+  // 'created' | 'updated'
+  action String
+  before Json?
+  after  Json?
+
+  // Always 'client:<clientId>' — this row has no operator writer.
+  actorEmail String   @map("actor_email")
+  changedAt  DateTime @default(now()) @map("changed_at")
+
+  profile LeadQualificationProfile @relation(fields: [profileId], references: [id], onDelete: Restrict)
+  client  ChatbotClient            @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  tenant  Tenant?                  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([profileId, changedAt])
   @@index([clientId, changedAt])
   @@index([tenantId])
 }
@@ -2588,7 +3004,7 @@ model ProspectingCampaign {
   // re-consenting (PATCH .../consent) is what clears it, deliberately,
   // so a degraded number gets a human look before contact resumes rather
   // than silently starting back up on its own.
-  autoContactPausedAt DateTime? @map("auto_contact_paused_at")
+  autoContactPausedAt   DateTime? @map("auto_contact_paused_at")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -2714,15 +3130,78 @@ model SeoProfile {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  client        ChatbotClient      @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  clientProduct ClientProduct      @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
-  tenant        Tenant?            @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  auditLogs     SeoProfileAudit[]
-  contentDrafts SeoContentDraft[]
+  client         ChatbotClient      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientProduct  ClientProduct      @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
+  tenant         Tenant?            @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  auditLogs      SeoProfileAudit[]
+  contentDrafts  SeoContentDraft[]
+  targetKeywords SeoTargetKeyword[]
 
   @@index([clientId])
   @@index([tenantId])
   @@index([status])
+}
+
+// =============================================================================
+// Fase 3.1 — las palabras clave por las que el cliente QUIERE posicionar.
+//
+// Es lo primero que pide cualquier cliente de SEO y hasta ahora no existía
+// a ningún precio: el portal medía lo que Google ya devolvía
+// (SeoSearchConsoleQuery), pero nadie podía decir "quiero salir por esto".
+//
+// Las declara el cliente desde /portal/seo. Sin `active` ni borrado
+// lógico: quitar una palabra es borrarla, y su histórico se va con ella
+// (onDelete: Cascade) — guardar posiciones de algo que ya no se persigue
+// solo ensucia el gráfico.
+// =============================================================================
+model SeoTargetKeyword {
+  id        String  @id @default(uuid()) @db.Uuid
+  profileId String  @map("profile_id") @db.Uuid
+  clientId  String  @map("client_id")
+  tenantId  String? @map("tenant_id") @db.Uuid
+
+  /// Normalizada en minúsculas y sin espacios sobrantes al guardarla, que
+  /// es como llegan las consultas de Search Console — si no, "Mechas" y
+  /// "mechas" serían dos objetivos distintos que nunca casarían.
+  keyword String
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  profile   SeoProfile           @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  client    ChatbotClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant    Tenant?              @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  positions SeoKeywordPosition[]
+
+  @@unique([profileId, keyword])
+  @@index([clientId])
+  @@index([tenantId])
+}
+
+// Histórico de posición de UNA palabra objetivo, un punto por día.
+//
+// Hace falta una tabla propia porque SeoSearchConsoleQuery se reemplaza
+// entera en cada sincronización (deleteMany + createMany, ver el comentario
+// de ese modelo): es una foto del presente, no una serie. Aquí solo entran
+// las palabras que el cliente persigue, así que el volumen queda acotado
+// por su propia lista y no por todo lo que Google devuelva.
+//
+// `position` es NULL cuando ese día la palabra no apareció en Search
+// Console: "no salgo por esto" es un dato, y convertirlo en un 0 o en un
+// hueco haría que el gráfico mintiera en direcciones opuestas.
+model SeoKeywordPosition {
+  id              String   @id @default(uuid()) @db.Uuid
+  targetKeywordId String   @map("target_keyword_id") @db.Uuid
+  /// Día UTC al que corresponde la medición.
+  date            DateTime @db.Date
+  position        Float?
+  clicks          Int      @default(0)
+  impressions     Int      @default(0)
+  recordedAt      DateTime @default(now()) @map("recorded_at")
+
+  targetKeyword SeoTargetKeyword @relation(fields: [targetKeywordId], references: [id], onDelete: Cascade)
+
+  @@unique([targetKeywordId, date])
+  @@index([targetKeywordId, date])
 }
 
 // Append-only. Dual-actor (client and operator both legitimately write
@@ -3137,6 +3616,32 @@ model CallEvent {
   ownerNotifyError     String? @map("owner_notify_error")
   ownerNotifyAttempts  Int     @default(0) @map("owner_notify_attempts")
 
+  // Fase 3 — devolución de llamada agendada por quien llamó.
+  //
+  // Columnas y no una tabla RecallCallback, por el mismo motivo que las de
+  // arriba: la relación es de verdad una devolución por llamada. Quien
+  // llamó elige una vez.
+  //
+  // Un hueco es CUÁNDO SE LE DEVUELVE LA LLAMADA, no una cita: el portal
+  // no conoce la agenda del negocio (ver la cabecera de recall-slots.ts).
+  //
+  // `callbackOfferedSlots` guarda las opciones tal y como se enviaron, y
+  // el «2» de quien contesta se resuelve contra ESE array, nunca contra
+  // uno recalculado: media hora después las horas serían otras y se le
+  // apuntaría a un hueco distinto del que vio. Mismo motivo por el que
+  // resolveSelection lee el orden guardado del digest.
+  callbackOfferedSlots Json?     @map("callback_offered_slots")
+  callbackOfferedAt    DateTime? @map("callback_offered_at")
+  /// El hueco elegido. NULL = no ha elegido (o no se le ofreció).
+  callbackSlotAt       DateTime? @map("callback_slot_at")
+  callbackChosenAt     DateTime? @map("callback_chosen_at")
+  /// Cuándo se le recordó al dueño que le toca llamar. NULL mientras esté
+  /// pendiente, y es lo que filtra el barrido. Se estampa también cuando la
+  /// hora ya pasó sin haber podido avisar: un recordatorio de una llamada
+  /// de hace cuatro horas no es un aviso, es ruido — y dejarlo en NULL lo
+  /// haría reaparecer en cada tick para siempre.
+  callbackRemindedAt   DateTime? @map("callback_reminded_at")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -3161,6 +3666,10 @@ model CallEvent {
   // The 24h caller throttle: the most recent message this client sent to
   // this number.
   @@index([clientId, fromNumber, notifiedCallerAt])
+  // Fase 3 — las devoluciones agendadas de esta suscripción: sirve para
+  // enseñarle al dueño las que vienen y para no ofrecerle a dos personas
+  // el mismo hueco.
+  @@index([subscriptionId, callbackSlotAt])
 }
 
 // WP-XX (Fase 9) — numbers this client never wants messaged back.
