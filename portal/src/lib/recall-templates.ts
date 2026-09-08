@@ -80,7 +80,12 @@ export const RECALL_TEMPLATE_DEFINITIONS: readonly RecallTemplateDefinition[] = 
   {
     ...RECALL_TEMPLATES.ownerMessage,
     category: 'UTILITY',
-    bodyText: 'Recado de {{1}}: {{2}}',
+    // Meta rejected the original 'Recado de {{1}}: {{2}}' — too high a
+    // variable-to-word ratio (error_subcode 2388293). The first fix still
+    // ended on {{2}} with nothing after it, which trips the separate
+    // "variable cannot be first or last" rule (error_subcode 2388299) —
+    // both found submitting live against a real WABA.
+    bodyText: 'Tienes un recado nuevo. Te llamó {{1}} y dijo: {{2}}. Contesta cuando puedas.',
     bodyExamples: ['+34611223344', 'Quiere reservar cita para el sábado por la mañana'],
   },
   {
@@ -93,7 +98,11 @@ export const RECALL_TEMPLATE_DEFINITIONS: readonly RecallTemplateDefinition[] = 
   {
     ...DIGEST_TEMPLATES.clarify,
     category: 'UTILITY',
-    bodyText: 'No entendí tu respuesta. ¿A cuál de estas llamadas te refieres? {{1}}',
+    // Meta rejected the original '...te refieres? {{1}}' — a variable
+    // cannot be the last thing in the template (error_subcode 2388299,
+    // "No se permite incluir parámetros al principio ni al final"),
+    // found submitting live against a real WABA.
+    bodyText: 'No entendí tu respuesta. Estas son las llamadas de hoy: {{1}}. ¿Cuál de ellas quieres marcar?',
     bodyExamples: ['1) 611223344 – Quiere reservar cita · 2) 622334455 – Pregunta por horario'],
   },
   {

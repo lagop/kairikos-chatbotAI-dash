@@ -36,6 +36,13 @@ function baseUrl(): string {
   return (process.env.WHISPER_BASE_URL ?? '').replace(/\/+$/, '');
 }
 
+/** Only the self-hosted container ever ran without this — a hosted
+ *  OpenAI-compatible endpoint (Groq, etc.) rejects an unauthenticated
+ *  request with 401. Optional so the self-hosted path stays unchanged. */
+function apiKey(): string | undefined {
+  return process.env.WHISPER_API_KEY;
+}
+
 /** Language hint. Fixed to Spanish rather than left to auto-detect: the
  *  clips are short and noisy (someone calling from a building site), and
  *  auto-detection on a 5-second clip guesses wrong often enough to matter.
@@ -97,8 +104,10 @@ export async function transcribeRecording(
     form.set('language', language());
     form.set('response_format', 'json');
 
+    const key = apiKey();
     const res = await fetch(`${baseUrl()}/v1/audio/transcriptions`, {
       method: 'POST',
+      headers: key ? { Authorization: `Bearer ${key}` } : undefined,
       body: form,
       signal: controller.signal,
     });
