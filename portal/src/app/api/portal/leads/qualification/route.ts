@@ -19,10 +19,12 @@ export const runtime = 'nodejs';
 // generically. Deliberately NOT the chatbot wizard engine — see
 // LeadQualificationProfile's schema comment for why.
 //
-// Lazily creates the row on first save — same reasoning as prospecting's
-// own route: no purchase-time provisioning hook exists for any product in
-// this codebase, so the first time the client fills in the form IS the
-// natural moment to create the row.
+// Fase 6 — the row itself is normally already there by the time this
+// runs: ensureLeadQualificationProfile (product-onboarding.ts) creates
+// it empty at purchase time. The lazy `create` below stays as the
+// fallback for a row that predates that hook, or the rare case where the
+// hook's own write failed silently — this PATCH must keep working
+// either way.
 // =============================================================================
 
 const BodySchema = z

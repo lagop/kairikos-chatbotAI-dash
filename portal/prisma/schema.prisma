@@ -2960,7 +2960,14 @@ model LeadQualificationProfileAudit {
   before Json?
   after  Json?
 
-  // Always 'client:<clientId>' — this row has no operator writer.
+  // 'client:<clientId>' for the client's own PATCH (still the only writer
+  // of `action: 'updated'`). Fase 6 added a 'created' row for the
+  // purchase-time provisioning hook (ensureLeadQualificationProfile,
+  // product-onboarding.ts): 'system:<source>' from the Stripe checkout
+  // webhook, or 'operator:<operatorId|legacy>' from the manual admin
+  // assignment route — the row genuinely has no Operator FK to point to,
+  // so this stays a formatted string rather than gaining an actorType/
+  // actorOperatorId split like SeoProfileAudit's.
   actorEmail String   @map("actor_email")
   changedAt  DateTime @default(now()) @map("changed_at")
 

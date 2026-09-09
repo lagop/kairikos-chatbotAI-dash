@@ -141,9 +141,13 @@ en tres columnas `Bytes`.
 patrón es una tabla `*OperatorCredential` más una pantalla en `/admin/portal/settings/*`, con
 la variable de entorno como respaldo. Así se rotan sin reiniciar el stack.
 
-**Los perfiles de producto se crean de forma perezosa.** No hay ningún hook de
-aprovisionamiento al comprar: la primera vez que el cliente guarda su formulario es cuando se
-crea la fila (`SeoProfile`, `ProspectingCampaign`, `LeadQualificationProfile`).
+**Los perfiles de producto se crean vacíos al activar, no solo al primer guardado.** Fase 6
+añadió `ensureSeoProfile`/`ensureProspectingCampaign`/`ensureLeadQualificationProfile`
+(`product-onboarding.ts`, mismo patrón que `ensureRecallSubscription` para `recall`): la fila
+nace en el momento del pago, vacía, desde `activateClientProductFromCheckout` y desde el alta
+manual de operador. Las rutas de guardado del cliente (`PATCH /api/portal/seo/profile`, etc.)
+siguen creando la fila ellas mismas si no la encuentran — ese `create` perezoso queda como
+respaldo, no como el único camino.
 
 **Las columnas de estado son texto libre con los valores documentados en un comentario**, no
 enums de Prisma, para que n8n pueda extender sin migración. La validación es de aplicación:
