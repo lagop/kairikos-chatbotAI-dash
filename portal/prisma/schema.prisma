@@ -1463,26 +1463,26 @@ model VerificationToken {
 // side; the row is kept, not hard-deleted, so sync history and the
 // disconnect itself stay auditable).
 model GoogleBusinessConnection {
-  id                          String    @id @default(uuid()) @db.Uuid
-  clientId                    String    @map("client_id")
-  tenantId                    String    @map("tenant_id") @db.Uuid
-  googleAccountId             String    @map("google_account_id")
-  locationId                  String    @map("location_id")
-  locationName                String    @map("location_name")
-  refreshTokenCiphertext      Bytes     @map("refresh_token_ciphertext")
-  refreshTokenIv              Bytes     @map("refresh_token_iv")
-  refreshTokenTag             Bytes     @map("refresh_token_tag")
-  scopes                      String[]
-  status                      String    @default("active")
-  connectedAt                 DateTime  @default(now()) @map("connected_at")
-  lastSyncAt                  DateTime? @map("last_sync_at")
-  lastSyncError               String?   @map("last_sync_error")
+  id                            String    @id @default(uuid()) @db.Uuid
+  clientId                      String    @map("client_id")
+  tenantId                      String    @map("tenant_id") @db.Uuid
+  googleAccountId               String    @map("google_account_id")
+  locationId                    String    @map("location_id")
+  locationName                  String    @map("location_name")
+  refreshTokenCiphertext        Bytes     @map("refresh_token_ciphertext")
+  refreshTokenIv                Bytes     @map("refresh_token_iv")
+  refreshTokenTag               Bytes     @map("refresh_token_tag")
+  scopes                        String[]
+  status                        String    @default("active")
+  connectedAt                   DateTime  @default(now()) @map("connected_at")
+  lastSyncAt                    DateTime? @map("last_sync_at")
+  lastSyncError                 String?   @map("last_sync_error")
   // WP-22b — Google's own "leave a review" link for this location
   // (Business Information API's Location.metadata.newReviewUri).
   // Fetched lazily on first campaign creation and cached here — it does
   // not change for a given location, so there is no reason to re-fetch
   // it on every campaign.
-  reviewUrl                   String?   @map("review_url")
+  reviewUrl                     String?   @map("review_url")
   // WP-22c — when true, google-review-sync.ts publishes an AI-drafted
   // reply to a newly-synced review with no reply yet, with no human
   // approval step. Off by default (the AC's "salvo que el cliente
@@ -1490,9 +1490,24 @@ model GoogleBusinessConnection {
   // AC requires ("queda auditado con quién y cuándo lo cambió"): who
   // last flipped the setting and when, not a full change history table,
   // which is more than a single boolean toggle needs.
-  autoPublishReplies          Boolean   @default(false) @map("auto_publish_replies")
-  autoPublishRepliesChangedBy String?   @map("auto_publish_replies_changed_by")
-  autoPublishRepliesChangedAt DateTime? @map("auto_publish_replies_changed_at")
+  autoPublishReplies            Boolean   @default(false) @map("auto_publish_replies")
+  autoPublishRepliesChangedBy   String?   @map("auto_publish_replies_changed_by")
+  autoPublishRepliesChangedAt   DateTime? @map("auto_publish_replies_changed_at")
+  // Fase 5 — cuando está activo, review-requests-from-leads.ts invita a
+  // reseñar a los leads que el cliente marca 'convertido' en el buzón
+  // compartido de 'leads'/'prospecting', sin que tenga que pegar una
+  // lista. Es una TERCERA fuente de destinatarios para la maquinaria de
+  // campañas que ya existía, no un sistema nuevo: la primera es el
+  // formulario manual y la segunda es 'recall' (recall-reviews.ts).
+  //
+  // Apagado por defecto, y el mismo par de columnas de auditoría que
+  // autoPublishReplies, por el mismo motivo y uno más: aquí escribimos a
+  // los CLIENTES FINALES del cliente, con su nombre. Que eso empiece a
+  // ocurrir solo porque contrató un segundo producto es exactamente la
+  // sorpresa que le hace desconfiar de los dos.
+  autoRequestFromLeads          Boolean   @default(false) @map("auto_request_from_leads")
+  autoRequestFromLeadsChangedBy String?   @map("auto_request_from_leads_changed_by")
+  autoRequestFromLeadsChangedAt DateTime? @map("auto_request_from_leads_changed_at")
 
   client              ChatbotClient           @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant              Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
@@ -1822,6 +1837,12 @@ model ReviewRequest {
   @@unique([campaignId, recipient])
   @@index([campaignId])
   @@index([status])
+  // Fase 5 — el único índice que la deduplicación ENTRE campañas puede
+  // usar. La unicidad de arriba es por campaña, así que hasta ahora nada
+  // impedía invitar dos veces a la misma persona desde dos campañas
+  // distintas; con la fuente automática eso pasaría de "el cliente se
+  // equivocó pegando la lista" a ocurrir solo, todos los meses.
+  @@index([recipient])
 }
 
 // =============================================================================
@@ -2804,6 +2825,18 @@ model Lead {
   contactedAt DateTime? @map("contacted_at")
   convertedAt DateTime? @map("converted_at")
   discardedAt DateTime? @map("discarded_at")
+
+  // Fase 5 — sellado una sola vez por el barrido de invitaciones a
+  // reseñar (review-requests-from-leads.ts). Misma postura de
+  // INTENTO ÚNICO que enrichmentRequestedAt, no una máquina de estados:
+  // se sella tanto si se envió la invitación como si el lead no tenía
+  // dirección utilizable o quedaba dentro del periodo de gracia. Lo que
+  // NO se sella es un lead cuya campaña no se pudo crear (la ficha de
+  // Google no devolvió enlace de reseña, por ejemplo): ese vuelve al
+  // siguiente tick y se cae solo al salir de la ventana de frescura.
+  //
+  // Null es exactamente "el barrido todavía no lo ha mirado".
+  reviewRequestedAt DateTime? @map("review_requested_at")
 
   // Fase 2.4 — cuándo se avisó al equipo del cliente de que este lead
   // llevaba demasiado tiempo parado. La detección de leads atascados

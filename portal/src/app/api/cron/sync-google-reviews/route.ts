@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { isDatabaseConfigured } from '@/lib/prisma';
+import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { syncAllDueConnections } from '@/lib/google-review-sync';
+import { sweepReviewRequestsFromLeads } from '@/lib/review-requests-from-leads';
+import { logError } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -9,19 +11,22 @@ export const maxDuration = 60;
 /**
  * WP-22a — GET /api/cron/sync-google-reviews
  *
- * Invoked by Vercel Cron (see vercel.json). Auth follows Vercel's own
- * convention: set CRON_SECRET, Vercel sends it back as
- * `Authorization: Bearer <CRON_SECRET>` on every cron invocation — any
- * request without a matching header is rejected, so this endpoint can't
- * be used to trigger a sync sweep from outside Vercel's scheduler.
+ * El tick del producto 'reviews'. Lo invoca scripts/scheduler.sh en la
+ * VPS: vercel.json declara un horario pero es inerte, este stack no está
+ * en Vercel. Auth como todas las rutas de cron: CRON_SECRET en
+ * `Authorization: Bearer <CRON_SECRET>`.
  *
- * Schedule note: vercel.json requests every 6 hours, but Vercel's Hobby
- * plan only runs cron jobs at daily granularity — on Hobby this
- * effectively runs once a day regardless of the schedule string. Either
- * way `syncAllDueConnections` re-checks `isSyncDue` per connection
- * (GOOGLE_REVIEWS_SYNC_MIN_INTERVAL_MINUTES), so a coarser real
- * invocation cadence never causes duplicate/too-frequent syncs — it just
- * means reviews go stale for longer between runs on that plan tier.
+ * `syncAllDueConnections` recomprueba `isSyncDue` por conexión
+ * (GOOGLE_REVIEWS_SYNC_MIN_INTERVAL_MINUTES), así que una cadencia real
+ * más gruesa nunca provoca sincronizaciones duplicadas — solo que las
+ * reseñas tarden más en refrescarse.
+ *
+ * Fase 5 — el barrido de invitaciones a reseñar a partir de los leads
+ * convertidos vive en ESTE tick y no en uno propio, por dos motivos: es
+ * el mismo producto y la misma cadencia, y una entrada nueva en
+ * scheduler.sh es justo lo que se olvida (un cron que no está en esa
+ * lista no se ejecuta jamás, sin dar error). Aislado en su try/catch: un
+ * fallo invitando no puede dejar sin sincronizar las reseñas de todos.
  */
 function isAuthorizedCronRequest(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
@@ -37,5 +42,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
   }
   const result = await syncAllDueConnections();
-  return NextResponse.json(result);
+
+  let reviewRequests: Awaited<ReturnType<typeof sweepReviewRequestsFromLeads>> | { error: string };
+  try {
+    reviewRequests = await sweepReviewRequestsFromLeads(prisma);
+  } catch (err) {
+    logError('sync_google_reviews_cron.lead_requests_failed', err, {}, 'warn');
+    reviewRequests = { error: err instanceof Error ? err.message : 'unknown error' };
+  }
+
+  return NextResponse.json({ ...result, reviewRequests });
 }

@@ -7,6 +7,7 @@ import { ReviewLocationPicker } from '@/components/portal/ReviewLocationPicker';
 import { requirePortalSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { hasGoogleBusinessConnectAccess } from '@/lib/google-business';
+import { hasLeadsInboxAccess } from '@/lib/leads';
 import { EmptyState } from '@/components/portal/EmptyState';
 import { GoogleReviewsPanel, type ConnectionStatus } from '@/components/portal/GoogleReviewsPanel';
 import { ReviewCampaignsPanel, type CampaignSummary } from '@/components/portal/ReviewCampaignsPanel';
@@ -209,6 +210,13 @@ export default async function PortalResenasPage({ searchParams }: PageProps) {
     ? (connection.status as ConnectionStatus)
     : 'not_connected';
 
+  // Fase 5 — al nivel del componente y NO dentro de una de las ramas de
+  // arriba: el interruptor de invitación automática se dibuja dentro del
+  // panel de conexión, y colgar su carga de una condición equivocada es
+  // exactamente cómo una tarjeta acaba no viéndose nunca con sus tests en
+  // verde (pasó con el seguimiento de entrega de 'web').
+  const leadsInboxAvailable = await hasLeadsInboxAccess(prisma, resolved.clientId);
+
   // Fase 2.1 — el resumen sale de las reseñas ya sincronizadas, así que
   // solo tiene sentido pedirlo cuando hay conexión de la que hayan venido.
   const reputation =
@@ -275,6 +283,9 @@ export default async function PortalResenasPage({ searchParams }: PageProps) {
         lastSyncError={connection?.lastSyncError ?? null}
         autoPublishReplies={connection?.autoPublishReplies ?? false}
         autoPublishRepliesChangedAt={connection?.autoPublishRepliesChangedAt?.toISOString() ?? null}
+        leadsInboxAvailable={leadsInboxAvailable}
+        autoRequestFromLeads={connection?.autoRequestFromLeads ?? false}
+        autoRequestFromLeadsChangedAt={connection?.autoRequestFromLeadsChangedAt?.toISOString() ?? null}
       />
 
       {reputation ? <ReputationPanel summary={reputation} /> : null}

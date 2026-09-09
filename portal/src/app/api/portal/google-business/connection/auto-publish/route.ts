@@ -1,10 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
-import { prisma, isDatabaseConfigured } from '@/lib/prisma';
-import { resolveReviewConnection } from '@/lib/review-locations';
-import { resolveClientFromSession } from '@/lib/portal-session';
-import { getSession } from '@/lib/session';
-import { hasGoogleBusinessConnectAccess } from '@/lib/google-business';
+import { prisma } from '@/lib/prisma';
+import { resolveToggleTarget } from '@/lib/google-business-toggle';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -20,39 +17,28 @@ const BodySchema = z.object({ enabled: z.boolean(), connectionId: z.string().uui
  * satisfied by autoPublishRepliesChangedBy/At — always overwritten with
  * the current change, not appended to a history table (a single boolean
  * setting doesn't need more than "who set it last and when").
+ *
+ * Fase 3 — publicar respuestas solo se activa para el local que se
+ * indique: es un ajuste POR UBICACIÓN (la columna vive en la conexión),
+ * y aplicarlo al local equivocado publica en el Google de otro negocio.
+ * Esa resolución, junto con la sesión y el acceso al producto, vive en
+ * resolveToggleTarget desde que existe un segundo interruptor
+ * (connection/auto-request).
  */
 export async function PATCH(req: NextRequest) {
-  const session = await getSession();
-  if (!session.hasClientAccess) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  }
-  const resolved = await resolveClientFromSession();
-  if (!resolved) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  if (!isDatabaseConfigured || resolved.source !== 'database') {
-    return NextResponse.json({ error: 'service_unavailable', detail: 'not_available_in_dev_mode' }, { status: 503 });
-  }
-
-  const hasAccess = await hasGoogleBusinessConnectAccess(resolved.clientId);
-  if (!hasAccess) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-
   const body = BodySchema.safeParse(await req.json().catch(() => null));
   if (!body.success) {
     return NextResponse.json({ error: 'invalid_body', details: body.error.flatten() }, { status: 400 });
   }
 
-  // Fase 3 — publicar respuestas solo se activa para el local que se
-  // indique: es un ajuste POR UBICACIÓN (la columna vive en la conexión),
-  // y aplicarlo al local equivocado publica en el Google de otro negocio.
-  const connection = await resolveReviewConnection(prisma, resolved.clientId, body.data.connectionId);
-  if (!connection) {
-    return NextResponse.json({ error: body.data.connectionId ? 'not_connected' : 'location_required' }, { status: 404 });
-  }
+  const target = await resolveToggleTarget(body.data.connectionId);
+  if (!target.ok) return target.response;
 
   const updated = await prisma.googleBusinessConnection.update({
-    where: { id: connection.id },
+    where: { id: target.connectionId },
     data: {
       autoPublishReplies: body.data.enabled,
-      autoPublishRepliesChangedBy: `client:${resolved.clientId}`,
+      autoPublishRepliesChangedBy: `client:${target.clientId}`,
       autoPublishRepliesChangedAt: new Date(),
     },
   });

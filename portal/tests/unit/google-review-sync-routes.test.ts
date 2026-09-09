@@ -16,6 +16,7 @@ const mockState = vi.hoisted(() => ({
   isSyncDue: vi.fn(),
   syncReviewsForConnection: vi.fn(),
   syncAllDueConnections: vi.fn(),
+  sweepReviewRequestsFromLeads: vi.fn(),
 }));
 
 vi.mock('@/lib/portal-session', () => ({
@@ -48,6 +49,14 @@ vi.mock('@/lib/prisma', () => ({
   },
 }));
 
+// Fase 5 — el tick de reseñas dispara ahora también el barrido de
+// invitaciones a partir de leads convertidos. Se mockea igual que la
+// sincronización: aquí se prueba la RUTA, y el barrido tiene su propio
+// archivo (review-requests-from-leads.test.ts).
+vi.mock('@/lib/review-requests-from-leads', () => ({
+  sweepReviewRequestsFromLeads: (...args: unknown[]) => mockState.sweepReviewRequestsFromLeads(...args),
+}));
+
 vi.mock('@/lib/google-review-sync', () => ({
   isSyncDue: (...args: unknown[]) => mockState.isSyncDue(...args),
   syncReviewsForConnection: (...args: unknown[]) => mockState.syncReviewsForConnection(...args),
@@ -65,6 +74,14 @@ beforeEach(() => {
   mockState.isSyncDue.mockReset().mockReturnValue(true);
   mockState.syncReviewsForConnection.mockReset().mockResolvedValue({ synced: true, reviewCount: 3 });
   mockState.syncAllDueConnections.mockReset().mockResolvedValue({ swept: 2, synced: 1 });
+  mockState.sweepReviewRequestsFromLeads.mockReset().mockResolvedValue({
+    connectionsScanned: 0,
+    campaignsCreated: 0,
+    invited: 0,
+    skippedNoAddress: 0,
+    skippedCooldown: 0,
+    failed: [],
+  });
 });
 
 describe('POST /api/portal/google-business/sync', () => {
@@ -164,7 +181,30 @@ describe('GET /api/cron/sync-google-reviews', () => {
     const res = await GET(makeRequest('Bearer secret_123'));
     const body = await res.clone().json();
     expect(res.status).toBe(200);
-    expect(body).toEqual({ swept: 2, synced: 1 });
+    expect(body).toEqual({
+      swept: 2,
+      synced: 1,
+      reviewRequests: {
+        connectionsScanned: 0,
+        campaignsCreated: 0,
+        invited: 0,
+        skippedNoAddress: 0,
+        skippedCooldown: 0,
+        failed: [],
+      },
+    });
+  });
+
+  it('still reports the sync when the review-request sweep throws', async () => {
+    // Los dos trabajos comparten tick pero no suerte: un fallo invitando no
+    // puede dejar sin sincronizar las reseñas de todos los clientes.
+    mockState.sweepReviewRequestsFromLeads.mockRejectedValueOnce(new Error('boom'));
+    const { GET } = await import('@/app/api/cron/sync-google-reviews/route');
+    const res = await GET(makeRequest('Bearer secret_123'));
+    const body = await res.clone().json();
+    expect(res.status).toBe(200);
+    expect(body.swept).toBe(2);
+    expect(body.reviewRequests).toEqual({ error: 'boom' });
   });
 
   it('503s when the database is not configured', async () => {
