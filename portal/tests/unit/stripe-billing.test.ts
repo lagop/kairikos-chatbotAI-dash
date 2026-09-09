@@ -24,10 +24,19 @@ const mockState = vi.hoisted(() => ({
   clientProductUpdate: vi.fn(),
   clientProductAuditCreate: vi.fn(),
   ensureRecallSubscription: vi.fn(),
+  ensureSeoProfile: vi.fn(),
+  ensureProspectingCampaign: vi.fn(),
+  ensureLeadQualificationProfile: vi.fn(),
 }));
 
 vi.mock('@/lib/recall-onboarding', () => ({
   ensureRecallSubscription: (...args: unknown[]) => mockState.ensureRecallSubscription(...args),
+}));
+
+vi.mock('@/lib/product-onboarding', () => ({
+  ensureSeoProfile: (...args: unknown[]) => mockState.ensureSeoProfile(...args),
+  ensureProspectingCampaign: (...args: unknown[]) => mockState.ensureProspectingCampaign(...args),
+  ensureLeadQualificationProfile: (...args: unknown[]) => mockState.ensureLeadQualificationProfile(...args),
 }));
 
 const mockTx = {
@@ -94,6 +103,9 @@ beforeEach(() => {
   });
   mockState.clientProductAuditCreate.mockReset();
   mockState.ensureRecallSubscription.mockReset().mockResolvedValue({ created: true, subscriptionId: 'sub_recall_1' });
+  mockState.ensureSeoProfile.mockReset().mockResolvedValue({ created: true, id: 'seo_profile_1' });
+  mockState.ensureProspectingCampaign.mockReset().mockResolvedValue({ created: true, id: 'campaign_1' });
+  mockState.ensureLeadQualificationProfile.mockReset().mockResolvedValue({ created: true, id: 'lqp_1' });
 });
 
 function makeStripeSubscription(overrides: Record<string, unknown> = {}) {
@@ -357,6 +369,81 @@ describe('activateClientProductFromCheckout (WP-30)', () => {
       mockState.findUniqueClientProduct.mockResolvedValueOnce({ status: 'active', product: { code: 'recall' } });
       await activateClientProductFromCheckout(makeSession());
       expect(mockState.ensureRecallSubscription).not.toHaveBeenCalled();
+    });
+  });
+
+  // Fase 6 — mismo hueco que 'recall' para los otros tres productos con
+  // perfil propio: comprar 'seo'/'prospecting'/'leads' activaba el
+  // ClientProduct sin crear nunca su fila de perfil.
+  describe("Fase 6 — 'seo', 'prospecting' y 'leads' arrancan su perfil al activarse", () => {
+    it("crea el SeoProfile cuando el producto es 'seo'", async () => {
+      mockState.findUniqueClientProduct.mockResolvedValueOnce({
+        status: 'pending_payment',
+        clientId: 'client_1',
+        tenantId: 'tenant_1',
+        product: { code: 'seo', tier: 'standard' },
+      });
+
+      await activateClientProductFromCheckout(makeSession());
+
+      expect(mockState.ensureSeoProfile).toHaveBeenCalledWith(
+        expect.anything(),
+        { clientId: 'client_1', clientProductId: 'cp_1', tenantId: 'tenant_1' },
+        { type: 'system', source: 'stripe_checkout' },
+      );
+      expect(mockState.ensureProspectingCampaign).not.toHaveBeenCalled();
+      expect(mockState.ensureLeadQualificationProfile).not.toHaveBeenCalled();
+    });
+
+    it("crea la ProspectingCampaign con la tarifa contratada cuando el producto es 'prospecting'", async () => {
+      mockState.findUniqueClientProduct.mockResolvedValueOnce({
+        status: 'pending_payment',
+        clientId: 'client_1',
+        tenantId: 'tenant_1',
+        product: { code: 'prospecting', tier: 'team' },
+      });
+
+      await activateClientProductFromCheckout(makeSession());
+
+      expect(mockState.ensureProspectingCampaign).toHaveBeenCalledWith(
+        expect.anything(),
+        { clientId: 'client_1', clientProductId: 'cp_1', tenantId: 'tenant_1', tier: 'team' },
+        { type: 'system', source: 'stripe_checkout' },
+      );
+      expect(mockState.ensureSeoProfile).not.toHaveBeenCalled();
+      expect(mockState.ensureLeadQualificationProfile).not.toHaveBeenCalled();
+    });
+
+    it("crea el LeadQualificationProfile cuando el producto es 'leads'", async () => {
+      mockState.findUniqueClientProduct.mockResolvedValueOnce({
+        status: 'pending_payment',
+        clientId: 'client_1',
+        tenantId: 'tenant_1',
+        product: { code: 'leads', tier: 'standard' },
+      });
+
+      await activateClientProductFromCheckout(makeSession());
+
+      expect(mockState.ensureLeadQualificationProfile).toHaveBeenCalledWith(
+        expect.anything(),
+        { clientId: 'client_1', clientProductId: 'cp_1', tenantId: 'tenant_1' },
+        { type: 'system', source: 'stripe_checkout' },
+      );
+      expect(mockState.ensureSeoProfile).not.toHaveBeenCalled();
+      expect(mockState.ensureProspectingCampaign).not.toHaveBeenCalled();
+    });
+
+    it('no llama a ninguno de los tres para un producto sin perfil propio', async () => {
+      mockState.findUniqueClientProduct.mockResolvedValueOnce({
+        status: 'pending_payment',
+        clientId: 'client_1',
+        tenantId: 'tenant_1',
+        product: { code: 'chatbot', tier: 'standard' },
+      });
+      await activateClientProductFromCheckout(makeSession());
+      expect(mockState.ensureSeoProfile).not.toHaveBeenCalled();
+      expect(mockState.ensureProspectingCampaign).not.toHaveBeenCalled();
+      expect(mockState.ensureLeadQualificationProfile).not.toHaveBeenCalled();
     });
   });
 });

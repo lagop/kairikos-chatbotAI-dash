@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateAdminRequest } from '@/lib/operator-session';
 import { ensureRecallSubscription } from '@/lib/recall-onboarding';
+import { ensureSeoProfile, ensureProspectingCampaign, ensureLeadQualificationProfile } from '@/lib/product-onboarding';
 
 const ProductIdSchema = z.string().uuid();
 const ClientIdSchema = z.string().min(1).max(128);
@@ -115,6 +116,24 @@ export async function POST(req: NextRequest) {
       { clientId, clientProductId: row.id, tenantId: row.tenantId },
       { type: 'operator', operatorId: auth.operatorId === 'legacy' ? null : auth.operatorId },
     );
+  }
+
+  // Fase 6 — mismo hueco que 'recall' para los otros tres productos con
+  // perfil propio, segundo punto de entrada (ver el mismo bloque en
+  // activateClientProductFromCheckout para el camino de Stripe).
+  const operatorActor = { type: 'operator' as const, operatorId: auth.operatorId === 'legacy' ? null : auth.operatorId };
+  if (row.product?.code === 'seo') {
+    await ensureSeoProfile(prisma, { clientId, clientProductId: row.id, tenantId: row.tenantId }, operatorActor);
+  }
+  if (row.product?.code === 'prospecting') {
+    await ensureProspectingCampaign(
+      prisma,
+      { clientId, clientProductId: row.id, tenantId: row.tenantId, tier: row.product.tier },
+      operatorActor,
+    );
+  }
+  if (row.product?.code === 'leads') {
+    await ensureLeadQualificationProfile(prisma, { clientId, clientProductId: row.id, tenantId: row.tenantId }, operatorActor);
   }
 
   return NextResponse.json(row, { status: 201 });
