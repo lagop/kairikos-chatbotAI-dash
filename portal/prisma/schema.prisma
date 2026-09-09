@@ -3255,10 +3255,14 @@ model SeoProfileAudit {
   before Json?
   after  Json?
 
-  // 'operator' | 'client'
+  // 'operator' | 'client' | 'system'. Fase 5 added 'system' for
+  // sweepDueSiteAudits (src/lib/seo-audit.ts) — the automated version of
+  // 'audit_run', same action, nobody at the keyboard. actorOperatorId
+  // and actorEmail both stay NULL for it, same as every other 'system'
+  // actor in this schema (ChatbotConfigStepAudit had the precedent).
   actorType       String   @default("client") @map("actor_type")
   actorOperatorId String?  @map("actor_operator_id") @db.Uuid
-  // Operator email, or 'client:<clientId>'.
+  // Operator email, or 'client:<clientId>'. NULL for actorType='system'.
   actorEmail      String?  @map("actor_email")
   changedAt       DateTime @default(now()) @map("changed_at")
 

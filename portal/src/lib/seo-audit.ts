@@ -1,4 +1,6 @@
 import 'server-only';
+import { Prisma, type PrismaClient } from '@prisma/client';
+import { logError } from './observability';
 
 // =============================================================================
 // SEO con IA, Fase A — the operator's diagnostic tool: technical signals
@@ -15,6 +17,14 @@ import 'server-only';
 // Operator-triggered, on demand — the monthly automated version (Fase C)
 // reuses this same function, just called from a cron tick instead of a
 // button click.
+//
+// Fase 5 — ese "reuses this same function, just called from a cron tick"
+// nunca se construyó: auditWebsite() solo tenía UN llamante, la ruta del
+// operador. Es la parte que "Cadena de entrega por producto" marcó
+// automatizable ("es determinista y el scheduler ya lleva tres rutas de
+// SEO"): sweepDueSiteAudits, al final de este archivo, es ese cron tick
+// que faltaba. Vive aquí y no en un módulo aparte porque el comentario de
+// arriba ya reservaba este sitio para él.
 // =============================================================================
 
 const AUDIT_TIMEOUT_MS = 8_000;
@@ -187,4 +197,131 @@ export async function auditWebsite(url: string): Promise<AuditWebsiteResult> {
       checkedAt: new Date().toISOString(),
     },
   };
+}
+
+// =============================================================================
+// Fase 5 — el barrido automático.
+// =============================================================================
+
+/** Cada cuántos días toca reauditar. Semanal: los signos que auditWebsite
+ *  mide (title, meta description, alt text, enlaces rotos) no cambian de
+ *  un día para otro, y generate-seo-content.ts —que lee lastAuditResult
+ *  como una de sus señales— corre como muy seguido cada
+ *  MIN_CONTENT_GENERATION_INTERVAL_DAYS (1 día), así que semanal deja la
+ *  auditoría razonablemente fresca sin auditar el sitio del cliente todos
+ *  los días porque sí. */
+export const SITE_AUDIT_MIN_INTERVAL_DAYS = 7;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Misma forma que isGenerationDue en seo-content-generation.ts: pura,
+ *  fácil de testear sin red ni Prisma. `null` (nunca auditado) siempre
+ *  está due. */
+export function isAuditDue(lastAuditAt: Date | null, minIntervalDays: number = SITE_AUDIT_MIN_INTERVAL_DAYS): boolean {
+  if (!lastAuditAt) return true;
+  return Date.now() - lastAuditAt.getTime() >= minIntervalDays * DAY_MS;
+}
+
+/** Techo de auditorías por tick. Cada una puede tardar decenas de
+ *  segundos (la carga de la página más hasta LINK_CHECK_CAP comprobaciones
+ *  de enlace secuenciales, 3s de timeout cada una) y la ruta de cron
+ *  corre con maxDuration=60 — el mismo techo que
+ *  MAX_GENERATIONS_PER_TICK en seo-content-generation.ts, y por el mismo
+ *  motivo: lo que no entra en este tick sigue vencido y entra en el
+ *  siguiente, cinco minutos después. */
+const MAX_AUDITS_PER_TICK = 2;
+
+export interface SiteAuditSweepResult {
+  /** Perfiles con siteUrl, producto 'seo' activo, y auditoría vencida. */
+  due: number;
+  /** De ésos, los que de verdad se intentaron en este tick. */
+  processed: number;
+  audited: number;
+  failed: number;
+}
+
+/**
+ * El cron entry point (/api/cron/audit-seo-sites). Reaudita cada
+ * SeoProfile con siteUrl que lleve más de SITE_AUDIT_MIN_INTERVAL_DAYS
+ * sin auditoría (o nunca auditado), para un cliente con 'seo' activo.
+ *
+ * Un fallo (sitio caído, timeout) NO estampa lastAuditAt — igual que la
+ * ruta del operador, deja lastAuditResult del último éxito intacto y dejo
+ * lastAuditError con el motivo — así el siguiente tick lo reintenta en
+ * vez de darlo por auditado con un error como único resultado. Aislado
+ * por perfil: un sitio caído no puede impedir que se audite el resto.
+ */
+export async function sweepDueSiteAudits(
+  prisma: PrismaClient,
+  now: Date = new Date(),
+): Promise<SiteAuditSweepResult> {
+  const profiles = await prisma.seoProfile.findMany({
+    where: {
+      siteUrl: { not: null },
+      clientProduct: { status: 'active' },
+    },
+    select: { id: true, clientId: true, tenantId: true, siteUrl: true, lastAuditAt: true },
+  });
+
+  const due = profiles.filter((p) => isAuditDue(p.lastAuditAt));
+  const batch = due.slice(0, MAX_AUDITS_PER_TICK);
+
+  let audited = 0;
+  let failed = 0;
+
+  for (const profile of batch) {
+    // `siteUrl: { not: null }` en el where ya lo garantiza; el guard
+    // deja al compilador tranquilo sin un `!` a ciegas.
+    if (!profile.siteUrl) continue;
+
+    const result = await auditWebsite(profile.siteUrl);
+
+    if (!result.ok) {
+      failed += 1;
+      logError('seo_audit_sweep.audit_failed', new Error(result.error), { clientId: profile.clientId }, 'warn');
+      try {
+        await prisma.seoProfile.update({ where: { id: profile.id }, data: { lastAuditError: result.error } });
+      } catch (err) {
+        logError('seo_audit_sweep.save_failure_failed', err, { clientId: profile.clientId }, 'warn');
+      }
+      continue;
+    }
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.seoProfile.update({
+          where: { id: profile.id },
+          data: { lastAuditAt: now, lastAuditResult: result.data as unknown as Prisma.InputJsonValue, lastAuditError: null },
+        });
+        await tx.seoProfileAudit.create({
+          data: {
+            profileId: profile.id,
+            clientId: profile.clientId,
+            tenantId: profile.tenantId,
+            action: 'audit_run',
+            before: Prisma.JsonNull,
+            after: {
+              h1Count: result.data.h1Count,
+              imagesMissingAlt: result.data.imagesMissingAlt,
+              brokenLinksFound: result.data.brokenLinks.length,
+            },
+            // Fase 5 — tercer valor de actorType, junto a 'operator' y
+            // 'client': ninguno de los dos escribió esta fila. El propio
+            // modelo (ChatbotConfigStepAudit.actor) ya tenía precedente
+            // de 'system' antes de esta sesión; SeoProfileAudit no, y
+            // ahora sí.
+            actorType: 'system',
+            actorOperatorId: null,
+            actorEmail: null,
+          },
+        });
+      });
+      audited += 1;
+    } catch (err) {
+      failed += 1;
+      logError('seo_audit_sweep.save_failed', err, { clientId: profile.clientId }, 'warn');
+    }
+  }
+
+  return { due: due.length, processed: batch.length, audited, failed };
 }

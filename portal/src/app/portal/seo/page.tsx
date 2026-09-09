@@ -53,6 +53,19 @@ const CONNECT_ERROR_LABEL: Record<string, string> = {
   forbidden: 'Este producto no está incluido en tu plan.',
 };
 
+const WP_CONNECT_ERROR_LABEL: Record<string, string> = {
+  csrf: 'No se pudo verificar la solicitud — inténtalo de nuevo.',
+  no_site_url: 'Indica primero la URL de tu sitio arriba, antes de conectar WordPress.',
+  not_wordpress: 'Esta conexión automática solo funciona si tu sitio usa WordPress.',
+  invalid_site_url: 'La URL de tu sitio no parece válida — revísala arriba y vuelve a intentarlo.',
+  wordpress_rejected: 'No se completó la conexión en WordPress.',
+  wordpress_incomplete_response: 'WordPress no devolvió lo necesario para conectar — inténtalo de nuevo.',
+  no_profile: 'No pudimos completar la conexión — escríbenos a soporte.',
+  internal_error: 'No pudimos completar la conexión — escríbenos a soporte.',
+  not_available_in_dev_mode: 'La conexión con WordPress no está disponible en modo demo.',
+  forbidden: 'Este producto no está incluido en tu plan.',
+};
+
 const GA_CONNECT_ERROR_LABEL: Record<string, string> = {
   csrf: 'No se pudo verificar la solicitud — inténtalo de nuevo.',
   token_exchange_failed: 'Google no pudo completar la conexión — inténtalo de nuevo.',
@@ -70,6 +83,8 @@ export default async function PortalSeoPage({
     connect_error?: string;
     ga_connected?: string;
     ga_connect_error?: string;
+    wp_connected?: string;
+    wp_connect_error?: string;
   };
 }) {
   await requirePortalSession();
@@ -156,8 +171,15 @@ export default async function PortalSeoPage({
       // Fase 3.2 — la auditoría técnica existía desde Fase A pero solo la
       // veía un operador, y en crudo. Aquí se traduce a recomendaciones.
       lastAuditResult: true,
+      // Fase 5 — para decidir si se enseña la tarjeta de conexión de
+      // WordPress y con qué estado. Nunca el cifrado en sí: solo si
+      // existe.
+      wordpressUrl: true,
+      wordpressAppPasswordCiphertext: true,
     },
   });
+
+  const hasWordPressAppPassword = Boolean(profile?.wordpressAppPasswordCiphertext);
 
   // Fase 3.1 — las palabras que el cliente persigue y cómo van.
   const keywordTrends = profile ? await buildKeywordTrends(prisma, resolved.clientId) : [];
@@ -222,6 +244,44 @@ export default async function PortalSeoPage({
     <div className="space-y-6">
       <PageHeading eyebrow="Portal" title="SEO con IA" description="Cuéntanos de tu negocio para empezar." />
       <SeoProfileCard profile={profile} />
+
+      {profile?.cmsType === 'wordpress' ? (
+        <section className="card space-y-3" aria-label="Conexión con WordPress" data-testid="seo-wordpress-card">
+          <div>
+            <p className="text-sm font-semibold">Publicar en tu WordPress</p>
+            <p className="text-xs text-kairikos-muted">
+              Conéctate con tu propio usuario de WordPress para que podamos publicar los artículos directamente
+              en tu sitio, sin que tengas que pasarle ninguna contraseña a nadie.
+            </p>
+          </div>
+
+          {searchParams?.wp_connected === '1' ? (
+            <p className="text-sm text-kairikos-success" data-testid="seo-wordpress-connected-banner">
+              Conectado correctamente.
+            </p>
+          ) : null}
+          {searchParams?.wp_connect_error ? (
+            <p className="text-sm text-kairikos-danger" data-testid="seo-wordpress-error-banner">
+              {WP_CONNECT_ERROR_LABEL[searchParams.wp_connect_error] ?? 'No se pudo completar la conexión con WordPress.'}
+            </p>
+          ) : null}
+
+          {hasWordPressAppPassword ? (
+            <div className="space-y-2">
+              <p className="text-sm" data-testid="seo-wordpress-status">
+                Conectado{profile.wordpressUrl ? <> a <span className="font-medium">{profile.wordpressUrl}</span></> : null}.
+              </p>
+              <a href="/api/portal/seo/wordpress/connect" className="btn-ghost" data-testid="seo-wordpress-reconnect">
+                Volver a conectar
+              </a>
+            </div>
+          ) : (
+            <a href="/api/portal/seo/wordpress/connect" className="btn-primary" data-testid="seo-wordpress-connect">
+              Conectar WordPress
+            </a>
+          )}
+        </section>
+      ) : null}
 
       {profile ? <SeoKeywordsCard trends={keywordTrends} /> : null}
 
