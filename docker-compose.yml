@@ -40,6 +40,12 @@ services:
       PORT: 3000
       HOSTNAME: 0.0.0.0
       DATABASE_URL: ${DATABASE_URL}
+      # Sin valor por defecto a propósito, igual que DATABASE_URL: prisma
+      # migrate deploy se ejecuta DENTRO de este contenedor y el esquema
+      # declara directUrl = env("DIRECT_URL"). Vacía, la validación del
+      # esquema falla antes de tocar la base de datos. En esta VPS no hay
+      # pooler, así que su valor es el mismo que DATABASE_URL.
+      DIRECT_URL: ${DIRECT_URL}
       AUTH_SECRET: ${AUTH_SECRET}
       AUTH_EMAIL_FROM: ${AUTH_EMAIL_FROM:-Kairikos Portal <hola@kairikos.com>}
       AUTH_SUPPORT_EMAIL: ${AUTH_SUPPORT_EMAIL:-hola@kairikos.com}
