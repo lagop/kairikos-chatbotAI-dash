@@ -19,13 +19,12 @@ export const runtime = 'nodejs';
 // would justify intermediation, and putting the operator in the loop
 // for every zone/category change works against why this product exists.
 //
-// Lazily creates the ProspectingCampaign row on first save rather than
-// assuming one already exists from a purchase-time provisioning hook —
-// recall's own RecallSubscription has no such hook anywhere in this
-// codebase either (checked before writing this), so depending on one
-// existing for 'prospecting' would just be inheriting an unbuilt
-// precedent. The first time a client fills in their profile IS the
-// natural moment to create the row.
+// Fase 6 — the row itself is normally already there by the time this
+// runs: ensureProspectingCampaign (product-onboarding.ts) creates it
+// empty at purchase time, with monthlyLeadCap already set from the
+// contracted tier. The lazy `create` below stays as the fallback for a
+// row that predates that hook, or the rare case where the hook's own
+// write failed silently — this PATCH must keep working either way.
 // =============================================================================
 
 const BodySchema = z.object({

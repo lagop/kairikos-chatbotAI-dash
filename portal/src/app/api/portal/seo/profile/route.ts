@@ -18,10 +18,14 @@ export const runtime = 'nodejs';
 // OPERATOR's half — PATCH /api/admin/portal/seo/[clientId]/technical-setup
 // — never written here.
 //
-// Lazily creates the SeoProfile row on first save, same reasoning as
-// prospecting's own campaign route: no purchase-time provisioning hook
-// exists for any product in this codebase, so the first time the client
-// fills in the form IS the natural moment to create the row.
+// Fase 6 — the row itself is normally already there by the time this
+// runs: ensureSeoProfile (product-onboarding.ts) creates it empty at
+// purchase time, from both the Stripe checkout webhook and the manual
+// admin assignment route. The lazy `create` below stays as the fallback
+// for a row that predates that hook, or the rare case where the hook's
+// own write failed silently — this PATCH must keep working either way,
+// since it has no way to tell those two situations apart from a normal
+// first save.
 // =============================================================================
 
 const BodySchema = z

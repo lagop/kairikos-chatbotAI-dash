@@ -2,6 +2,7 @@ import 'server-only';
 import { prisma } from './prisma';
 import { getStripe, isStripeConfigured, StripeUnavailableError } from './stripe';
 import { ensureRecallSubscription } from './recall-onboarding';
+import { ensureSeoProfile, ensureProspectingCampaign, ensureLeadQualificationProfile } from './product-onboarding';
 import type { Prisma } from '@prisma/client';
 import type Stripe from 'stripe';
 
@@ -543,7 +544,7 @@ export async function activateClientProductFromCheckout(session: Stripe.Checkout
   if (!cpId) return;
   const cp = await prisma.clientProduct.findUnique({
     where: { id: cpId },
-    select: { status: true, clientId: true, tenantId: true, product: { select: { code: true } } },
+    select: { status: true, clientId: true, tenantId: true, product: { select: { code: true, tier: true } } },
   });
   if (!cp || cp.status !== 'pending_payment') return;
 
@@ -575,6 +576,34 @@ export async function activateClientProductFromCheckout(session: Stripe.Checkout
   // de wizard-review.ts).
   if (cp.product.code === 'recall') {
     await ensureRecallSubscription(
+      prisma,
+      { clientId: cp.clientId, clientProductId: cpId, tenantId: cp.tenantId },
+      { type: 'system', source: 'stripe_checkout' },
+    );
+  }
+
+  // Fase 6 — mismo hueco que 'recall' para los otros tres productos con
+  // perfil propio: sin este hook, SeoProfile/ProspectingCampaign/
+  // LeadQualificationProfile solo nacían cuando el cliente guardaba su
+  // formulario por primera vez (ver product-onboarding.ts). Corre, igual
+  // que ensureRecallSubscription arriba, DESPUÉS de que la transacción
+  // que activa el ClientProduct confirme.
+  if (cp.product.code === 'seo') {
+    await ensureSeoProfile(
+      prisma,
+      { clientId: cp.clientId, clientProductId: cpId, tenantId: cp.tenantId },
+      { type: 'system', source: 'stripe_checkout' },
+    );
+  }
+  if (cp.product.code === 'prospecting') {
+    await ensureProspectingCampaign(
+      prisma,
+      { clientId: cp.clientId, clientProductId: cpId, tenantId: cp.tenantId, tier: cp.product.tier },
+      { type: 'system', source: 'stripe_checkout' },
+    );
+  }
+  if (cp.product.code === 'leads') {
+    await ensureLeadQualificationProfile(
       prisma,
       { clientId: cp.clientId, clientProductId: cpId, tenantId: cp.tenantId },
       { type: 'system', source: 'stripe_checkout' },
