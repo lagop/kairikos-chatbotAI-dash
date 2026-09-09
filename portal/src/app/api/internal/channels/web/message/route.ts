@@ -67,6 +67,7 @@ export async function POST(req: NextRequest) {
         clientId: embed.clientId,
         tenantId: embed.tenantId,
         externalSessionId: body.data.sessionId,
+        channel: 'web',
         startedAt: now,
         duration: 0,
         outcome: body.data.outcome ?? null,
@@ -82,6 +83,7 @@ export async function POST(req: NextRequest) {
     data: {
       duration: Math.max(0, Math.round((now.getTime() - existing.startedAt.getTime()) / 1000)),
       outcome: body.data.outcome ?? existing.outcome,
+      channel: 'web',
       transcript: [...priorTranscript, entry],
     },
   });

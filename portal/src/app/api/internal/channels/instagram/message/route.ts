@@ -63,6 +63,7 @@ export async function POST(req: NextRequest) {
         clientId: connection.clientId,
         tenantId: connection.tenantId,
         externalSessionId: `${sessionPrefix}${now.getTime()}`,
+        channel: 'instagram',
         startedAt: now,
         duration: 0,
         outcome: body.data.outcome ?? null,
@@ -78,6 +79,7 @@ export async function POST(req: NextRequest) {
     data: {
       duration: Math.max(0, Math.round((now.getTime() - latest!.startedAt.getTime()) / 1000)),
       outcome: body.data.outcome ?? latest!.outcome,
+      channel: 'instagram',
       transcript: [...priorTranscript, entry],
     },
   });

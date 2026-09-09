@@ -47,6 +47,13 @@ vi.mock('@/lib/prisma', () => ({
     googleBusinessConnection: {
       findUnique: (...args: unknown[]) => mockState.connectionFindUnique(...args),
       findFirst: (...args: unknown[]) => mockState.connectionFindFirst(...args),
+      // Fase 3 — resolveReviewConnection lista para distinguir «un local»
+      // de «varios»; estos tests describen un cliente de un solo local, así
+      // que devuelve lo mismo que findFirst, envuelto.
+      findMany: async (...args: unknown[]) => {
+        const one = await mockState.connectionFindFirst(...args);
+        return one ? [one] : [];
+      },
       update: (...args: unknown[]) => mockState.connectionUpdate(...args),
     },
     chatbotClient: { findUnique: (...args: unknown[]) => mockState.findUniqueClient(...args) },
@@ -199,5 +206,61 @@ describe('PATCH .../connection/auto-publish', () => {
         }),
       }),
     );
+  });
+});
+
+// =============================================================================
+// Fase 5 — el segundo interruptor de la conexión. Ruta hermana de la de
+// arriba, y comparte con ella el preámbulo (resolveToggleTarget), así que
+// estos tests existen sobre todo para fijar que NO comparte lo que no debe:
+// escribe sus propias columnas y no toca las de auto-publish.
+// =============================================================================
+describe('PATCH .../connection/auto-request', () => {
+  it('401s without a session', async () => {
+    mockState.resolveClientFromSession.mockResolvedValueOnce(null);
+    const { PATCH } = await import('@/app/api/portal/google-business/connection/auto-request/route');
+    const res = await PATCH(makeRequest({ enabled: true }));
+    expect(res.status).toBe(401);
+  });
+
+  it('403s when neither reviews nor recall is contracted', async () => {
+    // hasGoogleBusinessConnectAccess consulta isProductContracted DOS
+    // veces (reviews O recall): con mockResolvedValueOnce solo caería la
+    // primera y el OR dejaría pasar la petición — el mismo fallo que tuvo
+    // rojos dos tests de este producto durante meses.
+    mockState.isProductContracted.mockResolvedValue(false);
+    const { PATCH } = await import('@/app/api/portal/google-business/connection/auto-request/route');
+    const res = await PATCH(makeRequest({ enabled: true }));
+    expect(res.status).toBe(403);
+  });
+
+  it('404s when the client has no active connection', async () => {
+    mockState.connectionFindFirst.mockResolvedValueOnce(null);
+    const { PATCH } = await import('@/app/api/portal/google-business/connection/auto-request/route');
+    const res = await PATCH(makeRequest({ enabled: true }));
+    expect(res.status).toBe(404);
+  });
+
+  it('400s on a body that is not a boolean', async () => {
+    const { PATCH } = await import('@/app/api/portal/google-business/connection/auto-request/route');
+    const res = await PATCH(makeRequest({ enabled: 'sí' }));
+    expect(res.status).toBe(400);
+    expect(mockState.connectionUpdate).not.toHaveBeenCalled();
+  });
+
+  it('writes its own columns and leaves auto-publish alone', async () => {
+    mockState.connectionUpdate.mockResolvedValueOnce({
+      autoRequestFromLeads: true,
+      autoRequestFromLeadsChangedAt: new Date(),
+    });
+    const { PATCH } = await import('@/app/api/portal/google-business/connection/auto-request/route');
+    const res = await PATCH(makeRequest({ enabled: true }));
+    expect(res.status).toBe(200);
+    const data = mockState.connectionUpdate.mock.calls[0][0].data;
+    expect(data).toEqual({
+      autoRequestFromLeads: true,
+      autoRequestFromLeadsChangedBy: 'client:client_1',
+      autoRequestFromLeadsChangedAt: expect.any(Date),
+    });
   });
 });

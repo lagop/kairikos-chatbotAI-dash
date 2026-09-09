@@ -1,6 +1,9 @@
 import 'server-only';
 import type { PrismaClient } from '@prisma/client';
 import { isProductContracted } from './client-product-access';
+import { sendNewLeadEmail } from './leads-email';
+import { deliverLeadToCrm } from './lead-webhook';
+import { logError } from './observability';
 
 // =============================================================================
 // WP-XX — shared status-transition rules for Lead ("Captación con IA").
@@ -28,6 +31,253 @@ export async function hasLeadsInboxAccess(prisma: PrismaClient, clientId: string
     isProductContracted(prisma, clientId, 'prospecting'),
   ]);
   return hasLeads || hasProspecting;
+}
+
+// ---------------------------------------------------------------------------
+// Enriquecimiento — compartido por PATCH /api/internal/leads/[id]/enrich y
+// el barrido de prospección (lib/prospecting-enrichment.ts), para que la
+// escritura y su auditoría no diverjan entre los dos llamadores.
+// ---------------------------------------------------------------------------
+
+export interface LeadEnrichmentFields {
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  contactName?: string | null;
+  scoreReason?: string | null;
+}
+
+/**
+ * Completa los datos de contacto de un lead sin pisar lo que ya tenía.
+ *
+ * La semántica es deliberada: un campo vacío NUNCA borra uno existente
+ * (`?? existente`). Quien enriquece aporta lo que ha encontrado; lo que no
+ * ha encontrado no es información, es ausencia de ella.
+ *
+ * Devuelve null si el lead no existe, para que el que llama decida si eso
+ * es un 404 o simplemente un lead borrado mientras tanto.
+ */
+export async function applyLeadEnrichment(
+  prisma: PrismaClient,
+  leadId: string,
+  fields: LeadEnrichmentFields,
+  actorId: string,
+): Promise<{ leadId: string; changed: boolean } | null> {
+  const existing = await prisma.lead.findUnique({ where: { id: leadId } });
+  if (!existing) return null;
+
+  const next = {
+    contactEmail: fields.contactEmail ?? existing.contactEmail,
+    contactPhone: fields.contactPhone ?? existing.contactPhone,
+    contactName: fields.contactName ?? existing.contactName,
+    scoreReason: fields.scoreReason ?? existing.scoreReason,
+  };
+
+  const changed =
+    next.contactEmail !== existing.contactEmail ||
+    next.contactPhone !== existing.contactPhone ||
+    next.contactName !== existing.contactName ||
+    next.scoreReason !== existing.scoreReason;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.lead.update({ where: { id: existing.id }, data: next });
+    await tx.leadAudit.create({
+      data: {
+        leadId: existing.id,
+        clientId: existing.clientId,
+        tenantId: existing.tenantId,
+        action: 'enriched',
+        statusBefore: existing.status,
+        statusAfter: existing.status,
+        actorId,
+      },
+    });
+  });
+
+  return { leadId: existing.id, changed };
+}
+
+// ---------------------------------------------------------------------------
+// Ingestion — shared by POST /api/internal/leads and the classify-leads
+// cron sweep (lib/lead-classification-sweep.ts), so lead creation, dedup,
+// LeadAudit, and the new-lead email never drift between the two callers.
+// ---------------------------------------------------------------------------
+
+/** "Sistema IA de captación" — monthly cap on how many conversations the
+ *  classify-leads cron sweep will run through the classifier per client.
+ *  A single flat constant, not a per-tier map like prospecting's own
+ *  TIER_LEAD_CAP — 'leads' only has one tier ('standard') today; revisit
+ *  if a second tier is ever priced. */
+export const LEADS_CLASSIFICATION_MONTHLY_CAP = 500;
+
+export interface IngestClassifiedLeadConversation {
+  id: string;
+  clientId: string;
+  tenantId: string | null;
+}
+
+export interface IngestClassifiedLeadInput {
+  conversation: IngestClassifiedLeadConversation;
+  contactName: string | null;
+  contactPhone: string | null;
+  contactEmail: string | null;
+  summary: string | null;
+  score: number | null;
+  scoreReason: string | null;
+  channel: string | null;
+  /** 'system:n8n' for the legacy internal route, 'system:classifier' for
+   *  the classify-leads cron sweep — surfaced on LeadAudit so the two
+   *  sources stay distinguishable in the trail. */
+  actorId: string;
+}
+
+export interface IngestClassifiedLeadResult {
+  leadId: string;
+  created: boolean;
+}
+
+/**
+ * Create or refresh a Lead from a classified conversation turn, write its
+ * LeadAudit row, and — only on genuine creation — send the new-lead email
+ * to `emailAviso` (LeadQualificationProfile) if set, else the client's
+ * account email. Same dedup rule POST /api/internal/leads always used: a
+ * lead already 'nuevo' for this conversationId is refreshed in place; one
+ * that already moved past 'nuevo' means a fresh signal creates a NEW lead
+ * rather than reopening a closed one.
+ */
+export async function ingestClassifiedLead(
+  prisma: PrismaClient,
+  input: IngestClassifiedLeadInput,
+): Promise<IngestClassifiedLeadResult> {
+  const { conversation } = input;
+
+  const existing = await prisma.lead.findFirst({
+    where: { conversationId: conversation.id, status: 'nuevo' },
+  });
+
+  if (existing) {
+    const updated = await prisma.$transaction(async (tx) => {
+      const row = await tx.lead.update({
+        where: { id: existing.id },
+        data: {
+          contactName: input.contactName ?? existing.contactName,
+          contactPhone: input.contactPhone ?? existing.contactPhone,
+          contactEmail: input.contactEmail ?? existing.contactEmail,
+          summary: input.summary ?? existing.summary,
+          score: input.score ?? existing.score,
+          scoreReason: input.scoreReason ?? existing.scoreReason,
+          channel: input.channel ?? existing.channel,
+        },
+      });
+      await tx.leadAudit.create({
+        data: {
+          leadId: row.id,
+          clientId: row.clientId,
+          tenantId: row.tenantId,
+          action: 'refreshed',
+          statusBefore: 'nuevo',
+          statusAfter: 'nuevo',
+          actorId: input.actorId,
+        },
+      });
+      return row;
+    });
+    return { leadId: updated.id, created: false };
+  }
+
+  const created = await prisma.$transaction(async (tx) => {
+    const row = await tx.lead.create({
+      data: {
+        clientId: conversation.clientId,
+        tenantId: conversation.tenantId,
+        conversationId: conversation.id,
+        contactName: input.contactName,
+        contactPhone: input.contactPhone,
+        contactEmail: input.contactEmail,
+        summary: input.summary,
+        score: input.score,
+        scoreReason: input.scoreReason,
+        channel: input.channel,
+      },
+    });
+    await tx.leadAudit.create({
+      data: {
+        leadId: row.id,
+        clientId: row.clientId,
+        tenantId: row.tenantId,
+        action: 'created',
+        statusBefore: null,
+        statusAfter: 'nuevo',
+        actorId: input.actorId,
+      },
+    });
+    return row;
+  });
+
+  // Best-effort, never blocks the caller. Gated on 'leads' specifically:
+  // a Lead can exist for a client without that product (recall's
+  // phone-sourced leads reuse this same model), and those clients
+  // already get told about a missed call over WhatsApp by recall's own
+  // messaging engine, so a second, unrelated "captación" email would be
+  // redundant, not additive.
+  try {
+    const hasLeadsProduct = await isProductContracted(prisma, created.clientId, 'leads');
+    if (hasLeadsProduct) {
+      const [client, qualification] = await Promise.all([
+        prisma.chatbotClient.findUnique({
+          where: { id: created.clientId },
+          select: { email: true, name: true, companyName: true },
+        }),
+        prisma.leadQualificationProfile.findUnique({
+          where: { clientId: created.clientId },
+          select: { emailAviso: true },
+        }),
+      ]);
+      const to = qualification?.emailAviso || client?.email;
+      if (client && to) {
+        const emailResult = await sendNewLeadEmail({
+          to,
+          businessName: client.companyName ?? client.name,
+          contactName: created.contactName,
+          contactPhone: created.contactPhone,
+          contactEmail: created.contactEmail,
+          summary: created.summary,
+          score: created.score,
+          scoreReason: created.scoreReason,
+          channel: created.channel,
+        });
+        if (!emailResult.ok) {
+          logError('leads.new_lead_email_failed', new Error(emailResult.error), { leadId: created.id }, 'warn');
+        }
+      }
+    }
+  } catch (err) {
+    logError('leads.new_lead_notification_failed', err, { leadId: created.id }, 'warn');
+  }
+
+  // Fase 4 — y al CRM del cliente, si lo tiene puesto. Aislado del correo
+  // de arriba a propósito: son dos destinos independientes, y que su CRM
+  // esté caído no puede impedir que le llegue el aviso por email.
+  //
+  // Aquí NO se comprueba el producto, al contrario que el correo: quien ve
+  // un lead en su buzón puede llevárselo, y ese buzón es de 'leads' O de
+  // 'prospecting' (hasLeadsInboxAccess). Configurar el webhook ya exige
+  // ese acceso, así que tener uno guardado es la comprobación.
+  // deliverLeadToCrm nunca lanza.
+  await deliverLeadToCrm(prisma, {
+    id: created.id,
+    clientId: created.clientId,
+    createdAt: created.createdAt,
+    contactName: created.contactName,
+    contactPhone: created.contactPhone,
+    contactEmail: created.contactEmail,
+    source: created.source,
+    channel: created.channel,
+    score: created.score,
+    scoreReason: created.scoreReason,
+    summary: created.summary,
+  });
+
+  return { leadId: created.id, created: true };
 }
 
 /** nuevo -> contactado */

@@ -2,29 +2,58 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
+import { listReviewLocations, getLocationAllowance } from '@/lib/review-locations';
+import { ReviewLocationPicker } from '@/components/portal/ReviewLocationPicker';
 import { requirePortalSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
-import { isProductContracted } from '@/lib/client-product-access';
+import { hasGoogleBusinessConnectAccess } from '@/lib/google-business';
+import { hasLeadsInboxAccess } from '@/lib/leads';
 import { EmptyState } from '@/components/portal/EmptyState';
 import { GoogleReviewsPanel, type ConnectionStatus } from '@/components/portal/GoogleReviewsPanel';
 import { ReviewCampaignsPanel, type CampaignSummary } from '@/components/portal/ReviewCampaignsPanel';
 import { ReviewReplyControls } from '@/components/portal/ReviewReplyControls';
+import { ReputationPanel } from '@/components/portal/ReputationPanel';
+import { buildReputationSummary } from '@/lib/review-reputation';
 
 export const dynamic = 'force-dynamic';
 
-// KAIA-11956 — this metadata is pinned by tests/unit/portal-resenas-surface.test.ts
-// as a literal string, and stays static (not product-gated) on purpose:
-// making it a real generateMetadata() lookup for the rare
-// contracted-and-connected case isn't worth the risk of touching this
-// pinned surface for a product ('reviews') that isn't sellable yet — see
-// WP-22a's PR description.
-export const metadata: Metadata = {
+// KAIA-11956 — este título estuvo fijado como cadena estática, con este
+// motivo escrito: no merecía la pena convertirlo en un generateMetadata()
+// «para un producto ('reviews') que no es vendible todavía».
+//
+// Fase 3 — ese motivo ya no se sostiene: 'reviews' tiene tres tarifas con
+// precio (basic, pro y la nueva de cadenas), y un cliente que paga por
+// varias ubicaciones veía «No disponible en tu plan» en la pestaña del
+// navegador mientras miraba sus propias reseñas.
+//
+// Se resuelve por petición y **cae del lado seguro**: cualquier fallo al
+// comprobar el acceso deja el título de «no disponible», que nunca promete
+// un producto que el cliente no tenga.
+const NOT_AVAILABLE_METADATA: Metadata = {
   title: 'Reseñas · No disponible en tu plan',
   description:
     'La gestión de reseñas de Google no está incluida en tu plan actual de Kairikos. Te contamos qué opciones tienes para habilitarla.',
   alternates: { canonical: '/portal/resenas' },
   robots: { index: false, follow: false },
 };
+
+export async function generateMetadata(): Promise<Metadata> {
+  if (!isDatabaseConfigured) return NOT_AVAILABLE_METADATA;
+  try {
+    const resolved = await resolveClientFromSession();
+    if (!resolved || resolved.source !== 'database') return NOT_AVAILABLE_METADATA;
+    if (!(await hasGoogleBusinessConnectAccess(resolved.clientId))) return NOT_AVAILABLE_METADATA;
+
+    return {
+      title: 'Reseñas de Google',
+      description: 'Consulta y responde las reseñas de tu ficha de Google Business Profile.',
+      alternates: { canonical: '/portal/resenas' },
+      robots: { index: false, follow: false },
+    };
+  } catch {
+    return NOT_AVAILABLE_METADATA;
+  }
+}
 
 const STAR_ICON = (
   <svg
@@ -120,14 +149,18 @@ function StarRating({ value }: { value: number }) {
 const DATE_FORMAT = new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
 
 interface PageProps {
-  searchParams: { connected?: string; connect_error?: string };
+  searchParams: { connected?: string; connect_error?: string; local?: string };
 }
 
 const CONNECT_ERROR_LABEL: Record<string, string> = {
   csrf: 'No se pudo verificar la solicitud — inténtalo de nuevo.',
   token_exchange_failed: 'Google no pudo completar la conexión — inténtalo de nuevo.',
   no_locations: 'No encontramos ninguna ficha de Google Business Profile accesible con esa cuenta.',
-  multiple_locations_unsupported: 'Tu cuenta de Google tiene más de una ficha y todavía no podemos elegir cuál conectar. Escríbenos a soporte.',
+  // Fase 3 — este error ya no lo produce el callback (ahora conecta
+  // todas las fichas que quepan en la tarifa), pero la etiqueta se queda:
+  // un cliente puede llegar con la URL vieja en el historial.
+  multiple_locations_unsupported: 'Tu cuenta de Google tiene más de una ficha. Vuelve a intentarlo: ahora las conectamos todas.',
+  location_limit: 'Tu cuenta de Google tiene más fichas de las que incluye tu plan. Escríbenos y lo ampliamos.',
   no_tenant: 'No pudimos completar la conexión — escríbenos a soporte.',
   not_configured: 'La conexión con Google no está disponible en este momento.',
   not_available_in_dev_mode: 'La conexión con Google no está disponible en modo demo.',
@@ -143,22 +176,31 @@ export default async function PortalResenasPage({ searchParams }: PageProps) {
 
   const hasReviews =
     isDatabaseConfigured && resolved.source === 'database'
-      ? await isProductContracted(prisma, resolved.clientId, 'reviews')
+      ? await hasGoogleBusinessConnectAccess(resolved.clientId)
       : false;
 
   if (!hasReviews) {
     return <ResenasUnavailable />;
   }
 
-  const connection = await prisma.googleBusinessConnection.findFirst({
-    where: { clientId: resolved.clientId },
-    orderBy: { connectedAt: 'desc' },
-  });
+  // Fase 3 — varias ubicaciones. `locations` son todos los locales del
+  // cliente; `connection` es el que está mirando ahora. Con uno solo, el
+  // selector no se dibuja y la pantalla es exactamente la de antes.
+  const locations = await listReviewLocations(prisma, resolved.clientId);
+  const allowance = await getLocationAllowance(prisma, resolved.clientId);
+  const selected =
+    locations.find((l) => l.id === searchParams.local) ?? locations[0] ?? null;
 
+  const connection = selected
+    ? await prisma.googleBusinessConnection.findUnique({ where: { id: selected.id } })
+    : null;
+
+  // Las reseñas se filtran por CONEXIÓN, no por cliente: por clientId, dos
+  // locales se mezclarían en una lista donde no se sabe cuál es de cuál.
   const reviews =
     connection && connection.status !== 'revoked'
       ? await prisma.googleReview.findMany({
-          where: { clientId: resolved.clientId },
+          where: { connectionId: connection.id },
           orderBy: { createTime: 'desc' },
           take: 50,
         })
@@ -168,11 +210,25 @@ export default async function PortalResenasPage({ searchParams }: PageProps) {
     ? (connection.status as ConnectionStatus)
     : 'not_connected';
 
+  // Fase 5 — al nivel del componente y NO dentro de una de las ramas de
+  // arriba: el interruptor de invitación automática se dibuja dentro del
+  // panel de conexión, y colgar su carga de una condición equivocada es
+  // exactamente cómo una tarjeta acaba no viéndose nunca con sus tests en
+  // verde (pasó con el seguimiento de entrega de 'web').
+  const leadsInboxAvailable = await hasLeadsInboxAccess(prisma, resolved.clientId);
+
+  // Fase 2.1 — el resumen sale de las reseñas ya sincronizadas, así que
+  // solo tiene sentido pedirlo cuando hay conexión de la que hayan venido.
+  const reputation =
+    connection && connection.status !== 'revoked'
+      ? await buildReputationSummary(prisma, resolved.clientId)
+      : null;
+
   const campaigns: CampaignSummary[] =
     connectionStatus === 'active'
       ? (
           await prisma.reviewRequestCampaign.findMany({
-            where: { clientId: resolved.clientId },
+            where: { connectionId: connection!.id },
             orderBy: { createdAt: 'desc' },
             include: { requests: { select: { status: true, clickedAt: true } } },
           })
@@ -217,6 +273,8 @@ export default async function PortalResenasPage({ searchParams }: PageProps) {
         </div>
       ) : null}
 
+      <ReviewLocationPicker locations={locations} selectedId={connection?.id ?? null} cap={allowance.cap} />
+
       <GoogleReviewsPanel
         connectionId={connection?.id ?? null}
         status={connectionStatus}
@@ -225,7 +283,12 @@ export default async function PortalResenasPage({ searchParams }: PageProps) {
         lastSyncError={connection?.lastSyncError ?? null}
         autoPublishReplies={connection?.autoPublishReplies ?? false}
         autoPublishRepliesChangedAt={connection?.autoPublishRepliesChangedAt?.toISOString() ?? null}
+        leadsInboxAvailable={leadsInboxAvailable}
+        autoRequestFromLeads={connection?.autoRequestFromLeads ?? false}
+        autoRequestFromLeadsChangedAt={connection?.autoRequestFromLeadsChangedAt?.toISOString() ?? null}
       />
+
+      {reputation ? <ReputationPanel summary={reputation} /> : null}
 
       {connectionStatus === 'active' ? (
         <section className="space-y-3" aria-label="Lista de reseñas" data-testid="google-reviews-list">

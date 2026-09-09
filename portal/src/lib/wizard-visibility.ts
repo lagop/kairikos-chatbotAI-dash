@@ -55,6 +55,13 @@ export interface WizardStepListEntry {
   /** True only for Step 12 in v1. Frontend uses this to render the
    *  "Próximamente" label without hiding the row. */
   v11Deferred: boolean;
+  /** Fase 5 — catalog fact, not a live computation: whether a `submitted`
+   *  version of this step can be approved by the system past the veto
+   *  window (src/lib/wizard-auto-approve.ts), rather than only by an
+   *  operator. Whether that will actually fire NOW is a function of
+   *  `saved.status`/`submittedAt` too — see `computeAutoApproveDeadline`
+   *  in that same module, surfaced on the operator detail view. */
+  autoApprovable: boolean;
 }
 
 export interface WizardSavedState {
@@ -131,6 +138,8 @@ export interface OperatorStepDataResponse {
   v11Deferred: boolean;
   clientTier: WizardTier | null;
   saved: WizardSavedState;
+  /** Fase 5 — see WizardStepListEntry.autoApprovable. */
+  autoApprovable: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -161,6 +170,7 @@ export function listStepsForClient(
       // data — the bot will run on the catalog default for now).
       autoConfigured: !visible || !(saved?.hasSavedVersion ?? false),
       v11Deferred: def.v11Deferred,
+      autoApprovable: def.autoApprovable,
     };
   });
   return { clientTier: tier, steps };
@@ -195,6 +205,7 @@ export function listStepsForOperator(
       //           saved data
       autoConfigured: !visible || !(saved?.hasSavedVersion ?? false),
       v11Deferred: def.v11Deferred,
+      autoApprovable: def.autoApprovable,
     };
   });
   return { clientId, clientTier, steps };
@@ -272,6 +283,7 @@ export function resolveOperatorStep(
     v11Deferred: def.v11Deferred,
     clientTier,
     saved,
+    autoApprovable: def.autoApprovable,
   };
 }
 

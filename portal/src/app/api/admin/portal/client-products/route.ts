@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateAdminRequest } from '@/lib/operator-session';
+import { ensureRecallSubscription } from '@/lib/recall-onboarding';
 
 const ProductIdSchema = z.string().uuid();
 const ClientIdSchema = z.string().min(1).max(128);
@@ -101,6 +102,21 @@ export async function POST(req: NextRequest) {
     });
     return clientProduct;
   });
+
+  // Fase 6 — un operador puede dar de alta 'recall' sin pasar por
+  // Stripe (este mismo endpoint), y ese camino tampoco creaba nunca la
+  // RecallSubscription — mismo hueco, segundo punto de entrada. 'legacy'
+  // (cabecera KAIA_OPERATOR_API_KEY) no es una fila real de Operator;
+  // RecallSubscriptionAudit.actorOperatorId es una FK real y ese string
+  // la haría fallar.
+  if (row.product?.code === 'recall') {
+    await ensureRecallSubscription(
+      prisma,
+      { clientId, clientProductId: row.id, tenantId: row.tenantId },
+      { type: 'operator', operatorId: auth.operatorId === 'legacy' ? null : auth.operatorId },
+    );
+  }
+
   return NextResponse.json(row, { status: 201 });
 }
 

@@ -1,7 +1,7 @@
 import 'server-only';
 import type { PrismaClient, Prisma } from '@prisma/client';
-import { deliverChannelEvent } from './channel-webhook';
 import { getContentGenerationMinIntervalDays } from './seo-settings';
+import { generateArticleDraft, type QueryOpportunity } from './seo-content-ai';
 import { logError } from './observability';
 
 // =============================================================================
@@ -9,11 +9,16 @@ import { logError } from './observability';
 // active 'seo' contract and enough onboarding context, the portal
 // gathers its own signals (latest site audit + recent Search Console
 // totals — no live API calls here, both are already synced by Fase A/B)
-// and hands them to n8n, which drafts ONE article with its own LLM and
-// calls back PATCH /api/internal/seo/content-drafts/[id] — same
-// portal/n8n boundary as prospecting-enrichment.ts: gathering signals is
-// I/O + already-stored data, writing an article is interpretation, and
-// interpretation is n8n's job, never done inline in the portal.
+// and escribe UN artículo con ellas.
+//
+// Fase 1.3 — hasta aquí, esto empujaba un evento `seo_content` a n8n y
+// esperaba un callback a PATCH /api/internal/seo/content-drafts/[id] con
+// el artículo escrito. Ese workflow no existía en ninguna parte: el
+// producto medía y publicaba, pero no redactaba. Ahora la redacción vive
+// en el portal (lib/seo-content-ai.ts), como ya ocurría con las
+// respuestas de reseñas y la clasificación de leads. La ruta del callback
+// se mantiene intacta por si vuelve a haber una fuente externa; solo deja
+// de ser el camino principal.
 //
 // Signals also include queryOpportunities — real queries the site
 // already shows up for at position 4-20 (page-1-bottom to page-2), the
@@ -21,12 +26,16 @@ import { logError } from './observability';
 // for (see that model's own schema comment). Sorted by impressions so
 // n8n's prompt sees the highest-reach opportunities first.
 //
-// A SeoContentDraft row is created with status 'pending_generation' the
-// moment generation is REQUESTED, before n8n has replied — same
-// "request-time row, not response-time row" shape as this repo already
-// uses (deliverChannelEvent's own ChannelWebhookDelivery row). This is
-// what lets an operator see "solicitado, todavía sin volver" as a real
-// state, and is also the same row the callback route PATCHes.
+// La fila de SeoContentDraft ahora se crea ya en estado 'drafted', con el
+// artículo dentro: con la generación en el portal es síncrona, así que el
+// estado intermedio 'pending_generation' (que existía para representar
+// "solicitado a n8n, todavía sin volver") deja de tener sentido aquí. El
+// estado sigue existiendo en el modelo por las filas antiguas y por la
+// ruta del callback.
+//
+// Si la generación falla, NO se crea el borrador ni se marca la cadencia:
+// así el siguiente barrido lo reintenta en vez de dejar al cliente sin
+// artículo ese mes por un error transitorio del modelo.
 //
 // v1 requests exactly one draft per due profile per cadence — scaling
 // toward the marketing copy's "8-12 artículos/mes" is the operator
@@ -51,6 +60,9 @@ interface ProfileForGeneration {
   id: string;
   clientId: string;
   tenantId: string | null;
+  /** Resuelto desde ChatbotClient: el artículo lo firma el negocio, así
+   *  que el redactor necesita saber cómo se llama. */
+  businessName: string;
   businessDescription: string | null;
   targetAudience: string | null;
   toneOfVoice: string | null;
@@ -117,10 +129,25 @@ async function buildSourceSignals(prisma: PrismaClient, profile: ProfileForGener
 }
 
 export interface GenerationSweepResult {
+  /** Perfiles cuya cadencia toca en este tick. */
+  due: number;
+  /** De ésos, los que se han intentado (ver MAX_GENERATIONS_PER_TICK). */
   processed: number;
-  requested: number;
-  deliveryFailed: number;
+  generated: number;
+  failed: number;
+  /** Sin ANTHROPIC_API_KEY configurada. */
+  skipped: number;
 }
+
+/**
+ * Techo de artículos por tick. Escribir uno tarda decenas de segundos y la
+ * ruta del cron corre con maxDuration = 60, así que un cliente con muchos
+ * perfiles vencidos a la vez agotaría el tiempo y no terminaría ninguno.
+ * El barrido corre cada 5 minutos y la cadencia real de cada cliente es
+ * mensual, así que repartirlos entre ticks no retrasa nada: los que no
+ * entran hoy siguen vencidos y entran en el siguiente.
+ */
+const MAX_GENERATIONS_PER_TICK = 2;
 
 /**
  * The cron entry point (/api/cron/generate-seo-content). Picks up every
@@ -138,7 +165,7 @@ export interface GenerationSweepResult {
 export async function sweepDueProfiles(prisma: PrismaClient, now: Date = new Date()): Promise<GenerationSweepResult> {
   const globalMinIntervalDays = await getContentGenerationMinIntervalDays();
 
-  const candidates = (await prisma.seoProfile.findMany({
+  const rows = await prisma.seoProfile.findMany({
     where: {
       businessDescription: { not: null },
       clientProduct: { status: 'active' },
@@ -154,8 +181,19 @@ export async function sweepDueProfiles(prisma: PrismaClient, now: Date = new Dat
       lastAuditResult: true,
       lastContentRequestedAt: true,
       contentGenerationMinIntervalDaysOverride: true,
+      client: { select: { companyName: true, name: true } },
     },
-  })) as ProfileForGeneration[];
+  });
+
+  const candidates: ProfileForGeneration[] = rows.map((row) => {
+    const { client, ...profile } = row as typeof row & {
+      client?: { companyName: string | null; name: string | null } | null;
+    };
+    return {
+      ...(profile as Omit<ProfileForGeneration, 'businessName'>),
+      businessName: client?.companyName ?? client?.name ?? 'el negocio',
+    };
+  });
 
   // A per-client override (set on the operator's technical-setup panel)
   // wins over the global default — NULL is "no override, use global",
@@ -164,41 +202,58 @@ export async function sweepDueProfiles(prisma: PrismaClient, now: Date = new Dat
     isGenerationDue(p.lastContentRequestedAt, p.contentGenerationMinIntervalDaysOverride ?? globalMinIntervalDays),
   );
 
-  let requested = 0;
-  let deliveryFailed = 0;
+  const batch = due.slice(0, MAX_GENERATIONS_PER_TICK);
+  let generated = 0;
+  let failed = 0;
+  let skipped = 0;
 
-  for (const profile of due) {
+  for (const profile of batch) {
     const sourceSignals = await buildSourceSignals(prisma, profile);
 
-    const draft = await prisma.seoContentDraft.create({
+    const article = await generateArticleDraft({
+      businessName: profile.businessName,
+      businessDescription: profile.businessDescription,
+      targetAudience: profile.targetAudience,
+      toneOfVoice: profile.toneOfVoice,
+      siteUrl: profile.siteUrl,
+      siteAudit: sourceSignals.siteAudit,
+      queryOpportunities: sourceSignals.queryOpportunities as QueryOpportunity[],
+    });
+
+    // Sin clave configurada no hay nada que cobrar ni que marcar: el
+    // siguiente barrido lo intenta otra vez en cuanto haya clave.
+    if ('skipped' in article) {
+      skipped += 1;
+      continue;
+    }
+
+    if (!article.ok) {
+      failed += 1;
+      logError('seo_content_generation.generation_failed', new Error(article.error), {
+        profileId: profile.id,
+      }, 'warn');
+      continue;
+    }
+
+    await prisma.seoContentDraft.create({
       data: {
         profileId: profile.id,
         clientId: profile.clientId,
         tenantId: profile.tenantId,
-        status: 'pending_generation',
+        status: 'drafted',
+        title: article.title,
+        bodyHtml: article.bodyHtml,
+        targetKeyword: article.targetKeyword || null,
+        metaDescription: article.metaDescription || null,
+        generatedAt: now,
         sourceSignals: sourceSignals as unknown as Prisma.InputJsonValue,
       },
     });
 
-    const result = await deliverChannelEvent({
-      connectionType: 'seo_content',
-      connectionId: draft.id,
-      clientId: profile.clientId,
-      payload: { draftId: draft.id, profileId: profile.id, ...sourceSignals },
-    });
-
-    if (result.ok) {
-      requested += 1;
-    } else {
-      deliveryFailed += 1;
-      logError('seo_content_generation.delivery_failed', new Error(result.error ?? 'unknown'), {
-        draftId: draft.id,
-        profileId: profile.id,
-      }, 'warn');
-    }
-
+    // La cadencia solo avanza cuando hay artículo de verdad.
     await prisma.seoProfile.update({ where: { id: profile.id }, data: { lastContentRequestedAt: now } });
+    generated += 1;
   }
 
-  return { processed: due.length, requested, deliveryFailed };
+  return { due: due.length, processed: batch.length, generated, failed, skipped };
 }

@@ -16,6 +16,16 @@ const mockState = vi.hoisted(() => ({
   resolveWebQuoteContext: vi.fn(),
   webQuoteUpdate: vi.fn(),
   webQuoteAuditCreate: vi.fn(),
+  generateWebQuoteInvoice: vi.fn(),
+  logError: vi.fn(),
+}));
+
+vi.mock('@/lib/web-quote-invoicing', () => ({
+  generateWebQuoteInvoice: (...args: unknown[]) => mockState.generateWebQuoteInvoice(...args),
+}));
+
+vi.mock('@/lib/observability', () => ({
+  logError: (...args: unknown[]) => mockState.logError(...args),
 }));
 
 const mockTx = {
@@ -49,6 +59,10 @@ beforeEach(() => {
   mockState.resolveWebQuoteContext.mockReset();
   mockState.webQuoteUpdate.mockReset().mockResolvedValue({ id: 'wq_1', status: 'accepted' });
   mockState.webQuoteAuditCreate.mockReset().mockResolvedValue({});
+  mockState.generateWebQuoteInvoice
+    .mockReset()
+    .mockResolvedValue({ ok: true, webQuote: { id: 'wq_1', status: 'invoiced' }, invoice: { id: 'inv_1' } });
+  mockState.logError.mockReset();
 });
 
 function makeRequest(body: unknown = { clientProductId: CLIENT_PRODUCT_ID }) {
@@ -129,5 +143,53 @@ describe('POST /api/portal/web-quote/accept', () => {
     expect(mockState.webQuoteAuditCreate).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ action: 'accepted', actorType: 'client' }) }),
     );
+  });
+});
+
+// =============================================================================
+// Fase 6 — "genera la factura" ya no es un paso aparte: la aceptación
+// intenta facturar de inmediato, sin TOTP ni operador, porque el importe
+// ya lo fijó un operador al enviar el presupuesto.
+// =============================================================================
+describe('POST /api/portal/web-quote/accept — Fase 6, factura automática', () => {
+  function acceptedContext() {
+    return {
+      clientProduct: { id: CLIENT_PRODUCT_ID, clientId: 'client_1', tenantId: 't1', status: 'quote_pending' },
+      webQuote: { id: 'wq_1', status: 'sent' },
+    };
+  }
+
+  it('intenta facturar en cuanto la aceptación queda registrada, con un actor de sistema', async () => {
+    mockState.resolveWebQuoteContext.mockResolvedValueOnce(acceptedContext());
+    await callRoute();
+    expect(mockState.generateWebQuoteInvoice).toHaveBeenCalledWith(expect.anything(), 'wq_1', {
+      type: 'system',
+      source: 'web_quote_accepted',
+    });
+    // La aceptación ya está confirmada en base de datos ANTES de intentar
+    // facturar — no dentro de la misma transacción.
+    expect(mockState.webQuoteUpdate.mock.invocationCallOrder[0]).toBeLessThan(
+      mockState.generateWebQuoteInvoice.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('devuelve la factura ya creada cuando el intento automático funciona', async () => {
+    mockState.resolveWebQuoteContext.mockResolvedValueOnce(acceptedContext());
+    const res = await callRoute();
+    const body = await res.clone().json();
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ ok: true, webQuote: { id: 'wq_1', status: 'invoiced' }, invoice: { id: 'inv_1' } });
+  });
+
+  it('la aceptación sigue devolviendo 200 aunque Stripe falle — el cliente no ve un error por algo que no depende de él', async () => {
+    mockState.resolveWebQuoteContext.mockResolvedValueOnce(acceptedContext());
+    mockState.generateWebQuoteInvoice.mockResolvedValueOnce({ ok: false, error: 'stripe_error' });
+
+    const res = await callRoute();
+    const body = await res.clone().json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ ok: true, webQuote: { id: 'wq_1', status: 'accepted' } });
+    expect(mockState.logError).toHaveBeenCalled();
   });
 });

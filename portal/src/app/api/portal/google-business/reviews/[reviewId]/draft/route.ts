@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { getSession } from '@/lib/session';
-import { isProductContracted } from '@/lib/client-product-access';
+import { hasGoogleBusinessConnectAccess } from '@/lib/google-business';
 import { generateReviewReplyDraft } from '@/lib/review-reply-ai';
 
 export const dynamic = 'force-dynamic';
@@ -24,8 +24,8 @@ export async function POST(_req: NextRequest, { params }: { params: { reviewId: 
     return NextResponse.json({ error: 'service_unavailable', detail: 'not_available_in_dev_mode' }, { status: 503 });
   }
 
-  const hasReviews = await isProductContracted(prisma, resolved.clientId, 'reviews');
-  if (!hasReviews) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const hasAccess = await hasGoogleBusinessConnectAccess(resolved.clientId);
+  if (!hasAccess) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   const review = await prisma.googleReview.findUnique({ where: { id: params.reviewId } });
   if (!review || review.clientId !== resolved.clientId) {

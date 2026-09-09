@@ -78,6 +78,8 @@ export function SelfServeProductCard(props: SelfServeProductCardProps) {
         const detail = await res.json().catch(() => null);
         if (res.status === 409) {
           setError('Ya tienes este producto contratado.');
+        } else if (detail?.error === 'requires_chatbot') {
+          setError('Necesitas el chatbot activo antes de contratar Captación con IA.');
         } else {
           setError(`No se pudo iniciar la contratación. ${detail?.error ?? res.statusText}`);
         }

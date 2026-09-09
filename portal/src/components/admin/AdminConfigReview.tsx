@@ -14,6 +14,10 @@ interface StepListEntry {
   visible: boolean;
   autoConfigured: boolean;
   v11Deferred: boolean;
+  /** Fase 5 — "aprobar salvo veto": este paso puede aprobarse solo,
+   *  pasado el plazo, si nadie lo ha vetado. Catalog fact, no dice si
+   *  va a ocurrir AHORA — eso es `tierView.autoApproveDeadline`. */
+  autoApprovable: boolean;
 }
 
 interface StepListResponse {
@@ -108,6 +112,18 @@ const DATE_FORMAT = new Intl.DateTimeFormat('es-ES', {
   hour: '2-digit',
   minute: '2-digit',
 });
+
+/** Fase 5 — `tierView` stays loosely typed (`Record<string, unknown>`,
+ *  same as the rest of this component's tierView reads), so this reads
+ *  `autoApproveDeadline` the one defensive way the file already does for
+ *  `clienteVisibleForTier` just above. Null covers every reason the
+ *  banner shouldn't show: not auto-approvable, not `submitted`, or no
+ *  companion block at all (a non-chatbot product). */
+function autoApproveDeadlineOf(tierView: Record<string, unknown> | undefined): string | null {
+  if (!tierView || !('autoApproveDeadline' in tierView)) return null;
+  const value = tierView.autoApproveDeadline;
+  return typeof value === 'string' ? value : null;
+}
 
 function formatPayload(payload: unknown): string {
   if (!payload) return '—';
@@ -473,6 +489,14 @@ export default function AdminConfigReview({ clientId, productCode = 'chatbot' }:
                     {step.autoConfigured && !step.v11Deferred ? (
                       <span className="pill-muted text-[10px]">Auto</span>
                     ) : null}
+                    {step.autoApprovable ? (
+                      <span
+                        className="pill-muted text-[10px]"
+                        title="Bajo riesgo: se aprueba solo pasado el plazo si nadie lo revisa antes."
+                      >
+                        Aprueba solo
+                      </span>
+                    ) : null}
                     {step.v11Deferred ? (
                       <span className="pill-muted text-[10px]">Próximamente</span>
                     ) : null}
@@ -520,6 +544,26 @@ export default function AdminConfigReview({ clientId, productCode = 'chatbot' }:
                         <p>{detail.versions.length}</p>
                       </div>
                     </div>
+
+                    {(() => {
+                      const autoApproveDeadline = autoApproveDeadlineOf(detail.tierView);
+                      if (!autoApproveDeadline) return null;
+                      return (
+                        <div
+                          className="rounded-lg border border-kairikos-border bg-kairikos-surface2/40 p-3 text-sm"
+                          data-testid={`config-step-auto-approve-${step.key}`}
+                        >
+                          <p>
+                            Bajo riesgo — se aprobará sola el{' '}
+                            <strong>{DATE_FORMAT.format(new Date(autoApproveDeadline))}</strong> si nadie
+                            la revisa antes.
+                          </p>
+                          <p className="mt-1 text-xs text-kairikos-muted">
+                            Para vetarla, usa &ldquo;Solicitar cambios&rdquo; antes de esa fecha.
+                          </p>
+                        </div>
+                      );
+                    })()}
 
                     {latestVersion ? (
                       <>

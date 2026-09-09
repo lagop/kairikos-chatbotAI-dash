@@ -1,24 +1,24 @@
 // =============================================================================
 // SEO con IA, Fase C — unit tests for src/lib/seo-content-generation.ts.
 //
-// Mirrors prospecting-enrichment.test.ts's conventions. Covers: the
-// cadence guard (minIntervalDays is a plain parameter — the operator-
-// configured resolution itself is seo-settings.test.ts's job), signal-
-// building from the latest audit + Search Console totals, request-time
-// draft row creation, delivery failure isolation, and
-// lastContentRequestedAt stamping regardless of delivery outcome.
+// Cubre: la cadencia (minIntervalDays es un parámetro; resolverlo desde los
+// ajustes del operador es cosa de seo-settings.test.ts), la construcción de
+// señales a partir del último audit y de Search Console, y —desde la Fase
+// 1.3, en la que la redacción pasó de un workflow de n8n inexistente al
+// propio portal— qué se guarda cuando el artículo sale bien y qué NO se
+// toca cuando sale mal.
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockState = vi.hoisted(() => ({
-  deliverChannelEvent: vi.fn(),
+  generateArticleDraft: vi.fn(),
   getContentGenerationMinIntervalDays: vi.fn(),
   logError: vi.fn(),
 }));
 
-vi.mock('@/lib/channel-webhook', () => ({
-  deliverChannelEvent: (...args: unknown[]) => mockState.deliverChannelEvent(...args),
+vi.mock('@/lib/seo-content-ai', () => ({
+  generateArticleDraft: (...args: unknown[]) => mockState.generateArticleDraft(...args),
 }));
 
 vi.mock('@/lib/seo-settings', () => ({
@@ -30,6 +30,14 @@ vi.mock('@/lib/observability', () => ({
 }));
 
 import { isGenerationDue, sweepDueProfiles } from '@/lib/seo-content-generation';
+
+const ARTICLE = {
+  ok: true as const,
+  title: 'Cómo elegir un candado de alta seguridad',
+  metaDescription: 'Qué mirar antes de comprar un candado, explicado sin tecnicismos.',
+  targetKeyword: 'candado alta seguridad',
+  bodyHtml: '<h2>Qué mirar</h2><p>Lo primero es el arco.</p>',
+};
 
 function baseProfile(overrides: Record<string, unknown> = {}) {
   return {
@@ -43,6 +51,7 @@ function baseProfile(overrides: Record<string, unknown> = {}) {
     lastAuditResult: { title: 'Ferretería Central', h1Count: 1 },
     lastContentRequestedAt: null,
     contentGenerationMinIntervalDaysOverride: null,
+    client: { companyName: 'Ferretería Central', name: 'Paco' },
     ...overrides,
   };
 }
@@ -75,8 +84,12 @@ function makePrisma(profiles: ReturnType<typeof baseProfile>[]) {
   } as never;
 }
 
+function mocksOf(prisma: unknown) {
+  return (prisma as { __mocks: Record<string, ReturnType<typeof vi.fn>> }).__mocks;
+}
+
 beforeEach(() => {
-  mockState.deliverChannelEvent.mockReset().mockResolvedValue({ ok: true, deliveryId: 'delivery_1', status: 'delivered' });
+  mockState.generateArticleDraft.mockReset().mockResolvedValue(ARTICLE);
   mockState.getContentGenerationMinIntervalDays.mockReset().mockResolvedValue(3);
   mockState.logError.mockReset();
 });
@@ -95,30 +108,28 @@ describe('isGenerationDue', () => {
   });
 });
 
-describe('sweepDueProfiles — cadence gating', () => {
-  it('only processes profiles whose cadence is due', async () => {
+describe('sweepDueProfiles — cadencia', () => {
+  it('solo procesa los perfiles que tocan', async () => {
     const prisma = makePrisma([
       baseProfile({ id: 'due_1', lastContentRequestedAt: null }),
       baseProfile({ id: 'not_due', lastContentRequestedAt: new Date() }),
     ]);
     const result = await sweepDueProfiles(prisma);
-    expect(result).toEqual({ processed: 1, requested: 1, deliveryFailed: 0 });
-    expect((prisma as never as { __mocks: { seoContentDraftCreate: ReturnType<typeof vi.fn> } }).__mocks.seoContentDraftCreate).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ due: 1, processed: 1, generated: 1, failed: 0, skipped: 0 });
+    expect(mocksOf(prisma).seoContentDraftCreate).toHaveBeenCalledTimes(1);
   });
 
-  it('resolves the operator-configured interval via getContentGenerationMinIntervalDays', async () => {
+  it('resuelve el intervalo configurado por el operador', async () => {
     mockState.getContentGenerationMinIntervalDays.mockResolvedValueOnce(10);
     const prisma = makePrisma([
       baseProfile({ id: 'not_due_at_10', lastContentRequestedAt: new Date(Date.now() - 5 * 24 * 60 * 60_000) }),
     ]);
     const result = await sweepDueProfiles(prisma);
-    expect(result).toEqual({ processed: 0, requested: 0, deliveryFailed: 0 });
+    expect(result).toEqual({ due: 0, processed: 0, generated: 0, failed: 0, skipped: 0 });
     expect(mockState.getContentGenerationMinIntervalDays).toHaveBeenCalledTimes(1);
   });
 
-  it("a profile's own contentGenerationMinIntervalDaysOverride wins over the global value", async () => {
-    // Global says 10 days (not due at 5 days elapsed); the profile's own
-    // override says 3 days (due at 5 days elapsed) — the override must win.
+  it('el override del propio perfil gana al valor global', async () => {
     mockState.getContentGenerationMinIntervalDays.mockResolvedValueOnce(10);
     const prisma = makePrisma([
       baseProfile({
@@ -127,11 +138,10 @@ describe('sweepDueProfiles — cadence gating', () => {
         contentGenerationMinIntervalDaysOverride: 3,
       }),
     ]);
-    const result = await sweepDueProfiles(prisma);
-    expect(result).toEqual({ processed: 1, requested: 1, deliveryFailed: 0 });
+    expect(await sweepDueProfiles(prisma)).toMatchObject({ generated: 1 });
   });
 
-  it('a profile with no override (NULL) falls back to the global value, not "always due"', async () => {
+  it('sin override (NULL) usa el global, no "siempre toca"', async () => {
     mockState.getContentGenerationMinIntervalDays.mockResolvedValueOnce(30);
     const prisma = makePrisma([
       baseProfile({
@@ -140,70 +150,55 @@ describe('sweepDueProfiles — cadence gating', () => {
         contentGenerationMinIntervalDaysOverride: null,
       }),
     ]);
+    expect(await sweepDueProfiles(prisma)).toMatchObject({ due: 0, generated: 0 });
+  });
+
+  it('reparte entre ticks en vez de agotar el minuto del cron', async () => {
+    const prisma = makePrisma([
+      baseProfile({ id: 'p1' }), baseProfile({ id: 'p2' }), baseProfile({ id: 'p3' }), baseProfile({ id: 'p4' }),
+    ]);
     const result = await sweepDueProfiles(prisma);
-    expect(result).toEqual({ processed: 0, requested: 0, deliveryFailed: 0 });
+    // Los 4 tocan, pero solo se escriben 2: el resto sigue vencido y entra
+    // en el siguiente barrido.
+    expect(result).toMatchObject({ due: 4, processed: 2, generated: 2 });
+    expect(mockState.generateArticleDraft).toHaveBeenCalledTimes(2);
   });
 });
 
-describe('sweepDueProfiles — draft creation + delivery', () => {
-  it('creates a pending_generation draft row and delivers it under connectionType seo_content', async () => {
+describe('sweepDueProfiles — señales que recibe el redactor', () => {
+  it('le pasa el contexto del negocio y su nombre', async () => {
     const prisma = makePrisma([baseProfile()]);
     await sweepDueProfiles(prisma);
-
-    const { seoContentDraftCreate } = (prisma as never as { __mocks: Record<string, ReturnType<typeof vi.fn>> }).__mocks;
-    expect(seoContentDraftCreate).toHaveBeenCalledWith(
+    expect(mockState.generateArticleDraft).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ profileId: 'profile_1', clientId: 'client_1', status: 'pending_generation' }),
-      }),
-    );
-    expect(mockState.deliverChannelEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        connectionType: 'seo_content',
-        connectionId: 'draft_for_profile_1',
-        clientId: 'client_1',
-        payload: expect.objectContaining({ draftId: 'draft_for_profile_1', profileId: 'profile_1' }),
+        businessName: 'Ferretería Central',
+        businessDescription: 'Ferretería de barrio con más de 20 años de historia.',
+        targetAudience: 'Vecinos y pequeños talleres.',
+        toneOfVoice: 'Cercano y directo.',
+        siteUrl: 'https://ferreteriacentral.example',
+        siteAudit: { title: 'Ferretería Central', h1Count: 1 },
       }),
     );
   });
 
-  it('includes the latest audit result and Search Console totals in the signals sent to n8n', async () => {
-    const prisma = makePrisma([baseProfile()]);
-    const { googleSeoConnectionFindUnique, seoSearchConsoleMetricFindMany } = (
-      prisma as never as { __mocks: Record<string, ReturnType<typeof vi.fn>> }
-    ).__mocks;
-    googleSeoConnectionFindUnique.mockResolvedValueOnce({ id: 'conn_1', status: 'active' });
-    seoSearchConsoleMetricFindMany.mockResolvedValueOnce([
-      { clicks: 10, impressions: 200 },
-      { clicks: 15, impressions: 250 },
-    ]);
-
+  it('cae al nombre de contacto si el cliente no tiene nombre comercial', async () => {
+    const prisma = makePrisma([baseProfile({ client: { companyName: null, name: 'Paco' } })]);
     await sweepDueProfiles(prisma);
-
-    expect(mockState.deliverChannelEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        payload: expect.objectContaining({
-          siteAudit: { title: 'Ferretería Central', h1Count: 1 },
-          searchConsoleSummary: { totalClicks: 25, totalImpressions: 450, days: 2 },
-        }),
-      }),
-    );
+    expect(mockState.generateArticleDraft).toHaveBeenCalledWith(expect.objectContaining({ businessName: 'Paco' }));
   });
 
-  it('leaves searchConsoleSummary null and queryOpportunities empty when there is no active Search Console connection', async () => {
+  it('sin conexión activa de Search Console, no hay oportunidades que pasar', async () => {
     const prisma = makePrisma([baseProfile()]);
     await sweepDueProfiles(prisma);
-    expect(mockState.deliverChannelEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ payload: expect.objectContaining({ searchConsoleSummary: null, queryOpportunities: [] }) }),
+    expect(mockState.generateArticleDraft).toHaveBeenCalledWith(
+      expect.objectContaining({ queryOpportunities: [] }),
     );
-    const { seoSearchConsoleQueryFindMany } = (prisma as never as { __mocks: Record<string, ReturnType<typeof vi.fn>> }).__mocks;
-    expect(seoSearchConsoleQueryFindMany).not.toHaveBeenCalled();
+    expect(mocksOf(prisma).seoSearchConsoleQueryFindMany).not.toHaveBeenCalled();
   });
 
-  it('includes queryOpportunities filtered to position 4-20, sorted by impressions, when the connection is active', async () => {
+  it('pasa las consultas en posición 4-20 ordenadas por impresiones', async () => {
     const prisma = makePrisma([baseProfile()]);
-    const { googleSeoConnectionFindUnique, seoSearchConsoleQueryFindMany } = (
-      prisma as never as { __mocks: Record<string, ReturnType<typeof vi.fn>> }
-    ).__mocks;
+    const { googleSeoConnectionFindUnique, seoSearchConsoleQueryFindMany } = mocksOf(prisma);
     googleSeoConnectionFindUnique.mockResolvedValueOnce({ id: 'conn_1', status: 'active' });
     seoSearchConsoleQueryFindMany.mockResolvedValueOnce([
       { query: 'cerrajero urgente', impressions: 120, clicks: 3, position: 9.42 },
@@ -219,33 +214,100 @@ describe('sweepDueProfiles — draft creation + delivery', () => {
         take: 15,
       }),
     );
-    expect(mockState.deliverChannelEvent).toHaveBeenCalledWith(
+    expect(mockState.generateArticleDraft).toHaveBeenCalledWith(
       expect.objectContaining({
-        payload: expect.objectContaining({
-          queryOpportunities: [
-            { query: 'cerrajero urgente', impressions: 120, clicks: 3, position: 9.4 },
-            { query: 'candado alta seguridad', impressions: 80, clicks: 1, position: 14.1 },
-          ],
+        queryOpportunities: [
+          { query: 'cerrajero urgente', impressions: 120, clicks: 3, position: 9.4 },
+          { query: 'candado alta seguridad', impressions: 80, clicks: 1, position: 14.1 },
+        ],
+      }),
+    );
+  });
+});
+
+describe('sweepDueProfiles — qué queda guardado', () => {
+  it('guarda el artículo ya en estado revisable por el operador', async () => {
+    const prisma = makePrisma([baseProfile()]);
+    await sweepDueProfiles(prisma);
+
+    expect(mocksOf(prisma).seoContentDraftCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          profileId: 'profile_1',
+          clientId: 'client_1',
+          status: 'drafted',
+          title: ARTICLE.title,
+          bodyHtml: ARTICLE.bodyHtml,
+          targetKeyword: ARTICLE.targetKeyword,
+          metaDescription: ARTICLE.metaDescription,
+          generatedAt: expect.any(Date),
         }),
       }),
     );
   });
 
-  it('stamps lastContentRequestedAt even when delivery to n8n fails', async () => {
-    mockState.deliverChannelEvent.mockResolvedValueOnce({ ok: false, deliveryId: 'delivery_1', status: 'failed', error: 'boom' });
+  it('conserva las señales con las que se escribió, para el contexto del revisor', async () => {
     const prisma = makePrisma([baseProfile()]);
+    await sweepDueProfiles(prisma);
+    const { data } = mocksOf(prisma).seoContentDraftCreate.mock.calls[0][0];
+    expect(data.sourceSignals).toMatchObject({ siteAudit: { title: 'Ferretería Central' } });
+  });
+
+  it('avanza la cadencia solo cuando hay artículo', async () => {
+    const prisma = makePrisma([baseProfile()]);
+    await sweepDueProfiles(prisma);
+    expect(mocksOf(prisma).seoProfileUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'profile_1' }, data: { lastContentRequestedAt: expect.any(Date) } }),
+    );
+  });
+
+  it('guarda vacíos como null, no como cadena vacía', async () => {
+    mockState.generateArticleDraft.mockResolvedValue({ ...ARTICLE, targetKeyword: '', metaDescription: '' });
+    const prisma = makePrisma([baseProfile()]);
+    await sweepDueProfiles(prisma);
+    const { data } = mocksOf(prisma).seoContentDraftCreate.mock.calls[0][0];
+    expect(data.targetKeyword).toBeNull();
+    expect(data.metaDescription).toBeNull();
+  });
+});
+
+describe('sweepDueProfiles — cuando el redactor falla', () => {
+  it('no crea borrador ni avanza la cadencia: el siguiente barrido reintenta', async () => {
+    mockState.generateArticleDraft.mockResolvedValue({ ok: false, error: 'anthropic_api_error:529' });
+    const prisma = makePrisma([baseProfile()]);
+
     const result = await sweepDueProfiles(prisma);
 
-    expect(result).toEqual({ processed: 1, requested: 0, deliveryFailed: 1 });
-    const { seoProfileUpdate } = (prisma as never as { __mocks: Record<string, ReturnType<typeof vi.fn>> }).__mocks;
-    expect(seoProfileUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'profile_1' }, data: expect.objectContaining({ lastContentRequestedAt: expect.any(Date) }) }),
-    );
+    expect(result).toEqual({ due: 1, processed: 1, generated: 0, failed: 1, skipped: 0 });
+    expect(mocksOf(prisma).seoContentDraftCreate).not.toHaveBeenCalled();
+    expect(mocksOf(prisma).seoProfileUpdate).not.toHaveBeenCalled();
     expect(mockState.logError).toHaveBeenCalledWith(
-      'seo_content_generation.delivery_failed',
+      'seo_content_generation.generation_failed',
       expect.any(Error),
       expect.anything(),
       'warn',
     );
+  });
+
+  it('sin clave de IA tampoco quema la cadencia del mes', async () => {
+    mockState.generateArticleDraft.mockResolvedValue({ ok: true, skipped: true, reason: 'no_api_key' });
+    const prisma = makePrisma([baseProfile()]);
+
+    const result = await sweepDueProfiles(prisma);
+
+    expect(result).toEqual({ due: 1, processed: 1, generated: 0, failed: 0, skipped: 1 });
+    expect(mocksOf(prisma).seoContentDraftCreate).not.toHaveBeenCalled();
+    expect(mocksOf(prisma).seoProfileUpdate).not.toHaveBeenCalled();
+  });
+
+  it('un perfil que falla no impide que se escriba el del siguiente cliente', async () => {
+    mockState.generateArticleDraft
+      .mockResolvedValueOnce({ ok: false, error: 'boom' })
+      .mockResolvedValueOnce(ARTICLE);
+    const prisma = makePrisma([baseProfile({ id: 'p1' }), baseProfile({ id: 'p2' })]);
+
+    const result = await sweepDueProfiles(prisma);
+
+    expect(result).toMatchObject({ generated: 1, failed: 1 });
   });
 });

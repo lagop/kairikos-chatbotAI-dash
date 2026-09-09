@@ -44,6 +44,9 @@ import {
   CALLER_DELAY_SECONDS,
   MAX_NOTIFY_ATTEMPTS,
   TRANSCRIPT_GRACE_MINUTES,
+  sweepDueCallbackReminders,
+  CALLBACK_REMINDER_LEAD_MINUTES,
+  CALLBACK_REMINDER_GRACE_MINUTES,
 } from '@/lib/recall-messaging';
 
 const state = {
@@ -207,14 +210,36 @@ describe('notifyCaller — what it says', () => {
     expect(template.bodyParams).toEqual(['Fontanería Aurora']);
   });
 
-  it('promises a time it can keep when the business is closed', async () => {
+  // Fase 3 — con el negocio cerrado ya no se promete una hora, se OFRECE
+  // elegirla, que es el producto de esta fase. 'mañana a las 8:00' era una
+  // hora que nadie se había comprometido a cumplir; un hueco elegido sí.
+  it('lets the caller pick a time when the business is closed', async () => {
     // 23:40 Madrid on the same Tuesday.
     const night = new Date('2026-07-07T21:40:00.000Z');
     await run({ startedAt: new Date(night.getTime() - 5 * 60 * 1000) }, night);
 
     const template = mockState.sendTemplate.mock.calls[0][3];
+    expect(template.name).toBe(RECALL_TEMPLATES.callerSlots.name);
+    const [business, list] = template.bodyParams;
+    expect(business).toBe('Fontanería Aurora');
+    // Una lista numerada, separada por ' · ' y sin saltos de línea: un
+    // '\n' hace que Meta rechace el envío entero.
+    expect(list).toMatch(/^1\) .+ · 2\) /);
+    expect(list).not.toMatch(/[\n\t]/);
+  });
+
+  it('still promises a time when there are no slots to offer', async () => {
+    // Un negocio con horario tan estrecho que no salen dos opciones
+    // separadas: el mensaje de siempre sigue siendo el correcto.
+    const night = new Date('2026-07-07T21:40:00.000Z');
+    const narrow = { mon: [], tue: [], wed: [['08:00', '08:30']], thu: [], fri: [], sat: [], sun: [] };
+    await run(
+      { startedAt: new Date(night.getTime() - 5 * 60 * 1000), subscription: { businessHours: narrow } },
+      night,
+    );
+
+    const template = mockState.sendTemplate.mock.calls[0][3];
     expect(template.name).toBe(RECALL_TEMPLATES.callerClosed.name);
-    // "enseguida" at midnight is a promise the business then has to break.
     expect(template.bodyParams).toEqual(['Fontanería Aurora', 'mañana a las 8:00']);
   });
 
@@ -429,5 +454,122 @@ describe('sweepPendingNotifications', () => {
     const result = await sweepPendingNotifications(prisma, { telephony, now: NOW });
     expect(result.callersFailed).toBe(1);
     expect(result.callersSent).toBe(1);
+  });
+});
+
+// =============================================================================
+// Fase 3 — el recordatorio de la devolución de llamada.
+//
+// Lo que se fija: que avise a tiempo, que NO avise de una hora que ya pasó
+// hace rato, y que una fila que no se puede avisar se cierre en vez de
+// mirarse en cada tick para siempre.
+// =============================================================================
+
+describe('sweepDueCallbackReminders', () => {
+  // Martes 11:00 en Madrid, como el resto del fichero.
+  const now = NOW;
+
+  function callbackRow(over: Record<string, unknown> = {}) {
+    return {
+      ...callRow(),
+      id: 'call_cb',
+      callbackSlotAt: new Date(now.getTime() + 10 * 60_000),
+      ...over,
+    };
+  }
+
+  beforeEach(() => {
+    state.callFindMany.mockResolvedValue([]);
+  });
+
+  it('sin devoluciones a la vista no manda nada', async () => {
+    const result = await sweepDueCallbackReminders(prisma, { now });
+    expect(result).toEqual({ scanned: 0, sent: 0, expired: 0, failed: 0 });
+    expect(mockState.sendTemplate).not.toHaveBeenCalled();
+  });
+
+  it('avisa al dueño con a quién llamar y a qué hora', async () => {
+    state.callFindMany.mockResolvedValue([callbackRow()]);
+
+    const result = await sweepDueCallbackReminders(prisma, { now });
+
+    expect(result).toMatchObject({ scanned: 1, sent: 1 });
+    const [, phoneNumberId, to, template] = mockState.sendTemplate.mock.calls[0];
+    expect(phoneNumberId).toBe('phone_1');
+    // Al WhatsApp del DUEÑO, no al número público del negocio.
+    expect(to).toBe('+34600111222');
+    expect(template.name).toBe(RECALL_TEMPLATES.ownerCallback.name);
+    expect(template.bodyParams[0]).toBe('+34651234567');
+    // La hora va en la zona del negocio, no en la del servidor.
+    expect(template.bodyParams[1]).toMatch(/^a las \d{2}:\d{2}$/);
+    expect(state.callUpdate).toHaveBeenCalledWith({
+      where: { id: 'call_cb' },
+      data: { callbackRemindedAt: now },
+    });
+  });
+
+  it('solo busca las que están dentro del margen de aviso', async () => {
+    await sweepDueCallbackReminders(prisma, { now });
+    const where = state.callFindMany.mock.calls[0][0].where;
+    expect(where.callbackRemindedAt).toBeNull();
+    expect(where.callbackSlotAt.lte).toEqual(
+      new Date(now.getTime() + CALLBACK_REMINDER_LEAD_MINUTES * 60_000),
+    );
+  });
+
+  it('una hora que ya pasó hace rato se cierra sin avisar', async () => {
+    // Un recordatorio con dos horas de retraso no es un aviso.
+    const late = new Date(now.getTime() - (CALLBACK_REMINDER_GRACE_MINUTES + 90) * 60_000);
+    state.callFindMany.mockResolvedValue([callbackRow({ callbackSlotAt: late })]);
+
+    const result = await sweepDueCallbackReminders(prisma, { now });
+
+    expect(result).toMatchObject({ scanned: 1, sent: 0, expired: 1 });
+    expect(mockState.sendTemplate).not.toHaveBeenCalled();
+    // Estampado igualmente, para que no reaparezca en cada tick.
+    expect(state.callUpdate).toHaveBeenCalledWith({
+      where: { id: 'call_cb' },
+      data: { callbackRemindedAt: now },
+    });
+  });
+
+  it('dentro de la gracia sí avisa, aunque llegue tarde', async () => {
+    const slightlyLate = new Date(now.getTime() - 5 * 60_000);
+    state.callFindMany.mockResolvedValue([callbackRow({ callbackSlotAt: slightlyLate })]);
+    await expect(sweepDueCallbackReminders(prisma, { now })).resolves.toMatchObject({ sent: 1 });
+  });
+
+  it('una suscripción pausada es un cliente que pidió que paremos', async () => {
+    state.callFindMany.mockResolvedValue([
+      callbackRow({ subscription: { ...callRow().subscription, status: 'paused' } }),
+    ]);
+
+    const result = await sweepDueCallbackReminders(prisma, { now });
+
+    expect(result).toMatchObject({ expired: 1, sent: 0 });
+    expect(mockState.sendTemplate).not.toHaveBeenCalled();
+  });
+
+  it('sin número del dueño se cierra, en vez de reintentarse hasta caducar', async () => {
+    state.callFindMany.mockResolvedValue([
+      callbackRow({ subscription: { ...callRow().subscription, ownerWhatsapp: null } }),
+    ]);
+
+    const result = await sweepDueCallbackReminders(prisma, { now });
+
+    expect(result).toMatchObject({ expired: 1 });
+    expect(state.callUpdate).toHaveBeenCalled();
+  });
+
+  it('un envío fallido NO se estampa: se reintenta mientras la hora siga valiendo', async () => {
+    state.callFindMany.mockResolvedValue([callbackRow()]);
+    mockState.sendTemplate.mockResolvedValue({ ok: false, error: 'graph down', code: 500 });
+
+    const result = await sweepDueCallbackReminders(prisma, { now });
+
+    expect(result).toMatchObject({ failed: 1, sent: 0 });
+    // Sin estampar, así que el tick siguiente lo vuelve a intentar; lo que
+    // acota los reintentos es la ventana de gracia, no un contador.
+    expect(state.callUpdate).not.toHaveBeenCalled();
   });
 });

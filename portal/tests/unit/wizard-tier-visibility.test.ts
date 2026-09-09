@@ -253,6 +253,16 @@ describe('listStepsForOperator — operator view', () => {
     // Step 4: Pro sees it, no saved yet → autoConfigured = true.
     expect(byNum.get(4)!.autoConfigured).toBe(true);
   });
+
+  it('Fase 5: autoApprovable is a catalog fact, unaffected by tier or saved state', () => {
+    const out = listStepsForOperator('client-1', 'starter', new Map());
+    const byNum = new Map(out.steps.map((s) => [s.number, s]));
+    expect(byNum.get(3)!.autoApprovable).toBe(true);
+    expect(byNum.get(4)!.autoApprovable).toBe(true);
+    expect(byNum.get(5)!.autoApprovable).toBe(true);
+    expect(byNum.get(2)!.autoApprovable).toBe(false);
+    expect(byNum.get(10)!.autoApprovable).toBe(false);
+  });
 });
 
 describe('resolveClientStep — single step', () => {
@@ -319,6 +329,11 @@ describe('resolveOperatorStep — single step', () => {
     expect(out.autoConfigured).toBe(false);
     expect(out.effectivePayload).toEqual(savedPayload);
     expect(out.savedPayload).toEqual(savedPayload);
+  });
+
+  it('Fase 5: autoApprovable is Step 3 true, Step 2 false, regardless of saved state', () => {
+    expect(resolveOperatorStep(3, 'c1', 'pro', emptySaved, null).autoApprovable).toBe(true);
+    expect(resolveOperatorStep(2, 'c1', 'pro', { hasSavedVersion: true }, {}).autoApprovable).toBe(false);
   });
 
   it('Step 12: editable=false (v1.1 deferred) but visible=true in operator view', () => {

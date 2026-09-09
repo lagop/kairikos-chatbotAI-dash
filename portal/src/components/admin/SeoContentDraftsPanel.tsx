@@ -23,6 +23,11 @@ export interface SeoContentDraftData {
   rejectionReason: string | null;
   wordpressPostUrl: string | null;
   publishError: string | null;
+  /** Fase 5 — null salvo que siga 'drafted' con generatedAt. Calculado
+   *  en el servidor (seo-draft-auto-approve.ts's computeAutoApproveDeadline)
+   *  para que esta cuenta atrás nunca pueda desincronizarse de la que de
+   *  verdad usa el barrido. */
+  autoApproveDeadline: string | null;
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -33,6 +38,23 @@ const STATUS_LABEL: Record<string, string> = {
   published: 'Publicado',
   publish_failed: 'Fallo al publicar',
 };
+
+const DATE_FORMAT = new Intl.DateTimeFormat('es-ES', {
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+/** 'system:auto_approve' (lib/seo-content-review.ts) traducido a algo
+ *  legible; cualquier otro valor es ya un email de operador o
+ *  'legacy_operator', que se muestra tal cual. */
+function reviewerLabel(reviewedBy: string | null): string | null {
+  if (!reviewedBy) return null;
+  if (reviewedBy === 'system:auto_approve') return 'Aprobación automática (sin veto a tiempo)';
+  return reviewedBy;
+}
 
 function DraftCard({ draft, clientId }: { draft: SeoContentDraftData; clientId: string }) {
   const router = useRouter();
@@ -104,6 +126,12 @@ function DraftCard({ draft, clientId }: { draft: SeoContentDraftData; clientId: 
         </p>
       ) : null}
 
+      {reviewerLabel(draft.reviewedBy) ? (
+        <p className="mb-3 text-xs text-kairikos-muted" data-testid="seo-content-draft-reviewed-by">
+          Revisado por: {reviewerLabel(draft.reviewedBy)}
+        </p>
+      ) : null}
+
       {draft.status === 'published' && draft.wordpressPostUrl ? (
         <p className="mb-3 text-xs" data-testid="seo-content-draft-published-link">
           <a href={draft.wordpressPostUrl} target="_blank" rel="noreferrer" className="text-kairikos-accent underline">
@@ -130,6 +158,19 @@ function DraftCard({ draft, clientId }: { draft: SeoContentDraftData; clientId: 
       ) : null}
 
       {error ? <p className="mb-2 text-xs text-kairikos-danger">{error}</p> : null}
+
+      {draft.status === 'drafted' && draft.autoApproveDeadline ? (
+        <div
+          className="mb-3 rounded-lg border border-kairikos-border bg-kairikos-surface2/40 p-3 text-sm"
+          data-testid="seo-content-draft-auto-approve"
+        >
+          <p>
+            Sin revisión, se aprobará y publicará sola el{' '}
+            <strong>{DATE_FORMAT.format(new Date(draft.autoApproveDeadline))}</strong>.
+          </p>
+          <p className="mt-1 text-xs text-kairikos-muted">Apruébalo o recházalo antes de esa fecha para decidir tú.</p>
+        </div>
+      ) : null}
 
       {draft.status === 'drafted' ? (
         <div className="space-y-2">

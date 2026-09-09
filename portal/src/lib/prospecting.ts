@@ -177,6 +177,12 @@ export async function runProspectingSearch(
             channel: 'places',
             status: 'nuevo',
             externalPlaceId: candidate.id,
+            // Fase 3.4 — el rubro y la zona con los que se encontró a este
+            // negocio, congelados aquí. La campaña solo guarda los
+            // actuales, así que sin esta copia el cliente pierde la
+            // comparación entre zonas en cuanto cambia de zona.
+            searchCategory: campaign.category,
+            searchLocation: campaign.locationQuery,
             contactName: details.data.name,
             contactPhone: details.data.phoneNumber,
             website: details.data.websiteUri,

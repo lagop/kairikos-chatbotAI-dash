@@ -4,6 +4,7 @@ import { prisma } from './prisma';
 import { getValidAccessToken } from './google-business';
 import { autoReplyToUnansweredReviews } from './review-reply';
 import { logError } from './observability';
+import { sweepNegativeReviewAlerts } from './review-alerts';
 
 // =============================================================================
 // WP-22a — pulls reviews for a connected Google Business Profile location
@@ -143,6 +144,19 @@ export async function syncReviewsForConnection(
       where: { id: connection.id },
       data: { lastSyncAt: new Date(), lastSyncError: null },
     });
+
+    // Fase 2.2 — avisar de las negativas nuevas. Aislado por la misma razón
+    // que el auto-publish de abajo: que un fallo de correo no convierta una
+    // sincronización correcta en un error. Ver lib/review-alerts.ts para por
+    // qué el histórico no dispara avisos.
+    try {
+      await sweepNegativeReviewAlerts(prisma, connection.clientId);
+    } catch (err) {
+      logError('google_review_sync.negative_alert_sweep_failed', err, {
+        route: 'lib/google-review-sync.ts',
+        connectionId: connection.id,
+      });
+    }
 
     // WP-22c — a no-op unless the client opted into autoPublishReplies;
     // isolated so a failure here never turns a successful review sync

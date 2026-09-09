@@ -75,9 +75,13 @@ function makeRequest(body: unknown) {
 }
 
 const RESOLVED = { clientId: 'client_1', email: 'a@b.com', source: 'database' as const };
+// Generic "any recurring product" fixture — deliberately NOT 'leads' or
+// 'web', both of which now carry their own special-cased checkout rules
+// (leads: requires 'chatbot' active; web: requires the quote flow) that
+// would leak into every test here otherwise.
 const RECURRING_PRODUCT = {
   id: '11111111-1111-1111-1111-111111111111',
-  code: 'leads',
+  code: 'seo',
   tier: 'standard',
   isActive: true,
   stripeRecurringPriceId: 'price_recurring_1',
@@ -145,6 +149,28 @@ describe('POST /api/portal/billing/checkout — auth and guards', () => {
     expect(body.error).toBe('already_contracted');
     expect(mockState.clientProductCreate).not.toHaveBeenCalled();
     expect(mockState.checkoutSessionsCreate).not.toHaveBeenCalled();
+  });
+
+  it('400s "requires_chatbot" for leads when the client does not have chatbot active', async () => {
+    mockState.findUniqueProduct.mockResolvedValueOnce({ ...RECURRING_PRODUCT, code: 'leads' });
+    const { POST } = await import('@/app/api/portal/billing/checkout/route');
+    const res = await POST(makeRequest({ productId: RECURRING_PRODUCT.id }));
+    const body = await res.clone().json();
+    expect(res.status).toBe(400);
+    expect(body.error).toBe('requires_chatbot');
+    expect(mockState.clientProductCreate).not.toHaveBeenCalled();
+    expect(mockState.checkoutSessionsCreate).not.toHaveBeenCalled();
+  });
+
+  it('allows leads checkout when the client already has chatbot active', async () => {
+    mockState.findUniqueProduct.mockResolvedValueOnce({ ...RECURRING_PRODUCT, code: 'leads' });
+    mockState.isProductContracted.mockImplementation((_p: unknown, _c: unknown, code: string) =>
+      Promise.resolve(code === 'chatbot'),
+    );
+    const { POST } = await import('@/app/api/portal/billing/checkout/route');
+    const res = await POST(makeRequest({ productId: RECURRING_PRODUCT.id }));
+    expect(res.status).toBe(200);
+    expect(mockState.checkoutSessionsCreate).toHaveBeenCalled();
   });
 
   it('404s for an inactive or missing product', async () => {

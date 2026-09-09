@@ -19,6 +19,11 @@ import { ProductPitch } from '@/components/portal/ProductPitch';
 import { SelfServeProductCard, type SelfServeTierOption } from '@/components/portal/SelfServeProductCard';
 import { LeadStatusControls } from '@/components/portal/LeadStatusControls';
 import { ProspectingProfileCard } from '@/components/portal/ProspectingProfileCard';
+import { ProspectingMetricsCard } from '@/components/portal/ProspectingMetricsCard';
+import { loadProspectingMetrics } from '@/lib/prospecting-metrics';
+import { LeadExportCard, type LeadWebhookState } from '@/components/portal/LeadExportCard';
+import { LeadsQualificationCard } from '@/components/portal/LeadsQualificationCard';
+import { suggestLeadQualificationFields } from '@/lib/cross-product-prefill';
 
 export const dynamic = 'force-dynamic';
 
@@ -176,7 +181,7 @@ export default async function PortalLeadsPage({
   const statusFilter = parseLeadStatusFilter(searchParams?.estado);
   const sort = parseLeadSort(searchParams?.orden);
 
-  const [leads, hasProspecting] = await Promise.all([
+  const [leads, hasProspecting, hasLeads] = await Promise.all([
     prisma.lead.findMany({
       where: { clientId: resolved.clientId, ...(statusFilter ? { status: statusFilter } : {}) },
       orderBy:
@@ -185,6 +190,7 @@ export default async function PortalLeadsPage({
           : [{ createdAt: 'desc' }],
     }),
     isProductContracted(prisma, resolved.clientId, 'prospecting'),
+    isProductContracted(prisma, resolved.clientId, 'leads'),
   ]);
 
   // Fase A — the profile card only makes sense for a client who actually
@@ -203,6 +209,43 @@ export default async function PortalLeadsPage({
       })
     : null;
 
+  // Fase 3.4 — mismo criterio que el perfil: solo se consulta si el cliente
+  // paga por prospección. Un cliente 'leads'-only no tiene leads outbound
+  // y esta agregación le saldría vacía siempre.
+  const prospectingMetrics = hasProspecting ? await loadProspectingMetrics(prisma, resolved.clientId) : null;
+
+  // Fase 4 — la salida hacia fuera. Quien ve el buzón puede llevárselo,
+  // así que no lleva su propia comprobación de producto: llegar aquí ya
+  // exige hasLeads o hasProspecting.
+  const webhookRow = await prisma.leadWebhook.findUnique({
+    where: { clientId: resolved.clientId },
+    select: { url: true, enabled: true, lastDeliveryAt: true, lastDeliveryError: true },
+  });
+  const webhook: LeadWebhookState | null = webhookRow
+    ? {
+        url: webhookRow.url,
+        enabled: webhookRow.enabled,
+        lastDeliveryAt: webhookRow.lastDeliveryAt?.toISOString() ?? null,
+        lastDeliveryError: webhookRow.lastDeliveryError,
+      }
+    : null;
+
+  // "Sistema IA de captación" — the qualification card only makes sense
+  // for a client who bought 'leads' itself (the classifier only scores
+  // inbound conversation leads, not prospecting's outbound Places finds).
+  const leadsQualificationProfile = hasLeads
+    ? await prisma.leadQualificationProfile.findUnique({
+        where: { clientId: resolved.clientId },
+        select: { perfilClienteIdeal: true, senalesDescarte: true, emailAviso: true },
+      })
+    : null;
+
+  // Fase 4 — no volver a preguntar lo que ya nos dijo configurando el
+  // chatbot. Solo sugiere lo que está vacío, y nunca escribe nada.
+  const leadsPrefill = hasLeads
+    ? await suggestLeadQualificationFields(prisma, resolved.clientId, leadsQualificationProfile)
+    : [];
+
   return (
     <div className="space-y-6">
       <PageHeading
@@ -211,7 +254,11 @@ export default async function PortalLeadsPage({
         description="Los contactos que la IA ha priorizado para ti."
       />
 
+      {hasLeads ? <LeadsQualificationCard profile={leadsQualificationProfile} prefill={leadsPrefill} /> : null}
       {hasProspecting ? <ProspectingProfileCard profile={prospectingProfile} /> : null}
+      {prospectingMetrics ? <ProspectingMetricsCard metrics={prospectingMetrics} /> : null}
+
+      <LeadExportCard webhook={webhook} />
 
       <LeadsFilterBar statusFilter={statusFilter} sort={sort} />
 

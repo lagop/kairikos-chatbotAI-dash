@@ -52,6 +52,12 @@ export interface ProductCatalog {
   readonly steps: Readonly<Record<string, WizardStepDefinition>>;
   readonly stepKeys: readonly string[];
   readonly requiredStepKeys: readonly string[];
+  // Fase 5 — qué pasos puede aprobar el sistema, no solo un operador, una
+  // vez pasado el plazo de veto (src/lib/wizard-auto-approve.ts). Vive
+  // aquí, junto a requiredStepKeys, porque es la misma clase de pregunta:
+  // una política sobre pasos que un futuro catálogo (WP-16) hereda solo
+  // con rellenar `autoApprovable` en su propia definición.
+  readonly autoApprovableStepKeys: readonly string[];
   readonly milestones: readonly string[];
   readonly blocks: readonly WizardBlock[];
 }
@@ -64,6 +70,14 @@ function requiredStepKeysOf(steps: Readonly<Record<string, WizardStepDefinition>
   return Object.freeze(
     Object.values(steps)
       .filter((s) => s.requiredForReady)
+      .map((s) => s.key),
+  );
+}
+
+function autoApprovableStepKeysOf(steps: Readonly<Record<string, WizardStepDefinition>>): readonly string[] {
+  return Object.freeze(
+    Object.values(steps)
+      .filter((s) => s.autoApprovable)
       .map((s) => s.key),
   );
 }
@@ -83,6 +97,7 @@ function emptyCatalog(code: ProductCode, label: string): ProductCatalog {
     steps: EMPTY_STEPS,
     stepKeys: Object.freeze([]),
     requiredStepKeys: Object.freeze([]),
+    autoApprovableStepKeys: Object.freeze([]),
     milestones: DEFAULT_MILESTONES,
     blocks: Object.freeze([]),
   });
@@ -95,6 +110,7 @@ export const PRODUCT_CATALOGS: Readonly<Record<ProductCode, ProductCatalog>> = O
     steps: CHATBOT_STEPS,
     stepKeys: stepKeysOf(CHATBOT_STEPS),
     requiredStepKeys: requiredStepKeysOf(CHATBOT_STEPS),
+    autoApprovableStepKeys: autoApprovableStepKeysOf(CHATBOT_STEPS),
     milestones: CHATBOT_MILESTONES,
     blocks: CHATBOT_BLOCKS,
   }),

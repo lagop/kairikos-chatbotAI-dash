@@ -18,6 +18,7 @@ import {
   assignNumberToSubscription,
   releaseNumber,
   getPoolSummary,
+  sweepDueNumberAssignments,
 } from '@/lib/recall-numbers';
 
 const state = {
@@ -29,6 +30,8 @@ const state = {
   virtualNumberGroupBy: vi.fn(),
   recallSubscriptionFindUnique: vi.fn(),
   recallSubscriptionUpdate: vi.fn(),
+  recallSubscriptionFindMany: vi.fn(),
+  recallSubscriptionAuditCreate: vi.fn(),
 };
 
 const prisma = {
@@ -43,6 +46,10 @@ const prisma = {
   recallSubscription: {
     findUnique: (...a: unknown[]) => state.recallSubscriptionFindUnique(...a),
     update: (...a: unknown[]) => state.recallSubscriptionUpdate(...a),
+    findMany: (...a: unknown[]) => state.recallSubscriptionFindMany(...a),
+  },
+  recallSubscriptionAudit: {
+    create: (...a: unknown[]) => state.recallSubscriptionAuditCreate(...a),
   },
 } as unknown as PrismaClient;
 
@@ -58,6 +65,7 @@ beforeEach(() => {
   });
   state.virtualNumberUpdate.mockResolvedValue({});
   state.recallSubscriptionUpdate.mockResolvedValue({});
+  state.recallSubscriptionAuditCreate.mockResolvedValue({});
 });
 
 describe('provisionIntoPool', () => {
@@ -290,5 +298,122 @@ describe('getPoolSummary', () => {
       { status: 'assigned', _count: { _all: 7 } },
     ]);
     await expect(getPoolSummary(prisma)).resolves.toEqual({ available: 4, assigned: 7, released: 0 });
+  });
+});
+
+// =============================================================================
+// Fase 6 — sweepDueNumberAssignments. "Automatizable: la función ya coge
+// el primer número libre... llamarla desde el tick para toda suscripción
+// en meta_connected elimina el paso." This is that tick's own function.
+// =============================================================================
+describe('sweepDueNumberAssignments', () => {
+  /** Every candidate subscription is fetched twice by
+   *  assignNumberToSubscription's own findUnique (once per call) — this
+   *  keys the shared mock by id so several candidates in one sweep don't
+   *  all collapse onto the same canned response. */
+  function subscriptionById(byId: Record<string, { status: string; virtualNumber: unknown }>) {
+    state.recallSubscriptionFindUnique.mockImplementation(({ where }: { where: { id: string } }) =>
+      Promise.resolve(byId[where.id] ? { id: where.id, ...byId[where.id] } : null),
+    );
+  }
+
+  it('is a no-op when nobody is waiting', async () => {
+    state.recallSubscriptionFindMany.mockResolvedValue([]);
+    const result = await sweepDueNumberAssignments(prisma);
+    expect(result).toEqual({ due: 0, assigned: 0, poolExhausted: false, failed: [] });
+    expect(state.virtualNumberFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('queries meta_connected subscriptions oldest-first, so the pool serves whoever has waited longest', async () => {
+    state.recallSubscriptionFindMany.mockResolvedValue([]);
+    await sweepDueNumberAssignments(prisma);
+    expect(state.recallSubscriptionFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { status: 'meta_connected' }, orderBy: { metaConnectedAt: 'asc' } }),
+    );
+  });
+
+  it('assigns a number to every candidate and writes a system-attributed audit row each', async () => {
+    state.recallSubscriptionFindMany.mockResolvedValue([
+      { id: 's1', clientId: 'client_1' },
+      { id: 's2', clientId: 'client_2' },
+    ]);
+    subscriptionById({
+      s1: { status: 'meta_connected', virtualNumber: null },
+      s2: { status: 'meta_connected', virtualNumber: null },
+    });
+    state.virtualNumberFindFirst
+      .mockResolvedValueOnce({ id: 'vn_1', e164: '+34910000001' })
+      .mockResolvedValueOnce({ id: 'vn_2', e164: '+34910000002' });
+    state.virtualNumberUpdateMany.mockResolvedValue({ count: 1 });
+
+    const result = await sweepDueNumberAssignments(prisma);
+
+    expect(result).toEqual({ due: 2, assigned: 2, poolExhausted: false, failed: [] });
+    expect(state.recallSubscriptionAuditCreate).toHaveBeenCalledTimes(2);
+    expect(state.recallSubscriptionAuditCreate).toHaveBeenNthCalledWith(1, {
+      data: expect.objectContaining({
+        subscriptionId: 's1',
+        clientId: 'client_1',
+        action: 'number_assigned',
+        actorType: 'system',
+        actorEmail: 'system:recall_tick',
+        after: expect.objectContaining({ virtualNumberId: 'vn_1', e164: '+34910000001' }),
+      }),
+    });
+  });
+
+  it('stops the whole tick — without touching later candidates — the moment the pool runs dry', async () => {
+    state.recallSubscriptionFindMany.mockResolvedValue([
+      { id: 's1', clientId: 'client_1' },
+      { id: 's2', clientId: 'client_2' },
+    ]);
+    subscriptionById({
+      s1: { status: 'meta_connected', virtualNumber: null },
+      s2: { status: 'meta_connected', virtualNumber: null },
+    });
+    // s1's own bounded-retry loop exhausts the pool.
+    state.virtualNumberFindFirst.mockResolvedValue(null);
+
+    const result = await sweepDueNumberAssignments(prisma);
+
+    expect(result.due).toBe(2);
+    expect(result.assigned).toBe(0);
+    expect(result.poolExhausted).toBe(true);
+    expect(result.failed).toEqual([]);
+    // s2 nunca se intentó: hubiera fallado exactamente igual.
+    expect(state.recallSubscriptionFindUnique).toHaveBeenCalledTimes(1);
+  });
+
+  it('logs a benign race (something else moved the subscription this tick) and keeps going', async () => {
+    state.recallSubscriptionFindMany.mockResolvedValue([
+      { id: 's1', clientId: 'client_1' },
+      { id: 's2', clientId: 'client_2' },
+    ]);
+    subscriptionById({
+      // s1 se canceló entre la consulta del sweep y este intento —
+      // canBindVirtualNumber ya no lo permite.
+      s1: { status: 'cancelled', virtualNumber: null },
+      s2: { status: 'meta_connected', virtualNumber: null },
+    });
+    state.virtualNumberFindFirst.mockResolvedValue({ id: 'vn_1', e164: '+34910000001' });
+    state.virtualNumberUpdateMany.mockResolvedValue({ count: 1 });
+
+    const result = await sweepDueNumberAssignments(prisma);
+
+    expect(result.assigned).toBe(1);
+    expect(result.failed).toEqual([{ subscriptionId: 's1', error: 'invalid_status' }]);
+    expect(result.poolExhausted).toBe(false);
+  });
+
+  it('never lets a failed audit write undo or re-attempt an assignment that already happened', async () => {
+    state.recallSubscriptionFindMany.mockResolvedValue([{ id: 's1', clientId: 'client_1' }]);
+    subscriptionById({ s1: { status: 'meta_connected', virtualNumber: null } });
+    state.virtualNumberFindFirst.mockResolvedValue({ id: 'vn_1', e164: '+34910000001' });
+    state.virtualNumberUpdateMany.mockResolvedValue({ count: 1 });
+    state.recallSubscriptionAuditCreate.mockRejectedValueOnce(new Error('db hiccup'));
+
+    const result = await sweepDueNumberAssignments(prisma);
+
+    expect(result).toEqual({ due: 1, assigned: 1, poolExhausted: false, failed: [] });
   });
 });

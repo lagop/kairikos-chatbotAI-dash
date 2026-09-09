@@ -205,6 +205,100 @@ export async function releaseNumber(
   return { ok: true };
 }
 
+export interface NumberAssignmentSweepResult {
+  /** Suscripciones en `meta_connected` que había al empezar el tick. */
+  due: number;
+  assigned: number;
+  /** El pool se quedó sin números a mitad de barrido — de verdad hace
+   *  falta un humano (aprovisionar más), y por eso el barrido se para en
+   *  vez de seguir intentando el resto: todas fallarían igual. */
+  poolExhausted: boolean;
+  failed: { subscriptionId: string; error: string }[];
+}
+
+/**
+ * Fase 6 — "asignar número virtual" era el único paso manual del arranque
+ * que era pura mecánica: coger el primero libre por orden de
+ * aprovisionamiento, sin que nadie decida nada. Este es ese tick.
+ *
+ * Recorre cada suscripción en `meta_connected` — de la más antigua a la
+ * más nueva, mismo criterio de justicia que el propio pool aplica a los
+ * números ("el primero libre por orden de aprovisionamiento") — y le
+ * asigna un número con `assignNumberToSubscription`, sin filtro de país:
+ * nadie está decidiendo un país por el cliente, así que el barrido
+ * tampoco lo hace.
+ *
+ * `pool_empty` para el barrido entero: si no queda ningún número libre
+ * para la primera suscripción de la cola, no va a aparecer uno para la
+ * segunda dentro del mismo tick. Es justo la señal de "hace falta un
+ * humano" que ya existía — aquí se registra con logError (nivel warn)
+ * para que quede en los logs del scheduler, no solo en la respuesta HTTP
+ * de una ruta que ya nadie mira a mano.
+ *
+ * Cualquier otro fallo (`subscription_not_found`, `invalid_status`,
+ * `already_assigned`) es una carrera benigna — algo más avanzó esa
+ * suscripción entre la consulta y el intento — y no detiene el resto del
+ * barrido, mismo criterio de aislamiento que cada sweep* de esta sesión.
+ *
+ * Sin `try/catch` alrededor de `assignNumberToSubscription`: un fallo de
+ * base de datos de verdad (no un `AssignNumberResult` con `ok:false`) se
+ * propaga y lo aísla runJob en recall-tick, la misma capa que aísla el
+ * resto de los trabajos del tick entre sí.
+ */
+export async function sweepDueNumberAssignments(prisma: PrismaClient): Promise<NumberAssignmentSweepResult> {
+  const candidates = await prisma.recallSubscription.findMany({
+    where: { status: 'meta_connected' },
+    orderBy: { metaConnectedAt: 'asc' },
+    select: { id: true, clientId: true },
+  });
+
+  const result: NumberAssignmentSweepResult = { due: candidates.length, assigned: 0, poolExhausted: false, failed: [] };
+
+  for (const subscription of candidates) {
+    const outcome = await assignNumberToSubscription(prisma, subscription.id);
+
+    if (outcome.ok) {
+      result.assigned += 1;
+      await prisma.recallSubscriptionAudit
+        .create({
+          data: {
+            subscriptionId: subscription.id,
+            clientId: subscription.clientId,
+            action: 'number_assigned',
+            after: { virtualNumberId: outcome.numberId, e164: outcome.e164, status: 'number_assigned' },
+            actorType: 'system',
+            actorEmail: 'system:recall_tick',
+          },
+        })
+        // El número YA está asignado en este punto — que falle escribir
+        // el rastro de auditoría no puede deshacer una asignación real
+        // ni hacer que el tick la reintente sobre una fila ya reclamada.
+        .catch(() => null);
+      continue;
+    }
+
+    if (outcome.error === 'pool_empty') {
+      result.poolExhausted = true;
+      logError(
+        'recall_numbers.sweep_pool_empty',
+        new Error('pool_empty'),
+        { pendingSubscriptions: candidates.length - result.assigned },
+        'warn',
+      );
+      break;
+    }
+
+    // subscription_not_found / invalid_status / already_assigned:
+    // alguien o algo más movió esta suscripción entre la consulta y el
+    // intento (un operador reasignándole el número a mano, por ejemplo).
+    // No es motivo para parar el resto de la cola.
+    result.failed.push({ subscriptionId: subscription.id, error: outcome.error });
+    logError('recall_numbers.sweep_assign_failed', new Error(outcome.error), { subscriptionId: subscription.id }, 'warn');
+  }
+
+  return result;
+}
+
 export interface PoolSummary {
   available: number;
   assigned: number;

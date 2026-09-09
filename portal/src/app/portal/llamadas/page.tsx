@@ -103,6 +103,16 @@ const DATE_FORMAT = new Intl.DateTimeFormat('es-ES', {
   minute: '2-digit',
 });
 
+/** Fase 3 — la hora de la devolución lleva el día de la semana escrito:
+ *  «el martes 8, 11:00» se lee sin tener que calcular qué día es 08/09. */
+const CALLBACK_FORMAT = new Intl.DateTimeFormat('es-ES', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'short',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
 /** Tier codes are English across the catalogue; 'recall' uses
  *  solo/team/business. Same small local map /portal/productos keeps. */
 const TIER_LABEL: Record<string, string> = {
@@ -495,6 +505,15 @@ export default async function PortalLlamadasPage({
                   <span>{OUTCOME_LABEL[call.outcome] ?? call.outcome}</span>
                   <span data-testid="recall-client-notify">{notifyLabel(call)}</span>
                 </p>
+                {/* Fase 3 — la devolución que esta persona eligió. Va en su
+                    propia línea y destacada porque es lo único de esta
+                    tarjeta que le pide algo al dueño: a esa hora tiene que
+                    llamar él. */}
+                {call.callbackSlotAt ? (
+                  <p className="mt-2 text-sm font-medium text-kairikos-accent2" data-testid="recall-client-callback">
+                    Te ha pedido que le llames el {CALLBACK_FORMAT.format(call.callbackSlotAt)}
+                  </p>
+                ) : null}
               </li>
             ))}
           </ul>

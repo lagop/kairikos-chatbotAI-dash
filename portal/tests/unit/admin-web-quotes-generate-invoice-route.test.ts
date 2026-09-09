@@ -137,6 +137,22 @@ describe('POST /api/admin/portal/web-quotes/[id]/generate-invoice', () => {
     );
   });
 
+  it('503s no_tenant when the ClientProduct has no tenant', async () => {
+    mockState.findUniqueClientProduct.mockResolvedValueOnce({ id: 'cp_1', tenantId: null });
+    const res = await callRoute();
+    expect(res.status).toBe(503);
+    expect((await res.clone().json()).error).toBe('no_tenant');
+    expect(mockState.ensureCustomerForTenant).not.toHaveBeenCalled();
+  });
+
+  it('503s stripe_customer_create_failed when no Stripe customer can be resolved', async () => {
+    mockState.ensureCustomerForTenant.mockResolvedValueOnce(null);
+    const res = await callRoute();
+    expect(res.status).toBe(503);
+    expect((await res.clone().json()).error).toBe('stripe_customer_create_failed');
+    expect(mockState.createWebQuoteInvoice).not.toHaveBeenCalled();
+  });
+
   it('502s stripe_error when the Stripe call throws', async () => {
     mockState.createWebQuoteInvoice.mockRejectedValueOnce(new Error('stripe down'));
     const res = await callRoute();

@@ -70,6 +70,11 @@ describe('Portal chrome — Reseñas surface (KAIA-11956)', () => {
   });
 
   it('/portal/resenas renders a clear "not available" state pointing the customer to support', () => {
+    // Fase 3 — el título dejó de ser estático: 'reviews' ya se vende, y un
+    // cliente que lo tiene contratado veía «No disponible en tu plan» en la
+    // pestaña mientras miraba sus propias reseñas. Lo que se fija ahora es
+    // que ese título SIGA existiendo para quien no lo tiene, que es lo que
+    // esta prueba defendía de verdad.
     expect(resenasSrc).toContain(
       "title: 'Reseñas · No disponible en tu plan'"
     );
@@ -96,5 +101,27 @@ describe('Portal chrome — Reseñas surface (KAIA-11956)', () => {
         `expected PORTAL_NAV entry for ${href}`
       ).toContain(`href: '${href}'`);
     }
+  });
+});
+// =============================================================================
+// Fase 3 — el título de la pestaña ya no miente al cliente que sí paga.
+// =============================================================================
+
+describe('/portal/resenas — el título depende de si lo tiene contratado', () => {
+  it('resuelve el título por petición en vez de fijarlo estático', () => {
+    expect(resenasSrc).toContain('export async function generateMetadata()');
+    expect(resenasSrc).not.toContain('export const metadata: Metadata =');
+  });
+
+  it('quien lo tiene contratado ve el nombre del producto, no un aviso de que no lo tiene', () => {
+    expect(resenasSrc).toContain("title: 'Reseñas de Google'");
+  });
+
+  it('cae del lado seguro: sin sesión, sin base de datos o ante un error, el título es el de «no disponible»', () => {
+    // Equivocarse por aquí solo enseña un título conservador; equivocarse
+    // por el otro promete un producto que el cliente no ha comprado.
+    expect(resenasSrc).toContain('if (!isDatabaseConfigured) return NOT_AVAILABLE_METADATA;');
+    expect(resenasSrc).toContain('} catch {');
+    expect(resenasSrc).toMatch(/catch \{\s*return NOT_AVAILABLE_METADATA;/);
   });
 });

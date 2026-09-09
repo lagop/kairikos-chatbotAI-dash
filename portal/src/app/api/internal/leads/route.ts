@@ -2,9 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateInternalRequest, internalAuthFailureResponse } from '@/lib/internal-auth';
-import { isProductContracted } from '@/lib/client-product-access';
-import { sendNewLeadEmail } from '@/lib/leads-email';
-import { logError } from '@/lib/observability';
+import { ingestClassifiedLead } from '@/lib/leads';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -66,107 +64,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
 
-  const existing = await prisma.lead.findFirst({
-    where: { conversationId: data.conversationId, status: 'nuevo' },
+  // Dedup, Lead/LeadAudit write, and the new-lead email all live in
+  // ingestClassifiedLead (lib/leads.ts) — shared with the classify-leads
+  // cron sweep so the two callers can never drift.
+  const result = await ingestClassifiedLead(prisma, {
+    conversation: { id: conversation.id, clientId: conversation.clientId, tenantId: conversation.tenantId },
+    contactName: data.contactName ?? null,
+    contactPhone: data.contactPhone ?? null,
+    contactEmail: data.contactEmail ?? null,
+    summary: data.summary ?? null,
+    score: data.score ?? null,
+    scoreReason: data.scoreReason ?? null,
+    channel: data.channel ?? null,
+    actorId: 'system:n8n',
   });
 
-  if (existing) {
-    const updated = await prisma.$transaction(async (tx) => {
-      const row = await tx.lead.update({
-        where: { id: existing.id },
-        data: {
-          contactName: data.contactName ?? existing.contactName,
-          contactPhone: data.contactPhone ?? existing.contactPhone,
-          contactEmail: data.contactEmail ?? existing.contactEmail,
-          summary: data.summary ?? existing.summary,
-          score: data.score ?? existing.score,
-          scoreReason: data.scoreReason ?? existing.scoreReason,
-          channel: data.channel ?? existing.channel,
-        },
-      });
-      await tx.leadAudit.create({
-        data: {
-          leadId: row.id,
-          clientId: row.clientId,
-          tenantId: row.tenantId,
-          action: 'refreshed',
-          statusBefore: 'nuevo',
-          statusAfter: 'nuevo',
-          actorId: 'system:n8n',
-        },
-      });
-      return row;
-    });
-    return NextResponse.json({ ok: true, leadId: updated.id });
-  }
-
-  const created = await prisma.$transaction(async (tx) => {
-    const row = await tx.lead.create({
-      data: {
-        clientId: conversation.clientId,
-        tenantId: conversation.tenantId,
-        conversationId: conversation.id,
-        contactName: data.contactName ?? null,
-        contactPhone: data.contactPhone ?? null,
-        contactEmail: data.contactEmail ?? null,
-        summary: data.summary ?? null,
-        score: data.score ?? null,
-        scoreReason: data.scoreReason ?? null,
-        channel: data.channel ?? null,
-      },
-    });
-    await tx.leadAudit.create({
-      data: {
-        leadId: row.id,
-        clientId: row.clientId,
-        tenantId: row.tenantId,
-        action: 'created',
-        statusBefore: null,
-        statusAfter: 'nuevo',
-        actorId: 'system:n8n',
-      },
-    });
-    return row;
-  });
-
-  // Fase 6 — best-effort, never blocks the response the ingestion is
-  // waiting on. Only fires HERE, on a genuinely new lead — the refresh
-  // branch above must never re-notify on every later turn of the same
-  // conversation. Gated on 'leads' specifically: a Lead can exist for a
-  // client without that product (recall's phone-sourced leads reuse this
-  // same model — see the schema comment on Lead.channel), and those
-  // clients already get told about a missed call over WhatsApp by
-  // recall's own messaging engine, so a second, unrelated "captación"
-  // email would be redundant, not additive.
-  try {
-    const hasLeadsProduct = await isProductContracted(prisma, created.clientId, 'leads');
-    if (hasLeadsProduct) {
-      const client = await prisma.chatbotClient.findUnique({
-        where: { id: created.clientId },
-        select: { email: true, name: true, companyName: true },
-      });
-      if (client) {
-        const emailResult = await sendNewLeadEmail({
-          to: client.email,
-          businessName: client.companyName ?? client.name,
-          contactName: created.contactName,
-          contactPhone: created.contactPhone,
-          contactEmail: created.contactEmail,
-          summary: created.summary,
-          score: created.score,
-          scoreReason: created.scoreReason,
-          channel: created.channel,
-        });
-        if (!emailResult.ok) {
-          logError('leads.new_lead_email_failed', new Error(emailResult.error), { leadId: created.id }, 'warn');
-        }
-      }
-    }
-  } catch (err) {
-    logError('leads.new_lead_notification_failed', err, { leadId: created.id }, 'warn');
-  }
-
-  return NextResponse.json({ ok: true, leadId: created.id });
+  return NextResponse.json({ ok: true, leadId: result.leadId });
 }
 
 export function GET() {

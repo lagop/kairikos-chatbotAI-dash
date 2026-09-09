@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateInternalRequest, internalAuthFailureResponse } from '@/lib/internal-auth';
+import { markProspectReplied } from '@/lib/prospecting-replies';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -49,6 +50,16 @@ export async function POST(req: NextRequest) {
   }
 
   const now = new Date();
+
+  // Fase 3.3 — esta ruta es el otro camino por el que entra un mensaje de
+  // WhatsApp (n8n ya trae la respuesta y aquí solo se registra). Un
+  // prospecto que contesta puede llegar por cualquiera de las dos, así que
+  // el corte de la secuencia se engancha en ambas. Solo cuando escribe él:
+  // un turno 'assistant' es nuestro propio mensaje, no una respuesta suya.
+  if (body.data.role === 'user') {
+    await markProspectReplied(prisma, { clientId: connection.clientId, phone: body.data.from, now });
+  }
+
   const sessionPrefix = `whatsapp-${body.data.from}-`;
   const entry = { role: body.data.role, content: body.data.content, at: now.toISOString() };
 
@@ -65,6 +76,7 @@ export async function POST(req: NextRequest) {
         clientId: connection.clientId,
         tenantId: connection.tenantId,
         externalSessionId: `${sessionPrefix}${now.getTime()}`,
+        channel: 'whatsapp',
         startedAt: now,
         duration: 0,
         outcome: body.data.outcome ?? null,
@@ -80,6 +92,7 @@ export async function POST(req: NextRequest) {
     data: {
       duration: Math.max(0, Math.round((now.getTime() - latest!.startedAt.getTime()) / 1000)),
       outcome: body.data.outcome ?? latest!.outcome,
+      channel: 'whatsapp',
       transcript: [...priorTranscript, entry],
     },
   });

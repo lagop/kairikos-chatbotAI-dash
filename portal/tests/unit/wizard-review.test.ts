@@ -124,7 +124,12 @@ vi.mock('@/lib/operator-notify', () => ({
   ]),
 }));
 
-import { applyWizardReview, getWizardStepReview, WizardReviewError } from '@/lib/wizard-review';
+import {
+  applyWizardReview,
+  applySystemAutoApproval,
+  getWizardStepReview,
+  WizardReviewError,
+} from '@/lib/wizard-review';
 
 function resetAllMocks() {
   Object.values(mockState).forEach((fn) => {
@@ -902,6 +907,134 @@ describe('applyWizardReview — KAIA-14519 updating transition', () => {
     expect(mockState.tx.chatbotClient.updateMany).not.toHaveBeenCalled();
     expect(result.transition.nextState).toBeNull();
     expect(mockSend.sendOperatorNotification).not.toHaveBeenCalled();
+  });
+});
+
+// =============================================================================
+// Fase 5 — applySystemAutoApproval. Same write path as
+// 'applyWizardReview — approve' above (performStepApproval is shared),
+// so these tests focus on what's DIFFERENT about a system approval:
+// who gets credited, and that it has no request_revision branch at all.
+// =============================================================================
+describe('applySystemAutoApproval', () => {
+  it('rejects with invalid_state_for_approve when latest is not submitted', async () => {
+    mockState.tx.chatbotClient.findUnique.mockResolvedValue({ id: 'c1', tenantId: 'tenant-1' });
+    mockState.tx.chatbotConfigStep.findFirst.mockResolvedValue({ id: 's1', version: 2, status: 'draft' });
+    await expect(
+      applySystemAutoApproval(mockPrisma(), {
+        clientId: 'c1',
+        productCode: 'chatbot',
+        stepKey: '5',
+        reason: 'test',
+      }),
+    ).rejects.toMatchObject({ error: { code: 'invalid_state_for_approve' } });
+    expect(mockState.tx.chatbotConfigStep.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects with step_not_found when no version exists', async () => {
+    mockState.tx.chatbotClient.findUnique.mockResolvedValue({ id: 'c1', tenantId: 'tenant-1' });
+    mockState.tx.chatbotConfigStep.findFirst.mockResolvedValue(null);
+    await expect(
+      applySystemAutoApproval(mockPrisma(), {
+        clientId: 'c1',
+        productCode: 'chatbot',
+        stepKey: '5',
+        reason: 'test',
+      }),
+    ).rejects.toMatchObject({ error: { code: 'step_not_found' } });
+  });
+
+  it('approves with a system actor: no operator credited, reason written into the audit comment', async () => {
+    mockState.tx.chatbotClient.findUnique
+      .mockResolvedValueOnce({ id: 'c1', tenantId: 'tenant-1' }) // ensureClientExists
+      .mockResolvedValueOnce({
+        // loadClientForTransition
+        id: 'c1',
+        state: 'in-progress',
+        name: 'Acme',
+        companyName: 'Acme Corp',
+        email: 'ops@acme.com',
+        clientProducts: [{ id: 'cp1', onboardingState: 'in-progress' }],
+      });
+    mockState.tx.chatbotConfigStep.findFirst
+      .mockResolvedValueOnce({ id: 's1', version: 1, status: 'submitted' }) // latest
+      .mockResolvedValueOnce(null); // no previous active
+    mockState.tx.chatbotConfigStep.update.mockResolvedValue({
+      id: 's1',
+      version: 1,
+      status: 'approved',
+      activeForBot: true,
+      approvedByOperatorId: null,
+      approvedAt: new Date('2026-09-10T12:00:00.000Z'),
+    });
+    mockState.tx.chatbotConfigStep.findMany.mockResolvedValue([]); // readiness: still missing steps
+
+    const result = await applySystemAutoApproval(mockPrisma(), {
+      clientId: 'c1',
+      productCode: 'chatbot',
+      stepKey: '5',
+      reason: 'Sin veto del operador en 12h (paso de bajo riesgo).',
+    });
+
+    expect(result.activeForBot).toBe(true);
+    expect(result.transition.nextState).toBeNull();
+    // approvedByOperatorId es una FK real a Operator — una aprobación del
+    // sistema NUNCA puede escribir ahí un id inventado.
+    expect(mockState.tx.chatbotConfigStep.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ approvedByOperatorId: null }) }),
+    );
+    expect(mockState.tx.chatbotConfigStepAudit.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          actor: 'system',
+          actorId: null,
+          action: 'approve',
+          comment: 'Sin veto del operador en 12h (paso de bajo riesgo).',
+        }),
+        expect.objectContaining({ actor: 'system', actorId: null, action: 'activate' }),
+      ],
+    });
+  });
+
+  it('still fires the config_complete transition + notify when this was the last mandatory step', async () => {
+    mockState.tx.chatbotClient.findUnique
+      .mockResolvedValueOnce({ id: 'c1', tenantId: 'tenant-1' })
+      .mockResolvedValueOnce({
+        id: 'c1',
+        state: 'in-progress',
+        name: 'Acme',
+        companyName: 'Acme Corp',
+        email: 'ops@acme.com',
+        clientProducts: [{ id: 'cp1', onboardingState: 'in-progress' }],
+      });
+    mockState.tx.chatbotConfigStep.findFirst
+      .mockResolvedValueOnce({ id: 's5', version: 1, status: 'submitted' })
+      .mockResolvedValueOnce(null);
+    mockState.tx.chatbotConfigStep.update.mockResolvedValue({
+      id: 's5',
+      version: 1,
+      status: 'approved',
+      activeForBot: true,
+      approvedByOperatorId: null,
+      approvedAt: new Date('2026-09-10T12:00:00.000Z'),
+    });
+    // Every mandatory step active, '5' (this one) included — the check
+    // runs AFTER the write, so the real DB would already show it active.
+    mockState.tx.chatbotConfigStep.findMany.mockResolvedValue(
+      ['1', '2', '3', '4', '5', '6', '7', '9', '10', '11'].map((stepKey) => ({ stepKey })),
+    );
+    mockState.tx.clientProduct.updateMany.mockResolvedValue({ count: 1 });
+
+    const result = await applySystemAutoApproval(mockPrisma(), {
+      clientId: 'c1',
+      productCode: 'chatbot',
+      stepKey: '5',
+      reason: 'test',
+    });
+
+    expect(result.transition.nextState).toBe('ready');
+    expect(mockSend.sendOperatorNotification).toHaveBeenCalledTimes(1);
+    expect(result.transition.notifyFired).toBe(true);
   });
 });
 

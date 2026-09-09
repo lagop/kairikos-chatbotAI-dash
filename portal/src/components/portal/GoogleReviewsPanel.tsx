@@ -20,6 +20,12 @@ export interface GoogleReviewsPanelProps {
   lastSyncError: string | null;
   autoPublishReplies: boolean;
   autoPublishRepliesChangedAt: string | null;
+  // Fase 5 — el segundo interruptor solo se enseña si el cliente tiene el
+  // buzón de leads ('leads' o 'prospecting'). Sin él no hay leads que
+  // convertir, y un ajuste que no puede hacer nada solo genera preguntas.
+  leadsInboxAvailable: boolean;
+  autoRequestFromLeads: boolean;
+  autoRequestFromLeadsChangedAt: string | null;
 }
 
 const OAUTH_START_HREF = '/api/portal/google-business/oauth/start';
@@ -44,10 +50,35 @@ export function GoogleReviewsPanel({
   lastSyncError,
   autoPublishReplies,
   autoPublishRepliesChangedAt,
+  leadsInboxAvailable,
+  autoRequestFromLeads,
+  autoRequestFromLeadsChangedAt,
 }: GoogleReviewsPanelProps) {
   const router = useRouter();
-  const [busy, setBusy] = useState<'sync' | 'disconnect' | 'auto-publish' | null>(null);
+  const [busy, setBusy] = useState<'sync' | 'disconnect' | 'auto-publish' | 'auto-request' | null>(null);
   const [message, setMessage] = useState<{ kind: 'success' | 'error' | 'info'; text: string } | null>(null);
+
+  async function toggleAutoRequest() {
+    setBusy('auto-request');
+    setMessage(null);
+    try {
+      const res = await fetch('/api/portal/google-business/connection/auto-request', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !autoRequestFromLeads }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setMessage({ kind: 'error', text: `No se pudo cambiar el ajuste. ${data?.error ?? res.statusText}` });
+        return;
+      }
+      router.refresh();
+    } catch (err) {
+      setMessage({ kind: 'error', text: `Error de red: ${err instanceof Error ? err.message : 'desconocido'}` });
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function toggleAutoPublish() {
     setBusy('auto-publish');
@@ -223,6 +254,35 @@ export function GoogleReviewsPanel({
             data-testid="google-reviews-auto-publish-toggle"
           >
             {busy === 'auto-publish' ? 'Guardando…' : autoPublishReplies ? 'Activado' : 'Desactivado'}
+          </button>
+        </div>
+      ) : null}
+
+      {status === 'active' && leadsInboxAvailable ? (
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 border-t border-kairikos-border pt-4"
+          data-testid="google-reviews-auto-request"
+        >
+          <div>
+            <p className="text-sm font-semibold">Pedir reseña a los clientes convertidos</p>
+            <p className="text-xs text-kairikos-muted">
+              {autoRequestFromLeads
+                ? 'Cuando marcas un lead como convertido, le invitamos a reseñarte. Una sola vez por persona.'
+                : 'Actívalo y no tendrás que pegar ninguna lista: basta con que marques el lead como convertido.'}
+              {autoRequestFromLeadsChangedAt
+                ? ` · último cambio ${formatRelative(autoRequestFromLeadsChangedAt)}`
+                : ''}
+            </p>
+          </div>
+          <button
+            type="button"
+            className={autoRequestFromLeads ? 'btn-primary' : 'btn-ghost'}
+            onClick={toggleAutoRequest}
+            disabled={busy !== null}
+            aria-pressed={autoRequestFromLeads}
+            data-testid="google-reviews-auto-request-toggle"
+          >
+            {busy === 'auto-request' ? 'Guardando…' : autoRequestFromLeads ? 'Activado' : 'Desactivado'}
           </button>
         </div>
       ) : null}

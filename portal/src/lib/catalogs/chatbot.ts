@@ -81,6 +81,10 @@ export const CHATBOT_STEPS: Readonly<Record<WizardStepNumber, WizardStepDefiniti
       v11Deferred: false,
       visibleFor: visibleForAllTiers,
       defaultPayload: NO_DEFAULT,
+      // Nombre comercial, sector, web: el bot lo repite tal cual, pero un
+      // dato mal puesto aquí no le hace prometer ni negar nada — solo lo
+      // corrige el propio cliente en el siguiente guardado.
+      autoApprovable: false,
     },
     2: {
       number: 2,
@@ -91,6 +95,11 @@ export const CHATBOT_STEPS: Readonly<Record<WizardStepNumber, WizardStepDefiniti
       v11Deferred: false,
       visibleFor: visibleForAllTiers,
       defaultPayload: NO_DEFAULT,
+      // Nunca automático: aquí es donde el cliente le dice al bot qué
+      // tono usar y, sobre todo, qué NO puede prometer. Es juicio, no un
+      // dato objetivo — exactamente lo que la revisión humana existe
+      // para mirar.
+      autoApprovable: false,
     },
     3: {
       number: 3,
@@ -101,6 +110,9 @@ export const CHATBOT_STEPS: Readonly<Record<WizardStepNumber, WizardStepDefiniti
       v11Deferred: false,
       visibleFor: visibleForStarterAndAbove,
       defaultPayload: STEP_3_DEFAULT_PAYLOAD,
+      // Bajo riesgo: un precio mal puesto se corrige en la siguiente
+      // conversación, no compromete al negocio frente a un tercero.
+      autoApprovable: true,
     },
     4: {
       number: 4,
@@ -111,6 +123,10 @@ export const CHATBOT_STEPS: Readonly<Record<WizardStepNumber, WizardStepDefiniti
       v11Deferred: false,
       visibleFor: visibleForAllTiers,
       defaultPayload: NO_DEFAULT,
+      // Bajo riesgo: son las respuestas que el propio cliente ya escribió
+      // para que el bot las repita — no hay nada que un operador esté
+      // juzgando mejor que el negocio que las redactó.
+      autoApprovable: true,
     },
     5: {
       number: 5,
@@ -121,6 +137,9 @@ export const CHATBOT_STEPS: Readonly<Record<WizardStepNumber, WizardStepDefiniti
       v11Deferred: false,
       visibleFor: visibleForAllTiers,
       defaultPayload: NO_DEFAULT,
+      // Bajo riesgo: un horario equivocado decepciona a un cliente que
+      // llama fuera de hora, no le compromete a nada.
+      autoApprovable: true,
     },
     6: {
       number: 6,
@@ -131,6 +150,10 @@ export const CHATBOT_STEPS: Readonly<Record<WizardStepNumber, WizardStepDefiniti
       v11Deferred: false,
       visibleFor: visibleForAllTiers,
       defaultPayload: NO_DEFAULT,
+      // No está en la lista del informe, y a propósito: un email de aviso
+      // mal puesto pierde leads en silencio, no es un fallo que el propio
+      // cliente note para corregirlo solo.
+      autoApprovable: false,
     },
     7: {
       number: 7,
@@ -141,6 +164,9 @@ export const CHATBOT_STEPS: Readonly<Record<WizardStepNumber, WizardStepDefiniti
       v11Deferred: false,
       visibleFor: visibleForStarterAndAbove,
       defaultPayload: STEP_7_DEFAULT_PAYLOAD,
+      // Decide cuándo el bot pasa la conversación a una persona: un fallo
+      // aquí dilata una alerta o la manda al sitio equivocado.
+      autoApprovable: false,
     },
     8: {
       number: 8,
@@ -151,6 +177,9 @@ export const CHATBOT_STEPS: Readonly<Record<WizardStepNumber, WizardStepDefiniti
       v11Deferred: false,
       visibleFor: visibleForAllTiers,
       defaultPayload: NO_DEFAULT,
+      // Qué canales atiende el bot: una decisión operativa, no algo que
+      // el cliente esté describiendo mal por accidente.
+      autoApprovable: false,
     },
     9: {
       number: 9,
@@ -161,6 +190,10 @@ export const CHATBOT_STEPS: Readonly<Record<WizardStepNumber, WizardStepDefiniti
       v11Deferred: false,
       visibleFor: visibleForAllTiers,
       defaultPayload: NO_DEFAULT,
+      // Las frases que el bot dice tal cual, primera persona del negocio.
+      // El propio texto de venta de este WP-XX habla de "lo que promete
+      // el bot": esto es justo eso.
+      autoApprovable: false,
     },
     10: {
       number: 10,
@@ -171,6 +204,10 @@ export const CHATBOT_STEPS: Readonly<Record<WizardStepNumber, WizardStepDefiniti
       v11Deferred: false,
       visibleFor: visibleForAllTiers,
       defaultPayload: NO_DEFAULT,
+      // Nunca automático: RGPD, aviso legal, lo que el bot puede y no
+      // puede tratar. Un error aquí no lo nota el cliente — lo nota un
+      // regulador, y para entonces ya es tarde.
+      autoApprovable: false,
     },
     11: {
       number: 11,
@@ -181,6 +218,9 @@ export const CHATBOT_STEPS: Readonly<Record<WizardStepNumber, WizardStepDefiniti
       v11Deferred: false,
       visibleFor: visibleForAllTiers,
       defaultPayload: NO_DEFAULT,
+      // Es la comprobación de que todo lo anterior funciona junto — el
+      // paso menos indicado para saltarse precisamente la comprobación.
+      autoApprovable: false,
     },
     12: {
       number: 12,
@@ -191,6 +231,9 @@ export const CHATBOT_STEPS: Readonly<Record<WizardStepNumber, WizardStepDefiniti
       v11Deferred: true,
       visibleFor: hiddenForEveryTier,
       defaultPayload: STEP_12_DEFAULT_PAYLOAD,
+      // Diferido a v1.1: no se construye en v1, así que nunca hay nada
+      // que aprobar aquí, automático o no.
+      autoApprovable: false,
     },
   });
 

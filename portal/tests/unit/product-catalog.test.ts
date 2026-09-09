@@ -36,11 +36,16 @@ describe('PRODUCT_CATALOG', () => {
     expect(web!.setupFeeCents).toBeGreaterThan(0);
   });
 
-  it('reviews (Google reviews) has two self-serve tiers matching kairikos.com/resenas-google', () => {
+  it('reviews (Google reviews) has three tiers: the two from kairikos.com plus the chain tier', () => {
     const reviews = PRODUCT_CATALOG.filter((p) => p.code === 'reviews');
-    expect(reviews.map((p) => p.tier).sort()).toEqual(['basic', 'pro']);
+    expect(reviews.map((p) => p.tier).sort()).toEqual(['basic', 'chain', 'pro']);
     for (const p of reviews) {
       expect(p.isActive).toBe(true);
+    }
+    // Fase 3 — 'chain' es nueva y todavía no tiene precio en Stripe: sale
+    // del Bootstrap del operador, igual que 'web' y 'leads'. Las dos que
+    // ya se venden sí lo tienen.
+    for (const p of reviews.filter((r) => r.tier !== 'chain')) {
       expect(p.stripeRecurringPriceId).toBeTruthy();
     }
 
@@ -52,6 +57,14 @@ describe('PRODUCT_CATALOG', () => {
     const pro = reviews.find((p) => p.tier === 'pro')!;
     expect(pro.priceCents).toBe(14900);
     expect(pro.setupFeeCents).toBe(0);
+
+    // Fase 3 — la tarifa de cadenas. Existe porque el coste del producto
+    // escala con el número de LOCALES: cuatro locales en Basic cuestan
+    // cuatro veces más y pagan lo mismo. El tope por tarifa vive en
+    // TIER_LOCATION_CAP y se comprueba en su propio test.
+    const chain = reviews.find((p) => p.tier === 'chain')!;
+    expect(chain.priceCents).toBe(24900);
+    expect(chain.setupFeeCents).toBe(0);
 
     // Enterprise (custom pricing, not self-serve per the marketing page)
     // is deliberately NOT modeled as a Product row.

@@ -75,6 +75,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'product_requires_quote' }, { status: 400 });
   }
 
+  // "Sistema IA de captación" — 'leads' classifies ChatbotConversation
+  // rows; without 'chatbot' active there is never a conversation to
+  // classify, so a 'leads'-only client would pay for a product that can
+  // never produce anything. Checked before isProductContracted below so
+  // this returns its own clear error rather than falling through to a
+  // generic Stripe failure.
+  if (product.code === 'leads') {
+    const hasChatbot = await isProductContracted(prisma, resolved.clientId, 'chatbot');
+    if (!hasChatbot) {
+      return NextResponse.json({ error: 'requires_chatbot' }, { status: 400 });
+    }
+  }
+
   const client = await prisma.chatbotClient.findUnique({
     where: { id: resolved.clientId },
     select: { id: true, tenantId: true },

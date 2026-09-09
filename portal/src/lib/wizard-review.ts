@@ -146,6 +146,139 @@ async function findLatestStepVersion({ clientId, productCode, stepKey, tx }: Fin
   });
 }
 
+// =============================================================================
+// Fase 5 — who is credited with the approval.
+//
+// `approvedByOperatorId` is a real FK to `Operator`, so a system approval
+// must leave it NULL — there is no Operator row to point at, and inventing
+// one (a synthetic "system" account with a password/TOTP it never uses)
+// would misrepresent an automated decision as a human's in every screen
+// that reads that column. The audit trail is where the "who" of a system
+// approval lives: `actor: 'system'`, `actorId: null`, same convention
+// `saveWizardStep`'s own system-actor override already uses.
+// =============================================================================
+type ApproveWriteActor =
+  | { kind: 'operator'; operatorId: string }
+  | { kind: 'system' };
+
+function approvedByOperatorIdFor(writeActor: ApproveWriteActor): string | null {
+  return writeActor.kind === 'operator' ? writeActor.operatorId : null;
+}
+
+interface PerformApprovalResult {
+  id: string;
+  version: number;
+  status: 'approved';
+  activeForBot: boolean;
+  approvedByOperatorId: string | null;
+  approvedAt: Date;
+  deactivatedStepIds: string[];
+}
+
+/**
+ * The write side of an approval: deactivate whatever was previously
+ * `activeForBot`, flip the submitted version to `approved` + `activeForBot`,
+ * and write the matching audit rows. Shared by the operator's PATCH
+ * (`applyWizardReview`) and the system sweep (`applySystemAutoApproval`) —
+ * the only thing that differs between them is who gets credited, which
+ * `writeActor` carries. Caller must already have checked
+ * `latest.status === 'submitted'`.
+ */
+async function performStepApproval(
+  tx: Prisma.TransactionClient,
+  req: { clientId: string; productCode: string; stepKey: string },
+  latest: { id: string; version: number },
+  tenantId: string | null,
+  writeActor: ApproveWriteActor,
+  comment: string | null,
+): Promise<PerformApprovalResult> {
+  // Deactivate the previous active row (if any) for this (client, step).
+  const previousActive = await tx.chatbotConfigStep.findFirst({
+    where: {
+      clientId: req.clientId,
+      productCode: req.productCode,
+      stepKey: req.stepKey,
+      activeForBot: true,
+      id: { not: latest.id },
+    },
+    select: { id: true, version: true },
+  });
+  const deactivatedStepIds: string[] = [];
+  if (previousActive) {
+    await tx.chatbotConfigStep.update({
+      where: { id: previousActive.id },
+      data: { activeForBot: false },
+    });
+    await tx.chatbotConfigStepAudit.create({
+      data: {
+        stepId: previousActive.id,
+        tenantId,
+        version: previousActive.version,
+        actor: 'system',
+        actorId: null,
+        action: 'deactivate',
+        comment: `Replaced by version ${latest.version} approval`,
+      },
+    });
+    deactivatedStepIds.push(previousActive.id);
+  }
+
+  const now = new Date();
+  const approvedByOperatorId = approvedByOperatorIdFor(writeActor);
+  const updated = await tx.chatbotConfigStep.update({
+    where: { id: latest.id },
+    data: {
+      status: 'approved',
+      activeForBot: true,
+      approvedAt: now,
+      approvedByOperatorId,
+    },
+    select: {
+      id: true,
+      version: true,
+      status: true,
+      activeForBot: true,
+      approvedByOperatorId: true,
+      approvedAt: true,
+    },
+  });
+
+  // Two audit rows: 'approve' (the decision) + 'activate' (system, always
+  // — activating a version is a mechanical consequence, not a decision).
+  await tx.chatbotConfigStepAudit.createMany({
+    data: [
+      {
+        stepId: updated.id,
+        tenantId,
+        version: updated.version,
+        actor: writeActor.kind,
+        actorId: writeActor.kind === 'operator' ? writeActor.operatorId : null,
+        action: 'approve',
+        comment: comment ?? null,
+      },
+      {
+        stepId: updated.id,
+        tenantId,
+        version: updated.version,
+        actor: 'system',
+        actorId: null,
+        action: 'activate',
+        comment: null,
+      },
+    ],
+  });
+
+  return {
+    id: updated.id,
+    version: updated.version,
+    status: 'approved',
+    activeForBot: updated.activeForBot,
+    approvedByOperatorId: updated.approvedByOperatorId,
+    approvedAt: updated.approvedAt as Date,
+    deactivatedStepIds,
+  };
+}
+
 // WP-09 — returns the client's tenantId (rather than void) so callers can
 // stamp it onto the audit rows they write in the same transaction, without
 // a second round-trip to re-fetch the client they already just checked
@@ -524,79 +657,14 @@ export async function applyWizardReview(
         throw new WizardReviewError({ code: 'comment_too_long' });
       }
 
-      // Deactivate the previous active row (if any) for this (client, step).
-      const previousActive = await tx.chatbotConfigStep.findFirst({
-        where: {
-          clientId: req.clientId,
-          productCode: req.productCode,
-          stepKey: req.stepKey,
-          activeForBot: true,
-          id: { not: latest.id },
-        },
-        select: { id: true, version: true },
-      });
-      const deactivatedStepIds: string[] = [];
-      if (previousActive) {
-        await tx.chatbotConfigStep.update({
-          where: { id: previousActive.id },
-          data: { activeForBot: false },
-        });
-        await tx.chatbotConfigStepAudit.create({
-          data: {
-            stepId: previousActive.id,
-            tenantId,
-            version: previousActive.version,
-            actor: 'system',
-            actorId: null,
-            action: 'deactivate',
-            comment: `Replaced by version ${latest.version} approval`,
-          },
-        });
-        deactivatedStepIds.push(previousActive.id);
-      }
-
-      const now = new Date();
-      const updated = await tx.chatbotConfigStep.update({
-        where: { id: latest.id },
-        data: {
-          status: 'approved',
-          activeForBot: true,
-          approvedAt: now,
-          approvedByOperatorId: actor.operatorId,
-        },
-        select: {
-          id: true,
-          version: true,
-          status: true,
-          activeForBot: true,
-          approvedByOperatorId: true,
-          approvedAt: true,
-        },
-      });
-
-      // Two audit rows: 'approve' (operator decision) + 'activate' (system).
-      await tx.chatbotConfigStepAudit.createMany({
-        data: [
-          {
-            stepId: updated.id,
-            tenantId,
-            version: updated.version,
-            actor: 'operator',
-            actorId: actor.operatorId,
-            action: 'approve',
-            comment: comment ?? null,
-          },
-          {
-            stepId: updated.id,
-            tenantId,
-            version: updated.version,
-            actor: 'system',
-            actorId: null,
-            action: 'activate',
-            comment: null,
-          },
-        ],
-      });
+      const approved = await performStepApproval(
+        tx,
+        req,
+        latest,
+        tenantId,
+        { kind: 'operator', operatorId: actor.operatorId },
+        comment ?? null,
+      );
 
       // KAIA-14519 — readiness check + maybe transition to 'ready'.
       // We compute AFTER the step approves so the partial unique invariant
@@ -607,13 +675,13 @@ export async function applyWizardReview(
       const transition = await maybeTransitionToReady(prisma, tx, clientRow, req.productCode);
 
       return {
-        stepId: updated.id,
-        version: updated.version,
-        status: updated.status as 'approved' | 'needs_revision',
-        activeForBot: updated.activeForBot,
-        approvedByOperatorId: updated.approvedByOperatorId,
-        approvedAt: updated.approvedAt,
-        deactivatedStepIds,
+        stepId: approved.id,
+        version: approved.version,
+        status: approved.status as 'approved' | 'needs_revision',
+        activeForBot: approved.activeForBot,
+        approvedByOperatorId: approved.approvedByOperatorId,
+        approvedAt: approved.approvedAt,
+        deactivatedStepIds: approved.deactivatedStepIds,
         transition,
         clientForNotify: clientRow,
       };
@@ -720,6 +788,126 @@ export async function applyWizardReview(
     approvedByOperatorId: result.approvedByOperatorId,
     approvedAt: result.approvedAt,
     revisionComment: 'revisionComment' in result ? result.revisionComment : undefined,
+    deactivatedStepIds: result.deactivatedStepIds,
+    transition: {
+      nextState: result.transition.nextState,
+      notifyFired,
+      resendMessageId,
+      notifyError,
+    },
+  };
+}
+
+export interface AutoApprovalRequest {
+  clientId: string;
+  productCode: string;
+  stepKey: string;
+  /** Why the system decided this, written verbatim into the 'approve'
+   *  audit row's comment — e.g. "Sin veto del operador en 12h (paso de
+   *  bajo riesgo)". The veto-window policy itself (which steps, how many
+   *  hours) is Fase 5's — see src/lib/wizard-auto-approve.ts — and stays
+   *  out of this file on purpose: wizard-review.ts is the mechanical
+   *  state machine, not the place that decides when to invoke it. */
+  reason: string;
+}
+
+export type AutoApprovalError =
+  | { code: 'client_not_found' }
+  | { code: 'step_not_found' }
+  | { code: 'invalid_state_for_approve' };
+
+export interface AutoApprovalResult {
+  stepId: string;
+  version: number;
+  activeForBot: boolean;
+  approvedAt: Date;
+  deactivatedStepIds: string[];
+  transition: WizardStateTransition;
+}
+
+/**
+ * Fase 5 — approve a submitted step on the system's own authority, with
+ * no operator in the loop. The write side (`performStepApproval`) is
+ * byte-for-byte the same code path `applyWizardReview`'s approve branch
+ * runs — same deactivate-previous-active, same 'approve' + 'activate'
+ * audit pair, same readiness check and `config_complete` notify — the
+ * ONLY thing that differs is who gets credited: `actor: 'system'`,
+ * `actorId: null`, and `approvedByOperatorId` stays NULL (that column is
+ * a real FK to `Operator`; there is no operator to point it at).
+ *
+ * Deliberately narrower than `applyWizardReview`: no `request_revision`
+ * branch exists here, because a system sweep never vetoes anything —
+ * only an operator can. Throws `WizardReviewError` for the same
+ * documented failures as the manual path, in particular
+ * `invalid_state_for_approve` — the caller (the sweep) treats that as a
+ * benign race (an operator acted, or the client re-edited, between the
+ * sweep's query and this write) and moves on to the next candidate
+ * rather than surfacing it as an error.
+ */
+export async function applySystemAutoApproval(
+  prisma: PrismaClient,
+  req: AutoApprovalRequest,
+): Promise<AutoApprovalResult> {
+  const result = await prisma.$transaction(async (tx) => {
+    const { tenantId } = await ensureClientExists(req.clientId, tx);
+
+    const latest = await findLatestStepVersion({
+      clientId: req.clientId,
+      productCode: req.productCode,
+      stepKey: req.stepKey,
+      tx,
+    });
+    if (!latest) {
+      throw new WizardReviewError({ code: 'step_not_found' });
+    }
+    if (latest.status !== 'submitted') {
+      // The step moved on since the sweep read it: someone approved it,
+      // sent it back, or the client re-edited into a newer draft. Not
+      // this function's failure to report — the sweep's.
+      throw new WizardReviewError({ code: 'invalid_state_for_approve' });
+    }
+
+    const approved = await performStepApproval(tx, req, latest, tenantId, { kind: 'system' }, req.reason);
+
+    const clientRow = await loadClientForTransition(req.clientId, req.productCode, tx);
+    const transition = await maybeTransitionToReady(prisma, tx, clientRow, req.productCode);
+
+    return {
+      stepId: approved.id,
+      version: approved.version,
+      activeForBot: approved.activeForBot,
+      approvedAt: approved.approvedAt,
+      deactivatedStepIds: approved.deactivatedStepIds,
+      transition,
+      clientForNotify: clientRow,
+    };
+  });
+
+  // Same post-commit carve-out as applyWizardReview: the notify runs
+  // after the transaction commits so a rollback never leaves an orphan
+  // email or dedup row. Only 'ready' can fire from this function — a
+  // system approval never sends a step to 'updating', that transition is
+  // request_revision's alone.
+  let notifyFired = false;
+  let resendMessageId: string | null = null;
+  let notifyError: string | null = null;
+  if (result.transition.nextState === 'ready' && result.clientForNotify) {
+    const notifyResult = await fireConfigCompleteNotification(
+      prisma,
+      result.clientForNotify,
+      CONFIG_COMPLETE_KIND,
+      req.productCode,
+    );
+    notifyFired = notifyResult.fired;
+    resendMessageId = notifyResult.resendMessageId;
+    notifyError = notifyResult.error;
+  }
+
+  return {
+    stepId: result.stepId,
+    version: result.version,
+    activeForBot: result.activeForBot,
+    approvedAt: result.approvedAt,
     deactivatedStepIds: result.deactivatedStepIds,
     transition: {
       nextState: result.transition.nextState,

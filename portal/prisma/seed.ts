@@ -164,6 +164,21 @@ export const PRODUCT_CATALOG: ProductCatalogEntry[] = [
     priceCents: 14900, setupFeeCents: 0, currency: 'EUR', isActive: true,
     stripeRecurringPriceId: 'price_reviews_pro', stripeSetupPriceId: null,
   },
+  // Fase 3 — la tarifa de cadenas. Existe porque el coste de este producto
+  // escala con el número de LOCALES, no con el de clientes: cada ubicación
+  // son su propia sincronización con Google, su propio volumen de reseñas
+  // y sus propias respuestas de IA. Un cliente con cuatro locales en la
+  // tarifa Basic cuesta cuatro veces más y paga lo mismo.
+  //
+  // Tarifado por tamaño y con un tope por tarifa, no por local facturado:
+  // misma decisión que 'recall' toma unas líneas más abajo, y por el mismo
+  // motivo — una factura variable es justo la ansiedad contra la que se
+  // vende. El tope vive en TIER_LOCATION_CAP (src/lib/review-locations.ts).
+  {
+    code: 'reviews', tier: 'chain', name: 'Reseñas en Google — Cadena',
+    priceCents: 24900, setupFeeCents: 0, currency: 'EUR', isActive: true,
+    stripeRecurringPriceId: null, stripeSetupPriceId: null,
+  },
   // WP-XX — Missed-call recovery + review requests. Three tiers priced by
   // BUSINESS SIZE, not by included minutes: metering minutes is what every
   // Spanish competitor does (Recepcionista.com 500/750/1.500 min,

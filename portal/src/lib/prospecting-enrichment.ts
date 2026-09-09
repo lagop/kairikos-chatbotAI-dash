@@ -1,26 +1,34 @@
 import 'server-only';
 import type { PrismaClient } from '@prisma/client';
-import { deliverChannelEvent } from './channel-webhook';
+import { applyLeadEnrichment } from './leads';
 import { logError } from './observability';
 
 // =============================================================================
-// Prospección con IA, Fase B — website enrichment. For each outbound Lead
-// Google Places found a website for, the portal crawls that website and
-// hands the raw text to n8n, which extracts contact details with its own
-// LLM and calls back PATCH /api/internal/leads/[id]/enrich — see that
-// route and the session's own plan. The portal/n8n boundary from the rest
-// of this codebase holds here too: crawling is I/O, "who is the owner and
-// what's their email" is interpretation, and interpretation is n8n's job,
-// never done inline in the portal.
+// Prospección con IA, Fase B — website enrichment. Para cada Lead outbound
+// del que Google Places dio una web, el portal la rastrea y saca de ahí el
+// email y el teléfono de contacto.
 //
-// Single attempt per lead (Lead.enrichmentRequestedAt), not a retry
-// machine: a delivery to n8n that fails is retried by the EXISTING
-// ChannelWebhookDelivery backoff sweep (sync-channel-webhooks) since this
-// reuses that same plumbing — no new retry logic needed there. A crawl
-// that fails outright (site down, DNS failure, timeout) is different: a
-// business's website being unreachable is usually a standing fact, not a
-// transient one, so it is logged and left alone rather than retried every
-// tick forever.
+// Fase 1.4 — hasta aquí, el texto rastreado se empujaba a n8n para que un
+// LLM extrajera los contactos y llamara de vuelta a
+// PATCH /api/internal/leads/[id]/enrich. Ese workflow no existía, así que
+// el enriquecimiento no ocurría nunca. Ahora la extracción es local y
+// DETERMINISTA, no un LLM:
+//
+//   Un email y un teléfono son formatos regulares. Una expresión regular
+//   los encuentra gratis, sin latencia, y —lo que de verdad importa— no
+//   puede inventarse un teléfono que no estaba en la página. En un
+//   producto que luego CONTACTA automáticamente por WhatsApp, un número
+//   alucinado no es un fallo cosmético: es un mensaje a un desconocido.
+//   Por eso aquí no hay modelo que valga.
+//
+// La ruta del callback sigue existiendo y funcionando por si alguna vez
+// hay una fuente externa; simplemente ya no es el camino principal.
+//
+// Un intento por lead (Lead.enrichmentRequestedAt), no una máquina de
+// reintentos: una web caída suele ser un hecho estable, no algo
+// transitorio, así que se registra y se deja en paz en vez de reintentarlo
+// en cada tick para siempre. Lo mismo si la página no tenía ningún
+// contacto: el texto no va a cambiar por volver a mirarlo mañana.
 // =============================================================================
 
 const CRAWL_TIMEOUT_MS = 8_000;
@@ -88,10 +96,85 @@ function htmlToText(html: string): string {
   return collapsed.slice(0, MAX_RAW_TEXT_CHARS);
 }
 
+// ---------------------------------------------------------------------------
+// Extracción de contactos — pura, determinista y testeable sin red
+// ---------------------------------------------------------------------------
+
+const EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
+
+/** Buzones que no son un contacto real del negocio. */
+const EMAIL_BLOCKLIST = /^(no-?reply|noreply|postmaster|mailer-daemon|abuse|privacy|dpo|webmaster)@/i;
+/** Dominios de ejemplo, plantillas sin rellenar y ficheros que parecen
+ *  emails (`logo@2x.png`). */
+const EMAIL_JUNK = /(@(example|test|localhost|dominio|tudominio|yourdomain)\.|@2x\.|\.(png|jpe?g|gif|svg|webp|css|js)$)/i;
+
+/** Buzones genéricos de contacto, por orden de preferencia: si una web
+ *  lista varios correos, el del negocio es casi siempre uno de estos y no
+ *  el personal de un empleado. */
+const PREFERRED_MAILBOXES = ['info', 'contacto', 'hola', 'citas', 'reservas', 'cita', 'contact', 'administracion'];
+
+/**
+ * Primer email de contacto útil del texto, o null.
+ * Nunca devuelve algo que no esté literalmente en el texto.
+ */
+export function extractEmail(text: string): string | null {
+  const found = (text.match(EMAIL_RE) ?? [])
+    .map((raw) => raw.toLowerCase())
+    .filter((email) => !EMAIL_BLOCKLIST.test(email) && !EMAIL_JUNK.test(email));
+  if (found.length === 0) return null;
+
+  const preferred = found.find((email) => PREFERRED_MAILBOXES.includes(email.split('@')[0]));
+  return preferred ?? found[0];
+}
+
+/** Nueve dígitos españoles, con o sin prefijo +34/0034 y con los
+ *  separadores habituales (espacios, puntos, guiones, paréntesis). */
+const PHONE_RE = /(?:\+34|0034|34)?[\s.\-/]?([6-9])(?:[\s.\-/]?\d){8}/g;
+
+/**
+ * Primer teléfono español plausible del texto, normalizado a +34XXXXXXXXX,
+ * o null.
+ *
+ * Solo móviles y fijos españoles (empiezan por 6, 7, 8 o 9 y tienen
+ * exactamente nueve dígitos). Se descarta cualquier candidato que forme
+ * parte de una cifra más larga —un NIF, un número de cuenta, un año
+ * pegado a otra cosa— porque ahí casi nunca hay un teléfono.
+ */
+export function extractPhone(text: string): string | null {
+  for (const match of text.matchAll(PHONE_RE)) {
+    const raw = match[0];
+    const start = match.index ?? 0;
+    const end = start + raw.length;
+
+    // Pegado a más dígitos por cualquier lado: no es un teléfono suelto.
+    if (/\d/.test(text[start - 1] ?? '') || /\d/.test(text[end] ?? '')) continue;
+
+    const digits = raw.replace(/\D/g, '');
+    const national = digits.length > 9 ? digits.slice(-9) : digits;
+    if (national.length !== 9 || !/^[6-9]/.test(national)) continue;
+
+    return `+34${national}`;
+  }
+  return null;
+}
+
+export interface ExtractedContact {
+  contactEmail: string | null;
+  contactPhone: string | null;
+}
+
+/** Lo que se saca de una web rastreada. Pura: mismo texto, misma salida. */
+export function extractContactFromText(text: string): ExtractedContact {
+  return { contactEmail: extractEmail(text), contactPhone: extractPhone(text) };
+}
+
 export interface EnrichmentSweepResult {
   processed: number;
-  delivered: number;
+  /** Leads a los que se les añadió al menos un dato de contacto. */
+  enriched: number;
   crawlFailed: number;
+  /** La web se rastreó bien, pero no había ni email ni teléfono. */
+  noContactFound: number;
 }
 
 interface EnrichmentCandidate {
@@ -101,13 +184,11 @@ interface EnrichmentCandidate {
 }
 
 /**
- * The cron entry point (called from /api/cron/prospecting-tick). Picks up
- * to ENRICHMENT_BATCH_SIZE outbound leads that have a website and have
- * never been attempted, crawls each, and hands a success to
- * deliverChannelEvent under connectionType 'prospecting'. Every candidate
- * is stamped enrichmentRequestedAt when this function is done with it,
- * whether the crawl succeeded or not — see the module header for why a
- * failed crawl isn't retried.
+ * The cron entry point (called from /api/cron/prospecting-tick). Coge hasta
+ * ENRICHMENT_BATCH_SIZE leads outbound con web y sin intentar, rastrea cada
+ * uno y le añade los contactos que encuentre. Todos los candidatos quedan
+ * marcados con enrichmentRequestedAt al terminar, haya salido bien o no —
+ * ver la cabecera del módulo para el porqué.
  */
 export async function sweepPendingEnrichment(
   prisma: PrismaClient,
@@ -120,8 +201,9 @@ export async function sweepPendingEnrichment(
     select: { id: true, clientId: true, website: true },
   })) as EnrichmentCandidate[];
 
-  let delivered = 0;
+  let enriched = 0;
   let crawlFailed = 0;
+  let noContactFound = 0;
 
   for (const lead of candidates) {
     // website is guaranteed non-null by the query's `not: null` filter —
@@ -134,25 +216,17 @@ export async function sweepPendingEnrichment(
       crawlFailed += 1;
       logError('prospecting_enrichment.crawl_failed', new Error(crawl.error), { leadId: lead.id }, 'warn');
     } else {
-      const result = await deliverChannelEvent({
-        connectionType: 'prospecting',
-        connectionId: lead.id,
-        clientId: lead.clientId,
-        payload: { leadId: lead.id, rawText: crawl.data.rawText },
-      });
-      if (result.ok) {
-        delivered += 1;
+      const contact = extractContactFromText(crawl.data.rawText);
+      if (contact.contactEmail || contact.contactPhone) {
+        await applyLeadEnrichment(prisma, lead.id, contact, 'system:prospecting');
+        enriched += 1;
       } else {
-        // Not counted as crawlFailed — the crawl worked; delivery to n8n
-        // is what failed, and that failure is already recorded in
-        // ChannelWebhookDelivery for sync-channel-webhooks to retry with
-        // the SAME payload (no need to crawl again).
-        logError('prospecting_enrichment.delivery_failed', new Error(result.error ?? 'unknown'), { leadId: lead.id }, 'warn');
+        noContactFound += 1;
       }
     }
 
     await prisma.lead.update({ where: { id: lead.id }, data: { enrichmentRequestedAt: now } });
   }
 
-  return { processed: candidates.length, delivered, crawlFailed };
+  return { processed: candidates.length, enriched, crawlFailed, noContactFound };
 }

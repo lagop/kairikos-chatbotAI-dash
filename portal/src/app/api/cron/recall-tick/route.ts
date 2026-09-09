@@ -3,11 +3,12 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { sweepPendingTranscriptions } from '@/lib/recall-transcription';
 import { purgeExpiredRecordings } from '@/lib/recall-retention';
 import { notifyStuckOnboardings } from '@/lib/recall-stuck-alerts';
-import { sweepPendingNotifications } from '@/lib/recall-messaging';
+import { sweepPendingNotifications, sweepDueCallbackReminders } from '@/lib/recall-messaging';
 import { sendDailyDigests, sweepReviewReminders } from '@/lib/recall-reviews';
 import { sendMonthlyReports, rollUpUsage } from '@/lib/recall-reports';
 import { syncTemplateStatuses, warnExpiringTokens } from '@/lib/whatsapp-health';
 import { advanceSubscriptionsWithApprovedTemplates } from '@/lib/recall-templates';
+import { sweepDueNumberAssignments } from '@/lib/recall-numbers';
 import { resolveActiveTwilioCredentials } from '@/lib/twilio-credentials';
 import { logError } from '@/lib/observability';
 
@@ -90,6 +91,13 @@ export async function GET(req: NextRequest) {
   //    rather than a timer that would not survive a restart.
   jobs.notifications = await runJob('notifications', () => sweepPendingNotifications(prisma));
 
+  // 3b. Fase 3 — el recordatorio de las devoluciones que el propio cliente
+  //     eligió. Va aquí y no en otro cron porque es el único trabajo del
+  //     producto con hora fijada por un tercero: si el tick no corre, la
+  //     hora pasa y el aviso ya no sirve. Su ventana de gracia es lo que
+  //     acota los reintentos — ver sweepDueCallbackReminders.
+  jobs.callbackReminders = await runJob('callbackReminders', () => sweepDueCallbackReminders(prisma));
+
   // 4. The review half. The digest closes the owner's day and the
   //    reminder chases a link nobody opened; both re-check their own
   //    due-ness, so a coarse or missed tick delays them rather than
@@ -108,6 +116,16 @@ export async function GET(req: NextRequest) {
   // 6. Push stalled altas at an operator. Deduped per (client, day) by
   //    operator-notify, so running this every tick is safe.
   jobs.stuckAlerts = await runJob('stuckAlerts', () => notifyStuckOnboardings(prisma));
+
+  // 6b. Fase 6 — "asignar número virtual" era pura mecánica: el primer
+  //     número libre por orden de aprovisionamiento, con
+  //     compare-and-swap contra la carrera entre dos operadores. Nadie
+  //     decidía nada, así que ya no hace falta que nadie lo pulse. Va
+  //     ANTES de templateSync/templateApproval a propósito: una
+  //     suscripción que consigue número en este mismo tick puede llegar
+  //     a templates_approved en el mismo tick también, si sus plantillas
+  //     ya estaban aprobadas esperando el número.
+  jobs.numberAssignment = await runJob('numberAssignment', () => sweepDueNumberAssignments(prisma));
 
   // 7. Meta changes state without telling us. A token that dies at 60
   //    days and a template Meta paused for quality both fail silently —

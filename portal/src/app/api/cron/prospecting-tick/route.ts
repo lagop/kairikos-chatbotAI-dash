@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { runProspectingSearch, isProspectingRunDue } from '@/lib/prospecting';
-import { sweepPendingEnrichment } from '@/lib/prospecting-enrichment';
+import { sweepPendingEnrichment, type EnrichmentSweepResult } from '@/lib/prospecting-enrichment';
 import { runProspectingContact } from '@/lib/prospecting-contact';
 import { sendProspectingBatchEmail } from '@/lib/leads-email';
 import { logError } from '@/lib/observability';
@@ -40,6 +40,12 @@ export const maxDuration = 60;
  * search cadence, so a campaign with consent is checked every tick. Its
  * own daily cap and quality-rating gate are what actually bound the
  * work — see prospecting-contact.ts.
+ *
+ * Fase 3.3 — ese mismo paso atiende ahora la secuencia entera (primer
+ * contacto + dos seguimientos), por lo que este tick pasó a importar de
+ * verdad: con un solo mensaje daba igual llegar tarde, pero la cadencia se
+ * mide en días y solo avanza cuando el tick corre. Sigue siendo el mismo
+ * endpoint en scripts/scheduler.sh, sin entrada nueva.
  */
 function isAuthorizedCronRequest(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
@@ -129,7 +135,9 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  let enrichment: { ok: true; processed: number; delivered: number; crawlFailed: number } | { ok: false; error: string };
+  let enrichment:
+    | ({ ok: true } & EnrichmentSweepResult)
+    | { ok: false; error: string };
   try {
     const result = await sweepPendingEnrichment(prisma, now);
     enrichment = { ok: true, ...result };
@@ -139,7 +147,7 @@ export async function GET(req: NextRequest) {
   }
 
   type ContactOutcome =
-    | { ok: true; sent: number; failed: number; capReached: boolean }
+    | { ok: true; sent: number; followedUp: number; failed: number; capReached: boolean }
     | { ok: false; error: string };
   const contact: Record<string, ContactOutcome> = {};
   const consented = campaigns.filter((c) => c.consentAcknowledgedAt !== null);

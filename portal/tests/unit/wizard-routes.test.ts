@@ -99,7 +99,11 @@ describe('wizard-route-contract — operator routes', () => {
     expect(out).toHaveProperty('autoConfigured');
     expect(out).toHaveProperty('editable');
     expect(out).toHaveProperty('v11Deferred');
+    expect(out).toHaveProperty('autoApprovable');
     expect(out.visibleForTier).toBe(true);
+    // Step 5 (Horario) is exactly one of the three the informe named as
+    // low-risk — Fase 5.
+    expect(out.autoApprovable).toBe(true);
   });
 
   it('operator view always returns 12 steps regardless of client visibility', () => {

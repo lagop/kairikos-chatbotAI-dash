@@ -32,6 +32,12 @@ export const PORTAL_NAV: readonly PortalNavItem[] = [
   { href: '/portal/status', label: 'Chatbot' },
   { href: '/portal/onboarding', label: 'Onboarding', parentHref: '/portal/status' },
   { href: '/portal/conversations', label: 'Conversaciones', parentHref: '/portal/status' },
+  // Fase 3 — la base de conocimiento es del chatbot y de nadie más, así que
+  // cuelga de su sección igual que Onboarding y Canales.
+  // La etiqueta es 'Conocimiento' y no 'Base de conocimiento' porque la
+  // barra lateral trunca: la larga se veía «Base de conocimie…», que es
+  // peor que la corta entera.
+  { href: '/portal/conocimiento', label: 'Conocimiento', parentHref: '/portal/status' },
   { href: '/portal/canales', label: 'Canales', parentHref: '/portal/status' },
   { href: '/portal/web', label: 'Web' },
   // WP-XX — 'recall' is run entirely from WhatsApp and never requires a

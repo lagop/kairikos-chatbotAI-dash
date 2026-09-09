@@ -36,6 +36,7 @@ describe('PRODUCT_CATALOGS', () => {
       expect(catalog.steps).toEqual({});
       expect(catalog.stepKeys).toEqual([]);
       expect(catalog.requiredStepKeys).toEqual([]);
+      expect(catalog.autoApprovableStepKeys).toEqual([]);
       expect(catalog.milestones.length).toBeGreaterThan(0);
     }
   });
@@ -88,6 +89,15 @@ describe('PRODUCT_CATALOGS.chatbot — structural snapshot of the v1 spec', () =
     expect([...chatbot.requiredStepKeys].sort()).toEqual(
       ['1', '2', '3', '4', '5', '6', '7', '9', '10', '11'].sort(),
     );
+  });
+
+  it('Fase 5: only Servicios y tarifas, FAQ and Horario auto-approve — Personalidad y límites and Cumplimiento never do', () => {
+    expect([...chatbot.autoApprovableStepKeys].sort()).toEqual(['3', '4', '5'].sort());
+    expect(chatbot.steps[2].autoApprovable).toBe(false); // Personalidad y límites
+    expect(chatbot.steps[10].autoApprovable).toBe(false); // Cumplimiento
+    for (const n of [1, 6, 7, 8, 9, 11, 12]) {
+      expect(chatbot.steps[n].autoApprovable, `step ${n}`).toBe(false);
+    }
   });
 
   it('Step 3 and Step 7 are hidden for starter only; Step 12 is hidden for every tier', () => {

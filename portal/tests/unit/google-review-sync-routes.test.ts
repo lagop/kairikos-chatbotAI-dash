@@ -16,6 +16,7 @@ const mockState = vi.hoisted(() => ({
   isSyncDue: vi.fn(),
   syncReviewsForConnection: vi.fn(),
   syncAllDueConnections: vi.fn(),
+  sweepReviewRequestsFromLeads: vi.fn(),
 }));
 
 vi.mock('@/lib/portal-session', () => ({
@@ -35,8 +36,25 @@ vi.mock('@/lib/prisma', () => ({
     return mockState.isDatabaseConfigured;
   },
   prisma: {
-    googleBusinessConnection: { findFirst: (...args: unknown[]) => mockState.connectionFindFirst(...args) },
+    googleBusinessConnection: {
+      findFirst: (...args: unknown[]) => mockState.connectionFindFirst(...args),
+      // Fase 3 — resolveReviewConnection lista para distinguir «un local»
+      // de «varios»; estos tests describen un cliente de un solo local, así
+      // que devuelve lo mismo que findFirst, envuelto.
+      findMany: async (...args: unknown[]) => {
+        const one = await mockState.connectionFindFirst(...args);
+        return one ? [one] : [];
+      },
+    },
   },
+}));
+
+// Fase 5 — el tick de reseñas dispara ahora también el barrido de
+// invitaciones a partir de leads convertidos. Se mockea igual que la
+// sincronización: aquí se prueba la RUTA, y el barrido tiene su propio
+// archivo (review-requests-from-leads.test.ts).
+vi.mock('@/lib/review-requests-from-leads', () => ({
+  sweepReviewRequestsFromLeads: (...args: unknown[]) => mockState.sweepReviewRequestsFromLeads(...args),
 }));
 
 vi.mock('@/lib/google-review-sync', () => ({
@@ -56,11 +74,24 @@ beforeEach(() => {
   mockState.isSyncDue.mockReset().mockReturnValue(true);
   mockState.syncReviewsForConnection.mockReset().mockResolvedValue({ synced: true, reviewCount: 3 });
   mockState.syncAllDueConnections.mockReset().mockResolvedValue({ swept: 2, synced: 1 });
+  mockState.sweepReviewRequestsFromLeads.mockReset().mockResolvedValue({
+    connectionsScanned: 0,
+    campaignsCreated: 0,
+    invited: 0,
+    skippedNoAddress: 0,
+    skippedCooldown: 0,
+    failed: [],
+  });
 });
 
 describe('POST /api/portal/google-business/sync', () => {
-  function makeRequest() {
-    return {} as unknown as NextRequest;
+  // Fase 3 — la ruta lee ?connectionId para saber en qué local sincronizar,
+  // así que la petición falsa necesita una URL de verdad. Sin parámetro se
+  // resuelve el único local del cliente, que es lo que describen estos tests.
+  function makeRequest(connectionId?: string) {
+    const base = 'https://portal.test/api/portal/google-business/sync';
+    const url = connectionId ? `${base}?connectionId=${connectionId}` : base;
+    return { url } as unknown as NextRequest;
   }
 
   it('401s when there is no session', async () => {
@@ -70,12 +101,30 @@ describe('POST /api/portal/google-business/sync', () => {
     expect(res.status).toBe(401);
   });
 
-  it('403s when the client does not have the reviews product contracted', async () => {
-    mockState.isProductContracted.mockResolvedValueOnce(false);
+  // La puerta de esta ruta es hasGoogleBusinessConnectAccess: 'reviews' O
+  // 'recall'. Este test llevaba roto desde que la ruta pasó de comprobar
+  // solo 'reviews' a comprobar las dos, porque usaba mockResolvedValueOnce:
+  // el helper llama a isProductContracted DOS veces (Promise.all), la
+  // primera devolvía false, la segunda el true por defecto, y el OR dejaba
+  // pasar. Hacen falta las dos en false para negar el acceso.
+  it('403s when the client has neither the reviews nor the recall product', async () => {
+    mockState.isProductContracted.mockResolvedValue(false);
     const { POST } = await import('@/app/api/portal/google-business/sync/route');
     const res = await POST(makeRequest());
     expect(res.status).toBe(403);
     expect(mockState.connectionFindFirst).not.toHaveBeenCalled();
+  });
+
+  // La mitad de la regla que NADIE probaba, y por eso la deriva pasó
+  // desapercibida: un cliente de 'recall' sin 'reviews' también sincroniza,
+  // porque su mitad de invitaciones a reseñar depende de esto.
+  it('lets a recall-only client through: the gate is reviews OR recall', async () => {
+    mockState.isProductContracted.mockImplementation((_p: unknown, _c: unknown, code: string) =>
+      Promise.resolve(code === 'recall'),
+    );
+    const { POST } = await import('@/app/api/portal/google-business/sync/route');
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(200);
   });
 
   it('404s when the client has no active connection', async () => {
@@ -132,7 +181,30 @@ describe('GET /api/cron/sync-google-reviews', () => {
     const res = await GET(makeRequest('Bearer secret_123'));
     const body = await res.clone().json();
     expect(res.status).toBe(200);
-    expect(body).toEqual({ swept: 2, synced: 1 });
+    expect(body).toEqual({
+      swept: 2,
+      synced: 1,
+      reviewRequests: {
+        connectionsScanned: 0,
+        campaignsCreated: 0,
+        invited: 0,
+        skippedNoAddress: 0,
+        skippedCooldown: 0,
+        failed: [],
+      },
+    });
+  });
+
+  it('still reports the sync when the review-request sweep throws', async () => {
+    // Los dos trabajos comparten tick pero no suerte: un fallo invitando no
+    // puede dejar sin sincronizar las reseñas de todos los clientes.
+    mockState.sweepReviewRequestsFromLeads.mockRejectedValueOnce(new Error('boom'));
+    const { GET } = await import('@/app/api/cron/sync-google-reviews/route');
+    const res = await GET(makeRequest('Bearer secret_123'));
+    const body = await res.clone().json();
+    expect(res.status).toBe(200);
+    expect(body.swept).toBe(2);
+    expect(body.reviewRequests).toEqual({ error: 'boom' });
   });
 
   it('503s when the database is not configured', async () => {
