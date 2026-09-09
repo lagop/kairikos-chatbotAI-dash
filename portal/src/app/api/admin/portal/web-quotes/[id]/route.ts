@@ -46,6 +46,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: 'invalid_body', details: 'deposit_must_be_less_than_amount' }, { status: 400 });
   }
 
+  // authenticateAdminRequest returns the placeholder id 'legacy' for the
+  // KAIA_OPERATOR_API_KEY header path, which is not a real Operator row —
+  // writing it into actorOperatorId (@db.Uuid) would throw.
+  const operatorId = auth.operatorId === 'legacy' ? null : auth.operatorId;
+
   const before = { amountCents: webQuote.amountCents, depositCents: webQuote.depositCents, description: webQuote.description };
   const updated = await prisma.$transaction(async (tx) => {
     const row = await tx.webQuote.update({
@@ -62,7 +67,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         action: 'edited',
         before,
         after: { amountCents: row.amountCents, depositCents: row.depositCents, description: row.description },
-        actorOperatorId: auth.operatorId,
+        actorOperatorId: operatorId,
       },
     });
     return row;

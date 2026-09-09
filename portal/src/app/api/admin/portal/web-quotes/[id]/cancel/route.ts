@@ -27,6 +27,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: 'cannot_cancel' }, { status: 409 });
   }
 
+  // authenticateAdminRequest returns the placeholder id 'legacy' for the
+  // KAIA_OPERATOR_API_KEY header path, which is not a real Operator row —
+  // writing it into actorOperatorId (@db.Uuid) would throw.
+  const operatorId = auth.operatorId === 'legacy' ? null : auth.operatorId;
+
   const updated = await prisma.$transaction(async (tx) => {
     const row = await tx.webQuote.update({
       where: { id: webQuote.id },
@@ -38,7 +43,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         action: 'cancelled',
         before: { status: webQuote.status },
         after: { status: 'cancelled' },
-        actorOperatorId: auth.operatorId,
+        actorOperatorId: operatorId,
       },
     });
     return row;

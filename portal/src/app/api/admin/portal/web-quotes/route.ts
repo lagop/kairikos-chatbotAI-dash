@@ -60,6 +60,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'quote_already_exists', webQuoteId: existing.id }, { status: 409 });
   }
 
+  // authenticateAdminRequest returns the placeholder id 'legacy' for the
+  // KAIA_OPERATOR_API_KEY header path, which is not a real Operator row —
+  // writing it into these @db.Uuid FK columns would throw (not a valid
+  // UUID). Both columns are nullable for exactly this case.
+  const operatorId = auth.operatorId === 'legacy' ? null : auth.operatorId;
+
   const webQuote = await prisma.$transaction(async (tx) => {
     const created = await tx.webQuote.create({
       data: {
@@ -70,7 +76,7 @@ export async function POST(req: NextRequest) {
         depositCents: body.data.depositCents ?? null,
         currency: body.data.currency ?? 'eur',
         description: body.data.description,
-        createdByOperatorId: auth.operatorId,
+        createdByOperatorId: operatorId,
       },
     });
     await tx.webQuoteAudit.create({
@@ -83,7 +89,7 @@ export async function POST(req: NextRequest) {
           currency: created.currency,
           description: created.description,
         },
-        actorOperatorId: auth.operatorId,
+        actorOperatorId: operatorId,
       },
     });
     return created;

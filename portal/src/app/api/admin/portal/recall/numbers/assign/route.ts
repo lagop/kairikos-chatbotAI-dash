@@ -54,6 +54,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: result.error }, { status: ERROR_STATUS[result.error] ?? 400 });
   }
 
+  // authenticateAdminRequest returns the placeholder id 'legacy' for the
+  // KAIA_OPERATOR_API_KEY header path, which is not a real Operator row —
+  // writing it into actorOperatorId (@db.Uuid) would throw, and the
+  // .catch(() => null) below would otherwise silently drop this audit row
+  // on every legacy-auth call.
+  const operatorId = auth.operatorId === 'legacy' ? null : auth.operatorId;
+
   const subscription = await prisma.recallSubscription.findUnique({
     where: { id: body.data.subscriptionId },
     select: { clientId: true, status: true },
@@ -67,7 +74,7 @@ export async function POST(req: NextRequest) {
           action: 'number_assigned',
           after: { virtualNumberId: result.numberId, e164: result.e164, status: subscription.status },
           actorType: 'operator',
-          actorOperatorId: auth.operatorId,
+          actorOperatorId: operatorId,
         },
       })
       // The number IS assigned at this point; failing the whole request

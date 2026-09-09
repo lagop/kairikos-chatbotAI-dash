@@ -221,6 +221,23 @@ describe('POST /api/admin/portal/recall/numbers/assign', () => {
     const res = await callRoute({ subscriptionId: SUB_ID });
     expect(res.status).toBe(200);
   });
+
+  it("resuelve el operador legacy a null en vez de pasar el string 'legacy' (RecallSubscriptionAudit.actorOperatorId es una FK real)", async () => {
+    mockState.authenticateAdminRequest.mockResolvedValueOnce({ ok: true, operatorId: 'legacy' });
+    mockState.assignNumberToSubscription.mockResolvedValue({
+      ok: true,
+      numberId: 'vn_1',
+      e164: '+34910000001',
+      advancedTo: 'number_assigned',
+    });
+
+    const res = await callRoute({ subscriptionId: SUB_ID });
+
+    expect(res.status).toBe(200);
+    expect(mockState.recallSubscriptionAuditCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ actorOperatorId: null }),
+    });
+  });
 });
 
 describe('POST /api/admin/portal/recall/numbers/[id]/release', () => {
@@ -273,5 +290,22 @@ describe('POST /api/admin/portal/recall/numbers/[id]/release', () => {
     const res = await callRoute();
     expect(res.status).toBe(200);
     expect(mockState.recallSubscriptionAuditCreate).not.toHaveBeenCalled();
+  });
+
+  it("resuelve el operador legacy a null en vez de pasar el string 'legacy' (RecallSubscriptionAudit.actorOperatorId es una FK real)", async () => {
+    mockState.authenticateAdminRequest.mockResolvedValueOnce({ ok: true, operatorId: 'legacy' });
+    mockState.virtualNumberFindUnique.mockResolvedValue({
+      e164: '+34910000001',
+      subscriptionId: SUB_ID,
+      subscription: { clientId: 'client_1' },
+    });
+    mockState.releaseNumber.mockResolvedValue({ ok: true });
+
+    const res = await callRoute();
+
+    expect(res.status).toBe(200);
+    expect(mockState.recallSubscriptionAuditCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ actorOperatorId: null }),
+    });
   });
 });
