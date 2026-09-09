@@ -51,6 +51,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     );
   }
 
+  // authenticateAdminRequest returns the placeholder id 'legacy' for the
+  // KAIA_OPERATOR_API_KEY header path, which is not a real Operator row —
+  // writing it into actorOperatorId (@db.Uuid) would throw, and the
+  // .catch(() => null) below would otherwise silently drop this audit row
+  // on every legacy-auth call.
+  const operatorId = auth.operatorId === 'legacy' ? null : auth.operatorId;
+
   if (before?.subscriptionId && before.subscription) {
     await prisma.recallSubscriptionAudit
       .create({
@@ -60,7 +67,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           action: 'number_released',
           before: { virtualNumberId: params.id, e164: before.e164 },
           actorType: 'operator',
-          actorOperatorId: auth.operatorId,
+          actorOperatorId: operatorId,
         },
       })
       .catch(() => null);
