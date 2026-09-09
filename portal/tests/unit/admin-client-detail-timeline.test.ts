@@ -42,6 +42,21 @@ const PAGE_FILE = path.join(
 const pageSource = fs.readFileSync(PAGE_FILE, 'utf8');
 const pageLines = pageSource.split('\n');
 
+// WP-07 — the operator-only onboarding milestone controls (and their
+// confirm-before-submit guard) were extracted into a sibling Client
+// Component so the buttons could ask for explicit confirmation. `pageSource`
+// alone no longer contains them.
+const CLIENT_FILE = path.join(
+  REPO_ROOT,
+  'src',
+  'app',
+  'admin',
+  'portal',
+  '[clientId]',
+  '_client.tsx',
+);
+const clientSource = fs.readFileSync(CLIENT_FILE, 'utf8');
+
 function findLineNumber(predicate: (line: string) => boolean): number {
   for (let i = 0; i < pageLines.length; i++) {
     if (predicate(pageLines[i])) return i + 1;
@@ -216,7 +231,9 @@ describe('KAIA-14345 — operator-side onboarding advance controls (source check
   it('page imports the operator advance server action and the milestone allowlist', () => {
     expect(pageSource).toContain("from './onboarding-actions'");
     expect(pageSource).toContain('advanceOnboardingMilestone');
-    expect(pageSource).toContain('ALLOWED_MILESTONES');
+    // WP-07 — ALLOWED_MILESTONES is consumed by the extracted _client.tsx
+    // controls component now, not page.tsx directly.
+    expect(clientSource).toContain('ALLOWED_MILESTONES');
   });
 
   it('page renders the operator controls block gated on isOperator && isDatabaseConfigured', () => {
@@ -227,9 +244,25 @@ describe('KAIA-14345 — operator-side onboarding advance controls (source check
   });
 
   it('page exposes a data-testid hook for the operator controls region', () => {
-    expect(pageSource).toContain('onboarding-operator-controls');
-    expect(pageSource).toContain('onboarding-operator-start');
-    expect(pageSource).toContain('onboarding-operator-mark');
+    // WP-07 — these now live in the extracted _client.tsx controls component.
+    expect(clientSource).toContain('onboarding-operator-controls');
+    expect(clientSource).toContain('onboarding-operator-start');
+    expect(clientSource).toContain('onboarding-operator-mark');
+  });
+
+  it('WP-07 — the milestone buttons ask for confirmation before submitting the write', () => {
+    expect(clientSource).toContain('window.confirm(');
+    expect(clientSource).toContain('e.preventDefault()');
+  });
+
+  it('WP-07 — the Resumen tab no longer claims to be read-only above the Editar/onboarding write controls', () => {
+    // The Flujo tab's own "Esta vista es de sólo lectura" note is untouched
+    // and correct — that tab genuinely has no write controls. Only the
+    // Resumen tab's badge/description (which sat above OperatorEditor and
+    // the onboarding milestone buttons) was misleading.
+    expect(pageSource).not.toContain('Vista de sólo lectura');
+    expect(pageSource).not.toContain('Modo lectura');
+    expect(pageSource).not.toContain('Esta vista replica el portal del cliente sin posibilidad de modificar datos');
   });
 
   it('server action gates on session.isOperator and isDatabaseConfigured before any DB write', () => {

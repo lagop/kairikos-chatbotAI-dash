@@ -14,7 +14,8 @@ import type { OnboardingTimelineRow } from '@/types/portal';
 import { MOCK_FLOW_ACTIVITY, MOCK_N8N_EXECUTIONS, type FlowActivityEntry, type N8nExecutionSummary } from '@/lib/flow-health';
 import { buildAdminClientChatbotStatus } from '@/lib/chatbot-status';
 import { advanceOnboardingMilestone } from './onboarding-actions';
-import { ALLOWED_MILESTONES } from './onboarding-constants';
+import { MILESTONE_LABEL } from './onboarding-constants';
+import { OnboardingOperatorControls } from './_client';
 import { PRODUCT_CODES, PRODUCT_CATALOGS, getProductCatalog, type ProductCode } from '@/lib/catalogs';
 import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
 import { ProductAssignment, type AssignableProduct, type ClientProductRow } from '@/components/admin/ProductAssignment';
@@ -57,13 +58,6 @@ function isProductCode(value: string): value is ProductCode {
   return (PRODUCT_CODES as readonly string[]).includes(value);
 }
 
-const MILESTONE_LABEL: Record<string, string> = {
-  'T+0': 'Bienvenida y acceso al portal',
-  'T+3': 'Configuración inicial',
-  'T+7': 'Puesta en producción',
-  'T+14': 'Revisión y optimización',
-};
-
 const MILESTONE_STEP: Record<string, 't_plus_0' | 't_plus_3' | 't_plus_7' | 't_plus_14'> = {
   'T+0': 't_plus_0',
   'T+3': 't_plus_3',
@@ -81,7 +75,7 @@ const DATE_FORMAT = new Intl.DateTimeFormat('es-ES', {
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   return {
     title: `Cliente ${params.clientId.slice(0, 8)} · Operador`,
-    description: 'Vista de sólo lectura del portal de un cliente concreto.',
+    description: 'Ficha de operador de un cliente concreto: estado del portal y controles de edición.',
     alternates: { canonical: `/admin/portal/${params.clientId}` },
     robots: { index: false, follow: false },
   };
@@ -190,110 +184,6 @@ function FlowHistoryTimeline({ entries }: { entries: FlowActivityEntry[] }) {
     </ol>
   );
 }
-
-function OnboardingOperatorControls({
-  clientId,
-  productCode,
-  timeline,
-  advance,
-}: {
-  clientId: string;
-  productCode: string;
-  timeline: OnboardingTimelineRow[];
-  advance: (formData: FormData) => Promise<void>;
-}) {
-  const doneSteps = new Set(
-    timeline.filter((row) => row.status === 'done').map((row) => row.step),
-  );
-  const pendingMilestones = ALLOWED_MILESTONES.filter((m) => {
-    const dbMilestone = MILESTONE_TO_DB[m];
-    return !doneSteps.has(dbMilestone);
-  });
-  const firstPending = pendingMilestones[0];
-
-  return (
-    <div
-      className="mt-5 border-t border-kairikos-border pt-4"
-      data-testid="onboarding-operator-controls"
-    >
-      <p className="mb-3 text-sm text-kairikos-muted">
-        Como operador, puedes registrar los hitos del onboarding para que el
-        cliente los vea activados en su portal. Esta acción escribe
-        directamente en la línea de tiempo del cliente.
-      </p>
-      {timeline.length === 0 ? (
-        firstPending ? (
-          <form action={advance}>
-            <input type="hidden" name="clientId" value={clientId} />
-            <input type="hidden" name="productCode" value={productCode} />
-            <input type="hidden" name="milestone" value={firstPending} />
-            <button
-              type="submit"
-              className="btn-primary"
-              data-testid="onboarding-operator-start"
-              data-milestone={firstPending}
-            >
-              Iniciar onboarding ({firstPending} · {MILESTONE_LABEL[firstPending]})
-            </button>
-          </form>
-        ) : null
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {ALLOWED_MILESTONES.map((m) => {
-            const dbMilestone = MILESTONE_TO_DB[m];
-            const isDone = doneSteps.has(dbMilestone);
-            return (
-              <li
-                key={m}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-kairikos-border bg-kairikos-surface2 px-3 py-2"
-                data-testid="onboarding-operator-row"
-                data-milestone={m}
-                data-done={isDone ? 'true' : 'false'}
-              >
-                <div className="flex flex-col">
-                  <span className="text-sm font-semibold">
-                    {m} · {MILESTONE_LABEL[m]}
-                  </span>
-                  <span className="text-xs text-kairikos-muted">
-                    {isDone
-                      ? 'Marcado como completado.'
-                      : 'Pendiente de registrar.'}
-                  </span>
-                </div>
-                {isDone ? (
-                  <span className="pill-success" data-testid="onboarding-operator-done-pill">
-                    Completado
-                  </span>
-                ) : (
-                  <form action={advance}>
-                    <input type="hidden" name="clientId" value={clientId} />
-                    <input type="hidden" name="productCode" value={productCode} />
-                    <input type="hidden" name="milestone" value={m} />
-                    <button
-                      type="submit"
-                      className="btn-ghost"
-                      data-testid="onboarding-operator-mark"
-                      data-milestone={m}
-                    >
-                      Marcar como completado
-                    </button>
-                  </form>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-const MILESTONE_TO_DB: Record<string, OnboardingTimelineRow['step']> = {
-  'T+0': 't_plus_0',
-  'T+3': 't_plus_3',
-  'T+7': 't_plus_7',
-  'T+14': 't_plus_14',
-};
 
 export default async function AdminClientDetailPage({ params, searchParams }: PageProps) {
   const session = await getSession();
@@ -950,13 +840,13 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
       <PageHeading
         eyebrow="Operador · vista de cliente"
         title={companyName}
-        description={`${email} · Plan ${tier} · Vista de sólo lectura`}
+        description={`${email} · Plan ${tier}`}
         actions={
           <span
-            data-testid="operator-readonly-badge"
+            data-testid="operator-writes-warning-badge"
             className="pill-warning"
           >
-            Modo lectura — para editar, baja a la sección Editar
+            Los cambios en esta página son en producción
           </span>
         }
       />
@@ -1169,8 +1059,9 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
           ) : null}
 
           <p className="text-xs text-kairikos-muted">
-            Esta vista replica el portal del cliente sin posibilidad de modificar datos.
-            Para soporte, accede a la{' '}
+            Esta vista muestra el estado del cliente tal como lo ve él. Los cambios se hacen
+            desde la sección <strong>Editar</strong> y desde los controles de onboarding —
+            ambos con guardado explícito, nunca automático. Para soporte, accede a la{' '}
             <Link href="/admin/portal/clients" className="underline">lista de clientes</Link>.
           </p>
         </>
