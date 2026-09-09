@@ -92,6 +92,19 @@ export function canAdvanceTo(from: string, to: string): boolean {
 // an operator may legitimately re-assign a number to a client who is
 // already live (a number gone bad), without moving his status.
 
+/** Fase 6 — the one manual step nothing else covers: `paid → contract_signed`
+ *  is not a resource binding like a number or a Meta connection, it's the
+ *  operator confirming an out-of-band fact (the client signed, on a call
+ *  or by email — see the client-facing copy in /portal/llamadas: "en
+ *  breve te contactamos para firmar"). `canAdvanceTo` already expresses
+ *  this correctly (`nextOnboardingStatus('paid') === 'contract_signed'`);
+ *  this alias exists so the call site (recall-onboarding.ts) and the
+ *  route it backs read as "can I sign this" rather than a generic
+ *  sequence check. */
+export function canSignContract(status: string): boolean {
+  return canAdvanceTo(status, 'contract_signed');
+}
+
 /** A WhatsApp connection can be bound from `contract_signed` onward — and
  *  re-bound later, because a client who reconnects Meta after a token
  *  expiry must not have to redo his whole onboarding. */

@@ -31,6 +31,11 @@ const mockState = vi.hoisted(() => ({
   createClientProduct: vi.fn(),
   updateClientProduct: vi.fn(),
   createClientProductAudit: vi.fn(),
+  ensureRecallSubscription: vi.fn(),
+}));
+
+vi.mock('@/lib/recall-onboarding', () => ({
+  ensureRecallSubscription: (...args: unknown[]) => mockState.ensureRecallSubscription(...args),
 }));
 
 const mockTx = {
@@ -77,6 +82,7 @@ beforeEach(() => {
   mockState.createClientProduct.mockReset();
   mockState.updateClientProduct.mockReset();
   mockState.createClientProductAudit.mockReset();
+  mockState.ensureRecallSubscription.mockReset().mockResolvedValue({ created: true, subscriptionId: 'sub_1' });
 });
 
 describe('POST /api/admin/portal/client-products — multi-product assignment', () => {
@@ -180,5 +186,68 @@ describe('POST /api/admin/portal/client-products — WP-18 audit trail', () => {
     expect(mockState.createClientProductAudit).toHaveBeenCalledWith({
       data: expect.objectContaining({ action: 'reactivate', statusBefore: 'cancelled', statusAfter: 'active' }),
     });
+  });
+});
+
+// Fase 6 — el hueco: un operador puede dar de alta 'recall' sin pasar por
+// Stripe (este mismo endpoint), y ese camino tampoco creaba nunca la
+// RecallSubscription.
+describe("POST /api/admin/portal/client-products — Fase 6, arranca la RecallSubscription de 'recall'", () => {
+  it("crea la RecallSubscription cuando el producto activado es 'recall'", async () => {
+    mockState.findUniqueProduct.mockResolvedValueOnce({ id: '44444444-4444-4444-4444-444444444444', isActive: true, code: 'recall' });
+    mockState.createClientProduct.mockResolvedValueOnce({
+      id: 'cp_1',
+      clientId: 'client_1',
+      tenantId: 'tenant_1',
+      productId: '44444444-4444-4444-4444-444444444444',
+      product: { code: 'recall' },
+    });
+
+    const { POST } = await import('@/app/api/admin/portal/client-products/route');
+    const res = await POST(makeRequest({ clientId: 'client_1', productId: '44444444-4444-4444-4444-444444444444' }));
+
+    expect(res.status).toBe(201);
+    expect(mockState.ensureRecallSubscription).toHaveBeenCalledWith(
+      expect.anything(),
+      { clientId: 'client_1', clientProductId: 'cp_1', tenantId: 'tenant_1' },
+      { type: 'operator', operatorId: 'op_1' },
+    );
+  });
+
+  it('no la llama para ningún otro producto', async () => {
+    mockState.findUniqueProduct.mockResolvedValueOnce({ id: '55555555-5555-5555-5555-555555555555', isActive: true, code: 'seo' });
+    mockState.createClientProduct.mockResolvedValueOnce({
+      id: 'cp_1',
+      clientId: 'client_1',
+      tenantId: 'tenant_1',
+      productId: '55555555-5555-5555-5555-555555555555',
+      product: { code: 'seo' },
+    });
+
+    const { POST } = await import('@/app/api/admin/portal/client-products/route');
+    await POST(makeRequest({ clientId: 'client_1', productId: '55555555-5555-5555-5555-555555555555' }));
+
+    expect(mockState.ensureRecallSubscription).not.toHaveBeenCalled();
+  });
+
+  it("resuelve el operador legacy a null en vez de pasar el string 'legacy' (RecallSubscriptionAudit.actorOperatorId es una FK real)", async () => {
+    mockState.authenticateAdminRequest.mockResolvedValueOnce({ ok: true, operatorId: 'legacy' });
+    mockState.findUniqueProduct.mockResolvedValueOnce({ id: '44444444-4444-4444-4444-444444444444', isActive: true, code: 'recall' });
+    mockState.createClientProduct.mockResolvedValueOnce({
+      id: 'cp_1',
+      clientId: 'client_1',
+      tenantId: 'tenant_1',
+      productId: '44444444-4444-4444-4444-444444444444',
+      product: { code: 'recall' },
+    });
+
+    const { POST } = await import('@/app/api/admin/portal/client-products/route');
+    await POST(makeRequest({ clientId: 'client_1', productId: '44444444-4444-4444-4444-444444444444' }));
+
+    expect(mockState.ensureRecallSubscription).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      { type: 'operator', operatorId: null },
+    );
   });
 });

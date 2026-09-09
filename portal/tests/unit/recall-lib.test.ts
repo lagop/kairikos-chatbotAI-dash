@@ -12,6 +12,7 @@ import {
   isLive,
   nextOnboardingStatus,
   canAdvanceTo,
+  canSignContract,
   canBindMetaConnection,
   canBindVirtualNumber,
   canBindGoogleConnection,
@@ -101,6 +102,18 @@ describe('isOnboarding / isLive', () => {
     expect(isLive('active')).toBe(true);
     expect(isLive('forwarding_verified')).toBe(false);
     expect(isLive('paused')).toBe(false);
+  });
+});
+
+describe('canSignContract — Fase 6', () => {
+  it('is legal only from paid, the only state before contract_signed', () => {
+    expect(canSignContract('paid')).toBe(true);
+  });
+
+  it('is never legal once already signed, or on any later/side-exit state', () => {
+    for (const status of RECALL_STATUSES.filter((s) => s !== 'paid')) {
+      expect(canSignContract(status), status).toBe(false);
+    }
   });
 });
 

@@ -23,6 +23,11 @@ const mockState = vi.hoisted(() => ({
   invoicesFinalize: vi.fn(),
   clientProductUpdate: vi.fn(),
   clientProductAuditCreate: vi.fn(),
+  ensureRecallSubscription: vi.fn(),
+}));
+
+vi.mock('@/lib/recall-onboarding', () => ({
+  ensureRecallSubscription: (...args: unknown[]) => mockState.ensureRecallSubscription(...args),
 }));
 
 const mockTx = {
@@ -88,6 +93,7 @@ beforeEach(() => {
     tenantId: 'tenant_1',
   });
   mockState.clientProductAuditCreate.mockReset();
+  mockState.ensureRecallSubscription.mockReset().mockResolvedValue({ created: true, subscriptionId: 'sub_recall_1' });
 });
 
 function makeStripeSubscription(overrides: Record<string, unknown> = {}) {
@@ -275,7 +281,12 @@ describe('activateClientProductFromCheckout (WP-30)', () => {
   }
 
   it('flips a pending_payment ClientProduct to active and writes a checkout_completed audit row', async () => {
-    mockState.findUniqueClientProduct.mockResolvedValueOnce({ status: 'pending_payment' });
+    mockState.findUniqueClientProduct.mockResolvedValueOnce({
+      status: 'pending_payment',
+      clientId: 'client_1',
+      tenantId: 'tenant_1',
+      product: { code: 'chatbot' },
+    });
 
     await activateClientProductFromCheckout(makeSession());
 
@@ -300,7 +311,7 @@ describe('activateClientProductFromCheckout (WP-30)', () => {
   });
 
   it('is a no-op when the ClientProduct is no longer pending_payment (idempotent against duplicate/late delivery)', async () => {
-    mockState.findUniqueClientProduct.mockResolvedValueOnce({ status: 'active' });
+    mockState.findUniqueClientProduct.mockResolvedValueOnce({ status: 'active', product: { code: 'chatbot' } });
     await activateClientProductFromCheckout(makeSession());
     expect(mockState.clientProductUpdate).not.toHaveBeenCalled();
   });
@@ -309,6 +320,44 @@ describe('activateClientProductFromCheckout (WP-30)', () => {
     mockState.findUniqueClientProduct.mockResolvedValueOnce(null);
     await activateClientProductFromCheckout(makeSession());
     expect(mockState.clientProductUpdate).not.toHaveBeenCalled();
+  });
+
+  // Fase 6 — el hueco: comprar 'recall' activaba el ClientProduct y ahí
+  // se quedaba, sin ninguna RecallSubscription creada nunca.
+  describe("Fase 6 — 'recall' arranca su RecallSubscription al activarse", () => {
+    it("crea la RecallSubscription cuando el producto es 'recall'", async () => {
+      mockState.findUniqueClientProduct.mockResolvedValueOnce({
+        status: 'pending_payment',
+        clientId: 'client_1',
+        tenantId: 'tenant_1',
+        product: { code: 'recall' },
+      });
+
+      await activateClientProductFromCheckout(makeSession());
+
+      expect(mockState.ensureRecallSubscription).toHaveBeenCalledWith(
+        expect.anything(),
+        { clientId: 'client_1', clientProductId: 'cp_1', tenantId: 'tenant_1' },
+        { type: 'system', source: 'stripe_checkout' },
+      );
+    });
+
+    it('no la llama para ningún otro producto', async () => {
+      mockState.findUniqueClientProduct.mockResolvedValueOnce({
+        status: 'pending_payment',
+        clientId: 'client_1',
+        tenantId: 'tenant_1',
+        product: { code: 'seo' },
+      });
+      await activateClientProductFromCheckout(makeSession());
+      expect(mockState.ensureRecallSubscription).not.toHaveBeenCalled();
+    });
+
+    it('no la llama cuando la activación es un no-op (ya no está pending_payment)', async () => {
+      mockState.findUniqueClientProduct.mockResolvedValueOnce({ status: 'active', product: { code: 'recall' } });
+      await activateClientProductFromCheckout(makeSession());
+      expect(mockState.ensureRecallSubscription).not.toHaveBeenCalled();
+    });
   });
 });
 

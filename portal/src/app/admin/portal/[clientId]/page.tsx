@@ -28,6 +28,7 @@ import {
 import { getAllowedChannelsForClient } from '@/lib/channel-access';
 import { LeadsSummaryPanel, type LeadSummaryRow } from '@/components/admin/LeadsSummaryPanel';
 import { RecallOperatorPanel, type RecallPanelData } from '@/components/admin/RecallOperatorPanel';
+import { RecallContractSignButton } from '@/components/admin/RecallContractSignButton';
 import { SeoTechnicalSetupPanel, type SeoProfilePanelData, type SeoQueryOpportunity } from '@/components/admin/SeoTechnicalSetupPanel';
 import { getContentGenerationMinIntervalDays } from '@/lib/seo-settings';
 import { SeoContentDraftsPanel, type SeoContentDraftData } from '@/components/admin/SeoContentDraftsPanel';
@@ -1066,6 +1067,9 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
                   Ver la cola →
                 </Link>
               </header>
+              {recall?.status === 'paid' ? (
+                <RecallContractSignButton subscriptionId={recall.subscriptionId} />
+              ) : null}
               <RecallOperatorPanel data={recall} />
             </section>
           ) : null}

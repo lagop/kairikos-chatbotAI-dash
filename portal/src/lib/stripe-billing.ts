@@ -1,6 +1,7 @@
 import 'server-only';
 import { prisma } from './prisma';
 import { getStripe, isStripeConfigured, StripeUnavailableError } from './stripe';
+import { ensureRecallSubscription } from './recall-onboarding';
 import type { Prisma } from '@prisma/client';
 import type Stripe from 'stripe';
 
@@ -540,7 +541,10 @@ export async function activateClientProductFromWebQuotePayment(invoice: Stripe.I
 export async function activateClientProductFromCheckout(session: Stripe.Checkout.Session): Promise<void> {
   const cpId = (session.metadata?.kairikos_client_product_id ?? null) as string | null;
   if (!cpId) return;
-  const cp = await prisma.clientProduct.findUnique({ where: { id: cpId }, select: { status: true } });
+  const cp = await prisma.clientProduct.findUnique({
+    where: { id: cpId },
+    select: { status: true, clientId: true, tenantId: true, product: { select: { code: true } } },
+  });
   if (!cp || cp.status !== 'pending_payment') return;
 
   await prisma.$transaction(async (tx) => {
@@ -561,6 +565,21 @@ export async function activateClientProductFromCheckout(session: Stripe.Checkout
       },
     });
   });
+
+  // Fase 6 — 'recall' no arranca solo con el ClientProduct activo: su
+  // onboarding entero vive en RecallSubscription, y nada más en el
+  // repositorio crea esa fila. Corre DESPUÉS de que la transacción de
+  // arriba confirme — anidar una transacción dentro de otra no es lo que
+  // ensureRecallSubscription necesita, y esto no es parte de "cobrar",
+  // es un efecto posterior (mismo criterio que el aviso config_complete
+  // de wizard-review.ts).
+  if (cp.product.code === 'recall') {
+    await ensureRecallSubscription(
+      prisma,
+      { clientId: cp.clientId, clientProductId: cpId, tenantId: cp.tenantId },
+      { type: 'system', source: 'stripe_checkout' },
+    );
+  }
 }
 
 /**
