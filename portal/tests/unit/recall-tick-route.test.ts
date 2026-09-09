@@ -23,6 +23,7 @@ const mockState = vi.hoisted(() => ({
   warnExpiringTokens: vi.fn(),
   advanceSubscriptionsWithApprovedTemplates: vi.fn(),
   resolveActiveTwilioCredentials: vi.fn(),
+  sweepDueNumberAssignments: vi.fn(),
 }));
 
 vi.mock('@/lib/recall-transcription', () => ({
@@ -53,6 +54,9 @@ vi.mock('@/lib/whatsapp-health', () => ({
 }));
 vi.mock('@/lib/recall-templates', () => ({
   advanceSubscriptionsWithApprovedTemplates: (...a: unknown[]) => mockState.advanceSubscriptionsWithApprovedTemplates(...a),
+}));
+vi.mock('@/lib/recall-numbers', () => ({
+  sweepDueNumberAssignments: (...a: unknown[]) => mockState.sweepDueNumberAssignments(...a),
 }));
 vi.mock('@/lib/twilio-credentials', () => ({
   resolveActiveTwilioCredentials: (...a: unknown[]) => mockState.resolveActiveTwilioCredentials(...a),
@@ -94,6 +98,7 @@ beforeEach(() => {
   mockState.syncTemplateStatuses.mockReset().mockResolvedValue({ connections: 0, templates: 0, failed: 0 });
   mockState.warnExpiringTokens.mockReset().mockResolvedValue({ scanned: 0, expiring: 0, warned: 0, expired: 0 });
   mockState.advanceSubscriptionsWithApprovedTemplates.mockReset().mockResolvedValue({ advanced: 0 });
+  mockState.sweepDueNumberAssignments.mockReset().mockResolvedValue({ due: 0, assigned: 0, poolExhausted: false, failed: [] });
 });
 
 describe('GET /api/cron/recall-tick', () => {
@@ -124,6 +129,9 @@ describe('GET /api/cron/recall-tick', () => {
       'monthlyReports',
       'usageRollup',
       'stuckAlerts',
+      // Fase 6 — asignar número virtual, antes de tokenExpiry/templateSync
+      // a propósito: ver el test de orden más abajo.
+      'numberAssignment',
       'tokenExpiry',
       'templateSync',
       'templateApproval',
@@ -139,6 +147,26 @@ describe('GET /api/cron/recall-tick', () => {
     expect(mockState.warnExpiringTokens).toHaveBeenCalled();
     expect(mockState.syncTemplateStatuses).toHaveBeenCalled();
     expect(mockState.advanceSubscriptionsWithApprovedTemplates).toHaveBeenCalled();
+    expect(mockState.sweepDueNumberAssignments).toHaveBeenCalled();
+  });
+
+  it('Fase 6 — runs number assignment BEFORE templateSync/templateApproval, so a subscription that gets its number this tick can reach templates_approved the same tick', async () => {
+    const order: string[] = [];
+    mockState.sweepDueNumberAssignments.mockImplementation(async () => {
+      order.push('numberAssignment');
+      return { due: 0, assigned: 0, poolExhausted: false, failed: [] };
+    });
+    mockState.syncTemplateStatuses.mockImplementation(async () => {
+      order.push('sync');
+      return { connections: 0, templates: 0, failed: 0 };
+    });
+    mockState.advanceSubscriptionsWithApprovedTemplates.mockImplementation(async () => {
+      order.push('approve');
+      return { advanced: 0 };
+    });
+
+    await get(makeRequest());
+    expect(order).toEqual(['numberAssignment', 'sync', 'approve']);
   });
 
   it('runs the template approval check AFTER the template sync, same tick', async () => {

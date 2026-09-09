@@ -8,6 +8,7 @@ import { sendDailyDigests, sweepReviewReminders } from '@/lib/recall-reviews';
 import { sendMonthlyReports, rollUpUsage } from '@/lib/recall-reports';
 import { syncTemplateStatuses, warnExpiringTokens } from '@/lib/whatsapp-health';
 import { advanceSubscriptionsWithApprovedTemplates } from '@/lib/recall-templates';
+import { sweepDueNumberAssignments } from '@/lib/recall-numbers';
 import { resolveActiveTwilioCredentials } from '@/lib/twilio-credentials';
 import { logError } from '@/lib/observability';
 
@@ -115,6 +116,16 @@ export async function GET(req: NextRequest) {
   // 6. Push stalled altas at an operator. Deduped per (client, day) by
   //    operator-notify, so running this every tick is safe.
   jobs.stuckAlerts = await runJob('stuckAlerts', () => notifyStuckOnboardings(prisma));
+
+  // 6b. Fase 6 — "asignar número virtual" era pura mecánica: el primer
+  //     número libre por orden de aprovisionamiento, con
+  //     compare-and-swap contra la carrera entre dos operadores. Nadie
+  //     decidía nada, así que ya no hace falta que nadie lo pulse. Va
+  //     ANTES de templateSync/templateApproval a propósito: una
+  //     suscripción que consigue número en este mismo tick puede llegar
+  //     a templates_approved en el mismo tick también, si sus plantillas
+  //     ya estaban aprobadas esperando el número.
+  jobs.numberAssignment = await runJob('numberAssignment', () => sweepDueNumberAssignments(prisma));
 
   // 7. Meta changes state without telling us. A token that dies at 60
   //    days and a template Meta paused for quality both fail silently —
