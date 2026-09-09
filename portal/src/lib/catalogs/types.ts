@@ -30,6 +30,17 @@ export interface WizardStepDefinition {
    *  view hides it for every tier and the operator view renders the
    *  "Próximamente" label. */
   readonly v11Deferred: boolean;
+  /** Fase 5 — whether a `submitted` version of this step can be approved
+   *  by the system, not just an operator, once it has sat unreviewed past
+   *  `AUTO_APPROVE_VETO_WINDOW_HOURS` (src/lib/wizard-auto-approve.ts).
+   *  Reserved for the steps where a wrong default costs a confused
+   *  answer, not a broken promise — a bot quoting the wrong opening hour
+   *  is a correction away; one that invents a price or an exception it
+   *  isn't allowed to grant is not. `true` for Horario, FAQ and Servicios
+   *  y tarifas; `false` everywhere else, Personalidad y límites and
+   *  Cumplimiento included on purpose — those are exactly "donde de
+   *  verdad hay algo que juzgar". */
+  readonly autoApprovable: boolean;
   /** Tier visibility predicate. Step 12 returns `() => false` for every
    *  tier. Steps 3 and 7 return false only for `starter`. */
   readonly visibleFor: (tier: WizardTier | null) => boolean;

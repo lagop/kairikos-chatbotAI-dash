@@ -18,6 +18,7 @@ import {
 import { resolveOperatorStep } from '@/lib/wizard-visibility';
 import { jsonToObject } from '@/lib/wizard-tier-prisma';
 import { PRODUCT_CODES, type ProductCode } from '@/lib/catalogs';
+import { computeAutoApproveDeadline } from '@/lib/wizard-auto-approve';
 
 function isProductCode(value: string): value is ProductCode {
   return (PRODUCT_CODES as readonly string[]).includes(value);
@@ -152,6 +153,18 @@ export async function GET(
       effectivePayload: resolved.effectivePayload,
       savedPayload: resolved.savedPayload,
       defaultPayload: resolved.defaultPayload,
+      autoApprovable: resolved.autoApprovable,
+      // Fase 5 — null unless this exact version is `submitted` AND the
+      // step is auto-approvable: the operator's "aprobar salvo veto"
+      // countdown. `latestRow` (not `resolved.saved`) because the veto
+      // deadline is about THIS submission, and status/submittedAt come
+      // straight off it either way.
+      autoApproveDeadline:
+        computeAutoApproveDeadline({
+          autoApprovable: resolved.autoApprovable,
+          status: latestRow?.status ?? 'draft',
+          submittedAt: latestRow?.submittedAt ?? null,
+        })?.toISOString() ?? null,
     };
   } catch {
     // If the stepKey doesn't match the catalog (defensive), we still
