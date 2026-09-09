@@ -4,6 +4,8 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { getSession } from '@/lib/session';
 import { resolveWebQuoteContext } from '@/lib/web-quotes';
+import { generateWebQuoteInvoice } from '@/lib/web-quote-invoicing';
+import { logError } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -13,15 +15,31 @@ const BodySchema = z.object({ clientProductId: z.string().uuid() });
 /**
  * POST /api/portal/web-quote/accept
  *
- * The client's one-click acceptance of a sent quote. Does NOT create a
- * Stripe invoice — per the confirmed design, that's a separate,
- * operator-confirmed step (POST .../generate-invoice). No TOTP, this is
- * the client acting on their own quote.
+ * El clic de aceptación del cliente. La aceptación en sí (esta
+ * transacción) queda separada del intento de facturar — si Stripe falla
+ * o tarda, el clic del cliente igualmente tiene que quedar registrado.
  *
- * WP-XX — clientProductId is now required in the body: a client can have
- * multiple 'web' projects (see ClientProduct's schema comment), each with
- * its own quote lifecycle, so this can no longer infer "the" quote from
- * clientId alone (resolveWebQuoteContext would arbitrarily pick one).
+ * Fase 6 — "genera la factura" era, hasta aquí, un paso aparte que
+ * exigía a un operador (POST .../generate-invoice, con un TOTP fresco).
+ * Ese TOTP protege a un operador con sesión comprometida de facturar un
+ * importe que el cliente no vio; aquí no hace falta, porque no hay
+ * ninguna decisión de importe que tomar — el presupuesto ya lo fijó un
+ * operador al redactarlo y enviarlo, y el cliente solo puede aceptar
+ * EXACTAMENTE eso (canEditWebQuote ya bloquea editar el importe en
+ * cuanto deja de estar en borrador/enviado). Es la misma razón por la
+ * que el resto de productos self-serve tampoco piden a un operador que
+ * confirme cobrar un precio de catálogo que un operador ya fijó de
+ * antemano.
+ *
+ * Se llama a generateWebQuoteInvoice DESPUÉS de que la aceptación ya
+ * esté confirmada en la base de datos, no dentro de la misma transacción
+ * — una llamada a Stripe no pertenece dentro de una transacción de
+ * Prisma, y un fallo de Stripe (caído, lento) no puede impedir que la
+ * aceptación del cliente quede registrada. Si falla, el presupuesto
+ * simplemente se queda en 'accepted' — exactamente el estado en el que
+ * ya vivía este flujo antes de la Fase 6 — y un operador puede
+ * completarlo a mano desde el panel (POST .../generate-invoice) sin que
+ * haga falta ningún mecanismo de reintento nuevo.
  */
 export async function POST(req: NextRequest) {
   const session = await getSession();
@@ -69,5 +87,17 @@ export async function POST(req: NextRequest) {
     return row;
   });
 
-  return NextResponse.json({ ok: true, webQuote: updated });
+  const invoiceResult = await generateWebQuoteInvoice(prisma, updated.id, {
+    type: 'system',
+    source: 'web_quote_accepted',
+  });
+  if (!invoiceResult.ok) {
+    // No es un error para el cliente: su aceptación ya quedó registrada.
+    // Un operador ve el presupuesto en 'accepted' sin factura y puede
+    // completarlo a mano — el mismo camino que existía antes de esto.
+    logError('web_quote_accept.auto_invoice_failed', new Error(invoiceResult.error), { webQuoteId: updated.id }, 'warn');
+    return NextResponse.json({ ok: true, webQuote: updated });
+  }
+
+  return NextResponse.json({ ok: true, webQuote: invoiceResult.webQuote, invoice: invoiceResult.invoice });
 }
