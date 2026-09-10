@@ -43,6 +43,7 @@ export default async function AdminClientsPage({
                 anywhere in the UI. A queue nobody can click is a queue
                 nobody works — /admin/portal/leads is linked here from the
                 day it was built, for the same reason. */}
+            <Link href="/admin/portal/clients/new" className="btn-primary">+ Nuevo cliente</Link>
             <Link href="/admin/portal/recall" className="btn-ghost">Altas de llamadas</Link>
             <Link href="/admin/portal/leads" className="btn-ghost">Leads sin cerrar</Link>
             <Link href="/admin/portal/web-quotes" className="btn-ghost">Presupuestos de web</Link>
