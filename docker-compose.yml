@@ -20,7 +20,7 @@
 #
 #   DEPLOY_MODE=prod-dns-tls
 #     - Full stack: nginx reverse proxy + certbot auto-renewal on 80/443
-#     - Requires portal.kairikos.com DNS pointing at the VPS
+#     - Requires portal.kairikos.cloud DNS pointing at the VPS
 #     - Use this for production. Run certbot once after first deploy to
 #       bootstrap the TLS cert.
 # =============================================================================
@@ -53,7 +53,7 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY}
       # NEXTAUTH_URL must match how the user reaches the portal:
       #   dev mode:  http://<VPS_IP>:3001
-      #   prod mode: https://portal.kairikos.com
+      #   prod mode: https://portal.kairikos.cloud
       NEXTAUTH_URL: ${NEXTAUTH_URL}
       PORTAL_API_KEY: ${PORTAL_API_KEY}
 
