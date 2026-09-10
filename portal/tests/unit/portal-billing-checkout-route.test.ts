@@ -1,10 +1,15 @@
 // =============================================================================
 // WP-30 — unit tests for POST /api/portal/billing/checkout, the client-
-// facing self-serve checkout route. Distinct from
-// tests/unit/billing-checkout-route.test.ts (the WP-19 operator route,
-// which bills an EXISTING ClientProduct): this route creates the
-// ClientProduct itself, in 'pending_payment' state, before the first real
-// `stripe.checkout.sessions.create()` call in the codebase.
+// facing self-serve checkout route.
+//
+// Refactored (misma sesión que POST /api/admin/portal/clients) para
+// delegar toda la lógica de creación de la Checkout Session a
+// createProductCheckoutSession (src/lib/stripe-billing.ts) — esta suite
+// ya no cubre esa lógica en detalle, solo lo que sigue siendo
+// responsabilidad de la ruta: sesión/auth, validación del body, y el
+// mapeo de cada error a su código HTTP. La cobertura detallada de la
+// creación de la sesión vive ahora en
+// tests/unit/stripe-billing-checkout-session.test.ts.
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -12,27 +17,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockState = vi.hoisted(() => ({
   resolveClientFromSession: vi.fn(),
   getSession: vi.fn(),
-  isProductContracted: vi.fn(),
-  findUniqueProduct: vi.fn(),
-  findUniqueClient: vi.fn(),
-  findFirstClientProduct: vi.fn(),
-  clientProductCreate: vi.fn(),
-  clientProductUpdate: vi.fn(),
-  clientProductAuditCreate: vi.fn(),
-  ensureCustomerForTenant: vi.fn(),
-  isStripeConfigured: vi.fn(),
-  checkoutSessionsCreate: vi.fn(),
+  createProductCheckoutSession: vi.fn(),
 }));
-
-const mockTx = {
-  clientProduct: {
-    create: (...args: unknown[]) => mockState.clientProductCreate(...args),
-    update: (...args: unknown[]) => mockState.clientProductUpdate(...args),
-  },
-  clientProductAudit: {
-    create: (...args: unknown[]) => mockState.clientProductAuditCreate(...args),
-  },
-};
 
 vi.mock('@/lib/portal-session', () => ({
   resolveClientFromSession: (...args: unknown[]) => mockState.resolveClientFromSession(...args),
@@ -42,29 +28,12 @@ vi.mock('@/lib/session', () => ({
   getSession: (...args: unknown[]) => mockState.getSession(...args),
 }));
 
-vi.mock('@/lib/client-product-access', () => ({
-  isProductContracted: (...args: unknown[]) => mockState.isProductContracted(...args),
-}));
-
 vi.mock('@/lib/prisma', () => ({
-  prisma: {
-    $transaction: (fn: (tx: typeof mockTx) => unknown) => fn(mockTx),
-    product: { findUnique: (...args: unknown[]) => mockState.findUniqueProduct(...args) },
-    chatbotClient: { findUnique: (...args: unknown[]) => mockState.findUniqueClient(...args) },
-    clientProduct: { findFirst: (...args: unknown[]) => mockState.findFirstClientProduct(...args) },
-  },
   isDatabaseConfigured: true,
 }));
 
 vi.mock('@/lib/stripe-billing', () => ({
-  ensureCustomerForTenant: (...args: unknown[]) => mockState.ensureCustomerForTenant(...args),
-}));
-
-vi.mock('@/lib/stripe', () => ({
-  isStripeConfigured: () => mockState.isStripeConfigured(),
-  getStripe: () => ({
-    checkout: { sessions: { create: (...args: unknown[]) => mockState.checkoutSessionsCreate(...args) } },
-  }),
+  createProductCheckoutSession: (...args: unknown[]) => mockState.createProductCheckoutSession(...args),
 }));
 
 function makeRequest(body: unknown) {
@@ -75,259 +44,87 @@ function makeRequest(body: unknown) {
 }
 
 const RESOLVED = { clientId: 'client_1', email: 'a@b.com', source: 'database' as const };
-// Generic "any recurring product" fixture — deliberately NOT 'leads' or
-// 'web', both of which now carry their own special-cased checkout rules
-// (leads: requires 'chatbot' active; web: requires the quote flow) that
-// would leak into every test here otherwise.
-const RECURRING_PRODUCT = {
-  id: '11111111-1111-1111-1111-111111111111',
-  code: 'seo',
-  tier: 'standard',
-  isActive: true,
-  stripeRecurringPriceId: 'price_recurring_1',
-  stripeSetupPriceId: null,
-  setupFeeCents: 0,
-  priceCents: 19900,
-  currency: 'EUR',
-};
-const ONE_TIME_PRODUCT = {
-  id: '22222222-2222-2222-2222-222222222222',
-  // WP-XX — deliberately NOT 'web': that code now goes through the
-  // custom-quote flow and is rejected by this route before it would
-  // ever reach the price checks this fixture exercises (see the
-  // dedicated 'web' guard test below). This is a generic one-time-
-  // purchase product shape (no recurring price) to test that branch on
-  // its own terms.
-  code: 'onetime-test',
-  tier: 'standard',
-  isActive: true,
-  stripeRecurringPriceId: null,
-  stripeSetupPriceId: 'price_setup_web_1',
-  setupFeeCents: 79900,
-  priceCents: 0,
-  currency: 'EUR',
-};
+const PRODUCT_ID = '11111111-1111-1111-1111-111111111111';
 
 beforeEach(() => {
   mockState.resolveClientFromSession.mockReset().mockResolvedValue(RESOLVED);
   mockState.getSession.mockReset().mockResolvedValue({ hasClientAccess: true });
-  mockState.isProductContracted.mockReset().mockResolvedValue(false);
-  mockState.findUniqueProduct.mockReset().mockResolvedValue(RECURRING_PRODUCT);
-  mockState.findUniqueClient.mockReset().mockResolvedValue({ id: 'client_1', tenantId: 'tenant_1' });
-  mockState.findFirstClientProduct.mockReset().mockResolvedValue(null);
-  mockState.clientProductCreate.mockReset().mockResolvedValue({ id: 'cp_1' });
-  mockState.clientProductUpdate.mockReset().mockResolvedValue({ id: 'cp_1', status: 'cancelled' });
-  mockState.clientProductAuditCreate.mockReset();
-  mockState.ensureCustomerForTenant.mockReset().mockResolvedValue('cus_123');
-  mockState.isStripeConfigured.mockReset().mockReturnValue(true);
-  mockState.checkoutSessionsCreate.mockReset().mockResolvedValue({ url: 'https://checkout.stripe.com/pay/cs_test_1' });
+  mockState.createProductCheckoutSession.mockReset().mockResolvedValue({ ok: true, url: 'https://checkout.stripe.com/pay/cs_test_1' });
 });
 
 describe('POST /api/portal/billing/checkout — auth and guards', () => {
+  it('401s when there is no client access on the session', async () => {
+    mockState.getSession.mockResolvedValueOnce({ hasClientAccess: false });
+    const { POST } = await import('@/app/api/portal/billing/checkout/route');
+    const res = await POST(makeRequest({ productId: PRODUCT_ID }));
+    expect(res.status).toBe(401);
+    expect(mockState.createProductCheckoutSession).not.toHaveBeenCalled();
+  });
+
   it('401s when there is no resolved client session', async () => {
     mockState.resolveClientFromSession.mockResolvedValueOnce(null);
     const { POST } = await import('@/app/api/portal/billing/checkout/route');
-    const res = await POST(makeRequest({ productId: RECURRING_PRODUCT.id }));
+    const res = await POST(makeRequest({ productId: PRODUCT_ID }));
     expect(res.status).toBe(401);
-    expect(mockState.checkoutSessionsCreate).not.toHaveBeenCalled();
+    expect(mockState.createProductCheckoutSession).not.toHaveBeenCalled();
   });
 
   it('503s for a dev-mock session — no real payment can be collected', async () => {
     mockState.resolveClientFromSession.mockResolvedValueOnce({ ...RESOLVED, source: 'mock_dev' });
     const { POST } = await import('@/app/api/portal/billing/checkout/route');
-    const res = await POST(makeRequest({ productId: RECURRING_PRODUCT.id }));
+    const res = await POST(makeRequest({ productId: PRODUCT_ID }));
     expect(res.status).toBe(503);
-    expect(mockState.checkoutSessionsCreate).not.toHaveBeenCalled();
+    expect(mockState.createProductCheckoutSession).not.toHaveBeenCalled();
   });
 
-  it('409s when the client already has the product active (AC)', async () => {
-    mockState.isProductContracted.mockResolvedValueOnce(true);
+  it('400s on an invalid body (missing/malformed productId)', async () => {
     const { POST } = await import('@/app/api/portal/billing/checkout/route');
-    const res = await POST(makeRequest({ productId: RECURRING_PRODUCT.id }));
-    const body = await res.clone().json();
-    expect(res.status).toBe(409);
-    expect(body.error).toBe('already_contracted');
-    expect(mockState.clientProductCreate).not.toHaveBeenCalled();
-    expect(mockState.checkoutSessionsCreate).not.toHaveBeenCalled();
-  });
-
-  it('400s "requires_chatbot" for leads when the client does not have chatbot active', async () => {
-    mockState.findUniqueProduct.mockResolvedValueOnce({ ...RECURRING_PRODUCT, code: 'leads' });
-    const { POST } = await import('@/app/api/portal/billing/checkout/route');
-    const res = await POST(makeRequest({ productId: RECURRING_PRODUCT.id }));
-    const body = await res.clone().json();
+    const res = await POST(makeRequest({ productId: 'not-a-uuid' }));
     expect(res.status).toBe(400);
-    expect(body.error).toBe('requires_chatbot');
-    expect(mockState.clientProductCreate).not.toHaveBeenCalled();
-    expect(mockState.checkoutSessionsCreate).not.toHaveBeenCalled();
-  });
-
-  it('allows leads checkout when the client already has chatbot active', async () => {
-    mockState.findUniqueProduct.mockResolvedValueOnce({ ...RECURRING_PRODUCT, code: 'leads' });
-    mockState.isProductContracted.mockImplementation((_p: unknown, _c: unknown, code: string) =>
-      Promise.resolve(code === 'chatbot'),
-    );
-    const { POST } = await import('@/app/api/portal/billing/checkout/route');
-    const res = await POST(makeRequest({ productId: RECURRING_PRODUCT.id }));
-    expect(res.status).toBe(200);
-    expect(mockState.checkoutSessionsCreate).toHaveBeenCalled();
-  });
-
-  it('404s for an inactive or missing product', async () => {
-    mockState.findUniqueProduct.mockResolvedValueOnce({ ...RECURRING_PRODUCT, isActive: false });
-    const { POST } = await import('@/app/api/portal/billing/checkout/route');
-    const res = await POST(makeRequest({ productId: RECURRING_PRODUCT.id }));
-    expect(res.status).toBe(404);
-  });
-
-  it('400s product_requires_quote for code=web — it no longer sells at a fixed price (WP-XX)', async () => {
-    mockState.findUniqueProduct.mockResolvedValueOnce({ ...ONE_TIME_PRODUCT, code: 'web' });
-    const { POST } = await import('@/app/api/portal/billing/checkout/route');
-    const res = await POST(makeRequest({ productId: ONE_TIME_PRODUCT.id }));
-    const body = await res.clone().json();
-    expect(res.status).toBe(400);
-    expect(body.error).toBe('product_requires_quote');
-    expect(mockState.clientProductCreate).not.toHaveBeenCalled();
-    expect(mockState.checkoutSessionsCreate).not.toHaveBeenCalled();
-  });
-
-  it('404s when a one-time-only product has neither recurring price nor setup fee provisioned', async () => {
-    mockState.findUniqueProduct.mockResolvedValueOnce({
-      ...ONE_TIME_PRODUCT,
-      stripeSetupPriceId: null,
-      setupFeeCents: 0,
-    });
-    const { POST } = await import('@/app/api/portal/billing/checkout/route');
-    const res = await POST(makeRequest({ productId: ONE_TIME_PRODUCT.id }));
-    const body = await res.clone().json();
-    expect(res.status).toBe(404);
-    expect(body.error).toBe('product_price_id_missing');
+    expect(mockState.createProductCheckoutSession).not.toHaveBeenCalled();
   });
 });
 
-describe('POST /api/portal/billing/checkout — ClientProduct pre-creation', () => {
-  it('creates a pending_payment ClientProduct and writes a checkout_started audit row before calling Stripe', async () => {
+describe('POST /api/portal/billing/checkout — delegation and status mapping', () => {
+  it('calls createProductCheckoutSession with the session clientId and a client:<id> actor', async () => {
     const { POST } = await import('@/app/api/portal/billing/checkout/route');
-    const res = await POST(makeRequest({ productId: RECURRING_PRODUCT.id }));
-
-    expect(res.status).toBe(200);
-    expect(mockState.findFirstClientProduct).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { clientId: 'client_1', productId: RECURRING_PRODUCT.id } }),
-    );
-    expect(mockState.clientProductCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ status: 'pending_payment' }),
-      }),
-    );
-    expect(mockState.clientProductAuditCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        clientProductId: 'cp_1',
-        action: 'checkout_started',
-        statusAfter: 'pending_payment',
-        actorId: 'client:client_1',
-      }),
+    await POST(makeRequest({ productId: PRODUCT_ID }));
+    expect(mockState.createProductCheckoutSession).toHaveBeenCalledWith({
+      clientId: 'client_1',
+      productId: PRODUCT_ID,
+      actorId: 'client:client_1',
     });
   });
 
-  it('embeds kairikos_client_product_id in the Checkout Session metadata from creation, before Stripe is ever called', async () => {
+  it('200s with the checkout URL on success', async () => {
     const { POST } = await import('@/app/api/portal/billing/checkout/route');
-    await POST(makeRequest({ productId: RECURRING_PRODUCT.id }));
-
-    const createCallIndex = mockState.clientProductCreate.mock.invocationCallOrder[0];
-    const stripeCallIndex = mockState.checkoutSessionsCreate.mock.invocationCallOrder[0];
-    expect(createCallIndex).toBeLessThan(stripeCallIndex);
-
-    expect(mockState.checkoutSessionsCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        metadata: expect.objectContaining({ kairikos_client_product_id: 'cp_1' }),
-        subscription_data: expect.objectContaining({
-          metadata: expect.objectContaining({ kairikos_client_product_id: 'cp_1' }),
-        }),
-      }),
-    );
-  });
-});
-
-describe('POST /api/portal/billing/checkout — session mode branching', () => {
-  it('creates a subscription-mode session with just the recurring line item when there is no setup fee', async () => {
-    const { POST } = await import('@/app/api/portal/billing/checkout/route');
-    await POST(makeRequest({ productId: RECURRING_PRODUCT.id }));
-
-    expect(mockState.checkoutSessionsCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        mode: 'subscription',
-        line_items: [{ price: 'price_recurring_1', quantity: 1 }],
-      }),
-    );
-  });
-
-  it('adds the one-time setup price as a second line item in subscription mode when present', async () => {
-    mockState.findUniqueProduct.mockResolvedValueOnce({
-      ...RECURRING_PRODUCT,
-      stripeSetupPriceId: 'price_setup_1',
-      setupFeeCents: 9900,
-    });
-    const { POST } = await import('@/app/api/portal/billing/checkout/route');
-    await POST(makeRequest({ productId: RECURRING_PRODUCT.id }));
-
-    expect(mockState.checkoutSessionsCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        mode: 'subscription',
-        line_items: [
-          { price: 'price_recurring_1', quantity: 1 },
-          { price: 'price_setup_1', quantity: 1 },
-        ],
-      }),
-    );
-  });
-
-  it('creates a payment-mode session with invoice_creation enabled for a one-time-only product', async () => {
-    mockState.findUniqueProduct.mockResolvedValueOnce(ONE_TIME_PRODUCT);
-    const { POST } = await import('@/app/api/portal/billing/checkout/route');
-    const res = await POST(makeRequest({ productId: ONE_TIME_PRODUCT.id }));
-
-    expect(res.status).toBe(200);
-    expect(mockState.checkoutSessionsCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        mode: 'payment',
-        line_items: [{ price: 'price_setup_web_1', quantity: 1 }],
-        invoice_creation: expect.objectContaining({
-          enabled: true,
-          invoice_data: expect.objectContaining({
-            metadata: expect.objectContaining({ kairikos_client_product_id: 'cp_1' }),
-          }),
-        }),
-      }),
-    );
-  });
-});
-
-describe('POST /api/portal/billing/checkout — Stripe failure rollback', () => {
-  it('reverts the ClientProduct and writes a checkout_failed audit row when session creation throws', async () => {
-    mockState.checkoutSessionsCreate.mockRejectedValueOnce(new Error('stripe_down'));
-    const { POST } = await import('@/app/api/portal/billing/checkout/route');
-    const res = await POST(makeRequest({ productId: RECURRING_PRODUCT.id }));
+    const res = await POST(makeRequest({ productId: PRODUCT_ID }));
     const body = await res.clone().json();
-
-    expect(res.status).toBe(502);
-    expect(body.error).toBe('stripe_error');
-    expect(mockState.clientProductUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'cp_1' }, data: expect.objectContaining({ status: 'cancelled' }) }),
-    );
-    expect(mockState.clientProductAuditCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({ action: 'checkout_failed', statusBefore: 'pending_payment' }),
-    });
+    expect(res.status).toBe(200);
+    expect(body.url).toBe('https://checkout.stripe.com/pay/cs_test_1');
   });
 
-  it('reverts to the prior status (not cancelled) when the ClientProduct already existed before this attempt', async () => {
-    mockState.findFirstClientProduct.mockResolvedValueOnce({ id: 'cp_1', status: 'paused' });
-    mockState.checkoutSessionsCreate.mockRejectedValueOnce(new Error('stripe_down'));
-    mockState.clientProductUpdate.mockResolvedValueOnce({ id: 'cp_1', status: 'paused' });
+  it.each([
+    ['product_not_found', 404],
+    ['product_requires_quote', 400],
+    ['requires_chatbot', 400],
+    ['already_contracted', 409],
+    ['stripe_error', 502],
+  ] as const)('maps error=%s to HTTP %d', async (error, status) => {
+    mockState.createProductCheckoutSession.mockResolvedValueOnce({ ok: false, error });
     const { POST } = await import('@/app/api/portal/billing/checkout/route');
-    await POST(makeRequest({ productId: RECURRING_PRODUCT.id }));
+    const res = await POST(makeRequest({ productId: PRODUCT_ID }));
+    const body = await res.clone().json();
+    expect(res.status).toBe(status);
+    expect(body.error).toBe(error);
+  });
 
-    expect(mockState.clientProductUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: 'paused', cancelledAt: null }) }),
-    );
+  it("maps a 503-class error to its own detail (e.g. stripe_not_configured)", async () => {
+    mockState.createProductCheckoutSession.mockResolvedValueOnce({ ok: false, error: 'stripe_not_configured' });
+    const { POST } = await import('@/app/api/portal/billing/checkout/route');
+    const res = await POST(makeRequest({ productId: PRODUCT_ID }));
+    const body = await res.clone().json();
+    expect(res.status).toBe(503);
+    expect(body.detail).toBe('stripe_not_configured');
   });
 });

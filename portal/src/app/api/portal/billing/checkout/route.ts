@@ -1,11 +1,9 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
-import { isDatabaseConfigured, prisma } from '@/lib/prisma';
+import { isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { getSession } from '@/lib/session';
-import { getStripe, isStripeConfigured } from '@/lib/stripe';
-import { ensureCustomerForTenant } from '@/lib/stripe-billing';
-import { isProductContracted } from '@/lib/client-product-access';
+import { createProductCheckoutSession, type CheckoutSessionError } from '@/lib/stripe-billing';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -42,6 +40,23 @@ const BodySchema = z.object({ productId: z.string().uuid() });
  * `isProductContracted` only ever matches `status: 'active'`, so a
  * pending or abandoned row never blocks (or falsely allows past) a retry.
  */
+// Traduce el resultado de createProductCheckoutSession al mismo
+// contrato HTTP que esta ruta ya tenía documentado arriba, sin que el
+// llamante (esta ruta) tenga que conocer los códigos de error uno a uno
+// dos veces.
+const ERROR_STATUS: Record<CheckoutSessionError, number> = {
+  product_not_found: 404,
+  product_requires_quote: 400,
+  requires_chatbot: 400,
+  client_has_no_tenant: 503,
+  already_contracted: 409,
+  product_price_id_missing: 404,
+  product_setup_price_id_missing: 404,
+  stripe_not_configured: 503,
+  stripe_customer_create_failed: 503,
+  stripe_error: 502,
+};
+
 export async function POST(req: NextRequest) {
   const session = await getSession();
   if (!session.hasClientAccess) {
@@ -52,165 +67,23 @@ export async function POST(req: NextRequest) {
   if (!isDatabaseConfigured || resolved.source !== 'database') {
     return NextResponse.json({ error: 'service_unavailable', detail: 'not_available_in_dev_mode' }, { status: 503 });
   }
-  if (!(await isStripeConfigured())) {
-    return NextResponse.json({ error: 'service_unavailable', detail: 'stripe_not_configured' }, { status: 503 });
-  }
 
   const body = BodySchema.safeParse(await req.json().catch(() => null));
   if (!body.success) {
     return NextResponse.json({ error: 'invalid_body', details: body.error.flatten() }, { status: 400 });
   }
-  const { productId } = body.data;
 
-  const product = await prisma.product.findUnique({ where: { id: productId } });
-  if (!product || !product.isActive) {
-    return NextResponse.json({ error: 'product_not_found' }, { status: 404 });
-  }
-  // WP-XX — 'web' no longer sells at a fixed catalog price; it goes
-  // through the custom-quote flow (POST /api/portal/web-quote/request)
-  // instead. The UI should never offer this product here, but reject it
-  // explicitly too — defense in depth against a stale client or a
-  // direct API call.
-  if (product.code === 'web') {
-    return NextResponse.json({ error: 'product_requires_quote' }, { status: 400 });
-  }
-
-  // "Sistema IA de captación" — 'leads' classifies ChatbotConversation
-  // rows; without 'chatbot' active there is never a conversation to
-  // classify, so a 'leads'-only client would pay for a product that can
-  // never produce anything. Checked before isProductContracted below so
-  // this returns its own clear error rather than falling through to a
-  // generic Stripe failure.
-  if (product.code === 'leads') {
-    const hasChatbot = await isProductContracted(prisma, resolved.clientId, 'chatbot');
-    if (!hasChatbot) {
-      return NextResponse.json({ error: 'requires_chatbot' }, { status: 400 });
-    }
-  }
-
-  const client = await prisma.chatbotClient.findUnique({
-    where: { id: resolved.clientId },
-    select: { id: true, tenantId: true },
-  });
-  if (!client || !client.tenantId) {
-    return NextResponse.json({ error: 'service_unavailable', detail: 'client_has_no_tenant' }, { status: 503 });
-  }
-
-  const alreadyContracted = await isProductContracted(prisma, resolved.clientId, product.code);
-  if (alreadyContracted) {
-    return NextResponse.json({ error: 'already_contracted' }, { status: 409 });
-  }
-
-  const isOneTimeOnly = !product.stripeRecurringPriceId;
-  if (isOneTimeOnly && product.setupFeeCents === 0) {
-    return NextResponse.json({ error: 'product_price_id_missing', productId: product.id }, { status: 404 });
-  }
-  if (product.setupFeeCents > 0 && !product.stripeSetupPriceId) {
-    return NextResponse.json({ error: 'product_setup_price_id_missing', productId: product.id }, { status: 404 });
-  }
-
-  const customerId = await ensureCustomerForTenant(client.tenantId);
-  if (!customerId) {
-    return NextResponse.json({ error: 'service_unavailable', detail: 'stripe_customer_create_failed' }, { status: 503 });
-  }
-
-  // WP-XX — no longer a findUnique-by-compound-key: the (clientId,
-  // productId) DB constraint is now partial (excludes 'web', rejected
-  // above already) — see prisma/migrations/20260901120000_client_product_web_multiplicity.
-  const existing = await prisma.clientProduct.findFirst({
-    where: { clientId: resolved.clientId, productId: product.id },
-    select: { id: true, status: true },
+  const result = await createProductCheckoutSession({
+    clientId: resolved.clientId,
+    productId: body.data.productId,
+    actorId: `client:${resolved.clientId}`,
   });
 
-  const cp = await prisma.$transaction(async (tx) => {
-    const row = existing
-      ? await tx.clientProduct.update({
-          where: { id: existing.id },
-          data: { status: 'pending_payment', cancelledAt: null },
-        })
-      : await tx.clientProduct.create({
-          data: { clientId: resolved.clientId, productId: product.id, tenantId: client.tenantId!, status: 'pending_payment' },
-        });
-    await tx.clientProductAudit.create({
-      data: {
-        clientProductId: row.id,
-        clientId: resolved.clientId,
-        productId: product.id,
-        tenantId: client.tenantId,
-        action: 'checkout_started',
-        statusBefore: existing?.status ?? null,
-        statusAfter: 'pending_payment',
-        actorId: `client:${resolved.clientId}`,
-      },
-    });
-    return row;
-  });
-
-  const origin = process.env.NEXT_PUBLIC_PORTAL_URL ?? req.nextUrl.origin;
-  const successUrl = `${origin}/portal?checkout=success`;
-  const cancelUrl = `${origin}/portal/productos?checkout=cancelled`;
-  const metadata = {
-    kairikos_tenant_id: client.tenantId,
-    kairikos_client_id: resolved.clientId,
-    kairikos_client_product_id: cp.id,
-    kairikos_product_code: product.code,
-    kairikos_product_tier: product.tier,
-  };
-
-  try {
-    const stripe = await getStripe();
-    const session = isOneTimeOnly
-      ? await stripe.checkout.sessions.create({
-          mode: 'payment',
-          customer: customerId,
-          line_items: [{ price: product.stripeSetupPriceId!, quantity: 1 }],
-          invoice_creation: { enabled: true, invoice_data: { metadata } },
-          metadata,
-          success_url: successUrl,
-          cancel_url: cancelUrl,
-        })
-      : await stripe.checkout.sessions.create({
-          mode: 'subscription',
-          customer: customerId,
-          line_items: [
-            { price: product.stripeRecurringPriceId!, quantity: 1 },
-            ...(product.stripeSetupPriceId ? [{ price: product.stripeSetupPriceId, quantity: 1 }] : []),
-          ],
-          subscription_data: { metadata },
-          metadata,
-          success_url: successUrl,
-          cancel_url: cancelUrl,
-        });
-
-    if (!session.url) {
-      throw new Error('stripe_checkout_session_missing_url');
-    }
-    return NextResponse.json({ url: session.url }, { status: 200 });
-  } catch (err) {
-    // The Checkout Session never opened — revert the pending row instead
-    // of leaving a ClientProduct stuck in 'pending_payment' with nothing
-    // for the client to retry against. `checkout_failed` keeps the
-    // attempt visible in the audit trail rather than silently undone.
-    await prisma.$transaction(async (tx) => {
-      const row = await tx.clientProduct.update({
-        where: { id: cp.id },
-        data: { status: existing?.status ?? 'cancelled', cancelledAt: existing?.status ? null : new Date() },
-      });
-      await tx.clientProductAudit.create({
-        data: {
-          clientProductId: row.id,
-          clientId: resolved.clientId,
-          productId: product.id,
-          tenantId: client.tenantId,
-          action: 'checkout_failed',
-          statusBefore: 'pending_payment',
-          statusAfter: row.status,
-          actorId: `client:${resolved.clientId}`,
-        },
-      });
-    });
-    // eslint-disable-next-line no-console
-    console.error('[POST /api/portal/billing/checkout] stripe session creation failed:', err);
-    return NextResponse.json({ error: 'stripe_error' }, { status: 502 });
+  if (!result.ok) {
+    const status = ERROR_STATUS[result.error];
+    const detail = status === 503 ? { detail: result.error } : {};
+    return NextResponse.json({ error: result.error, ...detail, productId: result.productId }, { status });
   }
+
+  return NextResponse.json({ url: result.url }, { status: 200 });
 }
