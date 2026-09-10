@@ -2,7 +2,12 @@ name: Deploy to Hostinger VPS
 
 on:
   push:
-    branches: [main]
+    # Mismo motivo que build-image.yml: el trabajo real se mergea en
+    # kaia-743-staging-runner, no en main. Sin esta rama en la lista, el
+    # workflow no disparó ni una vez entre el 9 de agosto y el 10 de
+    # septiembre — 32 días de merges a producción sin ningún redespliegue,
+    # en silencio, porque `push` a una rama que nadie toca no es un error.
+    branches: [main, kaia-743-staging-runner]
   workflow_dispatch:
 
 jobs:
@@ -29,34 +34,62 @@ jobs:
           # for adding them as GitHub repo secrets (Settings → Secrets and
           # variables → Actions → New repository secret):
           #
-          #   Required GitHub secrets:
-          #     HOSTINGER_API_KEY   (Hostinger hPanel API key)
-          #     POSTGRES_PASSWORD   (DB password — openssl rand -hex 24)
-          #     AUTH_SECRET         (NextAuth JWT HMAC — openssl rand -base64 32)
-          #     RESEND_API_KEY      (from https://resend.com/api-keys)
-          #     PORTAL_API_KEY      (n8n → portal shared secret — openssl rand -hex 32)
+          #   Required GitHub secrets (the app boots but these features
+          #   stay dead without each one — see docker-compose.yml's own
+          #   comments on the "Required for Canales" block for detail):
+          #     HOSTINGER_API_KEY              Hostinger hPanel API key
+          #     POSTGRES_PASSWORD              openssl rand -hex 24
+          #     AUTH_SECRET                    openssl rand -base64 32
+          #     RESEND_API_KEY                 https://resend.com/api-keys
+          #     PORTAL_API_KEY                 openssl rand -hex 32
+          #     CHANNEL_CREDENTIAL_ENCRYPTION_KEY  openssl rand -hex 32
+          #     OPERATOR_TOTP_ENCRYPTION_KEY       openssl rand -hex 32
+          #     CRON_SECRET                        openssl rand -hex 32
+          #     KAIA_OPERATOR_API_KEY              openssl rand -hex 32
+          #     SEO_CMS_CREDENTIAL_ENCRYPTION_KEY  openssl rand -hex 32 —
+          #       si ya hay contraseñas de WordPress cifradas en esta VPS,
+          #       tiene que ser la MISMA clave que se usó entonces.
+          #     WHISPER_API_KEY                de https://console.groq.com/keys
           #
           #   Required GitHub variables:
           #     HOSTINGER_VM_ID     (from the VPS URL)
           #     POSTGRES_USER       (default: kairikos)
           #     POSTGRES_DB         (default: kairikos_portal)
-          #     NEXTAUTH_URL        (dev mode: http://<VPS_IP>:3001;
-          #                          prod mode: https://portal.kairikos.com)
+          #     NEXTAUTH_URL        prod-dns-tls mode: https://portal.kairikos.cloud
+          #                         (Traefik ya enruta ese dominio en esta
+          #                         VPS — ver las etiquetas traefik.* del
+          #                         servicio `app` en docker-compose.yml)
           #
           # Generate secrets on the CEO's workstation with the noted command
           # and paste the output. Never commit secrets to the repo.
+          #
+          # NO se incluyen aquí (a propósito) las variables opcionales de
+          # Meta/Google/Twilio/Stripe: todas degradan con gracia sin valor
+          # — ver el bloque "Optional" de docker-compose.yml — y activarlas
+          # es un paso posterior, producto a producto, no parte del primer
+          # despliegue.
           environment-variables: |
             NODE_ENV=production
             DATABASE_URL=postgresql://${{ vars.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@postgres:5432/${{ vars.POSTGRES_DB }}
+            DIRECT_URL=postgresql://${{ vars.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@postgres:5432/${{ vars.POSTGRES_DB }}
             POSTGRES_USER=${{ vars.POSTGRES_USER }}
             POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
             POSTGRES_DB=${{ vars.POSTGRES_DB }}
             AUTH_SECRET=${{ secrets.AUTH_SECRET }}
-            AUTH_EMAIL_FROM=Kairikos Portal <hola@kairikos.com>
-            AUTH_SUPPORT_EMAIL=hola@kairikos.com
-            AUTH_SUPPORT_WHATSAPP=https://wa.me/34600000000
+            AUTH_EMAIL_FROM=Kairikos Portal <contacto@kairikos.com>
+            AUTH_SUPPORT_EMAIL=contacto@kairikos.com
+            AUTH_SUPPORT_WHATSAPP=https://wa.me/34624514425
             RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
             NEXTAUTH_URL=${{ vars.NEXTAUTH_URL }}
             PORTAL_API_KEY=${{ secrets.PORTAL_API_KEY }}
+            CHANNEL_CREDENTIAL_ENCRYPTION_KEY=${{ secrets.CHANNEL_CREDENTIAL_ENCRYPTION_KEY }}
+            OPERATOR_TOTP_ENCRYPTION_KEY=${{ secrets.OPERATOR_TOTP_ENCRYPTION_KEY }}
+            CRON_SECRET=${{ secrets.CRON_SECRET }}
+            KAIA_OPERATOR_API_KEY=${{ secrets.KAIA_OPERATOR_API_KEY }}
+            SEO_CMS_CREDENTIAL_ENCRYPTION_KEY=${{ secrets.SEO_CMS_CREDENTIAL_ENCRYPTION_KEY }}
+            WHISPER_API_KEY=${{ secrets.WHISPER_API_KEY }}
+            WHISPER_BASE_URL=https://api.groq.com/openai
+            WHISPER_MODEL=whisper-large-v3
+            N8N_BASE_URL=https://n8n.srv1170607.hstgr.cloud
             DEPLOY_MODE=dev-ip-port
             APP_PORT=3001

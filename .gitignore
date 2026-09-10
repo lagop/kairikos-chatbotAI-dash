@@ -33,3 +33,10 @@ portal/tsconfig.tsbuildinfo
 portal/tsconfig.kiaia755.tsbuildinfo
 supabase/tests/chatbot_clients_rls_smoke.run.log
 .vercel
+
+# Ajustes locales de Claude Code (permisos y notas por máquina, no del proyecto)
+.claude/
+
+# Override de Compose para desarrollo local: reasigna puertos que en esta
+# máquina chocan con otros servicios. Es por máquina, nunca del repositorio.
+docker-compose.override.yml

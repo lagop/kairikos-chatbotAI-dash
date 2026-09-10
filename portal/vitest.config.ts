@@ -28,6 +28,20 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/unit/**/*.test.ts'],
+    // El defecto de vitest son 5 s, y se quedó corto al pasar la suite de
+    // ~2.650 a ~2.820 pruebas. Docenas de tests hacen `await import(...)`
+    // de una ruta de Next DENTRO del cuerpo del test —para poder mockear
+    // sus dependencias antes— así que la transformación del módulo y de
+    // todo su árbol se contabiliza como duración de la prueba. Con la
+    // suite entera en paralelo eso pasaba de 5 s de forma intermitente:
+    // fallaban entre 7 y 11 pruebas, siempre con «Test timed out», y
+    // cambiaban de un run a otro. Aisladas pasaban todas.
+    //
+    // Subirlo no debilita ninguna aserción: lo que se comprueba dentro
+    // termina en milisegundos una vez importado el módulo. 30 s cubre el
+    // arranque en frío sin que un cuelgue real se quede colgado para
+    // siempre.
+    testTimeout: 30_000,
     // next-auth@beta (5.0.0-beta) reaches into `next/server` via a bare
     // specifier that the Next 14 package.json#exports field gates behind
     // a `server` condition vitest's resolver does not honor by default.
