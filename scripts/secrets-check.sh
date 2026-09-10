@@ -22,6 +22,23 @@
 #     "REPLACE_ME" — anything using these as the password component of
 #     a connection string is intentional and safe to ship.
 #
+# 2026-09-10 — la exclusión de .env.production.example nunca alcanzaba
+# a ese fichero: exigía una "/" justo antes del nombre, y ese fichero
+# vive en la RAÍZ del repo (git ls-files lo lista sin ningún directorio
+# delante). portal/.env.example sí quedaba excluido, por tener el
+# prefijo portal/. Se descubrió al añadir DATABASE_URL/DIRECT_URL a esa
+# plantilla en PR #156 — la CI marcó "postgres://kairikos:CHANGE_ME_..."
+# como filtración real. Corregido con "(^|/)" en vez de solo "/".
+#
+# Aparte, sin arreglar todavía: la rama de "placeholder" del patrón 6 de
+# secrets-patterns.txt (PLACEHOLDER|changeme|REPLACE_ME|…) es código
+# muerto — la alternativa genérica [^<"${}[:space:]] de la misma
+# expresión ya admite cualquier contraseña que no contenga esos
+# caracteres especiales, así que nunca es esa rama la que decide. No se
+# toca aquí porque no bloquea este PR (la exclusión por fichero ya lo
+# resuelve) y reescribir un patrón de seguridad sin poder probarlo a
+# fondo es peor que dejarlo anotado.
+#
 # To intentionally ship a sample value (e.g. for a fixture), prefix the
 # value with "EXAMPLE_" or use the literal word "placeholder" — both are
 # recognised by the patterns file.
@@ -46,7 +63,7 @@ mapfile -t FILES < <(git ls-files \
   | grep -vE '\.(png|jpe?g|gif|webp|ico|pdf|woff2?|ttf|eot|mp[34]|zip|tar|gz)$' \
   | grep -vE '^(portal/\.next/|portal/playwright-report/|portal/test-results/)' \
   | grep -vE '^(portal/tests/fixtures/.*\.(json|ts|sql))$' \
-  | grep -vE '/(\.env\.example|\.env\.production\.example)$' \
+  | grep -vE '(^|/)(\.env\.example|\.env\.production\.example)$' \
   | grep -vE '^(portal/Dockerfile|scripts/secrets-(check|patterns|allowlist))' \
   | { if [ -f "$ALLOWLIST" ]; then \
         grep -v -F -f <(sed -E 's/[[:space:]]*#.*$//' "$ALLOWLIST" | grep -v '^[[:space:]]*$'); \
