@@ -3,6 +3,7 @@ import { prisma } from './prisma';
 import { getStripe, isStripeConfigured, StripeUnavailableError } from './stripe';
 import { ensureRecallSubscription } from './recall-onboarding';
 import { ensureSeoProfile, ensureProspectingCampaign, ensureLeadQualificationProfile } from './product-onboarding';
+import { isProductContracted } from './client-product-access';
 import type { Prisma } from '@prisma/client';
 import type Stripe from 'stripe';
 
@@ -949,3 +950,191 @@ export function toDate(epochSeconds: number | null | undefined): Date | null {
 }
 
 export { notConfiguredResponse, unavailable };
+
+// ---------------------------------------------------------------------------
+// Sesión de Checkout para un producto — punto de entrada compartido
+// ---------------------------------------------------------------------------
+
+export type CheckoutSessionError =
+  | 'product_not_found'
+  | 'product_requires_quote'
+  | 'requires_chatbot'
+  | 'client_has_no_tenant'
+  | 'already_contracted'
+  | 'product_price_id_missing'
+  | 'product_setup_price_id_missing'
+  | 'stripe_not_configured'
+  | 'stripe_customer_create_failed'
+  | 'stripe_error';
+
+export type CreateCheckoutSessionResult =
+  | { ok: true; url: string }
+  | { ok: false; error: CheckoutSessionError; productId?: string };
+
+/**
+ * Crea una Checkout Session de Stripe para que `clientId` contrate
+ * `productId`, dejando el ClientProduct en 'pending_payment' con su id
+ * ya embebido en la metadata ANTES de llamar a Stripe (para que
+ * activateClientProductFromCheckout lo resuelva sin casos especiales,
+ * sea cual sea el origen de la llamada).
+ *
+ * Extraído de POST /api/portal/billing/checkout (WP-30), el primer
+ * `stripe.checkout.sessions.create()` real de este repo. Segundo
+ * llamante: el alta manual de operador (POST /api/admin/portal/clients)
+ * puede generar un enlace de pago para un cliente que todavía no tiene
+ * sesión propia — mismo camino, sin repetir sus ~80 líneas de creación
+ * de sesión + reversión en caso de fallo.
+ *
+ * `actorId` sustituye al `client:<clientId>` que la ruta de autoservicio
+ * tenía fijo — cada llamante deja su propio prefijo en
+ * ClientProductAudit.actor_id ('client:…' o el id real del operador).
+ */
+export async function createProductCheckoutSession(params: {
+  clientId: string;
+  productId: string;
+  actorId: string;
+}): Promise<CreateCheckoutSessionResult> {
+  const { clientId, productId, actorId } = params;
+
+  if (!(await isStripeConfigured())) {
+    return { ok: false, error: 'stripe_not_configured' };
+  }
+
+  const product = await prisma.product.findUnique({ where: { id: productId } });
+  if (!product || !product.isActive) {
+    return { ok: false, error: 'product_not_found' };
+  }
+  // 'web' no vende a precio fijo de catálogo — va por presupuesto
+  // (POST /api/portal/web-quote/request). Ver el mismo rechazo en la
+  // ruta de autoservicio.
+  if (product.code === 'web') {
+    return { ok: false, error: 'product_requires_quote' };
+  }
+  // 'leads' clasifica ChatbotConversation — sin 'chatbot' activo nunca
+  // hay nada que clasificar.
+  if (product.code === 'leads') {
+    const hasChatbot = await isProductContracted(prisma, clientId, 'chatbot');
+    if (!hasChatbot) return { ok: false, error: 'requires_chatbot' };
+  }
+
+  const client = await prisma.chatbotClient.findUnique({ where: { id: clientId }, select: { id: true, tenantId: true } });
+  if (!client || !client.tenantId) {
+    return { ok: false, error: 'client_has_no_tenant' };
+  }
+
+  const alreadyContracted = await isProductContracted(prisma, clientId, product.code);
+  if (alreadyContracted) {
+    return { ok: false, error: 'already_contracted' };
+  }
+
+  const isOneTimeOnly = !product.stripeRecurringPriceId;
+  if (isOneTimeOnly && product.setupFeeCents === 0) {
+    return { ok: false, error: 'product_price_id_missing', productId: product.id };
+  }
+  if (product.setupFeeCents > 0 && !product.stripeSetupPriceId) {
+    return { ok: false, error: 'product_setup_price_id_missing', productId: product.id };
+  }
+
+  const customerId = await ensureCustomerForTenant(client.tenantId);
+  if (!customerId) {
+    return { ok: false, error: 'stripe_customer_create_failed' };
+  }
+
+  const existing = await prisma.clientProduct.findFirst({
+    where: { clientId, productId: product.id },
+    select: { id: true, status: true },
+  });
+
+  const cp = await prisma.$transaction(async (tx) => {
+    const row = existing
+      ? await tx.clientProduct.update({
+          where: { id: existing.id },
+          data: { status: 'pending_payment', cancelledAt: null },
+        })
+      : await tx.clientProduct.create({
+          data: { clientId, productId: product.id, tenantId: client.tenantId!, status: 'pending_payment' },
+        });
+    await tx.clientProductAudit.create({
+      data: {
+        clientProductId: row.id,
+        clientId,
+        productId: product.id,
+        tenantId: client.tenantId,
+        action: 'checkout_started',
+        statusBefore: existing?.status ?? null,
+        statusAfter: 'pending_payment',
+        actorId,
+      },
+    });
+    return row;
+  });
+
+  const origin = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'http://localhost:3001';
+  const successUrl = `${origin}/portal?checkout=success`;
+  const cancelUrl = `${origin}/portal/productos?checkout=cancelled`;
+  const metadata = {
+    kairikos_tenant_id: client.tenantId,
+    kairikos_client_id: clientId,
+    kairikos_client_product_id: cp.id,
+    kairikos_product_code: product.code,
+    kairikos_product_tier: product.tier,
+  };
+
+  try {
+    const stripe = await getStripe();
+    const session = isOneTimeOnly
+      ? await stripe.checkout.sessions.create({
+          mode: 'payment',
+          customer: customerId,
+          line_items: [{ price: product.stripeSetupPriceId!, quantity: 1 }],
+          invoice_creation: { enabled: true, invoice_data: { metadata } },
+          metadata,
+          success_url: successUrl,
+          cancel_url: cancelUrl,
+        })
+      : await stripe.checkout.sessions.create({
+          mode: 'subscription',
+          customer: customerId,
+          line_items: [
+            { price: product.stripeRecurringPriceId!, quantity: 1 },
+            ...(product.stripeSetupPriceId ? [{ price: product.stripeSetupPriceId, quantity: 1 }] : []),
+          ],
+          subscription_data: { metadata },
+          metadata,
+          success_url: successUrl,
+          cancel_url: cancelUrl,
+        });
+
+    if (!session.url) {
+      throw new Error('stripe_checkout_session_missing_url');
+    }
+    return { ok: true, url: session.url };
+  } catch (err) {
+    // La Checkout Session nunca se abrió — revertir la fila pendiente en
+    // vez de dejar un ClientProduct atascado en 'pending_payment' sin
+    // nada contra lo que el cliente pueda reintentar. 'checkout_failed'
+    // deja el intento visible en la auditoría en vez de deshacerlo en
+    // silencio.
+    await prisma.$transaction(async (tx) => {
+      const row = await tx.clientProduct.update({
+        where: { id: cp.id },
+        data: { status: existing?.status ?? 'cancelled', cancelledAt: existing?.status ? null : new Date() },
+      });
+      await tx.clientProductAudit.create({
+        data: {
+          clientProductId: row.id,
+          clientId,
+          productId: product.id,
+          tenantId: client.tenantId,
+          action: 'checkout_failed',
+          statusBefore: 'pending_payment',
+          statusAfter: row.status,
+          actorId,
+        },
+      });
+    });
+    // eslint-disable-next-line no-console
+    console.error('[createProductCheckoutSession] stripe session creation failed:', err);
+    return { ok: false, error: 'stripe_error' };
+  }
+}

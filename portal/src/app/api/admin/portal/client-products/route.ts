@@ -2,8 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateAdminRequest } from '@/lib/operator-session';
-import { ensureRecallSubscription } from '@/lib/recall-onboarding';
-import { ensureSeoProfile, ensureProspectingCampaign, ensureLeadQualificationProfile } from '@/lib/product-onboarding';
+import { activateClientProductForOperator } from '@/lib/client-product-activation';
 
 const ProductIdSchema = z.string().uuid();
 const ClientIdSchema = z.string().min(1).max(128);
@@ -48,95 +47,28 @@ export async function POST(req: NextRequest) {
   if (!body.success) return NextResponse.json({ error: 'invalid_body', details: body.error.flatten() }, { status: 400 });
 
   const { clientId, productId } = body.data;
-  const client = await prisma.chatbotClient.findUnique({ where: { id: clientId }, select: { id: true, tenantId: true } });
-  if (!client) return NextResponse.json({ error: 'client_not_found' }, { status: 404 });
-  const product = await prisma.product.findUnique({ where: { id: productId }, select: { id: true, isActive: true, code: true } });
-  if (!product || !product.isActive) return NextResponse.json({ error: 'product_not_found' }, { status: 404 });
 
-  // WP-XX — 'web' is exempt from the one-row-per-client rule (see
-  // ClientProduct's schema comment): a client can have multiple
-  // independent 'web' projects, so this route always creates a FRESH
-  // row for 'web' rather than reusing/reactivating an existing one
-  // (reusing an id would conflate two projects' WebBrief/WebQuote
-  // histories, both 1:1-keyed to the ClientProduct id). This route is
-  // no longer the primary way to assign 'web' — ProductAssignment.tsx
-  // excludes it from the generic panel, directing operators to the
-  // quote flow instead — but this stays correct as defense in depth
-  // against a direct API call. Every OTHER product code keeps today's
-  // find-or-reuse-cancelled-row behavior, backed by the partial unique
-  // index (see that migration) that still guarantees one row per
-  // (clientId, productId) for them.
-  const existing =
-    product.code === 'web'
-      ? null
-      : await prisma.clientProduct.findFirst({
-          where: { clientId, productId },
-          select: { id: true, status: true },
-        });
-
-  // WP-18 — assigning/reactivating a product and recording the audit row
-  // must be atomic: an operator action that changed the client's product
-  // access with no matching ClientProductAudit row would be invisible to
-  // anyone auditing the account later.
-  const row = await prisma.$transaction(async (tx) => {
-    const clientProduct = existing
-      ? await tx.clientProduct.update({
-          where: { id: existing.id },
-          data: { status: 'active', cancelledAt: null, changedBy: auth.operatorId },
-          include: { product: true, client: { select: { id: true, name: true, companyName: true, email: true } } },
-        })
-      : await tx.clientProduct.create({
-          data: { clientId, productId, tenantId: client.tenantId, status: 'active', createdBy: auth.operatorId, changedBy: auth.operatorId },
-          include: { product: true, client: { select: { id: true, name: true, companyName: true, email: true } } },
-        });
-    await tx.clientProductAudit.create({
-      data: {
-        clientProductId: clientProduct.id,
-        clientId,
-        productId,
-        tenantId: client.tenantId,
-        action: existing ? 'reactivate' : 'assign',
-        statusBefore: existing?.status ?? null,
-        statusAfter: 'active',
-        actorId: auth.operatorId,
-      },
-    });
-    return clientProduct;
+  // La transacción + auditoría + enganches de onboarding por producto
+  // (recall/seo/prospecting/leads) viven en client-product-activation.ts
+  // — segundo llamante real: POST /api/admin/portal/clients (alta manual
+  // de cliente) necesita exactamente lo mismo al activar un producto sin
+  // pasar por Stripe.
+  const result = await activateClientProductForOperator(prisma, { clientId, productId }, {
+    operatorId: auth.operatorId === 'legacy' ? null : auth.operatorId,
   });
-
-  // Fase 6 — un operador puede dar de alta 'recall' sin pasar por
-  // Stripe (este mismo endpoint), y ese camino tampoco creaba nunca la
-  // RecallSubscription — mismo hueco, segundo punto de entrada. 'legacy'
-  // (cabecera KAIA_OPERATOR_API_KEY) no es una fila real de Operator;
-  // RecallSubscriptionAudit.actorOperatorId es una FK real y ese string
-  // la haría fallar.
-  if (row.product?.code === 'recall') {
-    await ensureRecallSubscription(
-      prisma,
-      { clientId, clientProductId: row.id, tenantId: row.tenantId },
-      { type: 'operator', operatorId: auth.operatorId === 'legacy' ? null : auth.operatorId },
-    );
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: 404 });
   }
 
-  // Fase 6 — mismo hueco que 'recall' para los otros tres productos con
-  // perfil propio, segundo punto de entrada (ver el mismo bloque en
-  // activateClientProductFromCheckout para el camino de Stripe).
-  const operatorActor = { type: 'operator' as const, operatorId: auth.operatorId === 'legacy' ? null : auth.operatorId };
-  if (row.product?.code === 'seo') {
-    await ensureSeoProfile(prisma, { clientId, clientProductId: row.id, tenantId: row.tenantId }, operatorActor);
-  }
-  if (row.product?.code === 'prospecting') {
-    await ensureProspectingCampaign(
-      prisma,
-      { clientId, clientProductId: row.id, tenantId: row.tenantId, tier: row.product.tier },
-      operatorActor,
-    );
-  }
-  if (row.product?.code === 'leads') {
-    await ensureLeadQualificationProfile(prisma, { clientId, clientProductId: row.id, tenantId: row.tenantId }, operatorActor);
-  }
-
-  return NextResponse.json(row, { status: 201 });
+  // Antes esta respuesta traía .client y .product completos — nadie los
+  // lee (ProductAssignment.tsx solo llama router.refresh() tras un 201;
+  // los .json() del componente son solo para el mensaje de error). Se
+  // simplifica a lo que de verdad se usa en vez de reconsultar la fila
+  // entera solo para no cambiar una forma que nadie mira.
+  return NextResponse.json(
+    { id: result.clientProductId, clientId, productId, productCode: result.productCode, status: 'active' },
+    { status: 201 },
+  );
 }
 
 export const dynamic = 'force-dynamic';
