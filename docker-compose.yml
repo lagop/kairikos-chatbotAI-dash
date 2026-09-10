@@ -47,8 +47,8 @@ services:
       # pooler, así que su valor es el mismo que DATABASE_URL.
       DIRECT_URL: ${DIRECT_URL}
       AUTH_SECRET: ${AUTH_SECRET}
-      AUTH_EMAIL_FROM: ${AUTH_EMAIL_FROM:-Kairikos Portal <hola@kairikos.com>}
-      AUTH_SUPPORT_EMAIL: ${AUTH_SUPPORT_EMAIL:-hola@kairikos.com}
+      AUTH_EMAIL_FROM: ${AUTH_EMAIL_FROM:-Kairikos Portal <contacto@kairikos.com>}
+      AUTH_SUPPORT_EMAIL: ${AUTH_SUPPORT_EMAIL:-contacto@kairikos.com}
       AUTH_SUPPORT_WHATSAPP: ${AUTH_SUPPORT_WHATSAPP:-https://wa.me/34624514425}
       RESEND_API_KEY: ${RESEND_API_KEY}
       # NEXTAUTH_URL must match how the user reaches the portal:
@@ -188,6 +188,33 @@ services:
         condition: service_healthy
     networks:
       - portal-net
+      # Esta VPS concreta ya tiene Traefik ocupando el 80/443 para n8n
+      # (root-traefik-1, pila del proyecto Compose "root") — el nginx +
+      # certbot de más abajo NO se levantan aquí, se quedarían sin poder
+      # publicar esos puertos. En su lugar, `app` se une a la red de esa
+      # pila para que Traefik pueda alcanzarlo por nombre de contenedor,
+      # y las etiquetas de abajo son el mismo patrón que ya usa n8n
+      # (ver traefik.http.routers.n8n.* en `docker inspect root-n8n-1`):
+      # mismo certresolver, misma pareja de entrypoints. Red declarada
+      # como externa más abajo — la crea la pila de Traefik, no ésta.
+      - root_default
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.portal.rule: "Host(`portal.kairikos.cloud`)"
+      traefik.http.routers.portal.entrypoints: "web,websecure"
+      traefik.http.routers.portal.tls: "true"
+      traefik.http.routers.portal.tls.certresolver: "mytlschallenge"
+      traefik.http.routers.portal.middlewares: "portal@docker"
+      traefik.http.services.portal.loadbalancer.server.port: "3000"
+      traefik.http.middlewares.portal.headers.SSLRedirect: "true"
+      traefik.http.middlewares.portal.headers.SSLHost: "portal.kairikos.cloud"
+      traefik.http.middlewares.portal.headers.STSSeconds: "31536000"
+      traefik.http.middlewares.portal.headers.STSIncludeSubdomains: "true"
+      traefik.http.middlewares.portal.headers.STSPreload: "true"
+      traefik.http.middlewares.portal.headers.forceSTSHeader: "true"
+      traefik.http.middlewares.portal.headers.contentTypeNosniff: "true"
+      traefik.http.middlewares.portal.headers.browserXSSFilter: "true"
+      traefik.http.middlewares.portal.headers.frameDeny: "true"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/health"]
       interval: 30s
@@ -352,6 +379,14 @@ services:
   # The Hostinger Docker Manager doesn't run profiles by default, so the
   # CEO leaves these dormant for dev-ip-port mode and enables them only
   # when DEPLOY_MODE=prod-dns-tls.
+  #
+  # NO los levantes en la VPS de producción actual (srv1170607.hstgr.cloud):
+  # ya tiene Traefik publicando el 80/443 para n8n (root-traefik-1, pila
+  # Compose "root"). Este par se quedaría sin puertos que publicar y
+  # fallaría al arrancar. En esa máquina, el enrutado y el TLS del portal
+  # van por las etiquetas `traefik.*` del servicio `app`, no por aquí —
+  # el par nginx/certbot se conserva definido solo para un despliegue
+  # FUTURO en una VPS sin proxy previo.
   nginx:
     profiles: ["proxy"]
     image: nginx:1.25-alpine
@@ -394,3 +429,10 @@ volumes:
 networks:
   portal-net:
     driver: bridge
+  # La red del proyecto Compose "root" (/root/docker-compose.yml en la
+  # VPS), donde vive Traefik junto a n8n. `external: true` porque esta
+  # pila no la crea ni la gestiona — solo se une a una que ya existe. Si
+  # el nombre real difiere de root_default (`docker network ls` en la
+  # VPS lo confirma), es la única línea que hay que tocar aquí.
+  root_default:
+    external: true
