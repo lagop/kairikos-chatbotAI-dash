@@ -200,6 +200,14 @@ services:
       - root_default
     labels:
       traefik.enable: "true"
+      # `app` está en DOS redes (portal-net y root_default), y sin esto
+      # Traefik elige por su cuenta cuál usar para conectar — el 10 de
+      # septiembre de 2026 eligió portal-net (donde Traefik ni siquiera
+      # está), así que cada petición a portal.kairikos.cloud colgaba
+      # hasta agotar el timeout: TLS terminaba bien, pero nunca llegaba
+      # a la app. root_default es la única red que comparte con Traefik
+      # — tiene que ser explícita, no una de las dos por defecto.
+      traefik.docker.network: "root_default"
       traefik.http.routers.portal.rule: "Host(`portal.kairikos.cloud`)"
       traefik.http.routers.portal.entrypoints: "web,websecure"
       traefik.http.routers.portal.tls: "true"
