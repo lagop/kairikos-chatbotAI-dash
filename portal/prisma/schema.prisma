@@ -101,6 +101,17 @@ model ChatbotClient {
   // NULL during the migration window; the data backfill migration sets it
   // to the default tenant for any row that pre-dates this column.
   tenantId         String?   @map("tenant_id") @db.Uuid
+  // Public self-serve signup (WP-31) only: timestamp of the ToS/privacy
+  // checkbox at account creation. NULL for every client onboarded by an
+  // operator or via /api/public/intake — there's no separate acceptance
+  // step in either of those flows today.
+  tosAcceptedAt    DateTime? @map("tos_accepted_at")
+  // Public self-serve signup (WP-31) only: set once the client clicks the
+  // link in the verification email. NULL doesn't block login or checkout
+  // (see mintEmailVerificationToken's header comment for why) — it only
+  // gates account-recovery-adjacent actions and surfaces a badge to the
+  // operator. NULL for every client created any other way.
+  emailVerifiedAt  DateTime? @map("email_verified_at")
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -631,6 +642,19 @@ model Product {
   currency               String   @default("EUR")
   features               Json     @default("{}")
   isActive               Boolean  @default(true) @map("is_active")
+  // WP-31 — whether a visitor can buy this tier from the public signup
+  // page (/empezar) without an operator creating the account first. Kept
+  // as a flag rather than a hardcoded product-code list so a tier can be
+  // turned on/off without a deploy. False by default: 'web' can never be
+  // true (no catalog price — createProductCheckoutSession already
+  // rejects it with product_requires_quote regardless of this flag), and
+  // 'recall' stays false until its own readiness gate clears (Meta
+  // template approval + the article 28 paperwork). No admin UI toggle
+  // yet (flip it with an UPDATE for now) — the migration backfills the
+  // launch values directly; a checkbox in
+  // /admin/portal/settings/billing is a deliberate fast-follow, not
+  // built in this pass.
+  selfServeEligible      Boolean  @default(false) @map("self_serve_eligible")
   createdAt              DateTime @default(now()) @map("created_at")
 
   clientProducts ClientProduct[]
@@ -904,6 +928,28 @@ model StripeWebhookEvent {
 // Tokens are single-use; once consumed they cannot be reused.
 // =============================================================================
 model PasswordResetToken {
+  id        String    @id @default(cuid())
+  email     String
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([email])
+  @@index([tokenHash])
+}
+
+// WP-31 — Email-ownership proof for the public self-serve signup flow,
+// deliberately a SEPARATE table from PasswordResetToken rather than a
+// shared `purpose` column on it. PasswordResetToken had a real
+// auth-bypass vulnerability (KAIA-11500 — any 64-hex token in the body
+// silently set a real password hash) fixed by tightening what that one
+// table's rows are allowed to authorize; giving a second, lower-stakes
+// purpose (proving an inbox, not authenticating into it) a row in the
+// same table reopens exactly the kind of ambiguity that bug came from.
+// Unlike PasswordResetToken, an unverified/missing row here never blocks
+// login or checkout (see mintEmailVerificationToken's header comment).
+model EmailVerificationToken {
   id        String    @id @default(cuid())
   email     String
   tokenHash String
