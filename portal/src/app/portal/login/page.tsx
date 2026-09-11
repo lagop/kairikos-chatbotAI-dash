@@ -32,9 +32,9 @@ export default function LoginPage() {
         </Suspense>
       </div>
       <p className="mt-6 text-center text-xs text-kairikos-muted">
-        ¿No tienes cuenta? Escríbenos a{' '}
-        <a className="underline" href="mailto:hola@kairikos.com">
-          hola@kairikos.com
+        ¿No tienes cuenta?{' '}
+        <a className="underline" href="/empezar">
+          Crea una
         </a>
         .
       </p>

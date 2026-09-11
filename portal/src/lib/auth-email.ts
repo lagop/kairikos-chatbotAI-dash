@@ -91,6 +91,32 @@ export function buildSetupEmailHtml(setupUrl: string): string {
 </html>`;
 }
 
+export function buildVerifyEmailHtml(verifyUrl: string): string {
+  return `<!doctype html>
+<html lang="es">
+  <body style="font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #111;">
+    <div style="border-bottom: 1px solid #e5e7eb; padding-bottom: 12px; margin-bottom: 20px;">
+      <p style="margin: 0; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: #6b7280;">Kairikos</p>
+      <h1 style="margin: 4px 0 0; font-size: 20px;">Confirma tu email</h1>
+    </div>
+    <p>Hola,</p>
+    <p>Gracias por crear tu cuenta en Kairikos. Confirma que este es tu correo:</p>
+    <p style="margin: 28px 0;">
+      <a href="${verifyUrl}" style="background: #111827; color: #ffffff; padding: 12px 20px; border-radius: 8px; text-decoration: none; display: inline-block; font-weight: 600;">
+        Confirmar mi email
+      </a>
+    </p>
+    <p style="font-size: 12px; color: #6b7280;">Este enlace es personal y caduca en 7 días. Tu cuenta ya funciona sin este paso — es solo para confirmar que este correo es tuyo.</p>
+    <p style="font-size: 12px; color: #6b7280;">Si el botón no funciona, copia y pega este enlace en tu navegador:</p>
+    <p style="font-size: 12px; color: #6b7280; word-break: break-all;">${verifyUrl}</p>
+    <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 28px 0;" />
+    <p style="font-size: 12px; color: #6b7280;">
+      ¿Necesitas ayuda? Escríbenos a <a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a>.
+    </p>
+  </body>
+</html>`;
+}
+
 export function buildResetAdminEmailHtml(resetUrl: string, expiryHours: number): string {
   return `<!doctype html>
 <html lang="es">
@@ -156,6 +182,27 @@ export async function sendSetupPassword(params: {
     subject,
     text,
     html: buildSetupEmailHtml(params.setupUrl),
+  });
+}
+
+export async function sendVerifyEmail(params: { to: string; verifyUrl: string }): Promise<void> {
+  const subject = 'Confirma tu email — Kairikos';
+  const text = [
+    'Hola,',
+    '',
+    'Gracias por crear tu cuenta en Kairikos. Confirma que este es tu correo:',
+    params.verifyUrl,
+    '',
+    'Este enlace es personal y caduca en 7 días. Tu cuenta ya funciona sin este paso — es solo para confirmar que este correo es tuyo.',
+    '',
+    '— Equipo Kairikos',
+  ].join('\n');
+
+  await sendEmail({
+    to: params.to,
+    subject,
+    text,
+    html: buildVerifyEmailHtml(params.verifyUrl),
   });
 }
 
