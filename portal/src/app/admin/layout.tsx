@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { PortalFooter } from '@/components/portal/PortalFooter';
+import { AdminSidebar } from '@/components/admin/AdminSidebar';
 
 export const metadata: Metadata = {
   title: 'Admin',
@@ -9,6 +10,13 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+// Barra lateral persistente (WP-XX) — antes, 9 de los ~14 destinos del
+// panel solo se alcanzaban desde un cinturón de botones metido en
+// /admin/portal/clients, y otros tres (flows, wizard-funnel,
+// settings/security) no tenían ningún enlace visible en absoluto. Los
+// datos de la navegación viven en lib/admin-nav.ts — un solo sitio,
+// consumido tanto por la versión de escritorio como por el desplegable
+// de móvil dentro de AdminSidebar.
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col">
@@ -34,7 +42,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </nav>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-page flex-1 px-4 py-6 sm:px-6 sm:py-8">{children}</main>
+      <div className="flex flex-1">
+        <AdminSidebar />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <main className="mx-auto w-full max-w-page flex-1 px-4 py-6 sm:px-6 sm:py-8">{children}</main>
+        </div>
+      </div>
       <PortalFooter />
     </div>
   );

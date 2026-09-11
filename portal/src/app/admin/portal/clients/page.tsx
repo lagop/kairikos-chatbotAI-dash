@@ -38,21 +38,13 @@ export default async function AdminClientsPage({
         description="Vista de soporte de sólo lectura. Selecciona un cliente para ver el detalle en su portal."
         actions={
           <>
-            {/* WP-XX — operator queues were previously reachable only by
-                typing the URL: /admin/portal/web-quotes had no link from
-                anywhere in the UI. A queue nobody can click is a queue
-                nobody works — /admin/portal/leads is linked here from the
-                day it was built, for the same reason. */}
+            {/* WP-XX — los demás destinos del panel (bandejas, ajustes)
+                se movieron a la barra lateral persistente
+                (components/admin/AdminSidebar.tsx) — este cinturón de
+                botones era el único sitio donde vivían antes de eso.
+                Lo que queda aquí es específico de esta página: dar de
+                alta un cliente, y salir del modo operador. */}
             <Link href="/admin/portal/clients/new" className="btn-primary">+ Nuevo cliente</Link>
-            <Link href="/admin/portal/recall" className="btn-ghost">Altas de llamadas</Link>
-            <Link href="/admin/portal/leads" className="btn-ghost">Leads sin cerrar</Link>
-            <Link href="/admin/portal/web-quotes" className="btn-ghost">Presupuestos de web</Link>
-            <Link href="/admin/portal/settings/billing" className="btn-ghost">Configuración de Stripe</Link>
-            <Link href="/admin/portal/settings/telephony" className="btn-ghost">Telefonía</Link>
-            <Link href="/admin/portal/settings/meta" className="btn-ghost">Meta</Link>
-            <Link href="/admin/portal/settings/integrations" className="btn-ghost">Integraciones</Link>
-            <Link href="/admin/portal/settings/seo" className="btn-ghost">SEO con IA</Link>
-            <Link href="/admin/portal/support" className="btn-ghost">Solicitudes de ayuda</Link>
             <form action="/api/portal/operator" method="post">
               <input type="hidden" name="mode" value="disable" />
               <input type="hidden" name="return_to" value="/admin/portal/clients" />
