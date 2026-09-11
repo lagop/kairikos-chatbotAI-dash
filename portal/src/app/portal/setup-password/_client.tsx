@@ -7,14 +7,12 @@ export default function SetupPasswordPage() {
   const params = useSearchParams();
   const email = params.get('email') ?? '';
   // KAIA-13282 — `?token=...` is required by the secure (KAIA-11500)
-  // /api/portal/setup-password flow. The link the operator-driven
-  // PATCH endpoint emails now includes the token; the legacy
-  // send-setup-email route does not, and that flow is broken
-  // separately (see KAIA-13282 — only the email-change branch of
-  // this task emits the token). We forward whatever we got to the
-  // API; if the token is missing, the API responds with
-  // `invalid_or_expired_token` and the page renders the generic
-  // "no se ha podido configurar la contraseña" message.
+  // /api/portal/setup-password flow. Every caller that emails this link
+  // (admin create-client, send-setup-email, the PATCH email-change
+  // branch) mints a real PasswordResetToken via mintSetupPasswordToken
+  // and embeds it here. A missing token at this point means a stale or
+  // hand-edited link, not a known gap — treat it as invalid client-side
+  // rather than round-tripping to the API for the same answer.
   const token = params.get('token') ?? '';
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');

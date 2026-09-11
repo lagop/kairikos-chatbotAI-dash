@@ -10,6 +10,8 @@ const mockState = vi.hoisted(() => ({
   createChatbotClient: vi.fn(),
   createUser: vi.fn(),
   createChatbotClientUser: vi.fn(),
+  updateManyPasswordResetToken: vi.fn(),
+  createPasswordResetToken: vi.fn(),
 }));
 
 const mockTx = {
@@ -21,6 +23,10 @@ const mockTx = {
 const mockPrisma = {
   $transaction: (fn: (tx: typeof mockTx) => unknown) => fn(mockTx),
   chatbotClient: { findUnique: (...args: unknown[]) => mockState.findUniqueChatbotClient(...args) },
+  passwordResetToken: {
+    updateMany: (...args: unknown[]) => mockState.updateManyPasswordResetToken(...args),
+    create: (...args: unknown[]) => mockState.createPasswordResetToken(...args),
+  },
 } as unknown as import('@prisma/client').PrismaClient;
 
 beforeEach(() => {
@@ -28,6 +34,8 @@ beforeEach(() => {
   mockState.createChatbotClient.mockReset().mockResolvedValue({ id: 'client_new_1' });
   mockState.createUser.mockReset().mockResolvedValue({ id: 'user_new_1' });
   mockState.createChatbotClientUser.mockReset().mockResolvedValue({ id: 'cu_new_1' });
+  mockState.updateManyPasswordResetToken.mockReset().mockResolvedValue({ count: 0 });
+  mockState.createPasswordResetToken.mockReset().mockResolvedValue({ id: 'prt_1' });
 });
 
 describe('createClientByOperator', () => {
@@ -66,5 +74,22 @@ describe('createClientByOperator', () => {
 
     expect(result).toEqual({ ok: false, error: 'client_already_exists' });
     expect(mockState.createChatbotClient).not.toHaveBeenCalled();
+  });
+});
+
+describe('mintSetupPasswordToken', () => {
+  it('burns unused tokens for the email, stores only the hash, and returns the plaintext token', async () => {
+    const { mintSetupPasswordToken } = await import('@/lib/admin-client-onboarding');
+    const token = await mintSetupPasswordToken(mockPrisma, '  Aurora@Example.com  ');
+
+    expect(token).toMatch(/^[a-f0-9]{64}$/);
+    expect(mockState.updateManyPasswordResetToken).toHaveBeenCalledWith({
+      where: { email: 'aurora@example.com', usedAt: null },
+      data: { usedAt: expect.any(Date) },
+    });
+    const createCall = mockState.createPasswordResetToken.mock.calls[0][0];
+    expect(createCall.data.email).toBe('aurora@example.com');
+    expect(createCall.data.tokenHash).not.toBe(token);
+    expect(createCall.data.expiresAt.getTime()).toBeGreaterThan(Date.now());
   });
 });

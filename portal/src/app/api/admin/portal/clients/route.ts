@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { isBackendConfigured, PORTAL_API_BASE_URL } from '@/lib/supabase';
 import { authenticateAdminRequest } from '@/lib/operator-session';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
-import { createClientByOperator } from '@/lib/admin-client-onboarding';
+import { createClientByOperator, mintSetupPasswordToken } from '@/lib/admin-client-onboarding';
 import { activateClientProductForOperator } from '@/lib/client-product-activation';
 import { createProductCheckoutSession } from '@/lib/stripe-billing';
 import { sendSetupPassword, sendEmail } from '@/lib/auth-email';
@@ -128,8 +128,16 @@ export async function POST(req: NextRequest) {
   // operador puede reenviarlo a mano (POST .../send-setup-email, ya
   // existente) si Resend falla en este momento — un fallo de correo no
   // debe deshacer el alta ni los productos ya activados.
+  //
+  // El enlace necesita un PasswordResetToken real (KAIA-13282): la ruta
+  // /api/portal/setup-password exige un token válido desde el arreglo
+  // de seguridad KAIA-11500, y un enlace sin él siempre se rechaza en
+  // el propio cliente como "El enlace no es válido" antes de llegar a
+  // hacer ningún POST.
   try {
-    const setupUrl = `${process.env.NEXT_PUBLIC_PORTAL_URL ?? 'http://localhost:3001'}/portal/setup-password?email=${encodeURIComponent(email.toLowerCase().trim())}`;
+    const normalizedEmail = email.toLowerCase().trim();
+    const token = await mintSetupPasswordToken(prisma, normalizedEmail);
+    const setupUrl = `${process.env.NEXT_PUBLIC_PORTAL_URL ?? 'http://localhost:3001'}/portal/setup-password?email=${encodeURIComponent(normalizedEmail)}&token=${encodeURIComponent(token)}`;
     await sendSetupPassword({ to: email, setupUrl });
   } catch (err) {
     logError('admin_clients.setup_email_failed', err, { clientId }, 'warn');

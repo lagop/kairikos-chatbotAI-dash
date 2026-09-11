@@ -1,16 +1,20 @@
 // KAIA-2103 — Admin: trigger a setup-password email for a client user.
-// Sends an email with a direct link to set the initial password (no token needed,
-// the email itself is the auth signal — sent to a known, approved address).
 //
-// KAIA-13282 — refactored to share the canonical sendSetupPassword helper
-// in src/lib/auth-email.ts with the new PATCH /api/admin/portal/clients/[id]
-// path that fires on email change.
+// KAIA-13282 — the link used to be built without a token, on the theory
+// that the email itself was the auth signal (sent to a known, approved
+// address). That stopped being true once /api/portal/setup-password
+// started requiring a valid PasswordResetToken (KAIA-11500's security
+// fix) — a token-less link here has always been rejected client-side
+// as "El enlace no es válido" before it could even reach that route.
+// Fixed by minting one the same way the PATCH /api/admin/portal/clients/[id]
+// path (email-change branch) already did correctly.
 
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateAdminRequest } from '@/lib/operator-session';
 import { sendSetupPassword } from '@/lib/auth-email';
+import { mintSetupPasswordToken } from '@/lib/admin-client-onboarding';
 
 const SendSetupEmailSchema = z.object({
   email: z.string().email(),
@@ -68,7 +72,8 @@ export async function POST(
     return NextResponse.json({ error: 'password_already_set' }, { status: 409 });
   }
 
-  const setupUrl = `${PORTAL_BASE_URL}/portal/setup-password?email=${encodeURIComponent(normalizedEmail)}`;
+  const token = await mintSetupPasswordToken(prisma, normalizedEmail);
+  const setupUrl = `${PORTAL_BASE_URL}/portal/setup-password?email=${encodeURIComponent(normalizedEmail)}&token=${encodeURIComponent(token)}`;
 
   try {
     await sendSetupPassword({ to: normalizedEmail, setupUrl });

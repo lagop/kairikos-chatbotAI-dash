@@ -1,6 +1,8 @@
 import 'server-only';
+import * as crypto from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import { DEFAULT_TENANT_ID } from './tenant';
+import { SETUP_EMAIL_LINK_EXPIRY_DAYS } from './auth-email';
 
 // =============================================================================
 // Alta manual de cliente desde el panel de operador.
@@ -93,4 +95,36 @@ export async function createClientByOperator(
   });
 
   return { ok: true, ...result, isNewClient: true };
+}
+
+/**
+ * Mints a fresh PasswordResetToken for `email` so the customer can
+ * complete /portal/setup-password — that route has required a valid
+ * token since the KAIA-11500 security fix, but the setup-email callers
+ * kept building links without one (KAIA-13282: caught by an operator
+ * hitting "El enlace no es válido" on a manually-created client, since
+ * the unit tests mock this module and never exercise the real link).
+ * Burns any unused tokens for the same email first, same shape as
+ * trigger-password-reset/route.ts and forgot-password/route.ts, which
+ * mint against the same table the same way. Returns the plaintext
+ * token for the caller to embed in the setup URL — only its SHA-256
+ * hash is stored.
+ */
+export async function mintSetupPasswordToken(prisma: PrismaClient, email: string): Promise<string> {
+  const normalizedEmail = email.toLowerCase().trim();
+
+  await prisma.passwordResetToken.updateMany({
+    where: { email: normalizedEmail, usedAt: null },
+    data: { usedAt: new Date() },
+  });
+
+  const raw = crypto.randomBytes(32).toString('hex');
+  const hash = crypto.createHash('sha256').update(raw).digest('hex');
+  const expiresAt = new Date(Date.now() + SETUP_EMAIL_LINK_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+
+  await prisma.passwordResetToken.create({
+    data: { email: normalizedEmail, tokenHash: hash, expiresAt },
+  });
+
+  return raw;
 }
