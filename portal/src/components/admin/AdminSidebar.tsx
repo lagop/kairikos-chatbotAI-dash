@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ADMIN_NAV, type AdminNavItem } from '@/lib/admin-nav';
+import { ADMIN_NAV, ADMIN_HOME_ITEM, type AdminNavItem } from '@/lib/admin-nav';
 import { ADMIN_GROUP_ICON, ADMIN_GROUP_ICON_FALLBACK } from '@/components/admin/admin-nav-icons';
 
 // =============================================================================
@@ -19,11 +19,36 @@ import { ADMIN_GROUP_ICON, ADMIN_GROUP_ICON_FALLBACK } from '@/components/admin/
 // =============================================================================
 
 function isItemActive(item: AdminNavItem, pathname: string): boolean {
+  // /admin/portal (Inicio) es prefijo literal de TODAS las demás rutas
+  // del panel (/admin/portal/clients, /admin/portal/recall…) — sin este
+  // caso especial, "Inicio" saldría resaltado en cualquier página,
+  // mismo motivo por el que PortalSidebar hace lo mismo con '/portal'.
+  if (item.href === '/admin/portal') return pathname === '/admin/portal';
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
 function NavList({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
+  const homeActive = isItemActive(ADMIN_HOME_ITEM, pathname);
   return (
+    <>
+      <Link
+        href={ADMIN_HOME_ITEM.href}
+        aria-current={homeActive ? 'page' : undefined}
+        data-testid="admin-sidebar-link-admin-portal"
+        onClick={onNavigate}
+        className={[
+          'mb-5 flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition',
+          homeActive
+            ? 'bg-kairikos-surface text-kairikos-text'
+            : 'text-kairikos-muted hover:bg-kairikos-surface hover:text-kairikos-text',
+        ].join(' ')}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M3 11.5 12 4l9 7.5" />
+          <path d="M5 10.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9.5" />
+        </svg>
+        {ADMIN_HOME_ITEM.label}
+      </Link>
     <ul className="space-y-5">
       {ADMIN_NAV.map((group) => (
         <li key={group.label}>
@@ -59,11 +84,12 @@ function NavList({ pathname, onNavigate }: { pathname: string; onNavigate?: () =
         </li>
       ))}
     </ul>
+    </>
   );
 }
 
 export function AdminSidebar() {
-  const pathname = usePathname() ?? '/admin/portal/clients';
+  const pathname = usePathname() ?? '/admin/portal';
 
   return (
     <>

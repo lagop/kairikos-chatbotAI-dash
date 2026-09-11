@@ -6,7 +6,7 @@ import { AdminSidebar } from '@/components/admin/AdminSidebar';
 export const metadata: Metadata = {
   title: 'Admin',
   description: 'Vista de soporte para el equipo operador.',
-  alternates: { canonical: '/admin/portal/clients' },
+  alternates: { canonical: '/admin/portal' },
   robots: { index: false, follow: false },
 };
 
@@ -22,7 +22,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-kairikos-border bg-kairikos-bg">
         <div className="mx-auto flex max-w-page items-center justify-between px-4 py-3 sm:px-6">
-          <Link href="/admin/portal/clients" className="flex items-center gap-2">
+          <Link href="/admin/portal" className="flex items-center gap-2">
             <span
               aria-hidden
               className="grid h-8 w-8 place-items-center rounded-lg bg-kairikos-accent2 text-sm font-bold text-kairikos-bg"
