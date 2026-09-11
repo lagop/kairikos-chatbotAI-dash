@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 // =============================================================================
@@ -43,6 +43,45 @@ export function SeoProfileCard({ profile }: { profile: SeoProfile | null }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  // KAIA — this card and SeoKeywordsCard sit on the same page with two
+  // independent "Guardar" buttons. A client can fill this one in, save
+  // the OTHER card instead (or navigate away thinking one save covers
+  // both), and lose everything typed here with no error ever shown —
+  // confirmed against production: a real client had keywords saved but
+  // no business-info audit row at all, meaning this card's save was
+  // simply never clicked. `savedValues` tracks what's actually
+  // persisted so the UI can say so before that happens again, instead
+  // of failing silently.
+  const [savedValues, setSavedValues] = useState({
+    businessDescription: profile?.businessDescription ?? '',
+    targetAudience: profile?.targetAudience ?? '',
+    toneOfVoice: profile?.toneOfVoice ?? '',
+    siteUrl: profile?.siteUrl ?? '',
+    cmsType: profile?.cmsType ?? '',
+  });
+
+  const isDirty =
+    businessDescription !== savedValues.businessDescription ||
+    targetAudience !== savedValues.targetAudience ||
+    toneOfVoice !== savedValues.toneOfVoice ||
+    siteUrl !== savedValues.siteUrl ||
+    cmsType !== savedValues.cmsType;
+
+  // Covers the exact failure mode above: reloading or closing the tab
+  // with unsaved changes here no longer loses them silently — the
+  // browser's own "leave site?" prompt fires instead. Client-side
+  // in-app navigation (e.g. the "← Volver" link) isn't covered by
+  // beforeunload; that's a Next.js router-level concern, deliberately
+  // left out of this fix to keep it scoped to the reported failure.
+  useEffect(() => {
+    if (!isDirty) return;
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
 
   async function save() {
     setError(null);
@@ -67,6 +106,7 @@ export function SeoProfileCard({ profile }: { profile: SeoProfile | null }) {
         return;
       }
       setSaved(true);
+      setSavedValues({ businessDescription, targetAudience, toneOfVoice, siteUrl, cmsType });
       router.refresh();
     } catch (err) {
       setError(`Error de red: ${err instanceof Error ? err.message : 'desconocido'}`);
@@ -148,7 +188,7 @@ export function SeoProfileCard({ profile }: { profile: SeoProfile | null }) {
         </label>
       </div>
 
-      <div>
+      <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
           className="btn-primary"
@@ -158,6 +198,11 @@ export function SeoProfileCard({ profile }: { profile: SeoProfile | null }) {
         >
           {saving ? 'Guardando…' : 'Guardar'}
         </button>
+        {isDirty && !saving ? (
+          <p className="text-sm text-kairikos-warning" data-testid="seo-profile-unsaved">
+            Tienes cambios sin guardar en esta sección.
+          </p>
+        ) : null}
       </div>
 
       {error ? (
@@ -165,7 +210,7 @@ export function SeoProfileCard({ profile }: { profile: SeoProfile | null }) {
           {error}
         </p>
       ) : null}
-      {saved && !error ? (
+      {saved && !error && !isDirty ? (
         <p className="text-sm text-kairikos-success" data-testid="seo-profile-saved">
           Guardado.
         </p>
