@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ADMIN_NAV, type AdminNavItem } from '@/lib/admin-nav';
+import { ADMIN_GROUP_ICON, ADMIN_GROUP_ICON_FALLBACK } from '@/components/admin/admin-nav-icons';
 
 // =============================================================================
 // Barra lateral del panel de operador. Mismo patrón que
@@ -26,8 +27,13 @@ function NavList({ pathname, onNavigate }: { pathname: string; onNavigate?: () =
     <ul className="space-y-5">
       {ADMIN_NAV.map((group) => (
         <li key={group.label}>
-          <p className="px-3 text-[11px] font-semibold uppercase tracking-wider text-kairikos-muted">{group.label}</p>
-          <ul className="mt-2 space-y-1">
+          <p className="flex items-center gap-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-kairikos-muted">
+            <span className="shrink-0 text-kairikos-muted" aria-hidden>
+              {ADMIN_GROUP_ICON[group.label] ?? ADMIN_GROUP_ICON_FALLBACK}
+            </span>
+            {group.label}
+          </p>
+          <ul className="mt-2 space-y-0.5">
             {group.items.map((item) => {
               const isActive = isItemActive(item, pathname);
               return (
@@ -38,7 +44,7 @@ function NavList({ pathname, onNavigate }: { pathname: string; onNavigate?: () =
                     data-testid={`admin-sidebar-link-${item.href.replace(/\//g, '-')}`}
                     onClick={onNavigate}
                     className={[
-                      'block rounded-xl px-3 py-2 text-sm transition',
+                      'block rounded-lg px-3 py-1 text-sm leading-tight transition',
                       isActive
                         ? 'bg-kairikos-surface text-kairikos-text font-medium'
                         : 'text-kairikos-muted hover:bg-kairikos-surface hover:text-kairikos-text',
