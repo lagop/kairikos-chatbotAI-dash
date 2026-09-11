@@ -467,3 +467,38 @@ export async function countActiveSubscriptionsForProduct(productId: string): Pro
     where: { status: { in: ['active', 'trialing'] }, clientProduct: { productId } },
   });
 }
+
+/**
+ * Flips Product.selfServeEligible (WP-31) — whether a tier shows up on
+ * /empezar, the public signup page. Deliberately independent of
+ * bootstrap status: an operator may want a tier visible on Stripe
+ * before deciding it's ready for a stranger to buy without ever
+ * talking to anyone, or vice versa. No Stripe call, no
+ * already_bootstrapped/concurrent_modification guard needed — this
+ * column has no Stripe-side counterpart to drift out of sync with.
+ */
+export async function setSelfServeEligible(
+  productId: string,
+  eligible: boolean,
+  actor: CatalogActor,
+): Promise<CatalogMutationResult> {
+  const product = await prisma.product.findUniqueOrThrow({ where: { id: productId } });
+  if (product.selfServeEligible === eligible) {
+    return { ok: true, product };
+  }
+
+  const [updated] = await prisma.$transaction([
+    prisma.product.update({ where: { id: product.id }, data: { selfServeEligible: eligible } }),
+    prisma.stripeCatalogAudit.create({
+      data: {
+        productId: product.id,
+        action: 'self_serve_eligibility_changed',
+        before: { selfServeEligible: product.selfServeEligible },
+        after: { selfServeEligible: eligible },
+        actorOperatorId: actor.operatorId,
+        actorEmail: actor.operatorEmail,
+      },
+    }),
+  ]);
+  return { ok: true, product: updated };
+}

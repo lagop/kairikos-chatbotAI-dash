@@ -59,6 +59,7 @@ import {
   countActiveSubscriptionsForProduct,
   updateDraftPricing,
   resetForModeMismatch,
+  setSelfServeEligible,
 } from '@/lib/stripe-catalog';
 
 const ACTOR = { operatorId: 'op_1', operatorEmail: 'lucia@kairikos.com' };
@@ -465,5 +466,41 @@ describe('countActiveSubscriptionsForProduct', () => {
     expect(mockState.subscriptionCount).toHaveBeenCalledWith({
       where: { status: { in: ['active', 'trialing'] }, clientProduct: { productId: 'prod_reviews_basic' } },
     });
+  });
+});
+
+describe('setSelfServeEligible', () => {
+  it('flips the flag and audits self_serve_eligibility_changed with a before/after snapshot, no Stripe call', async () => {
+    mockState.findUniqueOrThrow.mockResolvedValueOnce({ ...UNBOOTSTRAPPED_PRODUCT, selfServeEligible: false });
+    mockState.update.mockResolvedValueOnce({ ...UNBOOTSTRAPPED_PRODUCT, selfServeEligible: true });
+
+    const result = await setSelfServeEligible('prod_reviews_basic', true, ACTOR);
+
+    expect(result).toEqual({ ok: true, product: { ...UNBOOTSTRAPPED_PRODUCT, selfServeEligible: true } });
+    expect(mockState.update).toHaveBeenCalledWith({
+      where: { id: 'prod_reviews_basic' },
+      data: { selfServeEligible: true },
+    });
+    expect(mockState.auditCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'self_serve_eligibility_changed',
+          before: { selfServeEligible: false },
+          after: { selfServeEligible: true },
+        }),
+      }),
+    );
+    expect(mockState.productsCreate).not.toHaveBeenCalled();
+    expect(mockState.pricesCreate).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op (no write, no audit row) when the value already matches', async () => {
+    mockState.findUniqueOrThrow.mockResolvedValueOnce({ ...UNBOOTSTRAPPED_PRODUCT, selfServeEligible: true });
+
+    const result = await setSelfServeEligible('prod_reviews_basic', true, ACTOR);
+
+    expect(result).toEqual({ ok: true, product: { ...UNBOOTSTRAPPED_PRODUCT, selfServeEligible: true } });
+    expect(mockState.update).not.toHaveBeenCalled();
+    expect(mockState.auditCreate).not.toHaveBeenCalled();
   });
 });
