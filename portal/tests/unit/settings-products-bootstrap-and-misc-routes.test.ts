@@ -4,6 +4,7 @@
 // POST .../stripe/active-mode
 // POST .../products/[productId]/reconcile
 // GET  .../products/[productId]/impact
+// POST .../products/[productId]/self-serve-eligible
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -20,6 +21,7 @@ const mockState = vi.hoisted(() => ({
   countActiveSubscriptionsForProduct: vi.fn(),
   getStripeCredentialStatus: vi.fn(),
   setActiveStripeMode: vi.fn(),
+  setSelfServeEligible: vi.fn(),
 }));
 
 vi.mock('@/lib/operator-session', () => ({
@@ -46,6 +48,7 @@ vi.mock('@/lib/stripe-catalog', () => ({
   bootstrapStripeProductForTier: (...args: unknown[]) => mockState.bootstrapStripeProductForTier(...args),
   reconcileStripeProductForTier: (...args: unknown[]) => mockState.reconcileStripeProductForTier(...args),
   countActiveSubscriptionsForProduct: (...args: unknown[]) => mockState.countActiveSubscriptionsForProduct(...args),
+  setSelfServeEligible: (...args: unknown[]) => mockState.setSelfServeEligible(...args),
 }));
 
 vi.mock('@/lib/stripe-credentials', () => ({
@@ -71,6 +74,7 @@ beforeEach(() => {
   mockState.countActiveSubscriptionsForProduct.mockReset();
   mockState.getStripeCredentialStatus.mockReset();
   mockState.setActiveStripeMode.mockReset();
+  mockState.setSelfServeEligible.mockReset();
 });
 
 describe('POST .../products/[productId]/bootstrap', () => {
@@ -194,5 +198,42 @@ describe('GET .../products/[productId]/impact', () => {
     const { GET } = await import('@/app/api/admin/portal/settings/products/[productId]/impact/route');
     const res = await GET({} as NextRequest, { params: { productId: 'missing' } });
     expect(res.status).toBe(404);
+  });
+});
+
+describe('POST .../products/[productId]/self-serve-eligible', () => {
+  async function callRoute(eligible: boolean) {
+    const { POST } = await import('@/app/api/admin/portal/settings/products/[productId]/self-serve-eligible/route');
+    return POST(makeRequest({ eligible }), { params: { productId: 'prod_1' } });
+  }
+
+  it('403s without TOTP step-up', async () => {
+    mockState.requireTotpStepUp.mockResolvedValueOnce({ ok: false, status: 403, error: 'totp_step_up_required' });
+    const res = await callRoute(true);
+    expect(res.status).toBe(403);
+    expect(mockState.setSelfServeEligible).not.toHaveBeenCalled();
+  });
+
+  it('400s on an invalid body', async () => {
+    const { POST } = await import('@/app/api/admin/portal/settings/products/[productId]/self-serve-eligible/route');
+    const res = await POST(makeRequest({ eligible: 'yes' }), { params: { productId: 'prod_1' } });
+    expect(res.status).toBe(400);
+    expect(mockState.setSelfServeEligible).not.toHaveBeenCalled();
+  });
+
+  it('404s when the product does not exist', async () => {
+    mockState.findUniqueProduct.mockResolvedValueOnce(null);
+    const res = await callRoute(true);
+    expect(res.status).toBe(404);
+  });
+
+  it('200s and passes the operator actor through', async () => {
+    mockState.setSelfServeEligible.mockResolvedValueOnce({ ok: true, product: { id: 'prod_1', selfServeEligible: true } });
+    const res = await callRoute(true);
+    expect(res.status).toBe(200);
+    expect(mockState.setSelfServeEligible).toHaveBeenCalledWith('prod_1', true, {
+      operatorId: 'op_1',
+      operatorEmail: 'lucia@kairikos.com',
+    });
   });
 });

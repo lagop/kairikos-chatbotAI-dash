@@ -34,6 +34,10 @@ export interface ProductRow {
   stripeRecurringPriceId: string | null;
   stripeSetupPriceId: string | null;
   stripePriceMode: StripeMode | null;
+  /** WP-31 — whether this tier shows up on /empezar, the public signup
+   *  page. Independent of bootstrap status: a tier can be on Stripe
+   *  without being self-serve, or vice versa. */
+  selfServeEligible: boolean;
 }
 
 interface PartialFailure {
@@ -240,6 +244,31 @@ export function StripeCatalogSettingsPanel({
         } else if (body.error === 'partial_failure') {
           setPartialFailures((m) => ({ ...m, [product.id]: body as unknown as PartialFailure }));
           showToast({ kind: 'error', message: 'Se creó en Stripe pero no se guardó aquí — usa "Recuperar".' });
+        } else {
+          showToast({ kind: 'error', message: errorLabel(body.error as string) });
+        }
+      },
+    );
+  }
+
+  async function toggleSelfServe(product: ProductRow) {
+    const eligible = !product.selfServeEligible;
+    await requestWithStepUp(
+      `self-serve-${product.id}`,
+      () =>
+        fetch(`/api/admin/portal/settings/products/${product.id}/self-serve-eligible`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ eligible }),
+        }),
+      async (res) => {
+        const body = await safeJson(res);
+        if (res.ok) {
+          setProducts((rows) => rows.map((r) => (r.id === product.id ? { ...r, ...(body.product as object) } : r)));
+          showToast({
+            kind: 'success',
+            message: eligible ? `${product.name}: visible en /empezar.` : `${product.name}: ya no visible en /empezar.`,
+          });
         } else {
           showToast({ kind: 'error', message: errorLabel(body.error as string) });
         }
@@ -614,6 +643,19 @@ export function StripeCatalogSettingsPanel({
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
+                      <label
+                        className="flex items-center gap-1.5 text-xs text-kairikos-muted"
+                        title="Si está marcado, este tier aparece en /empezar (alta pública, sin operador)."
+                      >
+                        <input
+                          type="checkbox"
+                          checked={product.selfServeEligible}
+                          disabled={busyKey === `self-serve-${product.id}`}
+                          onChange={() => toggleSelfServe(product)}
+                          data-testid={`stripe-self-serve-toggle-${product.id}`}
+                        />
+                        Autoservicio
+                      </label>
                       {!product.isActive ? (
                         <span
                           className="rounded-full border border-kairikos-border bg-kairikos-surface2 px-3 py-1 text-xs text-kairikos-muted"

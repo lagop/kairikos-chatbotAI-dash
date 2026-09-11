@@ -44,6 +44,7 @@ export default async function AdminBillingSettingsPage() {
         stripeRecurringPriceId: true,
         stripeSetupPriceId: true,
         stripePriceMode: true,
+        selfServeEligible: true,
       },
     }),
   ]);
