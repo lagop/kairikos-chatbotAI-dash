@@ -22,6 +22,11 @@ export interface AdminNavGroup {
   readonly items: readonly AdminNavItem[];
 }
 
+// Fuera de ADMIN_NAV a propósito, mismo motivo que PORTAL_PROFILE_ITEM
+// en portal-nav.ts: no es una categoría, es el propio inicio del panel
+// — se renderiza aparte, antes de los grupos.
+export const ADMIN_HOME_ITEM: AdminNavItem = { href: '/admin/portal', label: 'Inicio' };
+
 export const ADMIN_NAV: readonly AdminNavGroup[] = [
   {
     label: 'Clientes',
