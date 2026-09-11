@@ -7,6 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockState = vi.hoisted(() => ({
   authenticateAdminRequest: vi.fn(),
   createClientByOperator: vi.fn(),
+  mintSetupPasswordToken: vi.fn(),
   activateClientProductForOperator: vi.fn(),
   createProductCheckoutSession: vi.fn(),
   findUniqueProduct: vi.fn(),
@@ -20,6 +21,7 @@ vi.mock('@/lib/operator-session', () => ({
 
 vi.mock('@/lib/admin-client-onboarding', () => ({
   createClientByOperator: (...args: unknown[]) => mockState.createClientByOperator(...args),
+  mintSetupPasswordToken: (...args: unknown[]) => mockState.mintSetupPasswordToken(...args),
 }));
 
 vi.mock('@/lib/client-product-activation', () => ({
@@ -56,6 +58,7 @@ const PRODUCT_B = '22222222-2222-2222-2222-222222222222';
 beforeEach(() => {
   mockState.authenticateAdminRequest.mockReset().mockResolvedValue({ ok: true, operatorId: 'op_1' });
   mockState.createClientByOperator.mockReset().mockResolvedValue({ ok: true, clientId: 'client_1', clientUserId: 'cu_1', isNewClient: true });
+  mockState.mintSetupPasswordToken.mockReset().mockResolvedValue('a'.repeat(64));
   mockState.activateClientProductForOperator.mockReset().mockResolvedValue({ ok: true, clientProductId: 'cp_1', productCode: 'seo', wasReactivated: false });
   mockState.createProductCheckoutSession.mockReset().mockResolvedValue({ ok: true, url: 'https://checkout.stripe.com/pay/cs_1' });
   mockState.findUniqueProduct.mockReset().mockResolvedValue({ name: 'SEO con IA' });
@@ -97,7 +100,10 @@ describe('POST /api/admin/portal/clients — creating with products', () => {
     expect(body.clientId).toBe('client_1');
     expect(body.activated).toEqual([]);
     expect(body.checkoutLinksSent).toBe(0);
-    expect(mockState.sendSetupPassword).toHaveBeenCalledWith(expect.objectContaining({ to: 'a@b.com' }));
+    expect(mockState.mintSetupPasswordToken).toHaveBeenCalledWith(expect.anything(), 'a@b.com');
+    expect(mockState.sendSetupPassword).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'a@b.com', setupUrl: expect.stringContaining(`token=${'a'.repeat(64)}`) }),
+    );
   });
 
   it("activates a product directly for mode='active' without touching Stripe", async () => {
