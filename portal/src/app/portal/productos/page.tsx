@@ -107,8 +107,21 @@ export default async function PortalProductsPage({
     .sort((a, b) => a.subscribedAt.getTime() - b.subscribedAt.getTime());
   const canRequestWebQuote = !webRows.some((cp) => cp.status === 'quote_pending');
 
+  // WP-31 follow-up — selfServeEligible is now the single gate for every
+  // client self-serve purchase path, not just the public /empezar
+  // signup: a tier the operator hasn't cleared for self-serve yet (e.g.
+  // 'recall', pending Meta template approval + the article 28 filing —
+  // see /empezar's own query for the full reasoning) must not appear
+  // here either. isActive alone used to be the only filter, which meant
+  // any already-logged-in client — regardless of which product got them
+  // an account — could self-serve-buy a tier that was only ever meant
+  // to be sold by an operator, with a real Stripe charge. This is
+  // UI-layer defense; the actual authorization gate is in
+  // POST /api/portal/billing/checkout, which now checks the same flag —
+  // never trust the tile being hidden as the only thing stopping a
+  // direct POST.
   const allProducts = await prisma.product.findMany({
-    where: { isActive: true },
+    where: { isActive: true, selfServeEligible: true },
     orderBy: [{ code: 'asc' }, { priceCents: 'asc' }],
     select: { id: true, code: true, tier: true, priceCents: true, setupFeeCents: true, currency: true },
   });

@@ -18,6 +18,7 @@ const mockState = vi.hoisted(() => ({
   resolveClientFromSession: vi.fn(),
   getSession: vi.fn(),
   createProductCheckoutSession: vi.fn(),
+  findUniqueProduct: vi.fn(),
 }));
 
 vi.mock('@/lib/portal-session', () => ({
@@ -30,6 +31,7 @@ vi.mock('@/lib/session', () => ({
 
 vi.mock('@/lib/prisma', () => ({
   isDatabaseConfigured: true,
+  prisma: { product: { findUnique: (...args: unknown[]) => mockState.findUniqueProduct(...args) } },
 }));
 
 vi.mock('@/lib/stripe-billing', () => ({
@@ -50,6 +52,7 @@ beforeEach(() => {
   mockState.resolveClientFromSession.mockReset().mockResolvedValue(RESOLVED);
   mockState.getSession.mockReset().mockResolvedValue({ hasClientAccess: true });
   mockState.createProductCheckoutSession.mockReset().mockResolvedValue({ ok: true, url: 'https://checkout.stripe.com/pay/cs_test_1' });
+  mockState.findUniqueProduct.mockReset().mockResolvedValue({ selfServeEligible: true });
 });
 
 describe('POST /api/portal/billing/checkout — auth and guards', () => {
@@ -126,5 +129,35 @@ describe('POST /api/portal/billing/checkout — delegation and status mapping', 
     const body = await res.clone().json();
     expect(res.status).toBe(503);
     expect(body.detail).toBe('stripe_not_configured');
+  });
+});
+
+describe('POST /api/portal/billing/checkout — self-serve eligibility gate', () => {
+  it('400s with product_not_self_serve_eligible for a real product an operator has to assign by hand (e.g. recall)', async () => {
+    mockState.findUniqueProduct.mockResolvedValueOnce({ selfServeEligible: false });
+    const { POST } = await import('@/app/api/portal/billing/checkout/route');
+    const res = await POST(makeRequest({ productId: PRODUCT_ID }));
+    const body = await res.clone().json();
+    expect(res.status).toBe(400);
+    expect(body.error).toBe('product_not_self_serve_eligible');
+    expect(mockState.createProductCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it('lets a genuinely missing productId fall through to product_not_found (404), not this gate', async () => {
+    mockState.findUniqueProduct.mockResolvedValueOnce(null);
+    mockState.createProductCheckoutSession.mockResolvedValueOnce({ ok: false, error: 'product_not_found' });
+    const { POST } = await import('@/app/api/portal/billing/checkout/route');
+    const res = await POST(makeRequest({ productId: PRODUCT_ID }));
+    const body = await res.clone().json();
+    expect(res.status).toBe(404);
+    expect(body.error).toBe('product_not_found');
+    expect(mockState.createProductCheckoutSession).toHaveBeenCalled();
+  });
+
+  it('proceeds to checkout as normal when the product is self-serve eligible', async () => {
+    const { POST } = await import('@/app/api/portal/billing/checkout/route');
+    const res = await POST(makeRequest({ productId: PRODUCT_ID }));
+    expect(res.status).toBe(200);
+    expect(mockState.createProductCheckoutSession).toHaveBeenCalled();
   });
 });
