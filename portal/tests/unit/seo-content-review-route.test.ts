@@ -1,9 +1,12 @@
 // =============================================================================
-// SEO con IA, Fase C — unit tests for
+// SEO con IA, Fase C/6 — unit tests for
 // PATCH /api/admin/portal/seo/[clientId]/content-drafts/[draftId]. Same
 // conventions as seo-audit-route.test.ts, including the legacy-auth
-// regression coverage. Covers approve (which now also attempts an
-// immediate WordPress publish), reject, and retry_publish.
+// regression coverage. Covers approve (Fase 6: moves the draft to
+// 'pending_client_review', no longer publishes — see
+// seo-portal-content-drafts-route.test.ts for the client's own
+// approve/publish), reject, and retry_publish (still WordPress-facing,
+// for a publish that failed after client approval).
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -146,52 +149,24 @@ describe('PATCH action=reject', () => {
   });
 });
 
-describe('PATCH action=approve — approves then immediately attempts to publish', () => {
-  it('marks approved, publishes successfully, and returns status=published', async () => {
+describe('PATCH action=approve — moves the draft to the client, never publishes here', () => {
+  it("marks pending_client_review, stamps clientReviewRequestedAt, and never touches WordPress", async () => {
     const res = await patch('client_1', 'draft_1', { action: 'approve' });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({ ok: true, draftId: 'draft_1', status: 'published', publishError: undefined });
+    expect(body).toEqual({ ok: true, draftId: 'draft_1', status: 'pending_client_review' });
 
-    expect(mockState.draftUpdate).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({ data: expect.objectContaining({ status: 'approved', reviewedBy: 'op@kairikos.com' }) }),
-    );
-    expect(mockState.publishDraftToWordPress).toHaveBeenCalledWith(
-      PROFILE_WITH_CREDS,
-      { title: FULL_DRAFT.title, bodyHtml: FULL_DRAFT.bodyHtml, metaDescription: FULL_DRAFT.metaDescription },
-    );
-    expect(mockState.draftUpdate).toHaveBeenNthCalledWith(
-      2,
+    expect(mockState.draftUpdate).toHaveBeenCalledTimes(1);
+    expect(mockState.draftUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ status: 'published', wordpressPostId: '42', wordpressPostUrl: 'https://negocio.example/articulo' }),
+        data: expect.objectContaining({
+          status: 'pending_client_review',
+          reviewedBy: 'op@kairikos.com',
+          clientReviewRequestedAt: expect.any(Date),
+        }),
       }),
     );
-  });
-
-  it('marks the draft publish_failed (not a request failure) when WordPress credentials are missing', async () => {
-    mockState.hasWordPressCredentials.mockReturnValue(false);
-    const res = await patch('client_1', 'draft_1', { action: 'approve' });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body).toEqual({ ok: true, draftId: 'draft_1', status: 'publish_failed', publishError: 'missing_wordpress_credentials' });
     expect(mockState.publishDraftToWordPress).not.toHaveBeenCalled();
-    expect(mockState.draftUpdate).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({ data: expect.objectContaining({ status: 'publish_failed', publishError: 'missing_wordpress_credentials' }) }),
-    );
-  });
-
-  it('marks the draft publish_failed when the WordPress request itself fails, but the approval still succeeds', async () => {
-    mockState.publishDraftToWordPress.mockResolvedValue({ ok: false, error: 'wordpress_error:401:forbidden' });
-    const res = await patch('client_1', 'draft_1', { action: 'approve' });
-    const body = await res.json();
-    expect(body.status).toBe('publish_failed');
-    expect(body.publishError).toBe('wordpress_error:401:forbidden');
-    expect(mockState.draftUpdate).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({ data: expect.objectContaining({ status: 'approved' }) }),
-    );
   });
 
   it("409s when the draft is not currently 'drafted'", async () => {
@@ -206,8 +181,7 @@ describe('PATCH action=approve — approves then immediately attempts to publish
     const res = await patch('client_1', 'draft_1', { action: 'approve' });
     expect(res.status).toBe(200);
     expect(mockState.operatorFindUnique).not.toHaveBeenCalled();
-    expect(mockState.draftUpdate).toHaveBeenNthCalledWith(
-      1,
+    expect(mockState.draftUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ reviewedBy: 'legacy_operator' }) }),
     );
   });

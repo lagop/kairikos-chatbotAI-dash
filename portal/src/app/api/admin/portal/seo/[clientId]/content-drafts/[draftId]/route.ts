@@ -10,30 +10,35 @@ export const runtime = 'nodejs';
 export const maxDuration = 30;
 
 // =============================================================================
-// SEO con IA, Fase C — PATCH /api/admin/portal/seo/[clientId]/content-drafts/[draftId]
+// SEO con IA, Fase C/6 — PATCH /api/admin/portal/seo/[clientId]/content-drafts/[draftId]
 //
-// The operator's approve/reject decision on an AI-drafted article, plus
-// the publish step: approving a draft attempts to publish it to
-// WordPress IMMEDIATELY, synchronously, in the same request — a single
-// REST call, not a slow batch job, so there's no reason to defer it to
-// a cron (unlike content GENERATION, which goes through n8n because
-// that step needs an LLM). A publish failure (missing WP creds, the
-// site unreachable, WordPress rejecting the request) does not fail the
-// approval itself — the draft is still marked 'approved', just with
-// status flipped again to 'publish_failed' and the reason recorded, so
-// the operator can fix the underlying issue (e.g. finish the Fase A
-// technical setup) and retry via `action: 'retry_publish'`.
+// The operator's approve/reject decision on an AI-drafted article.
+// Fase 6: approving no longer publishes to WordPress in this request —
+// it moves the draft to 'pending_client_review', where the CLIENT
+// (POST /api/portal/seo/content-drafts/[draftId], a separate route)
+// becomes the second and final gate before anything goes live. This
+// route only ever produces 'pending_client_review' or 'rejected', never
+// 'published'/'publish_failed' directly anymore — those only happen
+// after the client's own approval or their silence past their own
+// veto window (seo-draft-auto-publish.ts).
 //
-// The approve + publish write path is `approveDraft`/`attemptPublishDraft`
-// (lib/seo-content-review.ts), not inline here — Fase 5's auto-approve
-// sweep is a second caller of exactly the same steps.
+// `retry_publish` is the one action here that still touches WordPress
+// directly: a publish that failed AFTER client approval (missing WP
+// creds, the site unreachable, WordPress rejecting the request) is an
+// operator-fixable problem (e.g. finish the Fase A technical setup),
+// not something to bounce back to the client — same reasoning as
+// before Fase 6, just reachable from a later point in the flow now.
 //
-// The client never sees or approves a draft directly — same
-// authenticateAdminRequest + isLegacyAuth guard as every other new
-// operator route this session (audit route, technical-setup route). Fase
-// 5 adds a THIRD reviewer that is neither: the system, past a veto
-// window (seo-draft-auto-approve.ts) — this route stays operator-only,
-// the sweep calls the shared lib directly.
+// The approve write path is `approveDraft` (lib/seo-content-review.ts),
+// not inline here — Fase 5's auto-approve sweep is a second caller of
+// exactly the same step.
+//
+// The client never approves a draft THROUGH THIS route — same
+// authenticateAdminRequest + isLegacyAuth guard as every other operator
+// route this session (audit route, technical-setup route). Two other
+// reviewers exist, neither of them this route: the client themselves
+// (the portal route above) and the system, past either party's veto
+// window (seo-draft-auto-approve.ts, seo-draft-auto-publish.ts).
 // =============================================================================
 
 const BodySchema = z.discriminatedUnion('action', [
@@ -89,12 +94,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { clientId: 
 
     // action === 'approve'
     const result = await approveDraft(prisma, { draftId: draft.id, clientId: params.clientId, reviewedBy });
-    return NextResponse.json({
-      ok: true,
-      draftId: draft.id,
-      status: result.status,
-      publishError: result.publishError,
-    });
+    return NextResponse.json({ ok: true, draftId: draft.id, status: result.status });
   } catch (err) {
     logError('seo_content_review.update_failed', err, { clientId: params.clientId, draftId: params.draftId }, 'warn');
     return NextResponse.json({ error: 'internal_error' }, { status: 500 });

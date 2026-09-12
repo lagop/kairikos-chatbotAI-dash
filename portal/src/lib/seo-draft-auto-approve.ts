@@ -93,9 +93,10 @@ export interface SeoDraftAutoApproveSweepResult {
   /** De ésos, los que de verdad se intentaron en este tick (ver
    *  MAX_AUTO_APPROVALS_PER_TICK). */
   processed: number;
+  /** Fase 6 — approveDraft ya no publica: aprobar solo mueve el
+   *  borrador a 'pending_client_review'. El resultado de publicar (o
+   *  no) es cosa de la segunda ventana, ver seo-draft-auto-publish.ts. */
   approved: number;
-  published: number;
-  publishFailed: number;
   failed: SeoDraftAutoApproveFailure[];
 }
 
@@ -103,8 +104,6 @@ const EMPTY_RESULT: SeoDraftAutoApproveSweepResult = {
   due: 0,
   processed: 0,
   approved: 0,
-  published: 0,
-  publishFailed: 0,
   failed: [],
 };
 
@@ -147,14 +146,12 @@ export async function sweepAutoApprovableSeoDrafts(
 
   for (const draft of batch) {
     try {
-      const approval = await approveDraft(prisma, {
+      await approveDraft(prisma, {
         draftId: draft.id,
         clientId: draft.clientId,
         reviewedBy: AUTO_APPROVE_REVIEWED_BY,
       });
       result.approved += 1;
-      if (approval.status === 'published') result.published += 1;
-      else result.publishFailed += 1;
     } catch (err) {
       logError('seo_draft_auto_approve.draft_failed', err, { clientId: draft.clientId, draftId: draft.id }, 'warn');
       result.failed.push({

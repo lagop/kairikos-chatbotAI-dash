@@ -14,8 +14,10 @@ import { SeoTrendChart, type SeoTrendPoint } from '@/components/portal/SeoTrendC
 import { SeoAnalyticsPicker } from '@/components/portal/SeoAnalyticsPicker';
 import { SeoKeywordsCard } from '@/components/portal/SeoKeywordsCard';
 import { SeoRecommendationsCard } from '@/components/portal/SeoRecommendationsCard';
+import { SeoDraftReviewCard } from '@/components/portal/SeoDraftReviewCard';
 import { buildKeywordTrends } from '@/lib/seo-keywords';
 import { buildRecommendations, parseAuditResult } from '@/lib/seo-recommendations';
+import { computeAutoPublishDeadline } from '@/lib/seo-draft-auto-publish';
 
 export const dynamic = 'force-dynamic';
 
@@ -188,18 +190,37 @@ export default async function PortalSeoPage({
   const audit = profile ? parseAuditResult(profile.lastAuditResult) : null;
   const recommendations = audit ? buildRecommendations(audit) : null;
 
-  // SEO con IA, Fase C — only PUBLISHED articles are ever shown to the
-  // client. Drafts, pending review, rejected, and publish_failed are all
-  // operator-only internal states (see SeoContentDraftsPanel) — the
-  // client never sees or approves a draft, so surfacing anything short
-  // of 'published' here would leak unreviewed content or expose jargon
-  // ("pendiente de revisión") the client has no way to act on.
+  // SEO con IA, Fase C/6 — el cliente solo ve dos estados: PUBLISHED
+  // (ya en su web) y, desde Fase 6, PENDING_CLIENT_REVIEW (el operador
+  // ya lo aprobó internamente, le toca a él la última palabra antes de
+  // que salga en vivo). 'drafted', 'rejected' y 'publish_failed' siguen
+  // siendo operator-only (ver SeoContentDraftsPanel) — jerga interna
+  // sobre la que el cliente no puede ni debe actuar.
   const publishedArticles = profile
     ? await prisma.seoContentDraft.findMany({
         where: { profileId: profile.id, status: 'published' },
         orderBy: { publishedAt: 'desc' },
         select: { id: true, title: true, publishedAt: true, wordpressPostUrl: true },
       })
+    : [];
+
+  const draftsForReview = profile
+    ? await prisma.seoContentDraft.findMany({
+        where: { profileId: profile.id, status: 'pending_client_review' },
+        orderBy: { clientReviewRequestedAt: 'asc' },
+        select: { id: true, title: true, bodyHtml: true, targetKeyword: true, metaDescription: true, clientReviewRequestedAt: true },
+      }).then((rows) =>
+        rows.map((d) => ({
+          id: d.id,
+          title: d.title,
+          bodyHtml: d.bodyHtml,
+          targetKeyword: d.targetKeyword,
+          metaDescription: d.metaDescription,
+          autoPublishDeadline:
+            computeAutoPublishDeadline({ status: 'pending_client_review', clientReviewRequestedAt: d.clientReviewRequestedAt })?.toISOString() ??
+            null,
+        })),
+      )
     : [];
 
   const connection = await prisma.googleSeoConnection.findUnique({
@@ -288,6 +309,8 @@ export default async function PortalSeoPage({
       {recommendations ? (
         <SeoRecommendationsCard recommendations={recommendations} checkedAt={audit?.checkedAt ?? null} />
       ) : null}
+
+      <SeoDraftReviewCard drafts={draftsForReview} />
 
       <section className="card space-y-3" aria-label="Tus artículos" data-testid="seo-articles-card">
         <div>
