@@ -28,6 +28,15 @@
 services:
   app:
     image: ghcr.io/lagop/kairikos-chatbotai-dash/portal-app:latest
+    # Without this, `docker compose up -d` only recreates a container
+    # whose CONFIG changed — an unchanged `:latest` tag string is not a
+    # config change, so a plain redeploy silently kept running the OLD
+    # image underneath the same tag all session, needing a manual
+    # `docker pull` + `--force-recreate` every single time. This makes
+    # every `docker compose up -d` (including whatever Hostinger's own
+    # deploy action runs) always pull first and recreate if the digest
+    # actually changed.
+    pull_policy: always
     container_name: kairikos-portal-app
     restart: unless-stopped
     # dev-ip-port mode: expose the app directly on APP_PORT (default 3001).
@@ -266,7 +275,13 @@ services:
   # itself. Pull `backups/` off-box periodically (e.g. rclone to
   # object storage) once that matters more than shipping features.
   backup:
-    image: postgres:16-alpine
+    # Built from scripts/backup.Dockerfile (build-support-images.yml),
+    # not the bare postgres:16-alpine + a bind-mounted script anymore —
+    # see that Dockerfile's header comment for why: the VPS deploy
+    # pipeline only ever syncs this file's CONTENT, never the rest of
+    # the repo, so a bind-mounted script silently went stale forever.
+    image: ghcr.io/lagop/kairikos-chatbotai-dash/portal-backup:latest
+    pull_policy: always
     container_name: kairikos-portal-backup
     restart: unless-stopped
     environment:
@@ -276,9 +291,7 @@ services:
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
       BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
     volumes:
-      - ./scripts/backup-postgres.sh:/backup-postgres.sh:ro
       - backups:/backups
-    entrypoint: ["/bin/sh", "/backup-postgres.sh"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -297,7 +310,11 @@ services:
   # scheduling logic stays in TypeScript where it is unit-tested rather
   # than in a crontab nobody can test.
   scheduler:
-    image: curlimages/curl:8.11.0
+    # Built from scripts/scheduler.Dockerfile (build-support-images.yml),
+    # not the bare curlimages/curl + a bind-mounted script anymore —
+    # same staleness reasoning as the `backup` service above.
+    image: ghcr.io/lagop/kairikos-chatbotai-dash/portal-scheduler:latest
+    pull_policy: always
     container_name: kairikos-portal-scheduler
     restart: unless-stopped
     environment:
@@ -310,9 +327,6 @@ services:
       # refuses to start without it rather than spinning on 401s, which
       # would look exactly like working.
       CRON_SECRET: ${CRON_SECRET}
-    volumes:
-      - ./scripts/scheduler.sh:/scheduler.sh:ro
-    entrypoint: ["/bin/sh", "/scheduler.sh"]
     depends_on:
       app:
         condition: service_healthy
