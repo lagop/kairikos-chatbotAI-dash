@@ -159,7 +159,14 @@ export function SelfServeSignupForm({ tiers }: { tiers: SignupTierOption[] }) {
         {Array.from(byCode.entries()).map(([code, codeTiers]) => (
           <label
             key={code}
-            className="flex items-center justify-between gap-3 rounded-lg border border-kairikos-border p-3 has-[:checked]:border-kairikos-accent2"
+            // has-[input[type=radio]:checked], not the broader
+            // has-[:checked]: `:checked` also matches a <select>'s
+            // currently selected <option> — always true for every
+            // multi-tier card the moment it renders, radio state or
+            // not — so the generic selector highlighted every card
+            // with a tier dropdown (Chatbot, Prospección, Reseñas)
+            // regardless of which product was actually selected.
+            className="flex items-center justify-between gap-3 rounded-lg border border-kairikos-border p-3 has-[input[type=radio]:checked]:border-kairikos-accent2"
           >
             <span className="flex items-center gap-3">
               <input
