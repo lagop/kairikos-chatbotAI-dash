@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
-import { isDatabaseConfigured } from '@/lib/prisma';
+import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { getSession } from '@/lib/session';
 import { createProductCheckoutSession, type CheckoutSessionError } from '@/lib/stripe-billing';
@@ -22,6 +22,13 @@ const BodySchema = z.object({ productId: z.string().uuid() });
  *   POST /api/portal/billing/checkout
  *   body: { productId: UUID }
  *   200 { url: string }  — redirect the browser here
+ *   400 { error: 'product_not_self_serve_eligible' } — the tier exists and
+ *        is on sale, but not to a client buying it themselves; an operator
+ *        still has to assign it by hand (e.g. 'recall', pending Meta
+ *        template approval + the article 28 filing). Checked here, not
+ *        just left to /portal/productos hiding the tile: this route is the
+ *        real authorization boundary, since nothing stops a client from
+ *        POSTing a productId the UI never showed them.
  *   401 { error: 'unauthorized' }
  *   404 { error: 'product_not_found' | 'product_price_id_missing' | 'product_setup_price_id_missing' }
  *   409 { error: 'already_contracted' }
@@ -71,6 +78,26 @@ export async function POST(req: NextRequest) {
   const body = BodySchema.safeParse(await req.json().catch(() => null));
   if (!body.success) {
     return NextResponse.json({ error: 'invalid_body', details: body.error.flatten() }, { status: 400 });
+  }
+
+  // Same authorization gate as /api/public/self-serve-signup — this is
+  // the OTHER client self-serve entry point (an already-logged-in
+  // client adding a product, vs. a stranger signing up), and needs the
+  // identical check: only a client themselves is gated by this flag.
+  // The operator's own paths (activateClientProductForOperator,
+  // createProductCheckoutSession called from the admin
+  // checkout_link flow) never call this route, so they're unaffected.
+  const product = await prisma.product.findUnique({
+    where: { id: body.data.productId },
+    select: { selfServeEligible: true },
+  });
+  // A genuinely missing productId isn't handled here — that falls
+  // through to createProductCheckoutSession below, which already
+  // returns the correct product_not_found (404). Only short-circuit the
+  // case this route is actually responsible for: a real product that
+  // exists but isn't cleared for self-serve.
+  if (product && !product.selfServeEligible) {
+    return NextResponse.json({ error: 'product_not_self_serve_eligible' }, { status: 400 });
   }
 
   const result = await createProductCheckoutSession({
