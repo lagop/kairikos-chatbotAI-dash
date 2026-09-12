@@ -30,6 +30,10 @@ export interface SignupTierOption {
   priceCents: number;
   setupFeeCents: number;
   currency: string;
+  // 'web' only (WP-31 follow-up): no fixed catalog price — the final
+  // step is a free quote request (POST /api/portal/web-quote/request),
+  // not a Stripe Checkout Session. See the onSubmit branch below.
+  requiresQuote: boolean;
 }
 
 function formatPrice(cents: number, currency: string): string {
@@ -37,6 +41,12 @@ function formatPrice(cents: number, currency: string): string {
 }
 
 function priceSummary(tier: SignupTierOption): string {
+  // 'web' has a real setupFeeCents on the Product row, but the actual
+  // price is negotiated per project via WebQuote once the operator
+  // reviews the brief — showing that number here would read as a fixed
+  // price it isn't. Same "a medida" framing RequestWebQuoteCard already
+  // uses inside the portal.
+  if (tier.requiresQuote) return 'A medida — sin compromiso';
   const recurring = tier.priceCents > 0 ? `${formatPrice(tier.priceCents, tier.currency)}/mes` : null;
   const setup = tier.setupFeeCents > 0 ? `${formatPrice(tier.setupFeeCents, tier.currency)} de alta` : null;
   if (recurring && setup) return `${recurring} + ${setup}`;
@@ -45,7 +55,7 @@ function priceSummary(tier: SignupTierOption): string {
   return 'Precio a confirmar';
 }
 
-type Step = 'idle' | 'creating_account' | 'signing_in' | 'starting_checkout';
+type Step = 'idle' | 'creating_account' | 'signing_in' | 'starting_checkout' | 'requesting_quote';
 
 export function SelfServeSignupForm({ tiers }: { tiers: SignupTierOption[] }) {
   const id = useId();
@@ -124,6 +134,20 @@ export function SelfServeSignupForm({ tiers }: { tiers: SignupTierOption[] }) {
         return;
       }
 
+      const selectedTier = tiers.find((t) => t.productId === selectedProductId);
+      if (selectedTier?.requiresQuote) {
+        setStep('requesting_quote');
+        const quoteRes = await fetch('/api/portal/web-quote/request', { method: 'POST' });
+        if (!quoteRes.ok) {
+          setError('Tu cuenta ya está creada y puedes entrar en /portal. No se pudo enviar la solicitud — inténtalo de nuevo desde ahí.');
+          setStep('idle');
+          return;
+        }
+        const quoteData = (await quoteRes.json()) as { clientProductId: string };
+        window.location.href = `/portal/web/${quoteData.clientProductId}`;
+        return;
+      }
+
       setStep('starting_checkout');
       const checkoutRes = await fetch('/api/portal/billing/checkout', {
         method: 'POST',
@@ -143,6 +167,8 @@ export function SelfServeSignupForm({ tiers }: { tiers: SignupTierOption[] }) {
     }
   }
 
+  const selectedRequiresQuote = tiers.find((t) => t.productId === selectedProductId)?.requiresQuote ?? false;
+
   const buttonLabel =
     step === 'creating_account'
       ? 'Creando tu cuenta…'
@@ -150,7 +176,11 @@ export function SelfServeSignupForm({ tiers }: { tiers: SignupTierOption[] }) {
         ? 'Entrando…'
         : step === 'starting_checkout'
           ? 'Redirigiendo a Stripe…'
-          : 'Crear cuenta y contratar';
+          : step === 'requesting_quote'
+            ? 'Enviando solicitud…'
+            : selectedRequiresQuote
+              ? 'Crear cuenta y solicitar presupuesto'
+              : 'Crear cuenta y contratar';
 
   return (
     <form onSubmit={onSubmit} className="card space-y-5" noValidate>

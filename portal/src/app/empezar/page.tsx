@@ -64,7 +64,36 @@ export default async function EmpezarPage() {
     priceCents: p.priceCents,
     setupFeeCents: p.setupFeeCents,
     currency: p.currency,
+    requiresQuote: false,
   }));
+
+  // 'web' is deliberately outside the selfServeEligible query above —
+  // it has no fixed catalog price (createProductCheckoutSession
+  // rejects it unconditionally with product_requires_quote, same as
+  // /portal/productos's own RequestWebQuoteCard special-case), so it
+  // was invisible on this page entirely: a brand-new prospect with no
+  // prior account had NO public way to ask for a website, only an
+  // existing client could, from inside the portal. Same account
+  // creation as every other tier here, but the final step is
+  // POST /api/portal/web-quote/request (free, no Stripe) instead of a
+  // Checkout Session — see SelfServeSignupForm's requiresQuote branch.
+  const webProduct = await prisma.product.findFirst({
+    where: { code: 'web', isActive: true },
+    select: { id: true, tier: true, priceCents: true, setupFeeCents: true, currency: true },
+  });
+  if (webProduct) {
+    tiers.push({
+      productId: webProduct.id,
+      code: 'web',
+      label: isProductCode('web') ? PRODUCT_CATALOGS.web.label : 'web',
+      tier: webProduct.tier,
+      tierLabel: tierLabel(webProduct.tier),
+      priceCents: webProduct.priceCents,
+      setupFeeCents: webProduct.setupFeeCents,
+      currency: webProduct.currency,
+      requiresQuote: true,
+    });
+  }
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">

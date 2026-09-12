@@ -62,9 +62,16 @@ export async function POST(req: NextRequest) {
 
   const product = await prisma.product.findUnique({
     where: { id: productId },
-    select: { id: true, isActive: true, selfServeEligible: true },
+    select: { id: true, code: true, isActive: true, selfServeEligible: true },
   });
-  if (!product || !product.isActive || !product.selfServeEligible) {
+  // 'web' is the one deliberate exception: selfServeEligible governs
+  // self-serve STRIPE PAYMENT ("can a client pay for this themselves"),
+  // and 'web' never can — it has no fixed price. But account creation
+  // itself is fine for a web prospect; the final step is a free quote
+  // request (POST /api/portal/web-quote/request), which never touches
+  // this flag or Stripe. See SelfServeSignupForm's requiresQuote branch.
+  const eligible = product?.isActive && (product.selfServeEligible || product.code === 'web');
+  if (!product || !eligible) {
     return NextResponse.json({ error: 'product_not_self_serve_eligible' }, { status: 400 });
   }
 

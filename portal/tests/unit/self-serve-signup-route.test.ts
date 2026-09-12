@@ -97,13 +97,21 @@ describe('POST /api/public/self-serve-signup', () => {
   });
 
   it('400s when the product is not self-serve eligible', async () => {
-    mockState.findUniqueProduct.mockResolvedValueOnce({ id: PRODUCT_ID, isActive: true, selfServeEligible: false });
+    mockState.findUniqueProduct.mockResolvedValueOnce({ id: PRODUCT_ID, code: 'recall', isActive: true, selfServeEligible: false });
     const { POST } = await import('@/app/api/public/self-serve-signup/route');
     const res = await POST(makeRequest(VALID_BODY));
     const body = await res.clone().json();
     expect(res.status).toBe(400);
     expect(body.error).toBe('product_not_self_serve_eligible');
     expect(mockState.createClientForSelfServe).not.toHaveBeenCalled();
+  });
+
+  it("allows 'web' even with selfServeEligible=false — account creation is fine, only Stripe payment is excluded for it", async () => {
+    mockState.findUniqueProduct.mockResolvedValueOnce({ id: PRODUCT_ID, code: 'web', isActive: true, selfServeEligible: false });
+    const { POST } = await import('@/app/api/public/self-serve-signup/route');
+    const res = await POST(makeRequest(VALID_BODY));
+    expect(res.status).toBe(201);
+    expect(mockState.createClientForSelfServe).toHaveBeenCalled();
   });
 
   it('400s when the product is eligible but inactive', async () => {
