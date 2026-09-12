@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { PortalFooter } from '@/components/portal/PortalFooter';
 import { AdminSidebar } from '@/components/admin/AdminSidebar';
+import { ThemeToggle } from '@/components/portal/ThemeToggle';
 
 export const metadata: Metadata = {
   title: 'Admin',
@@ -34,7 +35,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </span>
           </Link>
           <nav aria-label="Acciones" className="flex items-center gap-2 text-sm">
-<form action="/admin/logout" method="post" className="inline">
+            <ThemeToggle />
+            <form action="/admin/logout" method="post" className="inline">
               <button type="submit" className="text-kairikos-muted hover:text-kairikos-text">
                 Salir del modo soporte
               </button>

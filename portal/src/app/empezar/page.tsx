@@ -1,5 +1,6 @@
 import { EmptyState } from '@/components/portal/EmptyState';
 import { SelfServeSignupForm, type SignupTierOption } from '@/components/public/SelfServeSignupForm';
+import { ThemeToggle } from '@/components/portal/ThemeToggle';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { PRODUCT_CODES, PRODUCT_CATALOGS, type ProductCode } from '@/lib/catalogs';
 
@@ -40,6 +41,9 @@ export default async function EmpezarPage() {
   if (!isDatabaseConfigured) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-16 sm:px-6">
+        <div className="mb-4 flex justify-end">
+          <ThemeToggle />
+        </div>
         <EmptyState title="No disponible en modo demo" description="El alta requiere una cuenta real conectada a base de datos." />
       </div>
     );
@@ -64,6 +68,9 @@ export default async function EmpezarPage() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
+      <div className="mb-4 flex justify-end">
+        <ThemeToggle />
+      </div>
       <div className="mb-8 text-center">
         <p className="text-xs font-semibold uppercase tracking-wider text-kairikos-accent2">Kairikos</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">Crea tu cuenta</h1>
