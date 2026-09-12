@@ -41,7 +41,7 @@ echo "[scheduler] starting — target=${BASE_URL} interval=${INTERVAL_SECONDS}s"
 # Endpoints to hit each tick. Add new ones here; each must be idempotent
 # and safe to call more often than its work actually needs, because that
 # is exactly what will happen.
-ENDPOINTS="/api/cron/recall-tick /api/cron/prospecting-tick /api/cron/sync-seo-search-console /api/cron/generate-seo-content /api/cron/sync-seo-analytics /api/cron/sync-google-reviews /api/cron/sync-channel-webhooks /api/cron/generate-conversation-digests /api/cron/classify-leads /api/cron/crawl-knowledge /api/cron/wizard-auto-approve /api/cron/audit-seo-sites /api/cron/seo-draft-auto-approve"
+ENDPOINTS="/api/cron/recall-tick /api/cron/prospecting-tick /api/cron/sync-seo-search-console /api/cron/generate-seo-content /api/cron/sync-seo-analytics /api/cron/sync-google-reviews /api/cron/sync-channel-webhooks /api/cron/generate-conversation-digests /api/cron/classify-leads /api/cron/crawl-knowledge /api/cron/wizard-auto-approve /api/cron/audit-seo-sites /api/cron/seo-draft-auto-approve /api/cron/seo-draft-auto-publish"
 
 while :; do
   for path in $ENDPOINTS; do

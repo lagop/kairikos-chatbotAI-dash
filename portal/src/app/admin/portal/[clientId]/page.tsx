@@ -34,6 +34,7 @@ import { SeoTechnicalSetupPanel, type SeoProfilePanelData, type SeoQueryOpportun
 import { getContentGenerationMinIntervalDays } from '@/lib/seo-settings';
 import { SeoContentDraftsPanel, type SeoContentDraftData } from '@/components/admin/SeoContentDraftsPanel';
 import { computeAutoApproveDeadline } from '@/lib/seo-draft-auto-approve';
+import { computeAutoPublishDeadline } from '@/lib/seo-draft-auto-publish';
 import { isStuck, stuckThresholdDays } from '@/lib/recall';
 
 export const dynamic = 'force-dynamic';
@@ -640,6 +641,8 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
                 generatedAt: true,
                 reviewedBy: true,
                 reviewedAt: true,
+                clientReviewRequestedAt: true,
+                clientReviewedBy: true,
                 rejectionReason: true,
                 wordpressPostUrl: true,
                 publishError: true,
@@ -655,6 +658,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
               generatedAt: d.generatedAt?.toISOString() ?? null,
               reviewedBy: d.reviewedBy,
               reviewedAt: d.reviewedAt?.toISOString() ?? null,
+              clientReviewedBy: d.clientReviewedBy,
               rejectionReason: d.rejectionReason,
               wordpressPostUrl: d.wordpressPostUrl,
               publishError: d.publishError,
@@ -665,6 +669,10 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
               // nunca puedan divergir.
               autoApproveDeadline:
                 computeAutoApproveDeadline({ status: d.status, generatedAt: d.generatedAt })?.toISOString() ?? null,
+              // Fase 6 — mismo criterio, para la ventana del cliente.
+              autoPublishDeadline:
+                computeAutoPublishDeadline({ status: d.status, clientReviewRequestedAt: d.clientReviewRequestedAt })?.toISOString() ??
+                null,
             }));
           }
         }

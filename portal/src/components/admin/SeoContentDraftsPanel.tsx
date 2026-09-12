@@ -20,6 +20,7 @@ export interface SeoContentDraftData {
   generatedAt: string | null;
   reviewedBy: string | null;
   reviewedAt: string | null;
+  clientReviewedBy: string | null;
   rejectionReason: string | null;
   wordpressPostUrl: string | null;
   publishError: string | null;
@@ -28,13 +29,17 @@ export interface SeoContentDraftData {
    *  para que esta cuenta atrás nunca pueda desincronizarse de la que de
    *  verdad usa el barrido. */
   autoApproveDeadline: string | null;
+  /** Fase 6 — el mismo cálculo, para la segunda ventana (la del
+   *  cliente): null salvo que siga 'pending_client_review' con
+   *  clientReviewRequestedAt. */
+  autoPublishDeadline: string | null;
 }
 
 const STATUS_LABEL: Record<string, string> = {
   pending_generation: 'Generando…',
-  drafted: 'Pendiente de revisión',
+  drafted: 'Pendiente de revisión (operador)',
   rejected: 'Rechazado',
-  approved: 'Aprobado',
+  pending_client_review: 'Pendiente de revisión (cliente)',
   published: 'Publicado',
   publish_failed: 'Fallo al publicar',
 };
@@ -54,6 +59,17 @@ function reviewerLabel(reviewedBy: string | null): string | null {
   if (!reviewedBy) return null;
   if (reviewedBy === 'system:auto_approve') return 'Aprobación automática (sin veto a tiempo)';
   return reviewedBy;
+}
+
+/** Igual que reviewerLabel pero para la decisión del CLIENTE —
+ *  'client:<id>' (la convención de actor de siempre en este repo) o
+ *  'system:auto_publish_client_timeout' cuando el cliente no
+ *  reaccionó a tiempo. */
+function clientReviewerLabel(clientReviewedBy: string | null): string | null {
+  if (!clientReviewedBy) return null;
+  if (clientReviewedBy === 'system:auto_publish_client_timeout') return 'Publicación automática (cliente sin respuesta a tiempo)';
+  if (clientReviewedBy.startsWith('client:')) return 'El propio cliente';
+  return clientReviewedBy;
 }
 
 function DraftCard({ draft, clientId }: { draft: SeoContentDraftData; clientId: string }) {
@@ -127,8 +143,13 @@ function DraftCard({ draft, clientId }: { draft: SeoContentDraftData; clientId: 
       ) : null}
 
       {reviewerLabel(draft.reviewedBy) ? (
-        <p className="mb-3 text-xs text-kairikos-muted" data-testid="seo-content-draft-reviewed-by">
-          Revisado por: {reviewerLabel(draft.reviewedBy)}
+        <p className="mb-1 text-xs text-kairikos-muted" data-testid="seo-content-draft-reviewed-by">
+          Aprobado internamente por: {reviewerLabel(draft.reviewedBy)}
+        </p>
+      ) : null}
+      {clientReviewerLabel(draft.clientReviewedBy) ? (
+        <p className="mb-3 text-xs text-kairikos-muted" data-testid="seo-content-draft-client-reviewed-by">
+          Revisado por el cliente: {clientReviewerLabel(draft.clientReviewedBy)}
         </p>
       ) : null}
 
@@ -165,10 +186,22 @@ function DraftCard({ draft, clientId }: { draft: SeoContentDraftData; clientId: 
           data-testid="seo-content-draft-auto-approve"
         >
           <p>
-            Sin revisión, se aprobará y publicará sola el{' '}
+            Sin revisión, pasará a revisión del cliente sola el{' '}
             <strong>{DATE_FORMAT.format(new Date(draft.autoApproveDeadline))}</strong>.
           </p>
           <p className="mt-1 text-xs text-kairikos-muted">Apruébalo o recházalo antes de esa fecha para decidir tú.</p>
+        </div>
+      ) : null}
+
+      {draft.status === 'pending_client_review' && draft.autoPublishDeadline ? (
+        <div
+          className="mb-3 rounded-lg border border-kairikos-border bg-kairikos-surface2/40 p-3 text-sm"
+          data-testid="seo-content-draft-auto-publish"
+        >
+          <p>
+            Esperando al cliente en su propio portal — si no responde, se publicará sola el{' '}
+            <strong>{DATE_FORMAT.format(new Date(draft.autoPublishDeadline))}</strong>.
+          </p>
         </div>
       ) : null}
 
@@ -182,7 +215,7 @@ function DraftCard({ draft, clientId }: { draft: SeoContentDraftData; clientId: 
               onClick={() => review({ action: 'approve' })}
               data-testid="seo-content-draft-approve"
             >
-              Aprobar
+              Aprobar y enviar al cliente
             </button>
             <button
               type="button"

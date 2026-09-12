@@ -3335,16 +3335,31 @@ model SeoProfileAudit {
 // moment it dispatches the n8n request — so an operator sees "esto se
 // pidió, todavía no ha vuelto" as a real state, not silence) →
 // 'drafted' (n8n's callback, PATCH /api/internal/seo/content-drafts/[id],
-// filled in title/bodyHtml) → 'approved' | 'rejected' (operator decision
-// — the client never sees or approves a draft, per the session's own
-// design decision) → 'published' | 'publish_failed' (Fase C's later
-// publish step, WordPress REST API — see SeoProfile.wordpressUrl's
-// comment on why WordPress is the v1 publish target).
+// filled in title/bodyHtml) → 'rejected' (operator decision) OR
+// 'pending_client_review' (operator approved — catches hallucinations
+// and misalignment BEFORE the client ever sees anything, but no longer
+// publishes by itself) → 'rejected' (client asked for changes) OR
+// 'published' | 'publish_failed' (client approved, or stayed silent
+// past SEO_DRAFT_CLIENT_REVIEW_WINDOW_DAYS — same "publish unless
+// vetoed" shape as the operator's own window, see
+// lib/seo-draft-auto-publish.ts — via the WordPress REST API; see
+// SeoProfile.wordpressUrl's comment on why WordPress is the v1 publish
+// target).
 //
-// current-state fields (reviewedBy/reviewedAt, publishedAt/wordpressPostId),
-// not a separate append-only audit table — same posture as
-// GoogleReview's aiDraftReply/replyApprovedBy/replyPublishedAt, which is
-// the direct precedent for "AI draft + human approval" in this schema.
+// Two separate gates, two separate silence-timers: the operator's
+// (lib/seo-draft-auto-approve.ts, 'drafted' → 'pending_client_review')
+// and the client's (lib/seo-draft-auto-publish.ts,
+// 'pending_client_review' → 'published'). Either party can act sooner;
+// either party's silence alone still lets the article ship eventually
+// — same reasoning the runbook already applied to the operator-only
+// gate, extended one step further now that a second reviewer exists.
+//
+// current-state fields (reviewedBy/reviewedAt for the operator,
+// clientReviewedBy/clientReviewedAt for the client,
+// publishedAt/wordpressPostId for the publish outcome), not a separate
+// append-only audit table — same posture as GoogleReview's
+// aiDraftReply/replyApprovedBy/replyPublishedAt, which is the direct
+// precedent for "AI draft + human approval" in this schema.
 model SeoContentDraft {
   id        String  @id @default(uuid()) @db.Uuid
   profileId String  @map("profile_id") @db.Uuid
@@ -3356,7 +3371,7 @@ model SeoContentDraft {
   targetKeyword   String? @map("target_keyword")
   metaDescription String? @map("meta_description")
 
-  // 'pending_generation' | 'drafted' | 'rejected' | 'approved' | 'published' | 'publish_failed'
+  // 'pending_generation' | 'drafted' | 'rejected' | 'pending_client_review' | 'published' | 'publish_failed'
   status String @default("pending_generation")
 
   // What lib/seo-content-generation.ts sent n8n to write this draft from
@@ -3368,11 +3383,29 @@ model SeoContentDraft {
   requestedAt DateTime  @default(now()) @map("requested_at")
   generatedAt DateTime? @map("generated_at")
 
-  // Operator email (the client never approves a draft — see the model
-  // comment above).
+  // Operator's decision — who caught hallucinations/misalignment before
+  // the client ever saw this draft. AUTO_APPROVE_REVIEWED_BY
+  // ('system:auto_approve') when nobody acted before the operator's
+  // veto window elapsed.
   reviewedBy      String?   @map("reviewed_by")
   reviewedAt      DateTime? @map("reviewed_at")
+  // Whoever's decision produced the CURRENT 'rejected' status — the
+  // operator's own rejection (out of 'drafted') reuses reviewedBy/
+  // reviewedAt above; a client's rejection (out of
+  // 'pending_client_review') writes clientReviewedBy/clientReviewedAt
+  // instead, so an operator rejection never gets silently overwritten
+  // by a later client one and vice versa. Either sets this same field.
   rejectionReason String?   @map("rejection_reason")
+
+  // Set the moment an operator approves 'drafted' — starts the client's
+  // own veto window (see lib/seo-draft-auto-publish.ts). NULL until then.
+  clientReviewRequestedAt DateTime? @map("client_review_requested_at")
+  // The client's decision — 'client:<clientId>' (same free-text actor
+  // convention as everywhere else in this codebase) or
+  // AUTO_PUBLISH_REVIEWED_BY ('system:auto_publish_client_timeout')
+  // when the client stayed silent past the window.
+  clientReviewedBy        String?   @map("client_reviewed_by")
+  clientReviewedAt        DateTime? @map("client_reviewed_at")
 
   publishedAt      DateTime? @map("published_at")
   wordpressPostId  String?   @map("wordpress_post_id")

@@ -31,7 +31,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 beforeEach(() => {
   vi.clearAllMocks();
   mockState.draftFindMany.mockResolvedValue([]);
-  mockState.approveDraft.mockResolvedValue({ status: 'published' });
+  mockState.approveDraft.mockResolvedValue({ status: 'pending_client_review' });
 });
 
 async function sweep(now = NOW) {
@@ -79,17 +79,12 @@ describe('sweepAutoApprovableSeoDrafts', () => {
       { id: 'draft_1', clientId: 'client_1' },
       { id: 'draft_2', clientId: 'client_2' },
     ]);
-    mockState.approveDraft
-      .mockResolvedValueOnce({ status: 'published' })
-      .mockResolvedValueOnce({ status: 'publish_failed', publishError: 'wordpress_error:401' });
 
     const result = await sweep();
 
     expect(result.due).toBe(2);
     expect(result.processed).toBe(2);
     expect(result.approved).toBe(2);
-    expect(result.published).toBe(1);
-    expect(result.publishFailed).toBe(1);
     expect(mockState.approveDraft).toHaveBeenNthCalledWith(1, prismaMock, {
       draftId: 'draft_1',
       clientId: 'client_1',
@@ -103,14 +98,13 @@ describe('sweepAutoApprovableSeoDrafts', () => {
       { id: 'draft_2', clientId: 'client_2' },
     ]);
     mockState.approveDraft
-      .mockRejectedValueOnce(new Error('wordpress unreachable'))
-      .mockResolvedValueOnce({ status: 'published' });
+      .mockRejectedValueOnce(new Error('db unreachable'))
+      .mockResolvedValueOnce({ status: 'pending_client_review' });
 
     const result = await sweep();
 
     expect(result.approved).toBe(1);
-    expect(result.published).toBe(1);
-    expect(result.failed).toEqual([{ draftId: 'draft_1', clientId: 'client_1', error: 'wordpress unreachable' }]);
+    expect(result.failed).toEqual([{ draftId: 'draft_1', clientId: 'client_1', error: 'db unreachable' }]);
     expect(mockState.logError).toHaveBeenCalled();
   });
 

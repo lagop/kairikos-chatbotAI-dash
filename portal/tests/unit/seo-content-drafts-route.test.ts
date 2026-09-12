@@ -91,8 +91,8 @@ describe('PATCH /api/internal/seo/content-drafts/[id]', () => {
     expect(res.status).toBe(404);
   });
 
-  it('409s when the draft has already been resolved (approved/rejected/etc.) — never overwrites a decision', async () => {
-    mockState.draftFindUnique.mockResolvedValueOnce({ ...EXISTING_DRAFT, status: 'approved' });
+  it('409s when the draft has already been resolved (pending_client_review/rejected/etc.) — never overwrites a decision', async () => {
+    mockState.draftFindUnique.mockResolvedValueOnce({ ...EXISTING_DRAFT, status: 'pending_client_review' });
     const res = await patch('draft_1', VALID_BODY, { 'x-kairikos-internal-key': VALID_KEY });
     expect(res.status).toBe(409);
     expect(mockState.draftUpdate).not.toHaveBeenCalled();
