@@ -1,21 +1,58 @@
 name: Deploy to Hostinger VPS
 
+# Hasta ahora este workflow y build-image.yml disparaban ambos, en
+# paralelo, sobre el mismo push — sin ningún orden garantizado entre
+# "la imagen nueva ya está en ghcr.io" y "Hostinger aplica el
+# docker-compose.yml que la referencia". Confirmado repetidas veces
+# esta sesión comparando digests antes/después de un pull manual: el
+# deploy llegaba a veces antes de que la imagen terminara de subir, y
+# el contenedor se quedaba con la anterior hasta forzar un
+# --force-recreate a mano.
+#
+# Arreglo: cuando el push SÍ toca portal/** (o scripts/**, que ahora
+# también produce imagen — ver build-support-images.yml), este
+# workflow ya NO dispara por push directo — espera al evento
+# workflow_run de cualquiera de esas dos construcciones, así que el
+# deploy solo puede empezar cuando la imagen que va a desplegar ya
+# existe de verdad. Un push que NO toca ninguna imagen (docker-compose.yml,
+# este mismo archivo, nginx/, etc.) no necesita esperar a nada —
+# paths-ignore deja que el trigger por push siga disparando directo
+# para esos casos, igual que antes.
 on:
   push:
-    # Mismo motivo que build-image.yml: el trabajo real se mergea en
-    # kaia-743-staging-runner, no en main. Sin esta rama en la lista, el
-    # workflow no disparó ni una vez entre el 9 de agosto y el 10 de
-    # septiembre — 32 días de merges a producción sin ningún redespliegue,
-    # en silencio, porque `push` a una rama que nadie toca no es un error.
+    branches: [main, kaia-743-staging-runner]
+    paths-ignore:
+      - 'portal/**'
+      - 'scripts/scheduler.sh'
+      - 'scripts/backup-postgres.sh'
+      - 'scripts/scheduler.Dockerfile'
+      - 'scripts/backup.Dockerfile'
+  workflow_run:
+    workflows: ['Build and push portal image', 'Build and push scheduler/backup images']
+    types: [completed]
     branches: [main, kaia-743-staging-runner]
   workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Un workflow_run cuyo build falló no debe desplegar nada — desplegaría
+    # la imagen VIEJA bajo la falsa impresión de que el código nuevo ya
+    # está en producción. Los otros dos disparadores (push, workflow_dispatch)
+    # no tienen "conclusion" que comprobar, así que solo se filtra cuando
+    # el evento es realmente workflow_run.
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: Checkout
+        # En un workflow_run, github.sha/github.ref apuntan al ESTADO
+        # ACTUAL de la rama del propio workflow, no necesariamente al
+        # commit exacto que se acaba de construir — head_sha del evento
+        # sí lo es. Sin este ref explícito, un push muy rápido entre la
+        # construcción y el deploy podría desplegar código más nuevo del
+        # que la imagen recién construida realmente contiene.
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Deploy to Hostinger VPS
         uses: hostinger/deploy-on-vps@v2

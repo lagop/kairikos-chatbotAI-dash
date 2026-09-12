@@ -1,0 +1,61 @@
+name: Build and push scheduler/backup images
+
+on:
+  push:
+    branches: [main, kaia-743-staging-runner]
+    paths:
+      - 'scripts/scheduler.sh'
+      - 'scripts/backup-postgres.sh'
+      - 'scripts/scheduler.Dockerfile'
+      - 'scripts/backup.Dockerfile'
+      - '.github/workflows/build-support-images.yml'
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - image: portal-scheduler
+            dockerfile: scripts/scheduler.Dockerfile
+          - image: portal-backup
+            dockerfile: scripts/backup.Dockerfile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/kairikos-chatbotai-dash/${{ matrix.image }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=git-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          # Same reasoning as build-image.yml: context is the monorepo
+          # root so COPY scripts/... resolves regardless of which
+          # Dockerfile in the matrix is building.
+          context: .
+          file: ./${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
