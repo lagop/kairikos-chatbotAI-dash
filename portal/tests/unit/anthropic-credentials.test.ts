@@ -77,14 +77,14 @@ describe('saveAnthropicCredential', () => {
       .mockResolvedValueOnce({ ...EMPTY_ROW }); // the write itself (inside $transaction)
     const { saveAnthropicCredential } = await import('@/lib/anthropic-credentials');
 
-    await saveAnthropicCredential({ apiKey: 'sk-ant-test-abcdWXYZ', baseUrl: null, model: null }, ACTOR);
+    await saveAnthropicCredential({ apiKey: 'EXAMPLE_ant_test_abcdWXYZ', baseUrl: null, model: null }, ACTOR);
 
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(upsert).toHaveBeenCalledTimes(2);
     const writeCall = upsert.mock.calls[1][0];
     expect(writeCall.update.apiKeyLastFour).toBe('WXYZ');
     // Never the plaintext key.
-    expect(JSON.stringify(writeCall)).not.toContain('sk-ant-test-abcdWXYZ');
+    expect(JSON.stringify(writeCall)).not.toContain('EXAMPLE_ant_test_abcdWXYZ');
     expect(writeCall.update.apiKeyCiphertext).toBeInstanceOf(Buffer);
 
     expect(create).toHaveBeenCalledWith(
@@ -98,7 +98,7 @@ describe('saveAnthropicCredential', () => {
     );
     // The audit row must never carry the plaintext or ciphertext.
     const auditData = create.mock.calls[0][0].data;
-    expect(JSON.stringify(auditData)).not.toContain('sk-ant-test-abcdWXYZ');
+    expect(JSON.stringify(auditData)).not.toContain('EXAMPLE_ant_test_abcdWXYZ');
   });
 
   it('persists baseUrl/model alongside the encrypted key', async () => {
@@ -106,7 +106,7 @@ describe('saveAnthropicCredential', () => {
     const { saveAnthropicCredential } = await import('@/lib/anthropic-credentials');
 
     await saveAnthropicCredential(
-      { apiKey: 'sk-ant-test-abcdWXYZ', baseUrl: 'https://proxy.example.com', model: 'claude-opus-5' },
+      { apiKey: 'EXAMPLE_ant_test_abcdWXYZ', baseUrl: 'https://proxy.example.com', model: 'claude-opus-5' },
       ACTOR,
     );
 
@@ -121,7 +121,7 @@ describe('saveAnthropicCredential', () => {
       .mockResolvedValueOnce({ ...EMPTY_ROW });
     const { saveAnthropicCredential } = await import('@/lib/anthropic-credentials');
 
-    await saveAnthropicCredential({ apiKey: 'sk-ant-new-0000WXYZ', baseUrl: null, model: null }, ACTOR);
+    await saveAnthropicCredential({ apiKey: 'EXAMPLE_ant_new_0000WXYZ', baseUrl: null, model: null }, ACTOR);
 
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ action: 'credential_rotated' }) }),
@@ -136,7 +136,7 @@ describe('saveAnthropicCredential', () => {
     await mod.resolveActiveAnthropicCredentials();
     const callsBeforeSave = upsert.mock.calls.length;
 
-    await mod.saveAnthropicCredential({ apiKey: 'sk-ant-test-abcdWXYZ', baseUrl: null, model: null }, ACTOR);
+    await mod.saveAnthropicCredential({ apiKey: 'EXAMPLE_ant_test_abcdWXYZ', baseUrl: null, model: null }, ACTOR);
     upsert.mockResolvedValueOnce({
       ...EMPTY_ROW,
       apiKeyCiphertext: Buffer.from('irrelevant-for-this-assertion'),

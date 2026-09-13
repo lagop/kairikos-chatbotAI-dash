@@ -77,7 +77,7 @@ describe('GET /api/admin/portal/settings/anthropic/credentials', () => {
 });
 
 describe('POST /api/admin/portal/settings/anthropic/credentials', () => {
-  const VALID_BODY = { apiKey: 'sk-ant-fake-test-key-WXYZ' };
+  const VALID_BODY = { apiKey: 'EXAMPLE_ant_fake_test_key_WXYZ' };
 
   it('403s without TOTP step-up (does not even reach Anthropic or the DB)', async () => {
     mockState.requireTotpStepUp.mockResolvedValueOnce({ ok: false, status: 403, error: 'totp_step_up_required' });
