@@ -57,6 +57,7 @@ export const ADMIN_NAV: readonly AdminNavGroup[] = [
       { href: '/admin/portal/settings/billing', label: 'Facturación' },
       { href: '/admin/portal/settings/telephony', label: 'Telefonía' },
       { href: '/admin/portal/settings/meta', label: 'Meta' },
+      { href: '/admin/portal/settings/anthropic', label: 'IA (Anthropic)' },
       { href: '/admin/portal/settings/integrations', label: 'Integraciones' },
       { href: '/admin/portal/settings/seo', label: 'SEO con IA' },
       { href: '/admin/portal/settings/security', label: 'Seguridad' },

@@ -1,5 +1,6 @@
 import 'server-only';
 import { logError } from './observability';
+import { resolveActiveAnthropicCredentials } from './anthropic-credentials';
 
 // =============================================================================
 // WP-22c — AI-drafted replies to Google reviews. First AI-provider
@@ -16,13 +17,11 @@ import { logError } from './observability';
 // or an explicit autoPublishReplies=true setting (WP-22c AC).
 // =============================================================================
 
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
-const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
 const MAX_DRAFT_CHARS = 600;
 
-export function isReviewReplyAIConfigured(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY);
+export async function isReviewReplyAIConfigured(): Promise<boolean> {
+  return (await resolveActiveAnthropicCredentials()) !== null;
 }
 
 function toneGuidance(starRating: number): string {
@@ -44,12 +43,13 @@ export type GenerateReplyDraftResult =
   | { ok: false; error: string };
 
 export async function generateReviewReplyDraft(input: GenerateReplyDraftInput): Promise<GenerateReplyDraftResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  const resolved = await resolveActiveAnthropicCredentials();
+  if (!resolved) {
     return { ok: true, skipped: true, reason: 'no_api_key' };
   }
+  const { apiKey, baseUrl } = resolved;
 
-  const model = process.env.ANTHROPIC_REVIEW_REPLY_MODEL ?? DEFAULT_MODEL;
+  const model = process.env.ANTHROPIC_REVIEW_REPLY_MODEL ?? resolved.model;
   const system = [
     `Escribes, en nombre de "${input.businessName}", una respuesta pública a una reseña de Google.`,
     'Reglas estrictas:',
@@ -68,7 +68,7 @@ export async function generateReviewReplyDraft(input: GenerateReplyDraftInput): 
   ].join('\n');
 
   try {
-    const res = await fetch(ANTHROPIC_API_URL, {
+    const res = await fetch(`${baseUrl}/v1/messages`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

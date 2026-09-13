@@ -82,12 +82,21 @@ services:
       META_APP_SECRET: ${META_APP_SECRET}
       META_CONFIG_ID: ${META_CONFIG_ID}
 
+      # Anthropic now has the same admin-configurable fallback pattern as
+      # Stripe/Twilio (/admin/portal/settings/anthropic →
+      # AnthropicOperatorCredential) — this env var is only the pre-UI
+      # fallback, not required once a credential is saved there. One key
+      # feeds five features: chatbot-reply-ai.ts (the chatbot's own
+      # replies), lead-classification-ai.ts, review-reply-ai.ts,
+      # conversation-summary-ai.ts, seo-content-ai.ts.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_CREDENTIAL_ENCRYPTION_KEY: ${ANTHROPIC_CREDENTIAL_ENCRYPTION_KEY:-}
+
       # --- Optional — leave blank until you activate the matching
       # product. The app degrades gracefully (feature just shows as
       # "not configured") when any of these are unset; nothing below
       # this line blocks the first deploy. See .env.production.example
       # for what each group turns on.
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GOOGLE_BUSINESS_OAUTH_CLIENT_ID: ${GOOGLE_BUSINESS_OAUTH_CLIENT_ID:-}
       GOOGLE_BUSINESS_OAUTH_CLIENT_SECRET: ${GOOGLE_BUSINESS_OAUTH_CLIENT_SECRET:-}
       GOOGLE_BUSINESS_OAUTH_REDIRECT_URI: ${GOOGLE_BUSINESS_OAUTH_REDIRECT_URI:-}

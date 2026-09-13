@@ -363,6 +363,7 @@ model Operator {
   seoProfileAudits            SeoProfileAudit[]
   twilioCredentialAudits      TwilioCredentialAudit[]
   metaCredentialAudits        MetaCredentialAudit[]
+  anthropicCredentialAudits   AnthropicCredentialAudit[]
 
   @@index([email])
   @@index([isActive])
@@ -2121,6 +2122,63 @@ model MetaOperatorCredential {
 model MetaCredentialAudit {
   id     String @id @default(uuid()) @db.Uuid
   // 'credential_saved' | 'credential_rotated' | 'config_ids_saved'
+  action String
+  before Json?
+  after  Json?
+
+  actorOperatorId String?  @map("actor_operator_id") @db.Uuid
+  actorEmail      String?  @map("actor_email")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  operator Operator? @relation(fields: [actorOperatorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+}
+
+// Operator-managed Anthropic credential, saved through
+// /admin/portal/settings/anthropic instead of only ever living in
+// ANTHROPIC_API_KEY on the VPS .env. Same shape as TwilioOperatorCredential
+// (singleton, one encrypted secret, the rest cleartext) — apiKey is the
+// only actual secret; baseUrl and model are configuration, not
+// credentials, so they're stored in clear next to it rather than forcing
+// an operator through a second form for values that are entered together
+// in the same screen.
+//
+// One row feeds FIVE different call sites (chatbot-reply-ai.ts,
+// lead-classification-ai.ts, review-reply-ai.ts, conversation-summary-ai.ts,
+// seo-content-ai.ts) — see anthropic-credentials.ts's
+// resolveActiveAnthropicCredentials(). Each site keeps its own
+// ANTHROPIC_<FEATURE>_MODEL env override with priority OVER this row's
+// `model`, so an operator narrowing one feature to a different model
+// doesn't require touching this shared credential.
+model AnthropicOperatorCredential {
+  id String @id @default(uuid()) @db.Uuid
+
+  apiKeyCiphertext Bytes?  @map("api_key_ciphertext")
+  apiKeyIv         Bytes?  @map("api_key_iv")
+  apiKeyTag        Bytes?  @map("api_key_tag")
+  // Last 4 chars in cleartext — lets the UI show "•••• aBcD" without a
+  // decrypt, same convention as every other *OperatorCredential model.
+  apiKeyLastFour   String? @map("api_key_last_four")
+
+  // Not secret. NULL means "use the built-in default" — see
+  // DEFAULT_BASE_URL/DEFAULT_MODEL in anthropic-credentials.ts. baseUrl is
+  // the origin only (e.g. "https://api.anthropic.com"), not the full
+  // /v1/messages path — every call site appends that itself, same as the
+  // hardcoded ANTHROPIC_API_URL constant they're replacing.
+  baseUrl String? @map("base_url")
+  model   String? @map("model")
+
+  savedAt   DateTime? @map("saved_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+}
+
+// Append-only audit trail for the Anthropic credential — no FK to
+// AnthropicOperatorCredential needed (it's a singleton, nothing to
+// cascade), same posture as TwilioCredentialAudit/MetaCredentialAudit.
+model AnthropicCredentialAudit {
+  id     String @id @default(uuid()) @db.Uuid
+  // 'credential_saved' | 'credential_rotated'
   action String
   before Json?
   after  Json?

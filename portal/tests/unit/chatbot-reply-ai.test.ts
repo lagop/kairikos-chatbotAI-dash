@@ -7,12 +7,15 @@
 // comprobar sin llamar al modelo.
 // =============================================================================
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const mockState = vi.hoisted(() => ({ fetch: vi.fn(), logError: vi.fn() }));
+const mockState = vi.hoisted(() => ({ fetch: vi.fn(), logError: vi.fn(), resolveActiveAnthropicCredentials: vi.fn() }));
 vi.stubGlobal('fetch', mockState.fetch);
 vi.mock('@/lib/observability', () => ({
   logError: (...a: unknown[]) => mockState.logError(...a),
+}));
+vi.mock('@/lib/anthropic-credentials', () => ({
+  resolveActiveAnthropicCredentials: (...args: unknown[]) => mockState.resolveActiveAnthropicCredentials(...args),
 }));
 
 import {
@@ -60,20 +63,19 @@ function promptFor(config: BotConfig, now = new Date('2026-09-07T10:00:00Z')) {
   return buildSystemPrompt(input, resolveScheduleState(config, now));
 }
 
+const RESOLVED = { apiKey: 'sk-ant-test', baseUrl: 'https://api.anthropic.com', model: 'claude-haiku-4-5-20251001' };
+
 beforeEach(() => {
   mockState.fetch.mockReset();
   mockState.logError.mockReset();
-  delete process.env.ANTHROPIC_API_KEY;
-});
-afterEach(() => {
-  delete process.env.ANTHROPIC_API_KEY;
+  mockState.resolveActiveAnthropicCredentials.mockReset().mockResolvedValue(null);
 });
 
 describe('isChatbotReplyConfigured', () => {
-  it('depende de ANTHROPIC_API_KEY', () => {
-    expect(isChatbotReplyConfigured()).toBe(false);
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
-    expect(isChatbotReplyConfigured()).toBe(true);
+  it('depende de si hay una credencial resuelta', async () => {
+    expect(await isChatbotReplyConfigured()).toBe(false);
+    mockState.resolveActiveAnthropicCredentials.mockResolvedValueOnce(RESOLVED);
+    expect(await isChatbotReplyConfigured()).toBe(true);
   });
 });
 
@@ -229,7 +231,7 @@ describe('prefill de JSON', () => {
   });
 
   it('el último mensaje que se manda es el prefill del asistente', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    mockState.resolveActiveAnthropicCredentials.mockResolvedValueOnce(RESOLVED);
     mockState.fetch.mockResolvedValueOnce(jsonResponse({ content: [{ type: 'text', text: '"reply":"ok","escalate":false}' }] }));
     const result = await generateBotReply({
       businessName: 'Clínica Orly', config: makeConfig(), history: [], message: 'hola', now: new Date(),
@@ -240,7 +242,7 @@ describe('prefill de JSON', () => {
   });
 
   it('una conversación con historial sigue parseando bien', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    mockState.resolveActiveAnthropicCredentials.mockResolvedValueOnce(RESOLVED);
     mockState.fetch.mockResolvedValueOnce(jsonResponse({ content: [{ type: 'text', text: '"reply":"Te reservo la cita","escalate":false}' }] }));
     const result = await generateBotReply({
       businessName: 'Clínica Orly',
@@ -263,14 +265,14 @@ describe('generateBotReply', () => {
   });
 
   it('devuelve la respuesta del modelo', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    mockState.resolveActiveAnthropicCredentials.mockResolvedValueOnce(RESOLVED);
     mockState.fetch.mockResolvedValueOnce(jsonResponse({ content: [{ type: 'text', text: '{"reply":"Buenas","escalate":false}' }] }));
     const result = await generateBotReply(input);
     expect(result).toMatchObject({ ok: true, reply: 'Buenas', escalate: false });
   });
 
   it('manda el historial y el mensaje nuevo como turnos de la conversación', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    mockState.resolveActiveAnthropicCredentials.mockResolvedValueOnce(RESOLVED);
     mockState.fetch.mockResolvedValueOnce(jsonResponse({ content: [{ type: 'text', text: '{"reply":"ok","escalate":false}' }] }));
     await generateBotReply({
       ...input,
@@ -284,7 +286,7 @@ describe('generateBotReply', () => {
   });
 
   it('recorta el historial largo en vez de mandarlo entero cada turno', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    mockState.resolveActiveAnthropicCredentials.mockResolvedValueOnce(RESOLVED);
     mockState.fetch.mockResolvedValueOnce(jsonResponse({ content: [{ type: 'text', text: '{"reply":"ok","escalate":false}' }] }));
     const history = Array.from({ length: 40 }, (_, i) => ({ role: 'user' as const, content: `m${i}` }));
     await generateBotReply({ ...input, history });
@@ -295,14 +297,14 @@ describe('generateBotReply', () => {
   });
 
   it('devuelve error, sin lanzar, cuando la API responde mal', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    mockState.resolveActiveAnthropicCredentials.mockResolvedValueOnce(RESOLVED);
     mockState.fetch.mockResolvedValueOnce(jsonResponse({ error: 'overloaded' }, false, 529));
     const result = await generateBotReply(input);
     expect(result.ok).toBe(false);
   });
 
   it('devuelve error, sin lanzar, cuando se cae la red', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    mockState.resolveActiveAnthropicCredentials.mockResolvedValueOnce(RESOLVED);
     mockState.fetch.mockRejectedValueOnce(new Error('network down'));
     const result = await generateBotReply(input);
     expect(result.ok).toBe(false);
@@ -310,7 +312,7 @@ describe('generateBotReply', () => {
   });
 
   it('devuelve error cuando el modelo no responde JSON válido', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    mockState.resolveActiveAnthropicCredentials.mockResolvedValueOnce(RESOLVED);
     mockState.fetch.mockResolvedValueOnce(jsonResponse({ content: [{ type: 'text', text: 'lo siento, no puedo' }] }));
     expect(await generateBotReply(input)).toEqual({ ok: false, error: 'anthropic_api_invalid_json' });
   });

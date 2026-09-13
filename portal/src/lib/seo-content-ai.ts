@@ -1,6 +1,7 @@
 import 'server-only';
 import { parseJsonObject } from './ai-json';
 import { logError } from './observability';
+import { resolveActiveAnthropicCredentials } from './anthropic-credentials';
 
 // =============================================================================
 // Fase 1.3 — el redactor de artículos.
@@ -25,9 +26,7 @@ import { logError } from './observability';
 // principal— y no Markdown.
 // =============================================================================
 
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
-const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
 
 const MAX_TITLE_CHARS = 300;
 const MAX_META_CHARS = 500;
@@ -38,8 +37,8 @@ const MAX_BODY_CHARS = 200_000;
  *  más alcance. */
 const MAX_OPPORTUNITIES_IN_PROMPT = 10;
 
-export function isSeoContentAIConfigured(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY);
+export async function isSeoContentAIConfigured(): Promise<boolean> {
+  return (await resolveActiveAnthropicCredentials()) !== null;
 }
 
 export interface QueryOpportunity {
@@ -142,15 +141,16 @@ export function parseArticleResponse(text: string): ArticleDraft | null {
 }
 
 export async function generateArticleDraft(input: GenerateArticleInput): Promise<GenerateArticleResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  const resolved = await resolveActiveAnthropicCredentials();
+  if (!resolved) {
     return { ok: true, skipped: true, reason: 'no_api_key' };
   }
+  const { apiKey, baseUrl } = resolved;
 
-  const model = process.env.ANTHROPIC_SEO_CONTENT_MODEL ?? DEFAULT_MODEL;
+  const model = process.env.ANTHROPIC_SEO_CONTENT_MODEL ?? resolved.model;
 
   try {
-    const res = await fetch(ANTHROPIC_API_URL, {
+    const res = await fetch(`${baseUrl}/v1/messages`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
