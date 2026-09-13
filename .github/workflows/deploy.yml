@@ -93,6 +93,16 @@ jobs:
           #     STRIPE_WEBHOOK_SECRET           el "Signing secret" (whsec_…)
           #       del endpoint configurado en Stripe → Developers → Webhooks
           #     WHISPER_API_KEY                de https://console.groq.com/keys
+          #     ANTHROPIC_API_KEY              https://console.anthropic.com/settings/keys —
+          #       una sola clave alimenta TODO el motor de IA del portal, no
+          #       solo el clasificador de "Captación con IA": el motor
+          #       conversacional del propio chatbot (chatbot-reply-ai.ts),
+          #       las respuestas de reseñas, los resúmenes de conversación y
+          #       la generación de contenido SEO. Sin ella, cada uno degrada
+          #       en silencio (nunca lanza) — el chatbot en concreto no
+          #       manda NINGUNA respuesta real a un cliente final, no un
+          #       fallback: `skipped: true, reason: 'no_api_key'` se propaga
+          #       hasta replyToIncomingMessage sin enviar nada al canal.
           #
           #   Required GitHub variables:
           #     HOSTINGER_VM_ID     (from the VPS URL)
@@ -110,7 +120,10 @@ jobs:
           # Meta/Google/Twilio/Stripe: todas degradan con gracia sin valor
           # — ver el bloque "Optional" de docker-compose.yml — y activarlas
           # es un paso posterior, producto a producto, no parte del primer
-          # despliegue.
+          # despliegue. ANTHROPIC_API_KEY salió de ese grupo el 13 de
+          # septiembre: es el paso de activación de "Captación con IA" (y de
+          # que el chatbot conteste de verdad), así que ya viaja aquí en vez
+          # de quedar solo en docker-compose.yml.
           environment-variables: |
             NODE_ENV=production
             DATABASE_URL=postgresql://${{ vars.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@postgres:5432/${{ vars.POSTGRES_DB }}
@@ -136,6 +149,7 @@ jobs:
             WHISPER_API_KEY=${{ secrets.WHISPER_API_KEY }}
             WHISPER_BASE_URL=https://api.groq.com/openai
             WHISPER_MODEL=whisper-large-v3
+            ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
             N8N_BASE_URL=https://n8n.srv1170607.hstgr.cloud
             DEPLOY_MODE=dev-ip-port
             APP_PORT=3001
