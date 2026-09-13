@@ -4,6 +4,7 @@ import { logError } from './observability';
 import { isWithinBusinessHours, type BusinessHours, type DayKey, type Interval } from './recall-hours';
 import type { BotConfig } from './chatbot-config';
 import type { KnowledgeSnippet } from './chatbot-knowledge';
+import { resolveActiveAnthropicCredentials } from './anthropic-credentials';
 
 // =============================================================================
 // Fase 1.2 — el motor conversacional del chatbot.
@@ -34,9 +35,7 @@ import type { KnowledgeSnippet } from './chatbot-knowledge';
 //     confiar en que el modelo deduzca la política comercial.
 // =============================================================================
 
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
-const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
 /** Turnos previos que viajan en el prompt. Suficiente para que el bot no
  *  repregunte lo que el cliente ya dijo, sin que una conversación larga
  *  crezca sin techo en cada turno. */
@@ -44,8 +43,8 @@ const MAX_HISTORY_TURNS = 20;
 const MAX_REPLY_CHARS = 1500;
 const MAX_REASON_CHARS = 300;
 
-export function isChatbotReplyConfigured(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY);
+export async function isChatbotReplyConfigured(): Promise<boolean> {
+  return (await resolveActiveAnthropicCredentials()) !== null;
 }
 
 export interface ConversationTurn {
@@ -300,12 +299,13 @@ export function parseBotReplyResponse(text: string): BotReply | null {
 }
 
 export async function generateBotReply(input: GenerateBotReplyInput): Promise<GenerateBotReplyResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  const resolved = await resolveActiveAnthropicCredentials();
+  if (!resolved) {
     return { ok: true, skipped: true, reason: 'no_api_key' };
   }
+  const { apiKey, baseUrl } = resolved;
 
-  const model = process.env.ANTHROPIC_CHATBOT_REPLY_MODEL ?? DEFAULT_MODEL;
+  const model = process.env.ANTHROPIC_CHATBOT_REPLY_MODEL ?? resolved.model;
   const schedule = resolveScheduleState(input.config, input.now);
 
   // El último turno es un "prefill": una respuesta del asistente que
@@ -323,7 +323,7 @@ export async function generateBotReply(input: GenerateBotReplyInput): Promise<Ge
   ];
 
   try {
-    const res = await fetch(ANTHROPIC_API_URL, {
+    const res = await fetch(`${baseUrl}/v1/messages`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

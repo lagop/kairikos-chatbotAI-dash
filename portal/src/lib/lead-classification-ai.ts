@@ -1,6 +1,7 @@
 import 'server-only';
 import { parseJsonObject } from './ai-json';
 import { logError } from './observability';
+import { resolveActiveAnthropicCredentials } from './anthropic-credentials';
 
 // =============================================================================
 // "Sistema IA de captación" — decide si una ChatbotConversation cerrada es
@@ -16,16 +17,14 @@ import { logError } from './observability';
 // caller (lib/leads.ts's ingestClassifiedLead) los pasa sin remapear.
 // =============================================================================
 
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
-const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
 const MAX_TRANSCRIPT_CHARS = 4000;
 const MAX_SCORE_REASON_CHARS = 2000;
 const MAX_SUMMARY_CHARS = 2000;
 const MAX_FIELD_CHARS = 200;
 
-export function isLeadClassificationConfigured(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY);
+export async function isLeadClassificationConfigured(): Promise<boolean> {
+  return (await resolveActiveAnthropicCredentials()) !== null;
 }
 
 export interface LeadQualificationInput {
@@ -183,15 +182,16 @@ export function parseLeadClassificationResponse(text: string): LeadClassificatio
 export async function classifyConversationForLead(
   input: ClassifyConversationInput,
 ): Promise<ClassifyConversationResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  const resolved = await resolveActiveAnthropicCredentials();
+  if (!resolved) {
     return { ok: true, skipped: true, reason: 'no_api_key' };
   }
+  const { apiKey, baseUrl } = resolved;
 
-  const model = process.env.ANTHROPIC_LEAD_CLASSIFICATION_MODEL ?? DEFAULT_MODEL;
+  const model = process.env.ANTHROPIC_LEAD_CLASSIFICATION_MODEL ?? resolved.model;
 
   try {
-    const res = await fetch(ANTHROPIC_API_URL, {
+    const res = await fetch(`${baseUrl}/v1/messages`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

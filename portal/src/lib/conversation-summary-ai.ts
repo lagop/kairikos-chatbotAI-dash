@@ -1,5 +1,6 @@
 import 'server-only';
 import { logError } from './observability';
+import { resolveActiveAnthropicCredentials } from './anthropic-credentials';
 
 // =============================================================================
 // Canales Fase 7 — resume, para el dueño del negocio, la actividad del
@@ -16,17 +17,15 @@ import { logError } from './observability';
 // a la red.
 // =============================================================================
 
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
-const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
 const MAX_CONVERSATIONS_IN_PROMPT = 40;
 const MAX_TRANSCRIPT_CHARS = 800;
 const MAX_SUMMARY_CHARS = 800;
 const MAX_HIGHLIGHTS = 8;
 const MAX_HIGHLIGHT_CHARS = 300;
 
-export function isConversationSummaryAIConfigured(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY);
+export async function isConversationSummaryAIConfigured(): Promise<boolean> {
+  return (await resolveActiveAnthropicCredentials()) !== null;
 }
 
 export interface DigestConversationInput {
@@ -119,12 +118,13 @@ export function parseDigestResponse(text: string): ParsedDigest | null {
 export async function generateConversationDigest(
   input: GenerateConversationDigestInput,
 ): Promise<GenerateConversationDigestResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  const resolved = await resolveActiveAnthropicCredentials();
+  if (!resolved) {
     return { ok: true, skipped: true, reason: 'no_api_key' };
   }
+  const { apiKey, baseUrl } = resolved;
 
-  const model = process.env.ANTHROPIC_CONVERSATION_DIGEST_MODEL ?? DEFAULT_MODEL;
+  const model = process.env.ANTHROPIC_CONVERSATION_DIGEST_MODEL ?? resolved.model;
   const system = [
     `Resumes, para el dueño de "${input.businessName}", la actividad de su chatbot en una ventana de tiempo.`,
     'Reglas estrictas:',
@@ -136,7 +136,7 @@ export async function generateConversationDigest(
   ].join('\n');
 
   try {
-    const res = await fetch(ANTHROPIC_API_URL, {
+    const res = await fetch(`${baseUrl}/v1/messages`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

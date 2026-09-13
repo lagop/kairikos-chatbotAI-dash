@@ -7,12 +7,15 @@
 // que espera WordPress al otro extremo.
 // =============================================================================
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const mockState = vi.hoisted(() => ({ fetch: vi.fn(), logError: vi.fn() }));
+const mockState = vi.hoisted(() => ({ fetch: vi.fn(), logError: vi.fn(), resolveActiveAnthropicCredentials: vi.fn() }));
 vi.stubGlobal('fetch', mockState.fetch);
 vi.mock('@/lib/observability', () => ({
   logError: (...a: unknown[]) => mockState.logError(...a),
+}));
+vi.mock('@/lib/anthropic-credentials', () => ({
+  resolveActiveAnthropicCredentials: (...args: unknown[]) => mockState.resolveActiveAnthropicCredentials(...args),
 }));
 
 import {
@@ -20,6 +23,8 @@ import {
   parseArticleResponse,
   isSeoContentAIConfigured,
 } from '@/lib/seo-content-ai';
+
+const RESOLVED = { apiKey: 'sk-ant-test', baseUrl: 'https://api.anthropic.com', model: 'claude-haiku-4-5-20251001' };
 
 function jsonResponse(body: unknown, ok = true, status = 200) {
   return { ok, status, json: async () => body, text: async () => JSON.stringify(body) } as unknown as Response;
@@ -49,7 +54,7 @@ const INPUT = {
 };
 
 async function promptFrom(input = INPUT): Promise<string> {
-  process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+  mockState.resolveActiveAnthropicCredentials.mockResolvedValueOnce(RESOLVED);
   mockState.fetch.mockResolvedValueOnce(jsonResponse({ content: [{ type: 'text', text: articleJson() }] }));
   await generateArticleDraft(input);
   return JSON.parse(mockState.fetch.mock.calls[0][1].body).system as string;
@@ -58,17 +63,14 @@ async function promptFrom(input = INPUT): Promise<string> {
 beforeEach(() => {
   mockState.fetch.mockReset();
   mockState.logError.mockReset();
-  delete process.env.ANTHROPIC_API_KEY;
-});
-afterEach(() => {
-  delete process.env.ANTHROPIC_API_KEY;
+  mockState.resolveActiveAnthropicCredentials.mockReset().mockResolvedValue(null);
 });
 
 describe('isSeoContentAIConfigured', () => {
-  it('depende de ANTHROPIC_API_KEY', () => {
-    expect(isSeoContentAIConfigured()).toBe(false);
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
-    expect(isSeoContentAIConfigured()).toBe(true);
+  it('depende de si hay una credencial resuelta', async () => {
+    expect(await isSeoContentAIConfigured()).toBe(false);
+    mockState.resolveActiveAnthropicCredentials.mockResolvedValueOnce(RESOLVED);
+    expect(await isSeoContentAIConfigured()).toBe(true);
   });
 });
 
@@ -149,13 +151,13 @@ describe('generateArticleDraft', () => {
   });
 
   it('devuelve el artículo', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    mockState.resolveActiveAnthropicCredentials.mockResolvedValueOnce(RESOLVED);
     mockState.fetch.mockResolvedValueOnce(jsonResponse({ content: [{ type: 'text', text: articleJson() }] }));
     expect(await generateArticleDraft(INPUT)).toMatchObject({ ok: true, targetKeyword: 'candado alta seguridad' });
   });
 
   it('usa prefill para que la respuesta sea JSON y no una introducción en prosa', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    mockState.resolveActiveAnthropicCredentials.mockResolvedValueOnce(RESOLVED);
     // Respuesta sin la llave inicial, tal y como la devuelve el prefill.
     mockState.fetch.mockResolvedValueOnce(jsonResponse({
       content: [{ type: 'text', text: '"title":"Un título","bodyHtml":"<p>Hola</p>"}' }],
@@ -167,20 +169,20 @@ describe('generateArticleDraft', () => {
   });
 
   it('devuelve error, sin lanzar, si la API falla', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    mockState.resolveActiveAnthropicCredentials.mockResolvedValueOnce(RESOLVED);
     mockState.fetch.mockResolvedValueOnce(jsonResponse({ error: 'overloaded' }, false, 529));
     expect((await generateArticleDraft(INPUT)).ok).toBe(false);
   });
 
   it('devuelve error, sin lanzar, si se cae la red', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    mockState.resolveActiveAnthropicCredentials.mockResolvedValueOnce(RESOLVED);
     mockState.fetch.mockRejectedValueOnce(new Error('network down'));
     expect((await generateArticleDraft(INPUT)).ok).toBe(false);
     expect(mockState.logError).toHaveBeenCalled();
   });
 
   it('devuelve error si el modelo no da JSON utilizable', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    mockState.resolveActiveAnthropicCredentials.mockResolvedValueOnce(RESOLVED);
     mockState.fetch.mockResolvedValueOnce(jsonResponse({ content: [{ type: 'text', text: 'Aquí tienes tu artículo:' }] }));
     expect(await generateArticleDraft(INPUT)).toEqual({ ok: false, error: 'anthropic_api_invalid_json' });
   });

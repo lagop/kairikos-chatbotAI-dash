@@ -4,11 +4,12 @@
 // pattern, same reason for isolating the JSON-parse function from network).
 // =============================================================================
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockState = vi.hoisted(() => ({
   fetch: vi.fn(),
   logError: vi.fn(),
+  resolveActiveAnthropicCredentials: vi.fn(),
 }));
 
 vi.stubGlobal('fetch', mockState.fetch);
@@ -17,11 +18,17 @@ vi.mock('@/lib/observability', () => ({
   logError: (...args: unknown[]) => mockState.logError(...args),
 }));
 
+vi.mock('@/lib/anthropic-credentials', () => ({
+  resolveActiveAnthropicCredentials: (...args: unknown[]) => mockState.resolveActiveAnthropicCredentials(...args),
+}));
+
 import {
   isLeadClassificationConfigured,
   classifyConversationForLead,
   parseLeadClassificationResponse,
 } from '@/lib/lead-classification-ai';
+
+const RESOLVED = { apiKey: 'sk-ant-test', baseUrl: 'https://api.anthropic.com', model: 'claude-haiku-4-5-20251001' };
 
 function jsonResponse(body: unknown, ok = true, status = 200) {
   return { ok, status, json: async () => body, text: async () => JSON.stringify(body) } as unknown as Response;
@@ -30,21 +37,17 @@ function jsonResponse(body: unknown, ok = true, status = 200) {
 beforeEach(() => {
   mockState.fetch.mockReset();
   mockState.logError.mockReset();
-  delete process.env.ANTHROPIC_API_KEY;
-});
-
-afterEach(() => {
-  delete process.env.ANTHROPIC_API_KEY;
+  mockState.resolveActiveAnthropicCredentials.mockReset().mockResolvedValue(null);
 });
 
 describe('isLeadClassificationConfigured', () => {
-  it('false when ANTHROPIC_API_KEY is unset', () => {
-    expect(isLeadClassificationConfigured()).toBe(false);
+  it('false when no credential is resolved', async () => {
+    expect(await isLeadClassificationConfigured()).toBe(false);
   });
 
-  it('true when set', () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
-    expect(isLeadClassificationConfigured()).toBe(true);
+  it('true when a credential resolves', async () => {
+    mockState.resolveActiveAnthropicCredentials.mockResolvedValueOnce(RESOLVED);
+    expect(await isLeadClassificationConfigured()).toBe(true);
   });
 });
 
@@ -158,7 +161,7 @@ describe('classifyConversationForLead', () => {
   });
 
   it('returns the parsed classification on success', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    mockState.resolveActiveAnthropicCredentials.mockResolvedValueOnce(RESOLVED);
     mockState.fetch.mockResolvedValueOnce(
       jsonResponse({
         content: [{ type: 'text', text: '{"isLead": true, "score": 80, "scoreReason": "quiere presupuesto"}' }],
@@ -178,7 +181,7 @@ describe('classifyConversationForLead', () => {
   });
 
   it('includes the qualification profile in the prompt when present', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    mockState.resolveActiveAnthropicCredentials.mockResolvedValueOnce(RESOLVED);
     mockState.fetch.mockResolvedValueOnce(
       jsonResponse({ content: [{ type: 'text', text: '{"isLead": false, "score": 0, "scoreReason": "x"}' }] }),
     );
@@ -190,7 +193,7 @@ describe('classifyConversationForLead', () => {
   });
 
   it('falls back to generic guidance when the client has no qualification profile', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    mockState.resolveActiveAnthropicCredentials.mockResolvedValueOnce(RESOLVED);
     mockState.fetch.mockResolvedValueOnce(
       jsonResponse({ content: [{ type: 'text', text: '{"isLead": false, "score": 0, "scoreReason": "x"}' }] }),
     );
@@ -203,7 +206,7 @@ describe('classifyConversationForLead', () => {
   // Fase 2.3 — el bucle de aprendizaje: los leads que el propio cliente ya
   // cerró son la señal más honesta de qué le sirve.
   it('mete en el prompt los leads que el cliente ya cerró, con su veredicto', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    mockState.resolveActiveAnthropicCredentials.mockResolvedValueOnce(RESOLVED);
     mockState.fetch.mockResolvedValueOnce(
       jsonResponse({ content: [{ type: 'text', text: '{"isLead": false, "score": 0, "scoreReason": "x"}' }] }),
     );
@@ -221,7 +224,7 @@ describe('classifyConversationForLead', () => {
   });
 
   it('sin histórico, el prompt queda como antes — es el estado normal de un cliente nuevo', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    mockState.resolveActiveAnthropicCredentials.mockResolvedValueOnce(RESOLVED);
     mockState.fetch.mockResolvedValueOnce(
       jsonResponse({ content: [{ type: 'text', text: '{"isLead": false, "score": 0, "scoreReason": "x"}' }] }),
     );
@@ -232,7 +235,7 @@ describe('classifyConversationForLead', () => {
   });
 
   it('sends the x-api-key and anthropic-version headers', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    mockState.resolveActiveAnthropicCredentials.mockResolvedValueOnce(RESOLVED);
     mockState.fetch.mockResolvedValueOnce(
       jsonResponse({ content: [{ type: 'text', text: '{"isLead": false, "score": 0, "scoreReason": "x"}' }] }),
     );
@@ -243,7 +246,7 @@ describe('classifyConversationForLead', () => {
   });
 
   it('returns an error result (not a throw) on a non-ok API response', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    mockState.resolveActiveAnthropicCredentials.mockResolvedValueOnce(RESOLVED);
     mockState.fetch.mockResolvedValueOnce(jsonResponse({ error: 'rate_limited' }, false, 429));
     const result = await classifyConversationForLead(baseInput);
     expect(result.ok).toBe(false);
@@ -251,7 +254,7 @@ describe('classifyConversationForLead', () => {
   });
 
   it('returns an error result on a network failure, never throws', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    mockState.resolveActiveAnthropicCredentials.mockResolvedValueOnce(RESOLVED);
     mockState.fetch.mockRejectedValueOnce(new Error('network down'));
     const result = await classifyConversationForLead(baseInput);
     expect(result.ok).toBe(false);
@@ -259,14 +262,14 @@ describe('classifyConversationForLead', () => {
   });
 
   it('returns anthropic_api_invalid_json when the model does not return valid JSON', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    mockState.resolveActiveAnthropicCredentials.mockResolvedValueOnce(RESOLVED);
     mockState.fetch.mockResolvedValueOnce(jsonResponse({ content: [{ type: 'text', text: 'not json at all' }] }));
     const result = await classifyConversationForLead(baseInput);
     expect(result).toEqual({ ok: false, error: 'anthropic_api_invalid_json' });
   });
 
   it('returns an error when the API response has no text content block', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    mockState.resolveActiveAnthropicCredentials.mockResolvedValueOnce(RESOLVED);
     mockState.fetch.mockResolvedValueOnce(jsonResponse({ content: [] }));
     const result = await classifyConversationForLead(baseInput);
     expect(result).toEqual({ ok: false, error: 'anthropic_api_empty_response' });

@@ -103,6 +103,13 @@ jobs:
           #       manda NINGUNA respuesta real a un cliente final, no un
           #       fallback: `skipped: true, reason: 'no_api_key'` se propaga
           #       hasta replyToIncomingMessage sin enviar nada al canal.
+          #     ANTHROPIC_CREDENTIAL_ENCRYPTION_KEY  openssl rand -hex 32 —
+          #       cifra la clave de Anthropic cuando se guarda desde
+          #       /admin/portal/settings/anthropic en vez de solo vivir en
+          #       ANTHROPIC_API_KEY. Mismo molde que
+          #       STRIPE_CREDENTIAL_ENCRYPTION_KEY: si ya hay una clave
+          #       guardada con otra clave de cifrado en esta VPS, tiene que
+          #       ser la MISMA o deja de poder descifrarse.
           #
           #   Required GitHub variables:
           #     HOSTINGER_VM_ID     (from the VPS URL)
@@ -150,6 +157,7 @@ jobs:
             WHISPER_BASE_URL=https://api.groq.com/openai
             WHISPER_MODEL=whisper-large-v3
             ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+            ANTHROPIC_CREDENTIAL_ENCRYPTION_KEY=${{ secrets.ANTHROPIC_CREDENTIAL_ENCRYPTION_KEY }}
             N8N_BASE_URL=https://n8n.srv1170607.hstgr.cloud
             DEPLOY_MODE=dev-ip-port
             APP_PORT=3001
