@@ -110,6 +110,13 @@ jobs:
           #       STRIPE_CREDENTIAL_ENCRYPTION_KEY: si ya hay una clave
           #       guardada con otra clave de cifrado en esta VPS, tiene que
           #       ser la MISMA o deja de poder descifrarse.
+          #     META_CREDENTIAL_ENCRYPTION_KEY  openssl rand -hex 32 —
+          #       la misma trampa que ya tuvieron Stripe y Anthropic: está
+          #       en docker-compose.yml desde antes de que existiera esta
+          #       plantilla, pero nunca se añadió aquí, así que nunca ha
+          #       llegado al .env real de la VPS. Cifra el App Secret de
+          #       Meta guardado desde /admin/portal/settings/meta — sin
+          #       ella, guardar o leer esa credencial falla.
           #
           #   Required GitHub variables:
           #     HOSTINGER_VM_ID     (from the VPS URL)
@@ -158,6 +165,7 @@ jobs:
             WHISPER_MODEL=whisper-large-v3
             ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
             ANTHROPIC_CREDENTIAL_ENCRYPTION_KEY=${{ secrets.ANTHROPIC_CREDENTIAL_ENCRYPTION_KEY }}
+            META_CREDENTIAL_ENCRYPTION_KEY=${{ secrets.META_CREDENTIAL_ENCRYPTION_KEY }}
             N8N_BASE_URL=https://n8n.srv1170607.hstgr.cloud
             DEPLOY_MODE=dev-ip-port
             APP_PORT=3001
