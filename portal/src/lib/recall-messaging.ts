@@ -20,6 +20,7 @@ import {
 } from './recall-slots';
 import { isNumberBlocked } from './recall-blocklist';
 import { LEGAL_NOTICE_TEXT, LEGAL_NOTICE_VERSION } from './recall-optout';
+import { recordSend, metaMessageId } from './message-ledger';
 import { summarise } from './recall-transcription';
 import { logError } from './observability';
 
@@ -149,6 +150,7 @@ export interface MessagingDeps {
 interface CallRow {
   id: string;
   clientId: string;
+  tenantId: string | null;
   subscriptionId: string;
   fromNumber: string | null;
   withheld: boolean;
@@ -182,6 +184,9 @@ interface CallRow {
 const CALL_SELECT = {
   id: true,
   clientId: true,
+  // Fase 0 — lo pide el libro mayor de mensajes, que se escribe con el
+  // mismo aislamiento por tenant que el resto del esquema.
+  tenantId: true,
   subscriptionId: true,
   fromNumber: true,
   withheld: true,
@@ -436,6 +441,26 @@ export async function notifyCaller(
               };
 
       const sent = await sendTemplate(credentials.token, credentials.phoneNumberId, call.fromNumber, template);
+
+      // Fase 0 — al libro mayor, salga bien o mal. Ver message-ledger.ts:
+      // un envío rechazado no cuesta dinero pero explica un hueco en el
+      // histórico, y sin su fila ese hueco no tiene respuesta.
+      await recordSend(prisma, {
+        clientId: call.clientId,
+        tenantId: call.tenantId,
+        productCode: 'recall',
+        channel: 'whatsapp',
+        kind: 'template',
+        category: 'UTILITY',
+        templateName: template.name,
+        toE164: call.fromNumber,
+        providerMessageId: sent.ok ? metaMessageId(sent.data) : null,
+        ok: sent.ok,
+        error: sent.ok ? null : sent.error,
+        callEventId: call.id,
+        sentAt: now,
+      });
+
       if (sent.ok) {
         // Los huecos se guardan DESPUÉS de que el envío haya salido, y solo
         // los que de verdad viajaron en el mensaje: guardarlos antes
@@ -485,6 +510,24 @@ export async function notifyCaller(
       }. ${LEGAL_NOTICE_TEXT}`;
 
   const sms = await provider.sendSms({ to: call.fromNumber, from, body });
+
+  // `category` va nula: es de Meta, y en SMS el concepto no existe. El
+  // coste de un SMS depende del destino, no de una categoría, y lo
+  // rellenará igualmente la conciliación contra el proveedor.
+  await recordSend(prisma, {
+    clientId: call.clientId,
+    tenantId: call.tenantId,
+    productCode: 'recall',
+    channel: 'sms',
+    kind: 'free_form',
+    toE164: call.fromNumber,
+    providerMessageId: sms.ok ? sms.data.providerSid : null,
+    ok: sms.ok,
+    error: sms.ok ? null : sms.error,
+    callEventId: call.id,
+    sentAt: now,
+  });
+
   if (sms.ok) {
     await resolveCaller(prisma, call.id, 'sms', { sent: now });
     return { status: 'sent', channel: 'sms' };
@@ -564,6 +607,25 @@ export async function notifyOwner(
   const sent = await sendTemplate(credentials.token, credentials.phoneNumberId, owner, {
     ...RECALL_TEMPLATES.ownerMessage,
     bodyParams: [describeCaller(call), describeMessage(call)],
+  });
+
+  // Los mensajes al dueño cuestan lo mismo que los de fuera y entran en
+  // el mismo margen: si solo se apuntaran los que salen al llamante, el
+  // informe diría que este producto cuesta la mitad de lo que cuesta.
+  await recordSend(prisma, {
+    clientId: call.clientId,
+    tenantId: call.tenantId,
+    productCode: 'recall',
+    channel: 'whatsapp',
+    kind: 'template',
+    category: 'UTILITY',
+    templateName: RECALL_TEMPLATES.ownerMessage.name,
+    toE164: owner,
+    providerMessageId: sent.ok ? metaMessageId(sent.data) : null,
+    ok: sent.ok,
+    error: sent.ok ? null : sent.error,
+    callEventId: call.id,
+    sentAt: now,
   });
 
   if (sent.ok) {
@@ -817,6 +879,22 @@ async function sendCallbackReminder(
   const sent = await sendTemplate(credentials.token, credentials.phoneNumberId, owner, {
     ...RECALL_TEMPLATES.ownerCallback,
     bodyParams: [describeCaller(call), `a las ${at}`],
+  });
+
+  await recordSend(prisma, {
+    clientId: call.clientId,
+    tenantId: call.tenantId,
+    productCode: 'recall',
+    channel: 'whatsapp',
+    kind: 'template',
+    category: 'UTILITY',
+    templateName: RECALL_TEMPLATES.ownerCallback.name,
+    toE164: owner,
+    providerMessageId: sent.ok ? metaMessageId(sent.data) : null,
+    ok: sent.ok,
+    error: sent.ok ? null : sent.error,
+    callEventId: call.id,
+    sentAt: now,
   });
 
   if (!sent.ok) {

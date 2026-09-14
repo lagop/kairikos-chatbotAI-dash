@@ -54,6 +54,12 @@ const state = {
   callFindFirst: vi.fn(),
   callFindMany: vi.fn(),
   callUpdate: vi.fn(),
+  // Fase 0 — el libro mayor. Tiene que estar mockeado de verdad: recordSend
+  // se traga sus propios errores a propósito (ver message-ledger.ts), así
+  // que si este doble faltara, los tests seguirían verdes mientras la
+  // contabilidad no se escribe. Justo el fallo que el libro mayor existe
+  // para no tener.
+  outboundMessageCreate: vi.fn(),
 };
 
 const prisma = {
@@ -63,7 +69,13 @@ const prisma = {
     findMany: (...a: unknown[]) => state.callFindMany(...a),
     update: (...a: unknown[]) => state.callUpdate(...a),
   },
+  outboundMessage: {
+    create: (...a: unknown[]) => state.outboundMessageCreate(...a),
+  },
 } as unknown as PrismaClient;
+
+/** Lo que se apuntó en el libro mayor en esta prueba. */
+const ledgerRows = () => state.outboundMessageCreate.mock.calls.map((c) => c[0].data);
 
 // A Tuesday, 11:00 in Madrid — comfortably inside the default hours.
 const NOW = new Date('2026-07-07T09:00:00.000Z');
@@ -85,6 +97,7 @@ function callRow(overrides: Record<string, unknown> = {}) {
   return {
     id: 'call_1',
     clientId: 'client_1',
+    tenantId: 'tenant_1',
     subscriptionId: 'sub_1',
     fromNumber: '+34651234567',
     withheld: false,
@@ -311,6 +324,80 @@ describe('notifyCaller — the SMS fallback', () => {
     const result = await run({ fromNumber: '+34910555444', virtualNumber: null });
     expect(result).toMatchObject({ status: 'failed' });
     expect(String((result as { error: string }).error)).toContain('sms_unavailable');
+  });
+});
+
+// =============================================================================
+// Fase 0 — lo que queda apuntado en el libro mayor.
+//
+// La categoría es la columna por la que existe la tabla: es lo que decide
+// el precio. Un contador que no la guarde no se puede desagregar después,
+// y por eso estas comprobaciones miran el CONTENIDO de la fila y no solo
+// que se haya escrito una.
+// =============================================================================
+describe('el libro mayor de mensajes', () => {
+  it('apunta el envío por WhatsApp con su categoría, su plantilla y el id del proveedor', async () => {
+    await run();
+
+    expect(ledgerRows()).toHaveLength(1);
+    expect(ledgerRows()[0]).toMatchObject({
+      clientId: 'client_1',
+      tenantId: 'tenant_1',
+      productCode: 'recall',
+      channel: 'whatsapp',
+      kind: 'template',
+      category: 'UTILITY',
+      templateName: RECALL_TEMPLATES.callerOpen.name,
+      toE164: '+34651234567',
+      // La clave para casar esta fila con su línea de la factura.
+      providerMessageId: 'wamid.1',
+      ok: true,
+      callEventId: 'call_1',
+    });
+  });
+
+  it('apunta TAMBIÉN los envíos fallidos — sin su fila, un hueco en el histórico no tiene explicación', async () => {
+    mockState.sendTemplate.mockResolvedValue({ ok: false, error: 'rate limited', code: 131048 });
+    await run();
+
+    const whatsapp = ledgerRows().filter((r) => r.channel === 'whatsapp');
+    expect(whatsapp).toHaveLength(1);
+    expect(whatsapp[0]).toMatchObject({ ok: false, error: 'rate limited', providerMessageId: null });
+  });
+
+  it('apunta el SMS de respaldo sin categoría — es un concepto de Meta que en SMS no existe', async () => {
+    // Un fijo español nunca tiene WhatsApp: se va directo al respaldo.
+    await run({ fromNumber: '+34910555444' });
+
+    const sms = ledgerRows().filter((r) => r.channel === 'sms');
+    expect(sms).toHaveLength(1);
+    expect(sms[0]).toMatchObject({
+      productCode: 'recall',
+      channel: 'sms',
+      kind: 'free_form',
+      category: null,
+      toE164: '+34910555444',
+      ok: true,
+    });
+    expect(sms[0].providerMessageId).toBeTruthy();
+  });
+
+  it('nace SIEMPRE sin coste: ni Meta ni Twilio lo devuelven en el envío, y una tarifa inventada sería peor que el hueco', async () => {
+    await run();
+    const row = ledgerRows()[0];
+    expect(row.costAmount).toBeUndefined();
+    expect(row.costCurrency).toBeUndefined();
+  });
+
+  it('no apunta nada cuando no se envió por estar el número bloqueado — no hubo mensaje que contabilizar', async () => {
+    mockState.isNumberBlocked.mockResolvedValue(true);
+    await run();
+    expect(state.outboundMessageCreate).not.toHaveBeenCalled();
+  });
+
+  it('un fallo escribiendo el libro mayor NO tumba el envío — la contabilidad no puede costarle la respuesta a quien llamó', async () => {
+    state.outboundMessageCreate.mockRejectedValue(new Error('postgres caído'));
+    await expect(run()).resolves.toEqual({ status: 'sent', channel: 'whatsapp' });
   });
 });
 
