@@ -76,6 +76,15 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   }
 
   const removed = await unblockNumber(prisma, params.subscriptionId, body.data.number);
-  if (!removed) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  if (!removed.ok) {
+    // Fase 0 — 409 y no 404 cuando es una baja: la fila existe, y lo que
+    // falla es el permiso para tocarla, no la búsqueda. Un 404 aquí le
+    // diría al operador que ya no está bloqueado, que es justo lo
+    // contrario de lo que ha pasado.
+    return NextResponse.json(
+      { error: removed.reason },
+      { status: removed.reason === 'opt_out_is_final' ? 409 : 404 },
+    );
+  }
   return NextResponse.json({ ok: true });
 }

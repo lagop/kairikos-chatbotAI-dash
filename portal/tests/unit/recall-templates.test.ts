@@ -39,6 +39,9 @@ import {
   RECALL_TEMPLATE_DEFINITIONS,
   RECALL_OPTIONAL_TEMPLATE_DEFINITIONS,
 } from '@/lib/recall-templates';
+// Sin mockear a propósito: el test compara contra el texto REAL que se va
+// a enviar. Un doble aquí comprobaría que dos constantes falsas coinciden.
+import { LEGAL_NOTICE_TEXT } from '@/lib/recall-optout';
 
 const state = {
   recallSubscriptionFindMany: vi.fn(),
@@ -131,6 +134,44 @@ describe('RECALL_OPTIONAL_TEMPLATE_DEFINITIONS', () => {
   it('never ends on a variable — the exact Meta rejection (error_subcode 2388299) already hit twice in the required set', () => {
     for (const def of RECALL_OPTIONAL_TEMPLATE_DEFINITIONS) {
       expect(def.bodyText.trim().endsWith('}}')).toBe(false);
+    }
+  });
+});
+
+// =============================================================================
+// Fase 0 — el guardia del aviso de oposición.
+//
+// Esto no comprueba una redacción bonita: comprueba la condición de la que
+// depende que los números que recall acumula sirvan después para algo. Si
+// alguien quita el aviso de una plantilla de primer contacto, este bloque
+// se pone rojo antes de que la plantilla llegue a Meta — que es el único
+// momento en el que arreglarlo sigue siendo barato.
+// =============================================================================
+describe('el aviso de oposición en el primer contacto', () => {
+  /** Las tres que puede recibir alguien que nunca ha hablado con el negocio. */
+  const FIRST_CONTACT = ['recall_caller_open', 'recall_caller_closed', 'recall_caller_slots'];
+
+  const all = [...RECALL_TEMPLATE_DEFINITIONS, ...RECALL_OPTIONAL_TEMPLATE_DEFINITIONS];
+
+  it('las tres plantillas de primer contacto lo llevan', () => {
+    for (const name of FIRST_CONTACT) {
+      const def = all.find((t) => t.name === name);
+      expect(def, `falta la plantilla ${name}`).toBeTruthy();
+      expect(def?.bodyText, `${name} se ha quedado sin aviso de oposición`).toContain(LEGAL_NOTICE_TEXT);
+    }
+  });
+
+  it('las que van al DUEÑO no lo llevan — es su propio producto, no una comunicación a un tercero', () => {
+    const ownerFacing = all.filter((t) => !FIRST_CONTACT.includes(t.name));
+    for (const def of ownerFacing) {
+      expect(def.bodyText, `${def.name} no debería llevar el aviso`).not.toContain(LEGAL_NOTICE_TEXT);
+    }
+  });
+
+  it('añadir el aviso deja el cuerpo terminando en texto, nunca en {{n}} (error_subcode 2388299)', () => {
+    for (const name of FIRST_CONTACT) {
+      const def = all.find((t) => t.name === name);
+      expect(def?.bodyText.trim().endsWith('}}')).toBe(false);
     }
   });
 });

@@ -19,6 +19,7 @@ import {
   type CallbackSlot,
 } from './recall-slots';
 import { isNumberBlocked } from './recall-blocklist';
+import { LEGAL_NOTICE_TEXT, LEGAL_NOTICE_VERSION } from './recall-optout';
 import { summarise } from './recall-transcription';
 import { logError } from './observability';
 
@@ -311,6 +312,16 @@ async function resolveCaller(
       callerNotifyChannel: channel,
       ...(extra.sent ? { notifiedCallerAt: extra.sent } : {}),
       callerNotifyError: extra.error ?? null,
+      // Fase 0 — la evidencia de la base legal se sella AQUÍ y solo
+      // cuando `extra.sent` viene puesto, que es exactamente "el mensaje
+      // salió". Los desenlaces 'blocked', 'throttled' y 'unreachable'
+      // pasan por esta misma función sin fecha de envío: a esa persona no
+      // se le dio ninguna opción de oponerse porque no se le escribió, y
+      // marcarla como avisada sería falsificar el único registro que
+      // defiende al cliente en una reclamación.
+      ...(extra.sent
+        ? { legalNoticeVersion: LEGAL_NOTICE_VERSION, legalNoticeSentAt: extra.sent }
+        : {}),
     },
   });
 }
@@ -461,11 +472,17 @@ export async function notifyCaller(
     return finishCallerFailure(prisma, call, `${lastError}; sms_unavailable`, false);
   }
 
+  // Fase 0 — el aviso va también en el SMS. Para quien no tiene WhatsApp
+  // este ES el primer contacto, y la obligación no depende del transporte.
+  //
+  // Limitación conocida y escrita donde se nota: no hay ruta de SMS
+  // entrante en el repo, así que un "BAJA" contestado por SMS no se
+  // procesa solo — ver la cabecera de recall-optout.ts.
   const body = open
-    ? `Hola, somos ${business}. Hemos visto tu llamada y te contestamos enseguida.`
+    ? `Hola, somos ${business}. Hemos visto tu llamada y te contestamos enseguida. ${LEGAL_NOTICE_TEXT}`
     : `Hola, somos ${business}. Hemos visto tu llamada y te contestamos ${
         describeNextOpening(hours, now, call.subscription.timezone) ?? VAGUE_OPENING
-      }.`;
+      }. ${LEGAL_NOTICE_TEXT}`;
 
   const sms = await provider.sendSms({ to: call.fromNumber, from, body });
   if (sms.ok) {

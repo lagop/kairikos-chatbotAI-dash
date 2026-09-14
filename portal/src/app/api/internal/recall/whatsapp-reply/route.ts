@@ -4,6 +4,7 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateInternalRequest, internalAuthFailureResponse } from '@/lib/internal-auth';
 import { applyDigestReply } from '@/lib/recall-reviews';
 import { applyCallbackReply, callbackReplyText, sendCallbackReply } from '@/lib/recall-callbacks';
+import { applyOptOut, OPT_OUT_CONFIRMATION } from '@/lib/recall-optout';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -95,6 +96,42 @@ export async function POST(req: NextRequest) {
   // desconocido puede contestarnos por aquí. Se comprueba antes de dar el
   // mensaje por conversación normal.
   if (!sameNumber(subscription.ownerWhatsapp, body.data.from)) {
+    // Fase 0 — LA BAJA SE MIRA ANTES QUE NADA MÁS, y ese orden es el
+    // punto. "BAJA" no es la elección de un hueco, así que si se dejara
+    // pasar por applyCallbackReply caería como conversación normal y la
+    // persona acabaría hablando con el chatbot del negocio después de
+    // haber pedido explícitamente que dejáramos de escribirle.
+    //
+    // Solo para quien NO es el dueño: la baja es de quien recibe los
+    // mensajes de recuperación, y suprimir el número del propio dueño
+    // apagaría su producto desde su propio teléfono.
+    const optOut = await applyOptOut(prisma, {
+      subscriptionId: subscription.id,
+      clientId: connection.clientId,
+      from: body.data.from,
+      text: body.data.text,
+    });
+
+    if (optOut.status === 'suppressed') {
+      // Una sola confirmación, y solo la primera vez: quien insiste con
+      // un segundo "BAJA" ya está dado de baja, y contestarle otra vez
+      // es exactamente el mensaje de más que pidió no recibir.
+      //
+      // Va por mensaje libre y no por plantilla porque acaba de
+      // escribirnos: su ventana de 24 horas está abierta. Mismo
+      // razonamiento que el acuse de la devolución de llamada, de ahí
+      // que reutilice su función de envío — que es genérica pese al
+      // nombre.
+      if (!optOut.alreadySuppressed) {
+        await sendCallbackReply(prisma, {
+          clientId: connection.clientId,
+          to: body.data.from,
+          text: OPT_OUT_CONFIRMATION,
+        });
+      }
+      return NextResponse.json({ handled: true, outcome: optOut });
+    }
+
     const callback = await applyCallbackReply(prisma, {
       subscriptionId: subscription.id,
       from: body.data.from,

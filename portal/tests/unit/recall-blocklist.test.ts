@@ -104,22 +104,57 @@ describe('blockNumber', () => {
 });
 
 describe('unblockNumber', () => {
+  /** Un bloqueo corriente, puesto por el dueño: se puede quitar. */
+  const ownerBlock = { optOutAt: null };
+
   it('normalises before deleting, so the same string that blocked also unblocks', async () => {
-    await expect(unblockNumber(prisma, 'sub_1', '651 23 45 67')).resolves.toBe(true);
+    state.blockedFindUnique.mockResolvedValue(ownerBlock);
+    await expect(unblockNumber(prisma, 'sub_1', '651 23 45 67')).resolves.toEqual({ ok: true });
     expect(state.blockedDeleteMany.mock.calls[0][0].where).toEqual({
       subscriptionId: 'sub_1',
       e164: '+34651234567',
+      optOutAt: null,
     });
   });
 
-  it('reports false when there was nothing to remove', async () => {
-    state.blockedDeleteMany.mockResolvedValue({ count: 0 });
-    await expect(unblockNumber(prisma, 'sub_1', '+34651234567')).resolves.toBe(false);
+  it('reports not_found when there was nothing to remove', async () => {
+    state.blockedFindUnique.mockResolvedValue(null);
+    await expect(unblockNumber(prisma, 'sub_1', '+34651234567')).resolves.toEqual({
+      ok: false,
+      reason: 'not_found',
+    });
+    expect(state.blockedDeleteMany).not.toHaveBeenCalled();
   });
 
-  it('reports false for an unparseable number without a delete', async () => {
-    await expect(unblockNumber(prisma, 'sub_1', 'xxx')).resolves.toBe(false);
+  it('reports not_found for an unparseable number without a delete', async () => {
+    await expect(unblockNumber(prisma, 'sub_1', 'xxx')).resolves.toEqual({
+      ok: false,
+      reason: 'not_found',
+    });
     expect(state.blockedDeleteMany).not.toHaveBeenCalled();
+  });
+
+  // Fase 0 — el guardia. Sin esto, el dueño podría deshacer desde el panel
+  // la baja que pidió la persona a la que le escribimos, que es justo el
+  // agujero que el mecanismo de baja existe para tapar.
+  it('REFUSES to remove a block that is the caller\'s own opt-out, and never issues the delete', async () => {
+    state.blockedFindUnique.mockResolvedValue({ optOutAt: new Date('2026-09-14T10:00:00Z') });
+    await expect(unblockNumber(prisma, 'sub_1', '+34651234567')).resolves.toEqual({
+      ok: false,
+      reason: 'opt_out_is_final',
+    });
+    expect(state.blockedDeleteMany).not.toHaveBeenCalled();
+  });
+
+  it('treats a delete that matched nothing as the opt-out having won the race, not as not_found', async () => {
+    // La fila existía y sin baja al leerla, pero el DELETE lleva
+    // optOutAt: null en el WHERE: si entre medias llegó la baja, no borra.
+    state.blockedFindUnique.mockResolvedValue(ownerBlock);
+    state.blockedDeleteMany.mockResolvedValue({ count: 0 });
+    await expect(unblockNumber(prisma, 'sub_1', '+34651234567')).resolves.toEqual({
+      ok: false,
+      reason: 'opt_out_is_final',
+    });
   });
 });
 
