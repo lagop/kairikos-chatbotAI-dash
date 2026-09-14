@@ -120,6 +120,40 @@ export const RECALL_TEMPLATE_DEFINITIONS: readonly RecallTemplateDefinition[] = 
   },
 ];
 
+// 2026-09-14 — recall_caller_slots y recall_owner_callback: las dos
+// plantillas que faltaban por redactar (existían desde Fase 3 solo como
+// nombre + qué significa cada {{n}}, nunca con texto — ver
+// RECALL_TEMPLATES en recall-messaging.ts).
+//
+// Van en un array APARTE, no añadidas a RECALL_TEMPLATE_DEFINITIONS, a
+// propósito: REQUIRED_TEMPLATE_NAMES (más abajo) se deriva de ese array
+// para decidir cuándo un onboarding pasa a `forwarding_pending`, y estas
+// dos NO son parte del flujo obligatorio — callerSlots solo se manda si
+// el negocio está cerrado Y tiene huecos que ofrecer, ownerCallback solo
+// si hay una devolución de llamada programada. Añadirlas al array
+// original habría exigido su aprobación para completar el alta de TODO
+// cliente, aunque nunca las llegue a usar. submitAllRecallTemplates (más
+// abajo) las manda igualmente a revisión, solo que sin bloquear nada.
+//
+// Mismo aviso que la cabecera de arriba: primer borrador, sin probar
+// contra un WABA real todavía — que lo lea quien tenga la voz del
+// producto antes de que un cliente dependa de ellas.
+export const RECALL_OPTIONAL_TEMPLATE_DEFINITIONS: readonly RecallTemplateDefinition[] = [
+  {
+    ...RECALL_TEMPLATES.callerSlots,
+    category: 'UTILITY',
+    bodyText:
+      'Hola, soy el asistente de {{1}}. Ahora mismo estamos cerrados. Si quieres, te devolvemos la llamada en uno de estos horarios: {{2}}. Responde con el número que prefieras.',
+    bodyExamples: ['Peluquería Aurora', '1) hoy a las 17:30 · 2) mañana a las 9:00'],
+  },
+  {
+    ...RECALL_TEMPLATES.ownerCallback,
+    category: 'UTILITY',
+    bodyText: 'Recordatorio: te toca devolver la llamada a {{1}} {{2}}. Avísanos si ya no hace falta.',
+    bodyExamples: ['+34611223344', 'a las 9:00'],
+  },
+];
+
 export interface TemplateSubmissionOutcome {
   name: string;
   ok: boolean;
@@ -142,7 +176,7 @@ export async function submitAllRecallTemplates(
   wabaId: string,
 ): Promise<TemplateSubmissionOutcome[]> {
   const outcomes: TemplateSubmissionOutcome[] = [];
-  for (const def of RECALL_TEMPLATE_DEFINITIONS) {
+  for (const def of [...RECALL_TEMPLATE_DEFINITIONS, ...RECALL_OPTIONAL_TEMPLATE_DEFINITIONS]) {
     const result = await createMessageTemplate(accessToken, wabaId, {
       name: def.name,
       languageCode: def.languageCode,
