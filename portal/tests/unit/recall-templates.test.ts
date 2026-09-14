@@ -23,6 +23,8 @@ vi.mock('@/lib/recall-messaging', () => ({
     callerOpen: { name: 'recall_caller_open', languageCode: 'es' },
     callerClosed: { name: 'recall_caller_closed', languageCode: 'es' },
     ownerMessage: { name: 'recall_owner_message', languageCode: 'es' },
+    callerSlots: { name: 'recall_caller_slots', languageCode: 'es' },
+    ownerCallback: { name: 'recall_owner_callback', languageCode: 'es' },
   },
   metaSenderFor: (...a: unknown[]) => mockState.metaSenderFor(...a),
 }));
@@ -35,6 +37,7 @@ import {
   submitAllRecallTemplates,
   advanceSubscriptionsWithApprovedTemplates,
   RECALL_TEMPLATE_DEFINITIONS,
+  RECALL_OPTIONAL_TEMPLATE_DEFINITIONS,
 } from '@/lib/recall-templates';
 
 const state = {
@@ -107,14 +110,41 @@ describe('RECALL_TEMPLATE_DEFINITIONS', () => {
   });
 });
 
+describe('RECALL_OPTIONAL_TEMPLATE_DEFINITIONS', () => {
+  it('defines the 2 templates that exist but never gate onboarding — recall_caller_slots and recall_owner_callback', () => {
+    expect(RECALL_OPTIONAL_TEMPLATE_DEFINITIONS).toHaveLength(2);
+    const names = RECALL_OPTIONAL_TEMPLATE_DEFINITIONS.map((t) => t.name);
+    expect(names).toEqual(['recall_caller_slots', 'recall_owner_callback']);
+    for (const def of RECALL_OPTIONAL_TEMPLATE_DEFINITIONS) {
+      expect(def.languageCode).toBe('es');
+      expect(def.category).toBe('UTILITY');
+    }
+  });
+
+  it('gives every UNIQUE {{n}} placeholder a matching example, same rule as the required set', () => {
+    for (const def of RECALL_OPTIONAL_TEMPLATE_DEFINITIONS) {
+      const uniquePlaceholders = new Set(def.bodyText.match(/\{\{\d+\}\}/g) ?? []);
+      expect(def.bodyExamples).toHaveLength(uniquePlaceholders.size);
+    }
+  });
+
+  it('never ends on a variable — the exact Meta rejection (error_subcode 2388299) already hit twice in the required set', () => {
+    for (const def of RECALL_OPTIONAL_TEMPLATE_DEFINITIONS) {
+      expect(def.bodyText.trim().endsWith('}}')).toBe(false);
+    }
+  });
+});
+
 describe('submitAllRecallTemplates', () => {
-  it('submits all 7 templates to the given WABA', async () => {
+  it('submits all 9 templates (7 required + 2 optional) to the given WABA', async () => {
     mockState.createMessageTemplate.mockResolvedValue({ ok: true, data: { status: 'PENDING' } });
     const outcomes = await submitAllRecallTemplates('token', 'waba_1');
 
-    expect(mockState.createMessageTemplate).toHaveBeenCalledTimes(7);
-    expect(outcomes).toHaveLength(7);
+    expect(mockState.createMessageTemplate).toHaveBeenCalledTimes(9);
+    expect(outcomes).toHaveLength(9);
     expect(outcomes.every((o) => o.ok)).toBe(true);
+    expect(outcomes.map((o) => o.name)).toContain('recall_caller_slots');
+    expect(outcomes.map((o) => o.name)).toContain('recall_owner_callback');
     for (const call of mockState.createMessageTemplate.mock.calls) {
       expect(call[0]).toBe('token');
       expect(call[1]).toBe('waba_1');
@@ -131,10 +161,10 @@ describe('submitAllRecallTemplates', () => {
 
     const outcomes = await submitAllRecallTemplates('token', 'waba_1');
 
-    expect(mockState.createMessageTemplate).toHaveBeenCalledTimes(7);
+    expect(mockState.createMessageTemplate).toHaveBeenCalledTimes(9);
     const failed = outcomes.find((o) => o.name === 'recall_caller_closed');
     expect(failed).toMatchObject({ ok: false, error: 'invalid wording' });
-    expect(outcomes.filter((o) => o.ok)).toHaveLength(6);
+    expect(outcomes.filter((o) => o.ok)).toHaveLength(8);
     expect(mockState.logError).toHaveBeenCalledWith(
       'recall_templates.submit_failed',
       expect.any(Error),
@@ -143,10 +173,10 @@ describe('submitAllRecallTemplates', () => {
     );
   });
 
-  it('never throws — a network failure on every call still returns 7 outcomes', async () => {
+  it('never throws — a network failure on every call still returns 9 outcomes', async () => {
     mockState.createMessageTemplate.mockResolvedValue({ ok: false, error: 'network down' });
     const outcomes = await submitAllRecallTemplates('token', 'waba_1');
-    expect(outcomes).toHaveLength(7);
+    expect(outcomes).toHaveLength(9);
     expect(outcomes.every((o) => !o.ok)).toBe(true);
   });
 });
