@@ -117,6 +117,20 @@ jobs:
           #       llegado al .env real de la VPS. Cifra el App Secret de
           #       Meta guardado desde /admin/portal/settings/meta — sin
           #       ella, guardar o leer esa credencial falla.
+          #     TWILIO_CREDENTIAL_ENCRYPTION_KEY  openssl rand -hex 32 —
+          #       la misma trampa, la cuarta vez: NINGUNA de las 7 variables
+          #       TWILIO_* de docker-compose.yml llegaba aquí, así que
+          #       'recall' tenía cero infraestructura en producción — sin
+          #       credencial de Twilio guardada, sin número virtual, sin
+          #       ninguna suscripción. Esta clave es la que cifra el Auth
+          #       Token guardado desde /admin/portal/settings/telephony.
+          #     TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN  de la consola de
+          #       Twilio — respaldo previo a la pantalla de ajustes, como
+          #       Stripe/Meta/Anthropic; no hace falta rellenarlos aquí si
+          #       vas a pegarlos directamente en el panel.
+          #     TWILIO_BUNDLE_SID / TWILIO_ADDRESS_SID  el trámite regulatorio
+          #       de numeración española, una vez dado de alta en Twilio —
+          #       mismo respaldo previo al panel, no secretos en sí.
           #
           #   Required GitHub variables:
           #     HOSTINGER_VM_ID     (from the VPS URL)
@@ -166,6 +180,21 @@ jobs:
             ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
             ANTHROPIC_CREDENTIAL_ENCRYPTION_KEY=${{ secrets.ANTHROPIC_CREDENTIAL_ENCRYPTION_KEY }}
             META_CREDENTIAL_ENCRYPTION_KEY=${{ secrets.META_CREDENTIAL_ENCRYPTION_KEY }}
+            TWILIO_CREDENTIAL_ENCRYPTION_KEY=${{ secrets.TWILIO_CREDENTIAL_ENCRYPTION_KEY }}
+            TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }}
+            TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }}
+            TWILIO_BUNDLE_SID=${{ secrets.TWILIO_BUNDLE_SID }}
+            TWILIO_ADDRESS_SID=${{ secrets.TWILIO_ADDRESS_SID }}
+            # BASE_URL is the origin only — resolveWebhookUrl (twilio-
+            # signature.ts) appends the request path itself. It already
+            # falls back to NEXT_PUBLIC_PORTAL_URL when unset, but pinning
+            # it explicitly makes a proxy misconfiguration fail loudly
+            # instead of silently rejecting every real webhook (see that
+            # function's own header comment). VOICE_WEBHOOK_URL, unlike
+            # BASE_URL, needs the full path: it's written verbatim as the
+            # Twilio number's VoiceUrl at purchase time (recall-numbers.ts).
+            TWILIO_WEBHOOK_BASE_URL=${{ vars.NEXT_PUBLIC_PORTAL_URL }}
+            TWILIO_VOICE_WEBHOOK_URL=${{ vars.NEXT_PUBLIC_PORTAL_URL }}/api/webhooks/twilio/voice
             N8N_BASE_URL=https://n8n.srv1170607.hstgr.cloud
             DEPLOY_MODE=dev-ip-port
             APP_PORT=3001
