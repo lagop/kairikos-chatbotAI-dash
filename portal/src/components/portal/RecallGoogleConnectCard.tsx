@@ -20,6 +20,14 @@
 
 const OAUTH_START_HREF = '/api/portal/google-business/oauth/start?from=llamadas';
 
+// Enlace de ayuda ligero para quien no tiene ficha todavía — no un
+// acompañamiento guiado: crear la ficha exige verificación de Google
+// (correo, teléfono o vídeo, de días a semanas) y solo la puede hacer el
+// propio dueño del negocio, nunca un tercero en su nombre. La reseña es
+// la capa opcional de recall, no su núcleo, así que no justifica más que
+// esto — ver la conversación de producto del 14 de septiembre.
+const CREATE_PROFILE_HELP_HREF = 'https://support.google.com/business/answer/2911778';
+
 export interface RecallGoogleConnection {
   locationName: string;
   status: string;
@@ -64,6 +72,19 @@ export function RecallGoogleConnectCard({ connection }: { connection: RecallGoog
       <a href={OAUTH_START_HREF} className="btn-primary" data-testid="recall-google-connect-button">
         Conectar con Google
       </a>
+      <p className="text-xs text-kairikos-muted">
+        ¿Tu negocio no tiene ficha en Google todavía?{' '}
+        <a
+          href={CREATE_PROFILE_HELP_HREF}
+          target="_blank"
+          rel="noreferrer"
+          className="underline"
+          data-testid="recall-google-create-profile-help"
+        >
+          Aquí te explican cómo crearla
+        </a>
+        .
+      </p>
     </div>
   );
 }
