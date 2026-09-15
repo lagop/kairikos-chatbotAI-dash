@@ -366,3 +366,71 @@ export function createMessageTemplate(
     ],
   });
 }
+
+// ---------------------------------------------------------------------------
+// Fase 2b — descarga de audio entrante
+// ---------------------------------------------------------------------------
+
+/**
+ * Los bytes de un medio que alguien nos mandó por WhatsApp.
+ *
+ * SON DOS PETICIONES Y NO UNA, y no es un despiste de la API: Meta guarda
+ * el medio en una URL efímera y firmada que primero hay que pedir, y esa
+ * URL —a diferencia del resto de la Graph API— NO acepta el token en el
+ * query string. Hay que mandarlo en la cabecera Authorization o devuelve
+ * 401 sin explicar por qué. Es la parte que cuesta media tarde la primera
+ * vez.
+ *
+ * No pasa por callGraphApi porque la segunda petición no devuelve JSON
+ * sino binario, y toda esa función está construida alrededor de parsear un
+ * cuerpo JSON y mirar `error` dentro.
+ *
+ * Devuelve el contentType que declaró Meta: las notas de voz de WhatsApp
+ * llegan en audio/ogg (códec opus), no en mp3, y Whisper necesita saberlo.
+ */
+export async function fetchMediaBytes(
+  accessToken: string,
+  mediaId: string,
+  opts: { signal?: AbortSignal; maxBytes?: number } = {},
+): Promise<WhatsAppApiResult<{ bytes: ArrayBuffer; contentType: string }>> {
+  const lookup = await callGraphApi<{ url?: string; mime_type?: string; file_size?: number }>(
+    accessToken,
+    `/${mediaId}`,
+    'GET',
+  );
+  if (!lookup.ok) return lookup;
+  if (!lookup.data.url) return { ok: false, error: 'whatsapp_media_no_url' };
+
+  // Tope antes de descargar, no después: el objetivo es no traerse el
+  // fichero, así que mirar `file_size` cuando ya está en memoria no
+  // serviría de nada.
+  const maxBytes = opts.maxBytes ?? 16 * 1024 * 1024;
+  if (typeof lookup.data.file_size === 'number' && lookup.data.file_size > maxBytes) {
+    return { ok: false, error: `whatsapp_media_too_large_${lookup.data.file_size}` };
+  }
+
+  try {
+    const res = await fetch(lookup.data.url, {
+      // En la cabecera. Esta URL NO acepta access_token en el query string.
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: opts.signal,
+    });
+    if (!res.ok) {
+      return { ok: false, error: `whatsapp_media_fetch_${res.status}`, status: res.status };
+    }
+    const bytes = await res.arrayBuffer();
+    if (bytes.byteLength === 0) return { ok: false, error: 'whatsapp_media_empty' };
+    if (bytes.byteLength > maxBytes) {
+      return { ok: false, error: `whatsapp_media_too_large_${bytes.byteLength}` };
+    }
+    return {
+      ok: true,
+      data: {
+        bytes,
+        contentType: lookup.data.mime_type ?? res.headers.get('content-type') ?? 'audio/ogg',
+      },
+    };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'whatsapp_media_unknown_error' };
+  }
+}

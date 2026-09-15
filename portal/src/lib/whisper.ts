@@ -72,6 +72,51 @@ function language(): string {
 }
 
 /**
+ * Manda unos bytes de audio a Whisper y devuelve el texto.
+ *
+ * Fase 2b — extraído de transcribeRecording cuando apareció el segundo
+ * llamante: las notas de voz que el profesional manda por WhatsApp
+ * (recall-voice-capture.ts). Son dos fuentes con muy poco en común —
+ * Twilio pide Basic auth y sirve mp3, Meta pide Bearer y sirve ogg— pero
+ * lo que hacen DESPUÉS de tener los bytes es idéntico, y la convención de
+ * este repo es extraerlo antes de que diverja, no después.
+ *
+ * `signal` viene de fuera para que cada llamante ponga su propio plazo:
+ * una nota de voz de quince segundos no merece el minuto que se le da a
+ * un recado de dos minutos.
+ */
+export async function postAudioToWhisper(
+  audio: ArrayBuffer,
+  opts: { filename: string; contentType: string; signal?: AbortSignal },
+): Promise<TranscriptionResult> {
+  const form = new FormData();
+  form.set('file', new Blob([audio], { type: opts.contentType }), opts.filename);
+  form.set('model', process.env.WHISPER_MODEL ?? 'whisper-1');
+  form.set('language', language());
+  form.set('response_format', 'json');
+
+  const key = apiKey();
+  const res = await fetch(`${baseUrl()}/v1/audio/transcriptions`, {
+    method: 'POST',
+    headers: key ? { Authorization: `Bearer ${key}` } : undefined,
+    body: form,
+    signal: opts.signal,
+  });
+  if (!res.ok) {
+    return { ok: false, error: `whisper_${res.status}`, retryable: res.status >= 500 || res.status === 429 };
+  }
+
+  const json = (await res.json().catch(() => null)) as { text?: string } | null;
+  const text = json?.text?.trim();
+  if (!text) {
+    // A successful call that produced no words: silence, or a clip too
+    // short to contain speech. Real outcome, nothing to retry.
+    return { ok: false, error: 'transcription_empty', retryable: false };
+  }
+  return { ok: true, text };
+}
+
+/**
  * Fetch a recording from the provider and transcribe it locally.
  *
  * The audio is streamed provider → portal → whisper and never written to
@@ -118,31 +163,11 @@ export async function transcribeRecording(
       return { ok: false, error: 'recording_empty', retryable: false };
     }
 
-    const form = new FormData();
-    form.set('file', new Blob([audio], { type: 'audio/mpeg' }), 'recording.mp3');
-    form.set('model', process.env.WHISPER_MODEL ?? 'whisper-1');
-    form.set('language', language());
-    form.set('response_format', 'json');
-
-    const key = apiKey();
-    const res = await fetch(`${baseUrl()}/v1/audio/transcriptions`, {
-      method: 'POST',
-      headers: key ? { Authorization: `Bearer ${key}` } : undefined,
-      body: form,
+    return await postAudioToWhisper(audio, {
+      filename: 'recording.mp3',
+      contentType: 'audio/mpeg',
       signal: controller.signal,
     });
-    if (!res.ok) {
-      return { ok: false, error: `whisper_${res.status}`, retryable: res.status >= 500 || res.status === 429 };
-    }
-
-    const json = (await res.json().catch(() => null)) as { text?: string } | null;
-    const text = json?.text?.trim();
-    if (!text) {
-      // A successful call that produced no words: silence, or a clip too
-      // short to contain speech. Real outcome, nothing to retry.
-      return { ok: false, error: 'transcription_empty', retryable: false };
-    }
-    return { ok: true, text };
   } catch (err) {
     const aborted = err instanceof Error && err.name === 'AbortError';
     logError('whisper.transcribe_failed', err, { recordingUrl }, 'warn');

@@ -161,6 +161,7 @@ model ChatbotClient {
   jobs                           Job[]
   serviceQuotes                  ServiceQuote[]
   recoveryCampaigns              RecoveryCampaign[]
+  jobCaptureDrafts               JobCaptureDraft[]
   leadQualificationProfiles      LeadQualificationProfile[]
   leadQualificationProfileAudits LeadQualificationProfileAudit[]
   seoTargetKeywords              SeoTargetKeyword[]
@@ -555,6 +556,7 @@ model Tenant {
   jobs                           Job[]
   serviceQuotes                  ServiceQuote[]
   recoveryCampaigns              RecoveryCampaign[]
+  jobCaptureDrafts               JobCaptureDraft[]
   prospectingCampaigns           ProspectingCampaign[]
   prospectingCampaignAudits      ProspectingCampaignAudit[]
   seoProfiles                    SeoProfile[]
@@ -4243,6 +4245,7 @@ model Contact {
   jobs                    Job[]
   serviceQuotes           ServiceQuote[]
   recoveryCampaignMembers RecoveryCampaignMember[]
+  jobCaptureDrafts        JobCaptureDraft[]
   leads                   Lead[]
 
   @@unique([clientId, e164])
@@ -4466,5 +4469,75 @@ model RecoveryCampaignMember {
   /// Una persona, una vez por campaña.
   @@unique([campaignId, contactId])
   @@index([campaignId, state])
+  @@index([contactId])
+}
+
+// Fase 2b — lo que el sistema entendió de una nota de voz, esperando que
+// el profesional lo confirme.
+//
+// POR QUÉ HACE FALTA UNA TABLA Y NO BASTA CON LA MEMORIA
+//
+// La confirmación son DOS MENSAJES separados por el tiempo que tarde el
+// profesional en mirar el móvil: manda la nota de voz, le contestamos con
+// lo que entendimos, y él responde "sí" un minuto o una hora después. Entre
+// esos dos momentos el portal puede haberse reiniciado, desplegado o
+// escalado. Guardar el borrador en memoria significaría perder capturas sin
+// avisar, y "le di a sí y no se guardó" es la clase de fallo que hace que
+// alguien deje de usar la función para siempre.
+//
+// SE GUARDA LA TRANSCRIPCIÓN LITERAL ADEMÁS DE LO EXTRAÍDO. La extracción
+// es lo que se va a convertir en un Job; la transcripción es la prueba de
+// qué se dijo realmente. Cuando dentro de tres meses el profesional diga
+// "yo nunca dije 340 euros", la respuesta es esa cadena — el mismo motivo
+// por el que existe RecallDigest.rawResponse.
+model JobCaptureDraft {
+  id             String  @id @default(uuid()) @db.Uuid
+  clientId       String  @map("client_id")
+  tenantId       String? @map("tenant_id") @db.Uuid
+  subscriptionId String  @map("subscription_id") @db.Uuid
+
+  /// Lo que dijo, literal.
+  transcript String @db.Text
+  /// Lo que se entendió: la salida de job-capture-ai.ts tal cual.
+  extracted  Json
+
+  /// 'job' | 'quote' | 'unclear', copiado del extractor para poder
+  /// consultarlo sin abrir el JSON.
+  kind String
+
+  /// A quién se refiere, si se pudo resolver. Casi siempre NULO al crear
+  /// el borrador: la nota dice un nombre ("en casa de García"), no un
+  /// teléfono, y esa resolución es difusa. Ver la cabecera de Job.
+  contactId String? @map("contact_id") @db.Uuid
+
+  /// 'pending' | 'confirmed' | 'discarded' | 'expired'
+  status String @default("pending")
+
+  /// Qué se creó al confirmarlo. Uno de los dos, o ninguno si fue
+  /// 'unclear' y se descartó.
+  jobId          String? @map("job_id") @db.Uuid
+  serviceQuoteId String? @map("service_quote_id") @db.Uuid
+
+  /// Pasado este plazo ya no se puede confirmar.
+  ///
+  /// No es limpieza: es evitar que un "sí" escrito tres días después
+  /// confirme un borrador que el profesional ya no recuerda haber dictado.
+  /// Un "sí" tardío contra el borrador equivocado crearía un trabajo
+  /// inventado con el importe de otro.
+  expiresAt DateTime @map("expires_at")
+
+  resolvedAt DateTime? @map("resolved_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  client  ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant  Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  contact Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  /// "El borrador vivo de esta suscripción" — la consulta del flujo de
+  /// confirmación, y la única que se hace en caliente.
+  @@index([subscriptionId, status, createdAt])
+  @@index([clientId])
+  @@index([tenantId])
   @@index([contactId])
 }
