@@ -123,6 +123,9 @@ const rel = (file: string) => relative(SRC, file).split(sep).join('/');
  */
 const KNOWN_SENDERS: Record<string, { ledger: boolean; why?: string }> = {
   'lib/recall-messaging.ts': { ledger: true },
+  // Fase 3 — las campañas de recuperación. Este guardia las cazó al
+  // añadirlas, que es literalmente para lo que se escribió.
+  'lib/recovery-campaigns.ts': { ledger: true },
   'lib/recall-reports.ts': { ledger: false, why: 'un mensaje al mes por cliente' },
   'lib/recall-reviews.ts': { ledger: false, why: 'pendiente, mismo patrón' },
   'lib/recall-templates.ts': { ledger: false, why: 'instrucciones de desvío, una vez por alta' },
