@@ -162,6 +162,7 @@ model ChatbotClient {
   serviceQuotes                  ServiceQuote[]
   recoveryCampaigns              RecoveryCampaign[]
   jobCaptureDrafts               JobCaptureDraft[]
+  contactImports                 ContactImport[]
   leadQualificationProfiles      LeadQualificationProfile[]
   leadQualificationProfileAudits LeadQualificationProfileAudit[]
   seoTargetKeywords              SeoTargetKeyword[]
@@ -557,6 +558,7 @@ model Tenant {
   serviceQuotes                  ServiceQuote[]
   recoveryCampaigns              RecoveryCampaign[]
   jobCaptureDrafts               JobCaptureDraft[]
+  contactImports                 ContactImport[]
   prospectingCampaigns           ProspectingCampaign[]
   prospectingCampaignAudits      ProspectingCampaignAudit[]
   seoProfiles                    SeoProfile[]
@@ -4540,4 +4542,55 @@ model JobCaptureDraft {
   @@index([clientId])
   @@index([tenantId])
   @@index([contactId])
+}
+
+// Fase 4 — el registro de una importación que ocurrió.
+//
+// NO ES UN BORRADOR PENDIENTE. La vista previa es una función pura sobre
+// el fichero (analyseImport) que no escribe nada: se puede ejecutar mil
+// veces, incluso sobre el CSV de un prospecto que todavía no es cliente.
+// Esta fila se crea al CONFIRMAR, y lo que guarda es el acto.
+//
+// LA DECLARACIÓN DE ORIGEN ES LA MITAD DE POR QUÉ EXISTE ESTA TABLA.
+//
+// Los contactos que entran por aquí no han pasado por el aviso de
+// oposición de la Fase 0 — nadie les escribió nunca desde este sistema.
+// Lo único que sostiene poder meterlos en una campaña es que el cliente
+// declare de dónde salieron: que fueron clientes suyos reales, y qué les
+// vendió. Esa declaración se guarda literal, con quién la hizo y cuándo,
+// porque es la única prueba que existirá si alguien reclama.
+//
+// Sin declaración no se importa con base legal. No hay valor por defecto.
+model ContactImport {
+  id       String  @id @default(uuid()) @db.Uuid
+  clientId String  @map("client_id")
+  tenantId String? @map("tenant_id") @db.Uuid
+
+  /// Nombre del fichero, para que el cliente reconozca cuál fue.
+  filename String?
+
+  /// El texto EXACTO que se aceptó, no un booleano. Si la redacción de la
+  /// declaración cambia el año que viene, hay que poder saber cuál firmó
+  /// esta importación — mismo motivo que la versión del aviso de la Fase 0.
+  legalDeclaration String @map("legal_declaration") @db.Text
+  /// Email del operador, o 'client:<clientId>' cuando lo declara el propio
+  /// cliente desde su portal.
+  declaredBy       String @map("declared_by")
+
+  /// La puntuación de calidad congelada tal y como se vio al importar.
+  /// Guardarla evita la discusión de "pero si el fichero estaba bien".
+  qualitySnapshot Json @map("quality_snapshot")
+
+  contactsCreated Int @default(0) @map("contacts_created")
+  contactsUpdated Int @default(0) @map("contacts_updated")
+  jobsCreated     Int @default(0) @map("jobs_created")
+  rowsSkipped     Int @default(0) @map("rows_skipped")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, createdAt])
+  @@index([tenantId])
 }
