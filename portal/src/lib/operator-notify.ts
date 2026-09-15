@@ -521,7 +521,9 @@ export async function notifyOperatorOfExecutionFailure(
     return { ok: true, skipped: true, messageId: null, reason: 'kind_disabled' };
   }
 
-  const recipients = resolveOperatorRecipients(process.env.KAIRIKOS_OPERATOR_EMAILS);
+  // Import dinámico: operator-alert-settings importa este módulo.
+  const { getOperatorAlertRecipients } = await import('./operator-alert-settings');
+  const recipients = await getOperatorAlertRecipients();
   if (recipients.length === 0) {
     return { ok: true, skipped: true, messageId: null, reason: 'no_recipients' };
   }

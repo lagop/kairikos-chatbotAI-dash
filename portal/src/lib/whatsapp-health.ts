@@ -6,8 +6,8 @@ import {
   renderStuck,
   renderConnectionLost,
   sendOperatorNotification,
-  resolveOperatorRecipients,
 } from './operator-notify';
+import { getOperatorAlertRecipients } from './operator-alert-settings';
 import { logError } from './observability';
 
 // =============================================================================
@@ -197,7 +197,7 @@ export async function warnExpiringTokens(
   });
 
   const result: TokenExpiryResult = { scanned: connections.length, expiring: 0, warned: 0, expired: 0 };
-  const recipients = resolveOperatorRecipients(process.env.KAIRIKOS_OPERATOR_EMAILS);
+  const recipients = await getOperatorAlertRecipients();
 
   for (const connection of connections) {
     try {
@@ -301,7 +301,7 @@ export async function markConnectionNeedsReconnect(
         client: { select: { name: true, companyName: true } },
       },
     });
-    const recipients = resolveOperatorRecipients(process.env.KAIRIKOS_OPERATOR_EMAILS);
+    const recipients = await getOperatorAlertRecipients();
     if (!connection || recipients.length === 0) return { flipped: true, notified: false };
 
     const rendered = renderConnectionLost({

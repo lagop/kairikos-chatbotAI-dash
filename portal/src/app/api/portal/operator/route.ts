@@ -1,9 +1,9 @@
+import { getOperatorAlertRecipients } from '@/lib/operator-alert-settings';
 import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { getSession } from '@/lib/session';
 import {
-  resolveOperatorRecipients,
   sendOperatorNotification,
   utcDayKey,
 } from '@/lib/operator-notify';
@@ -98,12 +98,12 @@ async function handleHelpRequest(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const recipients = resolveOperatorRecipients(process.env.KAIRIKOS_OPERATOR_EMAILS);
+  const recipients = await getOperatorAlertRecipients();
   if (recipients.length === 0) {
     return NextResponse.json(
       {
         error: 'operator_not_configured',
-        detail: 'KAIRIKOS_OPERATOR_EMAILS is not set',
+        detail: 'no operator alert recipients (set them at /admin/portal/settings/alerts)',
       },
       { status: 500 },
     );

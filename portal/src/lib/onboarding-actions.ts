@@ -16,10 +16,10 @@
 import { NextResponse } from 'next/server';
 import { prisma, isDatabaseConfigured } from './prisma';
 import {
-  resolveOperatorRecipients,
   sendOperatorNotification,
   utcDayKey,
 } from './operator-notify';
+import { getOperatorAlertRecipients } from './operator-alert-settings';
 import { CHATBOT_PRODUCT_CODE } from './wizard-catalog';
 import { mirrorChatbotStateToClientProduct } from './client-product-lifecycle';
 
@@ -282,7 +282,7 @@ async function fireGoLiveReadyNotification(client: {
   companyName: string | null;
   tenantId: string | null;
 }): Promise<NotifyResult> {
-  const recipients = resolveOperatorRecipients(process.env.KAIRIKOS_OPERATOR_EMAILS);
+  const recipients = await getOperatorAlertRecipients();
   if (recipients.length === 0) {
     return { sent: false, resendMessageId: null, error: 'no_recipients' };
   }

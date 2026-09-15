@@ -404,11 +404,10 @@ async function fireConfigCompleteNotification(
 ): Promise<{ fired: boolean; resendMessageId: string | null; error: string | null }> {
   // Lazy import: avoids a static-import cycle between wizard-review and
   // onboarding-actions. onboarding-actions re-uses lib/prisma directly.
-  const { sendOperatorNotification, resolveOperatorRecipients, utcDayKey } = await import(
-    './operator-notify'
-  );
+  const { sendOperatorNotification, utcDayKey } = await import('./operator-notify');
+  const { getOperatorAlertRecipients } = await import('./operator-alert-settings');
 
-  const recipients = resolveOperatorRecipients(process.env.KAIRIKOS_OPERATOR_EMAILS);
+  const recipients = await getOperatorAlertRecipients();
   if (recipients.length === 0) {
     return { fired: false, resendMessageId: null, error: 'no_recipients' };
   }

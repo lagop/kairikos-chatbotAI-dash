@@ -1,3 +1,4 @@
+import { getOperatorAlertRecipients } from '@/lib/operator-alert-settings';
 import { NextResponse, type NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
@@ -11,7 +12,6 @@ import {
   renderEscalation,
   renderExecutionFailed,
   renderStuck,
-  resolveOperatorRecipients,
   sendOperatorNotification,
   utcDayKey,
   type NotificationKind,
@@ -120,14 +120,12 @@ export async function POST(req: NextRequest) {
 
   // Operator recipient list — fail closed if not configured. Sending
   // silently when the operator is unreachable is the worse failure mode.
-  const recipients = resolveOperatorRecipients(
-    process.env.KAIRIKOS_OPERATOR_EMAILS,
-  );
+  const recipients = await getOperatorAlertRecipients();
   if (recipients.length === 0) {
     return NextResponse.json(
       {
         error: 'operator_not_configured',
-        detail: 'KAIRIKOS_OPERATOR_EMAILS is not set; refusing to send',
+        detail: 'no operator alert recipients (set them at /admin/portal/settings/alerts); refusing to send',
       },
       { status: 500 },
     );

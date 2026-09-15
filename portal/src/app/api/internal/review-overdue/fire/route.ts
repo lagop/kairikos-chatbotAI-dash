@@ -1,3 +1,4 @@
+import { getOperatorAlertRecipients, getCeoAlertEmail } from '@/lib/operator-alert-settings';
 import { NextResponse, type NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
@@ -8,8 +9,6 @@ import {
 import {
   reviewOverdueKind,
   renderReviewOverdue,
-  resolveCeoRecipient,
-  resolveOperatorRecipients,
   sendOperatorNotification,
   type ReviewOverdueSeverity,
 } from '@/lib/operator-notify';
@@ -187,14 +186,12 @@ export async function POST(req: NextRequest) {
   }
 
   // Operator recipient list — fail closed if not configured.
-  const recipients = resolveOperatorRecipients(
-    process.env.KAIRIKOS_OPERATOR_EMAILS,
-  );
+  const recipients = await getOperatorAlertRecipients();
   if (recipients.length === 0) {
     return NextResponse.json(
       {
         error: 'operator_not_configured',
-        detail: 'KAIRIKOS_OPERATOR_EMAILS is not set; refusing to send',
+        detail: 'no operator alert recipients (set them at /admin/portal/settings/alerts); refusing to send',
       },
       { status: 500 },
     );
@@ -207,12 +204,12 @@ export async function POST(req: NextRequest) {
   // problem and the operator wonders why).
   let ceoCopied = false;
   if (parsed.value.severity === 'escalation') {
-    const ceoEmail = resolveCeoRecipient(process.env.KAIRIKOS_CEO_EMAIL);
+    const ceoEmail = await getCeoAlertEmail();
     if (!ceoEmail) {
       return NextResponse.json(
         {
           error: 'ceo_not_configured',
-          detail: 'KAIRIKOS_CEO_EMAIL is not set; refusing to send escalation',
+          detail: 'no CEO alert email (set it at /admin/portal/settings/alerts); refusing to send escalation',
         },
         { status: 500 },
       );
