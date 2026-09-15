@@ -160,6 +160,7 @@ model ChatbotClient {
   contacts                       Contact[]
   jobs                           Job[]
   serviceQuotes                  ServiceQuote[]
+  recoveryCampaigns              RecoveryCampaign[]
   leadQualificationProfiles      LeadQualificationProfile[]
   leadQualificationProfileAudits LeadQualificationProfileAudit[]
   seoTargetKeywords              SeoTargetKeyword[]
@@ -368,6 +369,7 @@ model Operator {
   twilioCredentialAudits      TwilioCredentialAudit[]
   metaCredentialAudits        MetaCredentialAudit[]
   anthropicCredentialAudits   AnthropicCredentialAudit[]
+  approvedRecoveryCampaigns   RecoveryCampaign[]
 
   @@index([email])
   @@index([isActive])
@@ -552,6 +554,7 @@ model Tenant {
   contacts                       Contact[]
   jobs                           Job[]
   serviceQuotes                  ServiceQuote[]
+  recoveryCampaigns              RecoveryCampaign[]
   prospectingCampaigns           ProspectingCampaign[]
   prospectingCampaignAudits      ProspectingCampaignAudit[]
   seoProfiles                    SeoProfile[]
@@ -4234,12 +4237,13 @@ model Contact {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  client        ChatbotClient  @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant        Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  callEvents    CallEvent[]
-  jobs          Job[]
-  serviceQuotes ServiceQuote[]
-  leads         Lead[]
+  client                  ChatbotClient            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant                  Tenant?                  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  callEvents              CallEvent[]
+  jobs                    Job[]
+  serviceQuotes           ServiceQuote[]
+  recoveryCampaignMembers RecoveryCampaignMember[]
+  leads                   Lead[]
 
   @@unique([clientId, e164])
   /// "Los contactos de este cliente por antigüedad de trato", que es la
@@ -4362,4 +4366,105 @@ model ServiceQuote {
   @@index([clientId, status, issuedAt])
   @@index([contactId])
   @@index([tenantId])
+}
+
+// Fase 3 — una campaña de recuperación.
+//
+// NUNCA SE ENVÍA NADA SIN APROBACIÓN HUMANA, y por eso esto es un modelo y
+// no una función que barre y manda. La campaña nace en `draft` con su
+// lista de destinatarios congelada, una persona la mira, y solo entonces
+// se envía. El documento lo pide explícitamente para la fase 1 del
+// producto y es la decisión correcta: el primer envío masivo de un cliente
+// sale de datos que nadie ha visto nunca: importes dictados por voz,
+// nombres entendidos por un modelo, fechas calculadas a partir de "vuelve
+// en un año".
+//
+// LA LISTA SE CONGELA AL CREARLA Y SE VUELVE A COMPROBAR AL ENVIAR. Las
+// dos cosas, y no es redundancia: congelarla hace que lo aprobado sea
+// exactamente lo que se manda —si la lista se recalculara al enviar, la
+// aprobación no valdría nada—, y volver a comprobar las exclusiones evita
+// escribirle a quien pidió la baja entre la aprobación y el envío. Se
+// aprueba una lista concreta, y aun así nadie sale de ella por la puerta
+// de atrás.
+model RecoveryCampaign {
+  id             String  @id @default(uuid()) @db.Uuid
+  clientId       String  @map("client_id")
+  tenantId       String? @map("tenant_id") @db.Uuid
+  /// La suscripción, porque la lista de supresión está por suscripción.
+  subscriptionId String  @map("subscription_id") @db.Uuid
+
+  /// 'open_quote' | 'service_anniversary' | 'dormant'. Los valores de
+  /// RecoveryTrigger en src/lib/recovery-triggers.ts.
+  trigger String
+
+  /// 'draft' | 'approved' | 'sending' | 'completed' | 'cancelled'.
+  status String @default("draft")
+
+  /// Quién la aprobó y cuándo. SIN ESTO NO SE ENVÍA: sendApprovedCampaign
+  /// se niega a tocar una campaña que no esté en 'approved'.
+  approvedByOperatorId String?   @map("approved_by_operator_id") @db.Uuid
+  approvedAt           DateTime? @map("approved_at")
+
+  completedAt DateTime? @map("completed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  client     ChatbotClient            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant     Tenant?                  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  approvedBy Operator?                @relation(fields: [approvedByOperatorId], references: [id], onDelete: SetNull)
+  members    RecoveryCampaignMember[]
+
+  @@index([clientId, status])
+  @@index([status, createdAt])
+  @@index([tenantId])
+}
+
+// Fase 3 — un destinatario de una campaña, con su desenlace.
+//
+// `excludedReason` es la columna por la que existe la mitad de este
+// modelo. Ante una reclamación hay que poder contestar "a esa persona no
+// se le escribió, y este es el motivo" — y alguien que simplemente no
+// aparece en una lista no demuestra nada.
+model RecoveryCampaignMember {
+  id         String @id @default(uuid()) @db.Uuid
+  campaignId String @map("campaign_id") @db.Uuid
+  contactId  String @map("contact_id") @db.Uuid
+
+  /// Congelado al crear la campaña. Denormalizado como texto por el mismo
+  /// motivo que CallEvent.toNumber: el histórico tiene que sobrevivir a
+  /// que el contacto se borre por retención.
+  e164 String
+
+  /// 'pending' | 'sent' | 'failed' | 'excluded'.
+  ///
+  /// La máquina del documento es más larga (delivered → read → replied →
+  /// clasificación). Aquí se para en 'sent' a propósito: los acuses de
+  /// entrega y lectura de Meta no están conectados todavía, y una columna
+  /// 'delivered' que nadie rellena es peor que no tenerla — parecería que
+  /// nadie recibe nada.
+  state String @default("pending")
+
+  /// Por qué NO se le escribió. Los valores de ExclusionReason.
+  excludedReason String? @map("excluded_reason")
+
+  /// El motivo del disparador, congelado tal y como se le enseñó a quien
+  /// aprobó ("presupuesto de 1.400 € de hace 34 días").
+  reason String
+
+  jobId          String? @map("job_id") @db.Uuid
+  serviceQuoteId String? @map("service_quote_id") @db.Uuid
+
+  sentAt DateTime? @map("sent_at")
+  error  String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  campaign RecoveryCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contact  Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  /// Una persona, una vez por campaña.
+  @@unique([campaignId, contactId])
+  @@index([campaignId, state])
+  @@index([contactId])
 }
