@@ -69,6 +69,9 @@ const state = {
   // Fase 1 — el sellado de la base legal en el contacto. Mismo motivo que
   // el de arriba: recordLegalBasis se traga sus errores.
   contactUpdateMany: vi.fn(),
+  // Fase 0 bis — el espejo de plantillas aprobadas, del que depende qué
+  // versión se manda y si el aviso se puede dar por dado.
+  whatsappTemplateFindMany: vi.fn(),
 };
 
 const prisma = {
@@ -84,7 +87,17 @@ const prisma = {
   contact: {
     updateMany: (...a: unknown[]) => state.contactUpdateMany(...a),
   },
+  whatsappTemplate: {
+    findMany: (...a: unknown[]) => state.whatsappTemplateFindMany(...a),
+  },
 } as unknown as PrismaClient;
+
+/** El estado objetivo: las tres versiones CON aviso aprobadas en Meta. */
+const APPROVED_WITH_NOTICE = [
+  { name: 'recall_caller_open_v2' },
+  { name: 'recall_caller_closed_v2' },
+  { name: 'recall_caller_slots_v2' },
+];
 
 /** Lo que se apuntó en el libro mayor en esta prueba. */
 const ledgerRows = () => state.outboundMessageCreate.mock.calls.map((c) => c[0].data);
@@ -147,6 +160,7 @@ beforeEach(() => {
   state.callUpdate.mockResolvedValue({});
   state.callFindFirst.mockResolvedValue(null);
   state.callFindMany.mockResolvedValue([]);
+  state.whatsappTemplateFindMany.mockResolvedValue(APPROVED_WITH_NOTICE);
   telephony = createFakeTelephonyProvider();
 });
 
@@ -233,7 +247,7 @@ describe('notifyCaller — what it says', () => {
     const [, phoneNumberId, to, template] = mockState.sendTemplate.mock.calls[0];
     expect(phoneNumberId).toBe('phone_1');
     expect(to).toBe('+34651234567');
-    expect(template.name).toBe(RECALL_TEMPLATES.callerOpen.name);
+    expect(template.name).toBe(RECALL_TEMPLATES.callerOpenWithNotice.name);
     expect(template.bodyParams).toEqual(['Fontanería Aurora']);
   });
 
@@ -246,7 +260,7 @@ describe('notifyCaller — what it says', () => {
     await run({ startedAt: new Date(night.getTime() - 5 * 60 * 1000) }, night);
 
     const template = mockState.sendTemplate.mock.calls[0][3];
-    expect(template.name).toBe(RECALL_TEMPLATES.callerSlots.name);
+    expect(template.name).toBe(RECALL_TEMPLATES.callerSlotsWithNotice.name);
     const [business, list] = template.bodyParams;
     expect(business).toBe('Fontanería Aurora');
     // Una lista numerada, separada por ' · ' y sin saltos de línea: un
@@ -266,7 +280,7 @@ describe('notifyCaller — what it says', () => {
     );
 
     const template = mockState.sendTemplate.mock.calls[0][3];
-    expect(template.name).toBe(RECALL_TEMPLATES.callerClosed.name);
+    expect(template.name).toBe(RECALL_TEMPLATES.callerClosedWithNotice.name);
     expect(template.bodyParams).toEqual(['Fontanería Aurora', 'mañana a las 8:00']);
   });
 
@@ -277,7 +291,7 @@ describe('notifyCaller — what it says', () => {
     await run({ subscription: { businessHours: closed } });
 
     const template = mockState.sendTemplate.mock.calls[0][3];
-    expect(template.name).toBe(RECALL_TEMPLATES.callerClosed.name);
+    expect(template.name).toBe(RECALL_TEMPLATES.callerClosedWithNotice.name);
     expect(template.bodyParams[1]).toBe('en cuanto abramos');
   });
 
@@ -361,7 +375,7 @@ describe('el libro mayor de mensajes', () => {
       channel: 'whatsapp',
       kind: 'template',
       category: 'UTILITY',
-      templateName: RECALL_TEMPLATES.callerOpen.name,
+      templateName: RECALL_TEMPLATES.callerOpenWithNotice.name,
       toE164: '+34651234567',
       // La clave para casar esta fila con su línea de la factura.
       providerMessageId: 'wamid.1',
@@ -744,5 +758,84 @@ describe('sweepDueCallbackReminders', () => {
     // Sin estampar, así que el tick siguiente lo vuelve a intentar; lo que
     // acota los reintentos es la ventana de gracia, no un contador.
     expect(state.callUpdate).not.toHaveBeenCalled();
+  });
+});
+
+// =============================================================================
+// Fase 0 bis — lo que Meta tiene APROBADO decide la evidencia, no el código.
+//
+// El fallo real que motivó esto, encontrado en producción el 2026-09-15: las
+// plantillas de primer contacto se aprobaron en Meta ANTES de que el aviso
+// "responde BAJA" entrara en el código. WhatsApp envía el cuerpo aprobado —
+// sin aviso— y el motor sellaba igualmente la evidencia y daba al contacto
+// permiso para campañas. Estos tests son los que impiden que vuelva.
+// =============================================================================
+describe('la versión aprobada en Meta decide si el aviso se da por dado', () => {
+  const stampedNotice = () =>
+    state.callUpdate.mock.calls.some((c) => c[0].data.legalNoticeVersion !== undefined);
+
+  it('con la versión CON aviso aprobada, la usa y sella la evidencia', async () => {
+    await run();
+    expect(mockState.sendTemplate.mock.calls[0][3].name).toBe('recall_caller_open_v2');
+    expect(stampedNotice()).toBe(true);
+    expect(state.contactUpdateMany).toHaveBeenCalled();
+  });
+
+  // EL CASO REAL DE PRODUCCIÓN.
+  it('con solo la versión ANTIGUA aprobada, la envía pero NO sella el aviso ni da permiso para campañas', async () => {
+    state.whatsappTemplateFindMany.mockResolvedValue([
+      { name: 'recall_caller_open' },
+      { name: 'recall_caller_closed' },
+    ]);
+
+    await expect(run()).resolves.toEqual({ status: 'sent', channel: 'whatsapp' });
+
+    // El llamante recibe respuesta igualmente…
+    expect(mockState.sendTemplate.mock.calls[0][3].name).toBe('recall_caller_open');
+    // …pero no se finge que se le dio una salida que su mensaje no llevaba.
+    expect(stampedNotice()).toBe(false);
+    expect(state.contactUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('sin ninguna versión aprobada en el espejo, intenta la nueva pero NO reclama el aviso — equivocarse hacia no reclamarlo', async () => {
+    state.whatsappTemplateFindMany.mockResolvedValue([]);
+    await run();
+    expect(mockState.sendTemplate.mock.calls[0][3].name).toBe('recall_caller_open_v2');
+    expect(stampedNotice()).toBe(false);
+    expect(state.contactUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('consulta el espejo de ESTE negocio, no el de otro', async () => {
+    await run();
+    expect(state.whatsappTemplateFindMany.mock.calls[0][0].where).toMatchObject({
+      connectionId: 'conn_1',
+      status: 'APPROVED',
+    });
+  });
+
+  // El segundo fallo que arregla lo mismo.
+  it('con el negocio cerrado y la oferta de horarios SIN aprobar, manda el mensaje de cerrado en vez de quedarse sin mensaje', async () => {
+    state.whatsappTemplateFindMany.mockResolvedValue([
+      { name: 'recall_caller_open_v2' },
+      { name: 'recall_caller_closed_v2' },
+      // recall_caller_slots_v2 NO aprobada: es lo que había en producción.
+    ]);
+    const night = new Date('2026-07-07T21:40:00.000Z');
+
+    await expect(run({ startedAt: new Date(night.getTime() - 5 * 60 * 1000) }, night)).resolves.toEqual({
+      status: 'sent',
+      channel: 'whatsapp',
+    });
+    expect(mockState.sendTemplate.mock.calls[0][3].name).toBe('recall_caller_closed_v2');
+    // Y no se guarda una oferta de horarios que nunca se envió.
+    expect(state.callUpdate.mock.calls.some((c) => c[0].data.callbackOfferedSlots !== undefined)).toBe(false);
+  });
+
+  it('el SMS sella el aviso siempre: su texto lo construye el código, no depende de Meta', async () => {
+    state.whatsappTemplateFindMany.mockResolvedValue([]);
+    // Un fijo español: va directo al SMS.
+    await run({ fromNumber: '+34910555444' });
+    expect(telephony.sentSms[0].body).toContain('responde BAJA');
+    expect(stampedNotice()).toBe(true);
   });
 });

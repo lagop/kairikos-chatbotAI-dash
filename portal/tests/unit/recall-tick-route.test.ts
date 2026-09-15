@@ -22,6 +22,7 @@ const mockState = vi.hoisted(() => ({
   syncTemplateStatuses: vi.fn(),
   warnExpiringTokens: vi.fn(),
   advanceSubscriptionsWithApprovedTemplates: vi.fn(),
+  ensureRecallTemplatesSubmitted: vi.fn(),
   resolveActiveTwilioCredentials: vi.fn(),
   sweepDueNumberAssignments: vi.fn(),
 }));
@@ -54,6 +55,7 @@ vi.mock('@/lib/whatsapp-health', () => ({
 }));
 vi.mock('@/lib/recall-templates', () => ({
   advanceSubscriptionsWithApprovedTemplates: (...a: unknown[]) => mockState.advanceSubscriptionsWithApprovedTemplates(...a),
+  ensureRecallTemplatesSubmitted: (...a: unknown[]) => mockState.ensureRecallTemplatesSubmitted(...a),
 }));
 vi.mock('@/lib/recall-numbers', () => ({
   sweepDueNumberAssignments: (...a: unknown[]) => mockState.sweepDueNumberAssignments(...a),
@@ -98,6 +100,7 @@ beforeEach(() => {
   mockState.syncTemplateStatuses.mockReset().mockResolvedValue({ connections: 0, templates: 0, failed: 0 });
   mockState.warnExpiringTokens.mockReset().mockResolvedValue({ scanned: 0, expiring: 0, warned: 0, expired: 0 });
   mockState.advanceSubscriptionsWithApprovedTemplates.mockReset().mockResolvedValue({ advanced: 0 });
+  mockState.ensureRecallTemplatesSubmitted.mockReset().mockResolvedValue({ connections: 0, submitted: 0, failed: 0 });
   mockState.sweepDueNumberAssignments.mockReset().mockResolvedValue({ due: 0, assigned: 0, poolExhausted: false, failed: [] });
 });
 
@@ -134,6 +137,7 @@ describe('GET /api/cron/recall-tick', () => {
       'numberAssignment',
       'tokenExpiry',
       'templateSync',
+      'templateSubmission',
       'templateApproval',
     ]);
     expect(mockState.purgeExpiredRecordings).toHaveBeenCalled();
@@ -182,6 +186,21 @@ describe('GET /api/cron/recall-tick', () => {
 
     await get(makeRequest());
     expect(order).toEqual(['sync', 'approve']);
+  });
+
+  it('submits missing templates AFTER the sync — comparing against a stale mirror would resend what Meta already has', async () => {
+    const order: string[] = [];
+    mockState.syncTemplateStatuses.mockImplementation(async () => {
+      order.push('sync');
+      return { connections: 0, templates: 0, failed: 0 };
+    });
+    mockState.ensureRecallTemplatesSubmitted.mockImplementation(async () => {
+      order.push('submit');
+      return { connections: 0, submitted: 0, failed: 0 };
+    });
+
+    await get(makeRequest());
+    expect(order).toEqual(['sync', 'submit']);
   });
 
   it('runs the Meta health jobs, which need no telephony, even when Twilio is unconfigured', async () => {
