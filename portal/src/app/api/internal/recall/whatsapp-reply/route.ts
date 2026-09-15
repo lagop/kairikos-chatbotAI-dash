@@ -5,6 +5,8 @@ import { authenticateInternalRequest, internalAuthFailureResponse } from '@/lib/
 import { applyDigestReply } from '@/lib/recall-reviews';
 import { applyCallbackReply, callbackReplyText, sendCallbackReply } from '@/lib/recall-callbacks';
 import { applyOptOut, OPT_OUT_CONFIRMATION } from '@/lib/recall-optout';
+import { decryptMetaToken } from '@/lib/meta-business';
+import { captureVoiceNote, resolveDraftWithReply } from '@/lib/recall-voice-capture';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -35,8 +37,17 @@ const BodySchema = z.object({
   phoneNumberId: z.string().trim().min(1),
   /** The sender's wa_id (their phone number). */
   from: z.string().trim().min(1),
-  text: z.string().trim().min(1).max(1000),
-});
+  // Fase 2b — el texto deja de ser obligatorio porque ahora también entra
+  // audio, y una nota de voz no trae ninguno.
+  text: z.string().trim().min(1).max(1000).optional(),
+  /** Fase 2b — el id del medio, cuando el mensaje es una nota de voz. */
+  audioMediaId: z.string().trim().min(1).optional(),
+})
+  // Uno de los dos, pero no ninguno: un mensaje sin contenido no es un
+  // mensaje, y aceptarlo dejaría que n8n reenviara ruido en silencio.
+  .refine((b) => Boolean(b.text || b.audioMediaId), {
+    message: 'text_or_audio_required',
+  });
 
 /** Compare two phone numbers the way a human means it. Meta's `wa_id`
  *  omits the leading '+' that we store, and a client may have typed his
@@ -71,7 +82,14 @@ export async function POST(req: NextRequest) {
 
   const connection = await prisma.metaChannelConnection.findFirst({
     where: { channel: 'whatsapp', externalId: body.data.phoneNumberId, status: 'active' },
-    select: { id: true, clientId: true },
+    select: {
+      id: true,
+      clientId: true,
+      // Fase 2b — hacen falta para bajarse el audio de una nota de voz.
+      accessTokenCiphertext: true,
+      accessTokenIv: true,
+      accessTokenTag: true,
+    },
   });
   if (!connection) {
     return NextResponse.json({ handled: false, reason: 'unknown_number' });
@@ -81,10 +99,73 @@ export async function POST(req: NextRequest) {
     where: { clientId: connection.clientId, status: 'active' },
     // Fase 3 — el nombre del negocio hace falta para el acuse que recibe
     // quien llamó; el mensaje lo lee un desconocido y firmarlo importa.
-    select: { id: true, ownerWhatsapp: true, client: { select: { name: true, companyName: true } } },
+    select: {
+      id: true,
+      tenantId: true,
+      ownerWhatsapp: true,
+      client: { select: { name: true, companyName: true } },
+    },
   });
   if (!subscription?.ownerWhatsapp) {
     return NextResponse.json({ handled: false, reason: 'no_subscription' });
+  }
+
+  const isOwner = sameNumber(subscription.ownerWhatsapp, body.data.from);
+
+  // =========================================================================
+  // Fase 2b — una nota de voz del DUEÑO es una captura de trabajo.
+  //
+  // Va antes que todo lo demás porque un audio no puede ser ninguna de las
+  // otras cosas que se contestan por aquí: ni una baja, ni la elección de
+  // un hueco, ni una respuesta al resumen. Todas esas son texto.
+  //
+  // Y SOLO DEL DUEÑO. Estas son las cuentas de su negocio: un audio de un
+  // desconocido no puede crear un trabajo con un importe. Se ignora sin
+  // contestar —`handled: false`— para que siga su camino como
+  // conversación normal hacia el chatbot, que es lo que de verdad es.
+  // =========================================================================
+  if (body.data.audioMediaId) {
+    if (!isOwner) {
+      return NextResponse.json({ handled: false, reason: 'audio_not_from_owner' });
+    }
+
+    let token: string;
+    try {
+      token = decryptMetaToken({
+        ciphertext: connection.accessTokenCiphertext,
+        iv: connection.accessTokenIv,
+        tag: connection.accessTokenTag,
+      });
+    } catch {
+      return NextResponse.json({ handled: false, reason: 'sender_unavailable' });
+    }
+
+    const capture = await captureVoiceNote(prisma, {
+      clientId: connection.clientId,
+      tenantId: subscription.tenantId,
+      subscriptionId: subscription.id,
+      mediaId: body.data.audioMediaId,
+      accessToken: token,
+    });
+
+    // La tarjeta —y el aviso de que no se entendió— van por mensaje libre:
+    // acaba de escribirnos, así que su ventana de 24 horas está abierta.
+    if (capture.status === 'drafted' || capture.status === 'unclear') {
+      await sendCallbackReply(prisma, {
+        clientId: connection.clientId,
+        to: body.data.from,
+        text: capture.reply,
+      });
+    }
+
+    return NextResponse.json({ handled: true, outcome: capture });
+  }
+
+  // A partir de aquí todo es texto. El esquema ya garantiza que hay uno de
+  // los dos, pero TypeScript no lo sabe y una aserción sería peor.
+  const messageText = body.data.text;
+  if (!messageText) {
+    return NextResponse.json({ handled: false, reason: 'empty_message' });
   }
 
   // Only the owner can answer his own digest. Without this check any
@@ -95,7 +176,7 @@ export async function POST(req: NextRequest) {
   // huecos para que le devuelvan la llamada, que es lo único que un
   // desconocido puede contestarnos por aquí. Se comprueba antes de dar el
   // mensaje por conversación normal.
-  if (!sameNumber(subscription.ownerWhatsapp, body.data.from)) {
+  if (!isOwner) {
     // Fase 0 — LA BAJA SE MIRA ANTES QUE NADA MÁS, y ese orden es el
     // punto. "BAJA" no es la elección de un hueco, así que si se dejara
     // pasar por applyCallbackReply caería como conversación normal y la
@@ -109,7 +190,7 @@ export async function POST(req: NextRequest) {
       subscriptionId: subscription.id,
       clientId: connection.clientId,
       from: body.data.from,
-      text: body.data.text,
+      text: messageText,
     });
 
     if (optOut.status === 'suppressed') {
@@ -135,7 +216,7 @@ export async function POST(req: NextRequest) {
     const callback = await applyCallbackReply(prisma, {
       subscriptionId: subscription.id,
       from: body.data.from,
-      text: body.data.text,
+      text: messageText,
     });
 
     if (callback.status === 'ignored') {
@@ -154,9 +235,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ handled: true, outcome: callback });
   }
 
+  // Fase 2b — "SÍ" a la tarjeta de confirmación de una nota de voz.
+  //
+  // Va ANTES del resumen diario pero solo actúa si hay un borrador vivo:
+  // resolveDraftWithReply devuelve `no_draft` en cuanto no lo hay, y
+  // entonces esto sigue su camino. No puede tragarse una respuesta al
+  // resumen, que además son números y no un "sí".
+  //
+  // Si fuera después, un "sí" caería primero en applyDigestReply, que lo
+  // trataría como una selección ilegible y le contestaría "no entendí tu
+  // respuesta" — a alguien que acababa de contestar exactamente lo que se
+  // le había pedido.
+  const draftReply = await resolveDraftWithReply(prisma, {
+    subscriptionId: subscription.id,
+    text: messageText,
+  });
+  if (draftReply.status !== 'no_draft') {
+    await sendCallbackReply(prisma, {
+      clientId: connection.clientId,
+      to: body.data.from,
+      text: draftReply.reply,
+    });
+    return NextResponse.json({ handled: true, outcome: draftReply });
+  }
+
   const outcome = await applyDigestReply(prisma, {
     subscriptionId: subscription.id,
-    text: body.data.text,
+    text: messageText,
   });
 
   if (outcome.status === 'ignored' && outcome.reason === 'no_open_digest') {
