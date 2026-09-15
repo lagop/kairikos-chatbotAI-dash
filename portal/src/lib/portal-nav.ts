@@ -29,6 +29,10 @@ export interface PortalNavItem {
 
 export const PORTAL_NAV: readonly PortalNavItem[] = [
   { href: '/portal', label: 'Resumen' },
+  // Fase 5c — justo debajo del resumen y sin `parentHref`: el asistente
+  // contesta sobre los datos de CUALQUIER producto, así que colgarlo de
+  // uno de ellos daría a entender que solo sabe de ese.
+  { href: '/portal/asistente', label: 'Asistente' },
   { href: '/portal/status', label: 'Chatbot' },
   { href: '/portal/onboarding', label: 'Onboarding', parentHref: '/portal/status' },
   { href: '/portal/conversations', label: 'Conversaciones', parentHref: '/portal/status' },
