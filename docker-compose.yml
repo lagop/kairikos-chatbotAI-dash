@@ -204,6 +204,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      # El app NO arranca hasta que las migraciones terminan BIEN. Ver el
+      # servicio `migrate`, más abajo, para por qué.
+      migrate:
+        condition: service_completed_successfully
     networks:
       - portal-net
       # Esta VPS concreta ya tiene Traefik ocupando el 80/443 para n8n
@@ -247,6 +251,73 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+
+  # ===========================================================================
+  # Migraciones — el paso que faltaba entre "la imagen nueva está lista" y
+  # "el código nuevo empieza a atender peticiones".
+  #
+  # QUÉ PROBLEMA RESUELVE
+  #
+  # deploy.yml despliega automáticamente, pero NO aplicaba migraciones. El
+  # resultado era una ventana en la que el código nuevo corría contra el
+  # esquema viejo, y no era teórica: recordIncomingCall escribe columnas
+  # nuevas en CallEvent, así que una columna que falte hace que el webhook
+  # de voz de Twilio devuelva 500 y quien llame oiga el tono de error. Ese
+  # camino no está protegido a propósito — perder una llamada no se
+  # recupera— así que la protección tiene que estar aquí.
+  #
+  # POR QUÉ UN SERVICIO Y NO UN PASO EN EL BUILD
+  #
+  # Porque WP-03 quitó `prisma migrate deploy` de `npm run build` con dos
+  # razones que siguen siendo buenas (ver portal/README.md): una migración
+  # rota se descubría en el momento de aplicarse, y un rollback del deploy
+  # no revertía el esquema. La regla que dejó escrita es "migrar primero,
+  # desplegar después" — y eso es exactamente lo que hace este servicio.
+  # No se re-acopla nada al build: se hace real el orden que el documento
+  # ya pedía y que en esta VPS no ejecutaba nadie.
+  #
+  # EL MODO DE FALLO ES EL BUENO
+  #
+  # `service_completed_successfully` significa que si la migración falla,
+  # Compose no recrea `app` — el contenedor viejo sigue sirviendo con el
+  # esquema viejo, que es coherente. Se despliega todo o no se despliega
+  # nada, en vez de quedarse a medias. (Confírmalo en el primer deploy
+  # real: es el comportamiento documentado de Compose, pero conviene verlo
+  # una vez con los ojos.)
+  #
+  # LO QUE ESTO NO ARREGLA, Y NO PUEDE
+  #
+  # Un rollback sigue sin revertir el esquema. Por eso la disciplina de
+  # migraciones ADITIVAS Y COMPATIBLES HACIA ATRÁS no es opcional: toda
+  # migración tiene que poder convivir con el código anterior. Es lo que
+  # ya exige portal/prisma/README.md, incluida la nota de rollback en la
+  # descripción de la PR. Automatizar el "cuándo" no cambia el "qué".
+  # ===========================================================================
+  migrate:
+    # La MISMA imagen que el app: lleva dentro tanto el CLI de Prisma
+    # (el runner copia node_modules del builder, que sí instala
+    # devDependencies) como la carpeta prisma/ con las migraciones.
+    image: ghcr.io/lagop/kairikos-chatbotai-dash/portal-app:latest
+    # Igual que el app: sin esto, un `:latest` sin cambiar no se
+    # considera cambio de config y migraría con la imagen ANTERIOR — es
+    # decir, sin las migraciones que acaban de llegar.
+    pull_policy: always
+    container_name: kairikos-portal-migrate
+    # Entrecomillado: en YAML, `no` sin comillas es el booleano false.
+    # Esto es de un solo uso — corre, termina y no se reinicia.
+    restart: "no"
+    command: ["npx", "prisma", "migrate", "deploy"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      # Sin valor por defecto, por el mismo motivo que en el app: el
+      # esquema declara directUrl = env("DIRECT_URL") y, vacía, la
+      # validación falla antes de tocar la base de datos.
+      DIRECT_URL: ${DIRECT_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - portal-net
 
   postgres:
     image: postgres:16-alpine
