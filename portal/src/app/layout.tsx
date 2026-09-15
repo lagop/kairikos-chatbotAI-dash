@@ -21,6 +21,30 @@ export const metadata: Metadata = {
     index: false,
     follow: false,
   },
+  // Fase 5a — iOS NO lee el manifest para el icono de la pantalla de
+  // inicio: usa apple-touch-icon, y sin él captura un pantallazo de la
+  // página y lo usa de icono. Importa más de lo que parece, porque Safari
+  // solo permite notificaciones push desde una PWA ya instalada — en
+  // iPhone, este icono es el paso previo a que las push existan.
+  //
+  // El manifest se declara aquí y no con un <link> a mano para que Next
+  // resuelva la ruta él mismo (la genera src/app/manifest.ts).
+  manifest: '/manifest.webmanifest',
+  icons: {
+    icon: [
+      { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [{ url: '/icons/apple-icon.png', sizes: '180x180', type: 'image/png' }],
+  },
+  appleWebApp: {
+    // Lo que hace que, una vez añadida a la pantalla de inicio, iOS la
+    // abra SIN la barra de Safari. Sin esto se instala el acceso directo
+    // pero sigue abriéndose como una pestaña más.
+    capable: true,
+    title: 'Kairikos',
+    statusBarStyle: 'default',
+  },
 };
 
 // WP-32 — light is the default regardless of OS preference (see
