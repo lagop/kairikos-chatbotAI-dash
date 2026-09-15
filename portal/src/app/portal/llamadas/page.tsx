@@ -14,6 +14,7 @@ import { EmptyState } from '@/components/portal/EmptyState';
 import { SelfServeProductCard, type SelfServeTierOption } from '@/components/portal/SelfServeProductCard';
 import { RecallMetaConnectCard } from '@/components/portal/RecallMetaConnectCard';
 import { RecallGoogleConnectCard } from '@/components/portal/RecallGoogleConnectCard';
+import { InstallPrompt } from '@/components/portal/InstallPrompt';
 
 export const dynamic = 'force-dynamic';
 
@@ -381,6 +382,11 @@ export default async function PortalLlamadasPage({
       ) : null}
 
       <RecallGoogleConnectCard connection={view.googleConnection} />
+
+      {/* Fase 5a — la invitación a instalar se monta AQUÍ y no en el layout
+          del portal, a propósito: esta es la única página con motivo para
+          abrirla a diario. Ver la cabecera de InstallPrompt.tsx. */}
+      <InstallPrompt />
 
       <section aria-label={`Resumen de ${monthLabel(view.localMonth)}`}>
         <div className="mb-2 flex items-center justify-between gap-3">

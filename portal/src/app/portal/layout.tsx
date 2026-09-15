@@ -3,6 +3,7 @@ import { PortalFooter } from '@/components/portal/PortalFooter';
 import { PortalHeader } from '@/components/portal/PortalHeader';
 import { PortalSidebarMount } from '@/components/portal/PortalSidebarMount';
 import { PageViewTracker } from '@/components/portal/PageViewTracker';
+import { ServiceWorkerMount } from '@/components/portal/ServiceWorkerMount';
 import { auth } from '../../../auth';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
@@ -79,6 +80,10 @@ export default async function PortalLayout({ children }: { children: ReactNode }
       </div>
       <PortalFooter />
       <PageViewTracker />
+      {/* Fase 5a — registra el service worker con ámbito /portal. No pinta
+          nada; la invitación a instalar vive en InstallPrompt.tsx, que solo
+          se monta donde hay uso diario. */}
+      <ServiceWorkerMount />
     </div>
   );
 }
