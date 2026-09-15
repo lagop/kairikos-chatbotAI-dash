@@ -60,6 +60,9 @@ const state = {
   // contabilidad no se escribe. Justo el fallo que el libro mayor existe
   // para no tener.
   outboundMessageCreate: vi.fn(),
+  // Fase 1 — el sellado de la base legal en el contacto. Mismo motivo que
+  // el de arriba: recordLegalBasis se traga sus errores.
+  contactUpdateMany: vi.fn(),
 };
 
 const prisma = {
@@ -71,6 +74,9 @@ const prisma = {
   },
   outboundMessage: {
     create: (...a: unknown[]) => state.outboundMessageCreate(...a),
+  },
+  contact: {
+    updateMany: (...a: unknown[]) => state.contactUpdateMany(...a),
   },
 } as unknown as PrismaClient;
 
@@ -98,6 +104,7 @@ function callRow(overrides: Record<string, unknown> = {}) {
     id: 'call_1',
     clientId: 'client_1',
     tenantId: 'tenant_1',
+    contactId: 'contact_1',
     subscriptionId: 'sub_1',
     fromNumber: '+34651234567',
     withheld: false,
@@ -398,6 +405,53 @@ describe('el libro mayor de mensajes', () => {
   it('un fallo escribiendo el libro mayor NO tumba el envío — la contabilidad no puede costarle la respuesta a quien llamó', async () => {
     state.outboundMessageCreate.mockRejectedValue(new Error('postgres caído'));
     await expect(run()).resolves.toEqual({ status: 'sent', channel: 'whatsapp' });
+  });
+});
+
+// =============================================================================
+// Fase 1 — el momento exacto en que un contacto pasa a ser utilizable.
+//
+// No es cuando llama: es cuando el aviso de oposición le llega. Esa
+// distinción es toda la base legal del producto, y estos tests son los que
+// impiden que alguien la simplifique "moviendo el sellado a donde nace el
+// contacto, que es más limpio".
+// =============================================================================
+describe('la base legal que sube al contacto', () => {
+  it('se sella cuando el aviso SALE, con el puntero a la llamada que lo acredita', async () => {
+    await run();
+    expect(state.contactUpdateMany).toHaveBeenCalledWith({
+      where: { id: 'contact_1', legalBasis: null },
+      data: {
+        legalBasis: 'inbound_contact',
+        legalBasisCapturedAt: NOW,
+        legalBasisEvidenceId: 'call_1',
+      },
+    });
+  });
+
+  it('se sella también cuando la respuesta se fue por SMS — la obligación no depende del transporte', async () => {
+    await run({ fromNumber: '+34910555444' });
+    expect(state.contactUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'contact_1', legalBasis: null } }),
+    );
+  });
+
+  it('NO se sella cuando el número está bloqueado: no se le escribió, luego no se le dio salida ninguna', async () => {
+    mockState.isNumberBlocked.mockResolvedValue(true);
+    await run();
+    expect(state.contactUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('NO se sella cuando el envío falla — marcar avisado a quien no recibió nada falsificaría la evidencia', async () => {
+    mockState.sendTemplate.mockResolvedValue({ ok: false, error: 'boom', code: 131048 });
+    // Sin WhatsApp y sin SMS posible: no sale ningún mensaje.
+    await run({ virtualNumber: null });
+    expect(state.contactUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('no intenta sellar nada en una llamada sin contacto (número oculto)', async () => {
+    await run({ contactId: null });
+    expect(state.contactUpdateMany).not.toHaveBeenCalled();
   });
 });
 

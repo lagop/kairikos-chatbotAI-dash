@@ -21,6 +21,7 @@ import {
 import { isNumberBlocked } from './recall-blocklist';
 import { LEGAL_NOTICE_TEXT, LEGAL_NOTICE_VERSION } from './recall-optout';
 import { recordSend, metaMessageId } from './message-ledger';
+import { recordLegalBasis } from './contacts';
 import { summarise } from './recall-transcription';
 import { logError } from './observability';
 
@@ -151,6 +152,7 @@ interface CallRow {
   id: string;
   clientId: string;
   tenantId: string | null;
+  contactId: string | null;
   subscriptionId: string;
   fromNumber: string | null;
   withheld: boolean;
@@ -184,6 +186,8 @@ interface CallRow {
 const CALL_SELECT = {
   id: true,
   clientId: true,
+  // Fase 1 — a quién pertenece la llamada, para subirle la base legal.
+  contactId: true,
   // Fase 0 — lo pide el libro mayor de mensajes, que se escribe con el
   // mismo aislamiento por tenant que el resto del esquema.
   tenantId: true,
@@ -309,8 +313,22 @@ async function resolveCaller(
   prisma: PrismaClient,
   callId: string,
   channel: CallerNotifyOutcome,
-  extra: { sent?: Date; error?: string | null } = {},
+  extra: { sent?: Date; error?: string | null; contactId?: string | null } = {},
 ): Promise<void> {
+  // Fase 1 — la evidencia sube al contacto desde el mismo sitio que la
+  // sella en la llamada, y bajo la misma condición: solo si el mensaje
+  // salió. Es lo que convierte a este contacto en utilizable para
+  // campañas; sin aviso enviado se queda con base legal nula y solo sirve
+  // para devolverle la llamada. La primera captura gana (ver
+  // recordLegalBasis), así que llamar de más aquí es inofensivo.
+  if (extra.sent && extra.contactId) {
+    await recordLegalBasis(prisma, {
+      contactId: extra.contactId,
+      evidenceCallEventId: callId,
+      capturedAt: extra.sent,
+    });
+  }
+
   await prisma.callEvent.update({
     where: { id: callId },
     data: {
@@ -475,7 +493,7 @@ export async function notifyCaller(
             },
           });
         }
-        await resolveCaller(prisma, call.id, 'whatsapp', { sent: now });
+        await resolveCaller(prisma, call.id, 'whatsapp', { sent: now, contactId: call.contactId });
         return { status: 'sent', channel: 'whatsapp' };
       }
 
@@ -529,7 +547,7 @@ export async function notifyCaller(
   });
 
   if (sms.ok) {
-    await resolveCaller(prisma, call.id, 'sms', { sent: now });
+    await resolveCaller(prisma, call.id, 'sms', { sent: now, contactId: call.contactId });
     return { status: 'sent', channel: 'sms' };
   }
   return finishCallerFailure(prisma, call, sms.error, false);

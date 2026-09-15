@@ -66,6 +66,8 @@ export async function transcribeCallEvent(
       clientId: true,
       tenantId: true,
       fromNumber: true,
+      // Fase 1 — para que el lead nazca ya enganchado a su persona.
+      contactId: true,
       recordingUrl: true,
       transcript: true,
       leadId: true,
@@ -101,6 +103,13 @@ export async function transcribeCallEvent(
         clientId: call.clientId,
         tenantId: call.tenantId,
         contactPhone: call.fromNumber,
+        // Fase 1 — el lead hereda el contacto que la llamada ya resolvió,
+        // en vez de resolverlo otra vez. Aquí estamos dentro de una
+        // transacción y resolveContact hace su propio upsert: llamarlo
+        // desde dentro lo metería en la transacción de la transcripción,
+        // que es larga, y dejaría la fila de contacto bloqueada mientras
+        // tanto. El dato ya está resuelto desde que entró la llamada.
+        contactId: call.contactId,
         summary: summarise(result.text),
         channel: 'phone',
       },

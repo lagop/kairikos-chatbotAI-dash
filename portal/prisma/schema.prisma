@@ -157,6 +157,7 @@ model ChatbotClient {
   recallDigests                  RecallDigest[]
   recallUsageMonths              RecallUsageMonth[]
   outboundMessages               OutboundMessage[]
+  contacts                       Contact[]
   leadQualificationProfiles      LeadQualificationProfile[]
   leadQualificationProfileAudits LeadQualificationProfileAudit[]
   seoTargetKeywords              SeoTargetKeyword[]
@@ -546,6 +547,7 @@ model Tenant {
   recallSubscriptions            RecallSubscription[]
   callEvents                     CallEvent[]
   outboundMessages               OutboundMessage[]
+  contacts                       Contact[]
   prospectingCampaigns           ProspectingCampaign[]
   prospectingCampaignAudits      ProspectingCampaignAudit[]
   seoProfiles                    SeoProfile[]
@@ -2958,6 +2960,12 @@ model Lead {
   auditLogs    LeadAudit[]
   callEvents   CallEvent[]
 
+  // Fase 1 — la persona detrás del lead. Nulo mientras no haya teléfono
+  // deduplicable: en un lead de chatbot, `contactPhone` es lo que el
+  // clasificador creyó entender, y puede no ser un número.
+  contactId String?  @map("contact_id") @db.Uuid
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
   @@unique([clientId, externalPlaceId])
   @@index([clientId, status])
   @@index([clientId, createdAt])
@@ -2967,6 +2975,7 @@ model Lead {
   @@index([clientId, source, contactedAt])
   @@index([tenantId])
   @@index([conversationId])
+  @@index([contactId])
 }
 
 model LeadAudit {
@@ -3853,12 +3862,19 @@ model CallEvent {
   // Fase 0 — los mensajes que salieron por culpa de esta llamada.
   outboundMessages OutboundMessage[]
 
+  // Fase 1 — la persona que llamó. NULO cuando ocultó el número: esa
+  // llamada no se puede atribuir a nadie ni devolver, y fabricarle un
+  // contacto sería inventarse una persona por cada llamada anónima.
+  contactId String?  @map("contact_id") @db.Uuid
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
   @@index([clientId, startedAt])
   @@index([subscriptionId, startedAt])
   @@index([outcome])
   @@index([tenantId])
   // Drives the 30-day purge sweep: find recordings still present past
   // their retention window.
+  @@index([contactId])
   @@index([recordingDeletedAt, startedAt])
   // Drives the Fase 9 notification sweep — "which calls still owe someone
   // a message". The null-able stamp leads because that is the selective
@@ -4139,4 +4155,89 @@ model OutboundMessage {
   @@index([costSyncedAt, sentAt])
   @@index([tenantId])
   @@index([callEventId])
+}
+
+// Fase 1 — LA ENTIDAD DE CONTACTO.
+//
+// Hasta ahora este sistema no tenía ninguna. Dos llamadas del mismo número
+// con seis meses de diferencia eran dos filas sin relación entre sí, y
+// `Lead` guardaba nombre y teléfono como texto suelto que no deduplicaba
+// nada. Eso bastaba mientras el producto fuera "avisar de la llamada que
+// se escapó": cada llamada era un suceso y se acababa en sí misma.
+//
+// Deja de bastar en cuanto se quiere preguntar "¿cuándo estuve en casa de
+// García?" o "¿a quién llevo un año sin ver?". Esas preguntas no son sobre
+// llamadas, son sobre PERSONAS, y no había dónde colgarlas.
+//
+// LA CLAVE DE DEDUPLICACIÓN ES (cliente, E.164), NUNCA EL NÚMERO SOLO.
+// Dos clientes distintos pueden tener legítimamente al mismo vecino de
+// cliente final, y esos son dos contactos con dos bases legales
+// distintas: compartir la fila los mezclaría y haría que la baja que uno
+// pidió a una peluquería silenciara también al fontanero. Mismo
+// razonamiento que el @@unique([clientId, externalPlaceId]) de Lead.
+//
+// LO QUE DELIBERADAMENTE NO ESTÁ AQUÍ
+//
+//   · `optedOutAt`. La supresión ya vive en RecallBlockedNumber, que es
+//     lo que consultan los DOS sitios que envían (el webhook de voz y el
+//     envío). Duplicarla aquí sería una segunda lista que olvidar mirar
+//     — exactamente lo que advierte la cabecera de recall-blocklist.ts.
+//
+//   · `status` ('lead' | 'customer' | 'dormant'). Hoy no se puede
+//     calcular: distinguir un cliente de un interesado exige saber si se
+//     le hizo un trabajo, y `Job` no existe hasta la Fase 2. Una columna
+//     que hoy solo podría decir 'lead' para todo el mundo es una columna
+//     que miente, y de las que luego alguien se cree.
+model Contact {
+  id       String  @id @default(uuid()) @db.Uuid
+  clientId String  @map("client_id")
+  tenantId String? @map("tenant_id") @db.Uuid
+
+  /// E.164 normalizado. Es la clave natural, así que NO es nullable: un
+  /// contacto sin número no se puede deduplicar ni volver a alcanzar, y
+  /// una llamada con número oculto no crea contacto ninguno (ver
+  /// CallEvent.withheld — esa llamada no es recuperable por definición).
+  e164  String
+  name  String?
+  email String?
+
+  /// De dónde salió: 'inbound_call' | 'lead' | 'import' | 'manual'.
+  source String
+
+  firstSeenAt       DateTime @map("first_seen_at")
+  /// Lo que contesta "¿a quién llevo un año sin ver?". Se adelanta en
+  /// cada interacción, entrante o saliente.
+  lastInteractionAt DateTime @map("last_interaction_at")
+
+  /// LA BASE LEGAL, subida desde la interacción que la acredita.
+  ///
+  /// 'inbound_contact' — nos llamó y se le dio la opción de oponerse en
+  /// ese primer mensaje. Es el soft opt-in del art. 21.2 LSSI / reg.
+  /// 22(3) PECR. Futuros: 'import_declared', 'explicit_consent'.
+  ///
+  /// NULA MIENTRAS EL AVISO NO HAYA SALIDO DE VERDAD, y esa es la regla
+  /// entera: se rellena desde el mismo sitio que sella
+  /// CallEvent.legalNoticeSentAt (Fase 0), nunca al crear el contacto.
+  /// Un contacto con base legal nula existe, se le puede devolver la
+  /// llamada y sale en el historial — lo único que no se puede es
+  /// meterlo en una campaña.
+  legalBasis           String?   @map("legal_basis")
+  legalBasisCapturedAt DateTime? @map("legal_basis_captured_at")
+  /// El CallEvent concreto que lo acredita. La evidencia es un puntero a
+  /// un hecho, no una casilla marcada.
+  legalBasisEvidenceId String?   @map("legal_basis_evidence_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  client     ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant     Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  callEvents CallEvent[]
+  leads      Lead[]
+
+  @@unique([clientId, e164])
+  /// "Los contactos de este cliente por antigüedad de trato", que es la
+  /// consulta de los disparadores de la Fase 3 y del histórico.
+  @@index([clientId, lastInteractionAt])
+  @@index([tenantId])
 }
