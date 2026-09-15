@@ -4,6 +4,7 @@ import { RECALL_TEMPLATES, metaSenderFor } from './recall-messaging';
 import { DIGEST_TEMPLATES } from './recall-digest';
 import { REPORT_TEMPLATE } from './recall-reports';
 import { createMessageTemplate, sendTemplate } from './whatsapp-api';
+import { LEGAL_NOTICE_TEXT } from './recall-optout';
 import { logError } from './observability';
 
 // =============================================================================
@@ -63,18 +64,31 @@ export interface RecallTemplateDefinition {
 // newline — the examples below match that shape rather than showing a
 // line break Meta would never actually see.
 export const RECALL_TEMPLATE_DEFINITIONS: readonly RecallTemplateDefinition[] = [
+  // Fase 0 — LAS TRES PLANTILLAS DE PRIMER CONTACTO LLEVAN EL AVISO DE
+  // OPOSICIÓN PEGADO AL FINAL, y es obligatorio que sigan llevándolo: es
+  // el único momento en el que se le da a esa persona la opción de
+  // oponerse, y sin ella los números que se acumulan no sirven después
+  // para nada (ver la cabecera de recall-optout.ts). Hay un test que lo
+  // vigila — si lo quitas, la suite se pone roja a propósito.
+  //
+  // El texto se importa en vez de escribirse aquí para que la redacción
+  // legal viva en un solo sitio, junto a su número de versión.
+  //
+  // Efecto lateral agradecido: añadir una frase al final MEJORA las dos
+  // reglas de Meta con las que ya chocamos —sube la proporción de
+  // palabras por variable (2388293) y garantiza que la plantilla no
+  // termina en {{n}} (2388299)—, así que este cambio no acerca ningún
+  // rechazo, aleja dos.
   {
     ...RECALL_TEMPLATES.callerOpen,
     category: 'UTILITY',
-    bodyText:
-      'Hola, soy el asistente de {{1}}. Vimos tu llamada y no pudimos contestar — te escribimos en cuanto podamos.',
+    bodyText: `Hola, soy el asistente de {{1}}. Vimos tu llamada y no pudimos contestar — te escribimos en cuanto podamos. ${LEGAL_NOTICE_TEXT}`,
     bodyExamples: ['Peluquería Aurora'],
   },
   {
     ...RECALL_TEMPLATES.callerClosed,
     category: 'UTILITY',
-    bodyText:
-      'Hola, soy el asistente de {{1}}. Ahora mismo estamos cerrados, abrimos {{2}}. En cuanto abramos te contestamos.',
+    bodyText: `Hola, soy el asistente de {{1}}. Ahora mismo estamos cerrados, abrimos {{2}}. En cuanto abramos te contestamos. ${LEGAL_NOTICE_TEXT}`,
     bodyExamples: ['Peluquería Aurora', 'mañana a las 9:00'],
   },
   {
@@ -142,8 +156,9 @@ export const RECALL_OPTIONAL_TEMPLATE_DEFINITIONS: readonly RecallTemplateDefini
   {
     ...RECALL_TEMPLATES.callerSlots,
     category: 'UTILITY',
-    bodyText:
-      'Hola, soy el asistente de {{1}}. Ahora mismo estamos cerrados. Si quieres, te devolvemos la llamada en uno de estos horarios: {{2}}. Responde con el número que prefieras.',
+    // Lleva el aviso como las otras dos de primer contacto: para mucha
+    // gente ESTE es el primer mensaje que recibe, no un segundo toque.
+    bodyText: `Hola, soy el asistente de {{1}}. Ahora mismo estamos cerrados. Si quieres, te devolvemos la llamada en uno de estos horarios: {{2}}. Responde con el número que prefieras. ${LEGAL_NOTICE_TEXT}`,
     bodyExamples: ['Peluquería Aurora', '1) hoy a las 17:30 · 2) mañana a las 9:00'],
   },
   {

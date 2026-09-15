@@ -3794,8 +3794,25 @@ model CallEvent {
   // Bounded, so a permanently-failing send cannot be retried forever by a
   // sweep that runs every five minutes.
   callerNotifyAttempts Int     @default(0) @map("caller_notify_attempts")
-  ownerNotifyError     String? @map("owner_notify_error")
-  ownerNotifyAttempts  Int     @default(0) @map("owner_notify_attempts")
+
+  // Fase 0 — la evidencia de que a esta persona se le dio la opción de
+  // oponerse, y de QUÉ REDACCIÓN exacta leyó.
+  //
+  // La versión y no el texto: el texto vive en recall-optout.ts, que es
+  // append-only, así que guardar aquí la cadena entera sería duplicar
+  // medio kilobyte por llamada para poder reconstruir algo que ya se
+  // puede reconstruir. Lo que no se puede reconstruir sin esta columna es
+  // CUÁL de las versiones vio quien reclama — por eso se sella.
+  //
+  // Solo se rellena cuando el mensaje salió de verdad: un envío
+  // bloqueado, estrangulado o fallido no dio opción de nada, y marcarlo
+  // como si la hubiera dado es exactamente la mentira que esta columna
+  // existe para impedir.
+  legalNoticeVersion String?   @map("legal_notice_version")
+  legalNoticeSentAt  DateTime? @map("legal_notice_sent_at")
+
+  ownerNotifyError    String? @map("owner_notify_error")
+  ownerNotifyAttempts Int     @default(0) @map("owner_notify_attempts")
 
   // Fase 3 — devolución de llamada agendada por quien llamó.
   //
@@ -3879,7 +3896,22 @@ model RecallBlockedNumber {
   reason String?
 
   // operator email, or 'client:<clientId>' when the owner asked for it.
-  createdBy String?  @map("created_by")
+  // Fase 0 — 'caller:<e164>' cuando fue la propia persona quien pidió la baja.
+  createdBy String? @map("created_by")
+
+  // Fase 0 — cuándo pidió la BAJA la persona a la que escribimos.
+  //
+  // Es lo que separa los dos tipos de fila que conviven en esta tabla, y
+  // no son intercambiables: un bloqueo que pone el dueño contra un
+  // comercial pesado lo puede quitar el dueño; una baja que pide el
+  // llamante NO la puede deshacer nadie del lado del negocio. unblockNumber
+  // se apoya en esta columna para negarse.
+  //
+  // Columna y no un valor convenido dentro de `reason`, que es texto
+  // libre: un guardia que depende de que nadie reescriba una cadena no es
+  // un guardia. Una vez sellada no se limpia nunca.
+  optOutAt DateTime? @map("opt_out_at")
+
   createdAt DateTime @default(now()) @map("created_at")
 
   client       ChatbotClient      @relation(fields: [clientId], references: [id], onDelete: Cascade)

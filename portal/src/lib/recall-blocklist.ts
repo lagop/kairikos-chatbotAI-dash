@@ -103,17 +103,46 @@ export async function blockNumber(
   return { ok: true, id: row.id, e164 };
 }
 
-/** Remove a block. Returns false when there was nothing to remove, which
- *  the route reports as 404 rather than pretending it did something. */
+export type UnblockResult =
+  | { ok: true }
+  | { ok: false; reason: 'not_found' | 'opt_out_is_final' };
+
+/**
+ * Remove a block.
+ *
+ * Fase 0 — DOS CLASES DE FILA CONVIVEN EN ESTA TABLA Y SOLO UNA SE PUEDE
+ * QUITAR. Un bloqueo que puso el dueño contra un comercial pesado es suyo
+ * y lo deshace cuando quiera. Una baja que pidió la persona a la que
+ * escribimos (`optOutAt`) no la puede deshacer nadie de este lado: quien
+ * dijo "no me escribáis más" no ha cambiado de opinión porque el dueño
+ * pulse un botón, y dejar que se pudiera desharía el mecanismo entero.
+ *
+ * Por eso devuelve un resultado y no un booleano: "no existe" y "existe
+ * pero es definitiva" son respuestas distintas, y contestarle 404 a la
+ * segunda le haría creer al dueño que el número quedó desbloqueado.
+ */
 export async function unblockNumber(
   prisma: PrismaClient,
   subscriptionId: string,
   rawNumber: string,
-): Promise<boolean> {
+): Promise<UnblockResult> {
   const e164 = normaliseE164(rawNumber);
-  if (!e164) return false;
-  const deleted = await prisma.recallBlockedNumber.deleteMany({ where: { subscriptionId, e164 } });
-  return deleted.count > 0;
+  if (!e164) return { ok: false, reason: 'not_found' };
+
+  const existing = await prisma.recallBlockedNumber.findUnique({
+    where: { subscriptionId_e164: { subscriptionId, e164 } },
+    select: { optOutAt: true },
+  });
+  if (!existing) return { ok: false, reason: 'not_found' };
+  if (existing.optOutAt) return { ok: false, reason: 'opt_out_is_final' };
+
+  // optOutAt en el WHERE además de en la comprobación de arriba: entre la
+  // lectura y el borrado puede haber entrado justo la baja de esa persona,
+  // y esa carrera debe resolverse a favor de la baja.
+  const deleted = await prisma.recallBlockedNumber.deleteMany({
+    where: { subscriptionId, e164, optOutAt: null },
+  });
+  return deleted.count > 0 ? { ok: true } : { ok: false, reason: 'opt_out_is_final' };
 }
 
 export interface BlockedNumberRow {
