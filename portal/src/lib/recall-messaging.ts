@@ -117,7 +117,83 @@ export const RECALL_TEMPLATES = {
    * aviso al bolsillo.
    */
   ownerCallback: { name: 'recall_owner_callback', languageCode: 'es' },
+
+  /**
+   * Las versiones de primer contacto que SÍ llevan el aviso de oposición.
+   *
+   * POR QUÉ HAY NOMBRES NUEVOS Y NO SE REEDITARON LOS DE ARRIBA: las
+   * plantillas `recall_caller_*` se aprobaron en Meta el 2026-09-14,
+   * ANTES de que el aviso "responde BAJA" entrara en el código (PR #182).
+   * En WhatsApp solo viaja el cuerpo que Meta aprobó, así que esos nombres
+   * siguen enviando el texto SIN aviso aunque el código diga otra cosa. Un
+   * nombre nuevo deja la versión antigua usable como respaldo mientras la
+   * nueva está en revisión, en vez de dejar al negocio sin mensaje.
+   */
+  callerOpenWithNotice: { name: 'recall_caller_open_v2', languageCode: 'es' },
+  callerClosedWithNotice: { name: 'recall_caller_closed_v2', languageCode: 'es' },
+  callerSlotsWithNotice: { name: 'recall_caller_slots_v2', languageCode: 'es' },
 } as const;
+
+export type CallerTemplateKind = 'open' | 'closed' | 'slots';
+
+/** Para cada mensaje de primer contacto: la versión con aviso y la antigua. */
+export const CALLER_TEMPLATE_VARIANTS: Record<
+  CallerTemplateKind,
+  { withNotice: { name: string; languageCode: string }; legacy: { name: string; languageCode: string } }
+> = {
+  open: { withNotice: RECALL_TEMPLATES.callerOpenWithNotice, legacy: RECALL_TEMPLATES.callerOpen },
+  closed: { withNotice: RECALL_TEMPLATES.callerClosedWithNotice, legacy: RECALL_TEMPLATES.callerClosed },
+  slots: { withNotice: RECALL_TEMPLATES.callerSlotsWithNotice, legacy: RECALL_TEMPLATES.callerSlots },
+};
+
+export interface CallerTemplateChoice {
+  template: { name: string; languageCode: string };
+  /** Si el cuerpo que Meta tiene APROBADO para este nombre lleva el aviso. */
+  includesLegalNotice: boolean;
+}
+
+/**
+ * Qué plantilla usar para un mensaje de primer contacto, según lo que Meta
+ * tiene APROBADO para este negocio.
+ *
+ * LA REGLA QUE SOSTIENE LA EVIDENCIA LEGAL: `includesLegalNotice` solo es
+ * true cuando la plantilla elegida es la versión con aviso Y está aprobada.
+ * Ni el texto del código ni la intención cuentan: cuenta lo que Meta va a
+ * enviar. Marcar el aviso como dado sobre una plantilla que no lo lleva es
+ * el fallo exacto que motivó esta función — contactos tratados como aptos
+ * para campañas sin haber tenido nunca una salida.
+ *
+ * Devuelve null cuando no hay NINGUNA versión aprobada de ese tipo: quien
+ * llama decide qué hacer (la oferta de horarios cae al mensaje de cerrado;
+ * los otros intentan la versión con aviso sin reclamarla).
+ *
+ * Pura y exportada: lo que decide no depende de la red ni de la base.
+ */
+export function chooseCallerTemplate(
+  kind: CallerTemplateKind,
+  approved: ReadonlySet<string>,
+): CallerTemplateChoice | null {
+  const variants = CALLER_TEMPLATE_VARIANTS[kind];
+  if (approved.has(variants.withNotice.name)) {
+    return { template: variants.withNotice, includesLegalNotice: true };
+  }
+  if (approved.has(variants.legacy.name)) {
+    return { template: variants.legacy, includesLegalNotice: false };
+  }
+  return null;
+}
+
+/** Los nombres de primer contacto que este negocio tiene APROBADOS, según el
+ *  espejo que mantiene syncTemplateStatuses cada ciclo. Una sola consulta
+ *  por mensaje. */
+async function approvedCallerTemplateNames(prisma: PrismaClient, connectionId: string): Promise<Set<string>> {
+  const names = Object.values(CALLER_TEMPLATE_VARIANTS).flatMap((v) => [v.withNotice.name, v.legacy.name]);
+  const rows = await prisma.whatsappTemplate.findMany({
+    where: { connectionId, status: 'APPROVED', name: { in: names } },
+    select: { name: true },
+  });
+  return new Set(rows.map((r) => r.name));
+}
 
 /** Used when a client has no open hours at all in the coming week, so
  *  describeNextOpening has nothing to offer. Promising no time beats
@@ -314,15 +390,30 @@ async function resolveCaller(
   prisma: PrismaClient,
   callId: string,
   channel: CallerNotifyOutcome,
-  extra: { sent?: Date; error?: string | null; contactId?: string | null } = {},
+  extra: {
+    sent?: Date;
+    error?: string | null;
+    contactId?: string | null;
+    /**
+     * Fase 0 bis — si el mensaje que SALIÓ llevaba el aviso de oposición.
+     * Obligatorio de hecho para marcar la evidencia: sin `true` explícito
+     * no se sella nada. Antes bastaba con que el mensaje saliera, y eso
+     * sellaba el aviso sobre plantillas aprobadas SIN él.
+     */
+    legalNotice?: boolean;
+  } = {},
 ): Promise<void> {
+  // La evidencia del aviso —en la llamada y en el contacto— exige las dos
+  // cosas: que el mensaje saliera Y que llevara el aviso. Una sola variable
+  // para las dos escrituras, para que no puedan volver a divergir.
+  const noticeDelivered = Boolean(extra.sent && extra.legalNotice);
+
   // Fase 1 — la evidencia sube al contacto desde el mismo sitio que la
-  // sella en la llamada, y bajo la misma condición: solo si el mensaje
-  // salió. Es lo que convierte a este contacto en utilizable para
-  // campañas; sin aviso enviado se queda con base legal nula y solo sirve
-  // para devolverle la llamada. La primera captura gana (ver
-  // recordLegalBasis), así que llamar de más aquí es inofensivo.
-  if (extra.sent && extra.contactId) {
+  // sella en la llamada, y bajo la misma condición. Es lo que convierte a
+  // este contacto en utilizable para campañas; sin aviso entregado se queda
+  // con base legal nula y solo sirve para devolverle la llamada. La primera
+  // captura gana (ver recordLegalBasis), así que llamar de más es inofensivo.
+  if (noticeDelivered && extra.sent && extra.contactId) {
     await recordLegalBasis(prisma, {
       contactId: extra.contactId,
       evidenceCallEventId: callId,
@@ -343,7 +434,7 @@ async function resolveCaller(
       // se le dio ninguna opción de oponerse porque no se le escribió, y
       // marcarla como avisada sería falsificar el único registro que
       // defiende al cliente en una reclamación.
-      ...(extra.sent
+      ...(noticeDelivered
         ? { legalNoticeVersion: LEGAL_NOTICE_VERSION, legalNoticeSentAt: extra.sent }
         : {}),
     },
@@ -448,16 +539,41 @@ export async function notifyCaller(
       //
       // Con menos de MIN_OFFERED_SLOTS opciones se manda el mensaje de
       // siempre: una sola «opción» no es elegir.
-      const slots = open ? [] : await offerableSlots(prisma, call, hours, now);
-      const template =
-        slots.length >= MIN_OFFERED_SLOTS
-          ? { ...RECALL_TEMPLATES.callerSlots, bodyParams: [business, buildSlotList(slots)] }
-          : open
-            ? { ...RECALL_TEMPLATES.callerOpen, bodyParams: [business] }
-            : {
-                ...RECALL_TEMPLATES.callerClosed,
-                bodyParams: [business, describeNextOpening(hours, now, call.subscription.timezone) ?? VAGUE_OPENING],
-              };
+      // Fase 0 bis — qué plantillas tiene APROBADAS este negocio. De eso
+      // depende tanto qué se manda como si se puede dar el aviso por dado.
+      const approved = call.subscription.metaConnection
+        ? await approvedCallerTemplateNames(prisma, call.subscription.metaConnection.id)
+        : new Set<string>();
+
+      // La oferta de horarios SOLO si su plantilla está aprobada. Antes se
+      // intentaba igual: con la plantilla aún pendiente, Meta responde 404
+      // (132001), isRetryableWhatsAppError lo trata como definitivo y quien
+      // llamó se quedaba SIN NINGÚN mensaje — lo contrario de lo que decía
+      // el comentario de RECALL_TEMPLATES.callerSlots.
+      const slotsChoice = open ? null : chooseCallerTemplate('slots', approved);
+      const slots = slotsChoice ? await offerableSlots(prisma, call, hours, now) : [];
+      const useSlots = slotsChoice !== null && slots.length >= MIN_OFFERED_SLOTS;
+
+      // Sin ninguna versión aprobada en el espejo (sincronización caída, o
+      // un alta muy reciente) se intenta la versión con aviso —la única que
+      // existe en las altas nuevas— pero SIN reclamar el aviso. Equivocarse
+      // aquí debe ser hacia no reclamarlo, nunca hacia reclamarlo.
+      const baseKind: CallerTemplateKind = open ? 'open' : 'closed';
+      const choice: CallerTemplateChoice = useSlots
+        ? slotsChoice!
+        : (chooseCallerTemplate(baseKind, approved) ?? {
+            template: CALLER_TEMPLATE_VARIANTS[baseKind].withNotice,
+            includesLegalNotice: false,
+          });
+
+      const template = useSlots
+        ? { ...choice.template, bodyParams: [business, buildSlotList(slots)] }
+        : open
+          ? { ...choice.template, bodyParams: [business] }
+          : {
+              ...choice.template,
+              bodyParams: [business, describeNextOpening(hours, now, call.subscription.timezone) ?? VAGUE_OPENING],
+            };
 
       const sent = await sendTemplate(credentials.token, credentials.phoneNumberId, call.fromNumber, template);
 
@@ -485,7 +601,7 @@ export async function notifyCaller(
         // los que de verdad viajaron en el mensaje: guardarlos antes
         // dejaría a alguien con una oferta abierta que nunca recibió, y su
         // «2» se resolvería contra una lista que no ha visto.
-        if (slots.length >= MIN_OFFERED_SLOTS) {
+        if (useSlots) {
           await prisma.callEvent.update({
             where: { id: call.id },
             data: {
@@ -494,7 +610,12 @@ export async function notifyCaller(
             },
           });
         }
-        await resolveCaller(prisma, call.id, 'whatsapp', { sent: now, contactId: call.contactId });
+        await resolveCaller(prisma, call.id, 'whatsapp', {
+          sent: now,
+          contactId: call.contactId,
+          // Solo si la plantilla que Meta ha enviado lleva el aviso de verdad.
+          legalNotice: choice.includesLegalNotice,
+        });
         return { status: 'sent', channel: 'whatsapp' };
       }
 
@@ -548,7 +669,9 @@ export async function notifyCaller(
   });
 
   if (sms.ok) {
-    await resolveCaller(prisma, call.id, 'sms', { sent: now, contactId: call.contactId });
+    // El SMS lleva el aviso siempre: su texto se construye aquí mismo y no
+    // depende de ninguna aprobación de Meta.
+    await resolveCaller(prisma, call.id, 'sms', { sent: now, contactId: call.contactId, legalNotice: true });
     return { status: 'sent', channel: 'sms' };
   }
   return finishCallerFailure(prisma, call, sms.error, false);

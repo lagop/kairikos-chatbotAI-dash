@@ -79,14 +79,23 @@ export const RECALL_TEMPLATE_DEFINITIONS: readonly RecallTemplateDefinition[] = 
   // palabras por variable (2388293) y garantiza que la plantilla no
   // termina en {{n}} (2388299)—, así que este cambio no acerca ningún
   // rechazo, aleja dos.
+  //
+  // Fase 0 bis — CON NOMBRE NUEVO (_v2), y la lección cuesta cara: la
+  // primera vez se cambió el texto conservando el nombre, pero esas
+  // plantillas ya estaban aprobadas en Meta con el texto antiguo, y en
+  // WhatsApp solo viaja el cuerpo aprobado. El código creía enviar el aviso
+  // y no lo enviaba. REGLA: cambiar el cuerpo de una plantilla que ya puede
+  // estar aprobada exige un nombre nuevo, nunca reutilizar el anterior.
+  // Los nombres antiguos quedan solo como respaldo de envío en
+  // recall-messaging.ts (CALLER_TEMPLATE_VARIANTS), y ya no se envían a Meta.
   {
-    ...RECALL_TEMPLATES.callerOpen,
+    ...RECALL_TEMPLATES.callerOpenWithNotice,
     category: 'UTILITY',
     bodyText: `Hola, soy el asistente de {{1}}. Vimos tu llamada y no pudimos contestar — te escribimos en cuanto podamos. ${LEGAL_NOTICE_TEXT}`,
     bodyExamples: ['Peluquería Aurora'],
   },
   {
-    ...RECALL_TEMPLATES.callerClosed,
+    ...RECALL_TEMPLATES.callerClosedWithNotice,
     category: 'UTILITY',
     bodyText: `Hola, soy el asistente de {{1}}. Ahora mismo estamos cerrados, abrimos {{2}}. En cuanto abramos te contestamos. ${LEGAL_NOTICE_TEXT}`,
     bodyExamples: ['Peluquería Aurora', 'mañana a las 9:00'],
@@ -154,7 +163,7 @@ export const RECALL_TEMPLATE_DEFINITIONS: readonly RecallTemplateDefinition[] = 
 // producto antes de que un cliente dependa de ellas.
 export const RECALL_OPTIONAL_TEMPLATE_DEFINITIONS: readonly RecallTemplateDefinition[] = [
   {
-    ...RECALL_TEMPLATES.callerSlots,
+    ...RECALL_TEMPLATES.callerSlotsWithNotice,
     category: 'UTILITY',
     // Lleva el aviso como las otras dos de primer contacto: para mucha
     // gente ESTE es el primer mensaje que recibe, no un segundo toque.
@@ -346,4 +355,144 @@ export async function advanceSubscriptionsWithApprovedTemplates(
   }
 
   return { advanced };
+}
+
+// =============================================================================
+// Fase 0 bis — enviar a Meta las plantillas que le falten a un negocio que
+// YA estaba dado de alta.
+//
+// submitAllRecallTemplates solo se ejecuta al conectar WhatsApp. Cuando una
+// plantilla cambia de nombre —como las de primer contacto al pasar a _v2—
+// los negocios conectados antes no la reciben nunca por esa vía. Este
+// barrido cierra ese hueco: cada ciclo, compara las definiciones actuales
+// con el espejo de plantillas de cada negocio y envía las que falten.
+//
+// EL RESULTADO DEL ENVÍO SE GUARDA EN EL ESPEJO AL MOMENTO, salga bien o mal:
+//
+//   · bien  → fila con el estado que devuelve Meta (normalmente PENDING).
+//             Sin esto, hasta que syncTemplateStatuses la viera, el ciclo
+//             siguiente la volvería a enviar.
+//   · mal   → fila con estado SUBMIT_FAILED y el error de Meta. Sin esto,
+//             una plantilla que Meta rechaza al crearla se reenviaría cada
+//             cinco minutos para siempre. Con la fila, se para y queda a la
+//             vista del operador.
+//
+// Si luego Meta sí la tiene, syncTemplateStatuses sobrescribe la fila con el
+// estado real: el espejo sigue mandando Meta, no esta función.
+// =============================================================================
+
+/** Qué definiciones faltan en un negocio, dado lo que ya hay en su espejo
+ *  (con cualquier estado: una rechazada no se reenvía sola, eso lo decide
+ *  una persona). Pura y exportada para probarla sin red. */
+export function missingTemplateDefinitions(existingNames: ReadonlySet<string>): RecallTemplateDefinition[] {
+  return [...RECALL_TEMPLATE_DEFINITIONS, ...RECALL_OPTIONAL_TEMPLATE_DEFINITIONS].filter(
+    (def) => !existingNames.has(def.name),
+  );
+}
+
+export interface EnsureTemplatesResult {
+  connections: number;
+  submitted: number;
+  failed: number;
+}
+
+/** Tope por ciclo. El barrido corre cada cinco minutos: no hace falta
+ *  ponerse al día de golpe, y Meta limita la creación de plantillas. */
+const MAX_SUBMISSIONS_PER_TICK = 20;
+
+export async function ensureRecallTemplatesSubmitted(
+  prisma: PrismaClient,
+  opts: { now?: Date } = {},
+): Promise<EnsureTemplatesResult> {
+  const now = opts.now ?? new Date();
+  const result: EnsureTemplatesResult = { connections: 0, submitted: 0, failed: 0 };
+
+  const subscriptions = await prisma.recallSubscription.findMany({
+    where: { status: { notIn: ['cancelled', 'paid', 'contract_signed'] }, metaConnectionId: { not: null } },
+    select: {
+      metaConnection: {
+        select: {
+          id: true,
+          clientId: true,
+          wabaId: true,
+          externalId: true,
+          status: true,
+          accessTokenCiphertext: true,
+          accessTokenIv: true,
+          accessTokenTag: true,
+        },
+      },
+    },
+  });
+
+  let budget = MAX_SUBMISSIONS_PER_TICK;
+  // Dos suscripciones pueden compartir conexión (una baja y un alta nueva
+  // del mismo negocio). Sin esto, la segunda leería el espejo antes de que
+  // el upsert de la primera fuese visible y reenviaría lo mismo.
+  const seen = new Set<string>();
+
+  for (const { metaConnection: connection } of subscriptions) {
+    if (budget <= 0) break;
+    if (!connection || !connection.wabaId || seen.has(connection.id)) continue;
+    seen.add(connection.id);
+
+    const sender = metaSenderFor(connection);
+    if (!sender) continue;
+    result.connections += 1;
+
+    const existing = await prisma.whatsappTemplate.findMany({
+      where: { connectionId: connection.id },
+      select: { name: true },
+    });
+    const missing = missingTemplateDefinitions(new Set(existing.map((t) => t.name)));
+
+    for (const def of missing) {
+      if (budget <= 0) break;
+      budget -= 1;
+
+      const created = await createMessageTemplate(sender.token, connection.wabaId, {
+        name: def.name,
+        languageCode: def.languageCode,
+        category: def.category,
+        bodyText: def.bodyText,
+        bodyExamples: def.bodyExamples,
+      });
+
+      await prisma.whatsappTemplate.upsert({
+        where: {
+          connectionId_name_languageCode: {
+            connectionId: connection.id,
+            name: def.name,
+            languageCode: def.languageCode,
+          },
+        },
+        create: {
+          clientId: connection.clientId,
+          connectionId: connection.id,
+          name: def.name,
+          languageCode: def.languageCode,
+          metaTemplateId: created.ok ? (created.data.id ?? null) : null,
+          status: created.ok ? (created.data.status ?? 'PENDING') : 'SUBMIT_FAILED',
+          category: def.category,
+          rejectedReason: created.ok ? null : created.error.slice(0, 500),
+          lastCheckedAt: now,
+        },
+        update: {},
+      });
+
+      if (created.ok) {
+        result.submitted += 1;
+      } else {
+        result.failed += 1;
+        logError(
+          'recall_templates.ensure_submit_failed',
+          new Error(created.error),
+          { connectionId: connection.id, template: def.name },
+          'warn',
+        );
+      }
+    }
+  }
+
+  return result;
 }

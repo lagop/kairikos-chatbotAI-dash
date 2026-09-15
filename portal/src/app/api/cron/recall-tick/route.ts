@@ -7,7 +7,7 @@ import { sweepPendingNotifications, sweepDueCallbackReminders } from '@/lib/reca
 import { sendDailyDigests, sweepReviewReminders } from '@/lib/recall-reviews';
 import { sendMonthlyReports, rollUpUsage } from '@/lib/recall-reports';
 import { syncTemplateStatuses, warnExpiringTokens } from '@/lib/whatsapp-health';
-import { advanceSubscriptionsWithApprovedTemplates } from '@/lib/recall-templates';
+import { advanceSubscriptionsWithApprovedTemplates, ensureRecallTemplatesSubmitted } from '@/lib/recall-templates';
 import { sweepDueNumberAssignments } from '@/lib/recall-numbers';
 import { resolveActiveTwilioCredentials } from '@/lib/twilio-credentials';
 import { logError } from '@/lib/observability';
@@ -133,6 +133,11 @@ export async function GET(req: NextRequest) {
   //    arriving. These two jobs are how that gets noticed in advance.
   jobs.tokenExpiry = await runJob('tokenExpiry', () => warnExpiringTokens(prisma));
   jobs.templateSync = await runJob('templateSync', () => syncTemplateStatuses(prisma));
+  // Fase 0 bis — envía a Meta las plantillas que le falten a negocios YA
+  // conectados (p. ej. las _v2 con aviso de oposición). Después del sync y
+  // no antes: así compara contra lo que Meta tiene de verdad ahora mismo, y
+  // no reenvía algo que ya existe pero aún no estaba en el espejo.
+  jobs.templateSubmission = await runJob('templateSubmission', () => ensureRecallTemplatesSubmitted(prisma));
   // Reads what templateSync just wrote — must run after it, same tick,
   // so a client whose last template got approved this very minute
   // advances immediately rather than waiting for the next one.

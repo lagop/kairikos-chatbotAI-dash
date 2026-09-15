@@ -22,8 +22,11 @@ vi.mock('@/lib/recall-messaging', () => ({
   RECALL_TEMPLATES: {
     callerOpen: { name: 'recall_caller_open', languageCode: 'es' },
     callerClosed: { name: 'recall_caller_closed', languageCode: 'es' },
+    callerOpenWithNotice: { name: 'recall_caller_open_v2', languageCode: 'es' },
+    callerClosedWithNotice: { name: 'recall_caller_closed_v2', languageCode: 'es' },
     ownerMessage: { name: 'recall_owner_message', languageCode: 'es' },
     callerSlots: { name: 'recall_caller_slots', languageCode: 'es' },
+    callerSlotsWithNotice: { name: 'recall_caller_slots_v2', languageCode: 'es' },
     ownerCallback: { name: 'recall_owner_callback', languageCode: 'es' },
   },
   metaSenderFor: (...a: unknown[]) => mockState.metaSenderFor(...a),
@@ -36,6 +39,8 @@ vi.mock('@/lib/observability', () => ({
 import {
   submitAllRecallTemplates,
   advanceSubscriptionsWithApprovedTemplates,
+  missingTemplateDefinitions,
+  ensureRecallTemplatesSubmitted,
   RECALL_TEMPLATE_DEFINITIONS,
   RECALL_OPTIONAL_TEMPLATE_DEFINITIONS,
 } from '@/lib/recall-templates';
@@ -47,6 +52,8 @@ const state = {
   recallSubscriptionFindMany: vi.fn(),
   recallSubscriptionUpdate: vi.fn(),
   whatsappTemplateCount: vi.fn(),
+  whatsappTemplateFindMany: vi.fn(),
+  whatsappTemplateUpsert: vi.fn(),
   recallSubscriptionAuditCreate: vi.fn(),
 };
 
@@ -57,6 +64,8 @@ const prisma = {
   },
   whatsappTemplate: {
     count: (...a: unknown[]) => state.whatsappTemplateCount(...a),
+    findMany: (...a: unknown[]) => state.whatsappTemplateFindMany(...a),
+    upsert: (...a: unknown[]) => state.whatsappTemplateUpsert(...a),
   },
   recallSubscriptionAudit: {
     create: (...a: unknown[]) => state.recallSubscriptionAuditCreate(...a),
@@ -71,6 +80,8 @@ beforeEach(() => {
   for (const fn of Object.values(state)) fn.mockReset();
   state.recallSubscriptionFindMany.mockResolvedValue([]);
   state.whatsappTemplateCount.mockResolvedValue(0);
+  state.whatsappTemplateFindMany.mockResolvedValue([]);
+  state.whatsappTemplateUpsert.mockResolvedValue({});
   state.recallSubscriptionUpdate.mockImplementation(({ data }) => Promise.resolve({ status: data.status }));
   state.recallSubscriptionAuditCreate.mockResolvedValue({});
 });
@@ -80,8 +91,8 @@ describe('RECALL_TEMPLATE_DEFINITIONS', () => {
     expect(RECALL_TEMPLATE_DEFINITIONS).toHaveLength(7);
     const names = RECALL_TEMPLATE_DEFINITIONS.map((t) => t.name);
     expect(names).toEqual([
-      'recall_caller_open',
-      'recall_caller_closed',
+      'recall_caller_open_v2',
+      'recall_caller_closed_v2',
       'recall_owner_message',
       'recall_daily_digest',
       'recall_digest_clarify',
@@ -114,10 +125,10 @@ describe('RECALL_TEMPLATE_DEFINITIONS', () => {
 });
 
 describe('RECALL_OPTIONAL_TEMPLATE_DEFINITIONS', () => {
-  it('defines the 2 templates that exist but never gate onboarding — recall_caller_slots and recall_owner_callback', () => {
+  it('defines the 2 templates that exist but never gate onboarding — recall_caller_slots_v2 and recall_owner_callback', () => {
     expect(RECALL_OPTIONAL_TEMPLATE_DEFINITIONS).toHaveLength(2);
     const names = RECALL_OPTIONAL_TEMPLATE_DEFINITIONS.map((t) => t.name);
-    expect(names).toEqual(['recall_caller_slots', 'recall_owner_callback']);
+    expect(names).toEqual(['recall_caller_slots_v2', 'recall_owner_callback']);
     for (const def of RECALL_OPTIONAL_TEMPLATE_DEFINITIONS) {
       expect(def.languageCode).toBe('es');
       expect(def.category).toBe('UTILITY');
@@ -149,7 +160,7 @@ describe('RECALL_OPTIONAL_TEMPLATE_DEFINITIONS', () => {
 // =============================================================================
 describe('el aviso de oposición en el primer contacto', () => {
   /** Las tres que puede recibir alguien que nunca ha hablado con el negocio. */
-  const FIRST_CONTACT = ['recall_caller_open', 'recall_caller_closed', 'recall_caller_slots'];
+  const FIRST_CONTACT = ['recall_caller_open_v2', 'recall_caller_closed_v2', 'recall_caller_slots_v2'];
 
   const all = [...RECALL_TEMPLATE_DEFINITIONS, ...RECALL_OPTIONAL_TEMPLATE_DEFINITIONS];
 
@@ -184,7 +195,7 @@ describe('submitAllRecallTemplates', () => {
     expect(mockState.createMessageTemplate).toHaveBeenCalledTimes(9);
     expect(outcomes).toHaveLength(9);
     expect(outcomes.every((o) => o.ok)).toBe(true);
-    expect(outcomes.map((o) => o.name)).toContain('recall_caller_slots');
+    expect(outcomes.map((o) => o.name)).toContain('recall_caller_slots_v2');
     expect(outcomes.map((o) => o.name)).toContain('recall_owner_callback');
     for (const call of mockState.createMessageTemplate.mock.calls) {
       expect(call[0]).toBe('token');
@@ -194,7 +205,7 @@ describe('submitAllRecallTemplates', () => {
 
   it('one rejected template does not stop the others from being submitted', async () => {
     mockState.createMessageTemplate.mockImplementation((_token, _waba, spec) => {
-      if (spec.name === 'recall_caller_closed') {
+      if (spec.name === 'recall_caller_closed_v2') {
         return Promise.resolve({ ok: false, error: 'invalid wording' });
       }
       return Promise.resolve({ ok: true, data: { status: 'PENDING' } });
@@ -203,13 +214,13 @@ describe('submitAllRecallTemplates', () => {
     const outcomes = await submitAllRecallTemplates('token', 'waba_1');
 
     expect(mockState.createMessageTemplate).toHaveBeenCalledTimes(9);
-    const failed = outcomes.find((o) => o.name === 'recall_caller_closed');
+    const failed = outcomes.find((o) => o.name === 'recall_caller_closed_v2');
     expect(failed).toMatchObject({ ok: false, error: 'invalid wording' });
     expect(outcomes.filter((o) => o.ok)).toHaveLength(8);
     expect(mockState.logError).toHaveBeenCalledWith(
       'recall_templates.submit_failed',
       expect.any(Error),
-      expect.objectContaining({ wabaId: 'waba_1', template: 'recall_caller_closed' }),
+      expect.objectContaining({ wabaId: 'waba_1', template: 'recall_caller_closed_v2' }),
       'warn',
     );
   });
@@ -350,5 +361,202 @@ describe('advanceSubscriptionsWithApprovedTemplates', () => {
 
     expect(result).toEqual({ advanced: 2 });
     expect(state.recallSubscriptionUpdate).toHaveBeenCalledTimes(4);
+  });
+});
+
+// =============================================================================
+// Fase 0 bis — las plantillas de primer contacto cambian de nombre al llevar
+// el aviso, y los negocios ya conectados tienen que recibirlas igual.
+// =============================================================================
+describe('el nombre de las plantillas con aviso', () => {
+  it('las definiciones que se envían a Meta usan los nombres *WithNotice que recall-messaging elige al enviar', async () => {
+    // Sin mock: si alguien renombra en un lado y no en el otro, se enviaría
+    // a Meta una plantilla que el código nunca usa — o se usaría una que
+    // Meta nunca recibió.
+    const actual = await vi.importActual<typeof import('@/lib/recall-messaging')>('@/lib/recall-messaging');
+    const defined = new Set(
+      [...RECALL_TEMPLATE_DEFINITIONS, ...RECALL_OPTIONAL_TEMPLATE_DEFINITIONS].map((t) => t.name),
+    );
+    for (const kind of ['open', 'closed', 'slots'] as const) {
+      const { withNotice, legacy } = actual.CALLER_TEMPLATE_VARIANTS[kind];
+      expect(defined.has(withNotice.name), `${withNotice.name} no se envía a Meta`).toBe(true);
+      expect(defined.has(legacy.name), `${legacy.name} ya no debería enviarse: su cuerpo aprobado no lleva aviso`).toBe(false);
+    }
+  });
+
+  it('toda definición cuyo cuerpo lleva el aviso tiene nombre _v2 — Meta no deja cambiar el cuerpo de una ya aprobada', () => {
+    const withNotice = [...RECALL_TEMPLATE_DEFINITIONS, ...RECALL_OPTIONAL_TEMPLATE_DEFINITIONS].filter((t) =>
+      t.bodyText.includes(LEGAL_NOTICE_TEXT),
+    );
+    // Guardia del guardia: si el filtro no encuentra nada, el bucle de abajo
+    // pasaría en vacío.
+    expect(withNotice.length).toBe(3);
+    for (const def of withNotice) expect(def.name).toMatch(/_v2$/);
+  });
+});
+
+describe('missingTemplateDefinitions', () => {
+  it('devuelve todas si el espejo está vacío', () => {
+    expect(missingTemplateDefinitions(new Set())).toHaveLength(9);
+  });
+
+  it('el caso real de producción: aprobadas las antiguas, faltan justo las tres _v2', () => {
+    const existing = new Set([
+      'recall_caller_open',
+      'recall_caller_closed',
+      'recall_caller_slots',
+      'recall_owner_message',
+      'recall_daily_digest',
+      'recall_digest_clarify',
+      'recall_monthly_report',
+      'recall_forwarding_instructions',
+      'recall_owner_callback',
+    ]);
+    expect(missingTemplateDefinitions(existing).map((t) => t.name)).toEqual([
+      'recall_caller_open_v2',
+      'recall_caller_closed_v2',
+      'recall_caller_slots_v2',
+    ]);
+  });
+});
+
+describe('ensureRecallTemplatesSubmitted', () => {
+  const CONNECTION = {
+    id: 'conn_1',
+    clientId: 'client_1',
+    wabaId: 'waba_1',
+    externalId: 'phone_1',
+    status: 'active',
+    accessTokenCiphertext: Buffer.from('ct'),
+    accessTokenIv: Buffer.from('iv'),
+    accessTokenTag: Buffer.from('tag'),
+  };
+  const ALL_BUT_V2 = [
+    'recall_owner_message',
+    'recall_daily_digest',
+    'recall_digest_clarify',
+    'recall_monthly_report',
+    'recall_forwarding_instructions',
+    'recall_owner_callback',
+  ].map((name) => ({ name }));
+
+  it('solo mira suscripciones vivas con conexión — ni canceladas ni previas a conectar WhatsApp', async () => {
+    await ensureRecallTemplatesSubmitted(prisma);
+    expect(state.recallSubscriptionFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { status: { notIn: ['cancelled', 'paid', 'contract_signed'] }, metaConnectionId: { not: null } },
+      }),
+    );
+  });
+
+  it('envía solo lo que falta y lo deja en el espejo con el estado que devuelve Meta', async () => {
+    state.recallSubscriptionFindMany.mockResolvedValue([{ metaConnection: CONNECTION }]);
+    state.whatsappTemplateFindMany.mockResolvedValue(ALL_BUT_V2);
+    mockState.createMessageTemplate.mockResolvedValue({ ok: true, data: { id: 'tpl_9', status: 'PENDING' } });
+    const now = new Date('2026-09-15T10:00:00Z');
+
+    const result = await ensureRecallTemplatesSubmitted(prisma, { now });
+
+    expect(result).toEqual({ connections: 1, submitted: 3, failed: 0 });
+    expect(mockState.createMessageTemplate.mock.calls.map((c) => c[2].name)).toEqual([
+      'recall_caller_open_v2',
+      'recall_caller_closed_v2',
+      'recall_caller_slots_v2',
+    ]);
+    expect(mockState.createMessageTemplate.mock.calls[0][0]).toBe('tok');
+    expect(mockState.createMessageTemplate.mock.calls[0][1]).toBe('waba_1');
+    expect(state.whatsappTemplateUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          clientId: 'client_1',
+          connectionId: 'conn_1',
+          name: 'recall_caller_open_v2',
+          metaTemplateId: 'tpl_9',
+          status: 'PENDING',
+          lastCheckedAt: now,
+        }),
+        // Nunca pisa lo que ya escribió syncTemplateStatuses.
+        update: {},
+      }),
+    );
+  });
+
+  it('un rechazo al crear queda como SUBMIT_FAILED con el motivo — así no se reenvía cada cinco minutos', async () => {
+    state.recallSubscriptionFindMany.mockResolvedValue([{ metaConnection: CONNECTION }]);
+    state.whatsappTemplateFindMany.mockResolvedValue(ALL_BUT_V2);
+    mockState.createMessageTemplate.mockImplementation((_t, _w, spec) =>
+      spec.name === 'recall_caller_closed_v2'
+        ? Promise.resolve({ ok: false, error: 'Invalid parameter' })
+        : Promise.resolve({ ok: true, data: { status: 'PENDING' } }),
+    );
+
+    const result = await ensureRecallTemplatesSubmitted(prisma);
+
+    expect(result).toEqual({ connections: 1, submitted: 2, failed: 1 });
+    expect(state.whatsappTemplateUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          name: 'recall_caller_closed_v2',
+          status: 'SUBMIT_FAILED',
+          rejectedReason: 'Invalid parameter',
+        }),
+      }),
+    );
+    expect(mockState.logError).toHaveBeenCalledWith(
+      'recall_templates.ensure_submit_failed',
+      expect.any(Error),
+      expect.objectContaining({ connectionId: 'conn_1', template: 'recall_caller_closed_v2' }),
+      'warn',
+    );
+  });
+
+  it('no reenvía nada que ya esté en el espejo, tenga el estado que tenga', async () => {
+    state.recallSubscriptionFindMany.mockResolvedValue([{ metaConnection: CONNECTION }]);
+    state.whatsappTemplateFindMany.mockResolvedValue([
+      ...ALL_BUT_V2,
+      { name: 'recall_caller_open_v2' },
+      { name: 'recall_caller_closed_v2' },
+      { name: 'recall_caller_slots_v2' },
+    ]);
+
+    const result = await ensureRecallTemplatesSubmitted(prisma);
+
+    expect(result).toEqual({ connections: 1, submitted: 0, failed: 0 });
+    expect(mockState.createMessageTemplate).not.toHaveBeenCalled();
+  });
+
+  it('una conexión compartida por dos suscripciones se procesa una sola vez', async () => {
+    state.recallSubscriptionFindMany.mockResolvedValue([{ metaConnection: CONNECTION }, { metaConnection: CONNECTION }]);
+    state.whatsappTemplateFindMany.mockResolvedValue(ALL_BUT_V2);
+    mockState.createMessageTemplate.mockResolvedValue({ ok: true, data: { status: 'PENDING' } });
+
+    const result = await ensureRecallTemplatesSubmitted(prisma);
+
+    expect(result.connections).toBe(1);
+    expect(mockState.createMessageTemplate).toHaveBeenCalledTimes(3);
+  });
+
+  it('salta conexiones sin WABA o sin remitente válido', async () => {
+    state.recallSubscriptionFindMany.mockResolvedValue([
+      { metaConnection: { ...CONNECTION, id: 'conn_nowaba', wabaId: null } },
+      { metaConnection: { ...CONNECTION, id: 'conn_nosender' } },
+    ]);
+    mockState.metaSenderFor.mockReturnValue(null);
+
+    const result = await ensureRecallTemplatesSubmitted(prisma);
+
+    expect(result).toEqual({ connections: 0, submitted: 0, failed: 0 });
+    expect(mockState.createMessageTemplate).not.toHaveBeenCalled();
+  });
+
+  it('respeta el tope de 20 envíos por ciclo', async () => {
+    const many = Array.from({ length: 5 }, (_, i) => ({ metaConnection: { ...CONNECTION, id: `conn_${i}` } }));
+    state.recallSubscriptionFindMany.mockResolvedValue(many);
+    mockState.createMessageTemplate.mockResolvedValue({ ok: true, data: { status: 'PENDING' } });
+
+    const result = await ensureRecallTemplatesSubmitted(prisma);
+
+    expect(mockState.createMessageTemplate).toHaveBeenCalledTimes(20);
+    expect(result.submitted).toBe(20);
   });
 });
