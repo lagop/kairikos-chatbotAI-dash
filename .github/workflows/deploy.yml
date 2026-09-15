@@ -182,6 +182,15 @@ jobs:
             VAPID_PUBLIC_KEY=${{ vars.VAPID_PUBLIC_KEY }}
             VAPID_PRIVATE_KEY=${{ secrets.VAPID_PRIVATE_KEY }}
             VAPID_SUBJECT=${{ vars.VAPID_SUBJECT }}
+            # El pack 'recall' incluye reseñas: sin esta clave no se puede
+            # guardar la conexión con Google Business y la invitación a
+            # reseña no tiene enlace al que mandar. El par OAuth
+            # (GOOGLE_BUSINESS_OAUTH_CLIENT_ID/SECRET) NO va aquí: se pega en
+            # /admin/portal/settings/integrations y se guarda cifrado en
+            # Postgres. La clave sí tiene que estar en el entorno, y NO SE
+            # ROTA una vez haya conexiones: los refresh tokens cifrados con
+            # la anterior dejarían de poder leerse.
+            GOOGLE_TOKEN_ENCRYPTION_KEY=${{ secrets.GOOGLE_TOKEN_ENCRYPTION_KEY }}
             META_CREDENTIAL_ENCRYPTION_KEY=${{ secrets.META_CREDENTIAL_ENCRYPTION_KEY }}
             TWILIO_CREDENTIAL_ENCRYPTION_KEY=${{ secrets.TWILIO_CREDENTIAL_ENCRYPTION_KEY }}
             TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }}

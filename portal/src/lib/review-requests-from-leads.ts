@@ -67,7 +67,7 @@ export interface LeadRecipientSource {
  *
  * **Solo correo, y es una limitación consciente, no un olvido.** El canal
  * de WhatsApp existe y funciona (lo usa 'recall'), pero su plantilla
- * `recall_review_request` está aprobada bajo la WABA del producto
+ * `recall_review_request` se envía a Meta bajo la WABA del producto
  * 'recall': un cliente que tenga 'reviews' + 'leads' y no 'recall' no
  * tiene remitente de Meta con el que mandarla. Cuando exista una
  * plantilla propia, este es el único punto que hay que tocar.

@@ -41,6 +41,8 @@ import {
   advanceSubscriptionsWithApprovedTemplates,
   missingTemplateDefinitions,
   ensureRecallTemplatesSubmitted,
+  reviewRequestTemplateDefinition,
+  allRecallTemplateDefinitions,
   RECALL_TEMPLATE_DEFINITIONS,
   RECALL_OPTIONAL_TEMPLATE_DEFINITIONS,
 } from '@/lib/recall-templates';
@@ -73,6 +75,8 @@ const prisma = {
 } as unknown as PrismaClient;
 
 beforeEach(() => {
+  // La invitación a reseña solo entra en la lista con un dominio https.
+  vi.stubEnv('NEXT_PUBLIC_PORTAL_URL', 'https://portal.example');
   mockState.createMessageTemplate.mockReset();
   mockState.sendTemplate.mockReset().mockResolvedValue({ ok: true, data: { messages: [{ id: 'wamid.1' }] } });
   mockState.metaSenderFor.mockReset().mockReturnValue({ token: 'tok', phoneNumberId: 'phone_1' });
@@ -188,12 +192,12 @@ describe('el aviso de oposición en el primer contacto', () => {
 });
 
 describe('submitAllRecallTemplates', () => {
-  it('submits all 9 templates (7 required + 2 optional) to the given WABA', async () => {
+  it('submits all 13 templates (7 required + 2 optional + review request + 3 recovery) to the given WABA', async () => {
     mockState.createMessageTemplate.mockResolvedValue({ ok: true, data: { status: 'PENDING' } });
     const outcomes = await submitAllRecallTemplates('token', 'waba_1');
 
-    expect(mockState.createMessageTemplate).toHaveBeenCalledTimes(9);
-    expect(outcomes).toHaveLength(9);
+    expect(mockState.createMessageTemplate).toHaveBeenCalledTimes(13);
+    expect(outcomes).toHaveLength(13);
     expect(outcomes.every((o) => o.ok)).toBe(true);
     expect(outcomes.map((o) => o.name)).toContain('recall_caller_slots_v2');
     expect(outcomes.map((o) => o.name)).toContain('recall_owner_callback');
@@ -213,10 +217,10 @@ describe('submitAllRecallTemplates', () => {
 
     const outcomes = await submitAllRecallTemplates('token', 'waba_1');
 
-    expect(mockState.createMessageTemplate).toHaveBeenCalledTimes(9);
+    expect(mockState.createMessageTemplate).toHaveBeenCalledTimes(13);
     const failed = outcomes.find((o) => o.name === 'recall_caller_closed_v2');
     expect(failed).toMatchObject({ ok: false, error: 'invalid wording' });
-    expect(outcomes.filter((o) => o.ok)).toHaveLength(8);
+    expect(outcomes.filter((o) => o.ok)).toHaveLength(12);
     expect(mockState.logError).toHaveBeenCalledWith(
       'recall_templates.submit_failed',
       expect.any(Error),
@@ -225,10 +229,10 @@ describe('submitAllRecallTemplates', () => {
     );
   });
 
-  it('never throws — a network failure on every call still returns 9 outcomes', async () => {
+  it('never throws — a network failure on every call still returns 13 outcomes', async () => {
     mockState.createMessageTemplate.mockResolvedValue({ ok: false, error: 'network down' });
     const outcomes = await submitAllRecallTemplates('token', 'waba_1');
-    expect(outcomes).toHaveLength(9);
+    expect(outcomes).toHaveLength(13);
     expect(outcomes.every((o) => !o.ok)).toBe(true);
   });
 });
@@ -397,10 +401,10 @@ describe('el nombre de las plantillas con aviso', () => {
 
 describe('missingTemplateDefinitions', () => {
   it('devuelve todas si el espejo está vacío', () => {
-    expect(missingTemplateDefinitions(new Set())).toHaveLength(9);
+    expect(missingTemplateDefinitions(new Set())).toHaveLength(13);
   });
 
-  it('el caso real de producción: aprobadas las antiguas, faltan justo las tres _v2', () => {
+  it('el caso real de producción: aprobadas las antiguas, faltan las tres _v2 y las cuatro que nunca se enviaron', () => {
     const existing = new Set([
       'recall_caller_open',
       'recall_caller_closed',
@@ -416,7 +420,68 @@ describe('missingTemplateDefinitions', () => {
       'recall_caller_open_v2',
       'recall_caller_closed_v2',
       'recall_caller_slots_v2',
+      'recall_review_request',
+      'recovery_open_quote',
+      'recovery_service_due',
+      'recovery_dormant',
     ]);
+  });
+
+  it('sin dominio del portal no envía la invitación a reseña — su URL quedaría grabada en Meta', () => {
+    // '' y no undefined: undefined activa el valor por defecto (la variable
+    // de entorno, que este archivo fija en beforeEach).
+    const names = missingTemplateDefinitions(new Set(), '').map((t) => t.name);
+    expect(names).not.toContain('recall_review_request');
+    expect(names).toHaveLength(12);
+    expect(missingTemplateDefinitions(new Set(), 'http://localhost:3000').map((t) => t.name)).not.toContain(
+      'recall_review_request',
+    );
+  });
+});
+
+describe('las plantillas que se enviaban sin existir en Meta', () => {
+  it('la invitación a reseña: MARKETING, con aviso, y un botón que termina en el id de seguimiento', () => {
+    const def = reviewRequestTemplateDefinition('https://portal.example/');
+    expect(def).toMatchObject({ name: 'recall_review_request', languageCode: 'es', category: 'MARKETING' });
+    expect(def?.bodyText).toContain(LEGAL_NOTICE_TEXT);
+    expect(def?.bodyText.trim().endsWith('}}')).toBe(false);
+    // Un solo {{1}} en el cuerpo, que es lo único que sendReviewRequest
+    // manda como bodyParams (el nombre del negocio).
+    expect(new Set(def?.bodyText.match(/\{\{\d+\}\}/g))).toEqual(new Set(['{{1}}']));
+    expect(def?.bodyExamples).toHaveLength(1);
+    // Sin barra doble: la barra final del dominio se quita.
+    expect(def?.urlButton?.url).toBe('https://portal.example/r/{{1}}');
+    expect(def?.urlButton?.example.startsWith('https://portal.example/r/')).toBe(true);
+  });
+
+  it('las recovery_* se envían con el cuerpo y la categoría exactos de recovery-templates.ts', async () => {
+    const { RECOVERY_TEMPLATE_DEFINITIONS } = await import('@/lib/recovery-templates');
+    const all = allRecallTemplateDefinitions('https://portal.example');
+    for (const rec of RECOVERY_TEMPLATE_DEFINITIONS) {
+      const def = all.find((t) => t.name === rec.name);
+      expect(def, `falta ${rec.name}`).toBeTruthy();
+      expect(def).toEqual({
+        name: rec.name,
+        languageCode: rec.languageCode,
+        category: rec.category,
+        bodyText: rec.bodyText,
+        bodyExamples: rec.bodyExamples,
+      });
+    }
+  });
+
+  it('ningún nombre se repite en la lista completa', () => {
+    const names = allRecallTemplateDefinitions('https://portal.example').map((t) => t.name);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it('el botón de URL llega a Meta al enviar la lista completa', async () => {
+    mockState.createMessageTemplate.mockResolvedValue({ ok: true, data: { status: 'PENDING' } });
+    await submitAllRecallTemplates('token', 'waba_1');
+    const review = mockState.createMessageTemplate.mock.calls.find((c) => c[2].name === 'recall_review_request');
+    expect(review?.[2].urlButton).toEqual(
+      expect.objectContaining({ url: 'https://portal.example/r/{{1}}', text: expect.any(String) }),
+    );
   });
 });
 
@@ -438,6 +503,10 @@ describe('ensureRecallTemplatesSubmitted', () => {
     'recall_monthly_report',
     'recall_forwarding_instructions',
     'recall_owner_callback',
+    'recall_review_request',
+    'recovery_open_quote',
+    'recovery_service_due',
+    'recovery_dormant',
   ].map((name) => ({ name }));
 
   it('solo mira suscripciones vivas con conexión — ni canceladas ni previas a conectar WhatsApp', async () => {

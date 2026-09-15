@@ -30,9 +30,12 @@ import { LEGAL_NOTICE_TEXT } from './recall-optout';
 // sitio con su número de versión — y para que quien conteste "BAJA" a una
 // de estas caiga en el mismo detector que ya existe.
 //
-// SIN APROBAR TODAVÍA. Como el resto de plantillas de este repo, hay que
-// enviarlas a revisión de Meta y esperar. Mientras tanto sendTemplate
-// falla con 132001 y la campaña registra el fallo por la vía normal.
+// SE ENVÍAN A META SOLAS desde el 2026-09-15: allRecallTemplateDefinitions
+// (recall-templates.ts) las incluye, así que salen al conectar WhatsApp y
+// ensureRecallTemplatesSubmitted las manda a los negocios ya conectados.
+// Hasta que Meta las aprueba, sendTemplate falla con 132001 y la campaña
+// registra el fallo por la vía normal. Cambiar un cuerpo ya enviado exige
+// un nombre nuevo — ver RECALL_TEMPLATES.callerOpenWithNotice.
 // =============================================================================
 
 export interface RecoveryTemplateDefinition {
