@@ -339,3 +339,128 @@ export async function sendApprovedCampaign(
 
   return result;
 }
+
+// ===========================================================================
+// Pantalla de operador — cancelar y listar
+// ===========================================================================
+
+export type CancelResult = { ok: true } | { ok: false; reason: 'not_found' | 'not_cancellable' };
+
+/**
+ * Cancela una campaña que todavía no ha terminado.
+ *
+ * Desde 'draft' o 'approved', nunca desde 'completed': una campaña ya
+ * enviada no se "cancela", ya ocurrió, y marcarla como cancelada
+ * falsearía el histórico de lo que se le mandó a quién.
+ *
+ * Una aprobada a medio enviar sí se puede parar: el cron solo recoge
+ * 'approved', así que en cuanto pasa a 'cancelled' los miembros que
+ * seguían en 'pending' ya no salen. Los que ya salieron quedan como
+ * 'sent', que es la verdad.
+ *
+ * Compare-and-swap como approveCampaign, por la misma carrera: cancelar
+ * y aprobar a la vez no pueden dejar la campaña en un estado que nadie
+ * pidió.
+ */
+export async function cancelCampaign(prisma: PrismaClient, campaignId: string): Promise<CancelResult> {
+  const updated = await prisma.recoveryCampaign.updateMany({
+    where: { id: campaignId, status: { in: ['draft', 'approved'] } },
+    data: { status: 'cancelled' },
+  });
+  if (updated.count > 0) return { ok: true };
+
+  const exists = await prisma.recoveryCampaign.findUnique({ where: { id: campaignId }, select: { id: true } });
+  return { ok: false, reason: exists ? 'not_cancellable' : 'not_found' };
+}
+
+export interface CampaignSummary {
+  id: string;
+  trigger: string;
+  status: string;
+  createdAt: Date;
+  approvedAt: Date | null;
+  approvedByEmail: string | null;
+  completedAt: Date | null;
+  counts: { pending: number; sent: number; failed: number; excluded: number };
+  members: Array<{
+    id: string;
+    e164: string;
+    name: string | null;
+    reason: string;
+    state: string;
+    excludedReason: string | null;
+    error: string | null;
+  }>;
+}
+
+/** Las campañas de una suscripción, con sus destinatarios, para la pantalla
+ *  de operador. Las más recientes primero. */
+export async function listCampaignsForSubscription(
+  prisma: PrismaClient,
+  subscriptionId: string,
+  opts: { limit?: number; membersPerCampaign?: number } = {},
+): Promise<CampaignSummary[]> {
+  const campaigns = await prisma.recoveryCampaign.findMany({
+    where: { subscriptionId },
+    orderBy: { createdAt: 'desc' },
+    take: opts.limit ?? 20,
+    select: {
+      id: true,
+      trigger: true,
+      status: true,
+      createdAt: true,
+      approvedAt: true,
+      completedAt: true,
+      approvedBy: { select: { email: true } },
+      members: {
+        orderBy: { createdAt: 'asc' },
+        // Tope de pintado, no de campaña: una campaña de 500 destinatarios
+        // se lista entera en los contadores, pero no se pintan 500 filas.
+        take: opts.membersPerCampaign ?? 200,
+        select: {
+          id: true,
+          e164: true,
+          reason: true,
+          state: true,
+          excludedReason: true,
+          error: true,
+          contact: { select: { name: true } },
+        },
+      },
+    },
+  });
+
+  const grouped = await prisma.recoveryCampaignMember.groupBy({
+    by: ['campaignId', 'state'],
+    where: { campaignId: { in: campaigns.map((c) => c.id) } },
+    _count: { _all: true },
+  });
+
+  return campaigns.map((c) => {
+    const counts = { pending: 0, sent: 0, failed: 0, excluded: 0 };
+    for (const g of grouped) {
+      if (g.campaignId === c.id && g.state in counts) {
+        counts[g.state as keyof typeof counts] = g._count._all;
+      }
+    }
+    return {
+      id: c.id,
+      trigger: c.trigger,
+      status: c.status,
+      createdAt: c.createdAt,
+      approvedAt: c.approvedAt,
+      approvedByEmail: c.approvedBy?.email ?? null,
+      completedAt: c.completedAt,
+      counts,
+      members: c.members.map((m) => ({
+        id: m.id,
+        e164: m.e164,
+        name: m.contact?.name ?? null,
+        reason: m.reason,
+        state: m.state,
+        excludedReason: m.excludedReason,
+        error: m.error,
+      })),
+    };
+  });
+}

@@ -375,3 +375,31 @@ describe('approveCampaign', () => {
     });
   });
 });
+
+describe('cancelCampaign', () => {
+  it('cancela desde borrador o aprobada, y solo desde ahí — compare-and-swap', async () => {
+    const { cancelCampaign } = await import('@/lib/recovery-campaigns');
+    state.campaignUpdateMany.mockResolvedValue({ count: 1 });
+    await expect(cancelCampaign(prisma, 'camp_1')).resolves.toEqual({ ok: true });
+    expect(state.campaignUpdateMany.mock.calls[0][0]).toEqual({
+      where: { id: 'camp_1', status: { in: ['draft', 'approved'] } },
+      data: { status: 'cancelled' },
+    });
+  });
+
+  // Una campaña ya enviada no se "cancela": ya ocurrió, y marcarla como
+  // cancelada falsearía el histórico de lo que se le mandó a quién.
+  it('una campaña terminada NO se puede cancelar', async () => {
+    const { cancelCampaign } = await import('@/lib/recovery-campaigns');
+    state.campaignUpdateMany.mockResolvedValue({ count: 0 });
+    state.campaignFindUnique.mockResolvedValue({ id: 'camp_1' });
+    await expect(cancelCampaign(prisma, 'camp_1')).resolves.toEqual({ ok: false, reason: 'not_cancellable' });
+  });
+
+  it('distingue una campaña que no existe', async () => {
+    const { cancelCampaign } = await import('@/lib/recovery-campaigns');
+    state.campaignUpdateMany.mockResolvedValue({ count: 0 });
+    state.campaignFindUnique.mockResolvedValue(null);
+    await expect(cancelCampaign(prisma, 'camp_x')).resolves.toEqual({ ok: false, reason: 'not_found' });
+  });
+});
