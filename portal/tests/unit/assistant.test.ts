@@ -222,4 +222,21 @@ describe('la superficie del asistente', () => {
     // Si esto apareciera, el aislamiento entero se caería.
     expect(route).not.toMatch(/clientId: body\.|body\.data\.clientId/);
   });
+
+  // Fase 5c — los botones de la interfaz mandan intenciones directas. Una
+  // que no exista devuelve 400 y el usuario ve un error al pulsar algo
+  // que se le acaba de ofrecer. No lo detecta ningún test de la interfaz
+  // porque el botón se pinta perfectamente: el fallo está al otro lado.
+  it('todas las preguntas frecuentes de la interfaz son intenciones reales del catálogo', () => {
+    const panel = src('src/components/portal/AssistantPanel.tsx');
+    const intents = [...panel.matchAll(/intent:\s*'([a-z_]+)'/g)].map((m) => m[1]);
+
+    // El guardia del guardia: si cambia la forma de declararlas y el
+    // escáner deja de encontrarlas, esto falla en vez de pasar vacío.
+    expect(intents.length).toBeGreaterThanOrEqual(3);
+
+    for (const intent of intents) {
+      expect(isKnownIntent(intent), `el botón manda «${intent}», que no está en el catálogo`).toBe(true);
+    }
+  });
 });
