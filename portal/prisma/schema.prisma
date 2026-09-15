@@ -156,6 +156,7 @@ model ChatbotClient {
   recallBlockedNumbers           RecallBlockedNumber[]
   recallDigests                  RecallDigest[]
   recallUsageMonths              RecallUsageMonth[]
+  outboundMessages               OutboundMessage[]
   leadQualificationProfiles      LeadQualificationProfile[]
   leadQualificationProfileAudits LeadQualificationProfileAudit[]
   seoTargetKeywords              SeoTargetKeyword[]
@@ -544,6 +545,7 @@ model Tenant {
   leadAudits                     LeadAudit[]
   recallSubscriptions            RecallSubscription[]
   callEvents                     CallEvent[]
+  outboundMessages               OutboundMessage[]
   prospectingCampaigns           ProspectingCampaign[]
   prospectingCampaignAudits      ProspectingCampaignAudit[]
   seoProfiles                    SeoProfile[]
@@ -3843,11 +3845,13 @@ model CallEvent {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  client        ChatbotClient      @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  subscription  RecallSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-  tenant        Tenant?            @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  virtualNumber VirtualNumber?     @relation(fields: [virtualNumberId], references: [id], onDelete: SetNull)
-  lead          Lead?              @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  client           ChatbotClient      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  subscription     RecallSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  tenant           Tenant?            @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  virtualNumber    VirtualNumber?     @relation(fields: [virtualNumberId], references: [id], onDelete: SetNull)
+  lead             Lead?              @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  // Fase 0 — los mensajes que salieron por culpa de esta llamada.
+  outboundMessages OutboundMessage[]
 
   @@index([clientId, startedAt])
   @@index([subscriptionId, startedAt])
@@ -4037,4 +4041,102 @@ model RecallUsageMonth {
   @@index([clientId])
   // "Who is over budget this month" — the whole reason this is a rollup.
   @@index([localMonth, callSeconds])
+}
+
+// Fase 0 — el libro mayor de mensajes salientes.
+//
+// POR QUÉ UNA FILA POR ENVÍO Y NO UN CONTADOR MÁS
+//
+// RecallUsageMonth ya cuenta mensajes, pero es un agregado: sabe que este
+// cliente mandó 214 WhatsApps en agosto y no sabe de qué tipo era ninguno.
+// Mientras todas las categorías costaron lo mismo eso bastaba. En cuanto
+// dejen de costar lo mismo, un contador agregado NO SE PUEDE DESAGREGAR
+// HACIA ATRÁS: el dato no está en ninguna parte, ni aquí ni en el
+// proveedor pasados sus propios plazos de retención.
+//
+// De ahí que esta tabla exista antes que ninguna función que la explote.
+// Lo que no se puede reconstruir después son las filas; los informes sí.
+//
+// EL COSTE NACE NULO, Y ES CORRECTO
+//
+// Ni Meta ni Twilio devuelven el precio en la respuesta del envío: Meta no
+// lo da nunca por ahí, y Twilio lo rellena minutos después. Así que
+// `costAmount` se queda en NULL al crear la fila y lo completa más tarde
+// una conciliación contra el proveedor. Guardar aquí una tarifa de una
+// tabla fija sería peor que el NULL — parecería un dato real y sería una
+// estimación nuestra, que es justo lo que este modelo quiere dejar de
+// hacer.
+//
+// TABLA TRANSVERSAL, AUNQUE HOY SOLO LA ESCRIBA RECALL
+//
+// Sin ninguna columna de recall: `productCode` dice quién pidió el envío.
+// prospecting manda plantillas MARKETING (las caras) y reviews manda
+// invitaciones, y las dos tendrán que escribir aquí sin migración. Están
+// SIN CONECTAR todavía — ver el test de cobertura en
+// tests/unit/message-ledger.test.ts, que se pone rojo cuando aparece un
+// punto de envío nuevo sin registrar.
+model OutboundMessage {
+  id       String  @id @default(uuid()) @db.Uuid
+  clientId String  @map("client_id")
+  tenantId String? @map("tenant_id") @db.Uuid
+
+  /// Quién pidió el envío: 'recall' | 'prospecting' | 'reviews' | 'chatbot'.
+  /// Texto libre con los valores documentados, misma convención que el
+  /// resto de columnas de estado de este esquema.
+  productCode String @map("product_code")
+
+  /// 'whatsapp' | 'sms'
+  channel String
+  /// 'template' | 'free_form'
+  kind    String
+
+  /// La categoría de Meta: 'UTILITY' | 'MARKETING' | 'SERVICE' |
+  /// 'AUTHENTICATION'. ES LA COLUMNA POR LA QUE EXISTE LA TABLA — es lo
+  /// que determina el precio. Nula en SMS y en mensaje libre, donde el
+  /// concepto no aplica.
+  category     String?
+  /// El nombre de la plantilla, cuando kind='template'.
+  templateName String? @map("template_name")
+
+  /// A quién, en E.164. Denormalizado como texto: el histórico de coste
+  /// tiene que sobrevivir a que la fila del contacto se borre por
+  /// retención, igual que CallEvent.toNumber sobrevive a que el número
+  /// virtual se libere.
+  toE164 String @map("to_e164")
+
+  /// El id del proveedor, que es la clave para casar esta fila con su
+  /// línea en la factura. Sin él la conciliación es imposible.
+  providerMessageId String? @map("provider_message_id")
+
+  /// Rellenados por la conciliación posterior, nunca en el envío. Decimal
+  /// y no Float: son dineros y se suman.
+  costAmount   Decimal?  @map("cost_amount") @db.Decimal(12, 6)
+  costCurrency String?   @map("cost_currency")
+  costSyncedAt DateTime? @map("cost_synced_at")
+
+  /// Los fallos TAMBIÉN se apuntan. Un envío rechazado no cuesta dinero
+  /// pero sí explica un agujero en el histórico, y sin la fila la
+  /// pregunta "¿por qué en marzo hay 40 mensajes menos?" no se responde.
+  ok    Boolean
+  error String?
+
+  /// El CallEvent que lo originó, cuando lo hubo. Nulo en todo lo que no
+  /// nace de una llamada (el resumen mensual, una campaña).
+  callEventId String? @map("call_event_id") @db.Uuid
+
+  sentAt    DateTime @default(now()) @map("sent_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  client    ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant    Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  callEvent CallEvent?    @relation(fields: [callEventId], references: [id], onDelete: SetNull)
+
+  /// "Qué mandó este cliente en este periodo", que es la consulta del
+  /// informe de margen y la única que va a crecer sin límite.
+  @@index([clientId, sentAt])
+  /// "Qué queda por conciliar": las filas que salieron y aún no tienen
+  /// precio. Lidera costSyncedAt porque es la parte selectiva.
+  @@index([costSyncedAt, sentAt])
+  @@index([tenantId])
+  @@index([callEventId])
 }
