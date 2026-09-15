@@ -68,3 +68,61 @@ self.addEventListener('fetch', () => {
   // deliberado y no un olvido — llamar a respondWith(fetch(event.request))
   // haría lo mismo pero pasando cada petición por el worker sin motivo.
 });
+
+// =============================================================================
+// Fase 5d — notificaciones push.
+//
+// Esto NO cambia la regla de arriba: el worker sigue sin cachear nada.
+// Recibir un push y enseñar una notificación no guarda ningún recurso.
+//
+// EL CONTENIDO LLEGA YA DECIDIDO POR EL SERVIDOR (push-notifications.ts):
+// título y cuerpo cortos, sin datos sensibles, porque se ven en la
+// pantalla de bloqueo delante de quien esté mirando.
+// =============================================================================
+
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    // Un payload ilegible no puede dejar al usuario sin aviso: se enseña
+    // uno genérico. Chrome además penaliza a los sitios que reciben un
+    // push y no muestran nada.
+  }
+
+  const title = typeof data.title === 'string' ? data.title : 'Kairikos';
+  const options = {
+    body: typeof data.body === 'string' ? data.body : 'Tienes novedades en tu portal.',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    // Mismo tag = sustituye a la anterior en vez de apilarse.
+    tag: typeof data.tag === 'string' ? data.tag : undefined,
+    renotify: Boolean(data.tag),
+    // Solo rutas del portal. El servidor ya lo valida; se repite aquí
+    // porque este es el último sitio antes de abrir una URL.
+    data: { url: typeof data.url === 'string' && data.url.startsWith('/portal') ? data.url : '/portal' },
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || '/portal';
+
+  event.waitUntil(
+    (async () => {
+      // Si la app ya está abierta, se enfoca esa ventana en vez de abrir
+      // otra: tocar tres notificaciones seguidas no debe dejar tres copias
+      // del portal.
+      const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      for (const client of windows) {
+        if (new URL(client.url).pathname.startsWith('/portal')) {
+          await client.focus();
+          return client.navigate(target);
+        }
+      }
+      return self.clients.openWindow(target);
+    })(),
+  );
+});

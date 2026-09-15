@@ -22,6 +22,12 @@ const mockState = vi.hoisted(() => ({
   decryptMetaToken: vi.fn(),
   sendTemplate: vi.fn(),
   isNumberBlocked: vi.fn(),
+  // Fase 5d — el push del dueño.
+  sendPushToClient: vi.fn(),
+}));
+
+vi.mock('@/lib/push-notifications', () => ({
+  sendPushToClient: (...a: unknown[]) => mockState.sendPushToClient(...a),
 }));
 
 vi.mock('@/lib/meta-business', () => ({
@@ -137,6 +143,7 @@ beforeEach(() => {
   mockState.decryptMetaToken.mockReset().mockReturnValue('token');
   mockState.sendTemplate.mockReset().mockResolvedValue({ ok: true, data: { messages: [{ id: 'wamid.1' }] } });
   mockState.isNumberBlocked.mockReset().mockResolvedValue(false);
+  mockState.sendPushToClient.mockReset().mockResolvedValue({ sent: 0, failed: 0, pruned: 0 });
   state.callUpdate.mockResolvedValue({});
   state.callFindFirst.mockResolvedValue(null);
   state.callFindMany.mockResolvedValue([]);
@@ -460,6 +467,31 @@ describe('notifyOwner', () => {
     state.callFindUnique.mockResolvedValue(callRow(overrides));
     return notifyOwner(prisma, 'call_1', { telephony, now });
   };
+
+  // Fase 5d — el push sale UNA vez por llamada. Si WhatsApp falla, el
+  // barrido reintenta notifyOwner hasta tres veces; sin la condición del
+  // primer intento, el móvil del dueño sonaría en cada reintento.
+  it('manda el push en el primer intento, sin datos del llamante en la pantalla de bloqueo', async () => {
+    mockState.sendPushToClient.mockResolvedValue({ sent: 1, failed: 0, pruned: 0 });
+    await runOwner();
+    expect(mockState.sendPushToClient).toHaveBeenCalledTimes(1);
+    const payload = mockState.sendPushToClient.mock.calls[0][2];
+    expect(payload.url).toBe('/portal/llamadas');
+    expect(payload.tag).toBe('missed-calls');
+    expect(JSON.stringify(payload)).not.toContain('651234567');
+    expect(JSON.stringify(payload)).not.toContain('fuga');
+  });
+
+  it('NO repite el push en los reintentos', async () => {
+    await runOwner({ ownerNotifyAttempts: 1 });
+    expect(mockState.sendPushToClient).not.toHaveBeenCalled();
+  });
+
+  it('el push sale aunque WhatsApp falle, que es justo cuando más sirve', async () => {
+    mockState.sendTemplate.mockResolvedValue({ ok: false, error: 'boom', code: 131048 });
+    await runOwner();
+    expect(mockState.sendPushToClient).toHaveBeenCalledTimes(1);
+  });
 
   it('sends the caller number and the message to the owner', async () => {
     await expect(runOwner()).resolves.toEqual({ status: 'sent' });

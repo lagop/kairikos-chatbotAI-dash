@@ -22,6 +22,7 @@ import { isNumberBlocked } from './recall-blocklist';
 import { LEGAL_NOTICE_TEXT, LEGAL_NOTICE_VERSION } from './recall-optout';
 import { recordSend, metaMessageId } from './message-ledger';
 import { recordLegalBasis } from './contacts';
+import { sendPushToClient } from './push-notifications';
 import { summarise } from './recall-transcription';
 import { logError } from './observability';
 
@@ -621,6 +622,32 @@ export async function notifyOwner(
 
   const credentials = metaCredentialsFor(call);
   if (!credentials) return { status: 'skipped', reason: 'no_connection' };
+
+  // Fase 5d — el mismo aviso, también como notificación push en los
+  // dispositivos donde el dueño instaló el portal.
+  //
+  // SOLO EN EL PRIMER INTENTO. Si WhatsApp falla, el barrido reintenta
+  // notifyOwner hasta tres veces, y sin esta condición el móvil sonaría en
+  // cada reintento. Con ella, el push sale exactamente una vez por llamada
+  // —y sale aunque WhatsApp falle, que es justo cuando más sirve— sin
+  // necesitar otra columna para recordarlo.
+  //
+  // SIN DATOS DEL LLAMANTE. Una notificación se ve en la pantalla de
+  // bloqueo delante de quien esté mirando: ni el número ni el recado van
+  // aquí. Eso se lee dentro, con la sesión abierta.
+  //
+  // Sin await de su resultado para decidir nada: sendPushToClient nunca
+  // lanza, y un push fallido no puede afectar al WhatsApp que viene detrás.
+  if (call.ownerNotifyAttempts === 0) {
+    await sendPushToClient(prisma, call.clientId, {
+      title: 'Nueva llamada perdida',
+      body: call.outcome === 'recorded' ? 'Te han dejado un recado. Tócalo para verlo.' : 'Alguien te ha llamado.',
+      url: '/portal/llamadas',
+      // Mismo tag para todas: cinco llamadas seguidas son un aviso
+      // actualizado, no cinco notificaciones apiladas.
+      tag: 'missed-calls',
+    });
+  }
 
   const sent = await sendTemplate(credentials.token, credentials.phoneNumberId, owner, {
     ...RECALL_TEMPLATES.ownerMessage,
