@@ -5,6 +5,8 @@ import { DIGEST_TEMPLATES } from './recall-digest';
 import { REPORT_TEMPLATE } from './recall-reports';
 import { createMessageTemplate, sendTemplate } from './whatsapp-api';
 import { LEGAL_NOTICE_TEXT } from './recall-optout';
+import { REVIEW_TEMPLATE } from './review-request-campaign';
+import { RECOVERY_TEMPLATE_DEFINITIONS } from './recovery-templates';
 import { logError } from './observability';
 
 // =============================================================================
@@ -54,10 +56,12 @@ export const FORWARDING_INSTRUCTIONS_TEMPLATE = { name: 'recall_forwarding_instr
 export interface RecallTemplateDefinition {
   name: string;
   languageCode: string;
-  category: 'UTILITY';
+  category: 'UTILITY' | 'MARKETING';
   bodyText: string;
   /** Meta requires one example per {{n}} placeholder, in order. */
   bodyExamples: readonly string[];
+  /** Ver createMessageTemplate. Solo la invitación a reseña lo usa. */
+  urlButton?: { text: string; url: string; example: string };
 }
 
 // buildDigestList (recall-digest.ts) joins entries with ' · ', never a
@@ -178,6 +182,64 @@ export const RECALL_OPTIONAL_TEMPLATE_DEFINITIONS: readonly RecallTemplateDefini
   },
 ];
 
+// =============================================================================
+// 2026-09-15 — las plantillas que el producto YA enviaba sin haberlas
+// mandado nunca a Meta.
+//
+// recall_review_request (review-request-campaign.ts) y las tres recovery_*
+// (recovery-templates.ts) tenían nombre y código de envío, pero nadie las
+// había enviado a revisión: cada envío real habría fallado con 132001
+// (plantilla inexistente). Se suman aquí, a la lista que se envía al
+// conectar y a la que ensureRecallTemplatesSubmitted repasa en cada ciclo.
+// No bloquean el alta, igual que las opcionales.
+//
+// recall_review_request se declara MARKETING a propósito, con el mismo
+// criterio que recovery_dormant: pedir una reseña no informa de ninguna
+// transacción, pide un favor comercial. Declararla UTILITY para pagar menos
+// es lo que hace que Meta rebaje la calidad de una cuenta entera. Lleva el
+// aviso de oposición por la misma razón.
+//
+// SU BOTÓN APUNTA A UNA URL FIJA EN META: `<portal>/r/{{1}}`. Si el dominio
+// del portal cambia, las invitaciones ya aprobadas siguen apuntando al
+// antiguo hasta que se envíe una versión nueva con otro nombre. Por eso sin
+// NEXT_PUBLIC_PORTAL_URL no se envía: una URL adivinada quedaría grabada.
+// =============================================================================
+
+export function reviewRequestTemplateDefinition(portalUrl: string | undefined): RecallTemplateDefinition | null {
+  const base = portalUrl?.trim().replace(/\/+$/, '');
+  if (!base || !/^https:\/\//.test(base)) return null;
+  return {
+    ...REVIEW_TEMPLATE,
+    category: 'MARKETING',
+    bodyText: `Hola, gracias por confiar en {{1}}. Si tienes un minuto, nos ayudaría mucho que dejaras tu opinión en Google: solo tienes que pulsar el botón de abajo. ${LEGAL_NOTICE_TEXT}`,
+    bodyExamples: ['Peluquería Aurora'],
+    urlButton: { text: 'Dejar una reseña', url: `${base}/r/{{1}}`, example: `${base}/r/cm0example0001` },
+  };
+}
+
+/** Todo lo que un negocio de recall necesita tener en Meta, obligatorio o
+ *  no. Una función y no una constante porque la invitación a reseña
+ *  depende del dominio del portal, que se lee al usarla. */
+export function allRecallTemplateDefinitions(
+  portalUrl: string | undefined = process.env.NEXT_PUBLIC_PORTAL_URL,
+): RecallTemplateDefinition[] {
+  const review = reviewRequestTemplateDefinition(portalUrl);
+  return [
+    ...RECALL_TEMPLATE_DEFINITIONS,
+    ...RECALL_OPTIONAL_TEMPLATE_DEFINITIONS,
+    ...(review ? [review] : []),
+    // paramOrder se queda en recovery-templates.ts: es contrato del envío,
+    // no algo que Meta reciba.
+    ...RECOVERY_TEMPLATE_DEFINITIONS.map(({ name, languageCode, category, bodyText, bodyExamples }) => ({
+      name,
+      languageCode,
+      category,
+      bodyText,
+      bodyExamples,
+    })),
+  ];
+}
+
 export interface TemplateSubmissionOutcome {
   name: string;
   ok: boolean;
@@ -200,13 +262,14 @@ export async function submitAllRecallTemplates(
   wabaId: string,
 ): Promise<TemplateSubmissionOutcome[]> {
   const outcomes: TemplateSubmissionOutcome[] = [];
-  for (const def of [...RECALL_TEMPLATE_DEFINITIONS, ...RECALL_OPTIONAL_TEMPLATE_DEFINITIONS]) {
+  for (const def of allRecallTemplateDefinitions()) {
     const result = await createMessageTemplate(accessToken, wabaId, {
       name: def.name,
       languageCode: def.languageCode,
       category: def.category,
       bodyText: def.bodyText,
       bodyExamples: def.bodyExamples,
+      ...(def.urlButton ? { urlButton: def.urlButton } : {}),
     });
     if (result.ok) {
       outcomes.push({ name: def.name, ok: true, status: result.data.status });
@@ -384,10 +447,11 @@ export async function advanceSubscriptionsWithApprovedTemplates(
 /** Qué definiciones faltan en un negocio, dado lo que ya hay en su espejo
  *  (con cualquier estado: una rechazada no se reenvía sola, eso lo decide
  *  una persona). Pura y exportada para probarla sin red. */
-export function missingTemplateDefinitions(existingNames: ReadonlySet<string>): RecallTemplateDefinition[] {
-  return [...RECALL_TEMPLATE_DEFINITIONS, ...RECALL_OPTIONAL_TEMPLATE_DEFINITIONS].filter(
-    (def) => !existingNames.has(def.name),
-  );
+export function missingTemplateDefinitions(
+  existingNames: ReadonlySet<string>,
+  portalUrl: string | undefined = process.env.NEXT_PUBLIC_PORTAL_URL,
+): RecallTemplateDefinition[] {
+  return allRecallTemplateDefinitions(portalUrl).filter((def) => !existingNames.has(def.name));
 }
 
 export interface EnsureTemplatesResult {
@@ -456,6 +520,7 @@ export async function ensureRecallTemplatesSubmitted(
         category: def.category,
         bodyText: def.bodyText,
         bodyExamples: def.bodyExamples,
+        ...(def.urlButton ? { urlButton: def.urlButton } : {}),
       });
 
       await prisma.whatsappTemplate.upsert({

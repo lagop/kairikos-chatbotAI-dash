@@ -306,6 +306,26 @@ describe('createMessageTemplate', () => {
     expect(body.components[0]).toEqual({ type: 'BODY', text: 'Texto fijo sin variables.' });
   });
 
+  it('añade un componente BUTTONS con un botón URL dinámico cuando se pide — y ninguno cuando no', async () => {
+    mockState.fetch.mockResolvedValueOnce(jsonResponse({ id: 'tmpl_3', status: 'PENDING' }));
+    await createMessageTemplate('token', 'waba_1', {
+      name: 'recall_review_request',
+      languageCode: 'es',
+      category: 'MARKETING',
+      bodyText: 'Gracias por confiar en {{1}}.',
+      bodyExamples: ['Peluquería Aurora'],
+      urlButton: { text: 'Dejar reseña', url: 'https://portal.example/r/{{1}}', example: 'https://portal.example/r/abc' },
+    });
+    const body = JSON.parse(mockState.fetch.mock.calls[0][1].body as string);
+    expect(body.components).toHaveLength(2);
+    expect(body.components[1]).toEqual({
+      type: 'BUTTONS',
+      buttons: [
+        { type: 'URL', text: 'Dejar reseña', url: 'https://portal.example/r/{{1}}', example: ['https://portal.example/r/abc'] },
+      ],
+    });
+  });
+
   it('surfaces a rejected submission (e.g. already exists, or bad wording) as ok:false without throwing', async () => {
     mockState.fetch.mockResolvedValueOnce(
       jsonResponse({ error: { message: 'A template with this name already exists', code: 100 } }, false, 400),

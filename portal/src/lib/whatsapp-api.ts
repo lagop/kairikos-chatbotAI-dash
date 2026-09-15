@@ -349,21 +349,40 @@ export function createMessageTemplate(
     category: 'UTILITY' | 'MARKETING' | 'AUTHENTICATION';
     bodyText: string;
     bodyExamples?: readonly string[];
+    /**
+     * Un único botón de URL dinámica: `url` termina en `{{1}}` y `example`
+     * es esa misma URL con un valor real. Es la otra mitad de
+     * sendTemplate's `buttonUrlSuffix` — lo que se envía rellena el hueco
+     * que se declaró aquí. La primera plantilla que lo necesita es
+     * recall_review_request, cuyo enlace de seguimiento no puede ir en el
+     * cuerpo (una URL cruda en un parámetro sale como texto plano y Meta
+     * la marca).
+     */
+    urlButton?: { text: string; url: string; example: string };
   },
 ): Promise<WhatsAppApiResult<CreateTemplateResult>> {
+  const components: Array<Record<string, unknown>> = [
+    {
+      type: 'BODY',
+      text: spec.bodyText,
+      ...(spec.bodyExamples && spec.bodyExamples.length > 0
+        ? { example: { body_text: [spec.bodyExamples] } }
+        : {}),
+    },
+  ];
+  if (spec.urlButton) {
+    components.push({
+      type: 'BUTTONS',
+      buttons: [
+        { type: 'URL', text: spec.urlButton.text, url: spec.urlButton.url, example: [spec.urlButton.example] },
+      ],
+    });
+  }
   return callGraphApi<CreateTemplateResult>(accessToken, `/${wabaId}/message_templates`, 'POST', {
     name: spec.name,
     language: spec.languageCode,
     category: spec.category,
-    components: [
-      {
-        type: 'BODY',
-        text: spec.bodyText,
-        ...(spec.bodyExamples && spec.bodyExamples.length > 0
-          ? { example: { body_text: [spec.bodyExamples] } }
-          : {}),
-      },
-    ],
+    components,
   });
 }
 
