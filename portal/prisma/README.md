@@ -72,6 +72,11 @@ Prisma CLI and the Next.js server both read. Real values live in
 * `prisma migrate dev --name <name>` during dev — creates a new
   `prisma/migrations/<timestamp>_<name>/migration.sql`.
 * `prisma migrate deploy` in CI / VPS deploy — applies pending migrations.
+  En la VPS lo ejecuta el servicio `migrate` de `docker-compose.yml`, de un
+  solo uso y con la imagen recién desplegada; `app` espera a que termine
+  bien antes de arrancar. Durante mucho tiempo esta línea describió una
+  intención que no ejecutaba nadie: si vuelves a tocar el despliegue,
+  comprueba que ese servicio sigue ahí.
 * Migrations commit **separately from application code** (per the Backend
   Developer working rules). One migration = one focused change, no drive-by
   refactors.

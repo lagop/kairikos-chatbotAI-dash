@@ -106,6 +106,21 @@ gated behind a `$VERCEL` check — which meant a broken migration was
 discovered at the exact moment it was applied to the target database,
 and a deploy rollback did not roll back the schema with it.
 
+> **En la VPS esto ya no es manual.** `docker-compose.yml` tiene un
+> servicio `migrate` de un solo uso que ejecuta `prisma migrate deploy`
+> con la imagen nueva, y `app` no arranca hasta que termina bien
+> (`service_completed_successfully`). Es el MISMO orden que describe esta
+> sección —migrar primero, servir después—, solo que automático: antes
+> no lo ejecutaba nadie y el código nuevo llegaba a producción contra el
+> esquema viejo.
+>
+> Las dos razones de WP-03 siguen en pie y por eso NO se ha vuelto a
+> acoplar nada a `npm run build`: una migración rota no debe descubrirse
+> sirviendo tráfico (de ahí que el app no arranque si falla), y un
+> rollback sigue sin revertir el esquema — **por eso toda migración tiene
+> que ser aditiva y compatible con el código anterior**. Automatizar el
+> *cuándo* no cambia el *qué*.
+
 Migrate first (the migration must be backward compatible with the
 currently-running code), then deploy the new build:
 
