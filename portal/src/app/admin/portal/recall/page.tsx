@@ -135,11 +135,18 @@ export default async function AdminRecallQueuePage() {
         title="Altas de recuperación de llamadas"
         description="Clientes que ya pagan pero cuyo servicio todavía no contesta llamadas."
         actions={
-          stuckCount > 0 ? (
-            <span className="pill-danger" data-testid="recall-queue-stuck-count">
-              {stuckCount} {stuckCount === 1 ? 'parado' : 'parados'}
-            </span>
-          ) : undefined
+          <div className="flex flex-wrap items-center gap-2">
+            {stuckCount > 0 ? (
+              <span className="pill-danger" data-testid="recall-queue-stuck-count">
+                {stuckCount} {stuckCount === 1 ? 'parado' : 'parados'}
+              </span>
+            ) : null}
+            {/* La herramienta de venta vive aquí y no en la ficha de un
+                cliente: se usa con prospectos que todavía no lo son. */}
+            <Link href="/admin/portal/recall/diagnostico" className="btn-ghost" data-testid="recall-diagnostic-link">
+              Diagnóstico de un fichero
+            </Link>
+          </div>
         }
       />
 

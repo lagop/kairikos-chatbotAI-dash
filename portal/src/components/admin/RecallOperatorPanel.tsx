@@ -151,6 +151,15 @@ export function RecallOperatorPanel({ data }: { data: RecallPanelData | null }) 
         <span className="text-xs text-kairikos-muted">
           Desde el {DATE_FORMAT.format(new Date(data.since))}
         </span>
+        {/* La recuperación de clientes es parte de `recall`, no un producto
+            aparte: se entra desde aquí, desde la propia suscripción. */}
+        <Link
+          href={`/admin/portal/recall/${data.subscriptionId}/recuperacion`}
+          className="ml-auto text-sm underline hover:text-kairikos-text"
+          data-testid="recall-panel-recovery-link"
+        >
+          Recuperación de clientes →
+        </Link>
       </div>
 
       <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
