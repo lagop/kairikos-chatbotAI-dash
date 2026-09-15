@@ -38,6 +38,8 @@ const ERROR_LABEL: Record<string, string> = {
   subscription_not_found: 'No se encontró tu suscripción. Contacta con soporte.',
   invalid_status: 'Este paso ya no aplica a tu suscripción — recarga la página.',
   code_exchange_failed: 'No se pudo completar la conexión con Meta. Intenta de nuevo en un momento.',
+  short_lived_token:
+    'Meta nos dio un acceso que caduca enseguida, así que no hemos guardado la conexión. Avisa a soporte: hay que revisar la configuración de la app en Meta antes de volver a intentarlo.',
   phone_number_not_found: 'No se encontró ningún número en esa cuenta de WhatsApp Business.',
   internal_error: 'Algo falló en el servidor. Si persiste, contacta con el equipo técnico.',
 };

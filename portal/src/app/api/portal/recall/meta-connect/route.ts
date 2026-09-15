@@ -32,6 +32,7 @@ const ERROR_STATUS: Record<string, number> = {
   subscription_not_found: 404,
   invalid_status: 409,
   code_exchange_failed: 502,
+  short_lived_token: 502,
   phone_number_not_found: 502,
   persist_failed: 500,
 };

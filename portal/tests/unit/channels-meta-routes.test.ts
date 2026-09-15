@@ -15,6 +15,7 @@ const mockState = vi.hoisted(() => ({
   isMetaSignupConfigured: vi.fn(),
   exchangeCodeForToken: vi.fn(),
   exchangeForLongLivedToken: vi.fn(),
+  inspectAccessToken: vi.fn(),
   fetchPagesWithInstagram: vi.fn(),
   encryptMetaToken: vi.fn(),
   decryptMetaToken: vi.fn(),
@@ -51,6 +52,7 @@ vi.mock('@/lib/meta-business', () => ({
   isMetaSignupConfigured: (...args: unknown[]) => mockState.isMetaSignupConfigured(...args),
   exchangeCodeForToken: (...args: unknown[]) => mockState.exchangeCodeForToken(...args),
   exchangeForLongLivedToken: (...args: unknown[]) => mockState.exchangeForLongLivedToken(...args),
+  inspectAccessToken: (...args: unknown[]) => mockState.inspectAccessToken(...args),
   fetchPagesWithInstagram: (...args: unknown[]) => mockState.fetchPagesWithInstagram(...args),
   encryptMetaToken: (...args: unknown[]) => mockState.encryptMetaToken(...args),
   decryptMetaToken: (...args: unknown[]) => mockState.decryptMetaToken(...args),
@@ -101,6 +103,8 @@ beforeEach(() => {
   mockState.isMetaSignupConfigured.mockReset().mockReturnValue(true);
   mockState.exchangeCodeForToken.mockReset().mockResolvedValue({ accessToken: 'short_lived', expiresIn: 5400 });
   mockState.exchangeForLongLivedToken.mockReset().mockResolvedValue({ accessToken: 'long_lived', expiresIn: 5183944 });
+  // null = debug_token no respondió: se cae al expires_in de siempre.
+  mockState.inspectAccessToken.mockReset().mockResolvedValue(null);
   mockState.fetchPagesWithInstagram.mockReset().mockResolvedValue([]);
   mockState.encryptMetaToken
     .mockReset()
@@ -330,12 +334,34 @@ describe('POST /api/portal/channels/meta/complete-signup', () => {
     expect(res.status).toBe(409);
   });
 
-  it('falls back to the short-lived token when the long-lived exchange fails', async () => {
+  it('falls back to the short-lived token when the long-lived exchange fails — if Meta says it does not expire', async () => {
     mockState.exchangeForLongLivedToken.mockResolvedValue(null);
+    mockState.inspectAccessToken.mockResolvedValue({ isValid: true, expiresAt: null, type: 'SYSTEM_USER' });
     const { POST } = await import('@/app/api/portal/channels/meta/complete-signup/route');
     const res = await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: 'w', phoneNumberId: 'p' } }));
     expect(res.status).toBe(200);
     expect(mockState.encryptMetaToken).toHaveBeenCalledWith('short_lived');
+  });
+
+  // 2026-09-15 — lo que pasó en producción: el intercambio largo no dio
+  // nada, se guardó el token de ~1 hora y la conexión murió en silencio.
+  it('rechaza la conexión, sin guardar nada, si el token que queda caduca en horas', async () => {
+    mockState.exchangeForLongLivedToken.mockResolvedValue(null);
+    const { POST } = await import('@/app/api/portal/channels/meta/complete-signup/route');
+    const res = await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: 'w', phoneNumberId: 'p' } }));
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: 'meta_api_error', detail: 'short_lived_token' });
+    expect(mockState.metaUpsert).not.toHaveBeenCalled();
+  });
+
+  it('la fecha real de debug_token manda sobre expires_in', async () => {
+    const realExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    mockState.exchangeForLongLivedToken.mockResolvedValue({ accessToken: 'long_lived', expiresIn: null });
+    mockState.inspectAccessToken.mockResolvedValue({ isValid: true, expiresAt: realExpiry, type: 'USER' });
+    const { POST } = await import('@/app/api/portal/channels/meta/complete-signup/route');
+    await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: 'waba_1', phoneNumberId: 'phone_1' } }));
+    expect(mockState.inspectAccessToken).toHaveBeenCalledWith('long_lived');
+    expect(mockState.metaUpsert.mock.calls[0][0].create.tokenExpiresAt).toEqual(realExpiry);
   });
 });
 

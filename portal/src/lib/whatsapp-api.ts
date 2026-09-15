@@ -50,7 +50,18 @@ export const WHATSAPP_ERROR = {
   PAIR_RATE_LIMIT: 131056,
   TEMPLATE_PARAM_MISMATCH: 132000,
   TEMPLATE_PAUSED: 132015,
+  /** OAuthException: token caducado, revocado o invalidado. No es un
+   *  fallo del mensaje ni de la plantilla: es la conexión entera la que
+   *  está muerta, y ningún reintento lo arregla hasta reconectar. */
+  ACCESS_TOKEN_INVALID: 190,
 } as const;
+
+/** Si el fallo significa que la conexión necesita reconectarse. Visto en
+ *  producción el 2026-09-15: "Error validating access token: Session has
+ *  expired", code 190, en cada llamada de un negocio durante un día. */
+export function isAccessTokenError(result: { code?: number }): boolean {
+  return result.code === WHATSAPP_ERROR.ACCESS_TOKEN_INVALID;
+}
 
 /** Whether trying the identical request again could plausibly succeed. A
  *  parameter mismatch or a paused template never will; a rate limit or a

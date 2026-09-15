@@ -23,6 +23,7 @@ vi.mock('@/lib/meta-business', () => ({
 }));
 vi.mock('@/lib/whatsapp-api', () => ({
   listMessageTemplates: (...a: unknown[]) => mockState.listMessageTemplates(...a),
+  isAccessTokenError: (r: { code?: number }) => r.code === 190,
 }));
 vi.mock('@/lib/operator-notify', async () => {
   const actual = await vi.importActual<typeof import('@/lib/operator-notify')>('@/lib/operator-notify');
@@ -36,6 +37,8 @@ vi.mock('@/lib/operator-notify', async () => {
 const state = {
   connectionFindMany: vi.fn(),
   connectionUpdate: vi.fn(),
+  connectionUpdateMany: vi.fn(),
+  connectionFindUnique: vi.fn(),
   templateUpsert: vi.fn(),
 };
 
@@ -43,6 +46,8 @@ const prisma = {
   metaChannelConnection: {
     findMany: (...a: unknown[]) => state.connectionFindMany(...a),
     update: (...a: unknown[]) => state.connectionUpdate(...a),
+    updateMany: (...a: unknown[]) => state.connectionUpdateMany(...a),
+    findUnique: (...a: unknown[]) => state.connectionFindUnique(...a),
   },
   whatsappTemplate: { upsert: (...a: unknown[]) => state.templateUpsert(...a) },
 } as unknown as PrismaClient;
@@ -67,6 +72,13 @@ beforeEach(() => {
   mockState.resolveOperatorRecipients.mockReset().mockReturnValue([{ email: 'ops@kairikos.com' }]);
   state.connectionFindMany.mockResolvedValue([]);
   state.connectionUpdate.mockResolvedValue({});
+  state.connectionUpdateMany.mockResolvedValue({ count: 1 });
+  state.connectionFindUnique.mockResolvedValue({
+    clientId: 'client_1',
+    channel: 'whatsapp',
+    displayPhoneNumber: '+34 611 22 33 44',
+    client: { name: 'Fontanería Ruiz', companyName: null },
+  });
   state.templateUpsert.mockResolvedValue({});
 });
 
@@ -134,6 +146,39 @@ describe('syncTemplateStatuses', () => {
     expect(state.connectionUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ data: { lastSyncError: 'invalid token' } }),
     );
+  });
+
+  // 2026-09-15 — producción, un día entero: cada llamada devolvía code 190
+  // y la conexión seguía en 'active'.
+  it('un token invalidado (code 190) pasa la conexión a needs_reconnect y avisa al operador una vez', async () => {
+    state.connectionFindMany.mockResolvedValue([CONNECTION]);
+    mockState.listMessageTemplates.mockResolvedValue({
+      ok: false,
+      error: 'Error validating access token: Session has expired',
+      code: 190,
+      subcode: 463,
+      status: 400,
+    });
+
+    await expect(run()).resolves.toEqual({ connections: 1, templates: 0, failed: 1 });
+    expect(state.connectionUpdateMany).toHaveBeenCalledWith({
+      where: { id: 'conn_1', status: 'active' },
+      data: { status: 'needs_reconnect', lastSyncError: 'token_invalid: Error validating access token: Session has expired' },
+    });
+    expect(mockState.sendOperatorNotification).toHaveBeenCalledTimes(1);
+    const sent = mockState.sendOperatorNotification.mock.calls[0][0];
+    expect(sent.kind).toBe('connection-lost');
+    expect(sent.subject).toContain('Fontanería Ruiz');
+    expect(sent.text).toContain('Session has expired');
+  });
+
+  it('si otro barrido ya la marcó en este tick, no avisa dos veces', async () => {
+    state.connectionFindMany.mockResolvedValue([CONNECTION]);
+    mockState.listMessageTemplates.mockResolvedValue({ ok: false, error: 'expired', code: 190 });
+    state.connectionUpdateMany.mockResolvedValue({ count: 0 });
+
+    await run();
+    expect(mockState.sendOperatorNotification).not.toHaveBeenCalled();
   });
 
   it('survives a key rotation making a token undecryptable, without aborting the sweep', async () => {

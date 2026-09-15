@@ -3,7 +3,8 @@ import type { PrismaClient } from '@prisma/client';
 import { RECALL_TEMPLATES, metaSenderFor } from './recall-messaging';
 import { DIGEST_TEMPLATES } from './recall-digest';
 import { REPORT_TEMPLATE } from './recall-reports';
-import { createMessageTemplate, sendTemplate } from './whatsapp-api';
+import { createMessageTemplate, sendTemplate, isAccessTokenError } from './whatsapp-api';
+import { markConnectionNeedsReconnect } from './whatsapp-health';
 import { LEGAL_NOTICE_TEXT } from './recall-optout';
 import { REVIEW_TEMPLATE } from './review-request-campaign';
 import { RECOVERY_TEMPLATE_DEFINITIONS } from './recovery-templates';
@@ -437,16 +438,46 @@ export async function advanceSubscriptionsWithApprovedTemplates(
 //             siguiente la volvería a enviar.
 //   · mal   → fila con estado SUBMIT_FAILED y el error de Meta. Sin esto,
 //             una plantilla que Meta rechaza al crearla se reenviaría cada
-//             cinco minutos para siempre. Con la fila, se para y queda a la
-//             vista del operador.
+//             cinco minutos para siempre. Con la fila, se para, queda a la
+//             vista del operador y se reintenta UNA VEZ AL DÍA
+//             (SUBMIT_FAILED_RETRY_HOURS).
+//   · token → NO se escribe fila. Un token caducado (code 190) no dice nada
+//             de la plantilla. El primer despliegue de este barrido, el
+//             2026-09-15, marcó las siete plantillas nuevas como
+//             SUBMIT_FAILED por eso mismo. Ahora la conexión pasa a
+//             needs_reconnect (markConnectionNeedsReconnect) y se deja de
+//             intentar con ella.
 //
 // Si luego Meta sí la tiene, syncTemplateStatuses sobrescribe la fila con el
 // estado real: el espejo sigue mandando Meta, no esta función.
 // =============================================================================
 
+/** Cada cuánto se reintenta un envío fallido. Un día: si fue la redacción,
+ *  un intento diario no molesta a nadie; si fue algo pasajero (el token,
+ *  una caída de Meta), se arregla solo sin que nadie borre filas. */
+export const SUBMIT_FAILED_RETRY_HOURS = 24;
+
+/** Los nombres que cuentan como "ya enviados" en el espejo: todos, salvo
+ *  los SUBMIT_FAILED cuyo último intento tiene más de un día. */
+export function namesAlreadySubmitted(
+  rows: ReadonlyArray<{ name: string; status: string; lastCheckedAt: Date | null }>,
+  now: Date,
+): Set<string> {
+  const retryBefore = now.getTime() - SUBMIT_FAILED_RETRY_HOURS * 60 * 60 * 1000;
+  return new Set(
+    rows
+      .filter(
+        (row) =>
+          row.status !== 'SUBMIT_FAILED' || (row.lastCheckedAt !== null && row.lastCheckedAt.getTime() > retryBefore),
+      )
+      .map((row) => row.name),
+  );
+}
+
 /** Qué definiciones faltan en un negocio, dado lo que ya hay en su espejo
- *  (con cualquier estado: una rechazada no se reenvía sola, eso lo decide
- *  una persona). Pura y exportada para probarla sin red. */
+ *  (con cualquier estado: una rechazada por Meta en revisión no se reenvía
+ *  sola, eso lo decide una persona). Pura y exportada para probarla sin
+ *  red. */
 export function missingTemplateDefinitions(
   existingNames: ReadonlySet<string>,
   portalUrl: string | undefined = process.env.NEXT_PUBLIC_PORTAL_URL,
@@ -506,9 +537,9 @@ export async function ensureRecallTemplatesSubmitted(
 
     const existing = await prisma.whatsappTemplate.findMany({
       where: { connectionId: connection.id },
-      select: { name: true },
+      select: { name: true, status: true, lastCheckedAt: true },
     });
-    const missing = missingTemplateDefinitions(new Set(existing.map((t) => t.name)));
+    const missing = missingTemplateDefinitions(namesAlreadySubmitted(existing, now));
 
     for (const def of missing) {
       if (budget <= 0) break;
@@ -522,6 +553,14 @@ export async function ensureRecallTemplatesSubmitted(
         bodyExamples: def.bodyExamples,
         ...(def.urlButton ? { urlButton: def.urlButton } : {}),
       });
+
+      if (!created.ok && isAccessTokenError(created)) {
+        // La conexión está muerta, no la plantilla: sin fila, y ni una
+        // llamada más con este token. Ver la cabecera de esta sección.
+        await markConnectionNeedsReconnect(prisma, connection.id, created.error, now);
+        result.failed += 1;
+        break;
+      }
 
       await prisma.whatsappTemplate.upsert({
         where: {
@@ -542,7 +581,17 @@ export async function ensureRecallTemplatesSubmitted(
           rejectedReason: created.ok ? null : created.error.slice(0, 500),
           lastCheckedAt: now,
         },
-        update: {},
+        // Solo se llega aquí con fila previa al reintentar un SUBMIT_FAILED
+        // de hace más de un día. Si falla otra vez, no se toca el estado:
+        // en la carrera rara con syncTemplateStatuses, el que manda es Meta.
+        update: created.ok
+          ? {
+              metaTemplateId: created.data.id ?? null,
+              status: created.data.status ?? 'PENDING',
+              rejectedReason: null,
+              lastCheckedAt: now,
+            }
+          : { rejectedReason: created.error.slice(0, 500), lastCheckedAt: now },
       });
 
       if (created.ok) {

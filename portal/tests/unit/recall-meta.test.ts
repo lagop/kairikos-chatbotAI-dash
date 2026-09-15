@@ -16,6 +16,7 @@ import type { PrismaClient } from '@prisma/client';
 const mockState = vi.hoisted(() => ({
   exchangeCodeForToken: vi.fn(),
   exchangeForLongLivedToken: vi.fn(),
+  inspectAccessToken: vi.fn(),
   encryptMetaToken: vi.fn(),
   subscribeWaba: vi.fn(),
   getPhoneNumbersForWaba: vi.fn(),
@@ -29,6 +30,7 @@ const mockState = vi.hoisted(() => ({
 vi.mock('@/lib/meta-business', () => ({
   exchangeCodeForToken: (...a: unknown[]) => mockState.exchangeCodeForToken(...a),
   exchangeForLongLivedToken: (...a: unknown[]) => mockState.exchangeForLongLivedToken(...a),
+  inspectAccessToken: (...a: unknown[]) => mockState.inspectAccessToken(...a),
   encryptMetaToken: (...a: unknown[]) => mockState.encryptMetaToken(...a),
 }));
 
@@ -84,6 +86,7 @@ beforeEach(() => {
   state.recallSubscriptionFindUnique.mockResolvedValue({ id: 'sub_1', clientId: 'client_1', status: 'contract_signed' });
   mockState.exchangeCodeForToken.mockResolvedValue({ accessToken: 'short_lived', expiresIn: 5400 });
   mockState.exchangeForLongLivedToken.mockResolvedValue({ accessToken: 'long_lived', expiresIn: 5183944 });
+  mockState.inspectAccessToken.mockResolvedValue(null);
   mockState.encryptMetaToken.mockReturnValue({ ciphertext: Buffer.from('c'), iv: Buffer.from('i'), tag: Buffer.from('t') });
   mockState.getPhoneNumbersForWaba.mockResolvedValue({ ok: true, data: { data: [{ id: 'phone_1', display_phone_number: '+34 611 22 33 44' }] } });
   mockState.subscribeWaba.mockResolvedValue({ ok: true, data: { success: true } });
@@ -168,6 +171,35 @@ describe('connectRecallWhatsapp', () => {
     const result = await connectRecallWhatsapp(prisma, PARAMS);
     expect(result).toEqual({ ok: false, error: 'invalid_status' });
     expect(mockState.exchangeCodeForToken).not.toHaveBeenCalled();
+  });
+
+  // 2026-09-15 — el caso real de producción: token de ~1 hora guardado
+  // como "no caduca". Ahora no se guarda y el negocio ve un error.
+  it('rechaza un token de corta duración en vez de guardar una conexión que muere en una hora', async () => {
+    mockState.exchangeForLongLivedToken.mockResolvedValue(null);
+    const result = await connectRecallWhatsapp(prisma, PARAMS);
+    expect(result).toEqual({ ok: false, error: 'short_lived_token' });
+    expect(state.metaChannelConnectionUpsert).not.toHaveBeenCalled();
+    expect(mockState.submitAllRecallTemplates).not.toHaveBeenCalled();
+    expect(mockState.logError).toHaveBeenCalledWith(
+      'recall_meta.short_lived_token',
+      expect.any(Error),
+      expect.objectContaining({ longLivedExchanged: false }),
+      'error',
+    );
+  });
+
+  it('rechaza un token que debug_token da por inválido', async () => {
+    mockState.inspectAccessToken.mockResolvedValue({ isValid: false, expiresAt: null, type: 'USER' });
+    const result = await connectRecallWhatsapp(prisma, PARAMS);
+    expect(result).toEqual({ ok: false, error: 'short_lived_token' });
+  });
+
+  it('guarda "no caduca" solo cuando Meta lo dice explícitamente (expires_at 0)', async () => {
+    mockState.exchangeForLongLivedToken.mockResolvedValue({ accessToken: 'long_lived', expiresIn: null });
+    mockState.inspectAccessToken.mockResolvedValue({ isValid: true, expiresAt: null, type: 'SYSTEM_USER' });
+    await connectRecallWhatsapp(prisma, PARAMS);
+    expect(state.metaChannelConnectionUpsert.mock.calls[0][0].create.tokenExpiresAt).toBeNull();
   });
 
   it('fails cleanly when Meta rejects the code exchange', async () => {

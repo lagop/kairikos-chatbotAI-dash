@@ -49,7 +49,10 @@ export type NotificationKind =
   // resembling the others. Its own kind rather than reusing 'stuck',
   // because the dedup key is (clientId, kind, day): sharing a kind
   // would let one alert silence the other for that client that day.
-  | 'usage-spike';
+  | 'usage-spike'
+  // 2026-09-15 — Meta invalidó el token de un negocio. Ver
+  // renderConnectionLost.
+  | 'connection-lost';
 
 export const ALLOWED_KINDS: ReadonlySet<NotificationKind> = new Set([
   'stuck',
@@ -60,6 +63,7 @@ export const ALLOWED_KINDS: ReadonlySet<NotificationKind> = new Set([
   'help-request',
   'go-live-ready',
   'usage-spike',
+  'connection-lost',
 ]);
 
 // Severity → NotificationKind. Used by review-overdue/fire so the route
@@ -274,6 +278,46 @@ export function renderUsageSpike(ctx: UsageSpikeContext): { subject: string; tex
     `<p>El cliente <strong>${escapeHtml(ctx.clientName)}</strong> (${escapeHtml(ctx.clientId)}) lleva <strong>${ctx.minutes} minutos</strong> de llamadas en ${escapeHtml(ctx.localMonth)}, frente a los ~${ctx.expectedMinutes} habituales (${ctx.calls} llamadas).</p>
      <p>La tarifa es plana: esto no es un cargo, es para mirar si el desvío está bien configurado, si le está entrando spam, o si necesita otro tramo.</p>
      <p style="margin: 24px 0;">${portalLink(ctx.portalUrl, 'Abrir la cola de recall')}</p>`,
+  );
+  return { subject, text, html };
+}
+
+// ----- connection-lost ------------------------------------------------------
+// 2026-09-15. Meta invalidó el token de un negocio (code 190) y la conexión
+// pasó a needs_reconnect. Mientras no se reconecte, NINGÚN mensaje de
+// WhatsApp de ese negocio sale — ni al que llamó ni al dueño —, así que es
+// la alerta más urgente de las que manda el portal. En producción estuvo un
+// día entero así sin que nadie lo supiera.
+export interface ConnectionLostContext {
+  clientId: string;
+  clientName: string;
+  channel: string;
+  displayPhoneNumber: string | null;
+  metaError: string;
+  portalUrl?: string;
+}
+
+export function renderConnectionLost(ctx: ConnectionLostContext): { subject: string; text: string; html: string } {
+  const number = ctx.displayPhoneNumber ? ` (${ctx.displayPhoneNumber})` : '';
+  const subject = `[Kairikos] URGENTE: ${ctx.clientName} se ha quedado sin ${ctx.channel}${number}`;
+  const text = [
+    'Hola,',
+    '',
+    `Meta ha dejado de aceptar el acceso de "${ctx.clientName}" (${ctx.clientId}) a ${ctx.channel}${number}. Hasta que el cliente vuelva a conectar, no sale ningún mensaje de ese negocio.`,
+    '',
+    `Error de Meta: ${ctx.metaError}`,
+    '',
+    'Acción: pide al cliente que vuelva a conectar WhatsApp desde su portal.',
+    `Portal: ${ctx.portalUrl ?? `${PORTAL_BASE_URL}/admin/portal/${ctx.clientId}`}`,
+    '',
+    '— Kairikos Ops',
+  ].join('\n');
+  const html = renderShell(
+    'Conexión perdida',
+    `<p>Meta ha dejado de aceptar el acceso de <strong>${escapeHtml(ctx.clientName)}</strong> (${escapeHtml(ctx.clientId)}) a ${escapeHtml(ctx.channel)}${escapeHtml(number)}. <strong>Hasta que el cliente vuelva a conectar, no sale ningún mensaje de ese negocio.</strong></p>
+     <p style="color: #6b7280; font-size: 13px;">Error de Meta: ${escapeHtml(ctx.metaError)}</p>
+     <p>Pide al cliente que vuelva a conectar WhatsApp desde su portal.</p>
+     <p style="margin: 24px 0;">${portalLink(ctx.portalUrl ?? `${PORTAL_BASE_URL}/admin/portal/${ctx.clientId}`, 'Abrir el cliente')}</p>`,
   );
   return { subject, text, html };
 }
