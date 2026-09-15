@@ -21,8 +21,9 @@ import {
 } from '@/lib/operator-notify';
 
 describe('ALLOWED_KINDS', () => {
-  it('exposes the eight contract kinds (WP-11 added help-request and go-live-ready; Fase 11 usage-spike)', () => {
+  it('exposes the nine contract kinds (WP-11 added help-request and go-live-ready; Fase 11 usage-spike; connection-lost 2026-09-15)', () => {
     expect([...ALLOWED_KINDS].sort()).toEqual([
+      'connection-lost',
       'escalation',
       'execution-failed',
       'go-live-ready',

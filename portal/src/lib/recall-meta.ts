@@ -1,7 +1,8 @@
 import 'server-only';
 import type { PrismaClient } from '@prisma/client';
 import { canBindMetaConnection, nextOnboardingStatus } from './recall';
-import { exchangeCodeForToken, exchangeForLongLivedToken, encryptMetaToken } from './meta-business';
+import { exchangeCodeForToken, exchangeForLongLivedToken, inspectAccessToken, encryptMetaToken } from './meta-business';
+import { resolveTokenExpiry, isUnusableToken } from './meta-token-expiry';
 import { subscribeWaba, getPhoneNumbersForWaba, getPhoneNumberInfo, syncSmbAppState } from './whatsapp-api';
 import { submitAllRecallTemplates, type TemplateSubmissionOutcome } from './recall-templates';
 import { deliverChannelEvent } from './channel-webhook';
@@ -49,6 +50,7 @@ export type ConnectRecallWhatsappResult =
         | 'subscription_not_found'
         | 'invalid_status'
         | 'code_exchange_failed'
+        | 'short_lived_token'
         | 'phone_number_not_found'
         | 'persist_failed';
     };
@@ -96,7 +98,25 @@ export async function connectRecallWhatsapp(
   const longLived = await exchangeForLongLivedToken(shortLived.accessToken);
   const accessToken = longLived?.accessToken ?? shortLived.accessToken;
   const expiresIn = longLived?.expiresIn ?? shortLived.expiresIn;
-  const tokenExpiresAt = expiresIn ? new Date(Date.now() + expiresIn * 1000) : null;
+  // Ver meta-token-expiry.ts: el único negocio en producción se conectó
+  // con un token de ~1 hora guardado como "no caduca".
+  const now = new Date();
+  const inspected = await inspectAccessToken(accessToken);
+  const tokenExpiresAt = resolveTokenExpiry({ inspected, expiresIn, now });
+  if (isUnusableToken({ inspected, expiresAt: tokenExpiresAt, now })) {
+    logError(
+      'recall_meta.short_lived_token',
+      new Error('Meta devolvió un token inválido o de corta duración'),
+      {
+        subscriptionId: params.subscriptionId,
+        longLivedExchanged: Boolean(longLived),
+        tokenType: inspected?.type ?? null,
+        expiresAt: tokenExpiresAt?.toISOString() ?? null,
+      },
+      'error',
+    );
+    return { ok: false, error: 'short_lived_token' };
+  }
 
   const numbers = await getPhoneNumbersForWaba(accessToken, params.wabaId);
   const phoneNumberId = numbers.ok ? numbers.data.data?.[0]?.id : undefined;

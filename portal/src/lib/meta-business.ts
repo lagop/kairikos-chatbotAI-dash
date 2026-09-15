@@ -3,6 +3,7 @@ import { encryptChannelCredential, decryptChannelCredential } from './channel-cr
 import type { EncryptedBuffer } from './operator-crypto';
 import { logError } from './observability';
 import { resolveActiveMetaCredentials } from './meta-credentials';
+import { parseDebugTokenResponse, type InspectedMetaToken } from './meta-token-expiry';
 
 // =============================================================================
 // WP: conexión de canales — Meta (WhatsApp/Messenger/Instagram), Fase 3.
@@ -152,6 +153,27 @@ export async function exchangeForLongLivedToken(shortLivedToken: string): Promis
     return { accessToken: json.access_token, expiresIn: json.expires_in ?? null };
   } catch (err) {
     logError('meta_business.exchange_long_lived', err, { route: 'lib/meta-business.ts' }, 'warn');
+    return null;
+  }
+}
+
+/**
+ * Lo que Meta dice de un token: si es válido y cuándo caduca de verdad.
+ * Ver meta-token-expiry.ts para por qué esto y no `expires_in`.
+ *
+ * Se autentica con el app token (`app_id|app_secret`), que es lo que
+ * /debug_token pide para inspeccionar un token emitido por esta app. Nunca
+ * lanza: devuelve null y el llamante cae al `expires_in` de siempre.
+ */
+export async function inspectAccessToken(token: string): Promise<InspectedMetaToken | null> {
+  try {
+    const { appId, appSecret } = await getAppCredentials();
+    const params = new URLSearchParams({ input_token: token, access_token: `${appId}|${appSecret}` });
+    const res = await fetch(`${graphUrl('/debug_token')}?${params.toString()}`);
+    if (!res.ok) return null;
+    return parseDebugTokenResponse(await res.json());
+  } catch (err) {
+    logError('meta_business.debug_token', err, { route: 'lib/meta-business.ts' }, 'warn');
     return null;
   }
 }

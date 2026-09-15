@@ -10,12 +10,18 @@ const mockState = vi.hoisted(() => ({
   createMessageTemplate: vi.fn(),
   sendTemplate: vi.fn(),
   metaSenderFor: vi.fn(),
+  markConnectionNeedsReconnect: vi.fn(),
   logError: vi.fn(),
 }));
 
 vi.mock('@/lib/whatsapp-api', () => ({
   createMessageTemplate: (...a: unknown[]) => mockState.createMessageTemplate(...a),
   sendTemplate: (...a: unknown[]) => mockState.sendTemplate(...a),
+  isAccessTokenError: (r: { code?: number }) => r.code === 190,
+}));
+
+vi.mock('@/lib/whatsapp-health', () => ({
+  markConnectionNeedsReconnect: (...a: unknown[]) => mockState.markConnectionNeedsReconnect(...a),
 }));
 
 vi.mock('@/lib/recall-messaging', () => ({
@@ -81,6 +87,7 @@ beforeEach(() => {
   mockState.sendTemplate.mockReset().mockResolvedValue({ ok: true, data: { messages: [{ id: 'wamid.1' }] } });
   mockState.metaSenderFor.mockReset().mockReturnValue({ token: 'tok', phoneNumberId: 'phone_1' });
   mockState.logError.mockReset();
+  mockState.markConnectionNeedsReconnect.mockReset().mockResolvedValue({ flipped: true, notified: true });
   for (const fn of Object.values(state)) fn.mockReset();
   state.recallSubscriptionFindMany.mockResolvedValue([]);
   state.whatsappTemplateCount.mockResolvedValue(0);
@@ -544,8 +551,7 @@ describe('ensureRecallTemplatesSubmitted', () => {
           status: 'PENDING',
           lastCheckedAt: now,
         }),
-        // Nunca pisa lo que ya escribió syncTemplateStatuses.
-        update: {},
+        update: expect.objectContaining({ status: 'PENDING', metaTemplateId: 'tpl_9', lastCheckedAt: now }),
       }),
     );
   });
@@ -577,6 +583,65 @@ describe('ensureRecallTemplatesSubmitted', () => {
       expect.objectContaining({ connectionId: 'conn_1', template: 'recall_caller_closed_v2' }),
       'warn',
     );
+  });
+
+  // 2026-09-15 — el primer despliegue marcó las siete plantillas nuevas como
+  // SUBMIT_FAILED por un token caducado. Eso no dice nada de la plantilla.
+  it('un token caducado (code 190) no marca la plantilla: marca la conexión y deja de intentarlo', async () => {
+    state.recallSubscriptionFindMany.mockResolvedValue([{ metaConnection: CONNECTION }]);
+    state.whatsappTemplateFindMany.mockResolvedValue(ALL_BUT_V2);
+    mockState.createMessageTemplate.mockResolvedValue({ ok: false, error: 'Session has expired', code: 190 });
+    const now = new Date('2026-09-15T20:03:40Z');
+
+    const result = await ensureRecallTemplatesSubmitted(prisma, { now });
+
+    expect(mockState.createMessageTemplate).toHaveBeenCalledTimes(1);
+    expect(state.whatsappTemplateUpsert).not.toHaveBeenCalled();
+    expect(mockState.markConnectionNeedsReconnect).toHaveBeenCalledWith(prisma, 'conn_1', 'Session has expired', now);
+    expect(result).toEqual({ connections: 1, submitted: 0, failed: 1 });
+  });
+
+  it('reintenta un SUBMIT_FAILED de hace más de un día, y no uno reciente', async () => {
+    const now = new Date('2026-09-17T10:00:00Z');
+    state.recallSubscriptionFindMany.mockResolvedValue([{ metaConnection: CONNECTION }]);
+    state.whatsappTemplateFindMany.mockResolvedValue([
+      ...ALL_BUT_V2,
+      { name: 'recall_caller_open_v2', status: 'SUBMIT_FAILED', lastCheckedAt: new Date('2026-09-15T20:03:40Z') },
+      { name: 'recall_caller_closed_v2', status: 'SUBMIT_FAILED', lastCheckedAt: new Date('2026-09-17T09:00:00Z') },
+      { name: 'recall_caller_slots_v2', status: 'PENDING', lastCheckedAt: new Date('2026-09-15T20:03:40Z') },
+    ]);
+    mockState.createMessageTemplate.mockResolvedValue({ ok: true, data: { id: 'tpl_1', status: 'PENDING' } });
+
+    const result = await ensureRecallTemplatesSubmitted(prisma, { now });
+
+    expect(mockState.createMessageTemplate.mock.calls.map((c) => c[2].name)).toEqual(['recall_caller_open_v2']);
+    expect(result.submitted).toBe(1);
+    // La fila existente pasa a lo que dice Meta ahora.
+    expect(state.whatsappTemplateUpsert.mock.calls[0][0].update).toEqual({
+      metaTemplateId: 'tpl_1',
+      status: 'PENDING',
+      rejectedReason: null,
+      lastCheckedAt: now,
+    });
+  });
+
+  it('si el reintento vuelve a fallar, solo actualiza motivo y fecha — el estado lo decide Meta', async () => {
+    const now = new Date('2026-09-17T10:00:00Z');
+    state.recallSubscriptionFindMany.mockResolvedValue([{ metaConnection: CONNECTION }]);
+    state.whatsappTemplateFindMany.mockResolvedValue([
+      ...ALL_BUT_V2,
+      { name: 'recall_caller_open_v2', status: 'SUBMIT_FAILED', lastCheckedAt: new Date('2026-09-15T20:03:40Z') },
+      { name: 'recall_caller_closed_v2' },
+      { name: 'recall_caller_slots_v2' },
+    ]);
+    mockState.createMessageTemplate.mockResolvedValue({ ok: false, error: 'Invalid parameter', code: 100 });
+
+    await ensureRecallTemplatesSubmitted(prisma, { now });
+
+    expect(state.whatsappTemplateUpsert.mock.calls[0][0].update).toEqual({
+      rejectedReason: 'Invalid parameter',
+      lastCheckedAt: now,
+    });
   });
 
   it('no reenvía nada que ya esté en el espejo, tenga el estado que tenga', async () => {

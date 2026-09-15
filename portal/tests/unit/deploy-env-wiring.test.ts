@@ -33,6 +33,9 @@ const RECALL_PACK_ENV: ReadonlyArray<[string, 'secrets' | 'vars']> = [
   ['VAPID_PRIVATE_KEY', 'secrets'],
   ['VAPID_PUBLIC_KEY', 'vars'],
   ['CRON_SECRET', 'secrets'],
+  // Sin destinatarios, ninguna alerta de operador sale — incluida la de
+  // "este negocio se ha quedado sin WhatsApp".
+  ['KAIRIKOS_OPERATOR_EMAILS', 'vars'],
 ];
 
 describe('las variables del pack recall llegan al contenedor en cada despliegue', () => {

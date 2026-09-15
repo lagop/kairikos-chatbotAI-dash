@@ -9,9 +9,11 @@ import {
   isMetaSignupConfigured,
   exchangeCodeForToken,
   exchangeForLongLivedToken,
+  inspectAccessToken,
   fetchPagesWithInstagram,
   encryptMetaToken,
 } from '@/lib/meta-business';
+import { resolveTokenExpiry, isUnusableToken } from '@/lib/meta-token-expiry';
 import { subscribeWaba, getPhoneNumberInfo } from '@/lib/whatsapp-api';
 import { subscribePage } from '@/lib/messenger-api';
 import { deliverChannelEvent } from '@/lib/channel-webhook';
@@ -89,7 +91,15 @@ export async function POST(req: NextRequest) {
   // Long-lived tokens last ~60 days; for a product that sends on a
   // schedule, an unnoticed expiry is a silent outage for that client.
   const expiresIn = longLived?.expiresIn ?? shortLived.expiresIn;
-  const tokenExpiresAt = expiresIn ? new Date(Date.now() + expiresIn * 1000) : null;
+  // 2026-09-15 — `expires_in` ausente no significa "no caduca". La fecha
+  // real sale de /debug_token, y un token de corta duración no se guarda
+  // (ver meta-token-expiry.ts).
+  const now = new Date();
+  const inspected = await inspectAccessToken(accessToken);
+  const tokenExpiresAt = resolveTokenExpiry({ inspected, expiresIn, now });
+  if (isUnusableToken({ inspected, expiresAt: tokenExpiresAt, now })) {
+    return NextResponse.json({ error: 'meta_api_error', detail: 'short_lived_token' }, { status: 502 });
+  }
 
   const client = await prisma.chatbotClient.findUnique({
     where: { id: resolved.clientId },

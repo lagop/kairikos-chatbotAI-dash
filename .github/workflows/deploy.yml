@@ -191,6 +191,16 @@ jobs:
             # ROTA una vez haya conexiones: los refresh tokens cifrados con
             # la anterior dejarían de poder leerse.
             GOOGLE_TOKEN_ENCRYPTION_KEY=${{ secrets.GOOGLE_TOKEN_ENCRYPTION_KEY }}
+            # A quién le llegan las alertas de operador: altas atascadas,
+            # tokens a punto de caducar, conexión de WhatsApp perdida,
+            # consumo anómalo. Hasta el 2026-09-15 no estaba aquí, así que
+            # en producción NINGUNA alerta se enviaba — resolveOperator-
+            # Recipients devolvía [] y cada aviso se saltaba sin error. Lista
+            # separada por comas.
+            KAIRIKOS_OPERATOR_EMAILS=${{ vars.KAIRIKOS_OPERATOR_EMAILS }}
+            # Destinatario de la escalada review-overdue; la ruta falla con
+            # 500 ceo_not_configured si está vacío.
+            KAIRIKOS_CEO_EMAIL=${{ vars.KAIRIKOS_CEO_EMAIL }}
             META_CREDENTIAL_ENCRYPTION_KEY=${{ secrets.META_CREDENTIAL_ENCRYPTION_KEY }}
             TWILIO_CREDENTIAL_ENCRYPTION_KEY=${{ secrets.TWILIO_CREDENTIAL_ENCRYPTION_KEY }}
             TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }}

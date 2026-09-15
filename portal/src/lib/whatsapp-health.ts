@@ -1,9 +1,10 @@
 import 'server-only';
 import type { PrismaClient } from '@prisma/client';
 import { decryptMetaToken } from './meta-business';
-import { listMessageTemplates } from './whatsapp-api';
+import { listMessageTemplates, isAccessTokenError } from './whatsapp-api';
 import {
   renderStuck,
+  renderConnectionLost,
   sendOperatorNotification,
   resolveOperatorRecipients,
 } from './operator-notify';
@@ -93,6 +94,15 @@ export async function syncTemplateStatuses(
       }
 
       const listed = await listMessageTemplates(token, connection.wabaId);
+      if (!listed.ok && isAccessTokenError(listed)) {
+        // No es un fallo del sync: la conexión entera está muerta. Es el
+        // único sitio que llama a Meta en cada tick para cada conexión,
+        // así que es donde se detecta antes, envíe o no mensajes el
+        // negocio ese día.
+        await markConnectionNeedsReconnect(prisma, connection.id, listed.error, now);
+        result.failed += 1;
+        continue;
+      }
       if (!listed.ok) {
         await prisma.metaChannelConnection
           .update({ where: { id: connection.id }, data: { lastSyncError: listed.error.slice(0, 500) } })
@@ -243,4 +253,68 @@ export async function warnExpiringTokens(
   }
 
   return result;
+}
+
+/**
+ * Meta ha invalidado el token de una conexión (code 190): pasarla a
+ * 'needs_reconnect' y avisar al operador.
+ *
+ * 2026-09-15 — el único negocio conectado en producción estuvo un día
+ * entero así: cada llamada a Meta devolvía "Session has expired", el sync
+ * lo apuntaba en lastSyncError y la conexión seguía en 'active'. Nada
+ * distinguía una conexión muerta de una sana. warnExpiringTokens no podía
+ * verlo porque token_expires_at estaba vacío (ver meta-token-expiry.ts).
+ *
+ * El cambio de estado es un compare-and-swap desde 'active': si dos
+ * barridos lo detectan en el mismo tick, solo uno avisa. Y como después la
+ * conexión ya no es 'active', metaSenderFor deja de devolver remitente y
+ * nadie sigue intentando enviar con un token muerto.
+ *
+ * Nunca lanza: lo llaman barridos que no deben pararse por esto.
+ */
+export async function markConnectionNeedsReconnect(
+  prisma: PrismaClient,
+  connectionId: string,
+  metaError: string,
+  now: Date = new Date(),
+): Promise<{ flipped: boolean; notified: boolean }> {
+  try {
+    const flipped = await prisma.metaChannelConnection.updateMany({
+      where: { id: connectionId, status: 'active' },
+      data: { status: 'needs_reconnect', lastSyncError: `token_invalid: ${metaError}`.slice(0, 500) },
+    });
+    if (flipped.count === 0) return { flipped: false, notified: false };
+
+    logError(
+      'whatsapp_health.connection_lost',
+      new Error(metaError),
+      { connectionId, at: now.toISOString() },
+      'error',
+    );
+
+    const connection = await prisma.metaChannelConnection.findUnique({
+      where: { id: connectionId },
+      select: {
+        clientId: true,
+        channel: true,
+        displayPhoneNumber: true,
+        client: { select: { name: true, companyName: true } },
+      },
+    });
+    const recipients = resolveOperatorRecipients(process.env.KAIRIKOS_OPERATOR_EMAILS);
+    if (!connection || recipients.length === 0) return { flipped: true, notified: false };
+
+    const rendered = renderConnectionLost({
+      clientId: connection.clientId,
+      clientName: connection.client.companyName ?? connection.client.name,
+      channel: connection.channel,
+      displayPhoneNumber: connection.displayPhoneNumber,
+      metaError,
+    });
+    const sent = await sendOperatorNotification({ kind: 'connection-lost', to: recipients, ...rendered });
+    return { flipped: true, notified: sent.ok && !('skipped' in sent) };
+  } catch (err) {
+    logError('whatsapp_health.mark_needs_reconnect_failed', err, { connectionId }, 'warn');
+    return { flipped: false, notified: false };
+  }
 }
