@@ -158,6 +158,8 @@ model ChatbotClient {
   recallUsageMonths              RecallUsageMonth[]
   outboundMessages               OutboundMessage[]
   contacts                       Contact[]
+  jobs                           Job[]
+  serviceQuotes                  ServiceQuote[]
   leadQualificationProfiles      LeadQualificationProfile[]
   leadQualificationProfileAudits LeadQualificationProfileAudit[]
   seoTargetKeywords              SeoTargetKeyword[]
@@ -548,6 +550,8 @@ model Tenant {
   callEvents                     CallEvent[]
   outboundMessages               OutboundMessage[]
   contacts                       Contact[]
+  jobs                           Job[]
+  serviceQuotes                  ServiceQuote[]
   prospectingCampaigns           ProspectingCampaign[]
   prospectingCampaignAudits      ProspectingCampaignAudit[]
   seoProfiles                    SeoProfile[]
@@ -4230,14 +4234,132 @@ model Contact {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  client     ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant     Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  callEvents CallEvent[]
-  leads      Lead[]
+  client        ChatbotClient  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant        Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  callEvents    CallEvent[]
+  jobs          Job[]
+  serviceQuotes ServiceQuote[]
+  leads         Lead[]
 
   @@unique([clientId, e164])
   /// "Los contactos de este cliente por antigüedad de trato", que es la
   /// consulta de los disparadores de la Fase 3 y del histórico.
   @@index([clientId, lastInteractionAt])
+  @@index([tenantId])
+}
+
+// Fase 2 — un trabajo realizado.
+//
+// EL EVENTO MÁS IMPORTANTE DEL SISTEMA, Y SE USA DOS VECES. `completedAt`
+// es a la vez lo que dispara la petición de reseña y lo que arranca el
+// reloj de la recuperación futura. No son dos hechos parecidos: es el
+// mismo hecho mirado a corto y a largo plazo.
+//
+// POR QUÉ contactId ES NULABLE
+//
+// Debería ser obligatorio —un trabajo es trabajo PARA alguien— y sin
+// embargo no lo es, por una razón práctica que conviene no olvidar: la
+// captura por voz entrega un nombre ("acabo de terminar en casa de
+// García"), no un teléfono, y casar un nombre con un contacto es difuso.
+// Cuando no se puede resolver, tirar el trabajo entero sería peor que
+// guardarlo suelto: el importe, la fecha y la próxima revisión son datos
+// reales que ya se han capturado.
+//
+// La consecuencia, que es lo que hay que tener presente: UN TRABAJO SIN
+// CONTACTO NO DISPARA NADA. Ni reseña ni recuperación, porque no hay a
+// quién escribir. Sale en el histórico y en las cuentas, y espera a que
+// alguien le ponga dueño.
+model Job {
+  id        String  @id @default(uuid()) @db.Uuid
+  clientId  String  @map("client_id")
+  tenantId  String? @map("tenant_id") @db.Uuid
+  contactId String? @map("contact_id") @db.Uuid
+
+  /// Cuándo se terminó. Dispara la reseña y arranca el reloj. Es la
+  /// columna por la que existe este modelo.
+  completedAt DateTime @map("completed_at")
+
+  /// Lo que se hizo, en las palabras del gremio ("cambio de termo",
+  /// "revisión de caldera"). Texto libre: normalizarlo por rubro es un
+  /// problema de la Fase 3, cuando haya suficientes para ver el patrón.
+  serviceType String? @map("service_type")
+
+  /// Marca, modelo y año de instalación, cuando se dijeron. JSON y no
+  /// columnas porque cada gremio guarda cosas distintas y hoy no hay
+  /// suficientes casos reales para saber cuáles merecen columna propia.
+  /// Alimenta el disparador de antigüedad de equipo.
+  equipment Json?
+
+  amount   Decimal? @db.Decimal(12, 2)
+  currency String   @default("EUR")
+
+  /// Calculado a partir de completedAt, NO extraído por el modelo. El
+  /// modelo dice "en un año"; la aritmética de fechas la hace el portal.
+  /// Ver la cabecera de job-capture-ai.ts.
+  nextServiceDueAt DateTime? @map("next_service_due_at") @db.Date
+
+  /// 'voice_note' | 'manual' | 'import' | 'api'
+  captureMethod String  @map("capture_method")
+  /// La transcripción literal, cuando vino por voz. Se guarda por el
+  /// mismo motivo que RecallDigest.rawResponse: si el dueño dice "yo
+  /// nunca dije 340 euros", esta cadena es la respuesta.
+  rawCapture    String? @map("raw_capture") @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  client  ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant  Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  contact Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, completedAt])
+  @@index([contactId])
+  /// "Qué revisiones tocan en marzo" — el disparador de aniversario.
+  @@index([clientId, nextServiceDueAt])
+  @@index([tenantId])
+}
+
+// Fase 2 — un presupuesto emitido por el profesional a SU cliente final.
+//
+// SE LLAMA ServiceQuote Y NO Quote PORQUE EL NOMBRE ESTABA COGIDO.
+// `WebQuote` ya existe en este esquema y es otra cosa completamente
+// distinta: el presupuesto que Kairikos le pasa al cliente por el producto
+// `web`. Confundirlos sería mezclar nuestras ventas con las suyas.
+model ServiceQuote {
+  id        String  @id @default(uuid()) @db.Uuid
+  clientId  String  @map("client_id")
+  tenantId  String? @map("tenant_id") @db.Uuid
+  contactId String? @map("contact_id") @db.Uuid
+
+  issuedAt DateTime @map("issued_at")
+  amount   Decimal? @db.Decimal(12, 2)
+  currency String   @default("EUR")
+
+  /// 'open' | 'won' | 'lost' | 'expired'. Texto libre con los valores
+  /// documentados, como el resto de columnas de estado del esquema: las
+  /// transiciones se validan en la aplicación, no en la base.
+  status String @default("open")
+
+  /// Evita perseguir dos veces al mismo presupuesto. Es lo que filtra el
+  /// disparador `open_quote` de la Fase 3, igual que `alertedAt` filtra
+  /// los avisos que ya salieron.
+  lastFollowedUpAt DateTime? @map("last_followed_up_at")
+
+  description String? @db.Text
+
+  captureMethod String  @map("capture_method")
+  rawCapture    String? @map("raw_capture") @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  client  ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant  Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  contact Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  /// "Los presupuestos abiertos de este cliente, por antigüedad" — la
+  /// consulta del disparador y la del asistente ("¿qué tengo pendiente?").
+  @@index([clientId, status, issuedAt])
+  @@index([contactId])
   @@index([tenantId])
 }
