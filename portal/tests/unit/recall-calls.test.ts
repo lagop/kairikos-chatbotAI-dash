@@ -22,9 +22,18 @@ const state = {
   recallSubscriptionUpdateMany: vi.fn(),
   recallSubscriptionUpdate: vi.fn(),
   recallSubscriptionAuditCreate: vi.fn(),
+  // Fase 1 — igual que el libro mayor: resolveContact se traga sus
+  // propios errores, así que sin este doble los tests seguirían verdes
+  // mientras ninguna llamada queda enganchada a nadie.
+  contactUpsert: vi.fn(),
+  contactUpdateMany: vi.fn(),
 };
 
 const prisma = {
+  contact: {
+    upsert: (...a: unknown[]) => state.contactUpsert(...a),
+    updateMany: (...a: unknown[]) => state.contactUpdateMany(...a),
+  },
   virtualNumber: { findUnique: (...a: unknown[]) => state.virtualNumberFindUnique(...a) },
   callEvent: {
     upsert: (...a: unknown[]) => state.callEventUpsert(...a),
@@ -255,6 +264,8 @@ describe('recordIncomingCall', () => {
 
   beforeEach(() => {
     state.callEventUpsert.mockResolvedValue({ id: 'ce_1', outcome: 'pending' });
+    state.contactUpsert.mockResolvedValue({ id: 'contact_1' });
+    state.contactUpdateMany.mockResolvedValue({ count: 0 });
   });
 
   it('upserts on the CallSid so a Twilio retry does not create a second row', async () => {
@@ -280,6 +291,39 @@ describe('recordIncomingCall', () => {
     expect(create.withheld).toBe(true);
     expect(create.fromNumber).toBeNull();
     expect(create.outcome).toBe('withheld');
+  });
+
+  // Fase 1 — la llamada nace ya enganchada a una persona.
+  it('resuelve el contacto y la llamada nace con él puesto', async () => {
+    await recordIncomingCall(prisma, TARGET, { callSid: 'CA1', from: '+34600111222', to: '+34910000001' });
+
+    expect(state.contactUpsert.mock.calls[0][0].where).toEqual({
+      // Deduplicación POR CLIENTE: el mismo número en dos clientes son
+      // dos contactos con dos bases legales distintas.
+      clientId_e164: { clientId: 'client_1', e164: '+34600111222' },
+    });
+    expect(state.callEventUpsert.mock.calls[0][0].create.contactId).toBe('contact_1');
+  });
+
+  it('el contacto nace SIN base legal — esa se sella cuando el aviso sale, no al llamar', async () => {
+    await recordIncomingCall(prisma, TARGET, { callSid: 'CA1', from: '+34600111222', to: '+34910000001' });
+    const created = state.contactUpsert.mock.calls[0][0].create;
+    expect(created.legalBasis).toBeUndefined();
+    expect(created.legalBasisCapturedAt).toBeUndefined();
+  });
+
+  it('NO crea contacto para una llamada con número oculto — sería inventarse una persona por cada llamada anónima', async () => {
+    await recordIncomingCall(prisma, TARGET, { callSid: 'CA2', from: 'anonymous', to: '+34910000001' });
+    expect(state.contactUpsert).not.toHaveBeenCalled();
+    expect(state.callEventUpsert.mock.calls[0][0].create.contactId).toBeNull();
+  });
+
+  it('un fallo resolviendo el contacto NO impide registrar la llamada — perder la llamada es lo único irrecuperable', async () => {
+    state.contactUpsert.mockRejectedValue(new Error('postgres caído'));
+    await expect(
+      recordIncomingCall(prisma, TARGET, { callSid: 'CA1', from: '+34600111222', to: '+34910000001' }),
+    ).resolves.toEqual({ id: 'ce_1', outcome: 'pending' });
+    expect(state.callEventUpsert.mock.calls[0][0].create.contactId).toBeNull();
   });
 });
 

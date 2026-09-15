@@ -1,5 +1,6 @@
 import 'server-only';
 import type { PrismaClient } from '@prisma/client';
+import { resolveContact } from './contacts';
 import { logError } from './observability';
 
 // =============================================================================
@@ -261,6 +262,26 @@ export async function recordIncomingCall(
   },
 ): Promise<{ id: string; outcome: string }> {
   const withheld = isWithheldCaller(call.from);
+  const startedAt = call.startedAt ?? new Date();
+
+  // Fase 1 — la persona antes que la llamada. Devuelve null con número
+  // oculto o ilegible, y entonces la llamada se guarda igual pero sin
+  // dueño: existe, se contabiliza, y no se le puede devolver.
+  //
+  // Va ANTES del upsert y no después porque así la llamada nace ya
+  // enganchada. Resolverlo después dejaría una ventana en la que la fila
+  // existe sin contacto, y es justo la ventana en la que el barrido de
+  // notificaciones puede leerla.
+  const contactId = withheld
+    ? null
+    : await resolveContact(prisma, {
+        clientId: target.clientId,
+        tenantId: target.tenantId,
+        rawNumber: call.from,
+        at: startedAt,
+        source: 'inbound_call',
+      });
+
   return prisma.callEvent.upsert({
     where: { twilioCallSid: call.callSid },
     create: {
@@ -272,7 +293,8 @@ export async function recordIncomingCall(
       fromNumber: withheld ? null : call.from,
       withheld,
       toNumber: call.to,
-      startedAt: call.startedAt ?? new Date(),
+      startedAt,
+      contactId,
       // 'withheld' is terminal from the start: there is no number to
       // message back, so no later step can improve on it. Everything
       // else stays 'pending' until the recording callback decides.
