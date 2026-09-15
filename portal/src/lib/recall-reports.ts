@@ -5,9 +5,9 @@ import { metaSenderFor } from './recall-messaging';
 import { localDateFor, localMinutesFor } from './recall-digest';
 import {
   renderUsageSpike,
-  resolveOperatorRecipients,
   sendOperatorNotification,
 } from './operator-notify';
+import { getOperatorAlertRecipients } from './operator-alert-settings';
 import { logError } from './observability';
 
 // =============================================================================
@@ -227,7 +227,7 @@ export async function rollUpUsage(
   });
   result.scanned = subscriptions.length;
 
-  const recipients = resolveOperatorRecipients(process.env.KAIRIKOS_OPERATOR_EMAILS);
+  const recipients = await getOperatorAlertRecipients();
 
   for (const subscription of subscriptions) {
     try {

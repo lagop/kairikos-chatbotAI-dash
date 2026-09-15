@@ -4,9 +4,9 @@ import { listRecallQueue, isStuck, stuckThresholdDays } from './recall';
 import {
   renderStuck,
   sendOperatorNotification,
-  resolveOperatorRecipients,
   utcDayKey,
 } from './operator-notify';
+import { getOperatorAlertRecipients } from './operator-alert-settings';
 import { logError } from './observability';
 
 // =============================================================================
@@ -43,7 +43,7 @@ export async function notifyStuckOnboardings(
   const now = opts.now ?? new Date();
   const result: StuckAlertResult = { scanned: 0, stuck: 0, notified: 0, deduped: 0, failed: 0 };
 
-  const recipients = resolveOperatorRecipients(process.env.KAIRIKOS_OPERATOR_EMAILS);
+  const recipients = await getOperatorAlertRecipients();
   const rows = await listRecallQueue(prisma);
   result.scanned = rows.length;
 

@@ -3523,6 +3523,27 @@ model SeoSettings {
   updatedBy                        String?  @map("updated_by")
 }
 
+// 2026-09-15 — a quién le llegan las alertas de operador. Singleton, mismo
+// molde que SeoSettings (ver lib/operator-alert-settings.ts).
+//
+// Vivía solo en KAIRIKOS_OPERATOR_EMAILS / KAIRIKOS_CEO_EMAIL, y en
+// producción esas variables nunca llegaron al contenedor: ninguna alerta
+// se envió jamás, en silencio. Con la fila, cambiar el destinatario es
+// guardar en /admin/portal/settings/alerts, sin redesplegar. Las variables
+// quedan como respaldo mientras la fila no exista.
+model OperatorAlertSettings {
+  id             String   @id @db.Uuid
+  // Direcciones que reciben TODAS las alertas de operador. Vacío = se usa
+  // la variable de entorno.
+  operatorEmails String[] @default([]) @map("operator_emails")
+  // Solo la escalada review-overdue. Null = se usa la variable de entorno.
+  ceoEmail       String?  @map("ceo_email")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  updatedBy      String?  @map("updated_by")
+
+  @@map("operator_alert_settings")
+}
+
 // =============================================================================
 // WP-XX — Recuperación de llamadas perdidas + reseñas (product code 'recall').
 //
