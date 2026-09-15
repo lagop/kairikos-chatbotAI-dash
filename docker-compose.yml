@@ -201,6 +201,11 @@ services:
       # this pattern with.
       GOOGLE_PLACES_API_KEY: ${GOOGLE_PLACES_API_KEY:-}
       INTEGRATION_CREDENTIAL_ENCRYPTION_KEY: ${INTEGRATION_CREDENTIAL_ENCRYPTION_KEY:-}
+      # Fase 5d — notificaciones push. Con valor vacío por defecto: sin ellas
+      # push queda desactivado y nada más falla. Ver portal/.env.example.
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
     depends_on:
       postgres:
         condition: service_healthy

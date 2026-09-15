@@ -163,6 +163,7 @@ model ChatbotClient {
   recoveryCampaigns              RecoveryCampaign[]
   jobCaptureDrafts               JobCaptureDraft[]
   contactImports                 ContactImport[]
+  pushSubscriptions              PushSubscription[]
   leadQualificationProfiles      LeadQualificationProfile[]
   leadQualificationProfileAudits LeadQualificationProfileAudit[]
   seoTargetKeywords              SeoTargetKeyword[]
@@ -559,6 +560,7 @@ model Tenant {
   recoveryCampaigns              RecoveryCampaign[]
   jobCaptureDrafts               JobCaptureDraft[]
   contactImports                 ContactImport[]
+  pushSubscriptions              PushSubscription[]
   prospectingCampaigns           ProspectingCampaign[]
   prospectingCampaignAudits      ProspectingCampaignAudit[]
   seoProfiles                    SeoProfile[]
@@ -4592,5 +4594,59 @@ model ContactImport {
   tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([clientId, createdAt])
+  @@index([tenantId])
+}
+
+// Fase 5d — una suscripción push de un dispositivo.
+//
+// UNA FILA POR DISPOSITIVO, NO POR CLIENTE. El dueño puede tener el portal
+// instalado en el móvil y en la tableta del taller, y un aviso de llamada
+// perdida tiene que llegar a los dos. Por eso el endpoint es único y el
+// cliente no.
+//
+// LAS CLAVES NO SON SECRETOS NUESTROS, y por eso van en claro y no
+// cifradas como el resto de credenciales del esquema. `p256dh` y `auth`
+// las genera el NAVEGADOR y solo sirven para cifrar mensajes hacia ESE
+// navegador: quien las robara podría mandarle una notificación a ese
+// dispositivo, no leer nada ni entrar en ningún sitio. Cifrarlas con una
+// clave nuestra añadiría una variable de entorno más que olvidar
+// (trampa nº2 de CLAUDE.md) para proteger algo que no lo necesita. Lo que
+// SÍ es secreto —la clave privada VAPID— vive en el entorno.
+//
+// SE BORRAN SOLAS cuando el servicio de push responde 404 o 410: el
+// usuario desinstaló, revocó el permiso o el navegador rotó la
+// suscripción. Sin eso la tabla crece con dispositivos muertos y cada
+// aviso gasta una petición por cada uno.
+model PushSubscription {
+  id       String  @id @default(uuid()) @db.Uuid
+  clientId String  @map("client_id")
+  tenantId String? @map("tenant_id") @db.Uuid
+
+  /// Quién la activó, para poder listarle "tus dispositivos" y para que
+  /// cerrar sesión pueda limpiar las suyas sin tocar las de un compañero.
+  userEmail String @map("user_email")
+
+  /// La URL del servicio push del navegador. Clave natural: el mismo
+  /// dispositivo re-suscribiéndose actualiza su fila en vez de duplicarla.
+  endpoint String @unique @db.Text
+  p256dh   String
+  auth     String
+
+  /// Solo informativo, para reconocer el dispositivo en una lista.
+  userAgent String? @map("user_agent")
+
+  /// Último envío que salió bien. Una suscripción que lleva meses sin
+  /// entregar nada es candidata a limpieza aunque el servicio no haya
+  /// devuelto 410 todavía.
+  lastSuccessAt DateTime? @map("last_success_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@index([userEmail])
   @@index([tenantId])
 }

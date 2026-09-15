@@ -15,6 +15,7 @@ import { SelfServeProductCard, type SelfServeTierOption } from '@/components/por
 import { RecallMetaConnectCard } from '@/components/portal/RecallMetaConnectCard';
 import { RecallGoogleConnectCard } from '@/components/portal/RecallGoogleConnectCard';
 import { InstallPrompt } from '@/components/portal/InstallPrompt';
+import { PushToggle } from '@/components/portal/PushToggle';
 
 export const dynamic = 'force-dynamic';
 
@@ -387,6 +388,9 @@ export default async function PortalLlamadasPage({
           del portal, a propósito: esta es la única página con motivo para
           abrirla a diario. Ver la cabecera de InstallPrompt.tsx. */}
       <InstallPrompt />
+      {/* Fase 5d — los avisos van en la misma página y por el mismo motivo:
+          es donde se entiende para qué sirven. */}
+      <PushToggle />
 
       <section aria-label={`Resumen de ${monthLabel(view.localMonth)}`}>
         <div className="mb-2 flex items-center justify-between gap-3">
