@@ -4,6 +4,8 @@ import { redirect } from 'next/navigation';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { requirePortalSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
+import { loadRecallOwnerSettings } from '@/lib/recall-owner-settings';
+import { RecallOwnerSettingsCard } from '@/components/portal/RecallOwnerSettingsCard';
 import { loadRecallClientView, type RecallCallSummary } from '@/lib/recall-client-view';
 import { monthLabel } from '@/lib/recall-reports';
 import { canBindMetaConnection } from '@/lib/recall';
@@ -66,7 +68,7 @@ const STATUS_COPY: Record<string, { title: string; description: string }> = {
   forwarding_pending: {
     title: 'Falta activar el desvío',
     description:
-      'Es el último paso y lo tienes que hacer tú desde tu móvil: son unos segundos. Te hemos enviado las instrucciones por WhatsApp.',
+      'Es el último paso y lo tienes que hacer tú desde tu móvil: son unos segundos. Te enviamos los códigos por WhatsApp al número que tengas guardado abajo.',
   },
   forwarding_verified: {
     title: 'Desvío verificado',
@@ -321,6 +323,27 @@ export default async function PortalLlamadasPage({
     );
   }
 
+  // 2026-09-16 — el WhatsApp del dueño y la locución, que no había forma de
+  // guardar. Se muestran en el alta (el desvío no avanza sin el WhatsApp) y
+  // con el servicio activo (para cambiarlos). Ver recall-owner-settings.ts.
+  const ownerSettings =
+    isDatabaseConfigured && resolved.source === 'database'
+      ? await loadRecallOwnerSettings(prisma, { clientId: resolved.clientId })
+      : null;
+  const ownerCard =
+    ownerSettings && ownerSettings.status !== 'cancelled' ? (
+      <RecallOwnerSettingsCard
+        endpointBase="/api/portal/recall"
+        audience="client"
+        initial={{
+          ownerWhatsapp: ownerSettings.ownerWhatsapp,
+          businessNumber: ownerSettings.businessNumber,
+          status: ownerSettings.status,
+          greeting: ownerSettings.greeting,
+        }}
+      />
+    ) : null;
+
   if (view.state === 'onboarding') {
     const metaCreds = canBindMetaConnection(view.status) ? await resolveActiveMetaCredentials() : null;
     const copy = STATUS_COPY[view.status] ?? {
@@ -346,6 +369,7 @@ export default async function PortalLlamadasPage({
             connected={view.metaConnection}
           />
         ) : null}
+        {ownerCard}
       </div>
     );
   }
@@ -383,6 +407,8 @@ export default async function PortalLlamadasPage({
       ) : null}
 
       <RecallGoogleConnectCard connection={view.googleConnection} />
+
+      {ownerCard}
 
       {/* Fase 5a — la invitación a instalar se monta AQUÍ y no en el layout
           del portal, a propósito: esta es la única página con motivo para
