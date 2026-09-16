@@ -36,6 +36,8 @@ import { SeoContentDraftsPanel, type SeoContentDraftData } from '@/components/ad
 import { computeAutoApproveDeadline } from '@/lib/seo-draft-auto-approve';
 import { computeAutoPublishDeadline } from '@/lib/seo-draft-auto-publish';
 import { isStuck, stuckThresholdDays } from '@/lib/recall';
+import { loadRecallOwnerSettings, type RecallOwnerSettingsView } from '@/lib/recall-owner-settings';
+import { RecallOwnerSettingsCard } from '@/components/portal/RecallOwnerSettingsCard';
 
 export const dynamic = 'force-dynamic';
 
@@ -245,6 +247,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
   // Recall Fase 5 — populated only when productCode === 'recall', same
   // three-part pattern as every block above.
   let recall: RecallPanelData | null = null;
+  let recallOwnerSettings: RecallOwnerSettingsView | null = null;
   // SEO con IA, Fase A — populated only when productCode === 'seo', same
   // pattern as every block above.
   let seoProfile: SeoProfilePanelData | null = null;
@@ -522,6 +525,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
                 subscription.templatesApprovedAt) ||
               (subscription.status === 'forwarding_verified' && subscription.forwardingVerifiedAt) ||
               subscription.createdAt;
+            recallOwnerSettings = await loadRecallOwnerSettings(prisma, { subscriptionId: subscription.id });
             recall = {
               subscriptionId: subscription.id,
               status: subscription.status,
@@ -969,6 +973,20 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
                 <RecallContractSignButton subscriptionId={recall.subscriptionId} />
               ) : null}
               <RecallOperatorPanel data={recall} />
+              {recallOwnerSettings ? (
+                <div className="mt-4">
+                  <RecallOwnerSettingsCard
+                    endpointBase={`/api/admin/portal/recall/${recallOwnerSettings.subscriptionId}`}
+                    audience="operator"
+                    initial={{
+                      ownerWhatsapp: recallOwnerSettings.ownerWhatsapp,
+                      businessNumber: recallOwnerSettings.businessNumber,
+                      status: recallOwnerSettings.status,
+                      greeting: recallOwnerSettings.greeting,
+                    }}
+                  />
+                </div>
+              ) : null}
             </section>
           ) : null}
 

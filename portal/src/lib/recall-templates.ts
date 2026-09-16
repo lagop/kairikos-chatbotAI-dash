@@ -284,6 +284,50 @@ export async function submitAllRecallTemplates(
 
 const REQUIRED_TEMPLATE_NAMES = RECALL_TEMPLATE_DEFINITIONS.map((def) => def.name);
 
+export type ForwardingInstructionsOutcome = 'sent' | 'failed' | 'skipped';
+
+/**
+ * Manda al dueño los tres códigos de desvío con su número virtual.
+ *
+ * Extraído el 2026-09-16: hasta entonces solo se enviaban en el paso a
+ * forwarding_pending, y si en ese momento no había WhatsApp del dueño —que
+ * no había forma de guardar— se saltaban para siempre. Ahora también lo
+ * llama setOwnerWhatsapp (recall-owner-settings.ts) cuando el dueño da su
+ * número con el alta ya esperando el desvío.
+ *
+ * Nunca lanza.
+ */
+export async function sendForwardingInstructions(subscription: {
+  id: string;
+  ownerWhatsapp: string | null;
+  virtualNumber: { e164: string } | null;
+  metaConnection: Parameters<typeof metaSenderFor>[0];
+}): Promise<ForwardingInstructionsOutcome> {
+  const sender = metaSenderFor(subscription.metaConnection);
+  const virtualNumber = subscription.virtualNumber?.e164;
+  if (!sender || !virtualNumber || !subscription.ownerWhatsapp) {
+    logError(
+      'recall_templates.forwarding_instructions_send_skipped',
+      new Error('missing sender, virtual number, or owner WhatsApp'),
+      { subscriptionId: subscription.id },
+      'warn',
+    );
+    return 'skipped';
+  }
+  try {
+    const sent = await sendTemplate(sender.token, sender.phoneNumberId, subscription.ownerWhatsapp, {
+      ...FORWARDING_INSTRUCTIONS_TEMPLATE,
+      bodyParams: [virtualNumber],
+    });
+    if (sent.ok) return 'sent';
+    logError('recall_templates.forwarding_instructions_send_failed', new Error(sent.error), { subscriptionId: subscription.id }, 'warn');
+    return 'failed';
+  } catch (err) {
+    logError('recall_templates.forwarding_instructions_send_failed', err, { subscriptionId: subscription.id }, 'warn');
+    return 'failed';
+  }
+}
+
 /**
  * Advances every `number_assigned` subscription whose bound connection
  * now has all 7 required templates APPROVED (the 6 messaging ones plus
@@ -376,24 +420,7 @@ export async function advanceSubscriptionsWithApprovedTemplates(
       // undo it or get retried as if the transition never occurred.
       .catch(() => null);
 
-    const sender = metaSenderFor(subscription.metaConnection);
-    const virtualNumber = subscription.virtualNumber?.e164;
-    if (sender && virtualNumber && subscription.ownerWhatsapp) {
-      const sent = await sendTemplate(sender.token, sender.phoneNumberId, subscription.ownerWhatsapp, {
-        ...FORWARDING_INSTRUCTIONS_TEMPLATE,
-        bodyParams: [virtualNumber],
-      });
-      if (!sent.ok) {
-        logError('recall_templates.forwarding_instructions_send_failed', new Error(sent.error), { subscriptionId: subscription.id }, 'warn');
-      }
-    } else {
-      logError(
-        'recall_templates.forwarding_instructions_send_skipped',
-        new Error('missing sender, virtual number, or owner WhatsApp'),
-        { subscriptionId: subscription.id },
-        'warn',
-      );
-    }
+    await sendForwardingInstructions(subscription);
 
     const advancedFurther = await prisma.recallSubscription.update({
       where: { id: subscription.id },
