@@ -209,6 +209,18 @@ describe('createProductCheckoutSession — session mode branching', () => {
     );
   });
 
+  // 2026-09-16 — sin esto, los códigos que anulan el alta
+  // (stripe-promotions.ts) existen en Stripe pero el cliente no tiene
+  // dónde escribirlos.
+  it('muestra la casilla de código promocional en el pago de una suscripción', async () => {
+    const { createProductCheckoutSession } = await import('@/lib/stripe-billing');
+    await createProductCheckoutSession({ clientId: 'client_1', productId: RECURRING_PRODUCT.id, actorId: ACTOR_ID });
+
+    expect(mockState.checkoutSessionsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: 'subscription', allow_promotion_codes: true }),
+    );
+  });
+
   it('adds the one-time setup price as a second line item in subscription mode when present', async () => {
     mockState.findUniqueProduct.mockResolvedValueOnce({ ...RECURRING_PRODUCT, stripeSetupPriceId: 'price_setup_1', setupFeeCents: 9900 });
     const { createProductCheckoutSession } = await import('@/lib/stripe-billing');

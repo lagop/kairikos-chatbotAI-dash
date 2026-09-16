@@ -6,6 +6,7 @@ import { getSession } from '@/lib/session';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { getStripeCredentialStatus } from '@/lib/stripe-credentials';
 import { StripeCatalogSettingsPanel } from '@/components/portal/StripeCatalogSettingsPanel';
+import { PromotionCodesPanel } from '@/components/admin/PromotionCodesPanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,6 +56,11 @@ export default async function AdminBillingSettingsPage() {
     return value === 'test' || value === 'live' ? value : null;
   }
   const products = productRows.map((p) => ({ ...p, stripePriceMode: narrowMode(p.stripePriceMode) }));
+  // Solo los tiers con alta real en Stripe: los demás no tienen nada que
+  // un código pueda anular (ver stripe-promotions.ts).
+  const waivableProducts = productRows
+    .filter((p) => p.isActive && p.stripeProductId && p.stripeSetupPriceId && p.setupFeeCents > 0)
+    .map((p) => ({ id: p.id, name: p.name, setupFeeCents: p.setupFeeCents, currency: p.currency }));
 
   return (
     <div className="space-y-6">
@@ -69,6 +75,7 @@ export default async function AdminBillingSettingsPage() {
         }
       />
       <StripeCatalogSettingsPanel initialCredentials={credentials} initialProducts={products} />
+      {credentials.activeMode ? <PromotionCodesPanel products={waivableProducts} /> : null}
     </div>
   );
 }

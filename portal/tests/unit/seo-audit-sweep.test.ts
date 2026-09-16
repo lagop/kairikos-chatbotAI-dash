@@ -44,6 +44,15 @@ describe('isAuditDue', () => {
     const lastAuditAt = new Date(Date.now() - (SITE_AUDIT_MIN_INTERVAL_DAYS + 1) * DAY_MS);
     expect(isAuditDue(lastAuditAt)).toBe(true);
   });
+
+  // 2026-09-16 — usaba Date.now() e ignoraba el reloj del barrido; el test
+  // de "dentro de la ventana" empezó a fallar solo al pasar los días.
+  it('decide con el reloj que se le pasa, no con el del sistema', () => {
+    const lastAuditAt = new Date(NOW.getTime() - 1 * DAY_MS);
+    expect(isAuditDue(lastAuditAt, SITE_AUDIT_MIN_INTERVAL_DAYS, NOW)).toBe(false);
+    const later = new Date(NOW.getTime() + SITE_AUDIT_MIN_INTERVAL_DAYS * DAY_MS);
+    expect(isAuditDue(lastAuditAt, SITE_AUDIT_MIN_INTERVAL_DAYS, later)).toBe(true);
+  });
 });
 
 function makePrisma(profiles: unknown[]) {

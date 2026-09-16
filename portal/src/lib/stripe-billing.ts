@@ -1100,6 +1100,11 @@ export async function createProductCheckoutSession(params: {
             ...(product.stripeSetupPriceId ? [{ price: product.stripeSetupPriceId, quantity: 1 }] : []),
           ],
           subscription_data: { metadata },
+          // 2026-09-16 — muestra la casilla de código promocional en el pago.
+          // Los códigos que anulan el alta de un tier se crean desde
+          // /admin/portal/settings/billing (ver stripe-promotions.ts); el
+          // cupón solo aplica al Stripe Product de ese tier.
+          allow_promotion_codes: true,
           metadata,
           success_url: successUrl,
           cancel_url: cancelUrl,
