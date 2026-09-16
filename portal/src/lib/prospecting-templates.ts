@@ -1,8 +1,11 @@
 import 'server-only';
+import type { PrismaClient } from '@prisma/client';
 import { PROSPECTING_TEMPLATES } from './prospecting-contact';
-import { createMessageTemplate } from './whatsapp-api';
+import { createMessageTemplate, isAccessTokenError } from './whatsapp-api';
+import { metaSenderFor } from './recall-messaging';
+import { markConnectionNeedsReconnect } from './whatsapp-health';
+import { namesAlreadySubmitted, type TemplateSubmissionOutcome } from './recall-templates';
 import { logError } from './observability';
-import type { TemplateSubmissionOutcome } from './recall-templates';
 
 // =============================================================================
 // 2026-09-14 — texto real para las 3 plantillas de "Prospección con IA"
@@ -104,4 +107,158 @@ export async function submitAllProspectingTemplates(
     }
   }
   return outcomes;
+}
+
+// =============================================================================
+// 2026-09-16 — el disparador automático que faltaba (ver el comentario de
+// submitAllProspectingTemplates, arriba: "wiring an automatic trigger is a
+// separate decision"). Mismo molde que ensureRecallTemplatesSubmitted
+// (recall-templates.ts): un barrido idempotente, tope por ciclo, que
+// nunca reenvía lo que ya está en el espejo WhatsappTemplate y nunca deja
+// que el rechazo de una plantilla, o de un cliente, le cueste el turno a
+// los demás.
+//
+// Se envía para toda campaña `active`, no solo las que ya dieron consentimiento
+// de contacto (consentAcknowledgedAt) — al revés que runProspectingContact.
+// La revisión de Meta tarda; someter la plantilla en cuanto hay conexión de
+// WhatsApp, en vez de esperar a que el cliente dé el consentimiento, es lo
+// que evita que ese trámite se convierta en el cuello de botella justo
+// cuando el cliente por fin consiente.
+//
+// namesAlreadySubmitted se reutiliza tal cual de recall-templates.ts — es
+// genérica (opera sobre filas name/status/lastCheckedAt), no específica de
+// recall — en vez de duplicar la misma ventana de reintento de 24h aquí.
+// =============================================================================
+
+/** Tope por ciclo, misma razón que recall-templates.ts: el barrido corre
+ *  cada vez que pasa prospecting-tick y Meta limita la creación de
+ *  plantillas. */
+const MAX_SUBMISSIONS_PER_TICK = 20;
+
+export interface EnsureProspectingTemplatesResult {
+  connections: number;
+  submitted: number;
+  failed: number;
+}
+
+/** Qué definiciones faltan en una conexión, dado lo que ya hay en su
+ *  espejo. Pura y exportada para probarla sin red — mismo patrón que
+ *  missingTemplateDefinitions en recall-templates.ts. */
+export function missingProspectingTemplateDefinitions(
+  existingNames: ReadonlySet<string>,
+): ProspectingTemplateDefinition[] {
+  return PROSPECTING_TEMPLATE_DEFINITIONS.filter((def) => !existingNames.has(def.name));
+}
+
+export async function ensureProspectingTemplatesSubmitted(
+  prisma: PrismaClient,
+  opts: { now?: Date } = {},
+): Promise<EnsureProspectingTemplatesResult> {
+  const now = opts.now ?? new Date();
+  const result: EnsureProspectingTemplatesResult = { connections: 0, submitted: 0, failed: 0 };
+
+  const campaigns = await prisma.prospectingCampaign.findMany({
+    where: { status: 'active' },
+    select: { clientId: true },
+  });
+  const clientIds = [...new Set(campaigns.map((c) => c.clientId))];
+  if (clientIds.length === 0) return result;
+
+  // Misma conexión que runProspectingContact resuelve (prospecting-contact.ts):
+  // el canal 'whatsapp' activo del cliente, no una tabla propia de prospección.
+  const connections = await prisma.metaChannelConnection.findMany({
+    where: { clientId: { in: clientIds }, channel: 'whatsapp', status: 'active' },
+    select: {
+      id: true,
+      clientId: true,
+      wabaId: true,
+      externalId: true,
+      status: true,
+      accessTokenCiphertext: true,
+      accessTokenIv: true,
+      accessTokenTag: true,
+    },
+  });
+
+  let budget = MAX_SUBMISSIONS_PER_TICK;
+
+  for (const connection of connections) {
+    if (budget <= 0) break;
+    if (!connection.wabaId) continue;
+
+    const sender = metaSenderFor(connection);
+    if (!sender) continue;
+    result.connections += 1;
+
+    const existing = await prisma.whatsappTemplate.findMany({
+      where: { connectionId: connection.id },
+      select: { name: true, status: true, lastCheckedAt: true },
+    });
+    const missing = missingProspectingTemplateDefinitions(namesAlreadySubmitted(existing, now));
+
+    for (const def of missing) {
+      if (budget <= 0) break;
+      budget -= 1;
+
+      const created = await createMessageTemplate(sender.token, connection.wabaId, {
+        name: def.name,
+        languageCode: def.languageCode,
+        category: def.category,
+        bodyText: def.bodyText,
+        bodyExamples: def.bodyExamples,
+      });
+
+      if (!created.ok && isAccessTokenError(created)) {
+        // Igual que ensureRecallTemplatesSubmitted: la conexión está
+        // muerta, no la plantilla — sin fila, y se deja de intentar con
+        // ella este ciclo.
+        await markConnectionNeedsReconnect(prisma, connection.id, created.error, now);
+        result.failed += 1;
+        break;
+      }
+
+      await prisma.whatsappTemplate.upsert({
+        where: {
+          connectionId_name_languageCode: {
+            connectionId: connection.id,
+            name: def.name,
+            languageCode: def.languageCode,
+          },
+        },
+        create: {
+          clientId: connection.clientId,
+          connectionId: connection.id,
+          name: def.name,
+          languageCode: def.languageCode,
+          metaTemplateId: created.ok ? (created.data.id ?? null) : null,
+          status: created.ok ? (created.data.status ?? 'PENDING') : 'SUBMIT_FAILED',
+          category: def.category,
+          rejectedReason: created.ok ? null : created.error.slice(0, 500),
+          lastCheckedAt: now,
+        },
+        update: created.ok
+          ? {
+              metaTemplateId: created.data.id ?? null,
+              status: created.data.status ?? 'PENDING',
+              rejectedReason: null,
+              lastCheckedAt: now,
+            }
+          : { rejectedReason: created.error.slice(0, 500), lastCheckedAt: now },
+      });
+
+      if (created.ok) {
+        result.submitted += 1;
+      } else {
+        result.failed += 1;
+        logError(
+          'prospecting_templates.ensure_submit_failed',
+          new Error(created.error),
+          { connectionId: connection.id, template: def.name },
+          'warn',
+        );
+      }
+    }
+  }
+
+  return result;
 }

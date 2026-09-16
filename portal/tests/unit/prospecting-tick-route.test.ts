@@ -19,6 +19,7 @@ const mockState = vi.hoisted(() => ({
   sendProspectingBatchEmail: vi.fn(),
   sweepPendingEnrichment: vi.fn(),
   runProspectingContact: vi.fn(),
+  ensureProspectingTemplatesSubmitted: vi.fn(),
   logError: vi.fn(),
 }));
 
@@ -49,6 +50,10 @@ vi.mock('@/lib/prospecting-contact', () => ({
   runProspectingContact: (...a: unknown[]) => mockState.runProspectingContact(...a),
 }));
 
+vi.mock('@/lib/prospecting-templates', () => ({
+  ensureProspectingTemplatesSubmitted: (...a: unknown[]) => mockState.ensureProspectingTemplatesSubmitted(...a),
+}));
+
 vi.mock('@/lib/observability', () => ({
   logError: (...a: unknown[]) => mockState.logError(...a),
 }));
@@ -77,6 +82,7 @@ beforeEach(() => {
   mockState.sendProspectingBatchEmail.mockReset().mockResolvedValue({ ok: true, messageId: 'm1' });
   mockState.sweepPendingEnrichment.mockReset().mockResolvedValue({ processed: 0, delivered: 0, crawlFailed: 0 });
   mockState.runProspectingContact.mockReset().mockResolvedValue({ ok: true, sent: 0, failed: 0, capReached: false });
+  mockState.ensureProspectingTemplatesSubmitted.mockReset().mockResolvedValue({ connections: 0, submitted: 0, failed: 0 });
   mockState.logError.mockReset();
 });
 
@@ -222,6 +228,26 @@ describe('GET /api/cron/prospecting-tick', () => {
       expect(body.contact.camp_a).toEqual({ ok: false, error: 'contact boom' });
       expect(body.contact.camp_c).toEqual({ ok: true, sent: 1, failed: 0, capReached: false });
       expect(mockState.logError).toHaveBeenCalledWith('prospecting_tick.contact_failed', expect.anything(), { campaignId: 'camp_a' }, 'warn');
+    });
+  });
+
+  describe('2026-09-16 — sumisión de plantillas a Meta', () => {
+    it('corre una vez por tick y reporta el resultado', async () => {
+      mockState.ensureProspectingTemplatesSubmitted.mockResolvedValue({ connections: 2, submitted: 1, failed: 0 });
+      const res = await get(makeRequest());
+      const body = await res.json();
+      expect(mockState.ensureProspectingTemplatesSubmitted).toHaveBeenCalledTimes(1);
+      expect(body.templates).toEqual({ ok: true, connections: 2, submitted: 1, failed: 0 });
+    });
+
+    it('un fallo aquí no tira el tick ni pierde los resultados ya calculados', async () => {
+      mockState.ensureProspectingTemplatesSubmitted.mockRejectedValue(new Error('templates boom'));
+      const res = await get(makeRequest());
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.results.camp_a.ok).toBe(true);
+      expect(body.templates).toEqual({ ok: false, error: 'templates boom' });
+      expect(mockState.logError).toHaveBeenCalledWith('prospecting_tick.templates_failed', expect.anything(), {}, 'warn');
     });
   });
 });
