@@ -68,6 +68,15 @@ export interface RecallMonthSummary {
   isSelected: boolean;
 }
 
+/** 2026-09-16 — con `status`: antes solo se pasaba el número, y la tarjeta
+ *  decía "WhatsApp conectado" a un cliente cuyo acceso había caducado dos
+ *  días antes, sin ofrecerle forma de reconectar. */
+export interface RecallMetaConnectionSummary {
+  displayPhoneNumber: string | null;
+  /** 'active' | 'needs_reconnect' | 'revoked' */
+  status: string;
+}
+
 export type RecallClientView =
   | { state: 'not_contracted' }
   /** Contracted and paid, but the service is not answering calls yet —
@@ -82,7 +91,7 @@ export type RecallClientView =
        *  the onboarding page shows this instead of the connect button —
        *  there is nothing to disconnect and reconnect here (see
        *  RecallMetaConnectCard's header). */
-      metaConnection: { displayPhoneNumber: string | null } | null;
+      metaConnection: RecallMetaConnectionSummary | null;
     }
   | {
       state: 'active';
@@ -100,6 +109,9 @@ export type RecallClientView =
        *  see RecallGoogleConnectCard's header for why this binding was
        *  missing for the product's whole life until now. */
       googleConnection: { locationName: string; status: string } | null;
+      /** El WhatsApp del negocio y si sigue vivo. Con el servicio activo solo
+       *  se enseña cuando hay que reconectar — ver /portal/llamadas. */
+      metaConnection: RecallMetaConnectionSummary | null;
       /** Every OTHER month, as the table that doubles as navigation. */
       history: RecallMonthSummary[];
       /** Just this page of the month, newest first. */
@@ -145,7 +157,7 @@ export async function loadRecallClientView(
       timezone: true,
       googleConnectionId: true,
       virtualNumber: { select: { e164: true } },
-      metaConnection: { select: { displayPhoneNumber: true } },
+      metaConnection: { select: { displayPhoneNumber: true, status: true } },
       googleConnection: { select: { locationName: true, status: true } },
     },
   });
@@ -164,7 +176,10 @@ export async function loadRecallClientView(
       since: subscription.activatedAt ?? subscription.createdAt,
       virtualNumber,
       metaConnection: subscription.metaConnection
-        ? { displayPhoneNumber: subscription.metaConnection.displayPhoneNumber }
+        ? {
+            displayPhoneNumber: subscription.metaConnection.displayPhoneNumber,
+            status: subscription.metaConnection.status,
+          }
         : null,
     };
   }
@@ -252,6 +267,12 @@ export async function loadRecallClientView(
     metrics,
     googleConnection: subscription.googleConnection
       ? { locationName: subscription.googleConnection.locationName, status: subscription.googleConnection.status }
+      : null,
+    metaConnection: subscription.metaConnection
+      ? {
+          displayPhoneNumber: subscription.metaConnection.displayPhoneNumber,
+          status: subscription.metaConnection.status,
+        }
       : null,
     history: buildHistory(historyRows, localMonth, metrics),
     calls: callRows,

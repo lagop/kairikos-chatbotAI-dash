@@ -46,6 +46,10 @@ const ERROR_LABEL: Record<string, string> = {
 
 export interface RecallMetaConnectedSummary {
   displayPhoneNumber: string | null;
+  /** 'active' | 'needs_reconnect' | 'revoked'. Solo 'active' cuenta como
+   *  conectado: una conexión cuyo acceso Meta invalidó sigue existiendo en
+   *  la base, pero no envía nada (ver markConnectionNeedsReconnect). */
+  status: string;
 }
 
 export function RecallMetaConnectCard({
@@ -138,7 +142,7 @@ export function RecallMetaConnectCard({
     }
   }
 
-  if (connected) {
+  if (connected && connected.status === 'active') {
     return (
       <div className="card space-y-2" data-testid="recall-meta-connect-card" data-connected="true">
         <h3 className="text-sm font-semibold">WhatsApp conectado</h3>
@@ -150,13 +154,34 @@ export function RecallMetaConnectCard({
     );
   }
 
+  const lost = connected !== null;
+
   return (
-    <div className="card space-y-3" data-testid="recall-meta-connect-card" data-connected="false">
+    <div
+      className={`card space-y-3 ${lost ? 'border-kairikos-danger/50' : ''}`}
+      data-testid="recall-meta-connect-card"
+      data-connected="false"
+      data-reconnect={lost ? 'true' : 'false'}
+    >
       <div>
-        <h3 className="text-sm font-semibold">Conectar tu WhatsApp</h3>
+        <h3 className="text-sm font-semibold">{lost ? 'Tu WhatsApp se ha desconectado' : 'Conectar tu WhatsApp'}</h3>
         <p className="mt-1 text-sm text-kairikos-muted">
-          Te guiamos por teléfono mientras lo haces. Sigues usando la app de WhatsApp Business en tu móvil
-          exactamente igual que ahora — esto no te la quita.
+          {lost ? (
+            <>
+              Meta ha dejado de aceptar el acceso
+              {connected?.displayPhoneNumber ? ` de ${connected.displayPhoneNumber}` : ''}.{' '}
+              <strong className="text-kairikos-danger">
+                Hasta que vuelvas a conectarlo no sale ningún mensaje: ni a quien llama ni a ti.
+              </strong>{' '}
+              Necesitas el móvil con la app de WhatsApp Business de ese número; no pierdes nada de lo que tienes en
+              ella.
+            </>
+          ) : (
+            <>
+              Te guiamos por teléfono mientras lo haces. Sigues usando la app de WhatsApp Business en tu móvil
+              exactamente igual que ahora — esto no te la quita.
+            </>
+          )}
         </p>
       </div>
       {!configured ? (
@@ -177,7 +202,7 @@ export function RecallMetaConnectCard({
             disabled={busy}
             data-testid="recall-meta-connect-button"
           >
-            {busy ? 'Conectando…' : 'Conectar WhatsApp'}
+            {busy ? 'Conectando…' : lost ? 'Volver a conectar WhatsApp' : 'Conectar WhatsApp'}
           </button>
         </>
       )}

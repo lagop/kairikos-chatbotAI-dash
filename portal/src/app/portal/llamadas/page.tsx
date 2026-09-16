@@ -375,6 +375,8 @@ export default async function PortalLlamadasPage({
   }
 
   const { metrics, history, calls, previousMonth, nextMonth } = view;
+  const activeMetaCreds =
+    view.metaConnection && view.metaConnection.status !== 'active' ? await resolveActiveMetaCredentials() : null;
   const { page, pageCount, totalCalls, pageSize } = view;
   const firstShown = totalCalls === 0 ? 0 : (page - 1) * pageSize + 1;
   const lastShown = (page - 1) * pageSize + calls.length;
@@ -404,6 +406,17 @@ export default async function PortalLlamadasPage({
         >
           {GOOGLE_CONNECT_ERROR_LABEL[searchParams.connect_error] ?? 'No se pudo conectar con Google.'}
         </p>
+      ) : null}
+
+      {/* 2026-09-16 — con el servicio activo esta tarjeta no existía: un
+          cliente cuyo acceso a Meta caducaba no tenía por dónde reconectar.
+          Solo aparece cuando hace falta. */}
+      {view.metaConnection && view.metaConnection.status !== 'active' ? (
+        <RecallMetaConnectCard
+          metaAppId={activeMetaCreds?.appId ?? null}
+          coexistenceConfigId={activeMetaCreds?.coexistenceConfigId ?? null}
+          connected={view.metaConnection}
+        />
       ) : null}
 
       <RecallGoogleConnectCard connection={view.googleConnection} />

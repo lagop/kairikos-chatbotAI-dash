@@ -122,12 +122,26 @@ describe('loadRecallClientView — access', () => {
 
   it('Fase 8 — surfaces the bound Coexistence connection once one exists', async () => {
     state.subFindFirst.mockResolvedValue(
-      subscription({ status: 'number_assigned', metaConnection: { displayPhoneNumber: '+34 611 22 33 44' } }),
+      subscription({
+        status: 'number_assigned',
+        metaConnection: { displayPhoneNumber: '+34 611 22 33 44', status: 'active' },
+      }),
     );
     await expect(load()).resolves.toMatchObject({
       state: 'onboarding',
-      metaConnection: { displayPhoneNumber: '+34 611 22 33 44' },
+      metaConnection: { displayPhoneNumber: '+34 611 22 33 44', status: 'active' },
     });
+  });
+
+  // 2026-09-16 — el caso de producción: la tarjeta decía "conectado" a una
+  // conexión en needs_reconnect porque el estado no llegaba a la página.
+  it('pasa el estado real de la conexión, en el alta y con el servicio activo', async () => {
+    const lost = { displayPhoneNumber: null, status: 'needs_reconnect' };
+    state.subFindFirst.mockResolvedValue(subscription({ status: 'forwarding_pending', metaConnection: lost }));
+    await expect(load()).resolves.toMatchObject({ state: 'onboarding', metaConnection: lost });
+
+    state.subFindFirst.mockResolvedValue(subscription({ metaConnection: lost }));
+    await expect(load()).resolves.toMatchObject({ state: 'active', metaConnection: lost });
   });
 
   it('surfaces the bound Google Business connection in the active state, null when unbound', async () => {
