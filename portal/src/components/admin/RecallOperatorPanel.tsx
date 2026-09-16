@@ -58,6 +58,9 @@ export interface RecallPanelData {
   e164: string | null;
   hasGreeting: boolean;
   ownerWhatsapp: string | null;
+  /** 2026-09-16 — el estado real de la conexión con Meta. El estado de la
+   *  suscripción dice "WhatsApp conectado" aunque el acceso haya caducado. */
+  metaConnection: { status: string; displayPhoneNumber: string | null } | null;
   calls: RecallCallRow[];
   blockedNumbers: RecallBlockedRow[];
   usage: RecallUsageSummary | null;
@@ -161,6 +164,16 @@ export function RecallOperatorPanel({ data }: { data: RecallPanelData | null }) 
           Recuperación de clientes →
         </Link>
       </div>
+
+      {data.metaConnection && data.metaConnection.status !== 'active' ? (
+        <p
+          className="rounded-xl border border-kairikos-danger/40 bg-kairikos-danger/10 px-3 py-2 text-sm text-kairikos-danger"
+          data-testid="recall-meta-lost"
+        >
+          El WhatsApp del negocio{data.metaConnection.displayPhoneNumber ? ` (${data.metaConnection.displayPhoneNumber})` : ''}{' '}
+          necesita reconexión: no sale ningún mensaje hasta que el cliente vuelva a conectarlo desde su portal.
+        </p>
+      ) : null}
 
       <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div>

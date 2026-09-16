@@ -466,6 +466,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
               greetingRecordedAt: true,
               ownerWhatsapp: true,
               virtualNumber: { select: { e164: true } },
+              metaConnection: { select: { status: true, displayPhoneNumber: true } },
               // Bounded: the panel answers "what did the last few callers
               // say", not "give me the whole call history".
               callEvents: {
@@ -535,6 +536,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
               e164: subscription.virtualNumber?.e164 ?? null,
               hasGreeting: subscription.greetingRecordedAt !== null,
               ownerWhatsapp: subscription.ownerWhatsapp,
+              metaConnection: subscription.metaConnection,
               calls: subscription.callEvents.map((call) => ({
                 id: call.id,
                 startedAt: call.startedAt.toISOString(),
