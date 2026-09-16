@@ -4,6 +4,7 @@ import { runProspectingSearch, isProspectingRunDue } from '@/lib/prospecting';
 import { sweepPendingEnrichment, type EnrichmentSweepResult } from '@/lib/prospecting-enrichment';
 import { runProspectingContact } from '@/lib/prospecting-contact';
 import { sendProspectingBatchEmail } from '@/lib/leads-email';
+import { ensureProspectingTemplatesSubmitted, type EnsureProspectingTemplatesResult } from '@/lib/prospecting-templates';
 import { logError } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
@@ -46,6 +47,12 @@ export const maxDuration = 60;
  * verdad: con un solo mensaje daba igual llegar tarde, pero la cadencia se
  * mide en días y solo avanza cuando el tick corre. Sigue siendo el mismo
  * endpoint en scripts/scheduler.sh, sin entrada nueva.
+ *
+ * 2026-09-16 — un paso más, aislado igual que el de enriquecimiento:
+ * ensureProspectingTemplatesSubmitted (prospecting-templates.ts) somete a
+ * revisión de Meta las plantillas que le falten a cualquier campaña
+ * `active` con conexión de WhatsApp — antes nada lo disparaba nunca, así
+ * que las 3 plantillas de prospección solo se habrían enviado a mano.
  */
 function isAuthorizedCronRequest(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
@@ -160,5 +167,14 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, dueCount: due.length, results, enrichment, contact });
+  let templates: ({ ok: true } & EnsureProspectingTemplatesResult) | { ok: false; error: string };
+  try {
+    const result = await ensureProspectingTemplatesSubmitted(prisma, { now });
+    templates = { ok: true, ...result };
+  } catch (err) {
+    logError('prospecting_tick.templates_failed', err, {}, 'warn');
+    templates = { ok: false, error: err instanceof Error ? err.message : 'unknown error' };
+  }
+
+  return NextResponse.json({ ok: true, dueCount: due.length, results, enrichment, contact, templates });
 }
