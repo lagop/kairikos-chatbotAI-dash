@@ -10,6 +10,7 @@ import { loadRecallClientView, type RecallCallSummary } from '@/lib/recall-clien
 import { monthLabel } from '@/lib/recall-reports';
 import { canBindMetaConnection } from '@/lib/recall';
 import { resolveActiveMetaCredentials } from '@/lib/meta-credentials';
+import { recallSignupConfigId } from '@/lib/meta-signup-extras';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { ProductPitch } from '@/components/portal/ProductPitch';
 import { EmptyState } from '@/components/portal/EmptyState';
@@ -365,7 +366,7 @@ export default async function PortalLlamadasPage({
         {canBindMetaConnection(view.status) ? (
           <RecallMetaConnectCard
             metaAppId={metaCreds?.appId ?? null}
-            coexistenceConfigId={metaCreds?.coexistenceConfigId ?? null}
+            signupConfigId={recallSignupConfigId(metaCreds)}
             connected={view.metaConnection}
           />
         ) : null}
@@ -414,7 +415,7 @@ export default async function PortalLlamadasPage({
       {view.metaConnection && view.metaConnection.status !== 'active' ? (
         <RecallMetaConnectCard
           metaAppId={activeMetaCreds?.appId ?? null}
-          coexistenceConfigId={activeMetaCreds?.coexistenceConfigId ?? null}
+          signupConfigId={recallSignupConfigId(activeMetaCreds)}
           connected={view.metaConnection}
         />
       ) : null}

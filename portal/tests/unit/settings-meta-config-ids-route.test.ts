@@ -51,11 +51,22 @@ describe('POST /api/admin/portal/settings/meta/config-ids', () => {
     expect(mockState.saveMetaConfigIds).not.toHaveBeenCalled();
   });
 
-  it('400s when either field is missing', async () => {
+  it('400s when configId is missing', async () => {
     const { POST } = await import('@/app/api/admin/portal/settings/meta/config-ids/route');
-    const res = await POST(makeRequest({ configId: 'config_1' }));
+    const res = await POST(makeRequest({ coexistenceConfigId: 'x' }));
     expect(res.status).toBe(400);
     expect(mockState.saveMetaConfigIds).not.toHaveBeenCalled();
+  });
+
+  // 2026-09-16 — recall usa la misma configuración salvo que se indique otra.
+  it('acepta guardar sin la configuración de recall, y la vacía como null', async () => {
+    const { POST } = await import('@/app/api/admin/portal/settings/meta/config-ids/route');
+    for (const body of [{ configId: 'config_1' }, { configId: 'config_1', coexistenceConfigId: '  ' }]) {
+      mockState.saveMetaConfigIds.mockClear();
+      const res = await POST(makeRequest(body));
+      expect(res.status).toBe(200);
+      expect(mockState.saveMetaConfigIds).toHaveBeenCalledWith('config_1', null, expect.anything());
+    }
   });
 
   it('never requires TOTP step-up — accepts a plain admin session', async () => {

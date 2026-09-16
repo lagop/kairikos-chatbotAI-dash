@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { COEXISTENCE_SIGNUP_EXTRAS } from '@/lib/meta-signup-extras';
 import { loadFacebookSdk, type FBLoginResponse } from '@/lib/meta-embedded-signup-sdk';
 
 // =============================================================================
@@ -54,11 +55,12 @@ export interface RecallMetaConnectedSummary {
 
 export function RecallMetaConnectCard({
   metaAppId,
-  coexistenceConfigId,
+  signupConfigId,
   connected,
 }: {
   metaAppId: string | null;
-  coexistenceConfigId: string | null;
+  /** Ver recallSignupConfigId (meta-signup-extras.ts). */
+  signupConfigId: string | null;
   connected: RecallMetaConnectedSummary | null;
 }) {
   const router = useRouter();
@@ -70,7 +72,7 @@ export function RecallMetaConnectCard({
   // server resolves the phone number id itself (see recall-meta.ts).
   const wabaId = useRef<string | null>(null);
 
-  const configured = Boolean(metaAppId && coexistenceConfigId);
+  const configured = Boolean(metaAppId && signupConfigId);
 
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
@@ -95,7 +97,7 @@ export function RecallMetaConnectCard({
   }, []);
 
   async function connect() {
-    if (!metaAppId || !coexistenceConfigId) return;
+    if (!metaAppId || !signupConfigId) return;
     setError(null);
     setBusy(true);
     wabaId.current = null;
@@ -130,10 +132,12 @@ export function RecallMetaConnectCard({
           })();
         },
         {
-          config_id: coexistenceConfigId,
+          config_id: signupConfigId,
           response_type: 'code',
           override_default_response_type: true,
-          extras: { setup: {} },
+          // featureType es lo que abre el flujo de Coexistence — ver
+          // recallSignupConfigId en meta-signup-extras.ts.
+          extras: COEXISTENCE_SIGNUP_EXTRAS,
         },
       );
     } catch (err) {
