@@ -217,9 +217,16 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /** Misma forma que isGenerationDue en seo-content-generation.ts: pura,
  *  fácil de testear sin red ni Prisma. `null` (nunca auditado) siempre
  *  está due. */
-export function isAuditDue(lastAuditAt: Date | null, minIntervalDays: number = SITE_AUDIT_MIN_INTERVAL_DAYS): boolean {
+export function isAuditDue(
+  lastAuditAt: Date | null,
+  minIntervalDays: number = SITE_AUDIT_MIN_INTERVAL_DAYS,
+  now: Date = new Date(),
+): boolean {
   if (!lastAuditAt) return true;
-  return Date.now() - lastAuditAt.getTime() >= minIntervalDays * DAY_MS;
+  // 2026-09-16 — usaba Date.now() aunque sweepDueSiteAudits recibe su propio
+  // `now`: el barrido decidía con un reloj y registraba con otro. Solo se vio
+  // cuando el calendario real dejó atrás la fecha fija del test.
+  return now.getTime() - lastAuditAt.getTime() >= minIntervalDays * DAY_MS;
 }
 
 /** Techo de auditorías por tick. Cada una puede tardar decenas de
@@ -263,7 +270,7 @@ export async function sweepDueSiteAudits(
     select: { id: true, clientId: true, tenantId: true, siteUrl: true, lastAuditAt: true },
   });
 
-  const due = profiles.filter((p) => isAuditDue(p.lastAuditAt));
+  const due = profiles.filter((p) => isAuditDue(p.lastAuditAt, SITE_AUDIT_MIN_INTERVAL_DAYS, now));
   const batch = due.slice(0, MAX_AUDITS_PER_TICK);
 
   let audited = 0;
