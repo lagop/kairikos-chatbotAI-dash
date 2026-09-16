@@ -10,7 +10,12 @@ export const runtime = 'nodejs';
 
 const BodySchema = z.object({
   configId: z.string().min(1),
-  coexistenceConfigId: z.string().min(1),
+  // Opcional: recall usa la misma configuración que el chatbot salvo que se
+  // indique otra (ver recallSignupConfigId en meta-signup-extras.ts).
+  coexistenceConfigId: z
+    .string()
+    .nullish()
+    .transform((v) => (v && v.trim() ? v.trim() : null)),
 });
 
 /**

@@ -3,6 +3,7 @@ import { encryptChannelCredential, decryptChannelCredential } from './channel-cr
 import type { EncryptedBuffer } from './operator-crypto';
 import { logError } from './observability';
 import { resolveActiveMetaCredentials } from './meta-credentials';
+import { recallSignupConfigId } from './meta-signup-extras';
 import { parseDebugTokenResponse, type InspectedMetaToken } from './meta-token-expiry';
 
 // =============================================================================
@@ -45,15 +46,12 @@ import { parseDebugTokenResponse, type InspectedMetaToken } from './meta-token-e
 // there warn a completed FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING event
 // "does not prove that every backend step succeeded". What that source
 // confirms, that the rest of this file is built against:
-//   - Coexistence is selected by which Configuration (config_id) the
-//     popup was opened with — a SECOND config_id, created in the Meta
-//     App Dashboard against the "WhatsApp Embedded Signup Configuration
-//     With 60 Expiration Token" template (or a custom coexistence
-//     configuration), not a client-side flag. Hence META_COEXISTENCE_
-//     CONFIG_ID below, alongside META_CONFIG_ID rather than replacing it
-//     — a client can still connect Messenger/Instagram or a
-//     dedicated (non-coexistence) WhatsApp number through the standard
-//     config, and recall's coexistence connect is additive.
+//   - [CORREGIDO 2026-09-16] Esto decía que Coexistence se elige con una
+//     SEGUNDA configuración (config_id). Es falso: se elige con
+//     `extras.featureType = 'whatsapp_business_app_onboarding'` sobre la
+//     misma configuración. Ver meta-signup-extras.ts.
+//     META_COEXISTENCE_CONFIG_ID sigue existiendo, pero solo como anulación
+//     opcional.
 //   - The popup posts `FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING` instead
 //     of `FINISH`, and — unlike FINISH — its payload carries ONLY
 //     `waba_id`, no `phone_number_id`. recall-meta.ts resolves the phone
@@ -85,14 +83,11 @@ export async function isMetaSignupConfigured(): Promise<boolean> {
   return Boolean(creds?.appId && creds.appSecret && creds.configId);
 }
 
-/** Same app, a SEPARATE Configuration — see this file's header. Gates
- *  recall's coexistence connect independently of the standard chatbot
- *  channel connect, since a deployment can have one configured without
- *  the other (e.g. while the coexistence Configuration is still being
- *  set up in the Meta App Dashboard). */
+/** Si el alta de recall se puede abrir: app + una configuración (ver
+ *  recallSignupConfigId en meta-signup-extras.ts). */
 export async function isCoexistenceSignupConfigured(): Promise<boolean> {
   const creds = await resolveActiveMetaCredentials();
-  return Boolean(creds?.appId && creds.appSecret && creds.coexistenceConfigId);
+  return Boolean(creds?.appId && creds.appSecret && recallSignupConfigId(creds));
 }
 
 async function getAppCredentials(): Promise<{ appId: string; appSecret: string }> {

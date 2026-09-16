@@ -130,7 +130,8 @@ export async function saveMetaCredential(appId: string, appSecret: string, actor
  */
 export async function saveMetaConfigIds(
   configId: string,
-  coexistenceConfigId: string,
+  /** Opcional desde 2026-09-16: null = recall usa `configId`. */
+  coexistenceConfigId: string | null,
   actor: CredentialActor,
 ): Promise<void> {
   const before = await getOrCreateCredentialRow();

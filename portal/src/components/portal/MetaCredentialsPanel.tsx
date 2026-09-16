@@ -10,8 +10,10 @@ import { TotpStepUpModal } from './TotpStepUpModal';
 // on-the-VPS-.env-only. Same step-up + verify-before-save shape as
 // TwilioCredentialsPanel, with four fields instead of two — appId pairs
 // with appSecret (Meta's Basic OAuth-client pair); configId and
-// coexistenceConfigId are two SEPARATE Embedded Signup Configuration
-// ids (which flow a signup popup opens in), not credentials.
+// coexistenceConfigId are Embedded Signup Configuration ids, not
+// credentials. Desde 2026-09-16 el segundo es opcional: Coexistence se abre
+// con extras.featureType, no con otra configuración (ver
+// recallSignupConfigId en meta-signup-extras.ts).
 // =============================================================================
 
 export interface MetaCredentialStatus {
@@ -152,18 +154,18 @@ export function MetaCredentialsPanel({ initialStatus }: { initialStatus: MetaCre
   }
 
   async function saveConfigIds() {
-    if (!configId || !coexistenceConfigId) return;
+    if (!configId) return;
     setConfigBusy(true);
     try {
       const res = await fetch('/api/admin/portal/settings/meta/config-ids', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ configId, coexistenceConfigId }),
+        body: JSON.stringify({ configId, coexistenceConfigId: coexistenceConfigId.trim() || null }),
       });
       const body = await safeJson(res);
       if (res.ok) {
         showToast({ kind: 'success', message: 'Configuraciones guardadas.' });
-        setStatus((s) => ({ ...s, configId, coexistenceConfigId }));
+        setStatus((s) => ({ ...s, configId, coexistenceConfigId: coexistenceConfigId.trim() || null }));
         router.refresh();
       } else {
         showToast({ kind: 'error', message: configErrorLabel(body.error as string) });
@@ -244,12 +246,18 @@ export function MetaCredentialsPanel({ initialStatus }: { initialStatus: MetaCre
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Configuraciones de Embedded Signup</h2>
           <p className="text-sm text-kairikos-muted" data-testid="meta-config-status">
-            {status.configId && status.coexistenceConfigId ? `${status.configId} · ${status.coexistenceConfigId}` : 'Sin configurar'}
+            {status.configId
+              ? status.coexistenceConfigId
+                ? `${status.configId} · ${status.coexistenceConfigId}`
+                : status.configId
+              : 'Sin configurar'}
           </p>
         </div>
         <p className="text-sm text-kairikos-muted">
-          No son secretos — son los <code>config_id</code> del popup de Meta, uno por flujo. El primero abre el flujo
-          normal de canales del chatbot; el segundo abre el flujo de Coexistence de recall.
+          No son secretos — son los <code>config_id</code> del popup de Meta. Están en tu app de Meta, en{' '}
+          <strong>Inicio de sesión con Facebook para empresas → Configuraciones</strong>. Recall usa la misma
+          configuración que el chatbot: Coexistence se activa con un parámetro del inicio de sesión, no con una
+          configuración aparte. Rellena el segundo campo solo si quieres que recall use otra.
         </p>
         <div className="space-y-2">
           <label className="label" htmlFor="meta-config-id">
@@ -268,13 +276,13 @@ export function MetaCredentialsPanel({ initialStatus }: { initialStatus: MetaCre
         </div>
         <div className="space-y-2">
           <label className="label" htmlFor="meta-coexistence-config-id">
-            Config ID (Coexistence, recall)
+            Config ID solo para recall (opcional)
           </label>
           <input
             id="meta-coexistence-config-id"
             type="text"
             className="input"
-            placeholder="config_id"
+            placeholder="Vacío = la misma que el chatbot"
             value={coexistenceConfigId}
             onChange={(e) => setCoexistenceConfigId(e.target.value)}
             data-testid="meta-coexistence-config-id-input"
@@ -284,7 +292,7 @@ export function MetaCredentialsPanel({ initialStatus }: { initialStatus: MetaCre
         <button
           type="button"
           className="btn-primary"
-          disabled={!configId || !coexistenceConfigId || configBusy}
+          disabled={!configId || configBusy}
           onClick={() => saveConfigIds()}
           data-testid="meta-config-save"
         >

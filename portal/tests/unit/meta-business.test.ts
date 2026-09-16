@@ -108,7 +108,14 @@ describe('isMetaSignupConfigured', () => {
 });
 
 describe('isCoexistenceSignupConfigured', () => {
-  it('false by default — a SEPARATE Configuration from META_CONFIG_ID, not implied by it', async () => {
+  // 2026-09-16 — Coexistence usa la MISMA configuración que el chatbot; lo
+  // que la activa es extras.featureType (meta-signup-extras.ts).
+  it('true con solo la configuración del chatbot — no hace falta otra', async () => {
+    expect(await isCoexistenceSignupConfigured()).toBe(true);
+  });
+
+  it('false sin ninguna configuración', async () => {
+    delete process.env.META_CONFIG_ID;
     expect(await isCoexistenceSignupConfigured()).toBe(false);
   });
 
