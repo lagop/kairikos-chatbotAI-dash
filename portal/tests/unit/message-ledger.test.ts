@@ -128,7 +128,9 @@ const KNOWN_SENDERS: Record<string, { ledger: boolean; why?: string }> = {
   'lib/recovery-campaigns.ts': { ledger: true },
   'lib/recall-reports.ts': { ledger: false, why: 'un mensaje al mes por cliente' },
   'lib/recall-reviews.ts': { ledger: false, why: 'pendiente, mismo patrón' },
-  'lib/recall-templates.ts': { ledger: false, why: 'instrucciones de desvío, una vez por alta' },
+  // 2026-09-17 — se reenvían al guardar el WhatsApp y al reconectar: ya no
+  // es "una vez por alta", así que se apuntan.
+  'lib/recall-templates.ts': { ledger: true },
   'lib/recall-callbacks.ts': { ledger: false, why: 'acuse dentro de la ventana de 24h' },
   'lib/prospecting-contact.ts': { ledger: false, why: 'MARKETING — conectar antes de vender el producto' },
   'lib/review-request-campaign.ts': { ledger: false, why: 'pendiente, mismo patrón' },

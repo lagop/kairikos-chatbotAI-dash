@@ -375,7 +375,7 @@ describe('connectRecallWhatsappManually', () => {
     mockState.sendForwardingInstructions.mockResolvedValue('sent');
 
     await connectRecallWhatsappManually(prisma, PARAMS);
-    expect(mockState.sendForwardingInstructions).toHaveBeenCalledWith(bound);
+    expect(mockState.sendForwardingInstructions).toHaveBeenCalledWith(prisma, bound);
   });
 
   it('sin WhatsApp del dueño no intenta enviar los códigos', async () => {
