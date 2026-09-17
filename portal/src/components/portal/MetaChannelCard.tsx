@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { loadFacebookSdk, type FBLoginResponse } from '@/lib/meta-embedded-signup-sdk';
+import { loadFacebookSdk, describeSdkLoadError, type FBLoginResponse } from '@/lib/meta-embedded-signup-sdk';
 
 // =============================================================================
 // WP: conexión de canales — Fase 3. WhatsApp Embedded Signup + Meta
@@ -133,7 +133,7 @@ export function MetaChannelCard({
         },
       );
     } catch (err) {
-      setError(`No se pudo cargar el SDK de Meta: ${err instanceof Error ? err.message : 'desconocido'}`);
+      setError(describeSdkLoadError(err));
       setBusy(false);
     }
   }

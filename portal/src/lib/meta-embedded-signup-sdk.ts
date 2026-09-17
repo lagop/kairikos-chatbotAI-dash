@@ -56,18 +56,50 @@ export function loadFacebookSdk(appId: string, version: string = DEFAULT_SDK_VER
     }
     return Promise.resolve();
   }
-  return new Promise((resolve) => {
+  // 2026-09-17 — antes esta promesa no terminaba nunca si el script no
+  // cargaba (un bloqueador de anuncios, una red que corta facebook.net): el
+  // botón se quedaba en 'Conectando…' sin decir nada. Ahora falla con un
+  // error que se puede enseñar.
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(SDK_LOAD_TIMEOUT)), SDK_LOAD_TIMEOUT_MS);
     window.fbAsyncInit = () => {
+      clearTimeout(timer);
       window.FB?.init({ appId, xfbml: false, version });
       initialisedVersion = version;
       resolve();
     };
-    if (document.getElementById('facebook-jssdk')) return;
+    const existing = document.getElementById('facebook-jssdk');
+    if (existing) {
+      // Un intento anterior ya añadió el script y no llegó a cargar: se
+      // quita para que este intento lo pida de nuevo en vez de esperar a un
+      // fbAsyncInit que no va a llegar.
+      existing.remove();
+    }
     const script = document.createElement('script');
     script.id = 'facebook-jssdk';
     script.src = SDK_URL;
     script.async = true;
     script.defer = true;
+    script.onerror = () => {
+      clearTimeout(timer);
+      reject(new Error(SDK_LOAD_BLOCKED));
+    };
     document.body.appendChild(script);
   });
+}
+
+export const SDK_LOAD_TIMEOUT = 'facebook_sdk_timeout';
+export const SDK_LOAD_BLOCKED = 'facebook_sdk_blocked';
+const SDK_LOAD_TIMEOUT_MS = 15_000;
+
+/** Un fallo al cargar el SDK, en palabras que un cliente puede usar. */
+export function describeSdkLoadError(err: unknown): string {
+  const reason = err instanceof Error ? err.message : '';
+  if (reason === SDK_LOAD_BLOCKED) {
+    return 'Tu navegador no dejó cargar la ventana de Meta. Si usas un bloqueador de anuncios o una extensión de privacidad, desactívala para esta página y vuelve a intentarlo.';
+  }
+  if (reason === SDK_LOAD_TIMEOUT) {
+    return 'La ventana de Meta tardó demasiado en cargar. Revisa tu conexión y vuelve a intentarlo.';
+  }
+  return `No se pudo cargar la ventana de Meta${reason ? `: ${reason}` : ''}.`;
 }
