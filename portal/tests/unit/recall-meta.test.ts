@@ -53,7 +53,7 @@ vi.mock('@/lib/observability', () => ({
   logError: (...a: unknown[]) => mockState.logError(...a),
 }));
 
-import { connectRecallWhatsapp } from '@/lib/recall-meta';
+import { connectRecallWhatsapp, connectRecallWhatsappManually } from '@/lib/recall-meta';
 
 const state = {
   recallSubscriptionFindUnique: vi.fn(),
@@ -270,5 +270,122 @@ describe('connectRecallWhatsapp', () => {
         { name: 'recall_caller_closed', ok: true, status: 'PENDING' },
       ]);
     }
+  });
+});
+
+// =============================================================================
+// 2026-09-17 — conexión manual del operador (sin registro insertado).
+// =============================================================================
+describe('connectRecallWhatsappManually', () => {
+  const OPERATOR = { operatorId: 'op_1', email: 'op@kairikos.com' };
+  const SYSTEM_TOKEN = {
+    isValid: true,
+    expiresAt: null,
+    type: 'SYSTEM_USER',
+    scopes: ['whatsapp_business_management', 'whatsapp_business_messaging', 'business_management'],
+  };
+  const PARAMS = {
+    subscriptionId: 'sub_1',
+    wabaId: '111111111111111',
+    phoneNumberId: 'phone_1',
+    accessToken: 'EAAG-system-user-token-xxxxxxxx',
+    operator: OPERATOR,
+  };
+
+  beforeEach(() => {
+    state.recallSubscriptionFindUnique.mockResolvedValue({
+      id: 'sub_1',
+      clientId: 'client_1',
+      status: 'forwarding_pending',
+      client: { tenantId: 'tenant_1' },
+    });
+    mockState.inspectAccessToken.mockResolvedValue(SYSTEM_TOKEN);
+  });
+
+  it('valida con Meta y guarda la conexión como NO Coexistence, atribuida al operador', async () => {
+    const result = await connectRecallWhatsappManually(prisma, PARAMS);
+
+    expect(result).toMatchObject({ ok: true, connectionId: 'conn_1' });
+    expect(mockState.exchangeCodeForToken).not.toHaveBeenCalled();
+    const upsert = state.metaChannelConnectionUpsert.mock.calls[0][0];
+    expect(upsert.create).toMatchObject({
+      clientId: 'client_1',
+      tenantId: 'tenant_1',
+      externalId: 'phone_1',
+      wabaId: '111111111111111',
+      isCoexistence: false,
+      tokenExpiresAt: null,
+    });
+    expect(upsert.update.isCoexistence).toBe(false);
+    expect(mockState.encryptMetaToken).toHaveBeenCalledWith('EAAG-system-user-token-xxxxxxxx');
+    // Un número solo de la Cloud API no tiene app del móvil que sincronizar.
+    expect(mockState.syncSmbAppState).not.toHaveBeenCalled();
+    expect(mockState.subscribeWaba).toHaveBeenCalledWith('EAAG-system-user-token-xxxxxxxx', '111111111111111');
+    expect(state.recallSubscriptionAuditCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'meta_connected',
+          actorType: 'operator',
+          actorOperatorId: 'op_1',
+          actorEmail: 'op@kairikos.com',
+          after: expect.objectContaining({ isCoexistence: false, mode: 'manual' }),
+        }),
+      }),
+    );
+    expect(mockState.deliverChannelEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ payload: expect.objectContaining({ isCoexistence: false, manual: true }) }),
+    );
+    // Nunca el token en los logs.
+    expect(JSON.stringify(mockState.logError.mock.calls)).not.toContain('EAAG-system-user-token');
+  });
+
+  it('no guarda nada si Meta no puede verificar el token', async () => {
+    mockState.inspectAccessToken.mockResolvedValue(null);
+    await expect(connectRecallWhatsappManually(prisma, PARAMS)).resolves.toEqual({
+      ok: false,
+      error: 'token_not_verifiable',
+    });
+    expect(state.metaChannelConnectionUpsert).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['inválido', { ...SYSTEM_TOKEN, isValid: false }, 'token_invalid'],
+    ['que caduca en horas', { ...SYSTEM_TOKEN, expiresAt: new Date(Date.now() + 3_600_000) }, 'short_lived_token'],
+  ])('rechaza un token %s', async (_label, token, error) => {
+    mockState.inspectAccessToken.mockResolvedValue(token);
+    await expect(connectRecallWhatsappManually(prisma, PARAMS)).resolves.toMatchObject({ ok: false, error });
+    expect(state.metaChannelConnectionUpsert).not.toHaveBeenCalled();
+  });
+
+  it('dice qué permisos faltan', async () => {
+    mockState.inspectAccessToken.mockResolvedValue({ ...SYSTEM_TOKEN, scopes: ['whatsapp_business_management'] });
+    await expect(connectRecallWhatsappManually(prisma, PARAMS)).resolves.toEqual({
+      ok: false,
+      error: 'missing_permissions',
+      detail: 'whatsapp_business_messaging',
+    });
+  });
+
+  it('rechaza un número que no es de esa WABA, o una WABA que el token no ve', async () => {
+    await expect(
+      connectRecallWhatsappManually(prisma, { ...PARAMS, phoneNumberId: 'otro_numero' }),
+    ).resolves.toEqual({ ok: false, error: 'phone_not_in_waba' });
+
+    mockState.getPhoneNumbersForWaba.mockResolvedValue({ ok: false, error: 'Unsupported get request' });
+    await expect(connectRecallWhatsappManually(prisma, PARAMS)).resolves.toMatchObject({
+      ok: false,
+      error: 'waba_not_accessible',
+    });
+    expect(state.metaChannelConnectionUpsert).not.toHaveBeenCalled();
+  });
+
+  it('respeta el estado de la suscripción', async () => {
+    state.recallSubscriptionFindUnique.mockResolvedValue({ id: 'sub_1', clientId: 'client_1', status: 'paid', client: { tenantId: null } });
+    await expect(connectRecallWhatsappManually(prisma, PARAMS)).resolves.toEqual({ ok: false, error: 'invalid_status' });
+    state.recallSubscriptionFindUnique.mockResolvedValue(null);
+    await expect(connectRecallWhatsappManually(prisma, PARAMS)).resolves.toEqual({
+      ok: false,
+      error: 'subscription_not_found',
+    });
   });
 });

@@ -18,10 +18,15 @@ const DAY = 24 * HOUR;
 describe('parseDebugTokenResponse', () => {
   it('lee is_valid, expires_at (segundos) y type', () => {
     const expiresAt = Math.floor(new Date('2026-11-13T00:00:00Z').getTime() / 1000);
-    expect(parseDebugTokenResponse({ data: { is_valid: true, expires_at: expiresAt, type: 'USER' } })).toEqual({
+    expect(
+      parseDebugTokenResponse({
+        data: { is_valid: true, expires_at: expiresAt, type: 'USER', scopes: ['whatsapp_business_messaging', 7] },
+      }),
+    ).toEqual({
       isValid: true,
       expiresAt: new Date('2026-11-13T00:00:00Z'),
       type: 'USER',
+      scopes: ['whatsapp_business_messaging'],
     });
   });
 

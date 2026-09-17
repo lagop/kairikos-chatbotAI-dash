@@ -130,16 +130,54 @@ export async function connectRecallWhatsapp(
     return { ok: false, error: 'phone_number_not_found' };
   }
 
+  return bindRecallMetaConnection(prisma, {
+    subscription,
+    clientId: params.clientId,
+    tenantId: params.tenantId,
+    accessToken,
+    tokenExpiresAt,
+    wabaId: params.wabaId,
+    phoneNumberId,
+    mode: 'coexistence',
+    actor: { type: 'client', clientId: params.clientId },
+  });
+}
+
+export interface BindRecallMetaConnectionInput {
+  subscription: { id: string; clientId: string; status: string };
+  clientId: string;
+  tenantId: string | null;
+  accessToken: string;
+  tokenExpiresAt: Date | null;
+  wabaId: string;
+  phoneNumberId: string;
+  /** 'coexistence' = alta del cliente con su app del móvil; 'manual' =
+   *  conexión que pega el operador (número solo en la Cloud API). */
+  mode: 'coexistence' | 'manual';
+  actor: { type: 'client'; clientId: string } | { type: 'operator'; operatorId: string; email: string | null };
+}
+
+/**
+ * Guarda la conexión, suscribe la WABA, rellena los datos del número y
+ * vincula la suscripción. Compartido por el alta de Coexistence y la conexión
+ * manual del operador (2026-09-17) para que las dos no diverjan.
+ */
+export async function bindRecallMetaConnection(
+  prisma: PrismaClient,
+  input: BindRecallMetaConnectionInput,
+): Promise<ConnectRecallWhatsappResult> {
+  const { subscription, accessToken, tokenExpiresAt, phoneNumberId } = input;
+  const isCoexistence = input.mode === 'coexistence';
   const encrypted = encryptMetaToken(accessToken);
   let connectionId: string;
   try {
     const connection = await prisma.metaChannelConnection.upsert({
       where: {
-        clientId_channel_externalId: { clientId: params.clientId, channel: 'whatsapp', externalId: phoneNumberId },
+        clientId_channel_externalId: { clientId: input.clientId, channel: 'whatsapp', externalId: phoneNumberId },
       },
       update: {
         label: `WhatsApp ${phoneNumberId}`,
-        wabaId: params.wabaId,
+        wabaId: input.wabaId,
         accessTokenCiphertext: encrypted.ciphertext,
         accessTokenIv: encrypted.iv,
         accessTokenTag: encrypted.tag,
@@ -147,26 +185,26 @@ export async function connectRecallWhatsapp(
         lastSyncError: null,
         tokenExpiresAt,
         expiryWarnedAt: null,
-        isCoexistence: true,
+        isCoexistence,
       },
       create: {
-        clientId: params.clientId,
-        tenantId: params.tenantId,
+        clientId: input.clientId,
+        tenantId: input.tenantId,
         channel: 'whatsapp',
         externalId: phoneNumberId,
         label: `WhatsApp ${phoneNumberId}`,
-        wabaId: params.wabaId,
+        wabaId: input.wabaId,
         accessTokenCiphertext: encrypted.ciphertext,
         accessTokenIv: encrypted.iv,
         accessTokenTag: encrypted.tag,
         status: 'active',
         tokenExpiresAt,
-        isCoexistence: true,
+        isCoexistence,
       },
     });
     connectionId = connection.id;
   } catch (err) {
-    logError('recall_meta.persist_connection_failed', err, { subscriptionId: params.subscriptionId }, 'warn');
+    logError('recall_meta.persist_connection_failed', err, { subscriptionId: subscription.id }, 'warn');
     return { ok: false, error: 'persist_failed' };
   }
 
@@ -174,7 +212,7 @@ export async function connectRecallWhatsapp(
   // below regardless of whether these succeed. Same posture as
   // complete-signup's upsertSurface: a subscription failure or a slow
   // sync must not read to the client as "connecting failed".
-  const subscribeResult = await subscribeWaba(accessToken, params.wabaId);
+  const subscribeResult = await subscribeWaba(accessToken, input.wabaId);
   if (!subscribeResult.ok) {
     await prisma.metaChannelConnection
       .update({ where: { id: connectionId }, data: { lastSyncError: subscribeResult.error.slice(0, 500) } })
@@ -200,9 +238,13 @@ export async function connectRecallWhatsapp(
       .catch(() => null);
   }
 
-  const syncResult = await syncSmbAppState(accessToken, phoneNumberId);
-  if (!syncResult.ok) {
-    logError('recall_meta.smb_app_state_sync_failed', new Error(syncResult.error), { connectionId }, 'warn');
+  // Solo Coexistence: sincroniza contactos e historial de la app del móvil.
+  // Un número que solo vive en la Cloud API no tiene app que sincronizar.
+  if (isCoexistence) {
+    const syncResult = await syncSmbAppState(accessToken, phoneNumberId);
+    if (!syncResult.ok) {
+      logError('recall_meta.smb_app_state_sync_failed', new Error(syncResult.error), { connectionId }, 'warn');
+    }
   }
 
   // The bind + advance, in one write: this is the step that was entirely
@@ -231,24 +273,26 @@ export async function connectRecallWhatsapp(
   // syncSmbAppState above, which stay useful to repeat every time.
   let templatesSubmitted: TemplateSubmissionOutcome[] | null = null;
   if (willAdvance) {
-    templatesSubmitted = await submitAllRecallTemplates(accessToken, params.wabaId);
+    templatesSubmitted = await submitAllRecallTemplates(accessToken, input.wabaId);
   }
 
   await prisma.recallSubscriptionAudit
     .create({
       data: {
         subscriptionId: subscription.id,
-        clientId: params.clientId,
+        clientId: input.clientId,
         action: 'meta_connected',
         before,
         after: {
           status: updated.status,
           metaConnectionId: connectionId,
-          isCoexistence: true,
+          isCoexistence,
+          mode: input.mode,
           templatesSubmitted: templatesSubmitted?.map((t) => ({ name: t.name, ok: t.ok })) ?? null,
         },
-        actorType: 'client',
-        actorEmail: `client:${params.clientId}`,
+        ...(input.actor.type === 'client'
+          ? { actorType: 'client', actorEmail: `client:${input.actor.clientId}` }
+          : { actorType: 'operator', actorOperatorId: input.actor.operatorId, actorEmail: input.actor.email }),
       },
     })
     // Connected and bound either way — an audit-insert failure must not
@@ -259,14 +303,16 @@ export async function connectRecallWhatsapp(
   await deliverChannelEvent({
     connectionType: 'meta',
     connectionId,
-    clientId: params.clientId,
+    clientId: input.clientId,
     payload: {
       event: 'connected',
       channel: 'whatsapp',
       externalId: phoneNumberId,
       // The one bit n8n's activation workflow needs to NOT call
       // POST /register against this number.
-      isCoexistence: true,
+      isCoexistence,
+      // Conexión manual: el número ya lo registró el operador en Meta.
+      ...(input.mode === 'manual' ? { manual: true } : {}),
     },
   }).catch(() => null);
 
@@ -277,4 +323,95 @@ export async function connectRecallWhatsapp(
     advancedTo: willAdvance ? 'meta_connected' : null,
     templatesSubmitted,
   };
+}
+
+
+// =============================================================================
+// 2026-09-17 — conexión MANUAL de WhatsApp por el operador.
+//
+// El registro insertado de Meta (FB.login) solo funciona cuando la app es
+// Tech Provider; hasta que Meta lo apruebe, Meta responde "no puede registrar
+// clientes en este momento". Para no bloquear la prueba de principio a fin,
+// el operador puede pegar tres datos de una cuenta de WhatsApp Business que
+// controle él mismo: el ID de la WABA, el ID del número y un token de usuario
+// del sistema creado en su Business Manager (no caduca).
+//
+// Limitación aceptada: ese número vive en la Cloud API, no en la app del móvil
+// a la vez (eso es Coexistence). Por eso la conexión se guarda con
+// isCoexistence=false y no se llama a syncSmbAppState. Tampoco se llama a
+// POST /register: el número tiene que estar ya registrado en Meta.
+//
+// Antes de guardar se comprueba contra Meta todo lo que, mal puesto, haría
+// fallar en silencio el primer envío: token válido, que no caduque pronto,
+// con los dos permisos de WhatsApp, y que el número sea de esa WABA.
+// =============================================================================
+
+export const REQUIRED_WHATSAPP_SCOPES = ['whatsapp_business_management', 'whatsapp_business_messaging'] as const;
+
+export type ConnectManualResult =
+  | ConnectRecallWhatsappResult
+  | {
+      ok: false;
+      error: 'token_not_verifiable' | 'token_invalid' | 'missing_permissions' | 'waba_not_accessible' | 'phone_not_in_waba';
+      detail?: string;
+    };
+
+export async function connectRecallWhatsappManually(
+  prisma: PrismaClient,
+  params: {
+    subscriptionId: string;
+    wabaId: string;
+    phoneNumberId: string;
+    accessToken: string;
+    operator: { operatorId: string; email: string | null };
+    now?: Date;
+  },
+): Promise<ConnectManualResult> {
+  const subscription = await prisma.recallSubscription.findUnique({
+    where: { id: params.subscriptionId },
+    select: { id: true, clientId: true, status: true, client: { select: { tenantId: true } } },
+  });
+  if (!subscription) return { ok: false, error: 'subscription_not_found' };
+  if (!canBindMetaConnection(subscription.status)) return { ok: false, error: 'invalid_status' };
+
+  const now = params.now ?? new Date();
+  const inspected = await inspectAccessToken(params.accessToken);
+  // Sin poder preguntar a Meta no se guarda: es la única comprobación de que
+  // el token pegado sirve, y guardar uno roto es lo que dejó a producción un
+  // día sin WhatsApp.
+  if (!inspected) return { ok: false, error: 'token_not_verifiable' };
+  const tokenExpiresAt = resolveTokenExpiry({ inspected, expiresIn: null, now });
+  if (!inspected.isValid) return { ok: false, error: 'token_invalid' };
+  if (isUnusableToken({ inspected, expiresAt: tokenExpiresAt, now })) {
+    return { ok: false, error: 'short_lived_token' };
+  }
+  const missing = REQUIRED_WHATSAPP_SCOPES.filter((scope) => !inspected.scopes.includes(scope));
+  if (missing.length > 0) return { ok: false, error: 'missing_permissions', detail: missing.join(', ') };
+
+  const numbers = await getPhoneNumbersForWaba(params.accessToken, params.wabaId);
+  if (!numbers.ok) return { ok: false, error: 'waba_not_accessible', detail: numbers.error.slice(0, 200) };
+  if (!(numbers.data.data ?? []).some((n) => n.id === params.phoneNumberId)) {
+    return { ok: false, error: 'phone_not_in_waba' };
+  }
+
+  const result = await bindRecallMetaConnection(prisma, {
+    subscription,
+    clientId: subscription.clientId,
+    tenantId: subscription.client.tenantId,
+    accessToken: params.accessToken,
+    tokenExpiresAt,
+    wabaId: params.wabaId,
+    phoneNumberId: params.phoneNumberId,
+    mode: 'manual',
+    actor: { type: 'operator', operatorId: params.operator.operatorId, email: params.operator.email },
+  });
+  if (result.ok) {
+    logError(
+      'recall_meta.manual_connection',
+      new Error('conexión de WhatsApp creada a mano por un operador'),
+      { subscriptionId: subscription.id, connectionId: result.connectionId, tokenType: inspected.type },
+      'warn',
+    );
+  }
+  return result;
 }
