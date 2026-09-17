@@ -123,6 +123,7 @@ export async function setOwnerWhatsapp(
     select: {
       id: true,
       clientId: true,
+      tenantId: true,
       status: true,
       ownerWhatsapp: true,
       virtualNumber: { select: { e164: true } },
@@ -172,8 +173,10 @@ export async function setOwnerWhatsapp(
   // el alta esperando el desvío es pedirlos; el coste es un mensaje.
   let forwardingInstructions: ForwardingInstructionsOutcome | null = null;
   if (sub.status === 'forwarding_pending') {
-    forwardingInstructions = await sendForwardingInstructions({
+    forwardingInstructions = await sendForwardingInstructions(prisma, {
       id: sub.id,
+      clientId: sub.clientId,
+      tenantId: sub.tenantId,
       ownerWhatsapp: valid.e164,
       virtualNumber: sub.virtualNumber,
       metaConnection: sub.metaConnection,

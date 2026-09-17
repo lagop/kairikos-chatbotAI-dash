@@ -219,7 +219,8 @@ describe('setOwnerWhatsapp', () => {
       }),
     });
     expect(mockState.sendForwardingInstructions).toHaveBeenCalledWith(
-      expect.objectContaining({ id: SUB_ID, ownerWhatsapp: '+34600112233', virtualNumber: { e164: '+34910123456' } }),
+      prisma,
+      expect.objectContaining({ id: SUB_ID, clientId: 'client_1', ownerWhatsapp: '+34600112233', virtualNumber: { e164: '+34910123456' } }),
     );
   });
 

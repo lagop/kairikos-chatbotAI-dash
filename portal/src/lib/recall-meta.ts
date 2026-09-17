@@ -286,6 +286,8 @@ export async function bindRecallMetaConnection(
         where: { id: subscription.id },
         select: {
           id: true,
+          clientId: true,
+          tenantId: true,
           ownerWhatsapp: true,
           virtualNumber: { select: { e164: true } },
           metaConnection: {
@@ -301,7 +303,7 @@ export async function bindRecallMetaConnection(
         },
       })
       .catch(() => null);
-    if (bound?.ownerWhatsapp) await sendForwardingInstructions(bound);
+    if (bound?.ownerWhatsapp) await sendForwardingInstructions(prisma, bound);
   }
 
   await prisma.recallSubscriptionAudit

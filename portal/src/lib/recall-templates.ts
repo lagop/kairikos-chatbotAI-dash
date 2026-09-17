@@ -8,6 +8,7 @@ import { markConnectionNeedsReconnect } from './whatsapp-health';
 import { LEGAL_NOTICE_TEXT } from './recall-optout';
 import { REVIEW_TEMPLATE } from './review-request-campaign';
 import { RECOVERY_TEMPLATE_DEFINITIONS } from './recovery-templates';
+import { recordSend, metaMessageId } from './message-ledger';
 import { logError } from './observability';
 
 // =============================================================================
@@ -296,13 +297,24 @@ export type ForwardingInstructionsOutcome = 'sent' | 'failed' | 'skipped';
  * número con el alta ya esperando el desvío.
  *
  * Nunca lanza.
+ *
+ * 2026-09-17 — cada envío (bueno o fallido) queda en el libro mayor
+ * (OutboundMessage). Antes se daba por hecho que salía una vez por alta y no
+ * se apuntaba; desde que se reenvía al guardar el WhatsApp y al reconectar,
+ * ya no es verdad, y sin la fila no había constancia de que salió ni del id
+ * de Meta con el que casarlo en la factura.
  */
-export async function sendForwardingInstructions(subscription: {
-  id: string;
-  ownerWhatsapp: string | null;
-  virtualNumber: { e164: string } | null;
-  metaConnection: Parameters<typeof metaSenderFor>[0];
-}): Promise<ForwardingInstructionsOutcome> {
+export async function sendForwardingInstructions(
+  prisma: PrismaClient,
+  subscription: {
+    id: string;
+    clientId: string;
+    tenantId?: string | null;
+    ownerWhatsapp: string | null;
+    virtualNumber: { e164: string } | null;
+    metaConnection: Parameters<typeof metaSenderFor>[0];
+  },
+): Promise<ForwardingInstructionsOutcome> {
   const sender = metaSenderFor(subscription.metaConnection);
   const virtualNumber = subscription.virtualNumber?.e164;
   if (!sender || !virtualNumber || !subscription.ownerWhatsapp) {
@@ -314,15 +326,32 @@ export async function sendForwardingInstructions(subscription: {
     );
     return 'skipped';
   }
+  const ledger = {
+    clientId: subscription.clientId,
+    tenantId: subscription.tenantId ?? null,
+    productCode: 'recall',
+    channel: 'whatsapp' as const,
+    kind: 'template' as const,
+    category: 'UTILITY' as const,
+    templateName: FORWARDING_INSTRUCTIONS_TEMPLATE.name,
+    toE164: subscription.ownerWhatsapp,
+  };
   try {
     const sent = await sendTemplate(sender.token, sender.phoneNumberId, subscription.ownerWhatsapp, {
       ...FORWARDING_INSTRUCTIONS_TEMPLATE,
       bodyParams: [virtualNumber],
     });
+    await recordSend(prisma, {
+      ...ledger,
+      ok: sent.ok,
+      providerMessageId: sent.ok ? metaMessageId(sent.data) : null,
+      error: sent.ok ? null : sent.error,
+    });
     if (sent.ok) return 'sent';
     logError('recall_templates.forwarding_instructions_send_failed', new Error(sent.error), { subscriptionId: subscription.id }, 'warn');
     return 'failed';
   } catch (err) {
+    await recordSend(prisma, { ...ledger, ok: false, error: err instanceof Error ? err.message : 'unknown error' });
     logError('recall_templates.forwarding_instructions_send_failed', err, { subscriptionId: subscription.id }, 'warn');
     return 'failed';
   }
@@ -420,7 +449,7 @@ export async function advanceSubscriptionsWithApprovedTemplates(
       // undo it or get retried as if the transition never occurred.
       .catch(() => null);
 
-    await sendForwardingInstructions(subscription);
+    await sendForwardingInstructions(prisma, subscription);
 
     const advancedFurther = await prisma.recallSubscription.update({
       where: { id: subscription.id },

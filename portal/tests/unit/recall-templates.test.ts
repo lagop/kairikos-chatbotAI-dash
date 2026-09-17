@@ -63,6 +63,7 @@ const state = {
   whatsappTemplateFindMany: vi.fn(),
   whatsappTemplateUpsert: vi.fn(),
   recallSubscriptionAuditCreate: vi.fn(),
+  outboundMessageCreate: vi.fn(),
 };
 
 const prisma = {
@@ -74,6 +75,9 @@ const prisma = {
     count: (...a: unknown[]) => state.whatsappTemplateCount(...a),
     findMany: (...a: unknown[]) => state.whatsappTemplateFindMany(...a),
     upsert: (...a: unknown[]) => state.whatsappTemplateUpsert(...a),
+  },
+  outboundMessage: {
+    create: (...a: unknown[]) => state.outboundMessageCreate(...a),
   },
   recallSubscriptionAudit: {
     create: (...a: unknown[]) => state.recallSubscriptionAuditCreate(...a),
@@ -95,6 +99,7 @@ beforeEach(() => {
   state.whatsappTemplateUpsert.mockResolvedValue({});
   state.recallSubscriptionUpdate.mockImplementation(({ data }) => Promise.resolve({ status: data.status }));
   state.recallSubscriptionAuditCreate.mockResolvedValue({});
+  state.outboundMessageCreate.mockResolvedValue({});
 });
 
 describe('RECALL_TEMPLATE_DEFINITIONS', () => {
@@ -313,6 +318,41 @@ describe('advanceSubscriptionsWithApprovedTemplates', () => {
         data: expect.objectContaining({ subscriptionId: 'sub_1', action: 'forwarding_pending', actorType: 'system' }),
       }),
     );
+  });
+
+  // 2026-09-17 — los códigos de desvío se apuntan en el libro mayor.
+  it('apunta el envío de los códigos de desvío en OutboundMessage, con el id de Meta', async () => {
+    state.recallSubscriptionFindMany.mockResolvedValue([SUB]);
+    state.whatsappTemplateCount.mockResolvedValue(RECALL_TEMPLATE_DEFINITIONS.length);
+
+    await advanceSubscriptionsWithApprovedTemplates(prisma);
+
+    expect(state.outboundMessageCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        clientId: 'client_1',
+        productCode: 'recall',
+        channel: 'whatsapp',
+        kind: 'template',
+        category: 'UTILITY',
+        templateName: 'recall_forwarding_instructions',
+        toE164: '+34600000000',
+        providerMessageId: 'wamid.1',
+        ok: true,
+        error: null,
+      }),
+    });
+  });
+
+  it('un envío rechazado también se apunta, con su error', async () => {
+    state.recallSubscriptionFindMany.mockResolvedValue([SUB]);
+    state.whatsappTemplateCount.mockResolvedValue(RECALL_TEMPLATE_DEFINITIONS.length);
+    mockState.sendTemplate.mockResolvedValue({ ok: false, error: 'Recipient phone number not in allowed list' });
+
+    await advanceSubscriptionsWithApprovedTemplates(prisma);
+
+    expect(state.outboundMessageCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ ok: false, providerMessageId: null, error: 'Recipient phone number not in allowed list' }),
+    });
   });
 
   it('does not advance when only some of the 7 required templates are approved', async () => {
