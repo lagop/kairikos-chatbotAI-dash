@@ -1,7 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { loadFacebookSdk, type FBLoginResponse } from '@/lib/meta-embedded-signup-sdk';
+import {
+  loadFacebookSdk,
+  DEFAULT_SDK_VERSION,
+  SDK_VERSIONS,
+  type FBLoginResponse,
+} from '@/lib/meta-embedded-signup-sdk';
 import { COEXISTENCE_SIGNUP_EXTRAS } from '@/lib/meta-signup-extras';
 
 // =============================================================================
@@ -57,6 +62,7 @@ export function MetaSignupDiagnosticPanel({
   recallConfigId: string | null;
 }) {
   const [overrideConfig, setOverrideConfig] = useState('');
+  const [sdkVersion, setSdkVersion] = useState<string>(DEFAULT_SDK_VERSION);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [busy, setBusy] = useState<Mode | null>(null);
   const listening = useRef(false);
@@ -99,10 +105,10 @@ export function MetaSignupDiagnosticPanel({
     setBusy(mode);
     push(
       'sistema',
-      `Abriendo ventana · modo ${mode === 'normal' ? 'normal' : 'Coexistence'} · app ${appId} · config ${config} · extras ${JSON.stringify(EXTRAS[mode])}`,
+      `Abriendo ventana · modo ${mode === 'normal' ? 'normal' : 'Coexistence'} · SDK ${sdkVersion} · app ${appId} · config ${config} · extras ${JSON.stringify(EXTRAS[mode])}`,
     );
     try {
-      await loadFacebookSdk(appId);
+      await loadFacebookSdk(appId, sdkVersion);
       if (!window.FB) {
         push('sistema', 'El SDK de Facebook no se cargó (¿bloqueador de anuncios o de terceros?).');
         setBusy(null);
@@ -159,6 +165,26 @@ export function MetaSignupDiagnosticPanel({
           <span className="font-mono">{recallConfigId ?? '—'}</span>
         </p>
       </div>
+
+      <label className="block space-y-1 text-sm">
+        <span className="font-medium">Versión del SDK de Facebook</span>
+        <select
+          className="input w-full sm:max-w-xs"
+          value={sdkVersion}
+          onChange={(e) => setSdkVersion(e.target.value)}
+          data-testid="meta-diagnostic-sdk-version"
+        >
+          {SDK_VERSIONS.map((v) => (
+            <option key={v} value={v}>
+              {v}
+              {v === DEFAULT_SDK_VERSION ? ' (la que usan los clientes)' : ''}
+            </option>
+          ))}
+        </select>
+        <span className="block text-xs text-kairikos-muted">
+          Si con una versión más nueva la ventana sí arranca, el portal tiene que pasar a usarla.
+        </span>
+      </label>
 
       <label className="block space-y-1 text-sm">
         <span className="font-medium">Probar con otra configuración (opcional)</span>
