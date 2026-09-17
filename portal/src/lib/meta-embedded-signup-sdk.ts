@@ -7,8 +7,8 @@
 // flow) so RecallMetaConnectCard.tsx (Fase 8's coexistence connect flow)
 // does not carry a second copy of the same loader and the same
 // `Window.FB` global type. Both flows open the identical popup mechanism
-// against a DIFFERENT config_id — see meta-business.ts's header for why
-// that is the one thing that actually differs between them.
+// with the same config_id; recall adds extras.featureType — see
+// meta-signup-extras.ts (corrected 2026-09-16).
 // =============================================================================
 
 const SDK_URL = 'https://connect.facebook.net/en_US/sdk.js';

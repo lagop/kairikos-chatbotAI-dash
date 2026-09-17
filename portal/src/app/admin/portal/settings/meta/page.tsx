@@ -5,6 +5,8 @@ import { getSession } from '@/lib/session';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { getMetaCredentialStatus } from '@/lib/meta-credentials';
 import { MetaCredentialsPanel } from '@/components/portal/MetaCredentialsPanel';
+import { MetaSignupDiagnosticPanel } from '@/components/admin/MetaSignupDiagnosticPanel';
+import { recallSignupConfigId } from '@/lib/meta-signup-extras';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,6 +38,11 @@ export default async function AdminMetaSettingsPage() {
         }
       />
       <MetaCredentialsPanel initialStatus={status} />
+      <MetaSignupDiagnosticPanel
+        appId={status.appId}
+        configId={status.configId}
+        recallConfigId={recallSignupConfigId(status)}
+      />
     </div>
   );
 }
