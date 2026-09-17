@@ -38,6 +38,7 @@ import { computeAutoPublishDeadline } from '@/lib/seo-draft-auto-publish';
 import { isStuck, stuckThresholdDays } from '@/lib/recall';
 import { loadRecallOwnerSettings, type RecallOwnerSettingsView } from '@/lib/recall-owner-settings';
 import { RecallOwnerSettingsCard } from '@/components/portal/RecallOwnerSettingsCard';
+import { RecallManualMetaConnectCard } from '@/components/admin/RecallManualMetaConnectCard';
 
 export const dynamic = 'force-dynamic';
 
@@ -975,6 +976,12 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
                 <RecallContractSignButton subscriptionId={recall.subscriptionId} />
               ) : null}
               <RecallOperatorPanel data={recall} />
+              {recall ? (
+                <RecallManualMetaConnectCard
+                  subscriptionId={recall.subscriptionId}
+                  connectionStatus={recall.metaConnection?.status ?? null}
+                />
+              ) : null}
               {recallOwnerSettings ? (
                 <div className="mt-4">
                   <RecallOwnerSettingsCard

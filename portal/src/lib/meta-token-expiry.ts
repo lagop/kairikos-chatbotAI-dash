@@ -38,6 +38,8 @@ export interface InspectedMetaToken {
   /** null = Meta dice explícitamente que no caduca (expires_at: 0). */
   expiresAt: Date | null;
   type: string | null;
+  /** Permisos concedidos al token (vacío si Meta no los da). */
+  scopes: string[];
 }
 
 /** La respuesta de GET /debug_token, reducida a lo que se usa. */
@@ -45,12 +47,13 @@ export function parseDebugTokenResponse(json: unknown): InspectedMetaToken | nul
   if (!json || typeof json !== 'object' || !('data' in json)) return null;
   const data = (json as { data?: unknown }).data;
   if (!data || typeof data !== 'object') return null;
-  const d = data as { is_valid?: unknown; expires_at?: unknown; type?: unknown };
+  const d = data as { is_valid?: unknown; expires_at?: unknown; type?: unknown; scopes?: unknown };
   if (typeof d.expires_at !== 'number') return null;
   return {
     isValid: d.is_valid === true,
     expiresAt: d.expires_at === 0 ? null : new Date(d.expires_at * 1000),
     type: typeof d.type === 'string' ? d.type : null,
+    scopes: Array.isArray(d.scopes) ? d.scopes.filter((s): s is string => typeof s === 'string') : [],
   };
 }
 
