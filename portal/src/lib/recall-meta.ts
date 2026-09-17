@@ -4,7 +4,7 @@ import { canBindMetaConnection, nextOnboardingStatus } from './recall';
 import { exchangeCodeForToken, exchangeForLongLivedToken, inspectAccessToken, encryptMetaToken } from './meta-business';
 import { resolveTokenExpiry, isUnusableToken } from './meta-token-expiry';
 import { subscribeWaba, getPhoneNumbersForWaba, getPhoneNumberInfo, syncSmbAppState } from './whatsapp-api';
-import { submitAllRecallTemplates, type TemplateSubmissionOutcome } from './recall-templates';
+import { submitAllRecallTemplates, sendForwardingInstructions, type TemplateSubmissionOutcome } from './recall-templates';
 import { deliverChannelEvent } from './channel-webhook';
 import { logError } from './observability';
 
@@ -274,6 +274,34 @@ export async function bindRecallMetaConnection(
   let templatesSubmitted: TemplateSubmissionOutcome[] | null = null;
   if (willAdvance) {
     templatesSubmitted = await submitAllRecallTemplates(accessToken, input.wabaId);
+  }
+
+  // 2026-09-17 — un alta que ya esperaba el desvío y reconecta su WhatsApp
+  // (tras caducar el acceso, o a mano) no había recibido los códigos: el
+  // envío se saltó mientras la conexión estaba caída. Ahora que hay con qué
+  // enviarlos, se envían. Nunca lanza.
+  if (updated.status === 'forwarding_pending') {
+    const bound = await prisma.recallSubscription
+      .findUnique({
+        where: { id: subscription.id },
+        select: {
+          id: true,
+          ownerWhatsapp: true,
+          virtualNumber: { select: { e164: true } },
+          metaConnection: {
+            select: {
+              id: true,
+              externalId: true,
+              status: true,
+              accessTokenCiphertext: true,
+              accessTokenIv: true,
+              accessTokenTag: true,
+            },
+          },
+        },
+      })
+      .catch(() => null);
+    if (bound?.ownerWhatsapp) await sendForwardingInstructions(bound);
   }
 
   await prisma.recallSubscriptionAudit

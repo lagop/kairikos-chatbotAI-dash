@@ -230,10 +230,13 @@ describe('setOwnerWhatsapp', () => {
     expect(mockState.sendForwardingInstructions).not.toHaveBeenCalled();
   });
 
-  it('guardar el mismo número otra vez no reenvía los códigos', async () => {
+  // 2026-09-17 — el cliente de producción guardó su número con el WhatsApp
+  // caído y, al volver a guardarlo ya arreglado, no le llegaron los códigos.
+  it('guardar el mismo número otra vez con el alta esperando el desvío SÍ reenvía los códigos', async () => {
     mockState.subFindUnique.mockResolvedValue({ ...SUB, ownerWhatsapp: '+34600112233' });
-    await setOwnerWhatsapp(prisma, { subscriptionId: SUB_ID, raw: '+34 600 11 22 33', actor: CLIENT });
-    expect(mockState.sendForwardingInstructions).not.toHaveBeenCalled();
+    const result = await setOwnerWhatsapp(prisma, { subscriptionId: SUB_ID, raw: '+34 600 11 22 33', actor: CLIENT });
+    expect(result).toMatchObject({ ok: true, forwardingInstructions: 'sent' });
+    expect(mockState.sendForwardingInstructions).toHaveBeenCalledTimes(1);
   });
 
   it('un cliente no puede tocar la suscripción de otro', async () => {

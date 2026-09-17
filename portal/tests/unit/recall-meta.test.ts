@@ -23,6 +23,7 @@ const mockState = vi.hoisted(() => ({
   getPhoneNumberInfo: vi.fn(),
   syncSmbAppState: vi.fn(),
   submitAllRecallTemplates: vi.fn(),
+  sendForwardingInstructions: vi.fn(),
   deliverChannelEvent: vi.fn(),
   logError: vi.fn(),
 }));
@@ -43,6 +44,7 @@ vi.mock('@/lib/whatsapp-api', () => ({
 
 vi.mock('@/lib/recall-templates', () => ({
   submitAllRecallTemplates: (...a: unknown[]) => mockState.submitAllRecallTemplates(...a),
+  sendForwardingInstructions: (...a: unknown[]) => mockState.sendForwardingInstructions(...a),
 }));
 
 vi.mock('@/lib/channel-webhook', () => ({
@@ -355,6 +357,34 @@ describe('connectRecallWhatsappManually', () => {
     mockState.inspectAccessToken.mockResolvedValue(token);
     await expect(connectRecallWhatsappManually(prisma, PARAMS)).resolves.toMatchObject({ ok: false, error });
     expect(state.metaChannelConnectionUpsert).not.toHaveBeenCalled();
+  });
+
+  // 2026-09-17 — el alta esperaba el desvío y los códigos nunca salieron
+  // porque la conexión estaba caída. Al conectar, salen.
+  it('con el alta esperando el desvío y el WhatsApp del dueño guardado, envía los códigos al conectar', async () => {
+    const bound = {
+      id: 'sub_1',
+      ownerWhatsapp: '+34600112233',
+      virtualNumber: { e164: '+14752449459' },
+      metaConnection: { id: 'conn_1', externalId: 'phone_1', status: 'active' },
+    };
+    state.recallSubscriptionFindUnique
+      .mockResolvedValueOnce({ id: 'sub_1', clientId: 'client_1', status: 'forwarding_pending', client: { tenantId: null } })
+      .mockResolvedValueOnce(bound);
+    state.recallSubscriptionUpdate.mockResolvedValue({ status: 'forwarding_pending' });
+    mockState.sendForwardingInstructions.mockResolvedValue('sent');
+
+    await connectRecallWhatsappManually(prisma, PARAMS);
+    expect(mockState.sendForwardingInstructions).toHaveBeenCalledWith(bound);
+  });
+
+  it('sin WhatsApp del dueño no intenta enviar los códigos', async () => {
+    state.recallSubscriptionFindUnique
+      .mockResolvedValueOnce({ id: 'sub_1', clientId: 'client_1', status: 'forwarding_pending', client: { tenantId: null } })
+      .mockResolvedValueOnce({ id: 'sub_1', ownerWhatsapp: null, virtualNumber: null, metaConnection: null });
+    state.recallSubscriptionUpdate.mockResolvedValue({ status: 'forwarding_pending' });
+    await connectRecallWhatsappManually(prisma, PARAMS);
+    expect(mockState.sendForwardingInstructions).not.toHaveBeenCalled();
   });
 
   it('dice qué permisos faltan', async () => {
