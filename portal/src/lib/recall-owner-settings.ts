@@ -163,9 +163,15 @@ export async function setOwnerWhatsapp(
 
   // Los códigos de desvío solo se mandaban al pasar a forwarding_pending.
   // Si el alta ya está ahí, este es el momento de mandarlos: es el paso que
-  // la tenía parada. Con un número nuevo se reenvían, que es lo correcto.
+  // la tenía parada.
+  //
+  // 2026-09-17 — también con el MISMO número. Antes solo se reenviaban si el
+  // número cambiaba, y el único cliente de producción se quedó sin ellos: lo
+  // guardó cuando su WhatsApp estaba caído (el envío se saltó) y, al volver a
+  // guardarlo con la conexión ya arreglada, el número era igual. Guardar con
+  // el alta esperando el desvío es pedirlos; el coste es un mensaje.
   let forwardingInstructions: ForwardingInstructionsOutcome | null = null;
-  if (sub.status === 'forwarding_pending' && valid.e164 !== sub.ownerWhatsapp) {
+  if (sub.status === 'forwarding_pending') {
     forwardingInstructions = await sendForwardingInstructions({
       id: sub.id,
       ownerWhatsapp: valid.e164,
