@@ -5,6 +5,8 @@ import {
   loadFacebookSdk,
   DEFAULT_SDK_VERSION,
   SDK_VERSIONS,
+  SDK_LOAD_BLOCKED,
+  SDK_LOAD_TIMEOUT,
   type FBLoginResponse,
 } from '@/lib/meta-embedded-signup-sdk';
 import { COEXISTENCE_SIGNUP_EXTRAS } from '@/lib/meta-signup-extras';
@@ -109,13 +111,59 @@ export function MetaSignupDiagnosticPanel({
     );
     try {
       await loadFacebookSdk(appId, sdkVersion);
-      if (!window.FB) {
-        push('sistema', 'El SDK de Facebook no se cargó (¿bloqueador de anuncios o de terceros?).');
-        setBusy(null);
-        return;
-      }
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : '';
+      push(
+        'sistema',
+        reason === SDK_LOAD_BLOCKED
+          ? 'El navegador no dejó cargar el script de Facebook (connect.facebook.net). Suele ser un bloqueador de anuncios o una extensión de privacidad: desactívala para esta página.'
+          : reason === SDK_LOAD_TIMEOUT
+            ? 'El script de Facebook no terminó de cargar en 15 s. Revisa la conexión o las extensiones del navegador.'
+            : `Error al cargar el SDK: ${reason || 'desconocido'}`,
+      );
+      setBusy(null);
+      return;
+    }
+    if (!window.FB) {
+      push('sistema', 'El SDK de Facebook no está disponible tras cargarlo.');
+      setBusy(null);
+      return;
+    }
+    push('sistema', `SDK de Facebook listo (${sdkVersion}). Pidiendo a Meta que abra la ventana…`);
+
+    // Solo en esta página de prueba: se envuelve window.open durante la
+    // llamada para saber si el SDK intentó abrir la ventana y si el
+    // navegador la bloqueó (window.open devuelve null).
+    const originalOpen = window.open;
+    let popupAttempted = false;
+    window.open = function patchedOpen(...args: Parameters<typeof window.open>) {
+      popupAttempted = true;
+      const win = originalOpen.apply(window, args);
+      push(
+        'sistema',
+        win
+          ? 'El navegador abrió la ventana de Meta. Si no la ves, búscala detrás de esta o en la barra de tareas.'
+          : 'El navegador BLOQUEÓ la ventana emergente. Permite las ventanas emergentes para este sitio (candado de la barra de direcciones) y vuelve a probar.',
+      );
+      return win;
+    } as typeof window.open;
+
+    let answered = false;
+    const silence = setTimeout(() => {
+      if (answered) return;
+      push(
+        'sistema',
+        popupAttempted
+          ? 'Sin respuesta de Meta tras 20 s: la ventana sigue abierta (normal si espera a que inicies sesión). Al cerrarla aparecerá el callback.'
+          : 'Sin respuesta tras 20 s y el SDK no intentó abrir ninguna ventana. Mira la consola del navegador (F12): si pone «exceeded the rate limit», Meta ha limitado los intentos por hacer muchas pruebas seguidas; espera al menos 30–60 minutos antes de volver a probar.',
+      );
+    }, 20_000);
+
+    try {
       window.FB.login(
         (response) => {
+          answered = true;
+          clearTimeout(silence);
           push('callback', describeCallback(response));
           setBusy(null);
         },
@@ -127,8 +175,14 @@ export function MetaSignupDiagnosticPanel({
         },
       );
     } catch (err) {
-      push('sistema', `Error al cargar el SDK: ${err instanceof Error ? err.message : 'desconocido'}`);
+      clearTimeout(silence);
+      push('sistema', `FB.login lanzó un error: ${err instanceof Error ? err.message : String(err)}`);
       setBusy(null);
+    } finally {
+      window.open = originalOpen;
+    }
+    if (!popupAttempted) {
+      push('sistema', 'El SDK no intentó abrir una ventana durante la llamada.');
     }
   }
 

@@ -40,3 +40,41 @@ describe('loadFacebookSdk', () => {
     expect(src).toContain('loadFacebookSdk(appId, sdkVersion)');
   });
 });
+
+describe('loadFacebookSdk cuando el script no carga', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.useFakeTimers();
+  });
+
+  function fakeDom() {
+    const appended: Array<{ id: string; onerror?: () => void; remove: () => void }> = [];
+    const existing = { removed: false, remove() { this.removed = true; } };
+    (globalThis as unknown as { window: unknown }).window = {};
+    (globalThis as unknown as { document: unknown }).document = {
+      getElementById: (id: string) => (id === 'facebook-jssdk' ? existing : null),
+      createElement: () => ({ remove() {} }),
+      body: { appendChild: (el: (typeof appended)[number]) => appended.push(el) },
+    };
+    return { appended, existing };
+  }
+
+  it('falla con SDK_LOAD_BLOCKED si el navegador bloquea el script, y quita el intento anterior', async () => {
+    const { appended, existing } = fakeDom();
+    const { loadFacebookSdk, SDK_LOAD_BLOCKED, describeSdkLoadError } = await import('@/lib/meta-embedded-signup-sdk');
+    const promise = loadFacebookSdk('app_1');
+    expect(existing.removed).toBe(true);
+    appended[0].onerror?.();
+    await expect(promise).rejects.toThrow(SDK_LOAD_BLOCKED);
+    await promise.catch((err) => expect(describeSdkLoadError(err)).toMatch(/bloqueador de anuncios/));
+  });
+
+  it('falla con SDK_LOAD_TIMEOUT si no carga en 15 s, en vez de quedarse esperando para siempre', async () => {
+    fakeDom();
+    const { loadFacebookSdk, SDK_LOAD_TIMEOUT } = await import('@/lib/meta-embedded-signup-sdk');
+    const promise = loadFacebookSdk('app_1');
+    vi.advanceTimersByTime(15_000);
+    await expect(promise).rejects.toThrow(SDK_LOAD_TIMEOUT);
+    vi.useRealTimers();
+  });
+});
