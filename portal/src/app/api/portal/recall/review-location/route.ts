@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
+import { resolveContractedInstance } from '@/lib/client-product-access';
 import { logError } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
@@ -21,7 +22,12 @@ export const runtime = 'nodejs';
 // puntuando la de Madrid.
 // =============================================================================
 
-const BodySchema = z.object({ connectionId: z.string().uuid() });
+const BodySchema = z.object({
+  connectionId: z.string().uuid(),
+  // Fase 3 multi-instancia — a qué línea se le asigna la ficha. Opcional:
+  // sin él, solo vale si el cliente tiene una sola línea.
+  clientProductId: z.string().uuid().optional(),
+});
 
 export async function PATCH(req: NextRequest) {
   const session = await getSession();
@@ -54,8 +60,25 @@ export async function PATCH(req: NextRequest) {
 
     // updateMany y no update: el filtro por clientId es lo que impide
     // reapuntar la suscripción de otro.
+    //
+    // Fase 3 multi-instancia — y por eso mismo hay que acotar a UNA línea.
+    // Sin el filtro por clientProductId, un cliente con dos líneas apuntaría
+    // LAS DOS a la misma ficha de Google de una sola llamada, y la segunda
+    // empezaría a pedir reseñas del negocio equivocado.
+    const instance = await resolveContractedInstance(prisma, {
+      clientId: resolved.clientId,
+      productCode: 'recall',
+      clientProductId: body.data.clientProductId ?? null,
+    });
+    if (!instance) {
+      return NextResponse.json({ error: 'no_subscription' }, { status: 404 });
+    }
     const updated = await prisma.recallSubscription.updateMany({
-      where: { clientId: resolved.clientId, status: 'active' },
+      where: {
+        clientId: resolved.clientId,
+        clientProductId: instance.clientProductId,
+        status: 'active',
+      },
       data: { googleConnectionId: connection.id },
     });
     if (updated.count === 0) {

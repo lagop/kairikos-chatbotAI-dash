@@ -37,7 +37,16 @@ const state = {
 };
 
 const prisma = {
-  recallSubscription: { findFirst: (...a: unknown[]) => state.subFindFirst(...a) },
+  recallSubscription: {
+    findFirst: (...a: unknown[]) => state.subFindFirst(...a),
+      // Fase 3 multi-instancia — se pide con findMany + take:2 para poder
+      // DETECTAR que hay dos líneas en vez de elegir una. Se ata al mismo
+      // mock para que cada caso conserve su intención.
+    findMany: async (...a: unknown[]) => {
+      const row = await state.subFindFirst(...a);
+      return row ? [row] : [];
+    },
+  },
   recallUsageMonth: {
     findMany: (...a: unknown[]) => state.usageFindMany(...a),
     findFirst: (...a: unknown[]) => state.usageFindFirst(...a),

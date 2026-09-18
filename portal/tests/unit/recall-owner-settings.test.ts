@@ -24,6 +24,13 @@ const prismaMock = vi.hoisted(() => ({
   recallSubscription: {
     findUnique: (...a: unknown[]) => mockState.subFindUnique(...a),
     findFirst: (...a: unknown[]) => mockState.subFindFirst(...a),
+      // Fase 3 multi-instancia — se pide con findMany + take:2 para poder
+      // DETECTAR que hay dos líneas en vez de elegir una. Se ata al mismo
+      // mock para que cada caso conserve su intención.
+    findMany: async (...a: unknown[]) => {
+      const row = await mockState.subFindFirst(...a);
+      return row ? [row] : [];
+    },
     update: (...a: unknown[]) => mockState.subUpdate(...a),
   },
   recallSubscriptionAudit: { create: (...a: unknown[]) => mockState.auditCreate(...a) },
@@ -85,17 +92,32 @@ const SUB = {
   },
 };
 
-function jsonReq(body: unknown, headers: Record<string, string> = {}) {
+// Fase 3 multi-instancia — las rutas leen ?clientProductId para saber de que
+// linea hablan, asi que el fixture necesita un nextUrl de verdad: un
+// NextRequest real siempre lo tiene.
+function reqUrl(clientProductId?: string) {
+  const url = new URL('https://portal.kairikos.test/api/portal/recall/owner');
+  if (clientProductId) url.searchParams.set('clientProductId', clientProductId);
+  return url;
+}
+
+function jsonReq(body: unknown, headers: Record<string, string> = {}, clientProductId?: string) {
+  const url = reqUrl(clientProductId);
   return {
     json: async () => body,
     headers: new Headers(headers),
+    url: url.toString(),
+    nextUrl: url,
   } as unknown as NextRequest;
 }
 
-function bytesReq(bytes: Uint8Array, headers: Record<string, string> = {}) {
+function bytesReq(bytes: Uint8Array, headers: Record<string, string> = {}, clientProductId?: string) {
+  const url = reqUrl(clientProductId);
   return {
     arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
     headers: new Headers(headers),
+    url: url.toString(),
+    nextUrl: url,
   } as unknown as NextRequest;
 }
 
@@ -326,7 +348,7 @@ describe('rutas del cliente', () => {
   it('401 sin sesión de cliente', async () => {
     mockState.getSession.mockResolvedValue({ hasClientAccess: false });
     expect((await clientOwnerRoute.PATCH(jsonReq({ ownerWhatsapp: '600112233' }))).status).toBe(401);
-    expect((await clientGreetingRoute.GET()).status).toBe(401);
+    expect((await clientGreetingRoute.GET(jsonReq(null))).status).toBe(401);
   });
 
   it('la suscripción sale de la sesión, nunca del cuerpo', async () => {
@@ -369,12 +391,12 @@ describe('rutas del cliente', () => {
 
   it('GET devuelve el audio sin caché; 404 si no hay', async () => {
     mockState.subFindUnique.mockResolvedValueOnce({ ...SUB, greetingAudio: Buffer.from(wavOfSeconds(3)), greetingMimeType: 'audio/wav' });
-    const res = await clientGreetingRoute.GET();
+    const res = await clientGreetingRoute.GET(jsonReq(null));
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('audio/wav');
     expect(res.headers.get('cache-control')).toBe('private, no-store');
 
-    expect((await clientGreetingRoute.GET()).status).toBe(404);
+    expect((await clientGreetingRoute.GET(jsonReq(null))).status).toBe(404);
   });
 });
 

@@ -582,6 +582,7 @@ export async function notifyCaller(
       // histórico, y sin su fila ese hueco no tiene respuesta.
       await recordSend(prisma, {
         clientId: call.clientId,
+        subscriptionId: call.subscriptionId,
         tenantId: call.tenantId,
         productCode: 'recall',
         channel: 'whatsapp',
@@ -656,6 +657,7 @@ export async function notifyCaller(
   // rellenará igualmente la conciliación contra el proveedor.
   await recordSend(prisma, {
     clientId: call.clientId,
+    subscriptionId: call.subscriptionId,
     tenantId: call.tenantId,
     productCode: 'recall',
     channel: 'sms',
@@ -782,6 +784,7 @@ export async function notifyOwner(
   // informe diría que este producto cuesta la mitad de lo que cuesta.
   await recordSend(prisma, {
     clientId: call.clientId,
+    subscriptionId: call.subscriptionId,
     tenantId: call.tenantId,
     productCode: 'recall',
     channel: 'whatsapp',
@@ -1051,6 +1054,7 @@ async function sendCallbackReminder(
 
   await recordSend(prisma, {
     clientId: call.clientId,
+    subscriptionId: call.subscriptionId,
     tenantId: call.tenantId,
     productCode: 'recall',
     channel: 'whatsapp',

@@ -386,6 +386,12 @@ export const IMPORT_DECLARATION_V1 =
 export interface CommitImportInput {
   clientId: string;
   tenantId?: string | null;
+  /** Fase 3 multi-instancia — la línea a la que pertenece el histórico que se
+   *  importa. Su único llamante es POST
+   *  /api/admin/portal/recall/[subscriptionId]/import, así que siempre la ha
+   *  conocido: hasta ahora la tiraba, y un Job importado sin ella no se puede
+   *  atribuir después (el contacto es de la persona, no de la línea). */
+  subscriptionId: string;
   csvText: string;
   filename?: string | null;
   mapping?: Partial<Record<ImportField, string>>;
@@ -538,6 +544,7 @@ export async function commitImport(
           data: {
             clientId: input.clientId,
             tenantId: input.tenantId ?? null,
+            subscriptionId: input.subscriptionId,
             contactId,
             completedAt: row.lastServiceAt,
             serviceType: row.serviceType,

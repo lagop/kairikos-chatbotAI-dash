@@ -51,12 +51,12 @@ const BY_CLIENT =
  * es la deuda conocida, congelada. Cada fase vacía su parte.
  */
 const PENDING = new Set([
-  // Fase 3 — Reseñas y Recall, por ficha de Google / línea telefónica.
+  // Fase 3 — Reseñas, por ficha de Google. (Recall salió de aquí al
+  // convertirse en 20260929090000_recall_multi_line.)
   'google-business/campaigns/route.ts',
   'google-business/reviews/[reviewId]/draft/route.ts',
   'google-business/reviews/[reviewId]/publish/route.ts',
   'google-business/sync/route.ts',
-  'recall/meta-connect/route.ts',
   // Fase 4 — Prospección.
   'prospecting/campaign/route.ts',
   'prospecting/campaign/consent/route.ts',
