@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { parseAuthorizeCallback, WORDPRESS_CONNECT_STATE_COOKIE } from '@/lib/wordpress-connect';
+import { resolveContractedInstance } from '@/lib/client-product-access';
+import { encodeOAuthState, decodeOAuthState } from '@/lib/seo-oauth-state';
 import { encryptWordPressAppPassword } from '@/lib/seo';
 import { logError } from '@/lib/observability';
 
@@ -32,7 +34,10 @@ export async function GET(req: NextRequest) {
     return res;
   };
 
-  if (!state || !cookieState || state !== cookieState) {
+  // La cookie lleva ahora el nonce y la contratación; a WordPress solo fue
+  // el nonce, así que la comprobación es la misma.
+  const decodedState = decodeOAuthState(cookieState);
+  if (!state || !decodedState || state !== decodedState.nonce) {
     return redirectTo('/portal/seo?wp_connect_error=csrf');
   }
   if (!isDatabaseConfigured) {
@@ -52,8 +57,18 @@ export async function GET(req: NextRequest) {
     return redirectTo('/portal/seo?wp_connect_error=wordpress_incomplete_response');
   }
 
-  const profile = await prisma.seoProfile.findFirst({
-    where: { clientId: resolved.clientId },
+  // La cookie es del navegador; la autorización es del servidor.
+  const instance = await resolveContractedInstance(prisma, {
+    clientId: resolved.clientId,
+    productCode: 'seo',
+    clientProductId: decodedState.clientProductId,
+  });
+  if (!instance) {
+    return redirectTo('/portal/seo?wp_connect_error=forbidden');
+  }
+
+  const profile = await prisma.seoProfile.findUnique({
+    where: { clientProductId: instance.clientProductId },
     select: { id: true, tenantId: true, wordpressAppPasswordCiphertext: true, technicalSetupCompletedAt: true },
   });
   if (!profile) {

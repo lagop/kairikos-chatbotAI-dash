@@ -6,6 +6,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { NextRequest } from 'next/server';
 
+const TEST_CLIENT_PRODUCT_ID = '11111111-1111-4111-8111-111111111111';
+
 const mockState = vi.hoisted(() => ({
   resolveClientFromSession: vi.fn(),
   getSession: vi.fn(),
@@ -13,6 +15,20 @@ const mockState = vi.hoisted(() => ({
   connectionFindUnique: vi.fn(),
   getValidAccessToken: vi.fn(),
   fetchAccessibleProperties: vi.fn(),
+}));
+
+vi.mock('@/lib/client-product-access', () => ({
+  // Fase 2 multi-instancia — la ruta resuelve la contratación antes de tocar
+  // la conexión de GA4, porque la conexión es de UNA web.
+  resolveContractedInstance: async () => ({
+    clientProductId: TEST_CLIENT_PRODUCT_ID,
+    clientId: 'client_1',
+    clientSiteId: null,
+    tenantId: 'tenant_1',
+    code: 'seo',
+    tier: 'standard',
+    status: 'active',
+  }),
 }));
 
 vi.mock('@/lib/portal-session', () => ({
@@ -48,8 +64,12 @@ const PENDING_CONNECTION = {
   refreshTokenTag: Buffer.from('tag'),
 };
 
-function makeRequest() {
-  return {} as unknown as NextRequest;
+function makeRequest(clientProductId?: string) {
+  // Fase 2 multi-instancia: la ruta lee ?clientProductId, asi que el fixture
+  // necesita un nextUrl de verdad — un NextRequest real siempre lo tiene.
+  const url = new URL('https://portal.kairikos.test/api/portal/seo/analytics/properties');
+  if (clientProductId) url.searchParams.set('clientProductId', clientProductId);
+  return { url: url.toString(), nextUrl: url } as unknown as NextRequest;
 }
 
 beforeEach(() => {

@@ -59,6 +59,11 @@ export function isGenerationDue(lastContentRequestedAt: Date | null, minInterval
 interface ProfileForGeneration {
   id: string;
   clientId: string;
+  /** Fase 2 multi-instancia — de QUÉ contratación es este perfil. Las señales
+   *  de Search Console se buscan por aquí, no por cliente: un cliente con dos
+   *  webs tiene dos conexiones y mezclarlas escribiría el artículo de una web
+   *  con los datos de la otra. */
+  clientProductId: string;
   tenantId: string | null;
   /** Resuelto desde ChatbotClient: el artículo lo firma el negocio, así
    *  que el redactor necesita saber cómo se llama. */
@@ -84,7 +89,7 @@ const MAX_OPPORTUNITIES_IN_SIGNAL = 15;
 
 async function buildSourceSignals(prisma: PrismaClient, profile: ProfileForGeneration): Promise<Record<string, unknown>> {
   const connection = await prisma.googleSeoConnection.findUnique({
-    where: { clientId: profile.clientId },
+    where: { clientProductId: profile.clientProductId },
     select: { id: true, status: true },
   });
 
@@ -173,6 +178,7 @@ export async function sweepDueProfiles(prisma: PrismaClient, now: Date = new Dat
     select: {
       id: true,
       clientId: true,
+      clientProductId: true,
       tenantId: true,
       businessDescription: true,
       targetAudience: true,

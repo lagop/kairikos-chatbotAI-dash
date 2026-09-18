@@ -13,6 +13,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { NextRequest } from 'next/server';
 
+const TEST_CLIENT_PRODUCT_ID = '11111111-1111-4111-8111-111111111111';
+
 const mockState = vi.hoisted(() => ({
   resolveClientFromSession: vi.fn(),
   getSession: vi.fn(),
@@ -39,6 +41,20 @@ vi.mock('@/lib/session', () => ({
 
 vi.mock('@/lib/client-product-access', () => ({
   isProductContracted: (...args: unknown[]) => mockState.isProductContracted(...args),
+  // Fase 2 multi-instancia — la ruta resuelve ahora la contratación, no un
+  // booleano. Se ata al mismo mock para no duplicar el estado de cada test.
+  resolveContractedInstance: async () =>
+    (await mockState.isProductContracted())
+      ? {
+          clientProductId: TEST_CLIENT_PRODUCT_ID,
+          clientId: 'client_1',
+          clientSiteId: null,
+          tenantId: 'tenant_1',
+          code: 'seo',
+          tier: 'standard',
+          status: 'active',
+        }
+      : null,
 }));
 
 vi.mock('@/lib/prisma', () => ({
@@ -47,7 +63,12 @@ vi.mock('@/lib/prisma', () => ({
   },
   prisma: {
     chatbotClient: { findUnique: (...args: unknown[]) => mockState.findUniqueClient(...args) },
-    seoProfile: { findFirst: (...args: unknown[]) => mockState.findFirstProfile(...args) },
+    seoProfile: {
+      findFirst: (...args: unknown[]) => mockState.findFirstProfile(...args),
+      // Fase 2 multi-instancia — el callback busca el perfil por
+      // clientProductId, no por cliente.
+      findUnique: (...args: unknown[]) => mockState.findFirstProfile(...args),
+    },
     googleSeoConnection: { upsert: (...args: unknown[]) => mockState.connectionUpsert(...args) },
   },
 }));
@@ -85,8 +106,10 @@ beforeEach(() => {
 });
 
 describe('GET /api/portal/seo/oauth/start', () => {
-  function makeRequest() {
-    return { url: 'https://portal.kairikos.test/api/portal/seo/oauth/start' } as unknown as NextRequest;
+  function makeRequest(clientProductId?: string) {
+    const url = new URL('https://portal.kairikos.test/api/portal/seo/oauth/start');
+    if (clientProductId) url.searchParams.set('clientProductId', clientProductId);
+    return { url: url.toString(), nextUrl: url } as unknown as NextRequest;
   }
 
   it('redirects to login when there is no session', async () => {
@@ -118,12 +141,23 @@ describe('GET /api/portal/seo/oauth/start', () => {
     expect(res.headers.get('location')).toContain('connect_error=not_configured');
   });
 
-  it('sets a state cookie and redirects to the Google authorization URL carrying the same state', async () => {
+  it('manda a Google solo el nonce, y guarda la contratación en la cookie', async () => {
+    // Fase 2 multi-instancia: la cookie httpOnly lleva "<nonce>:<contratación>"
+    // y el parámetro state que ve Google es SOLO el nonce. Así el id no acaba
+    // en los registros de Google ni en el historial del navegador, y la
+    // comprobación CSRF sigue siendo la misma de antes.
     const { GET } = await import('@/app/api/portal/seo/oauth/start/route');
     const res = await GET(makeRequest());
     const cookie = res.cookies.get('seo_gsc_oauth_state');
     expect(cookie?.value).toBeTruthy();
-    expect(res.headers.get('location')).toContain(`state=${cookie?.value}`);
+
+    const [nonce, clientProductId] = (cookie?.value ?? '').split(':');
+    expect(nonce).toBeTruthy();
+    expect(clientProductId).toBe(TEST_CLIENT_PRODUCT_ID);
+
+    const location = res.headers.get('location') ?? '';
+    expect(location).toContain(`state=${nonce}`);
+    expect(location).not.toContain(TEST_CLIENT_PRODUCT_ID);
   });
 });
 
@@ -209,9 +243,12 @@ describe('GET /api/portal/seo/oauth/callback', () => {
     expect(mockState.encryptRefreshToken).toHaveBeenCalledWith('rt_plain');
     expect(mockState.connectionUpsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { clientId: 'client_1' },
+        // Fase 2 multi-instancia — la conexion se guarda contra la
+        // contratacion, que es la que identifica la web.
+        where: { clientProductId: TEST_CLIENT_PRODUCT_ID },
         create: expect.objectContaining({
           clientId: 'client_1',
+          clientProductId: TEST_CLIENT_PRODUCT_ID,
           tenantId: 'tenant_1',
           searchConsoleSiteUrl: 'https://negocio.example/',
           refreshTokenCiphertext: Buffer.from('ct'),

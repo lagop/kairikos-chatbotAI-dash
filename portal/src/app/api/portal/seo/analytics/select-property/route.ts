@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
+import { resolveContractedInstance } from '@/lib/client-product-access';
 import { getSession } from '@/lib/session';
 import { fetchAccessibleProperties, getValidAccessToken } from '@/lib/google-analytics';
 
@@ -20,7 +21,12 @@ export const runtime = 'nodejs';
 // property).
 // =============================================================================
 
-const BodySchema = z.object({ propertyId: z.string().trim().min(1).max(100) });
+const BodySchema = z.object({
+  propertyId: z.string().trim().min(1).max(100),
+  // Fase 2 multi-instancia — opcional: sin él se resuelve la única
+  // contratación de 'seo' que haya, que es el comportamiento de siempre.
+  clientProductId: z.string().uuid().optional(),
+});
 
 export async function POST(req: NextRequest) {
   const session = await getSession();
@@ -37,8 +43,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'invalid_body', details: body.error.flatten() }, { status: 400 });
   }
 
+  // Fase 2 multi-instancia — la conexión de GA4 es de UNA web.
+  const instance = await resolveContractedInstance(prisma, {
+    clientId: resolved.clientId,
+    productCode: 'seo',
+    clientProductId: body.data.clientProductId ?? null,
+  });
+  if (!instance) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  }
+
   const connection = await prisma.googleAnalyticsConnection.findUnique({
-    where: { clientId: resolved.clientId },
+    where: { clientProductId: instance.clientProductId },
     select: { id: true, status: true, refreshTokenCiphertext: true, refreshTokenIv: true, refreshTokenTag: true },
   });
   if (!connection || connection.status !== 'pending_property_selection') {

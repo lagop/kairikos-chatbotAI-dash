@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
+import { resolveContractedInstance } from '@/lib/client-product-access';
+import { decodeOAuthState } from '@/lib/seo-oauth-state';
 import {
   exchangeCodeForTokens,
   fetchVerifiedSites,
@@ -38,7 +40,11 @@ export async function GET(req: NextRequest) {
     return res;
   };
 
-  if (!code || !state || !cookieState || state !== cookieState) {
+  // Fase 2 multi-instancia — la cookie lleva ahora el nonce Y la
+  // contratación. A Google solo viajó el nonce, así que la comprobación CSRF
+  // es la misma de antes: el state devuelto tiene que ser ese nonce.
+  const decoded = decodeOAuthState(cookieState);
+  if (!code || !state || !decoded || state !== decoded.nonce) {
     return redirectTo('/portal/seo?connect_error=csrf');
   }
   if (!isDatabaseConfigured) {
@@ -50,12 +56,24 @@ export async function GET(req: NextRequest) {
     return redirectTo('/portal/login?next=/portal/seo');
   }
 
-  const profile = await prisma.seoProfile.findFirst({
-    where: { clientId: resolved.clientId },
+  // La cookie es del navegador; la autorización es del servidor. El id que
+  // viene de ella se vuelve a resolver contra la sesión: si no es de este
+  // cliente, o no es una contratación de 'seo' activa, no resuelve.
+  const instance = await resolveContractedInstance(prisma, {
+    clientId: resolved.clientId,
+    productCode: 'seo',
+    clientProductId: decoded.clientProductId,
+  });
+  if (!instance) {
+    return redirectTo('/portal/seo?connect_error=forbidden');
+  }
+
+  const profile = await prisma.seoProfile.findUnique({
+    where: { clientProductId: instance.clientProductId },
     select: { siteUrl: true },
   });
   if (!profile?.siteUrl) {
-    return redirectTo('/portal/seo?connect_error=no_site_url');
+    return redirectTo(`/portal/seo/${instance.clientProductId}?connect_error=no_site_url`);
   }
 
   const tokens = await exchangeCodeForTokens(code);
@@ -79,9 +97,10 @@ export async function GET(req: NextRequest) {
 
   const encrypted = encryptRefreshToken(tokens.refreshToken);
   await prisma.googleSeoConnection.upsert({
-    where: { clientId: resolved.clientId },
+    where: { clientProductId: instance.clientProductId },
     create: {
       clientId: resolved.clientId,
+      clientProductId: instance.clientProductId,
       tenantId: client.tenantId,
       searchConsoleSiteUrl: matchedSite,
       refreshTokenCiphertext: encrypted.ciphertext,
@@ -101,5 +120,5 @@ export async function GET(req: NextRequest) {
     },
   });
 
-  return redirectTo('/portal/seo?connected=1');
+  return redirectTo(`/portal/seo/${instance.clientProductId}?connected=1`);
 }

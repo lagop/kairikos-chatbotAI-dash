@@ -38,6 +38,11 @@ const mockTx = {
 
 vi.mock('@/lib/client-product-access', () => ({
   isProductContracted: (...args: unknown[]) => mockState.isProductContracted(...args),
+  // Multi-instancia — el checkout solo aplica already_contracted a los
+  // productos que NO son multi-instancia. Se usa la lista de verdad, no una
+  // copia: si cambia, estos tests tienen que enterarse.
+  MULTI_INSTANCE_PRODUCT_CODES: ['web', 'seo'],
+  isMultiInstanceProduct: (code: string) => ['web', 'seo'].includes(code),
 }));
 
 vi.mock('@/lib/prisma', () => ({
@@ -105,13 +110,27 @@ beforeEach(() => {
 });
 
 describe('createProductCheckoutSession — guards', () => {
-  it('rejects with already_contracted when the client already has the product active', async () => {
+  it('rejects with already_contracted when the client already has a SINGLE-instance product active', async () => {
+    // El fixture recurrente pasó a ser 'seo', que desde la fase 2 es
+    // multi-instancia: para éste ya NO aplica already_contracted. Aquí se
+    // usa uno de instancia única, que es lo que este caso quería probar.
+    mockState.findUniqueProduct.mockResolvedValueOnce({ ...RECURRING_PRODUCT, code: 'reviews' });
     mockState.isProductContracted.mockResolvedValueOnce(true);
     const { createProductCheckoutSession } = await import('@/lib/stripe-billing');
     const result = await createProductCheckoutSession({ clientId: 'client_1', productId: RECURRING_PRODUCT.id, actorId: ACTOR_ID });
     expect(result).toEqual({ ok: false, error: 'already_contracted' });
     expect(mockState.clientProductCreate).not.toHaveBeenCalled();
     expect(mockState.checkoutSessionsCreate).not.toHaveBeenCalled();
+  });
+
+  it('deja contratar OTRA VEZ un producto multi-instancia — una web más', async () => {
+    // Fase 2 multi-instancia: 'seo' se vende por web, así que tener uno activo
+    // no impide comprar el siguiente. Es el caso que abre la venta.
+    mockState.isProductContracted.mockResolvedValue(true);
+    const { createProductCheckoutSession } = await import('@/lib/stripe-billing');
+    const result = await createProductCheckoutSession({ clientId: 'client_1', productId: RECURRING_PRODUCT.id, actorId: ACTOR_ID });
+    expect(result).toMatchObject({ ok: true });
+    expect(mockState.clientProductCreate).toHaveBeenCalled();
   });
 
   it('rejects with requires_chatbot for leads when the client does not have chatbot active', async () => {

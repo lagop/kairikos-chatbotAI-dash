@@ -2,8 +2,9 @@ import { NextResponse, type NextRequest } from 'next/server';
 import * as crypto from 'node:crypto';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
+import { resolveContractedInstance } from '@/lib/client-product-access';
+import { encodeOAuthState, decodeOAuthState } from '@/lib/seo-oauth-state';
 import { getSession } from '@/lib/session';
-import { isProductContracted } from '@/lib/client-product-access';
 import { buildAuthorizeApplicationUrl, WORDPRESS_CONNECT_STATE_COOKIE } from '@/lib/wordpress-connect';
 
 export const dynamic = 'force-dynamic';
@@ -36,13 +37,19 @@ export async function GET(req: NextRequest) {
   if (resolved.source !== 'database' || !isDatabaseConfigured) {
     return NextResponse.redirect(new URL('/portal/seo?wp_connect_error=not_available_in_dev_mode', req.url));
   }
-  const hasSeo = await isProductContracted(prisma, resolved.clientId, 'seo');
-  if (!hasSeo) {
+  // Fase 2 multi-instancia — WordPress se conecta a UNA web. El id llega por
+  // query desde el enlace de su página.
+  const instance = await resolveContractedInstance(prisma, {
+    clientId: resolved.clientId,
+    productCode: 'seo',
+    clientProductId: req.nextUrl.searchParams.get('clientProductId'),
+  });
+  if (!instance) {
     return NextResponse.redirect(new URL('/portal/seo?wp_connect_error=forbidden', req.url));
   }
 
-  const profile = await prisma.seoProfile.findFirst({
-    where: { clientId: resolved.clientId },
+  const profile = await prisma.seoProfile.findUnique({
+    where: { clientProductId: instance.clientProductId },
     select: { siteUrl: true, cmsType: true },
   });
   if (!profile?.siteUrl) {
@@ -66,7 +73,10 @@ export async function GET(req: NextRequest) {
   }
 
   const res = NextResponse.redirect(authorizeUrl);
-  res.cookies.set(WORDPRESS_CONNECT_STATE_COOKIE, state, {
+  // La contratación viaja en la cookie httpOnly, no en el state que ve
+  // WordPress. Mismo razonamiento que en los OAuth de Google —
+  // ver lib/seo-oauth-state.ts.
+  res.cookies.set(WORDPRESS_CONNECT_STATE_COOKIE, encodeOAuthState(state, instance.clientProductId), {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',

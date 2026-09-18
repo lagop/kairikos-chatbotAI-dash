@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
+import { resolveContractedInstance } from '@/lib/client-product-access';
 import { getSession } from '@/lib/session';
 import { fetchAccessibleProperties, getValidAccessToken } from '@/lib/google-analytics';
 
@@ -26,8 +27,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
+  // Fase 2 multi-instancia — la conexión de GA4 es de UNA web.
+  const instance = await resolveContractedInstance(prisma, {
+    clientId: resolved.clientId,
+    productCode: 'seo',
+    clientProductId: req.nextUrl.searchParams.get('clientProductId'),
+  });
+  if (!instance) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  }
+
   const connection = await prisma.googleAnalyticsConnection.findUnique({
-    where: { clientId: resolved.clientId },
+    where: { clientProductId: instance.clientProductId },
     select: { id: true, status: true, refreshTokenCiphertext: true, refreshTokenIv: true, refreshTokenTag: true },
   });
   if (!connection || connection.status !== 'pending_property_selection') {

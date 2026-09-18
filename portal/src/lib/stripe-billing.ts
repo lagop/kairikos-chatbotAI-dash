@@ -3,7 +3,7 @@ import { prisma } from './prisma';
 import { getStripe, isStripeConfigured, StripeUnavailableError } from './stripe';
 import { ensureRecallSubscription } from './recall-onboarding';
 import { ensureSeoProfile, ensureProspectingCampaign, ensureLeadQualificationProfile } from './product-onboarding';
-import { isProductContracted } from './client-product-access';
+import { isProductContracted, isMultiInstanceProduct } from './client-product-access';
 import type { Prisma } from '@prisma/client';
 import type Stripe from 'stripe';
 
@@ -1022,9 +1022,20 @@ export async function createProductCheckoutSession(params: {
     return { ok: false, error: 'client_has_no_tenant' };
   }
 
-  const alreadyContracted = await isProductContracted(prisma, clientId, product.code);
-  if (alreadyContracted) {
-    return { ok: false, error: 'already_contracted' };
+  // Multi-instancia — los productos de MULTI_INSTANCE_PRODUCT_CODES se pueden
+  // contratar varias veces, una por web/negocio del cliente. El resto sigue
+  // siendo uno por cliente.
+  //
+  // Esta comprobación es la segunda de tres capas; la de verdad es el índice
+  // único parcial de ClientProduct, cuyo predicado excluye exactamente los
+  // mismos códigos. Si se añade uno aquí sin tocar el índice, el insert
+  // reventará contra la base de datos — hay un test que vigila que las dos
+  // listas no se separen.
+  if (!isMultiInstanceProduct(product.code)) {
+    const alreadyContracted = await isProductContracted(prisma, clientId, product.code);
+    if (alreadyContracted) {
+      return { ok: false, error: 'already_contracted' };
+    }
   }
 
   const isOneTimeOnly = !product.stripeRecurringPriceId;
