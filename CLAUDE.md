@@ -102,8 +102,10 @@ escribir en cualquier tenant.
 
 ## Cómo se escribe una integración de IA
 
-Hay tres ya construidas y todas siguen el mismo molde: `review-reply-ai.ts`,
-`conversation-summary-ai.ts`, `lead-classification-ai.ts`. Cópialo.
+Hay ocho construidas y todas siguen el mismo molde: `review-reply-ai.ts`,
+`conversation-summary-ai.ts`, `lead-classification-ai.ts`, `chatbot-reply-ai.ts`,
+`assistant-ai.ts`, `job-capture-ai.ts`, `seo-content-ai.ts`, `prospecting-brief-ai.ts`.
+Cópialo.
 
 - `fetch` directo a la Messages API de Anthropic. Sin SDK.
 - **Nunca lanza.** Devuelve un resultado tipado: `{ok:true, ...}` | `{ok:false, error}` |
@@ -115,6 +117,22 @@ Hay tres ya construidas y todas siguen el mismo molde: `review-reply-ai.ts`,
   aunque el prompt diga explícitamente que no lo haga; se detectó cuando falló el 100% de un
   barrido real. Ver `stripCodeFence` en `lead-classification-ai.ts`.
 - Modelo por defecto `claude-haiku-4-5-20251001`, sobreescribible por variable de entorno.
+  Ese override (`ANTHROPIC_*_MODEL`) **no está en `docker-compose.yml`**: en la VPS no llega
+  al contenedor y el modelo se cambia en `/admin/portal/settings/anthropic`. Sirve en local.
+- El lib de IA **no ve la base de datos ni un `clientId`**: recibe texto y devuelve texto. Quien
+  llama reúne el material y decide qué hacer con el resultado.
+
+**Cuando la IA propone algo que el cliente va a confirmar, la ruta no guarda.** `suggest`
+(Prospección, Fase A) devuelve rubros y zonas y el cliente los mete en el formulario de
+siempre con un clic; el guardado sigue siendo el `PATCH` de siempre. Así una sugerencia mala
+no cambia por su cuenta a quién se busca. Vale para cualquier propuesta futura: proponer y
+persistir son dos pasos, y el segundo es del cliente.
+
+**Si el servidor va a salir a internet con una URL que escribe el cliente, fíltrala antes.**
+Solo `http(s)`, fuera `localhost`, `.local`, `10.*`, `192.168.*`, `172.16–31.*`,
+`169.254.169.254` y los hosts sin punto. Y ojo con completar el esquema: anteponer
+`https://` a `ftp://archivos.example` da una URL válida cuyo host es `ftp`
+(`safePublicUrl` en la ruta `prospecting/campaign/suggest`).
 
 Interpretar es trabajo de IA; reunir señales es trabajo del portal. La generación de contenido
 SEO reúne datos ya sincronizados y no llama a APIs externas en vivo dentro del mismo paso.
