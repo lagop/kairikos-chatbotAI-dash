@@ -15,6 +15,7 @@
 
 import { NextResponse } from 'next/server';
 import { prisma, isDatabaseConfigured } from './prisma';
+import { resolveSoleChatbotInstance } from './client-product-access';
 import {
   sendOperatorNotification,
   utcDayKey,
@@ -74,6 +75,15 @@ export async function handleSnooze(
   }
 
   if (isDatabaseConfigured) {
+    // Fase 4 multi-instancia — de que chatbot es este hito. Con uno solo
+    // —todos los clientes de hoy— devuelve el de siempre; con dos devuelve
+    // null y este camino no escribe, que es la marca de que le falta
+    // enhebrar la eleccion. Ver resolveSoleChatbotInstance.
+    const instance = await resolveSoleChatbotInstance(prisma, clientId);
+    if (!instance) {
+      return NextResponse.json({ error: 'chatbot_instance_not_resolved' }, { status: 409 });
+    }
+
     // Row isolation: read the row, confirm it belongs to this client,
     // then update. We do NOT use `update({ where: { id, clientId } })`
     // because the unique key is `(clientId, productCode, milestone)` —
@@ -82,9 +92,8 @@ export async function handleSnooze(
     // chatbot's T+0/3/7/14 timeline today, so productCode is fixed.
     const existing = await prisma.chatbotActivity.findUnique({
       where: {
-        clientId_productCode_milestone: {
-          clientId,
-          productCode: CHATBOT_PRODUCT_CODE,
+        clientProductId_milestone: {
+          clientProductId: instance.clientProductId,
           milestone: input.milestoneId,
         },
       },
@@ -373,14 +382,22 @@ export async function handleAssetsUploaded(
   const notes = input.notes ?? 'Marcado por el cliente desde el portal.';
 
   if (isDatabaseConfigured) {
+    // Fase 4 multi-instancia — de que chatbot es este hito. Con uno solo
+    // —todos los clientes de hoy— devuelve el de siempre; con dos devuelve
+    // null y este camino no escribe, que es la marca de que le falta
+    // enhebrar la eleccion. Ver resolveSoleChatbotInstance.
+    const instance = await resolveSoleChatbotInstance(prisma, clientId);
+    if (!instance) {
+      return NextResponse.json({ error: 'chatbot_instance_not_resolved' }, { status: 409 });
+    }
+
     // WP-14 — this self-service flow only exists for the chatbot's
     // T+0/3/7/14 timeline today, so productCode is fixed.
     const [existing, client] = await Promise.all([
       prisma.chatbotActivity.findUnique({
         where: {
-          clientId_productCode_milestone: {
-            clientId,
-            productCode: CHATBOT_PRODUCT_CODE,
+          clientProductId_milestone: {
+            clientProductId: instance.clientProductId,
             milestone,
           },
         },
@@ -392,9 +409,8 @@ export async function handleAssetsUploaded(
 
     const row = await prisma.chatbotActivity.upsert({
       where: {
-        clientId_productCode_milestone: {
-          clientId,
-          productCode: CHATBOT_PRODUCT_CODE,
+        clientProductId_milestone: {
+          clientProductId: instance.clientProductId,
           milestone,
         },
       },

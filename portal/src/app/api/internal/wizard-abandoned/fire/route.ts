@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
+import { resolveSoleChatbotInstance } from '@/lib/client-product-access';
 import {
   authenticateInternalRequest,
   internalAuthFailureResponse,
@@ -102,6 +103,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Fase 4 multi-instancia — n8n dispara por cliente y no conoce la
+  // instancia. Con un chatbot resuelve el de siempre; con dos responde 409
+  // en vez de apuntar el aviso en el equivocado.
+  const instance = await resolveSoleChatbotInstance(prisma, parsed.value.clientId);
+  if (!instance) {
+    return NextResponse.json(
+      { error: 'chatbot_instance_not_resolved', detail: 'client has several chatbots; n8n must send clientProductId' },
+      { status: 409 },
+    );
+  }
+
   // Pre-check: if a wizard_abandoned activity row already exists for
   // this client, return deduped=true and skip the Resend call. The
   // migration's `@@unique([clientId, milestone])` is the source of
@@ -109,9 +121,8 @@ export async function POST(req: NextRequest) {
   // common retry path and lets us return the original row unchanged.
   const existing = await prisma.chatbotActivity.findUnique({
     where: {
-      clientId_productCode_milestone: {
-        clientId: parsed.value.clientId,
-        productCode: CHATBOT_PRODUCT_CODE,
+      clientProductId_milestone: {
+        clientProductId: instance.clientProductId,
         milestone: 'wizard_abandoned',
       },
     },
@@ -186,9 +197,8 @@ export async function POST(req: NextRequest) {
   try {
     const row = await prisma.chatbotActivity.upsert({
       where: {
-        clientId_productCode_milestone: {
-          clientId: parsed.value.clientId,
-          productCode: CHATBOT_PRODUCT_CODE,
+        clientProductId_milestone: {
+          clientProductId: instance.clientProductId,
           milestone: 'wizard_abandoned',
         },
       },
@@ -231,9 +241,8 @@ export async function POST(req: NextRequest) {
       if (err.code === 'P2002') {
         const original = await prisma.chatbotActivity.findUnique({
           where: {
-            clientId_productCode_milestone: {
-              clientId: parsed.value.clientId,
-              productCode: CHATBOT_PRODUCT_CODE,
+            clientProductId_milestone: {
+              clientProductId: instance.clientProductId,
               milestone: 'wizard_abandoned',
             },
           },

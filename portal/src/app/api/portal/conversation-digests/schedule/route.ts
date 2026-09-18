@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
-import { isProductContracted } from '@/lib/client-product-access';
+import { resolveContractedInstance } from '@/lib/client-product-access';
 import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
 
 export const dynamic = 'force-dynamic';
@@ -25,7 +25,7 @@ const BodySchema = z.object({
   timezone: z.string().trim().min(3).max(64).optional(),
 });
 
-async function authorize() {
+async function authorize(clientProductId?: string | null) {
   const session = await getSession();
   if (!session.hasClientAccess) {
     return { error: NextResponse.json({ error: 'unauthorized' }, { status: 401 }) } as const;
@@ -40,19 +40,28 @@ async function authorize() {
   if (resolved.source !== 'database') {
     return { error: NextResponse.json({ error: 'service_unavailable', detail: 'not_available_in_dev_mode' }, { status: 503 }) } as const;
   }
-  const hasChatbot = await isProductContracted(prisma, resolved.clientId, CHATBOT_PRODUCT_CODE);
-  if (!hasChatbot) {
+  // Fase 4 multi-instancia — de qué chatbot es esta cadencia. Sin id se
+  // resuelve el único que haya; con dos se niega, porque cambiar el horario
+  // del resumen equivocado no se nota hasta que el informe no llega.
+  const instance = await resolveContractedInstance(prisma, {
+    clientId: resolved.clientId,
+    productCode: CHATBOT_PRODUCT_CODE,
+    clientProductId,
+  });
+  if (!instance) {
     return { error: NextResponse.json({ error: 'forbidden' }, { status: 403 }) } as const;
   }
-  return { resolved } as const;
+  return { resolved, instance } as const;
 }
 
-export async function GET() {
-  const auth = await authorize();
+export async function GET(req: NextRequest) {
+  const auth = await authorize(req.nextUrl.searchParams.get('clientProductId'));
   if ('error' in auth) return auth.error;
 
   const schedule = await prisma.conversationDigestSchedule.findUnique({
-    where: { clientId: auth.resolved.clientId },
+    // Fase 4 multi-instancia — la cadencia es de UN chatbot. Antes la
+    // tabla era clientId @unique: un cliente, un horario.
+    where: { clientProductId: auth.instance.clientProductId },
   });
 
   return NextResponse.json({
@@ -69,7 +78,7 @@ export async function GET() {
 }
 
 export async function PATCH(req: NextRequest) {
-  const auth = await authorize();
+  const auth = await authorize(req.nextUrl.searchParams.get('clientProductId'));
   if ('error' in auth) return auth.error;
 
   const body = BodySchema.safeParse(await req.json().catch(() => null));
@@ -93,7 +102,9 @@ export async function PATCH(req: NextRequest) {
   };
 
   const updated = await prisma.conversationDigestSchedule.upsert({
-    where: { clientId: auth.resolved.clientId },
+    // Fase 4 multi-instancia — la cadencia es de UN chatbot. Antes la
+    // tabla era clientId @unique: un cliente, un horario.
+    where: { clientProductId: auth.instance.clientProductId },
     update: data,
     create: { clientId: auth.resolved.clientId, tenantId: client?.tenantId ?? null, ...data },
   });

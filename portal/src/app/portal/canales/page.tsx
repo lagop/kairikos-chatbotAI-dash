@@ -38,8 +38,13 @@ export default async function PortalCanalesPage() {
   if (isDatabaseConfigured && resolved?.source === 'database') {
     allowedChannels = await getAllowedChannelsForClient(prisma, resolved.clientId);
     const [telegramRow, metaRows, webRow] = await Promise.all([
-      prisma.telegramConnection.findUnique({
+      // Fase 4 multi-instancia — findFirst y no findUnique: la clave unica
+      // se mudo a la contratacion. Esta pantalla todavia no distingue
+      // instancia; se convierte con el resto de la superficie del chatbot.
+      // Orden estable mientras tanto, para no alternar entre dos.
+      prisma.telegramConnection.findFirst({
         where: { clientId: resolved.clientId },
+        orderBy: { connectedAt: 'asc' },
         select: { status: true, botUsername: true, lastSyncError: true },
       }),
       prisma.metaChannelConnection.findMany({

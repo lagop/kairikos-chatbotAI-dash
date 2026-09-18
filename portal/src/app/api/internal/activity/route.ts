@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
+import { resolveSoleChatbotInstance } from '@/lib/client-product-access';
 import {
   authenticateInternalRequest,
   internalAuthFailureResponse,
@@ -103,12 +104,23 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Fase 4 multi-instancia — n8n reporta por cliente y no conoce la
+  // instancia. Con un chatbot resuelve el de siempre; con dos responde 409 en
+  // vez de apuntar el hito en el equivocado. Cuando n8n aprenda a mandar la
+  // contratación, este resolutor se sustituye por el id que llegue.
+  const instance = await resolveSoleChatbotInstance(prisma, parsed.value.clientId);
+  if (!instance) {
+    return NextResponse.json(
+      { error: 'chatbot_instance_not_resolved', detail: 'client has several chatbots; n8n must send clientProductId' },
+      { status: 409 },
+    );
+  }
+
   try {
     const row = await prisma.chatbotActivity.upsert({
       where: {
-        clientId_productCode_milestone: {
-          clientId: parsed.value.clientId,
-          productCode: parsed.value.productCode,
+        clientProductId_milestone: {
+          clientProductId: instance.clientProductId,
           milestone: parsed.value.milestone,
         },
       },

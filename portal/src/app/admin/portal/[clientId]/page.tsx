@@ -408,8 +408,13 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
 
         if (productCode === CHATBOT_PRODUCT_CODE) {
           const [telegramRow, metaRows, allowed, failedRows] = await Promise.all([
-            prisma.telegramConnection.findUnique({
+            // Fase 4 multi-instancia — findFirst y no findUnique: la clave
+            // unica se mudo a la contratacion. Este panel todavia no distingue
+            // instancia; se convierte con el resto de la superficie del
+            // chatbot. Orden estable mientras tanto, para no alternar.
+            prisma.telegramConnection.findFirst({
               where: { clientId: client.id },
+              orderBy: { connectedAt: 'asc' },
               select: { status: true, botUsername: true },
             }),
             prisma.metaChannelConnection.findMany({

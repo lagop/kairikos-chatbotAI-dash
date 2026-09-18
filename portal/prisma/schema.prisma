@@ -145,7 +145,9 @@ model ChatbotClient {
   metaChannelConnections         MetaChannelConnection[]
   channelWebhookDeliveries       ChannelWebhookDelivery[]
   conversationDigests            ConversationDigest[]
-  conversationDigestSchedule     ConversationDigestSchedule?
+  // Fase 4 multi-instancia — deja de ser 1:1: la cadencia del resumen es de
+  // un chatbot, y un cliente puede tener varios.
+  conversationDigestSchedules    ConversationDigestSchedule[]
   leads                          Lead[]
   leadAudits                     LeadAudit[]
   recallSubscriptions            RecallSubscription[]
@@ -771,31 +773,38 @@ model ClientProduct {
   onboardingState String    @default("in-progress") @map("onboarding_state")
   goLiveAt        DateTime? @map("go_live_at")
 
-  client                    ChatbotClient              @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  clientSite                ClientSite?                @relation(fields: [clientSiteId], references: [id], onDelete: SetNull)
-  product                   Product                    @relation(fields: [productId], references: [id], onDelete: Restrict)
-  tenant                    Tenant?                    @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  auditLogs                 ClientProductAudit[]
-  subscription              Subscription?
+  client                     ChatbotClient               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientSite                 ClientSite?                 @relation(fields: [clientSiteId], references: [id], onDelete: SetNull)
+  product                    Product                     @relation(fields: [productId], references: [id], onDelete: Restrict)
+  tenant                     Tenant?                     @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  auditLogs                  ClientProductAudit[]
+  subscription               Subscription?
   // WP-19 — one-time-purchase products (no recurring price) invoice
   // directly against the ClientProduct instead of through a Subscription
   // — see Invoice.clientProductId.
-  invoices                  Invoice[]
-  webQuote                  WebQuote?
-  webBrief                  WebBrief?
-  recallSubscription        RecallSubscription?
-  prospectingCampaign       ProspectingCampaign?
-  seoProfile                SeoProfile?
-  leadQualificationProfile  LeadQualificationProfile?
+  invoices                   Invoice[]
+  webQuote                   WebQuote?
+  webBrief                   WebBrief?
+  recallSubscription         RecallSubscription?
+  prospectingCampaign        ProspectingCampaign?
+  seoProfile                 SeoProfile?
+  leadQualificationProfile   LeadQualificationProfile?
   // Fase 1 multi-instancia — las tres anclas desde las que /api/internal/*
   // resuelve de qué instancia habla. Ver el comentario en
   // MetaChannelConnection.clientProductId.
-  metaChannelConnections    MetaChannelConnection[]
-  telegramConnections       TelegramConnection[]
-  chatbotConversations      ChatbotConversation[]
+  metaChannelConnections     MetaChannelConnection[]
+  telegramConnections        TelegramConnection[]
+  chatbotConversations       ChatbotConversation[]
   // Fase 2 — las dos conexiones de Google que pertenecen a UNA web.
-  googleSeoConnection       GoogleSeoConnection?
-  googleAnalyticsConnection GoogleAnalyticsConnection?
+  // Fase 4 multi-instancia — todo lo que cuelga de UN chatbot.
+  chatbotConfigSteps         ChatbotConfigStep[]
+  chatbotActivities          ChatbotActivity[]
+  chatbotKnowledgeDocuments  ChatbotKnowledgeDocument[]
+  chatWebEmbeds              ChatWebEmbed[]
+  conversationDigests        ConversationDigest[]
+  conversationDigestSchedule ConversationDigestSchedule?
+  googleSeoConnection        GoogleSeoConnection?
+  googleAnalyticsConnection  GoogleAnalyticsConnection?
 
   // Real DB-level uniqueness for every code except 'web' lives in a raw-SQL
   // partial unique index (see this migration's .sql) — Prisma can't express
@@ -1065,31 +1074,35 @@ model EmailVerificationToken {
 // (clientId, milestone) pair is the natural business key — there is at
 // most one row per T+N milestone per client.
 model ChatbotActivity {
-  id          String        @id @default(cuid())
-  clientId    String
+  id              String         @id @default(cuid())
+  clientId        String
+  // Fase 4 multi-instancia — de qué chatbot es este hito. Ver el comentario
+  // de ChatbotConfigStep.clientProductId.
+  clientProductId String?        @map("client_product_id") @db.Uuid
   // KAIA-4258: tenant isolation FK (denormalized from ChatbotClient for query
   // plans that filter by tenant_id directly without a join). NULL for
   // pre-multi-tenant rows; the backfill migration sets it from
   // ChatbotClient.tenantId.
-  tenantId    String?       @map("tenant_id") @db.Uuid
+  tenantId        String?        @map("tenant_id") @db.Uuid
   // WP-14 — which product's onboarding this milestone belongs to. Was
   // implicitly "the chatbot's" (the unique key was (clientId, milestone),
   // so a client could only ever have one "T+0" total). Defaults to
   // 'chatbot' at the DB level for the same reason ChatbotConfigStep's
   // productCode does — see that column's comment.
-  productCode String        @default("chatbot")
+  productCode     String         @default("chatbot")
   // T+N milestone label — "T+0", "T+3", "T+7", "T+14" by convention; free-form
   // string so n8n can extend without a schema migration. Enforced allowlist
   // lives in the route handler at src/app/api/internal/activity/route.ts.
-  milestone   String
+  milestone       String
   // NULL when the row is created up-front (e.g. the schedule); set when the
   // event actually fires.
-  completedAt DateTime?
-  notes       String?
-  client      ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant      Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  completedAt     DateTime?
+  notes           String?
+  client          ChatbotClient  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientProduct   ClientProduct? @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
+  tenant          Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
-  @@unique([clientId, productCode, milestone])
+  @@unique([clientProductId, milestone])
   @@index([clientId, completedAt])
   @@index([clientId, productCode])
   @@index([tenantId])
@@ -1207,9 +1220,13 @@ model ChatbotConversation {
 // =============================================================================
 
 model ChatbotKnowledgeDocument {
-  id       String  @id @default(uuid()) @db.Uuid
-  clientId String  @map("client_id")
-  tenantId String? @map("tenant_id") @db.Uuid
+  id              String  @id @default(uuid()) @db.Uuid
+  clientId        String  @map("client_id")
+  // Fase 4 multi-instancia — de qué chatbot es este documento. Dos negocios
+  // del mismo cliente no comparten lo que el bot sabe decir: mezclarlos haría
+  // que el bot de una clínica citara los precios de la otra.
+  clientProductId String? @map("client_product_id") @db.Uuid
+  tenantId        String? @map("tenant_id") @db.Uuid
 
   /// 'manual' (el cliente pegó el texto) | 'web' (rastreado de su propia web).
   source    String
@@ -1230,24 +1247,28 @@ model ChatbotKnowledgeDocument {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  client ChatbotClient                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant Tenant?                         @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  chunks ChatbotKnowledgeChunk[]
-  audits ChatbotKnowledgeDocumentAudit[]
+  client        ChatbotClient                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientProduct ClientProduct?                  @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
+  tenant        Tenant?                         @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  chunks        ChatbotKnowledgeChunk[]
+  audits        ChatbotKnowledgeDocumentAudit[]
 
   @@index([clientId, status])
   @@index([tenantId])
 }
 
 model ChatbotKnowledgeChunk {
-  id         String @id @default(uuid()) @db.Uuid
-  documentId String @map("document_id") @db.Uuid
+  id              String  @id @default(uuid()) @db.Uuid
+  documentId      String  @map("document_id") @db.Uuid
   /// Denormalizado del documento: toda búsqueda filtra por cliente antes
   /// que por nada, y sin esta columna cada consulta necesitaría un JOIN
   /// para lo primero que hace.
-  clientId   String @map("client_id")
-  ordinal    Int
-  content    String
+  clientId        String  @map("client_id")
+  // Desnormalizado igual que clientId, y por el mismo motivo: la búsqueda de
+  // texto completo filtra por aquí sin pasar por el documento.
+  clientProductId String? @map("client_product_id") @db.Uuid
+  ordinal         Int
+  content         String
 
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -1321,6 +1342,17 @@ model ChatbotKnowledgeDocumentAudit {
 model ChatbotConfigStep {
   id                   String    @id @default(cuid())
   clientId             String
+  // Fase 4 multi-instancia — DE QUÉ chatbot son estos pasos.
+  //
+  // productCode se queda: el motor del asistente enruta por él
+  // (/portal/wizard/[product]/[step]) y las consultas lo usan. Pero dejó de
+  // identificar: con dos chatbots, (clientId, productCode, stepKey) ya no
+  // distingue nada. La unicidad pasa a ir por la contratación.
+  //
+  // Hoy solo 'chatbot' tiene pasos de verdad — los demás catálogos declaran
+  // stepKeys vacío (src/lib/catalogs/index.ts) —, así que esto afecta en la
+  // práctica a un solo producto aunque el motor sea genérico.
+  clientProductId      String?   @map("client_product_id") @db.Uuid
   // KAIA-4258: tenant isolation FK (denormalized from ChatbotClient for
   // query plans that filter by tenant_id directly). NULL for
   // pre-multi-tenant rows; the backfill migration sets it.
@@ -1373,12 +1405,13 @@ model ChatbotConfigStep {
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
-  client     ChatbotClient            @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  approvedBy Operator?                @relation(fields: [approvedByOperatorId], references: [id], onDelete: SetNull)
-  tenant     Tenant?                  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  auditLogs  ChatbotConfigStepAudit[]
+  client        ChatbotClient            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientProduct ClientProduct?           @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
+  approvedBy    Operator?                @relation(fields: [approvedByOperatorId], references: [id], onDelete: SetNull)
+  tenant        Tenant?                  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  auditLogs     ChatbotConfigStepAudit[]
 
-  @@unique([clientId, productCode, stepKey, version])
+  @@unique([clientProductId, stepKey, version])
   @@index([clientId, stepKey])
   @@index([clientId, stepKey, activeForBot])
   @@index([clientId, productCode, stepKey])
@@ -2592,23 +2625,27 @@ model WebQuoteAudit {
 // identificador público (se pega en HTML del cliente), no un secreto,
 // igual que una clave pública de analytics.
 model ChatWebEmbed {
-  id           String   @id @default(uuid()) @db.Uuid
-  clientId     String   @map("client_id")
-  tenantId     String?  @map("tenant_id") @db.Uuid
-  publicToken  String   @unique @map("public_token")
+  id              String   @id @default(uuid()) @db.Uuid
+  clientId        String   @map("client_id")
+  // Fase 4 multi-instancia — de qué chatbot es este widget. Cada negocio
+  // pega el suyo en su propia web.
+  clientProductId String?  @map("client_product_id") @db.Uuid
+  tenantId        String?  @map("tenant_id") @db.Uuid
+  publicToken     String   @unique @map("public_token")
   // 'active' | 'disabled'
-  status       String   @default("disabled")
+  status          String   @default("disabled")
   // Apariencia del widget — configurable por el cliente, no un único
   // aspecto para todos. El copy (bienvenida/despedida/prompts) NO vive
   // acá: se lee directo de la config ya aprobada del Paso 9 del wizard,
   // para no duplicar el mismo dato en dos lugares.
-  primaryColor String   @default("#0E6B5E") @map("primary_color")
+  primaryColor    String   @default("#0E6B5E") @map("primary_color")
   // 'bottom-right' | 'bottom-left'
-  position     String   @default("bottom-right")
-  createdAt    DateTime @default(now()) @map("created_at")
+  position        String   @default("bottom-right")
+  createdAt       DateTime @default(now()) @map("created_at")
 
-  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  client        ChatbotClient  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientProduct ClientProduct? @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
+  tenant        Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([clientId])
   @@index([tenantId])
@@ -2636,7 +2673,12 @@ model TelegramConnection {
   client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
-  @@unique([clientId])
+  // Fase 4 multi-instancia — un bot por CONTRATACIÓN, no por cliente.
+  //
+  // Esta restricción era, literalmente, lo único que impedía que un cliente
+  // tuviera dos chatbots por Telegram: todo lo demás del canal ya estaba
+  // preparado desde la fase 1, que le puso la columna. Una línea de esquema.
+  @@unique([clientProductId])
   @@index([tenantId])
   @@index([status])
 }
@@ -2885,6 +2927,8 @@ model ChannelWebhookDelivery {
 model ConversationDigest {
   id                 String   @id @default(uuid()) @db.Uuid
   clientId           String   @map("client_id")
+  // Fase 4 multi-instancia — de qué chatbot resume este informe.
+  clientProductId    String?  @map("client_product_id") @db.Uuid
   tenantId           String?  @map("tenant_id") @db.Uuid
   windowStart        DateTime @map("window_start")
   windowEnd          DateTime @map("window_end")
@@ -2901,8 +2945,9 @@ model ConversationDigest {
   // (ej. agregar una referencia a la conversación de origen).
   highlights         Json     @default("[]")
 
-  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  client        ChatbotClient  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientProduct ClientProduct? @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
+  tenant        Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([clientId, windowEnd])
   @@index([tenantId])
@@ -2916,7 +2961,10 @@ model ConversationDigest {
 // en google-review-sync.ts.
 model ConversationDigestSchedule {
   id              String    @id @default(uuid()) @db.Uuid
-  clientId        String    @unique @map("client_id")
+  clientId        String    @map("client_id")
+  // Fase 4 multi-instancia — la cadencia es de UN chatbot. Antes era
+  // clientId @unique: un cliente, un horario de resumen.
+  clientProductId String?   @unique @map("client_product_id") @db.Uuid
   tenantId        String?   @map("tenant_id") @db.Uuid
   enabled         Boolean   @default(false)
   // 'morning_noon_evening' | 'custom_interval'
@@ -2928,8 +2976,9 @@ model ConversationDigestSchedule {
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
-  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  client        ChatbotClient  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientProduct ClientProduct? @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
+  tenant        Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([tenantId])
 }

@@ -243,8 +243,31 @@ export async function listContractedInstances(
 // Ver "Cuando un cliente quiere dos de algo" en CLAUDE.md.
 // =============================================================================
 
-export const MULTI_INSTANCE_PRODUCT_CODES = ['web', 'seo', 'recall'] as const;
+export const MULTI_INSTANCE_PRODUCT_CODES = ['web', 'seo', 'recall', 'chatbot'] as const;
 
 export function isMultiInstanceProduct(productCode: string): boolean {
   return (MULTI_INSTANCE_PRODUCT_CODES as readonly string[]).includes(productCode);
+}
+
+/**
+ * Fase 4 multi-instancia — la contratación de chatbot de un cliente, cuando
+ * quien pregunta NO sabe cuál.
+ *
+ * Existe para los caminos que hoy resuelven por cliente y todavía no tienen
+ * por dónde recibir la instancia: los hitos de alta, lo que reporta n8n a
+ * /api/internal/activity, el aviso de asistente abandonado. Con un chatbot
+ * por cliente —el caso de todos los clientes de hoy— devuelve exactamente lo
+ * que devolvían antes.
+ *
+ * Con dos devuelve null, y el llamante se queda sin escribir en vez de
+ * escribir en el equivocado. ESO ES DELIBERADO Y ES TEMPORAL: es la marca de
+ * que a ese camino le falta enhebrar de dónde sale la instancia, y el sitio
+ * por el que hay que seguir cuando se convierta la superficie del chatbot
+ * (asistente, bandeja, canales). Un `grep` de esta función da la lista.
+ */
+export async function resolveSoleChatbotInstance(
+  prisma: PrismaClient,
+  clientId: string,
+): Promise<ContractedInstance | null> {
+  return resolveContractedInstance(prisma, { clientId, productCode: 'chatbot' });
 }

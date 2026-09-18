@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
-import { isProductContracted } from '@/lib/client-product-access';
+import { resolveContractedInstance } from '@/lib/client-product-access';
 import { isChannelAllowedForClient } from '@/lib/channel-access';
 import { encryptChannelCredential } from '@/lib/channel-crypto';
 import { deliverChannelEvent } from '@/lib/channel-webhook';
@@ -40,7 +40,12 @@ export const runtime = 'nodejs';
 // their token was rejected.
 // =============================================================================
 
-const BodySchema = z.object({ botToken: z.string().trim().min(1, 'required') });
+const BodySchema = z.object({
+  botToken: z.string().trim().min(1, 'required'),
+  // Fase 4 multi-instancia — a que chatbot. Opcional: sin el, solo vale si
+  // el cliente tiene uno solo.
+  clientProductId: z.string().uuid().optional(),
+});
 
 export async function POST(req: NextRequest) {
   const session = await getSession();
@@ -61,7 +66,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'invalid_body', details: body.error.flatten() }, { status: 400 });
   }
 
-  const hasChatbot = await isProductContracted(prisma, resolved.clientId, 'chatbot');
+  // Fase 4 multi-instancia — a QUÉ chatbot se conecta este bot. Era el
+  // @@unique([clientId]) de TelegramConnection lo único que impedía que un
+  // cliente tuviera dos; ahora la unicidad va por contratación y hay que
+  // decir cuál.
+  const instance = await resolveContractedInstance(prisma, {
+    clientId: resolved.clientId,
+    productCode: 'chatbot',
+    clientProductId: body.data.clientProductId ?? null,
+  });
+  const hasChatbot = instance !== null;
   if (!hasChatbot) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
@@ -92,7 +106,7 @@ export async function POST(req: NextRequest) {
 
   const encrypted = encryptChannelCredential(botToken);
   const connection = await prisma.telegramConnection.upsert({
-    where: { clientId: resolved.clientId },
+    where: { clientProductId: instance!.clientProductId },
     update: {
       botTokenCiphertext: encrypted.ciphertext,
       botTokenIv: encrypted.iv,
@@ -103,6 +117,7 @@ export async function POST(req: NextRequest) {
     },
     create: {
       clientId: resolved.clientId,
+      clientProductId: instance!.clientProductId,
       tenantId: client?.tenantId ?? null,
       botTokenCiphertext: encrypted.ciphertext,
       botTokenIv: encrypted.iv,

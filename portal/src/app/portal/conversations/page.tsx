@@ -144,7 +144,15 @@ export default async function ConversationsPage({
         orderBy: { windowEnd: 'desc' },
         take: 20,
       }),
-      prisma.conversationDigestSchedule.findUnique({ where: { clientId: resolved.clientId } }),
+      // Fase 4 multi-instancia — findFirst y no findUnique: la clave única se
+      // mudó a la contratación, y esta página todavía enseña el chatbot del
+      // cliente sin distinguir instancia. Se convierte con el resto de la
+      // superficie del chatbot; hasta entonces, orden estable para no ir
+      // alternando entre dos.
+      prisma.conversationDigestSchedule.findFirst({
+        where: { clientId: resolved.clientId },
+        orderBy: { createdAt: 'asc' },
+      }),
     ]);
     digestSummaries = digests.map((d) => ({
       id: d.id,
