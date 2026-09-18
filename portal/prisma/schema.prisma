@@ -125,6 +125,7 @@ model ChatbotClient {
   supportRequests                SupportRequest[]
   tenant                         Tenant?                         @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   clientProducts                 ClientProduct[]
+  clientSites                    ClientSite[]
   productAudits                  ClientProductAudit[]
   subscriptions                  Subscription[]
   invoices                       Invoice[]
@@ -534,6 +535,7 @@ model Tenant {
   supportRequests                SupportRequest[]
   n8nExecutions                  N8nExecution[]
   clientProducts                 ClientProduct[]
+  clientSites                    ClientSite[]
   productAudits                  ClientProductAudit[]
   subscriptions                  Subscription[]
   invoices                       Invoice[]
@@ -731,6 +733,13 @@ model ClientProduct {
   clientId        String    @map("client_id")
   productId       String    @map("product_id") @db.Uuid
   tenantId        String?   @map("tenant_id") @db.Uuid
+  // Fase 1 multi-instancia — a QUÉ negocio/web del cliente pertenece esta
+  // contratación. Nullable a propósito y para siempre: una contratación sin
+  // sitio declarado resuelve al sitio primario del cliente
+  // (resolveContractedInstance), que es lo que mantiene simple el alta de
+  // operador y lo que permitió un backfill que no tuvo que acertar fila a
+  // fila. Ver docs/plan-multi-instancia-fase-1.md.
+  clientSiteId    String?   @map("client_site_id") @db.Uuid
   // 'pending_payment' | 'active' | 'paused' | 'cancelled' | 'past_due' |
   // 'quote_pending'. The last one is 'web'-specific (WP-XX): covers the
   // ENTIRE pre-payment stretch of the custom-quote flow — from the
@@ -760,6 +769,7 @@ model ClientProduct {
   goLiveAt        DateTime? @map("go_live_at")
 
   client                   ChatbotClient             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientSite               ClientSite?               @relation(fields: [clientSiteId], references: [id], onDelete: SetNull)
   product                  Product                   @relation(fields: [productId], references: [id], onDelete: Restrict)
   tenant                   Tenant?                   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   auditLogs                ClientProductAudit[]
@@ -774,15 +784,76 @@ model ClientProduct {
   prospectingCampaign      ProspectingCampaign?
   seoProfile               SeoProfile?
   leadQualificationProfile LeadQualificationProfile?
+  // Fase 1 multi-instancia — las tres anclas desde las que /api/internal/*
+  // resuelve de qué instancia habla. Ver el comentario en
+  // MetaChannelConnection.clientProductId.
+  metaChannelConnections   MetaChannelConnection[]
+  telegramConnections      TelegramConnection[]
+  chatbotConversations     ChatbotConversation[]
 
   // Real DB-level uniqueness for every code except 'web' lives in a raw-SQL
   // partial unique index (see this migration's .sql) — Prisma can't express
   // "unique except when product.code = 'web'" via @@unique.
   @@index([clientId, productId])
   @@index([clientId])
+  @@index([clientSiteId])
   @@index([productId])
   @@index([status])
   @@index([tenantId])
+}
+
+// =============================================================================
+// Fase 1 multi-instancia — el negocio o la web del cliente a la que apunta
+// cada contratación.
+//
+// El encargo era que un cliente pudiera contratar varias veces el mismo
+// producto (SEO para dos webs, un chatbot por negocio) y que los productos
+// asociables se asociaran bien entre ellos. Asociarlos POR PARES —este SEO
+// con este chatbot, estas Reseñas con este SEO— hace crecer las relaciones
+// con el cuadrado del número de productos y obliga a decidir, cada vez que
+// nace uno, cómo se ata a los otros seis.
+//
+// Esta tabla es la alternativa: cada contratación apunta a un sitio, y
+// "asociarse correctamente" deja de ser una relación que mantener para pasar
+// a ser una consecuencia — dos productos que miran al mismo sitio se ven
+// entre sí sin que nadie declare nada. De paso da el agrupamiento por negocio
+// que el cliente quiere ver, y la respuesta a "¿de cuál de mis dos negocios
+// es este lead?".
+//
+// Precedente exacto: 'web' ya pasó por esto en septiembre de 2026
+// (20260901120000_client_product_web_multiplicity) y su ruta
+// /portal/web/[clientProductId] es el patrón que sigue todo lo demás.
+// =============================================================================
+model ClientSite {
+  id       String  @id @default(uuid()) @db.Uuid
+  clientId String  @map("client_id")
+  tenantId String? @map("tenant_id") @db.Uuid
+
+  // Como lo llama el cliente, no como lo llamamos nosotros: "Clínica Centro",
+  // no "instancia 2". Es lo que se pinta en el selector.
+  name    String
+  siteUrl String? @map("site_url")
+
+  // El sitio al que van a parar las contrataciones que no declaran uno.
+  // Exactamente uno por cliente — lo impone un índice único PARCIAL escrito
+  // a mano en la migración, porque Prisma no sabe expresar "único donde
+  // is_primary". Si alguna vez se regenera este esquema desde la base de
+  // datos, esa garantía no aparecerá aquí: vive en el DDL.
+  isPrimary Boolean @default(false) @map("is_primary")
+
+  // Nunca se borra: un sitio arrastra histórico de métricas, conversaciones
+  // y facturación. Misma postura que el resto del esquema.
+  archivedAt DateTime? @map("archived_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  client   ChatbotClient   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant   Tenant?         @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  products ClientProduct[]
+
+  @@index([clientId])
+  @@index([tenantId])
+  @@map("client_site")
 }
 
 // =============================================================================
@@ -1021,12 +1092,18 @@ model ChatbotActivity {
 // One row per chatbot conversation. Read-only on the portal in v1
 // (writes come from the chatbot platform via n8n).
 model ChatbotConversation {
-  id                String    @id @default(cuid())
+  id                String         @id @default(cuid())
   clientId          String
+  // Fase 1 multi-instancia — ANCLA; ver el comentario en
+  // MetaChannelConnection.clientProductId. OJO al escribir DDL contra esta
+  // tabla: es de las antiguas, su columna de cliente es literalmente
+  // "clientId", no "client_id".
+  clientProductId   String?        @map("client_product_id") @db.Uuid
+  clientProduct     ClientProduct? @relation(fields: [clientProductId], references: [id], onDelete: SetNull)
   // KAIA-4258: tenant isolation FK (denormalized from ChatbotClient for
   // query plans that filter by tenant_id directly). NULL for
   // pre-multi-tenant rows; the backfill migration sets it.
-  tenantId          String?   @map("tenant_id") @db.Uuid
+  tenantId          String?        @map("tenant_id") @db.Uuid
   startedAt         DateTime
   // Duration in seconds. NULL while the conversation is still open.
   duration          Int?
@@ -1042,7 +1119,7 @@ model ChatbotConversation {
   // instead of creating a new row per turn — NULL for every
   // pre-Fase-4 row (Telegram/WhatsApp conversations, seed data), which
   // is fine since Postgres treats NULL as distinct in a unique index.
-  externalSessionId String?   @map("external_session_id")
+  externalSessionId String?        @map("external_session_id")
   // Fase 1.5 — de qué canal vino la conversación: 'web' | 'telegram' |
   // 'whatsapp' | 'messenger' | 'instagram'. Cada ruta /message y /reply lo
   // sabe por definición (es su propio canal), así que no viaja en el
@@ -1060,7 +1137,7 @@ model ChatbotConversation {
   // NOT stamped when a client's classification cap is hit for the month —
   // that conversation is left for the next sweep after usageResetAt so
   // work is delayed, never lost.
-  leadsClassifiedAt DateTime? @map("leads_classified_at")
+  leadsClassifiedAt DateTime?      @map("leads_classified_at")
 
   // Fase 3 — bandeja de traspaso a humano.
   //
@@ -2517,17 +2594,21 @@ model ChatWebEmbed {
 // Canal Telegram — el cliente pega el token de un bot que él mismo creó
 // vía @BotFather. Un bot por cliente en v1 (sin selector multi-cuenta).
 model TelegramConnection {
-  id                 String   @id @default(uuid()) @db.Uuid
-  clientId           String   @map("client_id")
-  tenantId           String?  @map("tenant_id") @db.Uuid
-  botTokenCiphertext Bytes    @map("bot_token_ciphertext")
-  botTokenIv         Bytes    @map("bot_token_iv")
-  botTokenTag        Bytes    @map("bot_token_tag")
-  botUsername        String   @map("bot_username")
+  id                 String         @id @default(uuid()) @db.Uuid
+  clientId           String         @map("client_id")
+  tenantId           String?        @map("tenant_id") @db.Uuid
+  // Fase 1 multi-instancia — ANCLA; ver el comentario en
+  // MetaChannelConnection.clientProductId.
+  clientProductId    String?        @map("client_product_id") @db.Uuid
+  clientProduct      ClientProduct? @relation(fields: [clientProductId], references: [id], onDelete: SetNull)
+  botTokenCiphertext Bytes          @map("bot_token_ciphertext")
+  botTokenIv         Bytes          @map("bot_token_iv")
+  botTokenTag        Bytes          @map("bot_token_tag")
+  botUsername        String         @map("bot_username")
   // 'active' | 'needs_reconnect' | 'revoked'
-  status             String   @default("active")
-  connectedAt        DateTime @default(now()) @map("connected_at")
-  lastSyncError      String?  @map("last_sync_error")
+  status             String         @default("active")
+  connectedAt        DateTime       @default(now()) @map("connected_at")
+  lastSyncError      String?        @map("last_sync_error")
 
   client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
@@ -2544,13 +2625,23 @@ model TelegramConnection {
 // diferencia de GoogleBusinessConnection, que asume una sola location.
 // Por eso una fila por superficie, no una por cliente.
 model MetaChannelConnection {
-  id                    String   @id @default(uuid()) @db.Uuid
-  clientId              String   @map("client_id")
-  tenantId              String?  @map("tenant_id") @db.Uuid
+  id                    String         @id @default(uuid()) @db.Uuid
+  clientId              String         @map("client_id")
+  tenantId              String?        @map("tenant_id") @db.Uuid
+  // Fase 1 multi-instancia — ANCLA. Las 36 rutas de /api/internal/* nunca
+  // toman el cliente del cuerpo: lo resuelven desde un identificador externo,
+  // y lo hacen a través de solo tres tablas (ésta por phone_number_id/page
+  // id, TelegramConnection por bot id, ChatbotConversation por
+  // conversationId). Con esta columna, cada una de esas rutas obtiene TAMBIÉN
+  // la instancia del mismo findFirst que ya hacía, en vez de tener que
+  // reescribir 36 resoluciones. Nullable mientras el chatbot siga siendo de
+  // una sola instancia por cliente (fase 5).
+  clientProductId       String?        @map("client_product_id") @db.Uuid
+  clientProduct         ClientProduct? @relation(fields: [clientProductId], references: [id], onDelete: SetNull)
   // 'whatsapp' | 'messenger' | 'instagram'
   channel               String
   // phone_number_id (whatsapp) | page_id (messenger) | ig_user_id (instagram)
-  externalId            String   @map("external_id")
+  externalId            String         @map("external_id")
   // Human-readable name discovered at connect time (Page name / WABA
   // label) — externalId alone is a raw Meta id, not fit to show a client.
   label                 String?
@@ -2559,14 +2650,14 @@ model MetaChannelConnection {
   // level, so this needs its own column rather than being parsed back
   // out of `label` (which only ever held it for display). NULL for
   // messenger/instagram rows, which don't have this concept.
-  wabaId                String?  @map("waba_id")
-  accessTokenCiphertext Bytes    @map("access_token_ciphertext")
-  accessTokenIv         Bytes    @map("access_token_iv")
-  accessTokenTag        Bytes    @map("access_token_tag")
+  wabaId                String?        @map("waba_id")
+  accessTokenCiphertext Bytes          @map("access_token_ciphertext")
+  accessTokenIv         Bytes          @map("access_token_iv")
+  accessTokenTag        Bytes          @map("access_token_tag")
   // 'active' | 'needs_reconnect' | 'revoked'
-  status                String   @default("active")
-  connectedAt           DateTime @default(now()) @map("connected_at")
-  lastSyncError         String?  @map("last_sync_error")
+  status                String         @default("active")
+  connectedAt           DateTime       @default(now()) @map("connected_at")
+  lastSyncError         String?        @map("last_sync_error")
 
   // WP-XX — token lifecycle. Meta's long-lived tokens expire in ~60 days
   // and the exchange has always RETURNED `expires_in`, but the portal
