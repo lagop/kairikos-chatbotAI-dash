@@ -18,6 +18,7 @@ import { EmptyState } from '@/components/portal/EmptyState';
 import { ProductPitch } from '@/components/portal/ProductPitch';
 import { SelfServeProductCard, type SelfServeTierOption } from '@/components/portal/SelfServeProductCard';
 import { LeadStatusControls } from '@/components/portal/LeadStatusControls';
+import { suggestedOutreachMessage, whatsappLink, mailtoLink } from '@/lib/lead-contact-links';
 import { ProspectingProfileCard } from '@/components/portal/ProspectingProfileCard';
 import { ProspectingMetricsCard } from '@/components/portal/ProspectingMetricsCard';
 import { loadProspectingMetrics } from '@/lib/prospecting-metrics';
@@ -181,7 +182,7 @@ export default async function PortalLeadsPage({
   const statusFilter = parseLeadStatusFilter(searchParams?.estado);
   const sort = parseLeadSort(searchParams?.orden);
 
-  const [leads, hasProspecting, hasLeads] = await Promise.all([
+  const [leads, hasProspecting, hasLeads, client] = await Promise.all([
     prisma.lead.findMany({
       where: { clientId: resolved.clientId, ...(statusFilter ? { status: statusFilter } : {}) },
       orderBy:
@@ -191,7 +192,11 @@ export default async function PortalLeadsPage({
     }),
     isProductContracted(prisma, resolved.clientId, 'prospecting'),
     isProductContracted(prisma, resolved.clientId, 'leads'),
+    // Fase D — el nombre con el que el cliente se presenta en los mensajes
+    // que escribe él mismo a un prospecto (ver lead-contact-links.ts).
+    prisma.chatbotClient.findUnique({ where: { id: resolved.clientId }, select: { name: true, companyName: true } }),
   ]);
+  const businessName = client?.companyName?.trim() || client?.name?.trim() || 'nuestro negocio';
 
   // Fase A — the profile card only makes sense for a client who actually
   // bought 'prospecting'; a 'leads'-only client (the common case) never
@@ -203,6 +208,10 @@ export default async function PortalLeadsPage({
           category: true,
           locationQuery: true,
           radiusMeters: true,
+          clientWebsite: true,
+          businessDescription: true,
+          idealCustomer: true,
+          exclusions: true,
           consentAcknowledgedAt: true,
           autoContactPausedAt: true,
         },
@@ -274,7 +283,7 @@ export default async function PortalLeadsPage({
       ) : (
         <section className="space-y-3" data-testid="leads-list">
           {leads.map((lead) => (
-            <LeadRow key={lead.id} lead={lead} />
+            <LeadRow key={lead.id} lead={lead} businessName={businessName} />
           ))}
         </section>
       )}
@@ -361,9 +370,52 @@ const STATUS_PILL: Record<string, string> = {
 
 const DATE_FMT = new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 
+/**
+ * Fase D — los dos botones con los que el cliente contacta a mano a un
+ * prospecto que encontramos nosotros. No envían nada: abren WhatsApp o su
+ * gestor de correo con el texto ya escrito, que él revisa antes de mandar.
+ * Ver lead-contact-links.ts.
+ */
+function OutreachLinks({
+  lead,
+  businessName,
+}: {
+  lead: { contactName: string | null; contactPhone: string | null; contactEmail: string | null };
+  businessName: string;
+}) {
+  const message = suggestedOutreachMessage({ businessName, prospectName: lead.contactName });
+  const wa = whatsappLink(lead.contactPhone, message);
+  const mail = mailtoLink(lead.contactEmail, { subject: businessName, body: message });
+  if (!wa && !mail) {
+    return (
+      <p className="text-xs text-kairikos-muted" data-testid="lead-outreach-none">
+        No encontramos ni teléfono ni correo en su web.
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2" data-testid="lead-outreach">
+      {wa ? (
+        <a className="btn-ghost text-sm" href={wa} target="_blank" rel="noopener noreferrer" data-testid="lead-outreach-whatsapp">
+          Escribir por WhatsApp
+        </a>
+      ) : null}
+      {mail ? (
+        <a className="btn-ghost text-sm" href={mail} data-testid="lead-outreach-email">
+          Escribir un correo
+        </a>
+      ) : null}
+      <span className="text-xs text-kairikos-muted">Se abre con un texto ya escrito; lo envías tú.</span>
+    </div>
+  );
+}
+
 function LeadRow({
   lead,
+  businessName,
 }: {
+  /** Cómo se presenta el cliente al escribir a un prospecto. */
+  businessName: string;
   lead: {
     id: string;
     status: string;
@@ -417,6 +469,7 @@ function LeadRow({
           Por qué esta prioridad: {lead.scoreReason}
         </p>
       ) : null}
+      {lead.source === 'outbound' ? <OutreachLinks lead={lead} businessName={businessName} /> : null}
       <LeadStatusControls
         leadId={lead.id}
         status={lead.status as 'nuevo' | 'contactado' | 'convertido' | 'descartado'}
