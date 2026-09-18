@@ -372,11 +372,85 @@ convención; las páginas se mueven cuando su producto se convierta.
 - **El orden de las cuatro migraciones importa** (la 4 depende de la 1-3), pero
   cada una es aplicable y reversible por separado.
 
-## Después
+## Después — replanteado el 18/09/2026, antes de seguir
 
-| Fase | Qué | Esfuerzo |
+> Este apartado sustituye al reparto original de fases. Se midió el código en
+> vez de estimarlo, y dos de las cuatro fases que quedaban **no había que
+> hacerlas**. Lo que sigue es lo decidido, con su razón.
+
+### Lo que la medición encontró
+
+**Producción está vacía**: 2 clientes, 3 contrataciones, y filas sueltas de las
+pruebas propias. Cero conexiones de Google Business, cero conversaciones, cero
+documentos de conocimiento. Toda conversión que quede puede usar el atajo
+barato de la fase 2 —columna `NOT NULL` directa, sin ventana de backfill—.
+
+**Reseñas ya estaba hecho.** `GoogleBusinessConnection` es
+`@@unique([clientId, locationId])` y `src/lib/review-locations.ts` (de una
+"Fase 3" anterior) ya resuelve varias fichas por cliente con tope por tarifa.
+Su cabecera documenta incluso la misma trampa del `findFirst` sin orden que
+apareció en SEO.
+
+**El coste no está en el modelo de datos, está en la superficie.** En la fase 2
+el esquema fue una hora; el resto fueron 11 rutas, 2 páginas, 7 componentes y 7
+archivos de test. Medido así, Recall tiene **29 archivos de test** y el chatbot
+**27** entre los suyos y los de canales y asistente — ahí está el trabajo.
+
+### La regla de precio (decisión 1)
+
+Cuando un cliente quiere dos de algo, **el modelo lo decide el coste marginal**,
+no una preferencia global:
+
+- **La segunda unidad no nos cuesta nada** → un contrato, tope por tarifa.
+- **La segunda unidad cuesta dinero recurrente** → un contrato por unidad.
+
+| Producto | Coste de la 2.ª unidad | Modelo |
 |---|---|---|
-| 2 | SEO — su perfil ya está bien; las tablas operativas son autocontenidas. `GoogleSeoConnection.clientId` y `GoogleAnalyticsConnection.clientId` son `@unique`: hay que quitar esa restricción | 1 sem |
-| 3 | Reseñas y Recall — por ficha de Google y por línea telefónica | 1,5 sem |
-| 4 | Prospección | 3-4 días |
-| 5 | Chatbot, y `Lead` filtrado por sitio — el más profundo, y del que cuelgan los demás | 2-3 sem |
+| Reseñas | ~0, misma sincronización | tope por tarifa (1/3/10) |
+| Prospección | 0 — `TIER_LEAD_CAP` ya ata el gasto | tope por tarifa |
+| SEO | rastreo + Search Console + GA4 + generación con IA | contrato por unidad |
+| Recall | número de Twilio, minutos, transcripción | contrato por unidad |
+| Chatbot | conversaciones con IA + alta de operador | contrato por unidad |
+
+Esto resolvió una contradicción que el repositorio ya tenía: Reseñas se
+construyó con tope por tarifa —"una factura variable es justo la ansiedad
+contra la que se vende este catálogo"— y SEO, en la fase 2, con contrato por
+unidad. Las dos son correctas bajo esta regla, y ninguna lo era bajo la otra.
+
+### Decisiones tomadas
+
+| # | Decisión | Resultado |
+|---|---|---|
+| 1 | Regla de precio | El coste marginal decide. Tabla de arriba |
+| 2 | ¿SEO se queda por web? | **Sí**, sin cambios |
+| 3 | ¿Prospección multi-instancia? | **No.** Varias búsquedas en UN contrato — es la Fase B de Prospección, ya aplazada. Sale de este plan |
+| 4 | ¿Un recado sabe de qué línea vino? | **Sí**, y se añade AHORA (ver abajo) |
+| 5 | ¿Chatbot completo o por partes? | **Completo**, decisión del propietario: convertir un producto vivo es peor que construirlo entero con las tablas vacías |
+
+### La decisión 4 es la única que pierde información si se aplaza
+
+`Job` y `ServiceQuote` cuelgan de `contactId` y **no guardan ninguna
+referencia a la línea** — comprobado: `Job` no tiene `callEventId` ni
+`subscriptionId`. Con dos líneas, un recado no sabría de cuál vino, y **no hay
+dato del que deducirlo después**. `Contact` sí se queda del cliente: quien
+llama a tus dos negocios es una persona, no dos fichas.
+
+Todas las demás decisiones son reversibles mientras producción siga vacía.
+
+### El trabajo que queda
+
+| Orden | Qué | Esfuerzo |
+|---|---|---|
+| 1 | **Recall multi-línea** — `RecallSubscription` ya lleva `clientProductId` y todo cuelga de `subscriptionId`, así que el modelo es casi gratis. El coste son los 29 archivos de test. Incluye la decisión 4 | 3-4 días |
+| 2 | **Chatbot, completo** — esquema (4 tablas + el `@@unique([clientId])` de `TelegramConnection`, que es EL bloqueo real y es una línea), asistente por instancia, selector, bandeja, y sus 27 archivos de test | 2-2,5 sem |
+| — | **Reseñas** | nada, ya está |
+| — | **Prospección** | fuera de este plan → Fase B |
+
+Unas **3 semanas**, frente a las 5 del reparto original.
+
+### Lo que esto NO desbloquea
+
+Ninguna de estas fases permite vender nada. Los bloqueos son externos y del
+propietario: verificación como Tech Provider en Meta, los clientes OAuth de
+Google, y la clave *live* de Stripe. Lo que aprovecha este trabajo es que hoy,
+con producción vacía, es barato — y que deja de serlo en cuanto haya clientes.
