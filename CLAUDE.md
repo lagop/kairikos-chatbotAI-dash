@@ -137,6 +137,31 @@ Solo `http(s)`, fuera `localhost`, `.local`, `10.*`, `192.168.*`, `172.16–31.*
 Interpretar es trabajo de IA; reunir señales es trabajo del portal. La generación de contenido
 SEO reúne datos ya sincronizados y no llama a APIs externas en vivo dentro del mismo paso.
 
+## Cuando un cliente quiere "dos de algo"
+
+Dos webs, dos fichas de Google, dos líneas de teléfono, dos negocios. Hay dos
+formas de venderlo y **la elige el coste marginal**, no la preferencia:
+
+- **La segunda unidad no nos cuesta nada recurrente** → UN contrato con tope
+  por tarifa. Es lo que hace `reviews` (`TIER_LOCATION_CAP`, 1/3/10 fichas) y
+  lo que debe hacer `prospecting` (`TIER_LEAD_CAP` ya ata el gasto, así que
+  una búsqueda más es gratis para nosotros).
+- **La segunda unidad cuesta dinero cada mes** → UN CONTRATO POR UNIDAD. Es lo
+  que hacen `seo` (rastreo + Search Console + GA4 + generación con IA por web),
+  `recall` (un número de Twilio, minutos, transcripción por línea) y `web`.
+
+El porqué de la primera está escrito en `lib/review-locations.ts`: "una factura
+variable es justo la ansiedad contra la que se vende este catálogo". Vale
+mientras el coste sea nuestro y fijo; cuando es lineal, absorberlo en una tarifa
+plana es vender por debajo de coste.
+
+Lo segundo se implementa con el eje multi-instancia: `MULTI_INSTANCE_PRODUCT_CODES`
+en `client-product-access.ts`, que es la MISMA lista que excluye el índice único
+parcial de `ClientProduct` en Postgres. Son tres capas (índice, checkout, alta de
+operador) y hay un test que compara la constante con el predicado de la migración
+— separarlas hace reventar el insert, o deja la puerta abierta en silencio.
+Ver `docs/plan-multi-instancia-fase-1.md`.
+
 ## Datos y persistencia
 
 **Toda fila que escribe un cliente tiene su tabla de auditoría** (`LeadAudit`,
