@@ -33,7 +33,16 @@ export interface SeoProfile {
   cmsType: string | null;
 }
 
-export function SeoProfileCard({ profile }: { profile: SeoProfile | null }) {
+export function SeoProfileCard({
+  profile,
+  clientProductId,
+}: {
+  profile: SeoProfile | null;
+  /** Fase 2 multi-instancia — de qué web es esta tarjeta. Se manda en cada
+   *  escritura: sin él, el servidor resolvería "la única que haya" y con dos
+   *  webs se negaría, que es correcto pero inútil desde aquí. */
+  clientProductId: string;
+}) {
   const router = useRouter();
   const [businessDescription, setBusinessDescription] = useState(profile?.businessDescription ?? '');
   const [targetAudience, setTargetAudience] = useState(profile?.targetAudience ?? '');
@@ -98,7 +107,7 @@ export function SeoProfileCard({ profile }: { profile: SeoProfile | null }) {
       const res = await fetch('/api/portal/seo/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ...body, clientProductId }),
       });
       if (!res.ok) {
         const detail = await res.json().catch(() => null);

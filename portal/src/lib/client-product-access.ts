@@ -54,6 +54,11 @@ export async function isProductContracted(
 export interface ContractedInstance {
   clientProductId: string;
   clientId: string;
+  /** Aislamiento por tenant. Va aquí y no se re-consulta en cada llamante
+   *  porque todo lo que se escribe colgando de una contratación lo necesita
+   *  (la fila del perfil, su auditoría), y resolverlo aparte es cómo se
+   *  cuela un null en una columna de tenant. */
+  tenantId: string | null;
   /** El negocio/web del cliente al que pertenece. NULL cuando la contratación
    *  no declara sitio: el llamante que lo necesite resuelve al primario. */
   clientSiteId: string | null;
@@ -90,6 +95,7 @@ export async function resolveContractedInstance(
       id: true,
       clientId: true,
       clientSiteId: true,
+      tenantId: true,
       status: true,
       product: { select: { code: true, tier: true } },
     },
@@ -107,6 +113,7 @@ export async function resolveContractedInstance(
     clientProductId: row.id,
     clientId: row.clientId,
     clientSiteId: row.clientSiteId,
+    tenantId: row.tenantId,
     code: row.product.code,
     tier: row.product.tier,
     status: row.status,
@@ -191,6 +198,7 @@ export async function listContractedInstances(
       id: true,
       clientId: true,
       clientSiteId: true,
+      tenantId: true,
       status: true,
       product: { select: { code: true, tier: true } },
     },
@@ -200,8 +208,38 @@ export async function listContractedInstances(
     clientProductId: row.id,
     clientId: row.clientId,
     clientSiteId: row.clientSiteId,
+    tenantId: row.tenantId,
     code: row.product.code,
     tier: row.product.tier,
     status: row.status,
   }));
+}
+
+// =============================================================================
+// Multi-instancia — qué productos se pueden contratar más de una vez.
+//
+// UNA SOLA LISTA, porque la unicidad se impone en TRES capas y separarlas es
+// el fallo fácil:
+//
+//   1. El índice único PARCIAL de ClientProduct, en Postgres. La garantía de
+//      verdad. Su predicado excluye exactamente estos códigos.
+//   2. createProductCheckoutSession (already_contracted), autoservicio.
+//   3. activateClientProduct (reutilizar fila), alta de operador.
+//
+// Añadir un código aquí sin reescribir el predicado del índice hace que el
+// insert reviente contra la base de datos; quitarlo del índice sin quitarlo
+// aquí deja la puerta abierta en silencio. Lo vigila un test estructural
+// (tests/unit/multi-instance-products.test.ts) que compara esta lista con el
+// predicado de la última migración que lo tocó.
+//
+// 'web' lleva aquí desde 20260901120000_client_product_web_multiplicity, antes
+// de que existiera este eje: cada proyecto web es independiente.
+// 'seo' se añadió en la fase 2 (20260928090000_seo_multi_site): una
+// contratación por web, con su propia propiedad de Search Console.
+// =============================================================================
+
+export const MULTI_INSTANCE_PRODUCT_CODES = ['web', 'seo'] as const;
+
+export function isMultiInstanceProduct(productCode: string): boolean {
+  return (MULTI_INSTANCE_PRODUCT_CODES as readonly string[]).includes(productCode);
 }

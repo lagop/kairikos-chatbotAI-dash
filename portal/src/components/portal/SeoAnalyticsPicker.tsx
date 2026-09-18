@@ -16,7 +16,7 @@ interface AnalyticsProperty {
   accountDisplayName: string;
 }
 
-export function SeoAnalyticsPicker() {
+export function SeoAnalyticsPicker({ clientProductId }: { clientProductId: string }) {
   const router = useRouter();
   const [properties, setProperties] = useState<AnalyticsProperty[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -28,7 +28,9 @@ export function SeoAnalyticsPicker() {
     let cancelled = false;
     async function load() {
       try {
-        const res = await fetch('/api/portal/seo/analytics/properties');
+        const res = await fetch(
+          `/api/portal/seo/analytics/properties?clientProductId=${encodeURIComponent(clientProductId)}`,
+        );
         if (cancelled) return;
         if (!res.ok) {
           setLoadError('No se pudo cargar la lista de propiedades de Analytics.');
@@ -45,7 +47,9 @@ export function SeoAnalyticsPicker() {
     return () => {
       cancelled = true;
     };
-  }, []);
+    // clientProductId en las dependencias: si cambia la web, la lista de
+    // propiedades de GA4 es otra y hay que volver a pedirla.
+  }, [clientProductId]);
 
   async function confirm() {
     if (!selected) return;
@@ -55,7 +59,7 @@ export function SeoAnalyticsPicker() {
       const res = await fetch('/api/portal/seo/analytics/select-property', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ propertyId: selected }),
+        body: JSON.stringify({ propertyId: selected, clientProductId }),
       });
       if (!res.ok) {
         setSaveError('No se pudo completar la conexión. Inténtalo de nuevo.');

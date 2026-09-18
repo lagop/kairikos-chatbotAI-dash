@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
+import { resolveContractedInstance } from '@/lib/client-product-access';
 import { logError } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
@@ -35,10 +36,18 @@ const BodySchema = z
     toneOfVoice: z.string().trim().min(1).max(500).optional(),
     siteUrl: z.string().trim().url().max(500).optional(),
     cmsType: z.enum(['wordpress', 'wix', 'squarespace', 'other', 'no_se']).optional(),
+    // Fase 2 multi-instancia — de qué web se está hablando. Opcional: sin él
+    // se resuelve la única contratación de 'seo' que haya, que es lo que
+    // hacía este endpoint antes.
+    clientProductId: z.string().uuid().optional(),
   })
-  .refine((body) => Object.values(body).some((v) => v !== undefined), {
-    message: 'at least one field must be provided',
-  });
+  // clientProductId NO cuenta como "campo": es el selector de a cuál de las
+  // webs se escribe, no algo que se escriba. Un cuerpo que solo lo traiga
+  // sigue siendo un PATCH vacío.
+  .refine(
+    ({ clientProductId: _ignored, ...fields }) => Object.values(fields).some((v) => v !== undefined),
+    { message: 'at least one field must be provided' },
+  );
 
 export async function PATCH(req: NextRequest) {
   const session = await getSession();
@@ -59,13 +68,18 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'invalid_body', details: body.error.flatten() }, { status: 400 });
   }
 
-  const clientProduct = await prisma.clientProduct.findFirst({
-    where: { clientId: resolved.clientId, status: 'active', product: { code: 'seo' } },
-    select: { id: true, tenantId: true },
+  // Fase 2 multi-instancia — esto resolvía con un findFirst por cliente, sin
+  // orden estable: con dos webs habría escrito en una de las dos al azar, y no
+  // necesariamente la misma entre dos guardados seguidos.
+  const instance = await resolveContractedInstance(prisma, {
+    clientId: resolved.clientId,
+    productCode: 'seo',
+    clientProductId: body.data.clientProductId ?? null,
   });
-  if (!clientProduct) {
+  if (!instance) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
+  const clientProduct = { id: instance.clientProductId, tenantId: instance.tenantId };
 
   const existing = await prisma.seoProfile.findUnique({
     where: { clientProductId: clientProduct.id },

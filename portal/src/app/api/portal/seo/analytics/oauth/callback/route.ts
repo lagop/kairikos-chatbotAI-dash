@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { exchangeCodeForTokens, encryptRefreshToken, OAUTH_STATE_COOKIE } from '@/lib/google-analytics';
+import { resolveContractedInstance } from '@/lib/client-product-access';
+import { decodeOAuthState } from '@/lib/seo-oauth-state';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -32,7 +34,9 @@ export async function GET(req: NextRequest) {
     return res;
   };
 
-  if (!code || !state || !cookieState || state !== cookieState) {
+  // Fase 2 multi-instancia — ver el mismo bloque en seo/oauth/callback.
+  const decoded = decodeOAuthState(cookieState);
+  if (!code || !state || !decoded || state !== decoded.nonce) {
     return redirectTo('/portal/seo?ga_connect_error=csrf');
   }
   if (!isDatabaseConfigured) {
@@ -42,6 +46,16 @@ export async function GET(req: NextRequest) {
   const resolved = await resolveClientFromSession();
   if (!resolved || resolved.source !== 'database') {
     return redirectTo('/portal/login?next=/portal/seo');
+  }
+
+  // La cookie es del navegador; la autorización es del servidor.
+  const instance = await resolveContractedInstance(prisma, {
+    clientId: resolved.clientId,
+    productCode: 'seo',
+    clientProductId: decoded.clientProductId,
+  });
+  if (!instance) {
+    return redirectTo('/portal/seo?ga_connect_error=forbidden');
   }
 
   const tokens = await exchangeCodeForTokens(code);
@@ -59,9 +73,10 @@ export async function GET(req: NextRequest) {
 
   const encrypted = encryptRefreshToken(tokens.refreshToken);
   await prisma.googleAnalyticsConnection.upsert({
-    where: { clientId: resolved.clientId },
+    where: { clientProductId: instance.clientProductId },
     create: {
       clientId: resolved.clientId,
+      clientProductId: instance.clientProductId,
       tenantId: client.tenantId,
       refreshTokenCiphertext: encrypted.ciphertext,
       refreshTokenIv: encrypted.iv,
@@ -86,5 +101,5 @@ export async function GET(req: NextRequest) {
     },
   });
 
-  return redirectTo('/portal/seo?ga_connected=1');
+  return redirectTo(`/portal/seo/${instance.clientProductId}?ga_connected=1`);
 }

@@ -54,7 +54,16 @@ function ChangeCell({ change }: { change: number | null }) {
   );
 }
 
-export function SeoKeywordsCard({ trends }: { trends: KeywordTrend[] }) {
+export function SeoKeywordsCard({
+  trends,
+  clientProductId,
+}: {
+  trends: KeywordTrend[];
+  /** Fase 2 multi-instancia — de qué web es esta tarjeta. Se manda en cada
+   *  escritura: sin él, el servidor resolvería "la única que haya" y con dos
+   *  webs se negaría, que es correcto pero inútil desde aquí. */
+  clientProductId: string;
+}) {
   const router = useRouter();
   const [value, setValue] = useState(trends.map((t) => t.keyword).join('\n'));
   const [saving, setSaving] = useState(false);
@@ -79,7 +88,7 @@ export function SeoKeywordsCard({ trends }: { trends: KeywordTrend[] }) {
       const res = await fetch('/api/portal/seo/keywords', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keywords }),
+        body: JSON.stringify({ keywords, clientProductId }),
       });
       if (!res.ok) {
         const detail = await res.json().catch(() => null);

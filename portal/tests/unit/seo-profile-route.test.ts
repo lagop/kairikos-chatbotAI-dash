@@ -44,7 +44,17 @@ vi.mock('@/lib/prisma', () => ({
     return mockState.isDatabaseConfigured;
   },
   prisma: {
-    clientProduct: { findFirst: (...a: unknown[]) => mockState.clientProductFindFirst(...a) },
+    clientProduct: {
+      findFirst: (...a: unknown[]) => mockState.clientProductFindFirst(...a),
+      // Fase 2 multi-instancia — la ruta resuelve con resolveContractedInstance
+      // (el real, no mockeado), que usa findMany + take:2 para poder DETECTAR
+      // que hay dos contrataciones en vez de elegir una al azar. Se ata al
+      // mismo mock para que cada caso conserve su intención.
+      findMany: async (...a: unknown[]) => {
+        const row = await mockState.clientProductFindFirst(...a);
+        return row ? [{ ...row, product: { code: 'seo', tier: 'standard' } }] : [];
+      },
+    },
     seoProfile: { findUnique: (...a: unknown[]) => mockState.profileFindUnique(...a) },
     $transaction: (fn: (tx: typeof mockTx) => unknown) => fn(mockTx),
   },

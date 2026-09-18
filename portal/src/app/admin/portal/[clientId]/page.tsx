@@ -575,11 +575,23 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
 
         if (productCode === 'seo') {
           seoGlobalMinIntervalDays = await getContentGenerationMinIntervalDays();
+          // LIMITACIÓN CONOCIDA (fase 2 multi-instancia): desde que un
+          // cliente puede tener SEO para varias webs, este panel enseña solo
+          // LA MÁS RECIENTE. El portal del cliente sí las distingue
+          // (/portal/seo/[clientProductId]); esta pantalla de operador se
+          // convertirá cuando haga falta de verdad.
+          //
+          // Lo que sí se arregla ya: el clientProductId se selecciona y la
+          // conexión de Search Console de más abajo se busca POR ÉL. Antes se
+          // buscaba por cliente, así que con dos webs el panel podía enseñar
+          // el perfil de una y las oportunidades de búsqueda de la otra sin
+          // que nada lo delatara.
           const profile = await prisma.seoProfile.findFirst({
             where: { clientId: client.id },
             orderBy: { createdAt: 'desc' },
             select: {
               id: true,
+              clientProductId: true,
               businessDescription: true,
               targetAudience: true,
               toneOfVoice: true,
@@ -617,7 +629,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
             };
 
             const seoConnection = await prisma.googleSeoConnection.findUnique({
-              where: { clientId: client.id },
+              where: { clientProductId: profile.clientProductId },
               select: { id: true },
             });
             if (seoConnection) {

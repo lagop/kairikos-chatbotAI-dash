@@ -2,6 +2,7 @@ import 'server-only';
 import type { PrismaClient } from '@prisma/client';
 import { ensureRecallSubscription } from './recall-onboarding';
 import { ensureSeoProfile, ensureProspectingCampaign, ensureLeadQualificationProfile } from './product-onboarding';
+import { isMultiInstanceProduct } from './client-product-access';
 
 // =============================================================================
 // Activar un ClientProduct sin pasar por Stripe — un operador decide que
@@ -49,16 +50,20 @@ export async function activateClientProductForOperator(
   const product = await prisma.product.findUnique({ where: { id: productId }, select: { id: true, isActive: true, code: true, tier: true } });
   if (!product || !product.isActive) return { ok: false, error: 'product_not_found' };
 
-  // 'web' nunca reutiliza una fila existente — ver el mismo razonamiento
-  // en client-products/route.ts: cada proyecto web es independiente, y
-  // WebBrief/WebQuote están 1:1 con el id del ClientProduct.
-  const existing =
-    product.code === 'web'
-      ? null
-      : await prisma.clientProduct.findFirst({
-          where: { clientId, productId },
-          select: { id: true, status: true },
-        });
+  // Los productos multi-instancia nunca reutilizan una fila existente: cada
+  // alta es una contratación nueva, para otra web o negocio del cliente, con
+  // su propio perfil 1:1 colgando del id del ClientProduct (WebBrief/WebQuote
+  // para 'web', SeoProfile para 'seo'). Reutilizar la fila daría de alta el
+  // segundo sitio encima del primero.
+  //
+  // La lista es compartida con el checkout y con el predicado del índice
+  // único parcial — ver MULTI_INSTANCE_PRODUCT_CODES.
+  const existing = isMultiInstanceProduct(product.code)
+    ? null
+    : await prisma.clientProduct.findFirst({
+        where: { clientId, productId },
+        select: { id: true, status: true },
+      });
 
   const changedBy = actor.operatorId ?? undefined;
 

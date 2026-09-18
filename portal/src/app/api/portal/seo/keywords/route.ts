@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
+import { resolveContractedInstance } from '@/lib/client-product-access';
 import { normalizeKeyword, MAX_TARGET_KEYWORDS } from '@/lib/seo-keywords';
 import { logError } from '@/lib/observability';
 
@@ -23,6 +24,10 @@ export const runtime = 'nodejs';
 
 const BodySchema = z.object({
   keywords: z.array(z.string().trim().min(2).max(120)).max(MAX_TARGET_KEYWORDS),
+  // Fase 2 multi-instancia — de qué web se está hablando. Opcional: sin él
+  // se resuelve la única contratación de 'seo' que haya, que es lo que
+  // hacía este endpoint antes.
+  clientProductId: z.string().uuid().optional(),
 });
 
 export async function PUT(req: NextRequest) {
@@ -46,8 +51,16 @@ export async function PUT(req: NextRequest) {
 
   // Las palabras cuelgan del perfil de SEO: sin perfil no hay producto que
   // configurar todavía.
-  const profile = await prisma.seoProfile.findFirst({
-    where: { clientId: resolved.clientId, clientProduct: { status: 'active' } },
+  const instance = await resolveContractedInstance(prisma, {
+    clientId: resolved.clientId,
+    productCode: 'seo',
+    clientProductId: body.data.clientProductId ?? null,
+  });
+  if (!instance) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  }
+  const profile = await prisma.seoProfile.findUnique({
+    where: { clientProductId: instance.clientProductId },
     select: { id: true, tenantId: true },
   });
   if (!profile) {

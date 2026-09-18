@@ -57,8 +57,6 @@ const PENDING = new Set([
   'google-business/reviews/[reviewId]/publish/route.ts',
   'google-business/sync/route.ts',
   'recall/meta-connect/route.ts',
-  // Fase 2 — SEO. Resuelve con findFirst en línea, sin helper.
-  'seo/profile/route.ts',
   // Fase 4 — Prospección.
   'prospecting/campaign/route.ts',
   'prospecting/campaign/consent/route.ts',
@@ -102,7 +100,7 @@ describe('autorización por instancia en las rutas que escriben', () => {
     // forma de declarar los handlers, este test pasaría a no comprobar nada
     // y nadie se enteraría.
     expect(offenders.length).toBeGreaterThan(5);
-    expect(offenders).toContain('seo/profile/route.ts');
+    expect(offenders).toContain('chatbot/knowledge/route.ts');
   });
 
   it('ninguna ruta nueva resuelve la contratación por cliente', () => {

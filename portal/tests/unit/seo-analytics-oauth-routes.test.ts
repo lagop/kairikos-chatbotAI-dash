@@ -12,6 +12,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { NextRequest } from 'next/server';
 
+const TEST_CLIENT_PRODUCT_ID = '11111111-1111-4111-8111-111111111111';
+
 const mockState = vi.hoisted(() => ({
   resolveClientFromSession: vi.fn(),
   getSession: vi.fn(),
@@ -35,6 +37,20 @@ vi.mock('@/lib/session', () => ({
 
 vi.mock('@/lib/client-product-access', () => ({
   isProductContracted: (...args: unknown[]) => mockState.isProductContracted(...args),
+  // Fase 2 multi-instancia — la ruta resuelve ahora la contratación, no un
+  // booleano. Se ata al mismo mock para no duplicar el estado de cada test.
+  resolveContractedInstance: async () =>
+    (await mockState.isProductContracted())
+      ? {
+          clientProductId: TEST_CLIENT_PRODUCT_ID,
+          clientId: 'client_1',
+          clientSiteId: null,
+          tenantId: 'tenant_1',
+          code: 'seo',
+          tier: 'standard',
+          status: 'active',
+        }
+      : null,
 }));
 
 vi.mock('@/lib/prisma', () => ({
@@ -75,8 +91,10 @@ beforeEach(() => {
 });
 
 describe('GET /api/portal/seo/analytics/oauth/start', () => {
-  function makeRequest() {
-    return { url: 'https://portal.kairikos.test/api/portal/seo/analytics/oauth/start' } as unknown as NextRequest;
+  function makeRequest(clientProductId?: string) {
+    const url = new URL('https://portal.kairikos.test/api/portal/seo/analytics/oauth/start');
+    if (clientProductId) url.searchParams.set('clientProductId', clientProductId);
+    return { url: url.toString(), nextUrl: url } as unknown as NextRequest;
   }
 
   it('redirects to login when there is no session', async () => {
@@ -106,7 +124,14 @@ describe('GET /api/portal/seo/analytics/oauth/start', () => {
     const res = await GET(makeRequest());
     const cookie = res.cookies.get('seo_ga4_oauth_state');
     expect(cookie?.value).toBeTruthy();
-    expect(res.headers.get('location')).toContain(`state=${cookie?.value}`);
+    // Fase 2 multi-instancia: la cookie httpOnly lleva "<nonce>:<contratación>"
+    // y fuera solo viaja el nonce, así que el id no acaba en registros de
+    // terceros ni en el historial. La comprobación CSRF no cambia.
+    const [nonce, clientProductId] = (cookie?.value ?? '').split(':');
+    expect(clientProductId).toBe(TEST_CLIENT_PRODUCT_ID);
+    const location = res.headers.get('location') ?? '';
+    expect(location).toContain(`state=${nonce}`);
+    expect(location).not.toContain(TEST_CLIENT_PRODUCT_ID);
   });
 });
 
@@ -154,9 +179,11 @@ describe('GET /api/portal/seo/analytics/oauth/callback', () => {
     expect(mockState.encryptRefreshToken).toHaveBeenCalledWith('rt_plain');
     expect(mockState.connectionUpsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { clientId: 'client_1' },
+        // Fase 2 multi-instancia — contra la contratacion, no el cliente.
+        where: { clientProductId: TEST_CLIENT_PRODUCT_ID },
         create: expect.objectContaining({
           clientId: 'client_1',
+          clientProductId: TEST_CLIENT_PRODUCT_ID,
           tenantId: 'tenant_1',
           status: 'pending_property_selection',
           refreshTokenCiphertext: Buffer.from('ct'),

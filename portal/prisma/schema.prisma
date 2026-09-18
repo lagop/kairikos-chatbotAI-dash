@@ -131,8 +131,11 @@ model ChatbotClient {
   invoices                       Invoice[]
   operatorActions                OperatorAction[]
   googleBusinessConnections      GoogleBusinessConnection[]
-  googleSeoConnection            GoogleSeoConnection?
-  googleAnalyticsConnection      GoogleAnalyticsConnection?
+  // Fase 2 multi-instancia — dejan de ser 1:1. La conexion de Search Console
+  // pertenece a UNA web, y un cliente puede tener varias. Ver el comentario
+  // en GoogleSeoConnection.clientProductId.
+  googleSeoConnections           GoogleSeoConnection[]
+  googleAnalyticsConnections     GoogleAnalyticsConnection[]
   googleReviews                  GoogleReview[]
   reviewRequestCampaigns         ReviewRequestCampaign[]
   webBriefs                      WebBrief[]
@@ -768,28 +771,31 @@ model ClientProduct {
   onboardingState String    @default("in-progress") @map("onboarding_state")
   goLiveAt        DateTime? @map("go_live_at")
 
-  client                   ChatbotClient             @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  clientSite               ClientSite?               @relation(fields: [clientSiteId], references: [id], onDelete: SetNull)
-  product                  Product                   @relation(fields: [productId], references: [id], onDelete: Restrict)
-  tenant                   Tenant?                   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  auditLogs                ClientProductAudit[]
-  subscription             Subscription?
+  client                    ChatbotClient              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientSite                ClientSite?                @relation(fields: [clientSiteId], references: [id], onDelete: SetNull)
+  product                   Product                    @relation(fields: [productId], references: [id], onDelete: Restrict)
+  tenant                    Tenant?                    @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  auditLogs                 ClientProductAudit[]
+  subscription              Subscription?
   // WP-19 — one-time-purchase products (no recurring price) invoice
   // directly against the ClientProduct instead of through a Subscription
   // — see Invoice.clientProductId.
-  invoices                 Invoice[]
-  webQuote                 WebQuote?
-  webBrief                 WebBrief?
-  recallSubscription       RecallSubscription?
-  prospectingCampaign      ProspectingCampaign?
-  seoProfile               SeoProfile?
-  leadQualificationProfile LeadQualificationProfile?
+  invoices                  Invoice[]
+  webQuote                  WebQuote?
+  webBrief                  WebBrief?
+  recallSubscription        RecallSubscription?
+  prospectingCampaign       ProspectingCampaign?
+  seoProfile                SeoProfile?
+  leadQualificationProfile  LeadQualificationProfile?
   // Fase 1 multi-instancia — las tres anclas desde las que /api/internal/*
   // resuelve de qué instancia habla. Ver el comentario en
   // MetaChannelConnection.clientProductId.
-  metaChannelConnections   MetaChannelConnection[]
-  telegramConnections      TelegramConnection[]
-  chatbotConversations     ChatbotConversation[]
+  metaChannelConnections    MetaChannelConnection[]
+  telegramConnections       TelegramConnection[]
+  chatbotConversations      ChatbotConversation[]
+  // Fase 2 — las dos conexiones de Google que pertenecen a UNA web.
+  googleSeoConnection       GoogleSeoConnection?
+  googleAnalyticsConnection GoogleAnalyticsConnection?
 
   // Real DB-level uniqueness for every code except 'web' lives in a raw-SQL
   // partial unique index (see this migration's .sql) — Prisma can't express
@@ -1695,7 +1701,17 @@ model GoogleBusinessConnection {
 // =============================================================================
 model GoogleSeoConnection {
   id                     String    @id @default(uuid()) @db.Uuid
-  clientId               String    @unique @map("client_id")
+  clientId               String    @map("client_id")
+  // Fase 2 multi-instancia — la conexión es de UNA WEB, no del cliente.
+  // Antes era clientId @unique: un cliente, una propiedad de Search Console.
+  // Pero la propiedad que guarda searchConsoleSiteUrl es la de un sitio
+  // concreto, así que un cliente con dos webs necesita dos conexiones (mismo
+  // Google, dos autorizaciones — cada una con su refresh token).
+  //
+  // clientId se queda como columna sin @unique: sigue siendo útil para
+  // filtrar por cliente y para el aislamiento por tenant, pero ya no
+  // identifica la conexión.
+  clientProductId        String    @unique @map("client_product_id") @db.Uuid
   tenantId               String    @map("tenant_id") @db.Uuid
   googleAccountEmail     String?   @map("google_account_email")
   searchConsoleSiteUrl   String    @map("search_console_site_url")
@@ -1708,11 +1724,13 @@ model GoogleSeoConnection {
   lastSyncAt             DateTime? @map("last_sync_at")
   lastSyncError          String?   @map("last_sync_error")
 
-  client  ChatbotClient            @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant  Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  metrics SeoSearchConsoleMetric[]
-  queries SeoSearchConsoleQuery[]
+  client        ChatbotClient            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientProduct ClientProduct            @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
+  tenant        Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  metrics       SeoSearchConsoleMetric[]
+  queries       SeoSearchConsoleQuery[]
 
+  @@index([clientId])
   @@index([tenantId])
   @@index([status])
 }
@@ -1807,7 +1825,10 @@ model SeoSearchConsoleQuery {
 // refresh token, invalid_grant -> needs_reconnect, one row per client).
 model GoogleAnalyticsConnection {
   id                     String    @id @default(uuid()) @db.Uuid
-  clientId               String    @unique @map("client_id")
+  clientId               String    @map("client_id")
+  // Fase 2 multi-instancia — igual que GoogleSeoConnection: la propiedad de
+  // GA4 que guarda propertyId es la de UNA web. Ver el comentario de allí.
+  clientProductId        String    @unique @map("client_product_id") @db.Uuid
   tenantId               String    @map("tenant_id") @db.Uuid
   googleAccountEmail     String?   @map("google_account_email")
   // NULL until the client completes property selection — see the
@@ -1824,10 +1845,12 @@ model GoogleAnalyticsConnection {
   lastSyncAt             DateTime? @map("last_sync_at")
   lastSyncError          String?   @map("last_sync_error")
 
-  client  ChatbotClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant  Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  metrics SeoAnalyticsMetric[]
+  client        ChatbotClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientProduct ClientProduct        @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
+  tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  metrics       SeoAnalyticsMetric[]
 
+  @@index([clientId])
   @@index([tenantId])
   @@index([status])
 }
