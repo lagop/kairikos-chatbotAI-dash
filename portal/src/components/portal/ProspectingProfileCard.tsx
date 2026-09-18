@@ -22,16 +22,43 @@ export interface ProspectingProfile {
   category: string | null;
   locationQuery: string | null;
   radiusMeters: number | null;
+  // Fase A (2026-09-18) — el contexto del negocio del cliente.
+  clientWebsite: string | null;
+  businessDescription: string | null;
+  idealCustomer: string | null;
+  exclusions: string | null;
   // Fase C
   consentAcknowledgedAt: Date | null;
   autoContactPausedAt: Date | null;
 }
+
+interface Suggestion {
+  categories: string[];
+  locations: string[];
+  exclusions: string[];
+  businessSummary: string | null;
+}
+
+const SUGGEST_NOTE: Record<string, string> = {
+  not_enough_context: 'Cuéntanos algo más de tu negocio, o dinos tu web, y te proponemos a quién buscar.',
+  no_api_key: 'Las sugerencias no están disponibles ahora mismo. Puedes rellenar el rubro y la zona a mano.',
+  suggestion_failed: 'No hemos podido proponerte nada esta vez. Inténtalo de nuevo o rellénalo a mano.',
+  invalid_url: 'Esa dirección web no parece válida — lo hemos hecho sin ella.',
+  crawl_failed: 'No pudimos leer tu web — lo hemos hecho con lo que nos has contado.',
+};
 
 export function ProspectingProfileCard({ profile }: { profile: ProspectingProfile | null }) {
   const router = useRouter();
   const [category, setCategory] = useState(profile?.category ?? '');
   const [locationQuery, setLocationQuery] = useState(profile?.locationQuery ?? '');
   const [radiusKm, setRadiusKm] = useState(Math.round((profile?.radiusMeters ?? 10000) / 1000));
+  const [clientWebsite, setClientWebsite] = useState(profile?.clientWebsite ?? '');
+  const [businessDescription, setBusinessDescription] = useState(profile?.businessDescription ?? '');
+  const [idealCustomer, setIdealCustomer] = useState(profile?.idealCustomer ?? '');
+  const [exclusions, setExclusions] = useState(profile?.exclusions ?? '');
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestion, setSuggestion] = useState<Suggestion | null>(null);
+  const [suggestNote, setSuggestNote] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -42,6 +69,40 @@ export function ProspectingProfileCard({ profile }: { profile: ProspectingProfil
   const [autoPaused, setAutoPaused] = useState(Boolean(profile?.autoContactPausedAt));
 
   const configured = Boolean(profile?.category && profile?.locationQuery);
+
+  /** Pide una propuesta y la enseña. No guarda nada: el cliente elige. */
+  async function suggest() {
+    setSuggestNote(null);
+    setSuggestion(null);
+    setSuggesting(true);
+    try {
+      const res = await fetch('/api/portal/prospecting/campaign/suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientWebsite: clientWebsite.trim(),
+          businessDescription: businessDescription.trim(),
+          idealCustomer: idealCustomer.trim(),
+          exclusions: exclusions.trim(),
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSuggestNote(SUGGEST_NOTE[(body.error as string) ?? ''] ?? SUGGEST_NOTE.suggestion_failed);
+        return;
+      }
+      if (body.skipped) {
+        setSuggestNote(SUGGEST_NOTE[body.skipped as string] ?? SUGGEST_NOTE.suggestion_failed);
+        return;
+      }
+      setSuggestion(body.suggestion as Suggestion);
+      if (body.websiteError) setSuggestNote(SUGGEST_NOTE[body.websiteError as string] ?? null);
+    } catch (err) {
+      setSuggestNote(`Error de red: ${err instanceof Error ? err.message : 'desconocido'}`);
+    } finally {
+      setSuggesting(false);
+    }
+  }
 
   async function save() {
     setError(null);
@@ -58,6 +119,10 @@ export function ProspectingProfileCard({ profile }: { profile: ProspectingProfil
         body: JSON.stringify({
           category: category.trim(),
           locationQuery: locationQuery.trim(),
+          clientWebsite: clientWebsite.trim(),
+          businessDescription: businessDescription.trim(),
+          idealCustomer: idealCustomer.trim(),
+          exclusions: exclusions.trim(),
           radiusMeters: Math.min(Math.max(radiusKm, 1), 50) * 1000,
         }),
       });
@@ -109,6 +174,119 @@ export function ProspectingProfileCard({ profile }: { profile: ProspectingProfil
             : 'Dinos qué tipo de negocio y en qué zona, y empezamos a buscarte prospectos.'}
         </p>
       </div>
+
+      <details className="rounded-xl border border-kairikos-border p-3" data-testid="prospecting-brief">
+        <summary className="cursor-pointer text-sm font-medium">
+          ¿No sabes a quién buscar? Cuéntanos de tu negocio
+        </summary>
+        <div className="mt-3 space-y-3">
+          <p className="text-xs text-kairikos-muted">
+            Con esto te proponemos rubros y zonas concretos. Tú decides cuáles usar: no cambiamos nada sin que lo
+            guardes.
+          </p>
+          <label className="block space-y-1 text-sm">
+            <span className="text-xs font-medium text-kairikos-muted">Tu web (opcional)</span>
+            <input
+              type="text"
+              className="input w-full"
+              placeholder="tunegocio.com"
+              value={clientWebsite}
+              onChange={(e) => setClientWebsite(e.target.value)}
+              data-testid="prospecting-brief-website"
+            />
+          </label>
+          <label className="block space-y-1 text-sm">
+            <span className="text-xs font-medium text-kairikos-muted">¿Qué vendes?</span>
+            <textarea
+              className="input min-h-16 w-full"
+              placeholder="p. ej. reformas de baños y cocinas para comunidades"
+              value={businessDescription}
+              onChange={(e) => setBusinessDescription(e.target.value)}
+              data-testid="prospecting-brief-description"
+            />
+          </label>
+          <label className="block space-y-1 text-sm">
+            <span className="text-xs font-medium text-kairikos-muted">¿Quién es tu mejor cliente?</span>
+            <textarea
+              className="input min-h-16 w-full"
+              placeholder="p. ej. administradores de fincas con varios edificios"
+              value={idealCustomer}
+              onChange={(e) => setIdealCustomer(e.target.value)}
+              data-testid="prospecting-brief-ideal"
+            />
+          </label>
+          <label className="block space-y-1 text-sm">
+            <span className="text-xs font-medium text-kairikos-muted">¿A quién no quieres? (opcional)</span>
+            <textarea
+              className="input min-h-16 w-full"
+              placeholder="p. ej. obra nueva, o particulares"
+              value={exclusions}
+              onChange={(e) => setExclusions(e.target.value)}
+              data-testid="prospecting-brief-exclusions"
+            />
+          </label>
+          <button
+            type="button"
+            className="btn-ghost"
+            onClick={suggest}
+            disabled={suggesting}
+            data-testid="prospecting-brief-suggest"
+          >
+            {suggesting ? 'Pensando…' : 'Proponme a quién buscar'}
+          </button>
+
+          {suggestNote ? (
+            <p className="text-xs text-kairikos-muted" data-testid="prospecting-brief-note">
+              {suggestNote}
+            </p>
+          ) : null}
+
+          {suggestion ? (
+            <div className="space-y-2" data-testid="prospecting-brief-suggestion">
+              {suggestion.businessSummary ? (
+                <p className="text-xs italic text-kairikos-muted">
+                  Lo que hemos entendido: {suggestion.businessSummary}
+                </p>
+              ) : null}
+              {suggestion.categories.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium text-kairikos-muted">Rubros:</span>
+                  {suggestion.categories.map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      className="btn-ghost text-xs"
+                      onClick={() => setCategory(item)}
+                      data-testid="prospecting-brief-category-option"
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {suggestion.locations.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium text-kairikos-muted">Zonas:</span>
+                  {suggestion.locations.map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      className="btn-ghost text-xs"
+                      onClick={() => setLocationQuery(item)}
+                      data-testid="prospecting-brief-location-option"
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              <p className="text-xs text-kairikos-muted">
+                Pulsa uno para ponerlo abajo, revísalo y guarda. Puedes cambiarlo cuando quieras.
+              </p>
+            </div>
+          ) : null}
+        </div>
+      </details>
 
       <div className="flex flex-wrap items-end gap-4">
         <label className="flex flex-col gap-1 text-sm">

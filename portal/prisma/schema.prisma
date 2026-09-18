@@ -3139,6 +3139,23 @@ model ProspectingCampaign {
   locationQuery String? @map("location_query")
   radiusMeters  Int?    @default(10000) @map("radius_meters")
 
+  // Fase A (2026-09-18) — el contexto del negocio DEL CLIENTE, no del
+  // prospecto. Existe porque "rubro" y "zona" eran dos campos de texto
+  // libre delante de un cliente que no sabe qué escribir: quien vende
+  // reformas no piensa "administradores de fincas" hasta que se lo
+  // sugieren. Con estas tres respuestas, suggestProspectingTargets
+  // (prospecting-brief-ai.ts) propone rubros y zonas concretos, y el
+  // cliente confirma o corrige.
+  //
+  // clientWebsite se guarda aquí y no en ChatbotClient a propósito: es el
+  // dato que rellena este formulario (se rastrea para no preguntar lo que
+  // ya está escrito en su web), no la web "oficial" del cliente, que en
+  // este esquema no existe todavía.
+  clientWebsite       String? @map("client_website")
+  businessDescription String? @map("business_description")
+  idealCustomer       String? @map("ideal_customer")
+  exclusions          String?
+
   // 'active' | 'paused'. No onboarding state machine like
   // RecallSubscription's — there is no external system to wait on here,
   // just a profile and a schedule.

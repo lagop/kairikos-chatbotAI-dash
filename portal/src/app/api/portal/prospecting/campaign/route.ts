@@ -27,11 +27,31 @@ export const runtime = 'nodejs';
 // write failed silently — this PATCH must keep working either way.
 // =============================================================================
 
+const OPTIONAL_TEXT = z.string().trim().max(2000).nullish();
+
 const BodySchema = z.object({
   category: z.string().trim().min(1).max(200),
   locationQuery: z.string().trim().min(1).max(200),
   radiusMeters: z.number().int().min(500).max(50000).optional(),
+  // Fase A — el contexto del negocio del cliente, con el que se le sugieren
+  // rubros y zonas (ver prospecting-brief-ai.ts). Opcional: quien ya sabe a
+  // quién buscar sigue guardando solo rubro y zona, como hasta ahora.
+  clientWebsite: z.string().trim().max(500).nullish(),
+  businessDescription: OPTIONAL_TEXT,
+  idealCustomer: OPTIONAL_TEXT,
+  exclusions: OPTIONAL_TEXT,
 });
+
+/** Solo los campos del brief que vinieron en la petición: lo que no se manda
+ *  no se pisa, y una cadena vacía borra. */
+function briefFields(data: z.infer<typeof BodySchema>) {
+  const out: Record<string, string | null> = {};
+  for (const key of ['clientWebsite', 'businessDescription', 'idealCustomer', 'exclusions'] as const) {
+    const value = data[key];
+    if (value !== undefined) out[key] = value && value.length > 0 ? value : null;
+  }
+  return out;
+}
 
 export async function PATCH(req: NextRequest) {
   const session = await getSession();
@@ -76,6 +96,7 @@ export async function PATCH(req: NextRequest) {
             category: body.data.category,
             locationQuery: body.data.locationQuery,
             ...(body.data.radiusMeters !== undefined ? { radiusMeters: body.data.radiusMeters } : {}),
+            ...briefFields(body.data),
           },
         });
         await tx.prospectingCampaignAudit.create({
@@ -101,6 +122,7 @@ export async function PATCH(req: NextRequest) {
             category: body.data.category,
             locationQuery: body.data.locationQuery,
             ...(body.data.radiusMeters !== undefined ? { radiusMeters: body.data.radiusMeters } : {}),
+            ...briefFields(body.data),
             monthlyLeadCap: TIER_LEAD_CAP[clientProduct.product.tier] ?? TIER_LEAD_CAP.solo,
           },
         });
