@@ -290,6 +290,7 @@ export async function sendApprovedCampaign(
 
     await recordSend(prisma, {
       clientId: campaign.clientId,
+      subscriptionId: campaign.subscriptionId,
       tenantId: campaign.tenantId,
       productCode: 'recall',
       channel: 'whatsapp',

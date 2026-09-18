@@ -11,20 +11,20 @@ export const runtime = 'nodejs';
  * lib/recall-owner-settings.ts). GET es para escucharla en el portal; la
  * que pide Twilio durante la llamada es /api/webhooks/twilio/greeting.
  */
-export async function GET() {
-  const target = await resolveClientTarget();
+export async function GET(req: NextRequest) {
+  const target = await resolveClientTarget(req.nextUrl.searchParams.get('clientProductId'));
   if (target instanceof Response) return target;
   return handleGreetingGet(target);
 }
 
 export async function PUT(req: NextRequest) {
-  const target = await resolveClientTarget();
+  const target = await resolveClientTarget(req.nextUrl.searchParams.get('clientProductId'));
   if (target instanceof Response) return target;
   return handleGreetingPut(req, target);
 }
 
-export async function DELETE() {
-  const target = await resolveClientTarget();
+export async function DELETE(req: NextRequest) {
+  const target = await resolveClientTarget(req.nextUrl.searchParams.get('clientProductId'));
   if (target instanceof Response) return target;
   return handleGreetingDelete(target);
 }

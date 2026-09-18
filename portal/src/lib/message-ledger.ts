@@ -48,6 +48,13 @@ export interface RecordSendInput {
   tenantId?: string | null;
   /** 'recall' | 'prospecting' | 'reviews' | 'chatbot' */
   productCode: string;
+  /** Fase 3 multi-instancia — de qué línea de recall salió, para poder
+   *  repartir el coste cuando un cliente tiene varias. Solo lo llevan las
+   *  filas de 'recall': un envío de prospección o de reseñas no tiene línea.
+   *
+   *  No basta con callEventId: ése solo existe en los envíos que nacen de una
+   *  llamada, no en los códigos de desvío ni en las campañas de recuperación. */
+  subscriptionId?: string | null;
   channel: 'whatsapp' | 'sms';
   kind: 'template' | 'free_form';
   /** Nula en SMS y en mensaje libre: allí el concepto no existe. */
@@ -77,6 +84,7 @@ export async function recordSend(prisma: PrismaClient, input: RecordSendInput): 
     await prisma.outboundMessage.create({
       data: {
         clientId: input.clientId,
+        subscriptionId: input.subscriptionId ?? null,
         tenantId: input.tenantId ?? null,
         productCode: input.productCode,
         channel: input.channel,

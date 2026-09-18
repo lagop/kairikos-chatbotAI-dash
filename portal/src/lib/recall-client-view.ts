@@ -77,8 +77,19 @@ export interface RecallMetaConnectionSummary {
   status: string;
 }
 
+export interface RecallLineOption {
+  clientProductId: string;
+  /** El número virtual de esa línea, que es como el cliente la reconoce.
+   *  Nulo mientras el alta no tenga número asignado todavía. */
+  virtualNumber: string | null;
+  status: string;
+}
+
 export type RecallClientView =
   | { state: 'not_contracted' }
+  // Fase 3 multi-instancia — varias líneas y ninguna elegida. Trae qué
+  // elegir para que la página no tenga que volver a consultarlo.
+  | { state: 'pick_line'; lines: RecallLineOption[] }
   /** Contracted and paid, but the service is not answering calls yet —
    *  usually waiting on the client to set up the divert on his own line.
    *  Showing an empty dashboard here would read as "we sold you nothing". */
@@ -134,23 +145,41 @@ export type RecallClientView =
  * than an operator, so nothing here may take an id from anywhere but the
  * session.
  *
- * `recall` is not exempt from the one-row-per-client uniqueness that only
- * 'web' escapes, so there is at most one subscription and no picker is
- * needed.
+ * Fase 3 multi-instancia — `recall` SÍ es exento desde
+ * 20260929090000_recall_multi_line: un cliente puede tener una línea por
+ * negocio. Este comentario decía lo contrario y era cierto hasta entonces.
+ *
+ * `clientProductId` dice de qué línea se está hablando. Omitirlo significa
+ * "la única que haya": con una devuelve esa —el caso de todos los clientes de
+ * hoy, y por eso la página no cambia— y con varias devuelve
+ * `state: 'pick_line'` en vez de elegir una al azar. El `orderBy` de antes
+ * hacía la elección determinista, pero no por ello correcta: "la más
+ * reciente" no es la que el cliente estaba mirando.
  */
 export async function loadRecallClientView(
   prisma: PrismaClient,
   clientId: string,
-  opts: { now?: Date; month?: string | null; page?: string | number | null } = {},
+  opts: {
+    now?: Date;
+    month?: string | null;
+    page?: string | number | null;
+    clientProductId?: string | null;
+  } = {},
 ): Promise<RecallClientView> {
   const now = opts.now ?? new Date();
 
-  const subscription = await prisma.recallSubscription.findFirst({
-    where: { clientId },
-    orderBy: { createdAt: 'desc' },
+  // Se piden DOS para poder distinguir "no hay" de "hay varias y no sé cuál".
+  const subscriptions = await prisma.recallSubscription.findMany({
+    where: {
+      clientId,
+      ...(opts.clientProductId ? { clientProductId: opts.clientProductId } : {}),
+    },
+    take: 2,
+    orderBy: { createdAt: 'asc' },
     select: {
       id: true,
       clientId: true,
+      clientProductId: true,
       status: true,
       createdAt: true,
       activatedAt: true,
@@ -162,7 +191,33 @@ export async function loadRecallClientView(
     },
   });
 
-  if (!subscription) return { state: 'not_contracted' };
+  if (subscriptions.length === 0) return { state: 'not_contracted' };
+  if (subscriptions.length > 1) {
+    // Varias líneas y ninguna elegida: la página ofrece elegir. Negarse a
+    // adivinar es lo correcto — enseñar los recados de la línea equivocada
+    // no se nota hasta que alguien llama a quien no debía.
+    //
+    // Se vuelven a pedir todas (el take: 2 de arriba solo servía para saber
+    // si había ambigüedad) porque el selector las necesita enteras.
+    const all = await prisma.recallSubscription.findMany({
+      where: { clientId },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        clientProductId: true,
+        status: true,
+        virtualNumber: { select: { e164: true } },
+      },
+    });
+    return {
+      state: 'pick_line',
+      lines: all.map((row) => ({
+        clientProductId: row.clientProductId,
+        virtualNumber: row.virtualNumber?.e164 ?? null,
+        status: row.status,
+      })),
+    };
+  }
+  const subscription = subscriptions[0];
 
   const virtualNumber = subscription.virtualNumber?.e164 ?? null;
 

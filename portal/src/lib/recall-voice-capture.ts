@@ -298,6 +298,9 @@ export async function resolveDraftWithReply(
       data: {
         clientId: draft.clientId,
         tenantId: draft.tenantId,
+        // Fase 3 multi-instancia — de que linea vino. El borrador ya la
+        // traia; antes se tiraba aqui y despues no habia forma de saberlo.
+        subscriptionId: draft.subscriptionId,
         contactId: draft.contactId,
         issuedAt: draft.createdAt,
         amount: fields.amount ?? null,
@@ -323,6 +326,8 @@ export async function resolveDraftWithReply(
     data: {
       clientId: draft.clientId,
       tenantId: draft.tenantId,
+      // Fase 3 multi-instancia — ver el comentario del presupuesto de arriba.
+      subscriptionId: draft.subscriptionId,
       contactId: draft.contactId,
       completedAt: draft.createdAt,
       serviceType: fields.serviceType ?? null,

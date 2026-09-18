@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
-import { isProductContracted } from '@/lib/client-product-access';
+import { resolveContractedInstance } from '@/lib/client-product-access';
 import { isCoexistenceSignupConfigured } from '@/lib/meta-business';
 import { connectRecallWhatsapp } from '@/lib/recall-meta';
 import { logError } from '@/lib/observability';
@@ -24,6 +24,9 @@ export const runtime = 'nodejs';
 const BodySchema = z.object({
   code: z.string().min(1, 'required'),
   wabaId: z.string().min(1, 'required'),
+  // Fase 3 multi-instancia — a que linea se conecta. Opcional: sin el, solo
+  // vale si el cliente tiene una sola linea.
+  clientProductId: z.string().uuid().optional(),
 });
 
 const ERROR_STATUS: Record<string, number> = {
@@ -59,13 +62,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'invalid_body', details: body.error.flatten() }, { status: 400 });
   }
 
-  const hasRecall = await isProductContracted(prisma, resolved.clientId, 'recall');
-  if (!hasRecall) {
+  // Fase 3 multi-instancia — a qué línea se conecta este WhatsApp. Antes
+  // era un findFirst por cliente SIN orden: con dos líneas habría conectado
+  // el número del negocio a una de las dos al azar.
+  const instance = await resolveContractedInstance(prisma, {
+    clientId: resolved.clientId,
+    productCode: 'recall',
+    clientProductId: body.data.clientProductId ?? null,
+  });
+  if (!instance) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
-  const subscription = await prisma.recallSubscription.findFirst({
-    where: { clientId: resolved.clientId },
+  const subscription = await prisma.recallSubscription.findUnique({
+    where: { clientProductId: instance.clientProductId },
     select: { id: true, tenantId: true },
   });
   if (!subscription) {

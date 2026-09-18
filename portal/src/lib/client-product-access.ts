@@ -236,9 +236,14 @@ export async function listContractedInstances(
 // de que existiera este eje: cada proyecto web es independiente.
 // 'seo' se añadió en la fase 2 (20260928090000_seo_multi_site): una
 // contratación por web, con su propia propiedad de Search Console.
+// 'recall' se añadió en la fase 3 (20260929090000_recall_multi_line): una
+// contratación por línea telefónica. El coste marginal de cada línea es real
+// y recurrente —un número de Twilio, minutos, transcripción—, que es el
+// criterio del catálogo para cobrar por unidad en vez de por tope de tarifa.
+// Ver "Cuando un cliente quiere dos de algo" en CLAUDE.md.
 // =============================================================================
 
-export const MULTI_INSTANCE_PRODUCT_CODES = ['web', 'seo'] as const;
+export const MULTI_INSTANCE_PRODUCT_CODES = ['web', 'seo', 'recall'] as const;
 
 export function isMultiInstanceProduct(productCode: string): boolean {
   return (MULTI_INSTANCE_PRODUCT_CODES as readonly string[]).includes(productCode);

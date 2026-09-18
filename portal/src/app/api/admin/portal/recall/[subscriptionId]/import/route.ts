@@ -57,6 +57,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     const result = await commitImport(prisma, {
       clientId: subscription.clientId,
       tenantId: subscription.tenantId,
+      // Fase 3 multi-instancia — el histórico importado es de ESTA línea.
+      subscriptionId: subscription.id,
       csvText: body.data.csv,
       filename: body.data.filename ?? null,
       legalDeclaration: IMPORT_DECLARATION_V1,

@@ -31,6 +31,20 @@ vi.mock('@/lib/portal-session', () => ({
 
 vi.mock('@/lib/client-product-access', () => ({
   isProductContracted: (...a: unknown[]) => mockState.isProductContracted(...a),
+  // Fase 3 multi-instancia — la ruta resuelve la línea, no un booleano. Se
+  // ata al mismo mock para no duplicar el estado de cada test.
+  resolveContractedInstance: async () =>
+    (await mockState.isProductContracted())
+      ? {
+          clientProductId: '22222222-2222-4222-8222-222222222222',
+          clientId: 'client_1',
+          clientSiteId: null,
+          tenantId: 'tenant_1',
+          code: 'recall',
+          tier: 'solo',
+          status: 'active',
+        }
+      : null,
 }));
 
 vi.mock('@/lib/meta-business', () => ({
@@ -50,7 +64,11 @@ vi.mock('@/lib/prisma', () => ({
     return mockState.isDatabaseConfigured;
   },
   prisma: {
-    recallSubscription: { findFirst: (...a: unknown[]) => mockState.recallSubscriptionFindFirst(...a) },
+    recallSubscription: {
+      findFirst: (...a: unknown[]) => mockState.recallSubscriptionFindFirst(...a),
+      // La ruta la busca ahora por clientProductId.
+      findUnique: (...a: unknown[]) => mockState.recallSubscriptionFindFirst(...a),
+    },
   },
 }));
 

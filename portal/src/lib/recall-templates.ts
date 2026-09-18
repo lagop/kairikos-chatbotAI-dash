@@ -329,6 +329,7 @@ export async function sendForwardingInstructions(
   const ledger = {
     clientId: subscription.clientId,
     tenantId: subscription.tenantId ?? null,
+    subscriptionId: subscription.id,
     productCode: 'recall',
     channel: 'whatsapp' as const,
     kind: 'template' as const,

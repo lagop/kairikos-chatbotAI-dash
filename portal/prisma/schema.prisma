@@ -3770,6 +3770,9 @@ model RecallSubscription {
   // so claiming and releasing are each a single write on one row.
   virtualNumber    VirtualNumber?
   callEvents       CallEvent[]
+  jobs             Job[]
+  serviceQuotes    ServiceQuote[]
+  outboundMessages OutboundMessage[]
   blockedNumbers   RecallBlockedNumber[]
   digests          RecallDigest[]
   usageMonths      RecallUsageMonth[]
@@ -4257,9 +4260,19 @@ model RecallUsageMonth {
 // tests/unit/message-ledger.test.ts, que se pone rojo cuando aparece un
 // punto de envío nuevo sin registrar.
 model OutboundMessage {
-  id       String  @id @default(uuid()) @db.Uuid
-  clientId String  @map("client_id")
-  tenantId String? @map("tenant_id") @db.Uuid
+  id             String  @id @default(uuid()) @db.Uuid
+  clientId       String  @map("client_id")
+  tenantId       String? @map("tenant_id") @db.Uuid
+  // Fase 3 multi-instancia — de qué línea de recall salió el mensaje.
+  //
+  // NULLABLE y eso no es un apaño: este libro mayor lo comparten los cuatro
+  // productos (ver productCode), y un envío de prospección o de reseñas no
+  // tiene línea ninguna. Solo las filas con productCode='recall' lo llevan.
+  //
+  // Hace falta porque el coste por línea no se puede reconstruir: el
+  // callEventId solo existe en los envíos que nacen de una llamada, no en
+  // los códigos de desvío ni en las campañas de recuperación.
+  subscriptionId String? @map("subscription_id") @db.Uuid
 
   /// Quién pidió el envío: 'recall' | 'prospecting' | 'reviews' | 'chatbot'.
   /// Texto libre con los valores documentados, misma convención que el
@@ -4308,9 +4321,11 @@ model OutboundMessage {
   sentAt    DateTime @default(now()) @map("sent_at")
   createdAt DateTime @default(now()) @map("created_at")
 
-  client    ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant    Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  callEvent CallEvent?    @relation(fields: [callEventId], references: [id], onDelete: SetNull)
+  client               ChatbotClient       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant               Tenant?             @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  callEvent            CallEvent?          @relation(fields: [callEventId], references: [id], onDelete: SetNull)
+  RecallSubscription   RecallSubscription? @relation(fields: [recallSubscriptionId], references: [id])
+  recallSubscriptionId String?             @db.Uuid
 
   /// "Qué mandó este cliente en este periodo", que es la consulta del
   /// informe de margen y la única que va a crecer sin límite.
@@ -4433,10 +4448,23 @@ model Contact {
 // quién escribir. Sale en el histórico y en las cuentas, y espera a que
 // alguien le ponga dueño.
 model Job {
-  id        String  @id @default(uuid()) @db.Uuid
-  clientId  String  @map("client_id")
-  tenantId  String? @map("tenant_id") @db.Uuid
-  contactId String? @map("contact_id") @db.Uuid
+  id             String  @id @default(uuid()) @db.Uuid
+  clientId       String  @map("client_id")
+  tenantId       String? @map("tenant_id") @db.Uuid
+  contactId      String? @map("contact_id") @db.Uuid
+  // Fase 3 multi-instancia — DE QUÉ LÍNEA vino este recado.
+  //
+  // Con una sola línea por cliente no hacía falta. Con dos, un recado sin
+  // esta columna no se puede atribuir, y NO HAY DATO DEL QUE DEDUCIRLO
+  // DESPUÉS: el contacto es de la persona, no de la línea, y la misma
+  // persona puede llamar a los dos negocios del cliente. Por eso se añade
+  // antes de que exista la segunda línea y no cuando se note.
+  //
+  // Los dos caminos que crean recados ya conocían la línea y la tiraban:
+  // la captura por voz la tiene en JobCaptureDraft.subscriptionId, y la
+  // importación de CSV la tiene en su propia URL
+  // (/api/admin/portal/recall/[subscriptionId]/import).
+  subscriptionId String  @map("subscription_id") @db.Uuid
 
   /// Cuándo se terminó. Dispara la reseña y arranca el reloj. Es la
   /// columna por la que existe este modelo.
@@ -4471,12 +4499,14 @@ model Job {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  client  ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant  Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  contact Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  client       ChatbotClient      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant       Tenant?            @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  contact      Contact?           @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  subscription RecallSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 
   @@index([clientId, completedAt])
   @@index([contactId])
+  @@index([subscriptionId])
   /// "Qué revisiones tocan en marzo" — el disparador de aniversario.
   @@index([clientId, nextServiceDueAt])
   @@index([tenantId])
@@ -4489,10 +4519,13 @@ model Job {
 // distinta: el presupuesto que Kairikos le pasa al cliente por el producto
 // `web`. Confundirlos sería mezclar nuestras ventas con las suyas.
 model ServiceQuote {
-  id        String  @id @default(uuid()) @db.Uuid
-  clientId  String  @map("client_id")
-  tenantId  String? @map("tenant_id") @db.Uuid
-  contactId String? @map("contact_id") @db.Uuid
+  id             String  @id @default(uuid()) @db.Uuid
+  clientId       String  @map("client_id")
+  tenantId       String? @map("tenant_id") @db.Uuid
+  contactId      String? @map("contact_id") @db.Uuid
+  // Fase 3 multi-instancia — de qué línea. Mismo razonamiento, y misma
+  // imposibilidad de reconstruirlo después, que en Job.subscriptionId.
+  subscriptionId String  @map("subscription_id") @db.Uuid
 
   issuedAt DateTime @map("issued_at")
   amount   Decimal? @db.Decimal(12, 2)
@@ -4516,14 +4549,16 @@ model ServiceQuote {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  client  ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant  Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  contact Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  client       ChatbotClient      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant       Tenant?            @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  contact      Contact?           @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  subscription RecallSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 
   /// "Los presupuestos abiertos de este cliente, por antigüedad" — la
   /// consulta del disparador y la del asistente ("¿qué tengo pendiente?").
   @@index([clientId, status, issuedAt])
   @@index([contactId])
+  @@index([subscriptionId])
   @@index([tenantId])
 }
 
