@@ -1,22 +1,40 @@
 # Fase 1 — el eje multi-instancia
 
-> Estado: propuesta, sin empezar. Escrito el 18 de septiembre de 2026, antes de
-> vender en producción. Ese "antes" es la premisa entera del plan: no hay datos
-> de clientes que migrar, así que se puede cambiar la columna por la que se
-> identifica media base de datos. Con un solo cliente vivo, este documento
-> habría que reescribirlo.
+> **Estado: fase 1 implementada** (18 de septiembre de 2026). Los apartados
+> marcados *"Corregido al implementar"* recogen dónde la realidad no coincidió
+> con el plan.
+>
+> Se hizo antes de vender en producción, y ese "antes" era la premisa entera:
+> sin datos de clientes que migrar se puede cambiar la columna por la que se
+> identifica media base de datos. Con un solo cliente vivo, habría habido que
+> plantearlo de otra forma.
 
 ## El problema
 
 Un cliente no puede contratar dos veces el mismo producto. SEO para dos webs,
 un chatbot por cada negocio, Reseñas para dos fichas: nada de eso se puede
-vender hoy. El bloqueo está en dos sitios, coherentemente:
+vender hoy. El bloqueo está en **tres** capas, coherentemente:
 
 - `createProductCheckoutSession` devuelve `409 already_contracted` cuando el
   producto ya está activo (`stripe-billing.ts`).
 - El alta manual de operador reutiliza la fila existente en vez de crear otra
   (`client-product-activation.ts`), con una única excepción explícita:
   `product.code === 'web' ? null : findFirst(...)`.
+- Y la capa que no se ve desde el código de aplicación, encontrada al
+  implementar: **un índice único PARCIAL en Postgres**,
+  `ClientProduct_client_id_product_id_non_web_key`, creado por
+  `20260901120000_client_product_web_multiplicity`. Es la garantía de verdad;
+  las dos de arriba son cortesías. Levantar la guarda de un producto exige
+  tocar también este índice, cuyo predicado excluye hoy solo a `web`.
+
+  Ese índice es además el **precedente exacto** de este plan: su migración se
+  titula "Phase 1 of multiple web projects per client". Esto ya se hizo una vez,
+  para un producto. Aquí se generaliza.
+
+  Un detalle con filo: el índice es sobre `(client_id, product_id)`, y
+  `product_id` identifica código **y tarifa**. A nivel de base de datos, dos
+  tarifas distintas del mismo código (Reseñas Basic y Pro) ya se podrían
+  coexistir; lo que lo impide es `already_contracted`, que compara por código.
 
 `web` es, por eso, el único producto multi-instancia del portal, y su ruta
 `/portal/web/[clientProductId]` es el patrón de referencia de todo este plan.
@@ -226,18 +244,28 @@ la otra.
 No es un límite defendido, es un descuido que hoy no se nota. La fase 1 lo cierra
 aunque nunca se levantara la guarda.
 
-## `listContractedProducts` deja de mentir
+## `listContractedProducts` se queda, pero por otra razón
+
+> Corregido al implementar. El plan decía que esta función pasaría a devolver
+> una fila por instancia. **No se hizo, y no debe hacerse.**
 
 ```ts
-// Hoy, en client-product-access.ts:
+// Su comentario decía:
 //   "deduped by product code (a client should not have two active rows
 //    for the same code, but this defends against the data drift...)"
 ```
 
-Ese dedup es precisamente la premisa que este plan invalida. Pasa a devolver una
-fila por **instancia**, con su sitio, y el selector de productos agrupa por
-sitio. Es el único llamante existente que cambia de semántica en la fase 1, y
-por eso va en esta fase y no en las siguientes: es el que dibuja el menú.
+Esa premisa sí es la que el plan invalida: dos contrataciones del mismo código
+son el caso normal, no una anomalía. Pero su **único** llamante es el selector
+del asistente (`/portal/wizard`), que enruta por **código**
+(`/portal/wizard/seo`) y no tiene concepto de instancia: devolver dos filas le
+daría dos tarjetas apuntando a la misma URL. Eso es exactamente el punto
+intermedio roto que esta fase existe para evitar.
+
+Así que el dedup se queda y lo que cambia es el motivo, escrito en su
+comentario. Para "qué contrataciones tiene, una por una, con su sitio" se añade
+una función hermana, `listContractedInstances`, que no deduplica y que hoy
+todavía no usa nadie.
 
 ## Migraciones
 
@@ -302,12 +330,27 @@ convención; las páginas se mueven cuando su producto se convierta.
 ## Verificación
 
 1. `npx tsc --noEmit` limpio y `npx vitest run` entero en verde.
-2. **Test de guarda estructural** — el patrón que este repo ya usa para
-   `KAIRIKOS_OPERATOR_EMAILS`: lee el código fuente, quita los comentarios, y
-   falla si una ruta bajo `/api/portal/*` que escribe (POST/PATCH/DELETE)
-   autoriza con `isProductContracted` en vez de `resolveContractedInstance`.
-   Con su "guarda de la guarda": un caso que confirma que el test detecta una
-   violación introducida a propósito.
+2. **Test de guarda estructural, en forma de trinquete** — el patrón que este
+   repo ya usa para `KAIRIKOS_OPERATOR_EMAILS`: lee el código fuente, quita
+   los comentarios y busca rutas de `/api/portal/*` que escriban
+   (POST/PATCH/DELETE) y resuelvan la contratación por cliente.
+
+   Dos correcciones sobre lo que decía este plan:
+
+   - **No basta con vigilar `isProductContracted`.** `seo/profile/route.ts`
+     no lo llama en absoluto: resuelve con un `prisma.clientProduct.findFirst`
+     en línea. Un guardia que solo mirase el helper habría dado luz verde al
+     caso más claro del problema. El patrón cubre las dos formas.
+   - **No exige que las rutas estén convertidas**, porque la fase 1 no convierte
+     ninguna. Congela la lista: 16 pendientes (agrupadas por la fase que les
+     toca) y 2 que resuelven por cliente y está bien que lo hagan para siempre
+     —`web-quote/request`, que crea la contratación y por tanto no tiene aún
+     instancia, y `prospecting/campaign/suggest`, que es un POST que no
+     escribe—. Falla si aparece una ruta nueva fuera de esas listas, y también
+     si un pendiente desaparece de la lista sin convertirse.
+
+   Con su "guarda de la guarda", verificada: se introdujo una ruta que viola la
+   regla, el test falló nombrándola, y volvió a verde al retirarla.
 3. **Contra el Postgres real**: el backfill deja exactamente un sitio primario
    por cliente, cero `ClientProduct` huérfanas, y las tres anclas resueltas.
 4. **La prueba de que no cambió nada**: la suite entera antes y después del
