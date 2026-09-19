@@ -2,6 +2,7 @@
 
 import { useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { withChatbot } from '@/lib/wizard-url';
 
 // =============================================================================
 // WP: conexión de canales — Fase 2. First real channel card: the client
@@ -27,9 +28,13 @@ const ERROR_LABEL: Record<string, string> = {
 export function TelegramChannelCard({
   connection,
   allowed,
+  clientProductId = null,
 }: {
   connection: TelegramConnectionSummary | null;
   allowed: boolean;
+  /** Fase 4 multi-instancia — de qué chatbot es el canal. Null con uno
+   *  solo: las llamadas son las de siempre. */
+  clientProductId?: string | null;
 }) {
   const router = useRouter();
   const tokenId = useId();
@@ -47,7 +52,7 @@ export function TelegramChannelCard({
       const res = await fetch('/api/portal/channels/telegram/connect', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ botToken: token }),
+        body: JSON.stringify({ botToken: token, clientProductId: clientProductId ?? undefined }),
       });
       if (!res.ok) {
         const detail = await res.json().catch(() => null);
@@ -69,7 +74,7 @@ export function TelegramChannelCard({
     setError(null);
     setBusy(true);
     try {
-      const res = await fetch('/api/portal/channels/telegram/disconnect', { method: 'POST' });
+      const res = await fetch(withChatbot('/api/portal/channels/telegram/disconnect', clientProductId), { method: 'POST' });
       if (!res.ok) {
         const detail = await res.json().catch(() => null);
         setError(ERROR_LABEL[detail?.error] ?? 'No se pudo desconectar el canal.');
