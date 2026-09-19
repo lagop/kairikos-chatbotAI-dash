@@ -1,0 +1,414 @@
+{
+  "name": "Kairikos Telegram Multi-tenant",
+  "nodes": [
+    {
+      "id": "webhook-telegram",
+      "name": "Webhook: Telegram Update",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "kairikos-telegram",
+        "responseMode": "onReceived",
+        "responseData": {
+          "responseCode": 200,
+          "responseBody": "",
+          "responseHeaders": {
+            "values": []
+          }
+        },
+        "options": {
+          "rawBody": false
+        }
+      },
+      "webhookId": "d132930b-4a1f-4621-90c5-505248340430"
+    },
+    {
+      "id": "extract-input",
+      "name": "Extract Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst body = item.body || {};\nconst query = item.query || {};\nconst connectionId = (query.connectionId || '').toString().trim();\nconst message = body.message || body.edited_message || null;\nconst text = message && typeof message.text === 'string' ? message.text.trim() : '';\nconst chatId = message && message.chat ? message.chat.id : null;\nconst errorCode = !connectionId ? 'missing_connection_id' : (!text || chatId === null ? 'not_a_text_message' : '');\nreturn [{ json: { _error: errorCode, connectionId, chatId, text } }];"
+      }
+    },
+    {
+      "id": "has-input?",
+      "name": "Has Valid Input?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json._error === '' }}",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "portal-reply",
+      "name": "POST /api/internal/channels/telegram/reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        -80
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/channels/telegram/reply",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ connectionId: $json.connectionId, chatId: $json.chatId, text: $json.text }) }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "has-reply",
+      "name": "Has Reply To Send?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        880,
+        -80
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.ok === true && typeof $json.reply === 'string' && $json.reply.trim().length > 0 }}",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "send-telegram",
+      "name": "Send Telegram Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        -80
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/channels/telegram/send",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ connectionId: $('Extract Input').first().json.connectionId, chatId: $('Extract Input').first().json.chatId, text: $json.reply }) }}",
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "has-contact-intent",
+      "name": "Has Contact Intent?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1320,
+        -80
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ /(cita|presupuesto|contacto|llamar|llamame|reuni[oó]n|hablar|contratar|me interesa|quiero|necesito|reservar|agendar|disponibilidad|horario|email|correo|tel[eé]fono|whatsapp)/i.test($('Extract Input').first().json.text || '') }}",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "classify-lead",
+      "name": "Classify Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        -80
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.OPENAI_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o-mini', temperature: 0.1, max_tokens: 200, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: \"Analiza el mensaje de un posible cliente que le escribio a un chatbot de atencion al cliente. Decide si muestra intencion comercial real (pedir presupuesto, reservar, comprar, contratar, pedir cita) y extrae los datos de contacto que haya dado, si los hay. Responde UNICAMENTE con un objeto JSON, sin texto adicional, con esta forma exacta: {\\\"isLead\\\": boolean, \\\"score\\\": numero entre 0 y 100 (que tan probable es que se convierta en cliente), \\\"contactName\\\": string o null, \\\"contactPhone\\\": string o null, \\\"contactEmail\\\": string o null, \\\"summary\\\": resumen breve (menos de 20 palabras) de que pidio, o null}. Si no hay intencion comercial clara, isLead debe ser false.\" }, { role: 'user', content: $('Extract Input').first().json.text } ] }) }}",
+        "options": {
+          "timeout": 15000,
+          "retry": {
+            "maxTries": 1
+          },
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "parse-lead-classification",
+      "name": "Parse Lead Classification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        -80
+      ],
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst content = raw && raw.choices && raw.choices[0] && raw.choices[0].message && raw.choices[0].message.content;\nlet parsed = null;\ntry { parsed = content ? JSON.parse(content) : null; } catch (e) { parsed = null; }\nconst isLead = Boolean(parsed && parsed.isLead === true);\nconst score = parsed && typeof parsed.score === 'number' ? Math.max(0, Math.min(100, Math.round(parsed.score))) : null;\nreturn [{ json: {\n  isLead,\n  score,\n  contactName: (parsed && parsed.contactName) || null,\n  contactPhone: (parsed && parsed.contactPhone) || null,\n  contactEmail: (parsed && parsed.contactEmail) || null,\n  summary: (parsed && parsed.summary) || null,\n} }];"
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "is-lead-detected",
+      "name": "Is Lead Detected?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1980,
+        -80
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.isLead === true && Number($json.score || 0) >= 40 }}",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "post-lead",
+      "name": "POST Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2200,
+        -80
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/leads",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ conversationId: $('POST /api/internal/channels/telegram/reply').first().json.conversationId, contactName: $json.contactName || undefined, contactPhone: $json.contactPhone || undefined, contactEmail: $json.contactEmail || undefined, summary: $json.summary || undefined, score: $json.score, channel: 'telegram' }) }}",
+        "options": {
+          "timeout": 8000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "continueOnFail": true
+    }
+  ],
+  "connections": {
+    "Webhook: Telegram Update": {
+      "main": [
+        [
+          {
+            "node": "Extract Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Input": {
+      "main": [
+        [
+          {
+            "node": "Has Valid Input?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Valid Input?": {
+      "main": [
+        [
+          {
+            "node": "POST /api/internal/channels/telegram/reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "POST /api/internal/channels/telegram/reply": {
+      "main": [
+        [
+          {
+            "node": "Has Reply To Send?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Reply To Send?": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Send Telegram Reply": {
+      "main": [
+        [
+          {
+            "node": "Has Contact Intent?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Contact Intent?": {
+      "main": [
+        [
+          {
+            "node": "Classify Lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Classify Lead": {
+      "main": [
+        [
+          {
+            "node": "Parse Lead Classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Lead Classification": {
+      "main": [
+        [
+          {
+            "node": "Is Lead Detected?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Lead Detected?": {
+      "main": [
+        [
+          {
+            "node": "POST Lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

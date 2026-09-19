@@ -51,3 +51,36 @@ historial de versiones de la propia n8n.
 Code de estos flujos y en OpenAI, no en el portal, y el motor del portal
 (configuración aprobada, historial, base de conocimiento, traspaso a una
 persona) no lo ejecuta nadie.
+
+## Fase 1 propuesta, todavía SIN aplicar
+
+`telegram-multi-tenant.fase-1-propuesta.json` es el flujo de Telegram con el
+cerebro movido al portal:
+
+```
+webhook → Extract Input → Has Valid Input?
+        → POST /api/internal/channels/telegram/reply     (el portal contesta)
+        → Has Reply To Send?                             (reply nulo = persona o tope)
+        → POST /api/internal/channels/telegram/send
+        → clasificación de leads (sin tocar; la decide la fase 4)
+```
+
+Sale: `Get Client Context`, `Context OK?`, `Build System Prompt`, `Call LLM
+(OpenAI)`, `Format Response`, y los dos `Log … Message` — estos últimos porque
+`/reply` ya guarda los dos turnos, y dejarlos duplicaría el transcript.
+
+Detalles que importan al revisarlo:
+
+- El tiempo máximo del nodo del portal sube a 30 s: reúne la configuración
+  aprobada y la base de conocimiento antes de llamar al modelo, mientras que
+  el nodo de OpenAI al que sustituye tenía 20 s.
+- `reply: null` **no es un fallo**: significa que una persona tiene la
+  conversación o que el chatbot agotó su tope del mes. En los dos casos el
+  turno del cliente ya quedó guardado y no hay nada que enviar. Por eso el
+  portal responde 200 y no 503: un 503 invitaría a reintentar.
+- La clasificación de leads sigue llamando a OpenAI y ahora toma el
+  `conversationId` de la respuesta de `/reply` y el texto de `Extract Input`.
+
+Para aplicarlo: importarlo en n8n sobre el flujo `SpbahgfJqf5FA56o`, o dejar
+que se envíe por la API. La copia de lo que hay ahora está en
+`telegram-multi-tenant.json`, y n8n guarda además su propio historial.
