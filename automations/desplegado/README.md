@@ -14,7 +14,7 @@ problema.
 | Archivo | Estado | Qué hace |
 |---|---|---|
 | `webchat-multi-tenant.json` | activo | Widget web: pide configuración al portal, **arma el prompt y llama a OpenAI dentro de n8n**, responde al widget y registra los turnos en el portal |
-| `telegram-multi-tenant.json` | activo | Igual, para Telegram, enviando por `/channels/telegram/send` |
+| `telegram-multi-tenant.json` | activo | **Fase 1 aplicada**: recibe de Telegram, el portal contesta (`/channels/telegram/reply`) y n8n envía (`/channels/telegram/send`) |
 | `meta-multi-tenant.json` | activo | Igual, para WhatsApp, Messenger e Instagram |
 | `meta-whatsapp-inbound.json` | activo | Recibe de Meta, verifica firma y reparte entre Recall y chatbot. **Apunta a un túnel de desarrollo personal** (sustituido aquí por `TUNEL-DE-DESARROLLO.ejemplo`), así que en producción no llega a ningún sitio |
 | `wizard-abandoned.json` | activo | Barrido y aviso de asistente abandonado |
@@ -52,10 +52,10 @@ Code de estos flujos y en OpenAI, no en el portal, y el motor del portal
 (configuración aprobada, historial, base de conocimiento, traspaso a una
 persona) no lo ejecuta nadie.
 
-## Fase 1 propuesta, todavía SIN aplicar
+## Fase 1 APLICADA el 20/09/2026 — Telegram lo contesta el portal
 
-`telegram-multi-tenant.fase-1-propuesta.json` es el flujo de Telegram con el
-cerebro movido al portal:
+`telegram-multi-tenant.json` (ya reexportado) es el flujo con el cerebro
+movido al portal:
 
 ```
 webhook → Extract Input → Has Valid Input?
@@ -81,6 +81,8 @@ Detalles que importan al revisarlo:
 - La clasificación de leads sigue llamando a OpenAI y ahora toma el
   `conversationId` de la respuesta de `/reply` y el texto de `Extract Input`.
 
-Para aplicarlo: importarlo en n8n sobre el flujo `SpbahgfJqf5FA56o`, o dejar
-que se envíe por la API. La copia de lo que hay ahora está en
-`telegram-multi-tenant.json`, y n8n guarda además su propio historial.
+Se le activó además el guardado de datos de las ejecuciones (`saveDataSuccessExecution: all`)
+para poder inspeccionar la prueba con el bot real; se puede quitar después.
+
+Vuelta atrás: el historial de versiones de la propia n8n guarda el flujo
+anterior, con sus dieciséis nodos.
