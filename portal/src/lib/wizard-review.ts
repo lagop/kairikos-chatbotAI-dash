@@ -605,6 +605,15 @@ async function maybeTransitionToReady(
   // it directly. Best-effort: if `state` already drifted off
   // 'in-progress' the mirror silently no-ops, same behavior as before
   // WP-14.
+  //
+  // LIMITACIÓN CONOCIDA (fase 4 multi-instancia): el espejo es UNA columna
+  // por cliente y el estado de verdad ya es por chatbot
+  // (ClientProduct.onboardingState). Con dos chatbots, el primero que llegue
+  // a 'ready' pone el cliente en 'ready' aunque el otro siga a medias, y el
+  // aviso config_complete de n8n sale una vez por cliente, no por chatbot.
+  // Aceptado mientras ningún cliente tenga dos: lo que el bot usa y lo que
+  // ve el operador leen ClientProduct, no esta columna. Se retira cuando
+  // n8n escuche el estado por contratación.
   if (productCode === CHATBOT_PRODUCT_CODE) {
     await tx.chatbotClient.updateMany({
       where: { id: client.id, state: 'in-progress' },

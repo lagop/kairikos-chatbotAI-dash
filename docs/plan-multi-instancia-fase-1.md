@@ -454,3 +454,48 @@ Ninguna de estas fases permite vender nada. Los bloqueos son externos y del
 propietario: verificación como Tech Provider en Meta, los clientes OAuth de
 Google, y la clave *live* de Stripe. Lo que aprovecha este trabajo es que hoy,
 con producción vacía, es barato — y que deja de serlo en cuanto haya clientes.
+
+## Estado — 19/09/2026
+
+| Fase | Estado |
+|---|---|
+| 1 — el eje (`ClientSite`, anclas, autorización) | hecha |
+| 2 — SEO por web | hecha |
+| 3 — Recall por línea, con la decisión 4 | hecha |
+| 4 — Chatbot completo | hecha, pendiente de fusionar |
+
+### Qué hace la fase 4
+
+- **Datos**: las siete tablas del chatbot (pasos del asistente, hitos,
+  conocimiento y sus fragmentos, widget, resúmenes y su horario) llevan
+  `clientProductId`, y sus claves únicas se mudaron de cliente a
+  contratación. `TelegramConnection` pasa a una por chatbot.
+- **Motor**: cada canal sabe de qué chatbot es (`resolveChatbotForChannel`);
+  la configuración, el nombre con el que firma el bot, la tarifa de canales
+  y la búsqueda en la base de conocimiento son las de ese chatbot.
+- **Asistente**: versiones, aprobación, autoaprobación y paso a `ready` por
+  chatbot; `?clientProductId=` en todas sus URLs (`lib/wizard-url.ts`).
+- **Negocio de cada contratación** (`lib/client-site.ts`): todo cliente
+  nace con sitio primario; la segunda contratación de un producto
+  multi-instancia recibe su propio sitio al activarse, y el paso 1 aprobado
+  le pone nombre y web.
+- **Pantallas**: canales, conocimiento y resúmenes con selector
+  (`ChatbotPicker`, que no se dibuja con un solo chatbot); la bandeja de
+  traspaso sigue siendo una por cliente, con el chatbot en cada fila.
+- **Avisos**: el barrido de asistente abandonado es por chatbot y el enlace
+  del correo lleva a ese asistente.
+- **Dos guardias estructurales**: `chatbot-instance-writers.test.ts` (todo
+  `create` en tablas del chatbot lleva `clientProductId`) y
+  `product-instance-authorization.test.ts` (toda ruta de un producto
+  multi-instancia resuelve instancia), ambos sin pendientes.
+
+### Límites aceptados, escritos donde se notan
+
+- `ChatbotClient.state` sigue siendo un espejo por cliente para n8n
+  (`wizard-review.ts`): con dos chatbots, el primero en llegar a `ready`
+  mueve al cliente entero.
+- Los flujos T+0/3/7/14 de n8n no mandan `clientProductId`: con dos
+  chatbots, `/api/internal/activity` responde 409 hasta que lo hagan.
+- El listado de conversaciones pasa por `listConversations`, que no
+  devuelve la contratación: sigue siendo el del cliente, sin etiqueta.
+- El panel de operador de SEO enseña la web más reciente (fase 2).
