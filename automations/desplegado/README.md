@@ -9,6 +9,32 @@ Regla: cuando se cambie un flujo en n8n, se vuelve a exportar aquí. Si esta
 carpeta y la instancia se separan, esta carpeta miente y vuelve a empezar el
 problema.
 
+## EL HALLAZGO QUE MANDA SOBRE TODO LO DEMÁS
+
+**n8n nunca ha podido hablar con el portal.** `PORTAL_API_URL` y
+`PORTAL_API_KEY` **no están definidas** en los contenedores `root-n8n-1` ni
+`root-n8n-worker-1` (comprobado con `printenv` el 20/09/2026). Cada nodo que
+llama a `{{ $env.PORTAL_API_URL }}/api/internal/...` construye una URL vacía y
+revienta con *"Invalid URL"*.
+
+Eso explica lo que la base de datos ya decía y nadie había atado: en producción
+hay **0 conversaciones, 0 chatbots activos, 0 widgets y 0 hitos**. El chatbot
+no es que respondiera mal — es que **nunca ha respondido**.
+
+Lo que hace falta, y no se puede hacer desde aquí porque toca infraestructura
+compartida y un secreto:
+
+1. Añadir al servicio de n8n en su `docker-compose.yml` de la VPS:
+   `PORTAL_API_URL=https://portal.kairikos.cloud` y `PORTAL_API_KEY=<el mismo
+   valor que el portal>`.
+2. Reiniciar `root-n8n-1` y `root-n8n-worker-1`. **Ojo**: en esa instancia
+   viven también automatizaciones ajenas a Kairikos, así que el reinicio las
+   corta un momento.
+3. Volver a lanzar la prueba del widget o del bot de Telegram.
+
+Hasta entonces, cualquier cambio en estos flujos es teoría: el portal no
+recibe nada.
+
 ## Los siete flujos
 
 | Archivo | Estado | Qué hace |
@@ -86,3 +112,30 @@ para poder inspeccionar la prueba con el bot real; se puede quitar después.
 
 Vuelta atrás: el historial de versiones de la propia n8n guarda el flujo
 anterior, con sus dieciséis nodos.
+
+## Fase 2a APLICADA el 20/09/2026 — el widget lo contesta el portal
+
+`webchat-multi-tenant.json`: el flujo llama a `/api/internal/channels/web/reply`
+y `Format Response` solo traduce la respuesta al contrato que espera el widget
+(`{ success: true, data: { reply, sessionId, timestamp, mode, contactIntent } }`),
+así que **ninguna web de cliente hay que tocarla**.
+
+- `mode` dice de dónde salió la respuesta: `portal` (normal), `human` (una
+  persona tiene la conversación), `cap` (el chatbot agotó su tope del mes) o
+  `fallback` (el portal falló y se contesta algo digno igualmente).
+- Los textos de `human`, `cap` y `fallback` están escritos en ese nodo y son
+  una decisión de producto: revísalos.
+- `Widget Desconocido?` distingue 404/403 del portal (token que no existe o
+  widget apagado) del resto de fallos, que sí merecen una respuesta.
+
+## Dos flujos que se ejecutaban sin hacer nada — arreglado el 20/09/2026
+
+`wizard-abandoned` y `config-review-overdue` tenían las **conexiones indexadas
+por el id de cada nodo en vez de por su nombre**, que es lo que n8n recorre.
+Resultado: cada 6 horas el disparador se ejecutaba, no encontraba salida y la
+ejecución terminaba "con éxito" sin llamar a nada. Cincuenta ejecuciones
+seguidas en verde sin efecto ninguno.
+
+Se reescribieron las 20 referencias de cada uno a nombres. A partir de ahora sí
+recorren el flujo — y, mientras falte `PORTAL_API_URL`, fallarán de forma
+visible en vez de mentir en verde. Eso es una mejora, no un empeoramiento.

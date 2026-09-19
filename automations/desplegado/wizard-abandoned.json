@@ -220,11 +220,11 @@
     }
   ],
   "connections": {
-    "kairikos-wizard-abandoned-trigger": {
+    "wizard-abandoned — Schedule": {
       "main": [
         [
           {
-            "node": "kairikos-wizard-abandoned-scan",
+            "node": "wizard-abandoned — Scan",
             "type": "main",
             "index": 0
           }
@@ -233,18 +233,18 @@
       "error": [
         [
           {
-            "node": "kairikos-wizard-abandoned-report-execution",
+            "node": "Report Execution to Portal (KAIA-1073)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "kairikos-wizard-abandoned-scan": {
+    "wizard-abandoned — Scan": {
       "main": [
         [
           {
-            "node": "kairikos-wizard-abandoned-split-batches",
+            "node": "Split Into Batches",
             "type": "main",
             "index": 0
           }
@@ -253,18 +253,18 @@
       "error": [
         [
           {
-            "node": "kairikos-wizard-abandoned-report-execution",
+            "node": "Report Execution to Portal (KAIA-1073)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "kairikos-wizard-abandoned-split-batches": {
+    "Split Into Batches": {
       "main": [
         [
           {
-            "node": "kairikos-wizard-abandoned-skip-already-fired",
+            "node": "If (skip alreadyFiredInWindow=true)",
             "type": "main",
             "index": 0
           }
@@ -273,19 +273,19 @@
       "error": [
         [
           {
-            "node": "kairikos-wizard-abandoned-report-execution",
+            "node": "Report Execution to Portal (KAIA-1073)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "kairikos-wizard-abandoned-skip-already-fired": {
+    "If (skip alreadyFiredInWindow=true)": {
       "main": [
         [],
         [
           {
-            "node": "kairikos-wizard-abandoned-build-payload",
+            "node": "Build Fire Payload",
             "type": "main",
             "index": 0
           }
@@ -294,18 +294,18 @@
       "error": [
         [
           {
-            "node": "kairikos-wizard-abandoned-report-execution",
+            "node": "Report Execution to Portal (KAIA-1073)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "kairikos-wizard-abandoned-build-payload": {
+    "Build Fire Payload": {
       "main": [
         [
           {
-            "node": "kairikos-wizard-abandoned-fire",
+            "node": "POST /api/internal/wizard-abandoned/fire",
             "type": "main",
             "index": 0
           }
@@ -314,18 +314,18 @@
       "error": [
         [
           {
-            "node": "kairikos-wizard-abandoned-report-execution",
+            "node": "Report Execution to Portal (KAIA-1073)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "kairikos-wizard-abandoned-fire": {
+    "POST /api/internal/wizard-abandoned/fire": {
       "main": [
         [
           {
-            "node": "kairikos-wizard-abandoned-log",
+            "node": "Log Result",
             "type": "main",
             "index": 0
           }
@@ -334,18 +334,18 @@
       "error": [
         [
           {
-            "node": "kairikos-wizard-abandoned-report-execution",
+            "node": "Report Execution to Portal (KAIA-1073)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "kairikos-wizard-abandoned-log": {
+    "Log Result": {
       "main": [
         [
           {
-            "node": "kairikos-wizard-abandoned-report-execution",
+            "node": "Report Execution to Portal (KAIA-1073)",
             "type": "main",
             "index": 0
           }
@@ -356,6 +356,8 @@
   "settings": {
     "executionOrder": "v1",
     "callerPolicy": "workflowsFromSameOwner",
-    "availableInMCP": false
+    "availableInMCP": false,
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all"
   }
 }

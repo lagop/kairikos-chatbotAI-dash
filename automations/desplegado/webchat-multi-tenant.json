@@ -89,8 +89,8 @@
       }
     },
     {
-      "id": "get-context",
-      "name": "Get Client Context",
+      "id": "portal-reply",
+      "name": "POST /api/internal/channels/web/reply",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -99,7 +99,7 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.PORTAL_API_URL }}/api/internal/channels/web/context",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/channels/web/reply",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -115,9 +115,9 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ publicToken: $json.publicToken }) }}",
+        "jsonBody": "={{ JSON.stringify({ publicToken: $json.publicToken, sessionId: $json.sessionId, text: $json.message }) }}",
         "options": {
-          "timeout": 10000,
+          "timeout": 30000,
           "response": {
             "response": {
               "neverError": true
@@ -127,8 +127,8 @@
       }
     },
     {
-      "id": "context-ok?",
-      "name": "Context OK?",
+      "id": "widget-desconocido",
+      "name": "Widget Desconocido?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
       "position": [
@@ -139,65 +139,10 @@
         "conditions": {
           "boolean": [
             {
-              "value1": "={{ $json.ok === true }}",
+              "value1": "={{ $json.error === 'not_found' || $json.error === 'disabled' }}",
               "value2": true
             }
           ]
-        }
-      }
-    },
-    {
-      "id": "build-system-prompt",
-      "name": "Build System Prompt",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1100,
-        -160
-      ],
-      "parameters": {
-        "jsCode": "const ctx = $input.first().json;\nconst businessName = ctx.businessName || 'nuestro negocio';\nconst prompts = Array.isArray(ctx.suggestedPrompts) ? ctx.suggestedPrompts : [];\nconst systemPrompt = [\n  `Eres el asistente virtual de \"${businessName}\", respondiendo en el chat de su propia web.`,\n  'Tu objetivo:',\n  '1. Responder dudas del visitante con tono cercano y profesional, en espanol, de forma breve (maximo 60 palabras salvo que pidan mas detalle).',\n  '2. Si detectas intencion de contacto (pedir cita, presupuesto, hablar con alguien, reservar), pide amablemente nombre y datos de contacto, y confirma que el equipo respondera pronto.',\n  '3. NUNCA inventes precios, horarios, servicios ni datos concretos que no te hayan dado explicitamente -- si no lo sabes, dilo con honestidad y ofrece derivar a un humano.',\n  prompts.length ? ('Temas frecuentes que este negocio espera que puedas ayudar a resolver: ' + prompts.join(', ') + '.') : '',\n].filter(Boolean).join('\\n');\nreturn [{ json: { systemPrompt, businessName, farewellMessage: ctx.farewellMessage || null } }];"
-      }
-    },
-    {
-      "id": "call-llm",
-      "name": "Call LLM (OpenAI via HTTP)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1320,
-        -160
-      ],
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $env.OPENAI_API_KEY }}"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o-mini', temperature: 0.4, max_tokens: 350, messages: [ { role: 'system', content: $json.systemPrompt }, { role: 'user', content: $('Extract Input').first().json.message } ] }) }}",
-        "options": {
-          "timeout": 20000,
-          "retry": {
-            "maxTries": 2,
-            "waitBetween": 1500
-          },
-          "response": {
-            "response": {
-              "neverError": true
-            }
-          }
         }
       }
     },
@@ -207,87 +152,11 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1540,
-        -160
+        1100,
+        -80
       ],
       "parameters": {
-        "jsCode": "const llm = $input.first().json;\nconst ctx = $('Build System Prompt').first().json;\nconst input = $('Extract Input').first().json;\nconst msgLower = (input.message || '').toLowerCase();\nconst contactIntent = /(cita|presupuesto|contacto|llamar|llamame|reuni[oó]n|hablar|contratar|me interesa|quiero|necesito|reservar|agendar|disponibilidad|horario|email|correo|tel[eé]fono|whatsapp)/i.test(msgLower);\nlet reply = '';\nlet mode = 'llm';\nlet errorDetail = null;\nif (llm && llm.choices && Array.isArray(llm.choices) && llm.choices[0] && llm.choices[0].message && llm.choices[0].message.content) {\n  reply = llm.choices[0].message.content.toString().trim();\n} else {\n  mode = 'fallback';\n  errorDetail = (llm && llm.error && llm.error.message) || 'unknown';\n  reply = contactIntent\n    ? ('Gracias por escribir. Para ayudarte mejor, cuentame tu nombre y un email o telefono de contacto -- alguien de ' + ctx.businessName + ' te respondera en breve.')\n    : ('Gracias por tu mensaje. Ahora mismo no puedo darte una respuesta detallada, pero el equipo de ' + ctx.businessName + ' lo revisara. Si quieres, dejame tus datos de contacto.');\n}\nreturn [{ json: { sessionId: input.sessionId, publicToken: input.publicToken, reply, timestamp: new Date().toISOString(), mode, contactIntent, error: errorDetail } }];"
-      }
-    },
-    {
-      "id": "log-user-message",
-      "name": "Log User Message",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1760,
-        -160
-      ],
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $env.PORTAL_API_URL }}/api/internal/channels/web/message",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "X-Kairikos-Internal-Key",
-              "value": "={{ $env.PORTAL_API_KEY }}"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ publicToken: $json.publicToken, sessionId: $json.sessionId, role: 'user', content: $('Extract Input').first().json.message }) }}",
-        "options": {
-          "timeout": 8000,
-          "response": {
-            "response": {
-              "neverError": true
-            }
-          }
-        }
-      }
-    },
-    {
-      "id": "log-bot-message",
-      "name": "Log Bot Message",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1980,
-        -160
-      ],
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $env.PORTAL_API_URL }}/api/internal/channels/web/message",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "X-Kairikos-Internal-Key",
-              "value": "={{ $env.PORTAL_API_KEY }}"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify(Object.assign({ publicToken: $('Format Response').first().json.publicToken, sessionId: $('Format Response').first().json.sessionId, role: 'assistant', content: $('Format Response').first().json.reply }, $('Format Response').first().json.contactIntent ? { outcome: 'escalated' } : {})) }}",
-        "options": {
-          "timeout": 8000,
-          "response": {
-            "response": {
-              "neverError": true
-            }
-          }
-        }
+        "jsCode": "// Traduce la respuesta del portal al contrato que espera el widget.\n// El portal ya genero la respuesta con la configuracion aprobada, el\n// historial y la base de conocimiento, y ya guardo los dos turnos: aqui\n// solo se le da forma. Ver docs/plan-motor-chatbot.md.\nconst res = $input.first().json || {};\nconst input = $('Extract Input').first().json;\nconst contactIntent = /(cita|presupuesto|contacto|llamar|llamame|reuni[oó]n|hablar|contratar|me interesa|quiero|necesito|reservar|agendar|disponibilidad|horario|email|correo|tel[eé]fono|whatsapp)/i.test(input.message || '');\n\nlet reply = typeof res.reply === 'string' ? res.reply.trim() : '';\nlet mode = 'portal';\nlet errorDetail = null;\n\nif (!reply) {\n  if (res.handledBy === 'human') {\n    // Una persona tiene la conversacion: el bot se calla a proposito.\n    mode = 'human';\n    reply = 'Ahora mismo te atiende una persona del equipo. Escribe aqui tu mensaje y lo vera enseguida.';\n  } else if (res.reason === 'monthly_cap_reached') {\n    // El chatbot agoto su tope de mensajes del mes (lib/chatbot-usage.ts).\n    mode = 'cap';\n    reply = 'Ahora mismo no puedo responderte por aqui. Dejanos tu consulta con un email o telefono y el equipo te contesta en breve.';\n  } else {\n    mode = 'fallback';\n    errorDetail = res.error || res.detail || 'unknown';\n    reply = contactIntent\n      ? 'Gracias por escribir. Para ayudarte mejor, cuentame tu nombre y un email o telefono de contacto y el equipo te respondera en breve.'\n      : 'Gracias por tu mensaje. Ahora mismo no puedo darte una respuesta detallada, pero el equipo lo revisara. Si quieres, dejame tus datos de contacto.';\n  }\n}\n\nreturn [{ json: {\n  sessionId: input.sessionId,\n  publicToken: input.publicToken,\n  reply,\n  timestamp: new Date().toISOString(),\n  mode,\n  contactIntent,\n  error: errorDetail,\n  conversationId: res.conversationId || null,\n} }];"
       }
     },
     {
@@ -296,7 +165,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        2200,
+        1320,
         -160
       ],
       "parameters": {
@@ -326,7 +195,7 @@
       "typeVersion": 1.1,
       "position": [
         1100,
-        160
+        200
       ],
       "parameters": {
         "respondWith": "json",
@@ -355,7 +224,7 @@
       "typeVersion": 1.1,
       "position": [
         440,
-        160
+        200
       ],
       "parameters": {
         "respondWith": "json",
@@ -383,7 +252,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
       "position": [
-        2200,
+        1320,
         40
       ],
       "parameters": {
@@ -403,7 +272,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2420,
+        1540,
         40
       ],
       "parameters": {
@@ -424,7 +293,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o-mini', temperature: 0.1, max_tokens: 200, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: \"Analiza el mensaje de un posible cliente que le escribio a un chatbot de atencion al cliente. Decide si muestra intencion comercial real (pedir presupuesto, reservar, comprar, contratar, pedir cita) y extrae los datos de contacto que haya dado, si los hay. Responde UNICAMENTE con un objeto JSON, sin texto adicional, con esta forma exacta: {\\\"isLead\\\": boolean, \\\"score\\\": numero entre 0 y 100 (que tan probable es que se convierta en cliente), \\\"contactName\\\": string o null, \\\"contactPhone\\\": string o null, \\\"contactEmail\\\": string o null, \\\"summary\\\": resumen breve (menos de 20 palabras) de que pidio, o null}. Si no hay intencion comercial clara, isLead debe ser false.\" }, { role: 'user', content: $('Format Response').first().json.text } ] }) }}",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o-mini', temperature: 0.1, max_tokens: 200, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: \"Analiza el mensaje de un posible cliente que le escribio a un chatbot de atencion al cliente. Decide si muestra intencion comercial real (pedir presupuesto, reservar, comprar, contratar, pedir cita) y extrae los datos de contacto que haya dado, si los hay. Responde UNICAMENTE con un objeto JSON, sin texto adicional, con esta forma exacta: {\\\"isLead\\\": boolean, \\\"score\\\": numero entre 0 y 100 (que tan probable es que se convierta en cliente), \\\"contactName\\\": string o null, \\\"contactPhone\\\": string o null, \\\"contactEmail\\\": string o null, \\\"summary\\\": resumen breve (menos de 20 palabras) de que pidio, o null}. Si no hay intencion comercial clara, isLead debe ser false.\" }, { role: 'user', content: $('Extract Input').first().json.message } ] }) }}",
         "options": {
           "timeout": 15000,
           "retry": {
@@ -445,7 +314,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2640,
+        1760,
         40
       ],
       "parameters": {
@@ -459,7 +328,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
       "position": [
-        2860,
+        1980,
         40
       ],
       "parameters": {
@@ -479,7 +348,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3080,
+        2200,
         40
       ],
       "parameters": {
@@ -500,7 +369,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ conversationId: $('Log Bot Message').first().json.conversationId, contactName: $json.contactName || undefined, contactPhone: $json.contactPhone || undefined, contactEmail: $json.contactEmail || undefined, summary: $json.summary || undefined, score: $json.score, channel: 'web' }) }}",
+        "jsonBody": "={{ JSON.stringify({ conversationId: $('Format Response').first().json.conversationId, contactName: $json.contactName || undefined, contactPhone: $json.contactPhone || undefined, contactEmail: $json.contactEmail || undefined, summary: $json.summary || undefined, score: $json.score, channel: 'web' }) }}",
         "options": {
           "timeout": 8000,
           "response": {
@@ -540,7 +409,7 @@
       "main": [
         [
           {
-            "node": "Get Client Context",
+            "node": "POST /api/internal/channels/web/reply",
             "type": "main",
             "index": 0
           }
@@ -554,48 +423,26 @@
         ]
       ]
     },
-    "Get Client Context": {
+    "POST /api/internal/channels/web/reply": {
       "main": [
         [
           {
-            "node": "Context OK?",
+            "node": "Widget Desconocido?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Context OK?": {
+    "Widget Desconocido?": {
       "main": [
-        [
-          {
-            "node": "Build System Prompt",
-            "type": "main",
-            "index": 0
-          }
-        ],
         [
           {
             "node": "Respond (widget not available)",
             "type": "main",
             "index": 0
           }
-        ]
-      ]
-    },
-    "Build System Prompt": {
-      "main": [
-        [
-          {
-            "node": "Call LLM (OpenAI via HTTP)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Call LLM (OpenAI via HTTP)": {
-      "main": [
+        ],
         [
           {
             "node": "Format Response",
@@ -606,28 +453,6 @@
       ]
     },
     "Format Response": {
-      "main": [
-        [
-          {
-            "node": "Log User Message",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Log User Message": {
-      "main": [
-        [
-          {
-            "node": "Log Bot Message",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Log Bot Message": {
       "main": [
         [
           {
@@ -691,6 +516,8 @@
     }
   },
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all"
   }
 }

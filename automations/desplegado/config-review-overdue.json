@@ -220,11 +220,11 @@
     }
   ],
   "connections": {
-    "kairikos-config-review-overdue-trigger": {
+    "config-review-overdue — Schedule": {
       "main": [
         [
           {
-            "node": "kairikos-config-review-overdue-scan",
+            "node": "config-review-overdue — Scan",
             "type": "main",
             "index": 0
           }
@@ -233,18 +233,18 @@
       "error": [
         [
           {
-            "node": "kairikos-config-review-overdue-report-execution",
+            "node": "Report Execution to Portal (KAIA-1073)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "kairikos-config-review-overdue-scan": {
+    "config-review-overdue — Scan": {
       "main": [
         [
           {
-            "node": "kairikos-config-review-overdue-split-batches",
+            "node": "Split Into Batches",
             "type": "main",
             "index": 0
           }
@@ -253,18 +253,18 @@
       "error": [
         [
           {
-            "node": "kairikos-config-review-overdue-report-execution",
+            "node": "Report Execution to Portal (KAIA-1073)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "kairikos-config-review-overdue-split-batches": {
+    "Split Into Batches": {
       "main": [
         [
           {
-            "node": "kairikos-config-review-overdue-skip-already-fired",
+            "node": "If (skip alreadyFiredInWindow=true)",
             "type": "main",
             "index": 0
           }
@@ -273,19 +273,19 @@
       "error": [
         [
           {
-            "node": "kairikos-config-review-overdue-report-execution",
+            "node": "Report Execution to Portal (KAIA-1073)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "kairikos-config-review-overdue-skip-already-fired": {
+    "If (skip alreadyFiredInWindow=true)": {
       "main": [
         [],
         [
           {
-            "node": "kairikos-config-review-overdue-build-payload",
+            "node": "Build Fire Payload",
             "type": "main",
             "index": 0
           }
@@ -294,18 +294,18 @@
       "error": [
         [
           {
-            "node": "kairikos-config-review-overdue-report-execution",
+            "node": "Report Execution to Portal (KAIA-1073)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "kairikos-config-review-overdue-build-payload": {
+    "Build Fire Payload": {
       "main": [
         [
           {
-            "node": "kairikos-config-review-overdue-fire",
+            "node": "POST /api/internal/config-review-overdue/fire",
             "type": "main",
             "index": 0
           }
@@ -314,18 +314,18 @@
       "error": [
         [
           {
-            "node": "kairikos-config-review-overdue-report-execution",
+            "node": "Report Execution to Portal (KAIA-1073)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "kairikos-config-review-overdue-fire": {
+    "POST /api/internal/config-review-overdue/fire": {
       "main": [
         [
           {
-            "node": "kairikos-config-review-overdue-log",
+            "node": "Log Result",
             "type": "main",
             "index": 0
           }
@@ -334,18 +334,18 @@
       "error": [
         [
           {
-            "node": "kairikos-config-review-overdue-report-execution",
+            "node": "Report Execution to Portal (KAIA-1073)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "kairikos-config-review-overdue-log": {
+    "Log Result": {
       "main": [
         [
           {
-            "node": "kairikos-config-review-overdue-report-execution",
+            "node": "Report Execution to Portal (KAIA-1073)",
             "type": "main",
             "index": 0
           }
@@ -356,6 +356,8 @@
   "settings": {
     "executionOrder": "v1",
     "callerPolicy": "workflowsFromSameOwner",
-    "availableInMCP": false
+    "availableInMCP": false,
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all"
   }
 }
