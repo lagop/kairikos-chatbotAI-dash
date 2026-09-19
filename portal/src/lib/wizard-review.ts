@@ -28,6 +28,7 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { CHATBOT_PRODUCT_CODE } from './wizard-catalog';
 import { getProductCatalog } from './catalogs';
+import { syncSiteFromWizardIdentity } from './client-site';
 
 export type WizardReviewAction = 'approve' | 'request_revision';
 
@@ -773,6 +774,12 @@ export async function applyWizardReview(
     };
   });
 
+  // Fase 4 multi-instancia — el paso 1 aprobado renombra el negocio de ese
+  // chatbot. Después del commit, igual que el aviso de abajo: nunca lanza.
+  if (req.action === 'approve') {
+    await syncSiteFromWizardIdentity(prisma, { stepId: result.stepId });
+  }
+
   // Post-commit side effects — run AFTER the transaction commits so a
   // rollback never leaves an orphan operator email or dedup row. Only
   // the ready / updating transitions need the notify; the empty case
@@ -914,6 +921,9 @@ export async function applySystemAutoApproval(
       clientForNotify: clientRow,
     };
   });
+
+  // Fase 4 multi-instancia — ver applyWizardReview.
+  await syncSiteFromWizardIdentity(prisma, { stepId: result.stepId });
 
   // Same post-commit carve-out as applyWizardReview: the notify runs
   // after the transaction commits so a rollback never leaves an orphan

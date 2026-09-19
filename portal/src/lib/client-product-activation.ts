@@ -3,6 +3,7 @@ import type { PrismaClient } from '@prisma/client';
 import { ensureRecallSubscription } from './recall-onboarding';
 import { ensureSeoProfile, ensureProspectingCampaign, ensureLeadQualificationProfile } from './product-onboarding';
 import { isMultiInstanceProduct } from './client-product-access';
+import { assignSiteToNewContract } from './client-site';
 
 // =============================================================================
 // Activar un ClientProduct sin pasar por Stripe — un operador decide que
@@ -78,6 +79,15 @@ export async function activateClientProductForOperator(
           data: { clientId, productId, tenantId: client.tenantId, status: 'active', createdBy: changedBy, changedBy },
           include: { product: true },
         });
+    // Fase 4 multi-instancia — la contratación apunta a su negocio: el
+    // primario, o uno nuevo si es la segunda de un producto multi-instancia.
+    // Ver lib/client-site.ts.
+    await assignSiteToNewContract(tx, {
+      clientId,
+      tenantId: client.tenantId,
+      clientProductId: clientProduct.id,
+      productCode: product.code,
+    });
     await tx.clientProductAudit.create({
       data: {
         clientProductId: clientProduct.id,

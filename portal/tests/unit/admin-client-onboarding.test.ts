@@ -5,6 +5,14 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// Fase 4 multi-instancia — el sitio de cada contratación tiene sus propios
+// tests (client-site.test.ts); aquí solo se comprueba que se pide.
+const clientSiteMock = vi.hoisted(() => ({
+  assignSiteToNewContract: vi.fn(),
+  ensurePrimaryClientSite: vi.fn(),
+}));
+vi.mock('@/lib/client-site', () => clientSiteMock);
+
 const mockState = vi.hoisted(() => ({
   findUniqueChatbotClient: vi.fn(),
   createChatbotClient: vi.fn(),
@@ -60,6 +68,11 @@ describe('createClientByOperator', () => {
       expect.objectContaining({
         data: expect.objectContaining({ nextAuthEmail: 'aurora@example.com', clientId: 'client_new_1', userId: 'user_new_1' }),
       }),
+    );
+    // Fase 4 — todo cliente nace con su sitio primario, con el nombre de la empresa.
+    expect(clientSiteMock.ensurePrimaryClientSite).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ clientId: 'client_new_1', name: 'Peluquería Aurora' }),
     );
   });
 
