@@ -15,7 +15,7 @@
 
 import { NextResponse } from 'next/server';
 import { prisma, isDatabaseConfigured } from './prisma';
-import { resolveSoleChatbotInstance } from './client-product-access';
+import { resolveContractedInstance } from './client-product-access';
 import {
   sendOperatorNotification,
   utcDayKey,
@@ -45,6 +45,17 @@ export const GO_LIVE_READY_KIND = 'go-live-ready';
 export interface SnoozeInput {
   milestoneId: string;
   days: number;
+  /** Fase 4 multi-instancia — de qué chatbot es el hito. Opcional: sin él
+   *  vale el único. Ver chatbotForMilestone. */
+  clientProductId?: string | null;
+}
+
+/** Fase 4 multi-instancia — de qué chatbot es un hito que marca el cliente.
+ *  Si la pantalla manda el id, se exige de ESTE cliente; si no, vale el
+ *  único chatbot, y con dos devuelve null y el llamante responde 409 en vez
+ *  de marcar el hito del equivocado. */
+function chatbotForMilestone(clientId: string, clientProductId: string | null | undefined) {
+  return resolveContractedInstance(prisma, { clientId, productCode: 'chatbot', clientProductId });
 }
 
 export async function handleSnooze(
@@ -75,11 +86,7 @@ export async function handleSnooze(
   }
 
   if (isDatabaseConfigured) {
-    // Fase 4 multi-instancia — de que chatbot es este hito. Con uno solo
-    // —todos los clientes de hoy— devuelve el de siempre; con dos devuelve
-    // null y este camino no escribe, que es la marca de que le falta
-    // enhebrar la eleccion. Ver resolveSoleChatbotInstance.
-    const instance = await resolveSoleChatbotInstance(prisma, clientId);
+    const instance = await chatbotForMilestone(clientId, input.clientProductId);
     if (!instance) {
       return NextResponse.json({ error: 'chatbot_instance_not_resolved' }, { status: 409 });
     }
@@ -376,17 +383,13 @@ function escapeHtml(value: string): string {
 
 export async function handleAssetsUploaded(
   clientId: string,
-  input: { milestone?: string; notes?: string },
+  input: { milestone?: string; notes?: string; clientProductId?: string | null },
 ): Promise<NextResponse> {
   const milestone = input.milestone ?? 'T+3';
   const notes = input.notes ?? 'Marcado por el cliente desde el portal.';
 
   if (isDatabaseConfigured) {
-    // Fase 4 multi-instancia — de que chatbot es este hito. Con uno solo
-    // —todos los clientes de hoy— devuelve el de siempre; con dos devuelve
-    // null y este camino no escribe, que es la marca de que le falta
-    // enhebrar la eleccion. Ver resolveSoleChatbotInstance.
-    const instance = await resolveSoleChatbotInstance(prisma, clientId);
+    const instance = await chatbotForMilestone(clientId, input.clientProductId);
     if (!instance) {
       return NextResponse.json({ error: 'chatbot_instance_not_resolved' }, { status: 409 });
     }

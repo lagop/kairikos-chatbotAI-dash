@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
-import { resolveSoleChatbotInstance } from '@/lib/client-product-access';
+import { resolveInstanceForOperator } from '@/lib/client-product-access';
 import {
   authenticateInternalRequest,
   internalAuthFailureResponse,
@@ -43,6 +43,7 @@ const STATUS_CHANGE_MILESTONE = 'status_change';
 
 interface ActivityRequestBody {
   clientId?: unknown;
+  clientProductId?: unknown;
   productCode?: unknown;
   milestone?: unknown;
   completedAt?: unknown;
@@ -51,6 +52,7 @@ interface ActivityRequestBody {
 
 interface ParsedActivityRequest {
   clientId: string;
+  clientProductId: string | null;
   productCode: string;
   milestone: string;
   completedAt: Date;
@@ -104,14 +106,27 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Fase 4 multi-instancia — n8n reporta por cliente y no conoce la
-  // instancia. Con un chatbot resuelve el de siempre; con dos responde 409 en
-  // vez de apuntar el hito en el equivocado. Cuando n8n aprenda a mandar la
-  // contratación, este resolutor se sustituye por el id que llegue.
-  const instance = await resolveSoleChatbotInstance(prisma, parsed.value.clientId);
+  // Fase 4 multi-instancia — el hito es de UNA contratación del producto
+  // que se informa. Si n8n manda clientProductId, se usa (y se exige de este
+  // cliente y de ese producto); si no, vale la única. Con dos y sin id, 409
+  // en vez de apuntar el hito en la equivocada.
+  //
+  // Limitación conocida: los flujos T+0/3/7/14 de n8n todavía no mandan el
+  // id, así que para un cliente con dos chatbots el hito se rechaza hasta que
+  // lo hagan. Hoy ningún cliente tiene dos.
+  //
+  // Sin exigir estado activo: el vigilante de cambios de estado informa
+  // precisamente de contrataciones que pasan a pausada o cancelada.
+  const resolution = await resolveInstanceForOperator(
+    prisma,
+    parsed.value.clientId,
+    parsed.value.productCode,
+    parsed.value.clientProductId,
+  );
+  const instance = resolution.ok && resolution.clientProductId ? { clientProductId: resolution.clientProductId } : null;
   if (!instance) {
     return NextResponse.json(
-      { error: 'chatbot_instance_not_resolved', detail: 'client has several chatbots; n8n must send clientProductId' },
+      { error: 'product_instance_not_resolved', detail: 'unknown clientProductId, or several contracts and none given' },
       { status: 409 },
     );
   }
@@ -198,11 +213,19 @@ type ParseResult =
   | { ok: false; reason: string };
 
 function parseRequestBody(body: ActivityRequestBody): ParseResult {
-  const { clientId, productCode: rawProductCode, milestone, completedAt, notes } = body;
+  const { clientId, clientProductId: rawClientProductId, productCode: rawProductCode, milestone, completedAt, notes } = body;
 
   if (typeof clientId !== 'string' || !UUID_RE.test(clientId)) {
     return { ok: false, reason: 'clientId must be a UUID string' };
   }
+
+  // Fase 4 multi-instancia — opcional: de qué contratación es. Si llega, se
+  // comprueba contra el cliente antes de usarla (el llamante no elige tenant).
+  if (rawClientProductId !== undefined && rawClientProductId !== null
+    && (typeof rawClientProductId !== 'string' || !UUID_RE.test(rawClientProductId))) {
+    return { ok: false, reason: 'clientProductId must be a UUID string when present' };
+  }
+  const clientProductId = (rawClientProductId as string | null | undefined) ?? null;
   if (rawProductCode !== undefined && typeof rawProductCode !== 'string') {
     return { ok: false, reason: 'productCode must be a string' };
   }
@@ -250,6 +273,7 @@ function parseRequestBody(body: ActivityRequestBody): ParseResult {
     ok: true,
     value: {
       clientId,
+      clientProductId,
       productCode,
       milestone,
       completedAt: completedAtDate,

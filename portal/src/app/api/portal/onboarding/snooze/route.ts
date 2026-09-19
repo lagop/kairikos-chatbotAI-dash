@@ -9,6 +9,7 @@ export const runtime = 'nodejs';
 interface SnoozeBody {
   milestoneId?: unknown;
   days?: unknown;
+  clientProductId?: unknown;
 }
 
 export async function POST(req: NextRequest) {
@@ -32,5 +33,6 @@ export async function POST(req: NextRequest) {
   const milestoneId =
     typeof body.milestoneId === 'string' ? body.milestoneId : '';
   const days = typeof body.days === 'number' ? body.days : 1;
-  return handleSnooze(resolved.clientId, { milestoneId, days });
+  const clientProductId = typeof body.clientProductId === 'string' ? body.clientProductId : null;
+  return handleSnooze(resolved.clientId, { milestoneId, days, clientProductId });
 }

@@ -175,7 +175,7 @@
       "typeVersion": 2,
       "position": [1130, 200],
       "parameters": {
-        "jsCode": "// Build the fire payload for wizard-abandoned.\n// Input: one scan-candidate item from the split batch.\n// Output: body for /api/internal/wizard-abandoned/fire\nconst input = $input.first().json;\nreturn [{\n  json: {\n    clientId: input.clientId,\n    lastDraftAt: input.lastDraftAt,\n    lastStepKey: input.lastStepKey,\n    hoursSinceLastDraft: Math.max(0, Math.round(Number(input.hoursSinceLastDraft) || 0)),\n  },\n}];"
+        "jsCode": "// Build the fire payload for wizard-abandoned.\n// Input: one scan-candidate item from the split batch.\n// Output: body for /api/internal/wizard-abandoned/fire\nconst input = $input.first().json;\nreturn [{\n  json: {\n    clientId: input.clientId,\n    // Fase 4 multi-instancia: de qué chatbot es el asistente parado.\n    clientProductId: input.clientProductId || null,\n    lastDraftAt: input.lastDraftAt,\n    lastStepKey: input.lastStepKey,\n    hoursSinceLastDraft: Math.max(0, Math.round(Number(input.hoursSinceLastDraft) || 0)),\n  },\n}];"
       }
     },
     {

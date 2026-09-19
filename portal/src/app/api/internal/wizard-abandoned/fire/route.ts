@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
-import { resolveSoleChatbotInstance } from '@/lib/client-product-access';
+import { resolveContractedInstance } from '@/lib/client-product-access';
 import {
   authenticateInternalRequest,
   internalAuthFailureResponse,
@@ -44,6 +44,7 @@ const UUID_RE =
 
 interface FireRequestBody {
   clientId?: unknown;
+  clientProductId?: unknown;
   lastDraftAt?: unknown;
   lastStepKey?: unknown;
   hoursSinceLastDraft?: unknown;
@@ -51,6 +52,7 @@ interface FireRequestBody {
 
 interface ParsedFireRequest {
   clientId: string;
+  clientProductId: string | null;
   lastDraftAt: Date;
   lastStepKey: string;
   hoursSinceLastDraft: number;
@@ -103,13 +105,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Fase 4 multi-instancia — n8n dispara por cliente y no conoce la
-  // instancia. Con un chatbot resuelve el de siempre; con dos responde 409
-  // en vez de apuntar el aviso en el equivocado.
-  const instance = await resolveSoleChatbotInstance(prisma, parsed.value.clientId);
+  // Fase 4 multi-instancia — el barrido ya informa de qué chatbot es cada
+  // candidato y n8n lo reenvía. Sin él (un flujo anterior) vale el único
+  // chatbot; con dos, 409 en vez de avisar del asistente equivocado. Si
+  // llega, resolveContractedInstance lo exige de ESTE cliente.
+  const instance = await resolveContractedInstance(prisma, {
+    clientId: parsed.value.clientId,
+    productCode: CHATBOT_PRODUCT_CODE,
+    clientProductId: parsed.value.clientProductId,
+  });
   if (!instance) {
     return NextResponse.json(
-      { error: 'chatbot_instance_not_resolved', detail: 'client has several chatbots; n8n must send clientProductId' },
+      { error: 'chatbot_instance_not_resolved', detail: 'unknown clientProductId, or several chatbots and none given' },
       { status: 409 },
     );
   }
@@ -154,6 +161,7 @@ export async function POST(req: NextRequest) {
     lastStepHuman: humanStep,
     hoursSinceLastDraft: Math.round(parsed.value.hoursSinceLastDraft),
     portalUrl,
+    clientProductId: instance.clientProductId,
   });
 
   // Resolve the contact email. The scan route reports the client's
@@ -171,6 +179,7 @@ export async function POST(req: NextRequest) {
     lastStepHuman: humanStep,
     hoursSinceLastDraft: Math.round(parsed.value.hoursSinceLastDraft),
     portalUrl,
+    clientProductId: instance.clientProductId,
   });
 
   if (!sent.ok) {
@@ -297,11 +306,19 @@ type ParseResult =
   | { ok: false; reason: string };
 
 function parseRequestBody(body: FireRequestBody): ParseResult {
-  const { clientId, lastDraftAt, lastStepKey, hoursSinceLastDraft } = body;
+  const { clientId, clientProductId: rawClientProductId, lastDraftAt, lastStepKey, hoursSinceLastDraft } = body;
 
   if (typeof clientId !== 'string' || !UUID_RE.test(clientId)) {
     return { ok: false, reason: 'clientId must be a UUID string' };
   }
+
+  // Fase 4 multi-instancia — opcional: de qué contratación es. Si llega, se
+  // comprueba contra el cliente antes de usarla (el llamante no elige tenant).
+  if (rawClientProductId !== undefined && rawClientProductId !== null
+    && (typeof rawClientProductId !== 'string' || !UUID_RE.test(rawClientProductId))) {
+    return { ok: false, reason: 'clientProductId must be a UUID string when present' };
+  }
+  const clientProductId = (rawClientProductId as string | null | undefined) ?? null;
 
   let lastDraftAtDate: Date;
   if (typeof lastDraftAt === 'string') {
@@ -338,6 +355,7 @@ function parseRequestBody(body: FireRequestBody): ParseResult {
     ok: true,
     value: {
       clientId,
+      clientProductId,
       lastDraftAt: lastDraftAtDate,
       lastStepKey,
       hoursSinceLastDraft,

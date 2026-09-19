@@ -45,6 +45,8 @@ const WIZARD_ABANDONED_DEDUP_DAYS = 7;
 
 interface ScanCandidate {
   clientId: string;
+  /** Fase 4 multi-instancia — de qué chatbot es el asistente parado. */
+  clientProductId: string;
   companyName: string;
   contactEmail: string;
   contactName: string;
@@ -59,6 +61,7 @@ interface ScanCandidate {
 
 interface ScanRow {
   clientId: string;
+  clientProductId: string;
   companyName: string;
   contactEmail: string;
   contactName: string;
@@ -110,6 +113,7 @@ export async function POST(req: NextRequest) {
     const rows = await scanWizardAbandoned();
     const candidates: ScanCandidate[] = rows.map((row) => ({
       clientId: row.clientId,
+      clientProductId: row.clientProductId,
       companyName: row.companyName,
       contactEmail: row.contactEmail,
       contactName: row.contactName,
@@ -190,25 +194,34 @@ async function scanWizardAbandoned(): Promise<ScanRow[]> {
       FROM "ChatbotClient" c
       WHERE c.state IN ('in-progress', 'go-live-pending')
     ),
+    -- Fase 4 multi-instancia — por chatbot, no por cliente: con dos, uno
+    -- puede estar parado y el otro terminado, y agrupar por cliente mezclaba
+    -- el último borrador de uno con el último envío del otro.
     last_draft AS (
       SELECT
         s."clientId" AS client_id,
+        s.client_product_id,
         MAX(s."updatedAt") AS last_draft_at,
         (array_agg(s."stepKey" ORDER BY s."updatedAt" DESC))[1] AS last_step_key
       FROM "ChatbotConfigStep" s
       WHERE s.status = 'draft'
-      GROUP BY s."clientId"
+        AND s."productCode" = 'chatbot'
+        AND s.client_product_id IS NOT NULL
+      GROUP BY s."clientId", s.client_product_id
     ),
     last_submit AS (
       SELECT
-        s."clientId" AS client_id,
+        s.client_product_id,
         MAX(s."submittedAt") AS last_submitted_at
       FROM "ChatbotConfigStep" s
       WHERE s."submittedAt" IS NOT NULL
-      GROUP BY s."clientId"
+        AND s."productCode" = 'chatbot'
+        AND s.client_product_id IS NOT NULL
+      GROUP BY s.client_product_id
     )
     SELECT
       c."clientId"::text                    AS "clientId",
+      ld.client_product_id::text            AS "clientProductId",
       c."companyName"                       AS "companyName",
       c."contactEmail"                      AS "contactEmail",
       c."contactName"                       AS "contactName",
@@ -221,13 +234,13 @@ async function scanWizardAbandoned(): Promise<ScanRow[]> {
                                             AS "hoursSinceLastDraft",
       EXISTS (
         SELECT 1 FROM "ChatbotActivity" a
-        WHERE a."clientId" = c."clientId"
+        WHERE a.client_product_id = ld.client_product_id
           AND a.milestone = 'wizard_abandoned'
           AND a."completedAt" > now() - (${dedupDays}::text || ' days')::interval
       ) AS "alreadyFiredInWindow"
     FROM configuring_clients c
     JOIN last_draft ld ON ld.client_id = c."clientId"
-    LEFT JOIN last_submit ls ON ls.client_id = c."clientId"
+    LEFT JOIN last_submit ls ON ls.client_product_id = ld.client_product_id
     WHERE
       ld.last_draft_at < now() - (${windowHours}::text || ' hours')::interval
       AND (ls.last_submitted_at IS NULL OR ls.last_submitted_at < ld.last_draft_at)
@@ -236,6 +249,7 @@ async function scanWizardAbandoned(): Promise<ScanRow[]> {
 
   return rows.map((row) => ({
     clientId: String(row.clientId),
+    clientProductId: String(row.clientProductId),
     companyName: row.companyName,
     contactEmail: row.contactEmail,
     contactName: row.contactName,
@@ -251,6 +265,7 @@ async function scanWizardAbandoned(): Promise<ScanRow[]> {
 
 interface RawScanRow {
   clientId: string;
+  clientProductId: string;
   companyName: string;
   contactEmail: string;
   contactName: string;
