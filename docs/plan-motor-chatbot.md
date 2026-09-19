@@ -229,3 +229,83 @@ Nada de esto desbloquea ventas por sí solo: los bloqueos siguen siendo la
 verificación en Meta, los clientes OAuth de Google y la clave de producción de
 Stripe. Lo que sí hace es que **lo que el cliente configura sea lo que el bot
 hace** — que es lo que se le está vendiendo.
+
+---
+
+# Lo que pasó al ejecutar el plan — 20/09/2026
+
+## Fase 0: hecho
+
+Desactivada la copia duplicada de `wizard_abandoned` y el `config_review_overdue`
+que llamaba a una ruta inexistente. Exportado lo desplegado a
+`automations/desplegado/`.
+
+**Extra, no previsto:** `wizard_abandoned` y `config_review_overdue` tenían las
+conexiones indexadas por el id de cada nodo en vez de por su nombre, que es lo
+que n8n recorre. Llevaban meses ejecutándose cada 6 horas, terminando en verde
+y **sin recorrer un solo nodo**. Cincuenta ejecuciones seguidas "correctas" sin
+efecto. Arreglado: 20 referencias reescritas en cada uno.
+
+## Fases 1 y 2a: hechas
+
+Telegram y el widget web llaman ya a `/api/internal/channels/*/reply`. El
+widget conserva su contrato, así que ninguna web de cliente cambia.
+
+## El motor, probado de verdad
+
+Producción está vacía (0 conversaciones, 0 chatbots activos, 0 widgets), así
+que la prueba se montó en local con datos sembrados: un chatbot Pro con su
+asistente aprobado, un documento de conocimiento y un widget. Cuatro mensajes
+seguidos contra `/api/internal/channels/web/reply`, con la clave real de
+Anthropic:
+
+| Se le preguntó | Contestó | Qué demuestra |
+|---|---|---|
+| "¿Cuánto cuesta la limpieza dental?" | "cuesta 60€" | Usa el paso 3 aprobado del asistente |
+| "¿Y a qué hora abrís los lunes?" | "de 09:00 a 18:00… ahora mismo estamos cerrados" | Usa el paso 5 **y** el cálculo de horario en TypeScript; además escaló según la regla de fuera de horario |
+| "Si cancelo con 3 horas, ¿me cobráis?" | "con menos de 24 horas se cobra 15€" | **Base de conocimiento**: ese dato solo existe en un documento |
+| "Prefiero que me atienda una persona" | "te paso con el equipo" + escalado | Traspaso a una persona |
+
+Quedó una conversación con 8 turnos, atribuida a su contratación, con
+`handoffRequestedAt` puesto. Tiempos: 4,4 s el primero (arranque en frío), 1-1,5 s
+el resto. El tope de gasto también se probó en caliente: con el límite puesto a
+4, el quinto mensaje devolvió 200 con respuesta vacía, guardó el turno de la
+persona y no incrementó el contador.
+
+**Nada de esto ocurría antes en ningún canal**: el prompt de n8n solo llevaba el
+nombre del negocio y los prompts sugeridos, sin historial ni conocimiento.
+
+## EL BLOQUEO: n8n no tiene cómo llamar al portal
+
+`PORTAL_API_URL` y `PORTAL_API_KEY` **no existen** en `root-n8n-1` ni en
+`root-n8n-worker-1`. Cada nodo que llama al portal construye una URL vacía y
+falla con *"Invalid URL"*. Es decir: la integración n8n → portal **nunca ha
+funcionado**, y eso explica por qué producción está vacía.
+
+Lo que hay que hacer (toca infraestructura compartida y un secreto, así que lo
+decide el propietario): añadir las dos variables al servicio de n8n en su
+`docker-compose.yml`, reiniciar los dos contenedores —lo que corta un momento
+automatizaciones ajenas a Kairikos que viven en la misma instancia— y repetir
+la prueba con el bot real.
+
+## Lo que queda
+
+| Fase | Estado |
+|---|---|
+| 3 — Meta | **Bloqueada por una decisión**: hay dos flujos de Meta activos y Meta solo llama a una URL; uno apunta a un túnel de desarrollo. Hay que mirar en la app de Meta cuál recibe |
+| 2b — el widget hablando directo con el portal | Pendiente; necesita antes un freno de peticiones, que no existe en ninguna ruta del portal |
+| 4 — retirar lo duplicado | Los dos clasificadores de leads siguen vivos. Ver abajo |
+
+### Por qué no se retiró aún el clasificador de leads de n8n
+
+El del portal es mejor —usa el perfil de cualificación que rellena el cliente,
+que el de n8n ni conoce— pero corre por barrido, no en caliente. Quitar el de
+n8n hoy retrasaría cada lead hasta el siguiente barrido. Antes de retirarlo
+hace falta decidir si se acepta ese retraso o si el portal clasifica en el
+mismo turno.
+
+Lo que sí se arregló, porque era un agujero de verdad: el barrido solo miraba
+conversaciones **cerradas**, y el motor solo cierra una conversación cuando
+escala a una persona. Una conversación con intención de compra clarísima que
+terminara sin escalar **no se clasificaba jamás y su lead se perdía sin
+rastro**. Ahora también entran las que empezaron hace más de dos horas.

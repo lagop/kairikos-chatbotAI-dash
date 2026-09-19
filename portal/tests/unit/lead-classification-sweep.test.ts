@@ -94,17 +94,31 @@ async function sweep() {
 }
 
 describe('sweepDueConversationsForClassification', () => {
-  it('queries closed, unclassified conversations for clients with an active leads product', async () => {
+  it('busca las no clasificadas de clientes con leads: cerradas O empezadas hace rato', async () => {
     await sweep();
     expect(mockState.conversationFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: {
-          outcome: { not: null },
+        where: expect.objectContaining({
           leadsClassifiedAt: null,
           client: { clientProducts: { some: { status: 'active', product: { code: 'leads' } } } },
-        },
+        }),
       }),
     );
+  });
+
+  // El agujero que esto cierra: el motor solo pone outcome al derivar a una
+  // persona, así que la mayoría de las conversaciones no se cerraban nunca y
+  // su lead no llegaba a existir. Ver la cabecera del lib.
+  it('una conversación sin cerrar entra igual si empezó hace más de dos horas', async () => {
+    await sweep();
+    const where = mockState.conversationFindMany.mock.calls[0][0].where;
+    expect(where.OR).toHaveLength(2);
+    expect(where.OR[0]).toEqual({ outcome: { not: null } });
+    const limite = where.OR[1].startedAt.lt as Date;
+    const horas = (Date.now() - limite.getTime()) / 3_600_000;
+    const { CONVERSATION_STALE_HOURS } = await import('@/lib/lead-classification-sweep');
+    expect(horas).toBeGreaterThanOrEqual(CONVERSATION_STALE_HOURS - 0.01);
+    expect(horas).toBeLessThan(CONVERSATION_STALE_HOURS + 0.5);
   });
 
   it('classifies a due conversation and marks leadsClassifiedAt, without creating a lead when isLead is false', async () => {

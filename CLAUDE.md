@@ -86,6 +86,18 @@ esta base de datos: todo entra por rutas `/api/internal/*` autenticadas con `POR
 en la cabecera `x-kairikos-internal-key`, y todo sale por webhooks salientes
 (`channel-webhook.ts`, con reintentos y backoff propios).
 
+> **Esta frase describía un objetivo, no la realidad, hasta el 20/09/2026.** Una auditoría de
+> la instancia real encontró que el turno del bot lo generaba n8n —prompt escrito a mano en un
+> nodo Code y llamada a OpenAI— y que el motor del portal (`/api/internal/channels/*/reply`,
+> `chatbot-conversation.ts`) no lo llamaba nadie. Telegram y el widget web ya están
+> convertidos; **Meta (WhatsApp/Messenger/Instagram) todavía no**: su flujo sigue armando el
+> prompt por su cuenta. Si tocas canales, mira antes `automations/desplegado/` —que es lo que
+> de verdad corre— y `docs/plan-motor-chatbot.md`.
+>
+> Y hay un prerrequisito que invalida cualquier prueba mientras falte: `PORTAL_API_URL` y
+> `PORTAL_API_KEY` **no están definidas en los contenedores de n8n**, así que ninguna llamada
+> de n8n al portal ha funcionado nunca. Ver el README de `automations/desplegado/`.
+
 **El cliente nunca se toma del cuerpo de la petición.** Las rutas internas resuelven
 `clientId`/`tenantId` desde un identificador externo (un `conversationId`, un
 `phone_number_id`, un `connectionId`). Aceptar un `clientId` que manda el llamante permitiría

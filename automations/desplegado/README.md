@@ -39,7 +39,7 @@ recibe nada.
 
 | Archivo | Estado | Qué hace |
 |---|---|---|
-| `webchat-multi-tenant.json` | activo | Widget web: pide configuración al portal, **arma el prompt y llama a OpenAI dentro de n8n**, responde al widget y registra los turnos en el portal |
+| `webchat-multi-tenant.json` | activo | **Fase 2a aplicada**: widget web; el portal contesta (`/channels/web/reply`) y n8n solo traduce al contrato del widget |
 | `telegram-multi-tenant.json` | activo | **Fase 1 aplicada**: recibe de Telegram, el portal contesta (`/channels/telegram/reply`) y n8n envía (`/channels/telegram/send`) |
 | `meta-multi-tenant.json` | activo | Igual, para WhatsApp, Messenger e Instagram |
 | `meta-whatsapp-inbound.json` | activo | Recibe de Meta, verifica firma y reparte entre Recall y chatbot. **Apunta a un túnel de desarrollo personal** (sustituido aquí por `TUNEL-DE-DESARROLLO.ejemplo`), así que en producción no llega a ningún sitio |
