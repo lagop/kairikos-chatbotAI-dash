@@ -42,17 +42,24 @@ export interface ResolvedClientTier {
 export async function resolveClientTier(
   prisma: PrismaClient,
   clientId: string,
+  /** Fase 4 multi-instancia — la tarifa de ESTE chatbot (Product.tier de su
+   *  contratación). Qué pasos ve el asistente depende de la tarifa, y
+   *  ChatbotClient.tier es un campo del CLIENTE: con un Starter y un Premium,
+   *  los dos asistentes habrían enseñado los mismos pasos. Sin él, la del
+   *  cliente, como siempre. */
+  instanceTier?: string | null,
 ): Promise<ResolvedClientTier | null> {
   const client = await prisma.chatbotClient.findUnique({
     where: { id: clientId },
     select: { id: true, email: true, tier: true },
   });
   if (!client) return null;
+  const rawTier = instanceTier ?? client.tier;
   return {
     clientId: client.id,
     email: client.email,
-    tier: normalizeTier(client.tier),
-    rawTier: client.tier,
+    tier: normalizeTier(rawTier),
+    rawTier,
   };
 }
 
@@ -84,13 +91,15 @@ export async function readLatestStepsForClient(
   prisma: PrismaClient,
   clientId: string,
   productCode: string,
+  /** Fase 4 multi-instancia — los pasos de ESTE chatbot. */
+  clientProductId?: string | null,
 ): Promise<SavedStepRow[]> {
   // Pull every row for the client + product and reduce in app code. The
   // volume is bounded by `version` count per step; in the happy path
   // this is ~12 rows (one per step). We do not use `groupBy` because the
   // columns we need aren't aggregate-friendly in a single Prisma call.
   const rows = await prisma.chatbotConfigStep.findMany({
-    where: { clientId, productCode },
+    where: { clientId, productCode, ...(clientProductId ? { clientProductId } : {}) },
     orderBy: [{ stepKey: 'asc' }, { version: 'desc' }],
     select: {
       stepKey: true,
@@ -130,9 +139,11 @@ export async function readLatestStepForClient(
   clientId: string,
   productCode: string,
   stepKey: string,
+  /** Fase 4 multi-instancia — el paso de ESTE chatbot. */
+  clientProductId?: string | null,
 ): Promise<{ latest: SavedStepRow['latest']; payload: Prisma.JsonValue | null } | null> {
   const row = await prisma.chatbotConfigStep.findFirst({
-    where: { clientId, productCode, stepKey },
+    where: { clientId, productCode, stepKey, ...(clientProductId ? { clientProductId } : {}) },
     orderBy: { version: 'desc' },
     select: {
       status: true,

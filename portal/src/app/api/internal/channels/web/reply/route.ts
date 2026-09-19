@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
+import { resolveChatbotForChannel } from '@/lib/client-product-access';
 import { authenticateInternalRequest, internalAuthFailureResponse } from '@/lib/internal-auth';
 import { replyToIncomingMessage } from '@/lib/chatbot-conversation';
 
@@ -45,8 +46,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'disabled' }, { status: 403 });
   }
 
+  // Fase 4 multi-instancia — contesta el chatbot al que sirve ESTE canal (el
+  // ancla de la fase 1). Ver resolveChatbotForChannel y
+  // ReplyToIncomingMessageInput.instance.
+  const instance = await resolveChatbotForChannel(prisma, embed.clientId, embed.clientProductId);
   const result = await replyToIncomingMessage(prisma, {
     clientId: embed.clientId,
+    instance,
     tenantId: embed.tenantId,
     channel: 'web',
     key: { kind: 'exact', externalSessionId: body.data.sessionId },

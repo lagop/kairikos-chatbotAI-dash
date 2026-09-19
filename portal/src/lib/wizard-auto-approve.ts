@@ -135,18 +135,32 @@ export async function sweepAutoApprovableWizardSteps(
     const autoApprovableStepKeys = getProductCatalog(productCode).autoApprovableStepKeys;
     if (autoApprovableStepKeys.length === 0) continue;
 
-    let latestPerStep: { clientId: string; stepKey: string; status: string; submittedAt: Date | null }[];
+    let latestPerStep: {
+      clientId: string;
+      clientProductId: string | null;
+      stepKey: string;
+      status: string;
+      submittedAt: Date | null;
+    }[];
     try {
       // `distinct` + a matching `orderBy` is what makes this "the latest
       // version per (client, step)" rather than "every submitted row" —
       // a step whose latest version is a later, un-resubmitted DRAFT must
       // never be approved on the strength of an older submitted sibling.
       // The version-desc tiebreaker is what Prisma keeps per group.
+      //
+      // Fase 4 multi-instancia — el grupo es (cliente, CHATBOT, paso). Por
+      // (cliente, paso), las versiones de dos chatbots del mismo cliente caían
+      // en el mismo grupo y una escondía a la otra: el envío pendiente de un
+      // chatbot no se habría aprobado nunca mientras el otro tuviera una
+      // versión más reciente del mismo paso. El orderBy lleva el mismo
+      // prefijo que el distinct, que es lo que Prisma exige para que el
+      // "primero por grupo" sea el de mayor versión.
       latestPerStep = await prisma.chatbotConfigStep.findMany({
         where: { productCode, stepKey: { in: [...autoApprovableStepKeys] } },
-        orderBy: [{ clientId: 'asc' }, { stepKey: 'asc' }, { version: 'desc' }],
-        distinct: ['clientId', 'stepKey'],
-        select: { clientId: true, stepKey: true, status: true, submittedAt: true },
+        orderBy: [{ clientId: 'asc' }, { clientProductId: 'asc' }, { stepKey: 'asc' }, { version: 'desc' }],
+        distinct: ['clientId', 'clientProductId', 'stepKey'],
+        select: { clientId: true, clientProductId: true, stepKey: true, status: true, submittedAt: true },
       });
     } catch (err) {
       logError('wizard_auto_approve.scan_failed', err, { productCode }, 'warn');
@@ -168,6 +182,9 @@ export async function sweepAutoApprovableWizardSteps(
           clientId: row.clientId,
           productCode,
           stepKey: row.stepKey,
+          // La aprobación desactiva la versión activa anterior DE ESTE
+          // chatbot; sin esto buscaría entre los de todo el cliente.
+          clientProductId: row.clientProductId,
           reason,
         });
         result.approved += 1;

@@ -34,9 +34,12 @@ import { logError } from './observability';
 // `retrieveKnowledge` y solo él.
 // =============================================================================
 
-/** Techo por cliente. No es una palanca comercial: es lo que impide que un
- *  cliente pegue su web entera y el índice deje de caber en memoria. */
-export const MAX_DOCUMENTS_PER_CLIENT = 25;
+/** Techo por CHATBOT (se llamaba MAX_DOCUMENTS_PER_CLIENT y contaba por
+ *  cliente hasta la fase 4 multi-instancia: con dos chatbots, el segundo
+ *  habría empezado con el cupo que ya gastó el primero). No es una palanca
+ *  comercial: es lo que impide que un cliente pegue su web entera y el
+ *  índice deje de caber en memoria. */
+export const MAX_DOCUMENTS_PER_CHATBOT = 25;
 /** Un documento más largo que esto se recorta al ingerirlo. Son ~50 folios:
  *  de sobra para el material de una pyme y suficiente para que un pegado
  *  accidental no llene la tabla. */
@@ -143,6 +146,11 @@ function splitLongParagraph(paragraph: string): string[] {
 export interface IngestKnowledgeInput {
   clientId: string;
   tenantId: string | null;
+  /** Fase 4 multi-instancia — de qué chatbot es el documento. Obligatorio
+   *  como clave (aunque admita null) para que ningún llamante lo olvide sin
+   *  decidirlo: un documento guardado con NULL no se ve desde la pantalla de
+   *  su chatbot ni lo encuentra su bot. */
+  clientProductId: string | null;
   source: KnowledgeSource;
   title: string;
   content: string;
@@ -177,8 +185,16 @@ export async function ingestKnowledgeDocument(
   }
 
   if (!input.documentId) {
-    const existing = await prisma.chatbotKnowledgeDocument.count({ where: { clientId: input.clientId } });
-    if (existing >= MAX_DOCUMENTS_PER_CLIENT) {
+    // El tope es por CHATBOT: acota lo que cada bot lee al responder, y cada
+    // bot tiene su propia base. Con él por cliente, el segundo chatbot
+    // empezaría con el cupo que ya gastó el primero.
+    const existing = await prisma.chatbotKnowledgeDocument.count({
+      where: {
+        clientId: input.clientId,
+        ...(input.clientProductId ? { clientProductId: input.clientProductId } : {}),
+      },
+    });
+    if (existing >= MAX_DOCUMENTS_PER_CHATBOT) {
       return { ok: false, error: 'document_limit_reached' };
     }
   }
@@ -201,6 +217,7 @@ export async function ingestKnowledgeDocument(
       : await tx.chatbotKnowledgeDocument.create({
           data: {
             clientId: input.clientId,
+            clientProductId: input.clientProductId,
             tenantId: input.tenantId,
             source: input.source,
             title: input.title,
@@ -220,6 +237,8 @@ export async function ingestKnowledgeDocument(
       data: chunks.map((content, ordinal) => ({
         documentId: doc.id,
         clientId: input.clientId,
+        // Desnormalizado, como clientId: retrieveKnowledge filtra por aquí.
+        clientProductId: input.clientProductId,
         ordinal,
         content,
       })),
@@ -299,9 +318,19 @@ export async function retrieveKnowledge(
   clientId: string,
   query: string,
   limit: number = MAX_RETRIEVED_CHUNKS,
+  /** Fase 4 multi-instancia — la base de conocimiento de ESTE chatbot. Sin
+   *  él, con dos chatbots, el bot de una clínica respondería con los precios
+   *  y los horarios de la otra: la búsqueda iba solo por cliente. */
+  clientProductId?: string | null,
 ): Promise<KnowledgeSnippet[]> {
   const trimmed = query.trim();
   if (trimmed.length === 0) return [];
+
+  // Prisma.sql no admite un fragmento condicional dentro de la plantilla sin
+  // componerlo aparte; así el filtro queda parametrizado igual que el resto.
+  const byInstance = clientProductId
+    ? Prisma.sql`AND c."client_product_id" = ${clientProductId}::uuid`
+    : Prisma.empty;
 
   try {
     const rows = await prisma.$queryRaw<RawSnippetRow[]>(Prisma.sql`
@@ -313,6 +342,7 @@ export async function retrieveKnowledge(
         JOIN "ChatbotKnowledgeDocument" d ON d."id" = c."document_id"
         CROSS JOIN q
        WHERE c."client_id" = ${clientId}
+         ${byInstance}
          AND d."status" = 'ready'
          AND c."search_vector" @@ q.tsq
        ORDER BY ts_rank(c."search_vector", q.tsq) DESC

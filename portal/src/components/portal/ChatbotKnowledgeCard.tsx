@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { withChatbot } from '@/lib/wizard-url';
 
 // =============================================================================
 // Fase 3 — la base de conocimiento del chatbot, en la pantalla del cliente.
@@ -70,9 +71,13 @@ function StatusPill({ doc }: { doc: KnowledgeDocumentRow }) {
 export function ChatbotKnowledgeCard({
   documents,
   limit,
+  clientProductId = null,
 }: {
   documents: KnowledgeDocumentRow[];
   limit: number;
+  /** Fase 4 multi-instancia — a qué chatbot se añade el material. Null con
+   *  uno solo: la llamada es la de siempre. */
+  clientProductId?: string | null;
 }) {
   const router = useRouter();
   const [mode, setMode] = useState<'manual' | 'web'>('manual');
@@ -95,7 +100,7 @@ export function ChatbotKnowledgeCard({
           ? { source: 'manual', title: title.trim(), content: content.trim() }
           : { source: 'web', url: url.trim() };
 
-      const res = await fetch('/api/portal/chatbot/knowledge', {
+      const res = await fetch(withChatbot('/api/portal/chatbot/knowledge', clientProductId), {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),

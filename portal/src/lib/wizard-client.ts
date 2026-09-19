@@ -75,6 +75,13 @@ interface SaveContext {
   // product's wizard this step belongs to. See CHATBOT_PRODUCT_CODE in
   // wizard-catalog.ts for the constant every current caller passes.
   productCode: string;
+  /** Fase 4 multi-instancia — de QUÉ chatbot es el paso. Obligatorio como
+   *  clave (aunque admita null) por el mismo motivo que productCode: que
+   *  ningún llamante lo omita sin decidirlo. El motor de respuesta lee la
+   *  configuración filtrando por chatbot, así que un paso guardado sin él
+   *  sería invisible para su bot. Y la versión se numera por chatbot: con
+   *  dos, compartir la secuencia haría que la v3 de uno fuera la v1 del otro. */
+  clientProductId: string | null;
 }
 
 export interface SaveResult {
@@ -108,7 +115,12 @@ export async function saveWizardStep(
 
   return prisma.$transaction(async (tx) => {
     const latest = await tx.chatbotConfigStep.findFirst({
-      where: { clientId: ctx.clientId, productCode: ctx.productCode, stepKey: req.stepKey },
+      where: {
+        clientId: ctx.clientId,
+        productCode: ctx.productCode,
+        stepKey: req.stepKey,
+        ...(ctx.clientProductId ? { clientProductId: ctx.clientProductId } : {}),
+      },
       orderBy: { version: 'desc' },
       select: { version: true },
     });
@@ -125,6 +137,7 @@ export async function saveWizardStep(
     const created = await tx.chatbotConfigStep.create({
       data: {
         clientId: ctx.clientId,
+        clientProductId: ctx.clientProductId,
         tenantId: client?.tenantId ?? null,
         productCode: ctx.productCode,
         stepKey: req.stepKey,
@@ -192,12 +205,15 @@ export async function readWizardStep(
   clientId: string,
   productCode: string,
   stepKey: string,
+  /** Fase 4 multi-instancia — los pasos de ESTE chatbot. */
+  clientProductId?: string | null,
 ): Promise<WizardClientReadResult | null> {
   assertValidStepKey(stepKey);
+  const byChatbot = clientProductId ? { clientProductId } : {};
 
   const [latest, active] = await Promise.all([
     prisma.chatbotConfigStep.findFirst({
-      where: { clientId, productCode, stepKey },
+      where: { clientId, productCode, stepKey, ...byChatbot },
       orderBy: { version: 'desc' },
       select: {
         id: true,
@@ -212,7 +228,7 @@ export async function readWizardStep(
       },
     }),
     prisma.chatbotConfigStep.findFirst({
-      where: { clientId, productCode, stepKey, activeForBot: true },
+      where: { clientId, productCode, stepKey, activeForBot: true, ...byChatbot },
       orderBy: { version: 'desc' },
       select: {
         id: true,

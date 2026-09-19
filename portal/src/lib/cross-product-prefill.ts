@@ -53,9 +53,21 @@ async function activeStepPayload(
   prisma: PrismaClient,
   clientId: string,
   stepKey: string,
+  clientSiteId?: string | null,
 ): Promise<Record<string, unknown> | null> {
+  // Fase 4 multi-instancia — con dos chatbots hay dos pasos aprobados. Si
+  // se sabe de qué negocio es el destino, el chatbot de ese negocio; si no,
+  // el primero contratado. Antes era un findFirst sin orden: con dos,
+  // Postgres podía devolver uno distinto en cada visita.
   const row = await prisma.chatbotConfigStep.findFirst({
-    where: { clientId, productCode: CHATBOT_PRODUCT_CODE, stepKey, activeForBot: true },
+    where: {
+      clientId,
+      productCode: CHATBOT_PRODUCT_CODE,
+      stepKey,
+      activeForBot: true,
+      ...(clientSiteId ? { clientProduct: { clientSiteId } } : {}),
+    },
+    orderBy: { clientProduct: { subscribedAt: 'asc' } },
     select: { payload: true },
   });
   return row ? jsonToObject(row.payload) : null;
@@ -79,10 +91,13 @@ export async function suggestSeoProfileFields(
   prisma: PrismaClient,
   clientId: string,
   current: { businessDescription: string | null; siteUrl: string | null } | null,
+  /** El negocio de esa contratación de SEO: la sugerencia sale del chatbot
+   *  del mismo negocio, no del de otra web. */
+  clientSiteId?: string | null,
 ): Promise<PrefillSuggestion[]> {
   try {
     const suggestions: PrefillSuggestion[] = [];
-    const perfil = await activeStepPayload(prisma, clientId, PERFIL_STEP);
+    const perfil = await activeStepPayload(prisma, clientId, PERFIL_STEP, clientSiteId);
     if (!perfil) return [];
 
     // La web del negocio: el paso 1 del wizard ya la pide, y el perfil de

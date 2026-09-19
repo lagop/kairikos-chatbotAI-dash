@@ -53,7 +53,8 @@ Parallel branch for `review-overdue` (same structure, different endpoints).
 ### Idempotency
 
 - Scan: `alreadyFiredInWindow` hint skips candidates the portal already fired for
-- Fire: portal's `@@unique([clientId, milestone])` on `ChatbotActivity` is the source-of-truth dedup; retry is safe
+- Fire: portal's `@@unique([clientProductId, milestone])` on `ChatbotActivity` is the source-of-truth dedup; retry is safe
+- Fase 4 multi-instancia: wizard-abandoned candidates are **per chatbot** — each carries `clientProductId`, and the build-fire node forwards it. Without it the portal falls back to the client's only chatbot, and answers 409 if there are two.
 
 ### Env vars required (n8n vault)
 

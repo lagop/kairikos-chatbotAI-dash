@@ -124,7 +124,7 @@ describe('getCrossProductSeed', () => {
       (prisma as { chatbotConfigStep: { findFirst: ReturnType<typeof vi.fn> } }).chatbotConfigStep.findFirst,
     ).toHaveBeenCalledWith({
       where: { clientId: 'c1', productCode: 'chatbot', stepKey: '6' },
-      orderBy: { version: 'desc' },
+      orderBy: [{ clientProduct: { subscribedAt: 'asc' } }, { version: 'desc' }],
       select: { payload: true },
     });
   });

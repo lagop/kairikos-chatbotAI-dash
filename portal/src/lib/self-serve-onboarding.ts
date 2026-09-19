@@ -2,6 +2,7 @@ import 'server-only';
 import * as crypto from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import { DEFAULT_TENANT_ID } from './tenant';
+import { ensurePrimaryClientSite } from './client-site';
 
 // =============================================================================
 // Alta pública de cliente (WP-31) — visitante sin cuenta ni sesión que se
@@ -54,6 +55,15 @@ export async function createClientForSelfServe(
         tosAcceptedAt: new Date(),
       },
       select: { id: true },
+    });
+
+    // Fase 4 multi-instancia — todo cliente nace con su sitio primario: es la
+    // invariante que la fase 1 impuso con un índice parcial y que ninguno de
+    // los caminos de alta cumplía. Ver lib/client-site.ts.
+    await ensurePrimaryClientSite(tx, {
+      clientId: client.id,
+      tenantId: DEFAULT_TENANT_ID,
+      name: input.companyName || input.name,
     });
 
     const user = await tx.user.create({

@@ -4,6 +4,7 @@ import { getStripe, isStripeConfigured, StripeUnavailableError } from './stripe'
 import { ensureRecallSubscription } from './recall-onboarding';
 import { ensureSeoProfile, ensureProspectingCampaign, ensureLeadQualificationProfile } from './product-onboarding';
 import { isProductContracted, isMultiInstanceProduct } from './client-product-access';
+import { assignSiteToNewContract } from './client-site';
 import type { Prisma } from '@prisma/client';
 import type Stripe from 'stripe';
 
@@ -504,6 +505,15 @@ export async function activateClientProductFromWebQuotePayment(invoice: Stripe.I
       where: { id: cpId },
       data: { status: 'active', subscribedAt: new Date() },
     });
+    // Fase 4 multi-instancia — la contratación apunta a su negocio. Al
+    // ACTIVARSE y no al crearse: un presupuesto que nunca se paga no debe
+    // dejar un negocio huérfano. Ver lib/client-site.ts.
+    await assignSiteToNewContract(tx, {
+      clientId: updated.clientId,
+      tenantId: updated.tenantId,
+      clientProductId: updated.id,
+      productCode: 'web',
+    });
     await tx.clientProductAudit.create({
       data: {
         clientProductId: updated.id,
@@ -553,6 +563,16 @@ export async function activateClientProductFromCheckout(session: Stripe.Checkout
     const updated = await tx.clientProduct.update({
       where: { id: cpId },
       data: { status: 'active', subscribedAt: new Date() },
+    });
+    // Fase 4 multi-instancia — la contratación apunta a su negocio. Al
+    // ACTIVARSE y no al crearse: un pago abandonado deja la contratación en
+    // pending_payment para siempre, y asignarle negocio al crearla dejaría
+    // sitios huérfanos. Ver lib/client-site.ts.
+    await assignSiteToNewContract(tx, {
+      clientId: updated.clientId,
+      tenantId: updated.tenantId,
+      clientProductId: updated.id,
+      productCode: cp.product.code,
     });
     await tx.clientProductAudit.create({
       data: {

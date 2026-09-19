@@ -22,7 +22,7 @@ import {
   readLatestStepForClient,
   jsonToObject,
 } from '@/lib/wizard-tier-prisma';
-import { isProductContracted } from '@/lib/client-product-access';
+import { isProductContracted, resolveContractedInstance } from '@/lib/client-product-access';
 
 // =============================================================================
 // KAIA-1164 (BE-2) + KAIA-1166 (BE-4) + WP-16 — Client wizard, product-scoped.
@@ -74,15 +74,34 @@ function errorResponse(error: string, status: number, detail?: string) {
  */
 async function loadClientTier(
   clientId: string,
+  /** Fase 4 multi-instancia — la tarifa de ESTE chatbot. Qué pasos se ven y
+   *  cuáles se pueden guardar depende de ella, y ChatbotClient.tier es del
+   *  cliente: con un Starter y un Premium habría decidido por uno de los dos. */
+  instanceTier?: string | null,
 ): Promise<{ tier: WizardTier | null; rawTier: string }> {
   const client = await prisma.chatbotClient.findUnique({
     where: { id: clientId },
     select: { tier: true },
   });
+  const raw = instanceTier ?? client?.tier ?? null;
   return {
-    tier: normalizeTier(client?.tier ?? null),
-    rawTier: client?.tier ?? 'starter',
+    tier: normalizeTier(raw),
+    rawTier: raw ?? 'starter',
   };
+}
+
+/** Fase 4 multi-instancia — de QUÉ chatbot es este asistente. El id llega por
+ *  query desde las páginas del asistente; con un solo chatbot no hace falta y
+ *  las URLs son las de siempre. Con dos y sin decir cuál, 409: guardar un
+ *  paso en el asistente equivocado cambiaría cómo contesta el bot de otro
+ *  negocio. isProductContracted se queda delante —decide QUÉ SE VE—, y esto
+ *  decide QUÉ SE TOCA. */
+async function resolveWizardChatbot(req: NextRequest, clientId: string, product: string) {
+  return resolveContractedInstance(prisma, {
+    clientId,
+    productCode: product,
+    clientProductId: req.nextUrl.searchParams.get('clientProductId'),
+  });
 }
 
 function resolveProduct(product: string): { ok: true } | { ok: false; response: NextResponse } {
@@ -98,7 +117,7 @@ function resolveProduct(product: string): { ok: true } | { ok: false; response: 
 }
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { product: string; step: string } },
 ) {
   const session = await getSession();
@@ -129,6 +148,11 @@ export async function GET(
     return errorResponse('not_found', 404, `no wizard content for product "${params.product}" yet`);
   }
 
+  const chatbot = await resolveWizardChatbot(req, resolved.clientId, params.product);
+  if (!chatbot) {
+    return errorResponse('chatbot_not_specified', 409, 'this account has several chatbots; say which one');
+  }
+
   let stepNumber: WizardStepNumber;
   try {
     stepNumber = parseStepNumber(params.step);
@@ -142,9 +166,9 @@ export async function GET(
     // BE-4: additionally fetch the cliente's tier so we can compute
     // `effectivePayload` and `autoConfigured`.
     const [result, tierCtx, latestRow] = await Promise.all([
-      readWizardStep(prisma, resolved.clientId, CHATBOT_PRODUCT_CODE, params.step),
-      loadClientTier(resolved.clientId),
-      readLatestStepForClient(prisma, resolved.clientId, CHATBOT_PRODUCT_CODE, params.step),
+      readWizardStep(prisma, resolved.clientId, CHATBOT_PRODUCT_CODE, params.step, chatbot.clientProductId),
+      loadClientTier(resolved.clientId, chatbot.tier),
+      readLatestStepForClient(prisma, resolved.clientId, CHATBOT_PRODUCT_CODE, params.step, chatbot.clientProductId),
     ]);
 
     if (!result) {
@@ -289,6 +313,11 @@ export async function PATCH(
     return errorResponse('not_found', 404, `no wizard content for product "${params.product}" yet`);
   }
 
+  const chatbot = await resolveWizardChatbot(req, resolved.clientId, params.product);
+  if (!chatbot) {
+    return errorResponse('chatbot_not_specified', 409, 'this account has several chatbots; say which one');
+  }
+
   let body: PatchBody;
   try {
     body = (await req.json()) as PatchBody;
@@ -313,7 +342,7 @@ export async function PATCH(
   } catch {
     return errorResponse('bad_request', 400, 'step must be a string from the allowlist');
   }
-  const tierCtx = await loadClientTier(resolved.clientId);
+  const tierCtx = await loadClientTier(resolved.clientId, chatbot.tier);
   const def = getStepDefinition(stepNumber);
   if (!def.visibleFor(tierCtx.tier)) {
     return errorResponse(
@@ -326,7 +355,12 @@ export async function PATCH(
   try {
     const result = await saveWizardStep(
       prisma,
-      { clientId: resolved.clientId, email: resolved.email, productCode: CHATBOT_PRODUCT_CODE },
+      {
+        clientId: resolved.clientId,
+        email: resolved.email,
+        productCode: CHATBOT_PRODUCT_CODE,
+        clientProductId: chatbot.clientProductId,
+      },
       {
         stepKey: params.step,
         data: body.data as Record<string, unknown>,

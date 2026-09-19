@@ -23,6 +23,14 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// Fase 4 multi-instancia — el sitio de cada contratación tiene sus propios
+// tests (client-site.test.ts); aquí solo se comprueba que se pide.
+const clientSiteMock = vi.hoisted(() => ({
+  assignSiteToNewContract: vi.fn(),
+  ensurePrimaryClientSite: vi.fn(),
+}));
+vi.mock('@/lib/client-site', () => clientSiteMock);
+
 const mockState = vi.hoisted(() => ({
   authenticateAdminRequest: vi.fn(),
   findUniqueClient: vi.fn(),
@@ -182,6 +190,11 @@ describe('POST /api/admin/portal/client-products — WP-18 audit trail', () => {
         actorId: 'op_1',
       }),
     });
+    // Fase 4 — la contratación nueva apunta a su negocio.
+    expect(clientSiteMock.assignSiteToNewContract).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ clientId: 'client_1', tenantId: 'tenant_1', clientProductId: 'cp_1' }),
+    );
   });
 
   it('writes action=reactivate (with the prior status) when the row already existed', async () => {

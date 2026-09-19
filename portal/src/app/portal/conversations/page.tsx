@@ -6,8 +6,9 @@ import { listConversations } from '@/lib/portal-data';
 import { assertSameClient, requirePortalSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
-import { isProductContracted } from '@/lib/client-product-access';
-import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
+import { resolvePortalChatbot, chatbotParamFor, type PortalChatbotSelection } from '@/lib/portal-chatbot';
+import { ChatbotPicker } from '@/components/portal/ChatbotPicker';
+import { withChatbot } from '@/lib/wizard-url';
 import { ConversationDigestsPanel, type ConversationDigestSummary, type ConversationDigestScheduleConfig } from '@/components/portal/ConversationDigestsPanel';
 import { HandoffInbox, type HandoffInboxRow } from '@/components/portal/HandoffInbox';
 import { handoffState } from '@/lib/chatbot-handoff';
@@ -73,7 +74,7 @@ function lastUserMessage(transcript: unknown): string | null {
 export default async function ConversationsPage({
   searchParams,
 }: {
-  searchParams: { page?: string; client?: string };
+  searchParams: { page?: string; client?: string; clientProductId?: string };
 }) {
   const session = await requirePortalSession();
   assertSameClient(session, searchParams.client ?? null);
@@ -88,9 +89,21 @@ export default async function ConversationsPage({
   // Prisma directo, mismo patrón que /portal/resenas — ConversationDigest
   // es un modelo nuevo sin ningún path de proxy existente que reutilizar.
   const resolved = isDatabaseConfigured ? await resolveClientFromSession() : null;
-  const hasChatbot = resolved && resolved.source === 'database'
-    ? await isProductContracted(prisma, resolved.clientId, CHATBOT_PRODUCT_CODE)
-    : false;
+  // Fase 4 multi-instancia — la bandeja de traspaso es una para todo el
+  // cliente (la atiende la misma persona) y cada fila dice de qué chatbot
+  // es; los resúmenes, en cambio, son de UN chatbot, y el selector de
+  // arriba elige cuál.
+  //
+  // Limitación conocida: el listado de conversaciones pasa por
+  // listConversations (portalFetch), que no devuelve la contratación, así
+  // que sigue siendo el de todo el cliente sin etiqueta de chatbot.
+  const selection: PortalChatbotSelection =
+    resolved && resolved.source === 'database'
+      ? await resolvePortalChatbot(prisma, resolved.clientId, searchParams.clientProductId)
+      : { chatbots: [], selected: null };
+  const hasChatbot = selection.selected !== null;
+  const chatbotParam = chatbotParamFor(selection);
+  const chatbotName = new Map(selection.chatbots.map((c) => [c.clientProductId, c.name]));
 
   // Fase 3 — la bandeja de traspaso. Lee Prisma directo, igual que los
   // resúmenes de abajo: el listado de arriba pasa por listConversations,
@@ -117,6 +130,7 @@ export default async function ConversationsPage({
       take: 25,
       select: {
         id: true,
+        clientProductId: true,
         channel: true,
         transcript: true,
         handoffRequestedAt: true,
@@ -134,17 +148,21 @@ export default async function ConversationsPage({
         requestedAt: row.handoffRequestedAt!.toISOString(),
         takenBy: row.handoffTakenBy,
         lastMessage: lastUserMessage(row.transcript),
+        chatbotName:
+          selection.chatbots.length > 1 && row.clientProductId ? chatbotName.get(row.clientProductId) ?? null : null,
       }))
       // Las que esperan, arriba: son las únicas donde hay algo que hacer.
       .sort((a, b) => (a.state === b.state ? 0 : a.state === 'pending' ? -1 : 1));
 
     const [digests, schedule] = await Promise.all([
       prisma.conversationDigest.findMany({
-        where: { clientId: resolved.clientId },
+        where: { clientId: resolved.clientId, clientProductId: selection.selected!.clientProductId },
         orderBy: { windowEnd: 'desc' },
         take: 20,
       }),
-      prisma.conversationDigestSchedule.findUnique({ where: { clientId: resolved.clientId } }),
+      prisma.conversationDigestSchedule.findUnique({
+        where: { clientProductId: selection.selected!.clientProductId },
+      }),
     ]);
     digestSummaries = digests.map((d) => ({
       id: d.id,
@@ -257,7 +275,7 @@ export default async function ConversationsPage({
             <div className="flex gap-2">
               {page > 1 ? (
                 <Link
-                  href={`/portal/conversations?page=${page - 1}`}
+                  href={withChatbot(`/portal/conversations?page=${page - 1}`, chatbotParam)}
                   className="btn-ghost"
                   data-testid="pagination-prev"
                 >
@@ -266,7 +284,7 @@ export default async function ConversationsPage({
               ) : null}
               {hasNext ? (
                 <Link
-                  href={`/portal/conversations?page=${page + 1}`}
+                  href={withChatbot(`/portal/conversations?page=${page + 1}`, chatbotParam)}
                   className="btn-ghost"
                   data-testid="pagination-next"
                 >
@@ -285,7 +303,18 @@ export default async function ConversationsPage({
             title="Resúmenes periódicos"
             description="Un resumen de la actividad de tu chatbot, generado con IA, en el horario que elijas."
           />
-          <ConversationDigestsPanel digests={digestSummaries} schedule={scheduleConfig} />
+          <ChatbotPicker
+            chatbots={selection.chatbots}
+            selectedId={selection.selected?.clientProductId ?? null}
+            basePath="/portal/conversations"
+            description="Cada chatbot tiene sus propios resúmenes y su propio horario."
+          />
+          <ConversationDigestsPanel
+            key={selection.selected?.clientProductId ?? 'none'}
+            digests={digestSummaries}
+            schedule={scheduleConfig}
+            clientProductId={chatbotParam}
+          />
         </div>
       ) : null}
     </div>

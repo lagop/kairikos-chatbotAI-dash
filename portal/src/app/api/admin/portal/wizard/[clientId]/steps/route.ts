@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
+import { resolveInstanceForOperator } from '@/lib/client-product-access';
 import { authenticateAdminRequest } from '@/lib/operator-session';
 import { listStepsForOperator, buildSavedStateMap } from '@/lib/wizard-visibility';
 import {
@@ -65,7 +66,22 @@ export async function GET(
   }
   const productCode = productCodeRaw;
 
-  const client = await resolveClientTier(prisma, clientId);
+  // Fase 4 multi-instancia — la lista de pasos de QUÉ chatbot. Ver
+  // resolveInstanceForOperator: no exige contratación activa, y con varios
+  // chatbots sin decir cuál pide elegir.
+  const chatbot = await resolveInstanceForOperator(
+    prisma,
+    clientId,
+    productCode,
+    req.nextUrl.searchParams.get('clientProductId'),
+  );
+  if (!chatbot.ok) {
+    return chatbot.reason === 'ambiguous'
+      ? NextResponse.json({ error: 'chatbot_not_specified', detail: 'this client has several chatbots; pass clientProductId' }, { status: 409 })
+      : NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
+
+  const client = await resolveClientTier(prisma, clientId, chatbot.tier);
   if (!client) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
@@ -74,7 +90,7 @@ export async function GET(
     return NextResponse.json({ clientId, clientTier: client.tier, steps: [] });
   }
 
-  const savedRows = await readLatestStepsForClient(prisma, clientId, productCode);
+  const savedRows = await readLatestStepsForClient(prisma, clientId, productCode, chatbot.clientProductId);
   const savedMap = buildSavedStateMap(
     savedRows.map((r) => ({
       stepKey: r.stepKey,

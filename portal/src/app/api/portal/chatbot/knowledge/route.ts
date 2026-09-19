@@ -3,10 +3,10 @@ import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
-import { isProductContracted } from '@/lib/client-product-access';
+import { isProductContracted, resolveContractedInstance } from '@/lib/client-product-access';
 import {
   ingestKnowledgeDocument,
-  MAX_DOCUMENTS_PER_CLIENT,
+  MAX_DOCUMENTS_PER_CHATBOT,
   MAX_DOCUMENT_CHARS,
 } from '@/lib/chatbot-knowledge';
 import { isCrawlableUrl } from '@/lib/chatbot-knowledge-crawl';
@@ -57,14 +57,31 @@ async function requireChatbotClient() {
   return resolved;
 }
 
+/** Fase 4 multi-instancia — añadir material es escribir en la base de UN
+ *  chatbot, así que aquí hay que saber cuál. El id llega por query desde la
+ *  pantalla de conocimiento de ese chatbot; sin él vale el único que haya, y
+ *  con dos se niega en vez de dárselo al equivocado. */
+async function requireChatbotInstance(req: NextRequest) {
+  const resolved = await requireChatbotClient();
+  if (!resolved) return null;
+  const instance = await resolveContractedInstance(prisma, {
+    clientId: resolved.clientId,
+    productCode: 'chatbot',
+    clientProductId: req.nextUrl.searchParams.get('clientProductId'),
+  });
+  if (!instance) return null;
+  return { resolved, instance };
+}
+
 export async function POST(req: NextRequest) {
   if (!isDatabaseConfigured) {
     return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
   }
-  const resolved = await requireChatbotClient();
-  if (!resolved) {
+  const auth = await requireChatbotInstance(req);
+  if (!auth) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
+  const { resolved, instance } = auth;
 
   const body = BodySchema.safeParse(await req.json().catch(() => null));
   if (!body.success) {
@@ -81,6 +98,7 @@ export async function POST(req: NextRequest) {
     if (body.data.source === 'manual') {
       const result = await ingestKnowledgeDocument(prisma, {
         clientId: resolved.clientId,
+        clientProductId: instance.clientProductId,
         tenantId,
         source: 'manual',
         title: body.data.title,
@@ -88,7 +106,7 @@ export async function POST(req: NextRequest) {
         actorId: `client:${resolved.clientId}`,
       });
       if (!result.ok) {
-        return NextResponse.json({ error: result.error, limit: MAX_DOCUMENTS_PER_CLIENT }, { status: 400 });
+        return NextResponse.json({ error: result.error, limit: MAX_DOCUMENTS_PER_CHATBOT }, { status: 400 });
       }
       return NextResponse.json({ ok: true, documentId: result.documentId, chunks: result.chunks });
     }
@@ -101,9 +119,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'invalid_url' }, { status: 400 });
     }
 
-    const existing = await prisma.chatbotKnowledgeDocument.count({ where: { clientId: resolved.clientId } });
-    if (existing >= MAX_DOCUMENTS_PER_CLIENT) {
-      return NextResponse.json({ error: 'document_limit_reached', limit: MAX_DOCUMENTS_PER_CLIENT }, { status: 400 });
+    // Tope por chatbot, igual que en ingestKnowledgeDocument.
+    const existing = await prisma.chatbotKnowledgeDocument.count({
+      where: { clientId: resolved.clientId, clientProductId: instance.clientProductId },
+    });
+    if (existing >= MAX_DOCUMENTS_PER_CHATBOT) {
+      return NextResponse.json({ error: 'document_limit_reached', limit: MAX_DOCUMENTS_PER_CHATBOT }, { status: 400 });
     }
 
     // Sin fragmentos todavía: el título provisional es la propia URL, y el
@@ -111,6 +132,8 @@ export async function POST(req: NextRequest) {
     const created = await prisma.chatbotKnowledgeDocument.create({
       data: {
         clientId: resolved.clientId,
+        // El rastreo lo recogerá después y sus fragmentos heredarán esto.
+        clientProductId: instance.clientProductId,
         tenantId,
         source: 'web',
         title: url.slice(0, MAX_TITLE),

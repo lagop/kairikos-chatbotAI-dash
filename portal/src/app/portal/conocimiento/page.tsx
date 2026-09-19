@@ -3,11 +3,12 @@ import Link from 'next/link';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { requirePortalSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
-import { isProductContracted } from '@/lib/client-product-access';
+import { resolvePortalChatbot, chatbotParamFor } from '@/lib/portal-chatbot';
+import { ChatbotPicker } from '@/components/portal/ChatbotPicker';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { EmptyState } from '@/components/portal/EmptyState';
 import { ChatbotKnowledgeCard, type KnowledgeDocumentRow } from '@/components/portal/ChatbotKnowledgeCard';
-import { MAX_DOCUMENTS_PER_CLIENT } from '@/lib/chatbot-knowledge';
+import { MAX_DOCUMENTS_PER_CHATBOT } from '@/lib/chatbot-knowledge';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +27,11 @@ export const metadata: Metadata = {
 // tenga que revisarlo. Cuelga de la sección Chatbot en la navegación.
 // =============================================================================
 
-export default async function ChatbotKnowledgePage() {
+export default async function ChatbotKnowledgePage({
+  searchParams,
+}: {
+  searchParams: { clientProductId?: string };
+}) {
   await requirePortalSession();
 
   if (!isDatabaseConfigured) {
@@ -51,8 +56,10 @@ export default async function ChatbotKnowledgePage() {
     );
   }
 
-  const hasChatbot = await isProductContracted(prisma, resolved.clientId, 'chatbot');
-  if (!hasChatbot) {
+  // Fase 4 multi-instancia — la base de conocimiento es de UN chatbot.
+  const selection = await resolvePortalChatbot(prisma, resolved.clientId, searchParams.clientProductId);
+  const chatbot = selection.selected;
+  if (!chatbot) {
     return (
       <div className="space-y-6">
         <PageHeading eyebrow="Chatbot" title="Base de conocimiento" description="Lo que tu bot sabe de tu negocio." />
@@ -68,7 +75,7 @@ export default async function ChatbotKnowledgePage() {
   }
 
   const documents = await prisma.chatbotKnowledgeDocument.findMany({
-    where: { clientId: resolved.clientId },
+    where: { clientId: resolved.clientId, clientProductId: chatbot.clientProductId },
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,
@@ -104,7 +111,20 @@ export default async function ChatbotKnowledgePage() {
         title="Base de conocimiento"
         description="Lo que tu bot sabe de tu negocio, además de las preguntas frecuentes."
       />
-      <ChatbotKnowledgeCard documents={rows} limit={MAX_DOCUMENTS_PER_CLIENT} />
+      <ChatbotPicker
+        chatbots={selection.chatbots}
+        selectedId={chatbot.clientProductId}
+        basePath="/portal/conocimiento"
+        description="Cada chatbot tiene su propia base de conocimiento: lo que añadas aquí solo lo usa el que tienes seleccionado."
+      />
+      {/* key por chatbot: sin él, al cambiar de chatbot el formulario
+          conservaría lo que se estaba escribiendo para el anterior. */}
+      <ChatbotKnowledgeCard
+        key={chatbot.clientProductId}
+        documents={rows}
+        limit={MAX_DOCUMENTS_PER_CHATBOT}
+        clientProductId={chatbotParamFor(selection)}
+      />
     </div>
   );
 }

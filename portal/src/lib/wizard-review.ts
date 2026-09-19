@@ -28,6 +28,7 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { CHATBOT_PRODUCT_CODE } from './wizard-catalog';
 import { getProductCatalog } from './catalogs';
+import { syncSiteFromWizardIdentity } from './client-site';
 
 export type WizardReviewAction = 'approve' | 'request_revision';
 
@@ -99,6 +100,15 @@ export interface ReviewRequest {
   stepKey: string;
   action: WizardReviewAction;
   comment?: string;
+  /** Fase 4 multi-instancia — de QUÉ chatbot es el paso. Mismo arreglo que
+   *  WP-13 hizo con productCode, un nivel más abajo: sin él, con dos chatbots,
+   *  aprobar un paso del B buscaría "la última versión" y "la activa
+   *  anterior" entre los dos, podría aprobar la del A y desactivaría la
+   *  configuración activa del A — su bot perdería ese paso sin aviso. Y la
+   *  comprobación de pasos obligatorios contaría los de ambos, dando por
+   *  listo a uno porque el otro los tiene. null = por cliente, como siempre:
+   *  correcto con un solo chatbot. */
+  clientProductId?: string | null;
 }
 
 export type ReviewError =
@@ -136,12 +146,19 @@ interface FindStepOptions {
   clientId: string;
   productCode: string;
   stepKey: string;
+  clientProductId?: string | null;
   tx: Prisma.TransactionClient;
 }
 
-async function findLatestStepVersion({ clientId, productCode, stepKey, tx }: FindStepOptions) {
+/** `{ clientProductId }` cuando se conoce el chatbot, `{}` si no: el filtro
+ *  que acota toda consulta de este archivo a UN chatbot. */
+function byChatbot(clientProductId: string | null | undefined) {
+  return clientProductId ? { clientProductId } : {};
+}
+
+async function findLatestStepVersion({ clientId, productCode, stepKey, clientProductId, tx }: FindStepOptions) {
   return tx.chatbotConfigStep.findFirst({
-    where: { clientId, productCode, stepKey },
+    where: { clientId, productCode, stepKey, ...byChatbot(clientProductId) },
     orderBy: { version: 'desc' },
   });
 }
@@ -186,7 +203,7 @@ interface PerformApprovalResult {
  */
 async function performStepApproval(
   tx: Prisma.TransactionClient,
-  req: { clientId: string; productCode: string; stepKey: string },
+  req: { clientId: string; productCode: string; stepKey: string; clientProductId?: string | null },
   latest: { id: string; version: number },
   tenantId: string | null,
   writeActor: ApproveWriteActor,
@@ -200,6 +217,7 @@ async function performStepApproval(
       stepKey: req.stepKey,
       activeForBot: true,
       id: { not: latest.id },
+      ...byChatbot(req.clientProductId),
     },
     select: { id: true, version: true },
   });
@@ -322,6 +340,7 @@ async function loadClientForTransition(
   clientId: string,
   productCode: string,
   tx: Prisma.TransactionClient,
+  clientProductId?: string | null,
 ): Promise<ClientStateRow> {
   const row = await tx.chatbotClient.findUnique({
     where: { id: clientId },
@@ -333,7 +352,10 @@ async function loadClientForTransition(
       email: true,
       tenantId: true,
       clientProducts: {
-        where: { product: { code: productCode } },
+        // Con el chatbot conocido, SU contratación. Sin él, la cambiada más
+        // recientemente, como siempre — que con dos chatbots haría avanzar el
+        // alta del que no era.
+        where: { product: { code: productCode }, ...(clientProductId ? { id: clientProductId } : {}) },
         orderBy: { changedAt: 'desc' },
         take: 1,
         select: { id: true, onboardingState: true },
@@ -371,10 +393,11 @@ async function findMandatoryStepsMissingActive(
   clientId: string,
   productCode: string,
   tx: Prisma.TransactionClient,
+  clientProductId?: string | null,
 ): Promise<string[]> {
   const requiredStepKeys = getProductCatalog(productCode).requiredStepKeys;
   const activeRows = await tx.chatbotConfigStep.findMany({
-    where: { clientId, productCode, activeForBot: true },
+    where: { clientId, productCode, activeForBot: true, ...byChatbot(clientProductId) },
     select: { stepKey: true },
   });
   const activeKeys = new Set(activeRows.map((r) => r.stepKey));
@@ -559,7 +582,7 @@ async function maybeTransitionToReady(
   if (!client.clientProductId || client.onboardingState !== 'in-progress') {
     return EMPTY_TRANSITION;
   }
-  const missing = await findMandatoryStepsMissingActive(client.id, productCode, tx);
+  const missing = await findMandatoryStepsMissingActive(client.id, productCode, tx, client.clientProductId);
   if (missing.length > 0) {
     return EMPTY_TRANSITION;
   }
@@ -582,6 +605,15 @@ async function maybeTransitionToReady(
   // it directly. Best-effort: if `state` already drifted off
   // 'in-progress' the mirror silently no-ops, same behavior as before
   // WP-14.
+  //
+  // LIMITACIÓN CONOCIDA (fase 4 multi-instancia): el espejo es UNA columna
+  // por cliente y el estado de verdad ya es por chatbot
+  // (ClientProduct.onboardingState). Con dos chatbots, el primero que llegue
+  // a 'ready' pone el cliente en 'ready' aunque el otro siga a medias, y el
+  // aviso config_complete de n8n sale una vez por cliente, no por chatbot.
+  // Aceptado mientras ningún cliente tenga dos: lo que el bot usa y lo que
+  // ve el operador leen ClientProduct, no esta columna. Se retira cuando
+  // n8n escuche el estado por contratación.
   if (productCode === CHATBOT_PRODUCT_CODE) {
     await tx.chatbotClient.updateMany({
       where: { id: client.id, state: 'in-progress' },
@@ -641,6 +673,7 @@ export async function applyWizardReview(
       clientId: req.clientId,
       productCode: req.productCode,
       stepKey: req.stepKey,
+      clientProductId: req.clientProductId,
       tx,
     });
     if (!latest) {
@@ -670,7 +703,7 @@ export async function applyWizardReview(
       // (activeForBot = exactly one row per (client, step)) holds before
       // we read the active set. The transition itself is best-effort: a
       // racing concurrent approval will be a no-op (UPDATE returns 0).
-      const clientRow = await loadClientForTransition(req.clientId, req.productCode, tx);
+      const clientRow = await loadClientForTransition(req.clientId, req.productCode, tx, req.clientProductId);
       const transition = await maybeTransitionToReady(prisma, tx, clientRow, req.productCode);
 
       return {
@@ -729,7 +762,7 @@ export async function applyWizardReview(
     let transition: WizardStateTransition = EMPTY_TRANSITION;
     let clientForNotify: ClientStateRow | null = null;
     if (isMandatoryStep(req.productCode, req.stepKey)) {
-      const clientRow = await loadClientForTransition(req.clientId, req.productCode, tx);
+      const clientRow = await loadClientForTransition(req.clientId, req.productCode, tx, req.clientProductId);
       transition = await maybeTransitionToUpdating(prisma, tx, clientRow, req.productCode);
       if (transition.nextState) {
         clientForNotify = clientRow;
@@ -749,6 +782,12 @@ export async function applyWizardReview(
       clientForNotify,
     };
   });
+
+  // Fase 4 multi-instancia — el paso 1 aprobado renombra el negocio de ese
+  // chatbot. Después del commit, igual que el aviso de abajo: nunca lanza.
+  if (req.action === 'approve') {
+    await syncSiteFromWizardIdentity(prisma, { stepId: result.stepId });
+  }
 
   // Post-commit side effects — run AFTER the transaction commits so a
   // rollback never leaves an orphan operator email or dedup row. Only
@@ -801,6 +840,15 @@ export interface AutoApprovalRequest {
   clientId: string;
   productCode: string;
   stepKey: string;
+  /** Fase 4 multi-instancia — de QUÉ chatbot es el paso. Mismo arreglo que
+   *  WP-13 hizo con productCode, un nivel más abajo: sin él, con dos chatbots,
+   *  aprobar un paso del B buscaría "la última versión" y "la activa
+   *  anterior" entre los dos, podría aprobar la del A y desactivaría la
+   *  configuración activa del A — su bot perdería ese paso sin aviso. Y la
+   *  comprobación de pasos obligatorios contaría los de ambos, dando por
+   *  listo a uno porque el otro los tiene. null = por cliente, como siempre:
+   *  correcto con un solo chatbot. */
+  clientProductId?: string | null;
   /** Why the system decided this, written verbatim into the 'approve'
    *  audit row's comment — e.g. "Sin veto del operador en 12h (paso de
    *  bajo riesgo)". The veto-window policy itself (which steps, how many
@@ -854,6 +902,7 @@ export async function applySystemAutoApproval(
       clientId: req.clientId,
       productCode: req.productCode,
       stepKey: req.stepKey,
+      clientProductId: req.clientProductId,
       tx,
     });
     if (!latest) {
@@ -868,7 +917,7 @@ export async function applySystemAutoApproval(
 
     const approved = await performStepApproval(tx, req, latest, tenantId, { kind: 'system' }, req.reason);
 
-    const clientRow = await loadClientForTransition(req.clientId, req.productCode, tx);
+    const clientRow = await loadClientForTransition(req.clientId, req.productCode, tx, req.clientProductId);
     const transition = await maybeTransitionToReady(prisma, tx, clientRow, req.productCode);
 
     return {
@@ -881,6 +930,9 @@ export async function applySystemAutoApproval(
       clientForNotify: clientRow,
     };
   });
+
+  // Fase 4 multi-instancia — ver applyWizardReview.
+  await syncSiteFromWizardIdentity(prisma, { stepId: result.stepId });
 
   // Same post-commit carve-out as applyWizardReview: the notify runs
   // after the transaction commits so a rollback never leaves an orphan
@@ -926,6 +978,8 @@ export async function getWizardStepReview(
   clientId: string,
   productCode: string,
   stepKey: string,
+  /** Fase 4 multi-instancia — las versiones de ESTE chatbot. */
+  clientProductId?: string | null,
 ) {
   const client = await prisma.chatbotClient.findUnique({
     where: { id: clientId },
@@ -942,7 +996,7 @@ export async function getWizardStepReview(
   if (!client) return null;
 
   const versions = await prisma.chatbotConfigStep.findMany({
-    where: { clientId, productCode, stepKey },
+    where: { clientId, productCode, stepKey, ...byChatbot(clientProductId) },
     orderBy: { version: 'desc' },
     select: {
       id: true,

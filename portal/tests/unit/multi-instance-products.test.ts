@@ -69,7 +69,7 @@ describe('las tres capas de unicidad dicen lo mismo', () => {
     for (const code of MULTI_INSTANCE_PRODUCT_CODES) {
       expect(isMultiInstanceProduct(code)).toBe(true);
     }
-    for (const code of ['chatbot', 'leads', 'reviews', 'prospecting']) {
+    for (const code of ['leads', 'reviews', 'prospecting']) {
       expect(isMultiInstanceProduct(code)).toBe(false);
     }
   });

@@ -97,8 +97,16 @@ export async function generateDigestForSchedule(
   const windowStart = schedule.lastGeneratedAt ?? new Date(now.getTime() - FALLBACK_WINDOW_HOURS * 60 * 60_000);
   const windowEnd = now;
 
+  // Fase 4 multi-instancia — la cadencia es de UN chatbot y resume SUS
+  // conversaciones. Por cliente, el resumen del bot de un negocio habría
+  // incluido las del otro. Una cadencia sin contratación (anterior a la
+  // conversión) sigue resumiendo por cliente, como siempre.
   const conversations = await prisma.chatbotConversation.findMany({
-    where: { clientId: schedule.clientId, startedAt: { gte: windowStart, lt: windowEnd } },
+    where: {
+      clientId: schedule.clientId,
+      startedAt: { gte: windowStart, lt: windowEnd },
+      ...(schedule.clientProductId ? { clientProductId: schedule.clientProductId } : {}),
+    },
     orderBy: { startedAt: 'asc' },
     select: { startedAt: true, outcome: true, duration: true, transcript: true },
   });
@@ -115,11 +123,23 @@ export async function generateDigestForSchedule(
   const escalatedCount = conversations.filter((c) => c.outcome === 'escalated').length;
   const fallbackCount = conversations.filter((c) => c.outcome === 'fallback').length;
 
-  const client = await prisma.chatbotClient.findUnique({
-    where: { id: schedule.clientId },
-    select: { companyName: true, name: true, email: true },
-  });
-  const businessName = client?.companyName ?? client?.name ?? 'tu negocio';
+  const [client, site] = await Promise.all([
+    prisma.chatbotClient.findUnique({
+      where: { id: schedule.clientId },
+      select: { companyName: true, name: true, email: true },
+    }),
+    // El resumen habla del negocio de ESTE chatbot — mismo criterio que la
+    // firma del bot en buildChatbotContext.
+    schedule.clientProductId
+      ? prisma.clientProduct
+          .findUnique({
+            where: { id: schedule.clientProductId },
+            select: { clientSite: { select: { name: true } } },
+          })
+          .then((row) => row?.clientSite ?? null)
+      : Promise.resolve(null),
+  ]);
+  const businessName = site?.name?.trim() || client?.companyName || client?.name || 'tu negocio';
 
   let summaryText = 'No se pudo generar un resumen automático de esta ventana (la IA no está configurada o falló). Los datos agregados sí están disponibles.';
   let highlights: string[] = [];
@@ -146,6 +166,7 @@ export async function generateDigestForSchedule(
   await prisma.conversationDigest.create({
     data: {
       clientId: schedule.clientId,
+      clientProductId: schedule.clientProductId,
       tenantId: schedule.tenantId,
       windowStart,
       windowEnd,

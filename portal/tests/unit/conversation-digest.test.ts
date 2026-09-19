@@ -32,6 +32,11 @@ vi.mock('@/lib/prisma', () => ({
       findMany: (...args: unknown[]) => mockState.scheduleFindMany(...args),
     },
     chatbotClient: { findUnique: (...args: unknown[]) => mockState.clientFindUnique(...args) },
+    // Fase 4 multi-instancia — el nombre del negocio de la cadencia sale del
+    // sitio de su contratación.
+    clientProduct: {
+      findUnique: async () => ({ clientSite: { name: 'Fisio Sur' } }),
+    },
   },
 }));
 
@@ -230,5 +235,50 @@ describe('generateDueDigests', () => {
     const result = await generateDueDigests();
     expect(result).toEqual({ swept: 2, generated: 1 });
     expect(mockState.logError).toHaveBeenCalledWith('conversation_digest.sweep_failed', expect.any(Error), expect.anything());
+  });
+});
+
+// =============================================================================
+// Fase 4 multi-instancia — una cadencia es de UN chatbot. Por cliente, el
+// resumen del bot de un negocio habría incluido las conversaciones del otro.
+// =============================================================================
+describe('generateDigestForSchedule — un chatbot concreto', () => {
+  const NOW = new Date('2026-08-19T10:00:00Z');
+  const ONE = [{ startedAt: new Date(), outcome: 'resolved', duration: 60, transcript: null }];
+
+  it('resume solo las conversaciones de SU chatbot', async () => {
+    mockState.conversationFindMany.mockResolvedValueOnce(ONE);
+    await generateDigestForSchedule(baseSchedule({ clientProductId: 'cp_fisio' }), NOW);
+    expect(mockState.conversationFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ clientId: 'client_1', clientProductId: 'cp_fisio' }),
+      }),
+    );
+  });
+
+  it('guarda el resumen atribuido a su chatbot', async () => {
+    mockState.conversationFindMany.mockResolvedValueOnce(ONE);
+    await generateDigestForSchedule(baseSchedule({ clientProductId: 'cp_fisio' }), NOW);
+    expect(mockState.digestCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ clientProductId: 'cp_fisio' }) }),
+    );
+  });
+
+  it('firma con el nombre del negocio de ese chatbot, no con el de la empresa', async () => {
+    mockState.conversationFindMany.mockResolvedValueOnce(ONE);
+    await generateDigestForSchedule(baseSchedule({ clientProductId: 'cp_fisio' }), NOW);
+    expect(mockState.generateConversationDigest).toHaveBeenCalledWith(
+      expect.objectContaining({ businessName: 'Fisio Sur' }),
+    );
+  });
+
+  it('una cadencia sin chatbot (anterior a la conversión) resume por cliente, como siempre', async () => {
+    mockState.conversationFindMany.mockResolvedValueOnce(ONE);
+    await generateDigestForSchedule(baseSchedule({ clientProductId: null }), NOW);
+    const where = mockState.conversationFindMany.mock.calls[0][0].where;
+    expect(where).not.toHaveProperty('clientProductId');
+    expect(mockState.generateConversationDigest).toHaveBeenCalledWith(
+      expect.objectContaining({ businessName: 'Clínica Orly' }),
+    );
   });
 });

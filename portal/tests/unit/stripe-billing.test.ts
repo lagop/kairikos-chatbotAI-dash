@@ -13,6 +13,14 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// Fase 4 multi-instancia — el sitio de cada contratación tiene sus propios
+// tests (client-site.test.ts); aquí solo se comprueba que se pide.
+const clientSiteMock = vi.hoisted(() => ({
+  assignSiteToNewContract: vi.fn(),
+  ensurePrimaryClientSite: vi.fn(),
+}));
+vi.mock('@/lib/client-site', () => clientSiteMock);
+
 const mockState = vi.hoisted(() => ({
   findUniqueClientProduct: vi.fn(),
   findUniqueSubscription: vi.fn(),
@@ -314,6 +322,11 @@ describe('activateClientProductFromCheckout (WP-30)', () => {
         actorId: 'stripe:checkout.session.completed',
       }),
     });
+    // Fase 4 — el negocio se asigna al activarse, con el código del producto pagado.
+    expect(clientSiteMock.assignSiteToNewContract).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ productCode: 'chatbot' }),
+    );
   });
 
   it('is a no-op when the session has no kairikos_client_product_id metadata (not ours)', async () => {

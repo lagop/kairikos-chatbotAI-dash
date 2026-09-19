@@ -7,12 +7,17 @@ import { PageHeading } from '@/components/portal/PageHeading';
 import { WizardBlockProgress, type WizardBlockProgressStep } from '@/components/portal/WizardBlockProgress';
 import { StepForm, type WizardSavedState } from '@/components/portal/wizard-steps/StepForm';
 import { getProductCatalog } from '@/lib/catalogs';
+import { withChatbot } from '@/lib/wizard-url';
 
 type ToastKind = 'success' | 'error' | 'info';
 type AutosaveStatus = 'idle' | 'saving' | 'saved';
 
 interface WizardStepShellProps {
   productCode: string;
+  /** Fase 4 multi-instancia — de qué chatbot es este asistente. Viaja en la
+   *  llamada de guardado y en los enlaces de anterior/siguiente; null con un
+   *  solo chatbot, y entonces las URLs son las de siempre. */
+  clientProductId: string | null;
   stepNumber: number;
   stepKey: string;
   stepLabel: string;
@@ -46,6 +51,7 @@ export function WizardStepShell(props: WizardStepShellProps) {
 
   const {
     productCode,
+    clientProductId,
     stepNumber,
     stepKey,
     stepLabel,
@@ -79,7 +85,7 @@ export function WizardStepShell(props: WizardStepShellProps) {
       setIsSaving(true);
       if (status === 'draft') setAutosaveStatus('saving');
       try {
-        const res = await fetch(`/api/portal/wizard/${productCode}/${stepKey}`, {
+        const res = await fetch(withChatbot(`/api/portal/wizard/${productCode}/${stepKey}`, clientProductId), {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ data: payload, status }),
@@ -114,7 +120,7 @@ export function WizardStepShell(props: WizardStepShellProps) {
         setIsSaving(false);
       }
     },
-    [productCode, stepKey, showToast, router],
+    [productCode, clientProductId, stepKey, showToast, router],
   );
 
   const handleFormChange = useCallback(
@@ -282,7 +288,7 @@ export function WizardStepShell(props: WizardStepShellProps) {
       >
         {prevStep ? (
           <Link
-            href={`/portal/wizard/${productCode}/${prevStep.key}`}
+            href={withChatbot(`/portal/wizard/${productCode}/${prevStep.key}`, clientProductId)}
             className="btn-ghost w-full sm:w-auto"
           >
             ← {prevStep.label}
@@ -292,7 +298,7 @@ export function WizardStepShell(props: WizardStepShellProps) {
         )}
         {nextStep ? (
           <Link
-            href={`/portal/wizard/${productCode}/${nextStep.key}`}
+            href={withChatbot(`/portal/wizard/${productCode}/${nextStep.key}`, clientProductId)}
             className="btn-primary w-full sm:w-auto"
           >
             {nextStep.label} →

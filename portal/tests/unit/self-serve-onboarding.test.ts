@@ -4,6 +4,14 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// Fase 4 multi-instancia — el sitio de cada contratación tiene sus propios
+// tests (client-site.test.ts); aquí solo se comprueba que se pide.
+const clientSiteMock = vi.hoisted(() => ({
+  assignSiteToNewContract: vi.fn(),
+  ensurePrimaryClientSite: vi.fn(),
+}));
+vi.mock('@/lib/client-site', () => clientSiteMock);
+
 const mockState = vi.hoisted(() => ({
   findUniqueChatbotClient: vi.fn(),
   createChatbotClient: vi.fn(),

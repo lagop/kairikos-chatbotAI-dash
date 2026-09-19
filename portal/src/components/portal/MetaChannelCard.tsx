@@ -54,11 +54,15 @@ export function MetaChannelCard({
   metaConfigId,
   connections,
   allowedChannels,
+  clientProductId = null,
 }: {
   metaAppId: string | null;
   metaConfigId: string | null;
   connections: MetaConnectionSummary[];
   allowedChannels: string[];
+  /** Fase 4 multi-instancia — de qué chatbot es el canal. Null con uno
+   *  solo: las llamadas son las de siempre. */
+  clientProductId?: string | null;
 }) {
   const router = useRouter();
   const listId = useId();
@@ -109,7 +113,11 @@ export function MetaChannelCard({
               const res = await fetch('/api/portal/channels/meta/complete-signup', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({ code, whatsapp: whatsappSignup.current ?? undefined }),
+                body: JSON.stringify({
+                  code,
+                  whatsapp: whatsappSignup.current ?? undefined,
+                  clientProductId: clientProductId ?? undefined,
+                }),
               });
               if (!res.ok) {
                 const detail = await res.json().catch(() => null);

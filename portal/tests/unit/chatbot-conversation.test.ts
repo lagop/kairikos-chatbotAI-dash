@@ -54,6 +54,9 @@ const BASE = {
   key: { kind: 'inactivity' as const, sessionPrefix: 'whatsapp-34600-' },
   message: 'quiero pedir cita',
   now: NOW,
+  // El camino de siempre, por cliente: correcto con un solo chatbot. Los
+  // casos del camino por chatbot están al final del archivo.
+  instance: null,
 };
 
 function transcriptOf(call: { data: { transcript: unknown } }) {
@@ -387,7 +390,7 @@ describe('replyToIncomingMessage — base de conocimiento', () => {
 
     await replyToIncomingMessage(prismaMock, BASE);
 
-    expect(mockState.retrieveKnowledge).toHaveBeenCalledWith(prismaMock, 'c1', 'quiero pedir cita');
+    expect(mockState.retrieveKnowledge).toHaveBeenCalledWith(prismaMock, 'c1', 'quiero pedir cita', undefined, null);
     expect(mockState.generateBotReply).toHaveBeenCalledWith(
       expect.objectContaining({
         knowledge: [{ documentTitle: 'Tarifas', content: 'El corte de caballero son 18 euros.' }],
@@ -398,5 +401,60 @@ describe('replyToIncomingMessage — base de conocimiento', () => {
   it('sin material, el motor recibe una lista vacía y responde igual', async () => {
     await replyToIncomingMessage(prismaMock, BASE);
     expect(mockState.generateBotReply).toHaveBeenCalledWith(expect.objectContaining({ knowledge: [] }));
+  });
+});
+
+// =============================================================================
+// Fase 4 multi-instancia — con un chatbot concreto, las tres cosas que antes
+// iban por cliente van por él. Con dos chatbots, cada una de ellas se habría
+// mezclado:
+//
+//   - la conversación: la clave de sesión de WhatsApp es el teléfono de quien
+//     escribe, no el número del negocio;
+//   - la configuración y la tarifa del bot;
+//   - la base de conocimiento que consulta.
+// =============================================================================
+describe('replyToIncomingMessage — un chatbot concreto', () => {
+  const INSTANCE = { clientProductId: 'cp_clinica', tier: 'premium', clientSiteId: 'site_clinica' };
+  const WITH_INSTANCE = { ...BASE, instance: INSTANCE };
+
+  it('busca la conversación abierta de ESE chatbot, no la del cliente', async () => {
+    mockState.findFirst.mockResolvedValue(null);
+    await replyToIncomingMessage(prismaMock, WITH_INSTANCE);
+    expect(mockState.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ clientId: 'c1', clientProductId: 'cp_clinica' }),
+      }),
+    );
+  });
+
+  it('la conversación nueva nace atribuida a su chatbot', async () => {
+    mockState.findFirst.mockResolvedValue(null);
+    await replyToIncomingMessage(prismaMock, WITH_INSTANCE);
+    expect(mockState.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ clientProductId: 'cp_clinica' }) }),
+    );
+  });
+
+  it('pide la configuración de ESE chatbot (pasos y tarifa)', async () => {
+    mockState.findFirst.mockResolvedValue(null);
+    await replyToIncomingMessage(prismaMock, WITH_INSTANCE);
+    expect(mockState.buildChatbotContext).toHaveBeenCalledWith(prismaMock, 'c1', INSTANCE);
+  });
+
+  it('consulta la base de conocimiento de ESE chatbot', async () => {
+    mockState.findFirst.mockResolvedValue(null);
+    await replyToIncomingMessage(prismaMock, WITH_INSTANCE);
+    expect(mockState.retrieveKnowledge).toHaveBeenCalledWith(prismaMock, 'c1', 'quiero pedir cita', undefined, 'cp_clinica');
+  });
+
+  it('sin chatbot conocido, no filtra por ninguno: el comportamiento de siempre', async () => {
+    mockState.findFirst.mockResolvedValue(null);
+    await replyToIncomingMessage(prismaMock, BASE);
+    const where = mockState.findFirst.mock.calls[0][0].where;
+    expect(where).not.toHaveProperty('clientProductId');
+    expect(mockState.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ clientProductId: null }) }),
+    );
   });
 });

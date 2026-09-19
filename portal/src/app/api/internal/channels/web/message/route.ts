@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
+import { resolveChatbotForChannel } from '@/lib/client-product-access';
 import { authenticateInternalRequest, internalAuthFailureResponse } from '@/lib/internal-auth';
 
 export const dynamic = 'force-dynamic';
@@ -57,6 +58,10 @@ export async function POST(req: NextRequest) {
   const now = new Date();
   const entry = { role: body.data.role, content: body.data.content, at: now.toISOString() };
 
+  // Fase 4 multi-instancia — la conversación es del chatbot al que sirve
+  // ESTE canal. Mismo motivo que en replyToIncomingMessage: la clave de
+  // sesión es de quien escribe, no del negocio.
+  const instance = await resolveChatbotForChannel(prisma, embed.clientId, embed.clientProductId);
   const existing = await prisma.chatbotConversation.findUnique({
     where: { clientId_externalSessionId: { clientId: embed.clientId, externalSessionId: body.data.sessionId } },
   });
@@ -65,6 +70,7 @@ export async function POST(req: NextRequest) {
     const created = await prisma.chatbotConversation.create({
       data: {
         clientId: embed.clientId,
+        clientProductId: instance?.clientProductId ?? null,
         tenantId: embed.tenantId,
         externalSessionId: body.data.sessionId,
         channel: 'web',

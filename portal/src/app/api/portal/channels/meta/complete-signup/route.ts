@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
-import { isProductContracted } from '@/lib/client-product-access';
+import { resolveContractedInstance } from '@/lib/client-product-access';
 import { getAllowedChannelsForClient, type ChannelCode } from '@/lib/channel-access';
 import {
   isMetaSignupConfigured,
@@ -46,6 +46,9 @@ const META_CHANNELS: readonly ChannelCode[] = ['whatsapp', 'messenger', 'instagr
 const BodySchema = z.object({
   code: z.string().min(1, 'required'),
   whatsapp: z.object({ wabaId: z.string().min(1), phoneNumberId: z.string().min(1) }).optional(),
+  // Fase 4 multi-instancia — a qué chatbot se conectan estas superficies.
+  // Opcional: sin él, solo vale si el cliente tiene un chatbot.
+  clientProductId: z.string().uuid().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -70,12 +73,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'invalid_body', details: body.error.flatten() }, { status: 400 });
   }
 
-  const hasChatbot = await isProductContracted(prisma, resolved.clientId, 'chatbot');
-  if (!hasChatbot) {
+  const instance = await resolveContractedInstance(prisma, {
+    clientId: resolved.clientId,
+    productCode: 'chatbot',
+    clientProductId: body.data.clientProductId ?? null,
+  });
+  if (!instance) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
+  // Capturado aquí: la función upsertSurface de más abajo es un cierre y
+  // TypeScript no conserva ahí el estrechamiento de `instance`.
+  const chatbotProductId = instance.clientProductId;
 
-  const allowedChannels = await getAllowedChannelsForClient(prisma, resolved.clientId);
+  // La tarifa que cuenta es la de ESTE chatbot: con un Starter y un Premium,
+  // conectar WhatsApp al Starter no debe salir bien por leer la del otro.
+  const allowedChannels = await getAllowedChannelsForClient(prisma, resolved.clientId, instance.clientProductId);
   if (!allowedChannels.some((c) => META_CHANNELS.includes(c))) {
     return NextResponse.json({ error: 'channel_not_in_plan' }, { status: 403 });
   }
@@ -125,6 +137,11 @@ export async function POST(req: NextRequest) {
     const connection = await prisma.metaChannelConnection.upsert({
       where: { clientId_channel_externalId: { clientId, channel, externalId } },
       update: {
+        // Fase 4 multi-instancia — la unicidad es una superficie por cliente
+        // (un número, una página): conectarla desde el chatbot B la pasa a
+        // servir al B aunque antes sirviera al A. Es lo que expresa el gesto,
+        // y un mismo número no puede contestar con dos bots.
+        clientProductId: chatbotProductId,
         label,
         wabaId,
         accessTokenCiphertext: encrypted.ciphertext,
@@ -140,6 +157,8 @@ export async function POST(req: NextRequest) {
       },
       create: {
         clientId,
+        // El ancla desde la que las rutas internas sabrán qué bot contesta.
+        clientProductId: chatbotProductId,
         tenantId: client?.tenantId ?? null,
         channel,
         externalId,
