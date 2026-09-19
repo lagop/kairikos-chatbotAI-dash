@@ -1,0 +1,696 @@
+{
+  "id": "PZKKgiAafcOXKFir",
+  "name": "Kairikos Webchat Multi-tenant",
+  "active": true,
+  "nodes": [
+    {
+      "id": "webhook-options",
+      "name": "Webhook: Preflight (OPTIONS)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        -180
+      ],
+      "parameters": {
+        "httpMethod": "OPTIONS",
+        "path": "kairikos-webchat-multitenant",
+        "responseMode": "onReceived",
+        "responseData": {
+          "responseCode": 204,
+          "responseBody": "",
+          "responseHeaders": {
+            "values": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              }
+            ]
+          }
+        },
+        "options": {}
+      },
+      "webhookId": "f504d25e-d83a-45cb-b7fb-bce65e0834d0"
+    },
+    {
+      "id": "webhook-post",
+      "name": "Webhook: Widget Message",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "kairikos-webchat-multitenant",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "webhookId": "f5386b96-4998-4d6a-95fc-fb2695deef4c"
+    },
+    {
+      "id": "extract-input",
+      "name": "Extract Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Expected body: { action:'kairikos_chatbot', publicToken, sessionId, message, timestamp }\nconst body = $input.first().json.body || $input.first().json || {};\nconst message = (body.message || '').toString().trim();\nconst publicToken = (body.publicToken || '').toString().trim();\nconst sessionId = (body.sessionId || ('web-' + Date.now())).toString();\nconst errorCode = !publicToken ? 'missing_public_token' : (!message ? 'empty_message' : '');\nreturn [{ json: { _error: errorCode, message, publicToken, sessionId } }];"
+      }
+    },
+    {
+      "id": "has-input?",
+      "name": "Has Valid Input?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json._error === '' }}",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "get-context",
+      "name": "Get Client Context",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        -80
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/channels/web/context",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ publicToken: $json.publicToken }) }}",
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "context-ok?",
+      "name": "Context OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        880,
+        -80
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.ok === true }}",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "build-system-prompt",
+      "name": "Build System Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        -160
+      ],
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nconst businessName = ctx.businessName || 'nuestro negocio';\nconst prompts = Array.isArray(ctx.suggestedPrompts) ? ctx.suggestedPrompts : [];\nconst systemPrompt = [\n  `Eres el asistente virtual de \"${businessName}\", respondiendo en el chat de su propia web.`,\n  'Tu objetivo:',\n  '1. Responder dudas del visitante con tono cercano y profesional, en espanol, de forma breve (maximo 60 palabras salvo que pidan mas detalle).',\n  '2. Si detectas intencion de contacto (pedir cita, presupuesto, hablar con alguien, reservar), pide amablemente nombre y datos de contacto, y confirma que el equipo respondera pronto.',\n  '3. NUNCA inventes precios, horarios, servicios ni datos concretos que no te hayan dado explicitamente -- si no lo sabes, dilo con honestidad y ofrece derivar a un humano.',\n  prompts.length ? ('Temas frecuentes que este negocio espera que puedas ayudar a resolver: ' + prompts.join(', ') + '.') : '',\n].filter(Boolean).join('\\n');\nreturn [{ json: { systemPrompt, businessName, farewellMessage: ctx.farewellMessage || null } }];"
+      }
+    },
+    {
+      "id": "call-llm",
+      "name": "Call LLM (OpenAI via HTTP)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        -160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.OPENAI_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o-mini', temperature: 0.4, max_tokens: 350, messages: [ { role: 'system', content: $json.systemPrompt }, { role: 'user', content: $('Extract Input').first().json.message } ] }) }}",
+        "options": {
+          "timeout": 20000,
+          "retry": {
+            "maxTries": 2,
+            "waitBetween": 1500
+          },
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        -160
+      ],
+      "parameters": {
+        "jsCode": "const llm = $input.first().json;\nconst ctx = $('Build System Prompt').first().json;\nconst input = $('Extract Input').first().json;\nconst msgLower = (input.message || '').toLowerCase();\nconst contactIntent = /(cita|presupuesto|contacto|llamar|llamame|reuni[oó]n|hablar|contratar|me interesa|quiero|necesito|reservar|agendar|disponibilidad|horario|email|correo|tel[eé]fono|whatsapp)/i.test(msgLower);\nlet reply = '';\nlet mode = 'llm';\nlet errorDetail = null;\nif (llm && llm.choices && Array.isArray(llm.choices) && llm.choices[0] && llm.choices[0].message && llm.choices[0].message.content) {\n  reply = llm.choices[0].message.content.toString().trim();\n} else {\n  mode = 'fallback';\n  errorDetail = (llm && llm.error && llm.error.message) || 'unknown';\n  reply = contactIntent\n    ? ('Gracias por escribir. Para ayudarte mejor, cuentame tu nombre y un email o telefono de contacto -- alguien de ' + ctx.businessName + ' te respondera en breve.')\n    : ('Gracias por tu mensaje. Ahora mismo no puedo darte una respuesta detallada, pero el equipo de ' + ctx.businessName + ' lo revisara. Si quieres, dejame tus datos de contacto.');\n}\nreturn [{ json: { sessionId: input.sessionId, publicToken: input.publicToken, reply, timestamp: new Date().toISOString(), mode, contactIntent, error: errorDetail } }];"
+      }
+    },
+    {
+      "id": "log-user-message",
+      "name": "Log User Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        -160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/channels/web/message",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ publicToken: $json.publicToken, sessionId: $json.sessionId, role: 'user', content: $('Extract Input').first().json.message }) }}",
+        "options": {
+          "timeout": 8000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "log-bot-message",
+      "name": "Log Bot Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        -160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/channels/web/message",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify(Object.assign({ publicToken: $('Format Response').first().json.publicToken, sessionId: $('Format Response').first().json.sessionId, role: 'assistant', content: $('Format Response').first().json.reply }, $('Format Response').first().json.contactIntent ? { outcome: 'escalated' } : {})) }}",
+        "options": {
+          "timeout": 8000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "respond-200",
+      "name": "Respond 200 (WP contract)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2200,
+        -160
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, data: { sessionId: $('Format Response').first().json.sessionId, reply: $('Format Response').first().json.reply, timestamp: $('Format Response').first().json.timestamp, mode: $('Format Response').first().json.mode, contactIntent: $('Format Response').first().json.contactIntent, error: $('Format Response').first().json.error } }) }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "respond-context-failed",
+      "name": "Respond (widget not available)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1100,
+        160
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, data: { sessionId: $('Extract Input').first().json.sessionId || null, reply: 'Este chat no esta disponible en este momento.', timestamp: new Date().toISOString(), mode: 'unavailable', contactIntent: false, error: 'context_lookup_failed' } }) }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "respond-bad-input",
+      "name": "Respond (bad input)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        440,
+        160
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, data: { reply: '', error: $json._error } }) }}",
+        "options": {
+          "responseCode": 400,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "has-contact-intent",
+      "name": "Has Contact Intent?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        2200,
+        40
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $('Format Response').first().json.contactIntent === true }}",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "classify-lead",
+      "name": "Classify Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2420,
+        40
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.OPENAI_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o-mini', temperature: 0.1, max_tokens: 200, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: \"Analiza el mensaje de un posible cliente que le escribio a un chatbot de atencion al cliente. Decide si muestra intencion comercial real (pedir presupuesto, reservar, comprar, contratar, pedir cita) y extrae los datos de contacto que haya dado, si los hay. Responde UNICAMENTE con un objeto JSON, sin texto adicional, con esta forma exacta: {\\\"isLead\\\": boolean, \\\"score\\\": numero entre 0 y 100 (que tan probable es que se convierta en cliente), \\\"contactName\\\": string o null, \\\"contactPhone\\\": string o null, \\\"contactEmail\\\": string o null, \\\"summary\\\": resumen breve (menos de 20 palabras) de que pidio, o null}. Si no hay intencion comercial clara, isLead debe ser false.\" }, { role: 'user', content: $('Format Response').first().json.text } ] }) }}",
+        "options": {
+          "timeout": 15000,
+          "retry": {
+            "maxTries": 1
+          },
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "parse-lead-classification",
+      "name": "Parse Lead Classification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        40
+      ],
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst content = raw && raw.choices && raw.choices[0] && raw.choices[0].message && raw.choices[0].message.content;\nlet parsed = null;\ntry { parsed = content ? JSON.parse(content) : null; } catch (e) { parsed = null; }\nconst isLead = Boolean(parsed && parsed.isLead === true);\nconst score = parsed && typeof parsed.score === 'number' ? Math.max(0, Math.min(100, Math.round(parsed.score))) : null;\nreturn [{ json: {\n  isLead,\n  score,\n  contactName: (parsed && parsed.contactName) || null,\n  contactPhone: (parsed && parsed.contactPhone) || null,\n  contactEmail: (parsed && parsed.contactEmail) || null,\n  summary: (parsed && parsed.summary) || null,\n} }];"
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "is-lead-detected",
+      "name": "Is Lead Detected?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        2860,
+        40
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.isLead === true && Number($json.score || 0) >= 40 }}",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "post-lead",
+      "name": "POST Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3080,
+        40
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/leads",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ conversationId: $('Log Bot Message').first().json.conversationId, contactName: $json.contactName || undefined, contactPhone: $json.contactPhone || undefined, contactEmail: $json.contactEmail || undefined, summary: $json.summary || undefined, score: $json.score, channel: 'web' }) }}",
+        "options": {
+          "timeout": 8000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "continueOnFail": true
+    }
+  ],
+  "connections": {
+    "Webhook: Widget Message": {
+      "main": [
+        [
+          {
+            "node": "Extract Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Input": {
+      "main": [
+        [
+          {
+            "node": "Has Valid Input?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Valid Input?": {
+      "main": [
+        [
+          {
+            "node": "Get Client Context",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond (bad input)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Client Context": {
+      "main": [
+        [
+          {
+            "node": "Context OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Context OK?": {
+      "main": [
+        [
+          {
+            "node": "Build System Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond (widget not available)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build System Prompt": {
+      "main": [
+        [
+          {
+            "node": "Call LLM (OpenAI via HTTP)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call LLM (OpenAI via HTTP)": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Log User Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log User Message": {
+      "main": [
+        [
+          {
+            "node": "Log Bot Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Bot Message": {
+      "main": [
+        [
+          {
+            "node": "Respond 200 (WP contract)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Has Contact Intent?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Contact Intent?": {
+      "main": [
+        [
+          {
+            "node": "Classify Lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Classify Lead": {
+      "main": [
+        [
+          {
+            "node": "Parse Lead Classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Lead Classification": {
+      "main": [
+        [
+          {
+            "node": "Is Lead Detected?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Lead Detected?": {
+      "main": [
+        [
+          {
+            "node": "POST Lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
