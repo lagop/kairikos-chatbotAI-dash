@@ -7,7 +7,7 @@ import { isProductContracted } from '@/lib/client-product-access';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { EmptyState } from '@/components/portal/EmptyState';
 import { ChatbotKnowledgeCard, type KnowledgeDocumentRow } from '@/components/portal/ChatbotKnowledgeCard';
-import { MAX_DOCUMENTS_PER_CLIENT } from '@/lib/chatbot-knowledge';
+import { MAX_DOCUMENTS_PER_CHATBOT } from '@/lib/chatbot-knowledge';
 
 export const dynamic = 'force-dynamic';
 
@@ -104,7 +104,7 @@ export default async function ChatbotKnowledgePage() {
         title="Base de conocimiento"
         description="Lo que tu bot sabe de tu negocio, además de las preguntas frecuentes."
       />
-      <ChatbotKnowledgeCard documents={rows} limit={MAX_DOCUMENTS_PER_CLIENT} />
+      <ChatbotKnowledgeCard documents={rows} limit={MAX_DOCUMENTS_PER_CHATBOT} />
     </div>
   );
 }

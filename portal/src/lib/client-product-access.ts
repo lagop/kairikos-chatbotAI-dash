@@ -271,3 +271,35 @@ export async function resolveSoleChatbotInstance(
 ): Promise<ContractedInstance | null> {
   return resolveContractedInstance(prisma, { clientId, productCode: 'chatbot' });
 }
+
+/**
+ * Fase 4 multi-instancia — de QUÉ chatbot es un mensaje que entra por un
+ * canal. El punto de entrada del motor de respuesta.
+ *
+ * Las rutas internas ya resuelven el canal desde su identificador externo
+ * (phone_number_id, bot de Telegram, token del widget), y desde la fase 1 el
+ * canal guarda a qué contratación sirve: `anchoredClientProductId`. Si viene,
+ * manda — y se vuelve a comprobar contra el cliente y el producto, para que
+ * una columna mal rellenada no pueda sacar a un chatbot de su cliente.
+ *
+ * Si el canal no la tiene (una conexión anterior a la conversión, o el
+ * número que se conectó para recall y no para el chatbot), se usa el único
+ * chatbot del cliente. Con dos, null: el motor responde entonces con el
+ * comportamiento de siempre, por cliente — el único caso en que eso mezcla
+ * es "dos chatbots y un canal sin atribuir", y las rutas de conexión ya
+ * atribuyen todo canal nuevo.
+ */
+export async function resolveChatbotForChannel(
+  prisma: PrismaClient,
+  clientId: string,
+  anchoredClientProductId: string | null | undefined,
+): Promise<ContractedInstance | null> {
+  if (anchoredClientProductId) {
+    return resolveContractedInstance(prisma, {
+      clientId,
+      productCode: 'chatbot',
+      clientProductId: anchoredClientProductId,
+    });
+  }
+  return resolveSoleChatbotInstance(prisma, clientId);
+}

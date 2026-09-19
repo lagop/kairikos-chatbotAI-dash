@@ -24,7 +24,7 @@ import {
   ingestKnowledgeDocument,
   CHUNK_TARGET_CHARS,
   CHUNK_MAX_CHARS,
-  MAX_DOCUMENTS_PER_CLIENT,
+  MAX_DOCUMENTS_PER_CHATBOT,
   MAX_DOCUMENT_CHARS,
 } from '@/lib/chatbot-knowledge';
 
@@ -85,7 +85,7 @@ describe('chunkText', () => {
 
   it('los topes son decisiones de producto, no números sueltos', () => {
     expect(CHUNK_TARGET_CHARS).toBe(800);
-    expect(MAX_DOCUMENTS_PER_CLIENT).toBe(25);
+    expect(MAX_DOCUMENTS_PER_CHATBOT).toBe(25);
   });
 });
 
@@ -176,7 +176,7 @@ describe('ingestKnowledgeDocument', () => {
   });
 
   it('respeta el tope de documentos por cliente', async () => {
-    state.documentCount.mockResolvedValue(MAX_DOCUMENTS_PER_CLIENT);
+    state.documentCount.mockResolvedValue(MAX_DOCUMENTS_PER_CHATBOT);
     expect(await ingestKnowledgeDocument(prisma, base)).toEqual({
       ok: false,
       error: 'document_limit_reached',

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
+import { resolveChatbotForChannel } from '@/lib/client-product-access';
 import { authenticateInternalRequest, internalAuthFailureResponse } from '@/lib/internal-auth';
 import { buildChatbotContext } from '@/lib/chatbot-config';
 
@@ -44,7 +45,11 @@ export async function POST(req: NextRequest) {
 
   // Fase 1.1 — los cuatro campos de siempre más `config`, la
   // configuración completa del wizard. Ver lib/chatbot-config.ts.
-  const context = await buildChatbotContext(prisma, connection.clientId);
+  // Fase 4 multi-instancia — contesta el chatbot al que sirve ESTE canal (el
+  // ancla de la fase 1). Ver resolveChatbotForChannel y
+  // ReplyToIncomingMessageInput.instance.
+  const instance = await resolveChatbotForChannel(prisma, connection.clientId, connection.clientProductId);
+  const context = await buildChatbotContext(prisma, connection.clientId, instance);
 
   return NextResponse.json({
     ok: true,

@@ -132,16 +132,41 @@ export function computeConfigVersion(input: unknown): string {
  * mucho una fila activa por paso, así que no hace falta ordenar ni
  * desduplicar aquí.
  */
-export async function buildBotConfig(prisma: PrismaClient, clientId: string): Promise<BotConfig> {
+/** Fase 4 multi-instancia — de qué chatbot es la configuración. */
+export interface BotInstanceRef {
+  clientProductId: string;
+  /** La tarifa de ESA contratación (Product.tier), no la del cliente. */
+  tier: string;
+  /** El negocio al que pertenece, para firmar con SU nombre. */
+  clientSiteId?: string | null;
+}
+
+export async function buildBotConfig(
+  prisma: PrismaClient,
+  clientId: string,
+  instance?: BotInstanceRef | null,
+): Promise<BotConfig> {
   const [client, activeRows] = await Promise.all([
     prisma.chatbotClient.findUnique({ where: { id: clientId }, select: { tier: true } }),
     prisma.chatbotConfigStep.findMany({
-      where: { clientId, productCode: CHATBOT_PRODUCT_CODE, activeForBot: true },
+      where: {
+        clientId,
+        productCode: CHATBOT_PRODUCT_CODE,
+        activeForBot: true,
+        // Fase 4 multi-instancia — los pasos aprobados de ESTE chatbot. Sin
+        // esto, con dos chatbots el bot de un negocio se configuraría con los
+        // horarios y el tono del otro.
+        ...(instance ? { clientProductId: instance.clientProductId } : {}),
+      },
       select: { stepKey: true, payload: true },
     }),
   ]);
 
-  const tier = normalizeTier(client?.tier ?? null);
+  // Fase 4 multi-instancia — la tarifa sale de la contratación cuando se
+  // conoce. ChatbotClient.tier es un campo del CLIENTE: con un Starter y un
+  // Premium, los dos bots habrían funcionado como uno solo de los dos. Se
+  // queda como respaldo para el camino que no conoce la instancia.
+  const tier = normalizeTier(instance?.tier ?? client?.tier ?? null);
   const activeByStep = new Map(activeRows.map((row) => [row.stepKey, row.payload]));
 
   const blocks: Record<string, Record<string, unknown>> = {};
@@ -212,19 +237,28 @@ export interface ChatbotContext {
 export async function buildChatbotContext(
   prisma: PrismaClient,
   clientId: string,
+  instance?: BotInstanceRef | null,
 ): Promise<ChatbotContext> {
-  const [client, config] = await Promise.all([
+  const [client, config, site] = await Promise.all([
     prisma.chatbotClient.findUnique({
       where: { id: clientId },
       select: { companyName: true, name: true },
     }),
-    buildBotConfig(prisma, clientId),
+    buildBotConfig(prisma, clientId, instance),
+    // Fase 4 multi-instancia — el bot firma con el nombre de SU negocio. Con
+    // dos, el nombre del cliente es el de la empresa, no el de la clínica o
+    // el taller que atiende este bot. Para los clientes de hoy es el mismo
+    // texto: el backfill de la fase 1 creó cada sitio con el nombre de la
+    // empresa.
+    instance?.clientSiteId
+      ? prisma.clientSite.findUnique({ where: { id: instance.clientSiteId }, select: { name: true } })
+      : Promise.resolve(null),
   ]);
 
   const mensajes = step9Schema.safeParse(config.mensajes);
 
   return {
-    businessName: client?.companyName ?? client?.name ?? 'nuestro negocio',
+    businessName: site?.name?.trim() || client?.companyName || client?.name || 'nuestro negocio',
     welcomeMessage: mensajes.success ? mensajes.data.mensaje_bienvenida : '¡Hola! ¿En qué puedo ayudarte?',
     farewellMessage: mensajes.success ? (mensajes.data.mensaje_despedida ?? null) : null,
     suggestedPrompts: mensajes.success ? mensajes.data.prompts_sugeridos : [],

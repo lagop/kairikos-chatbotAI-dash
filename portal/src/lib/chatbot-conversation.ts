@@ -1,6 +1,6 @@
 import 'server-only';
 import type { PrismaClient, Prisma } from '@prisma/client';
-import { buildChatbotContext } from './chatbot-config';
+import { buildChatbotContext, type BotInstanceRef } from './chatbot-config';
 import { generateBotReply, type ConversationTurn } from './chatbot-reply-ai';
 import { retrieveKnowledge } from './chatbot-knowledge';
 import { botShouldReply } from './chatbot-handoff';
@@ -51,6 +51,20 @@ export interface TranscriptEntry {
 export interface ReplyToIncomingMessageInput {
   clientId: string;
   tenantId: string | null;
+  /** Fase 4 multi-instancia — QUÉ chatbot contesta. Lo resuelve la ruta del
+   *  canal con resolveChatbotForChannel. Decide tres cosas que antes iban por
+   *  cliente y que con dos chatbots se habrían mezclado:
+   *
+   *   - la conversación: la clave de sesión de WhatsApp es el teléfono de
+   *     quien escribe, no el número del negocio, así que alguien que escribe
+   *     a los dos WhatsApp de un cliente en menos de 6 h habría fundido las
+   *     dos conversaciones en una;
+   *   - la configuración y la tarifa con las que responde el bot;
+   *   - la base de conocimiento que consulta.
+   *
+   *  null = el comportamiento de siempre, por cliente: correcto con un solo
+   *  chatbot, que es el caso de todos los clientes de hoy. */
+  instance: BotInstanceRef | null;
   key: ConversationKey;
   /** Canal de origen, tal y como se guarda en Lead.channel. */
   channel: string;
@@ -120,6 +134,7 @@ async function findOpenConversation(
   clientId: string,
   key: ConversationKey,
   now: Date,
+  clientProductId: string | null,
 ): Promise<ExistingConversation | null> {
   const select = {
     id: true,
@@ -140,7 +155,13 @@ async function findOpenConversation(
   }
 
   const latest = await prisma.chatbotConversation.findFirst({
-    where: { clientId, externalSessionId: { startsWith: key.sessionPrefix } },
+    where: {
+      clientId,
+      externalSessionId: { startsWith: key.sessionPrefix },
+      // Ver ReplyToIncomingMessageInput.instance: sin esto, dos chatbots del
+      // mismo cliente compartirían la conversación de quien escribe a ambos.
+      ...(clientProductId ? { clientProductId } : {}),
+    },
     orderBy: { startedAt: 'desc' },
     select,
   });
@@ -163,7 +184,13 @@ export async function replyToIncomingMessage(
   input: ReplyToIncomingMessageInput,
 ): Promise<ReplyToIncomingMessageResult> {
   const now = input.now ?? new Date();
-  const existing = await findOpenConversation(prisma, input.clientId, input.key, now);
+  const existing = await findOpenConversation(
+    prisma,
+    input.clientId,
+    input.key,
+    now,
+    input.instance?.clientProductId ?? null,
+  );
 
   const priorTranscript = dropDanglingRetry(
     Array.isArray(existing?.transcript) ? [...(existing!.transcript as unknown[])] : [],
@@ -195,8 +222,8 @@ export async function replyToIncomingMessage(
   // a un turno de conversación que una persona está esperando.
   // retrieveKnowledge nunca lanza; sin base de conocimiento devuelve [].
   const [context, knowledge] = await Promise.all([
-    buildChatbotContext(prisma, input.clientId),
-    retrieveKnowledge(prisma, input.clientId, input.message),
+    buildChatbotContext(prisma, input.clientId, input.instance),
+    retrieveKnowledge(prisma, input.clientId, input.message, undefined, input.instance?.clientProductId ?? null),
   ]);
 
   const generated = await generateBotReply({
@@ -273,6 +300,9 @@ async function persist(
   const created = await prisma.chatbotConversation.create({
     data: {
       clientId: input.clientId,
+      // La conversación nace atribuida a su chatbot: es lo que la bandeja, los
+      // resúmenes y la búsqueda de arriba usan para no mezclarla con otra.
+      clientProductId: input.instance?.clientProductId ?? null,
       tenantId: input.tenantId,
       externalSessionId,
       channel: input.channel,

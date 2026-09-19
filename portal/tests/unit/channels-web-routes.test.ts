@@ -9,6 +9,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { NextRequest } from 'next/server';
 
+const TEST_CLIENT_PRODUCT_ID = '33333333-3333-4333-8333-333333333333';
+
 const mockState = vi.hoisted(() => ({
   getSession: vi.fn(),
   resolveClientFromSession: vi.fn(),
@@ -32,6 +34,20 @@ vi.mock('@/lib/portal-session', () => ({
 
 vi.mock('@/lib/client-product-access', () => ({
   isProductContracted: (...args: unknown[]) => mockState.isProductContracted(...args),
+  // Fase 4 multi-instancia — activar el widget es de UN chatbot. Atado al
+  // mismo mock para conservar la intencion de cada caso.
+  resolveContractedInstance: async () =>
+    (await mockState.isProductContracted())
+      ? {
+          clientProductId: TEST_CLIENT_PRODUCT_ID,
+          clientId: 'client_1',
+          clientSiteId: null,
+          tenantId: 'tenant_1',
+          code: 'chatbot',
+          tier: 'starter',
+          status: 'active',
+        }
+      : null,
 }));
 
 vi.mock('@/lib/channel-access', () => ({
@@ -50,6 +66,12 @@ vi.mock('@/lib/prisma', () => ({
     chatbotClient: { findUnique: (...args: unknown[]) => mockState.findUniqueClient(...args) },
     chatWebEmbed: {
       findFirst: (...args: unknown[]) => mockState.embedFindFirst(...args),
+      // Fase 4 — desactivar y cambiar apariencia resuelven el widget con
+      // findMany + take:2 (lib/chat-web-embed.ts) para detectar ambiguedad.
+      findMany: async (...args: unknown[]) => {
+        const row = await mockState.embedFindFirst(...args);
+        return row ? [row] : [];
+      },
       update: (...args: unknown[]) => mockState.embedUpdate(...args),
       create: (...args: unknown[]) => mockState.embedCreate(...args),
     },
@@ -61,7 +83,9 @@ const SESSION_DENIED = { hasClientAccess: false };
 const RESOLVED = { clientId: 'client_1', email: 'a@b.com', source: 'database' as const };
 
 function jsonRequest(body: unknown): NextRequest {
-  return { json: async () => body } as unknown as NextRequest;
+  // nextUrl: las rutas leen ?clientProductId; un NextRequest real siempre lo trae.
+  const url = new URL('https://portal.kairikos.test/api/portal/channels/web');
+  return { json: async () => body, url: url.toString(), nextUrl: url } as unknown as NextRequest;
 }
 
 beforeEach(() => {
@@ -81,21 +105,21 @@ describe('POST /api/portal/channels/web/enable', () => {
   it('401s without a real session', async () => {
     mockState.getSession.mockResolvedValue(SESSION_DENIED);
     const { POST } = await import('@/app/api/portal/channels/web/enable/route');
-    const res = await POST();
+    const res = await POST(jsonRequest(null));
     expect(res.status).toBe(401);
   });
 
   it('403s when the client has no active chatbot product', async () => {
     mockState.isProductContracted.mockResolvedValue(false);
     const { POST } = await import('@/app/api/portal/channels/web/enable/route');
-    const res = await POST();
+    const res = await POST(jsonRequest(null));
     expect(res.status).toBe(403);
   });
 
   it('403s with channel_not_in_plan when the tier does not include web', async () => {
     mockState.isChannelAllowedForClient.mockResolvedValue(false);
     const { POST } = await import('@/app/api/portal/channels/web/enable/route');
-    const res = await POST();
+    const res = await POST(jsonRequest(null));
     const body = await res.json();
     expect(res.status).toBe(403);
     expect(body.error).toBe('channel_not_in_plan');
@@ -103,7 +127,7 @@ describe('POST /api/portal/channels/web/enable', () => {
 
   it('creates a new embed with a fresh publicToken when none exists yet', async () => {
     const { POST } = await import('@/app/api/portal/channels/web/enable/route');
-    const res = await POST();
+    const res = await POST(jsonRequest(null));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.ok).toBe(true);
@@ -126,7 +150,7 @@ describe('POST /api/portal/channels/web/enable', () => {
   it('is idempotent — re-enabling an existing embed keeps the same publicToken', async () => {
     mockState.embedFindFirst.mockResolvedValue({ id: 'embed_1', publicToken: 'wgt_existing', status: 'disabled' });
     const { POST } = await import('@/app/api/portal/channels/web/enable/route');
-    const res = await POST();
+    const res = await POST(jsonRequest(null));
     const body = await res.json();
     expect(body.publicToken).toBe('wgt_existing');
     expect(mockState.embedCreate).not.toHaveBeenCalled();
@@ -138,21 +162,21 @@ describe('POST /api/portal/channels/web/disable', () => {
   it('401s without a real session', async () => {
     mockState.getSession.mockResolvedValue(SESSION_DENIED);
     const { POST } = await import('@/app/api/portal/channels/web/disable/route');
-    const res = await POST();
+    const res = await POST(jsonRequest(null));
     expect(res.status).toBe(401);
   });
 
   it('404s when there is no embed to disable', async () => {
     mockState.embedFindFirst.mockResolvedValue(null);
     const { POST } = await import('@/app/api/portal/channels/web/disable/route');
-    const res = await POST();
+    const res = await POST(jsonRequest(null));
     expect(res.status).toBe(404);
   });
 
   it('is idempotent when already disabled, without re-delivering a webhook', async () => {
     mockState.embedFindFirst.mockResolvedValue({ id: 'embed_1', status: 'disabled' });
     const { POST } = await import('@/app/api/portal/channels/web/disable/route');
-    const res = await POST();
+    const res = await POST(jsonRequest(null));
     const body = await res.json();
     expect(body).toEqual({ ok: true, status: 'disabled', alreadyDisabled: true });
     expect(mockState.embedUpdate).not.toHaveBeenCalled();
@@ -162,7 +186,7 @@ describe('POST /api/portal/channels/web/disable', () => {
   it('marks an active embed disabled and delivers the webhook event', async () => {
     mockState.embedFindFirst.mockResolvedValue({ id: 'embed_1', status: 'active' });
     const { POST } = await import('@/app/api/portal/channels/web/disable/route');
-    const res = await POST();
+    const res = await POST(jsonRequest(null));
     expect(res.status).toBe(200);
     expect(mockState.embedUpdate).toHaveBeenCalledWith({ where: { id: 'embed_1' }, data: { status: 'disabled' } });
     expect(mockState.deliverChannelEvent).toHaveBeenCalledWith(

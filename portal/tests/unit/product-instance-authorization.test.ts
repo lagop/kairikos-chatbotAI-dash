@@ -62,7 +62,6 @@ const PENDING = new Set([
   'prospecting/campaign/consent/route.ts',
   // Fase 5 — Chatbot y sus canales.
   'channels/meta/complete-signup/route.ts',
-  'channels/web/enable/route.ts',
   'chatbot/knowledge/route.ts',
   'wizard/[product]/[step]/route.ts',
   // Fase 5 también, pero por otra razón: la bandeja de leads NO será

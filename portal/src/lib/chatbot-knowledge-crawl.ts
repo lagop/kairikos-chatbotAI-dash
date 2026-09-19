@@ -201,7 +201,7 @@ export async function sweepPendingKnowledgeCrawls(
     where: { status: 'pending', source: 'web', sourceUrl: { not: null } },
     orderBy: { createdAt: 'asc' },
     take: CRAWL_BATCH_SIZE,
-    select: { id: true, clientId: true, tenantId: true, title: true, sourceUrl: true },
+    select: { id: true, clientId: true, clientProductId: true, tenantId: true, title: true, sourceUrl: true },
   });
 
   let ingested = 0;
@@ -219,6 +219,9 @@ export async function sweepPendingKnowledgeCrawls(
 
     const result = await ingestKnowledgeDocument(prisma, {
       clientId: doc.clientId,
+      // Fase 4 multi-instancia — el documento pendiente ya sabe de qué chatbot
+      // es (lo creó la ruta de ese chatbot); sus fragmentos lo heredan.
+      clientProductId: doc.clientProductId,
       tenantId: doc.tenantId,
       source: 'web',
       // El <title> de la página es mejor etiqueta que la URL para que el

@@ -80,7 +80,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
-  const channelAllowed = await isChannelAllowedForClient(prisma, resolved.clientId, 'telegram');
+  // La tarifa que cuenta es la de ESTE chatbot, no la de otro del cliente.
+  const channelAllowed = await isChannelAllowedForClient(prisma, resolved.clientId, 'telegram', instance!.clientProductId);
   if (!channelAllowed) {
     return NextResponse.json({ error: 'channel_not_in_plan' }, { status: 403 });
   }

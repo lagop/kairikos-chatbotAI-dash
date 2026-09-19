@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
+import { resolveClientWebEmbed } from '@/lib/chat-web-embed';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -44,7 +45,16 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'invalid_body', details: body.error.flatten() }, { status: 400 });
   }
 
-  const embed = await prisma.chatWebEmbed.findFirst({ where: { clientId: resolved.clientId } });
+  // Fase 4 multi-instancia — el widget de UN chatbot. Ver lib/chat-web-embed.ts.
+  const found = await resolveClientWebEmbed(
+    prisma,
+    resolved.clientId,
+    req.nextUrl.searchParams.get('clientProductId'),
+  );
+  if (!found.ok && found.reason === 'ambiguous') {
+    return NextResponse.json({ error: 'chatbot_not_specified' }, { status: 409 });
+  }
+  const embed = found.ok ? found.embed : null;
   if (!embed) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
