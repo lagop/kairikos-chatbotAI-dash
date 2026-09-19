@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
-import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
-import { step9Schema } from '@/lib/wizard-schemas';
+import { buildChatbotContext } from '@/lib/chatbot-config';
+import { resolveChatbotForChannel } from '@/lib/client-product-access';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -45,23 +45,22 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'not_found' }, { status: 404, headers: CORS_HEADERS });
   }
 
-  const client = await prisma.chatbotClient.findUnique({
-    where: { id: embed.clientId },
-    select: { companyName: true, name: true },
-  });
-
-  const step9 = await prisma.chatbotConfigStep.findFirst({
-    where: { clientId: embed.clientId, productCode: CHATBOT_PRODUCT_CODE, stepKey: '9', activeForBot: true },
-    select: { payload: true },
-  });
-  const parsedStep9 = step9Schema.safeParse(step9?.payload ?? {});
+  // Fase 4 multi-instancia — lo que el widget enseña (nombre del negocio,
+  // bienvenida, despedida, sugerencias) es de SU chatbot. Esta ruta lo
+  // calculaba a mano, leyendo el paso 9 por cliente: con dos chatbots, el
+  // widget de un negocio habría saludado con el mensaje del otro y con el
+  // nombre de la empresa. buildChatbotContext ya hace exactamente esto, por
+  // chatbot, para el motor de respuesta; aquí se usa la misma función en vez
+  // de mantener una copia que se separe.
+  const instance = await resolveChatbotForChannel(prisma, embed.clientId, embed.clientProductId);
+  const context = await buildChatbotContext(prisma, embed.clientId, instance);
 
   return NextResponse.json(
     {
-      businessName: client?.companyName ?? client?.name ?? 'Nosotros',
-      welcomeMessage: parsedStep9.success ? parsedStep9.data.mensaje_bienvenida : '¡Hola! ¿En qué puedo ayudarte?',
-      farewellMessage: parsedStep9.success ? (parsedStep9.data.mensaje_despedida ?? null) : null,
-      suggestedPrompts: parsedStep9.success ? parsedStep9.data.prompts_sugeridos : [],
+      businessName: context.businessName,
+      welcomeMessage: context.welcomeMessage,
+      farewellMessage: context.farewellMessage,
+      suggestedPrompts: context.suggestedPrompts,
       primaryColor: embed.primaryColor,
       position: embed.position,
       chatEndpoint: process.env.N8N_WEBCHAT_URL ?? null,

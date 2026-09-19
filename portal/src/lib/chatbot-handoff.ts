@@ -82,6 +82,8 @@ export type SendAgentMessageResult =
 interface ConversationRow {
   id: string;
   clientId: string;
+  /** El chatbot al que pertenece: decide por qué conexión sale la respuesta. */
+  clientProductId: string | null;
   channel: string | null;
   externalSessionId: string | null;
   startedAt: Date;
@@ -106,7 +108,15 @@ export async function sendAgentMessage(
 
   const conversation = (await prisma.chatbotConversation.findFirst({
     where: { id: input.conversationId, clientId: input.clientId },
-    select: { id: true, clientId: true, channel: true, externalSessionId: true, startedAt: true, transcript: true },
+    select: {
+      id: true,
+      clientId: true,
+      clientProductId: true,
+      channel: true,
+      externalSessionId: true,
+      startedAt: true,
+      transcript: true,
+    },
   })) as ConversationRow | null;
 
   if (!conversation) return { ok: false, error: 'conversation_not_found' };
@@ -115,7 +125,14 @@ export async function sendAgentMessage(
   const recipient = parseRecipient(conversation.channel, conversation.externalSessionId);
   if (!recipient) return { ok: false, error: 'no_recipient' };
 
-  const delivery = await deliver(prisma, conversation.clientId, conversation.channel, recipient, input.text);
+  const delivery = await deliver(
+    prisma,
+    conversation.clientId,
+    conversation.channel,
+    recipient,
+    input.text,
+    conversation.clientProductId,
+  );
   if (!delivery.ok) return delivery;
 
   const entries = Array.isArray(conversation.transcript) ? [...(conversation.transcript as unknown[])] : [];
@@ -142,17 +159,30 @@ export async function sendAgentMessage(
   return { ok: true };
 }
 
+/**
+ * Fase 4 multi-instancia — la respuesta sale por la conexión del chatbot al
+ * que pertenece la conversación. Se buscaba por (cliente, canal), y eso ya
+ * fallaba ANTES de la multi-instancia: un cliente con el WhatsApp del chatbot
+ * y el WhatsApp de recall tiene dos conexiones de WhatsApp, y la respuesta de
+ * una persona desde la bandeja podía salir por el número de recall. Con dos
+ * chatbots, además, por el número del otro negocio.
+ *
+ * Una conversación sin chatbot atribuido (anterior a la conversión) se
+ * entrega como siempre, por cliente y canal.
+ */
 async function deliver(
   prisma: PrismaClient,
   clientId: string,
   channel: HandoffChannel,
   recipient: string,
   text: string,
+  clientProductId: string | null,
 ): Promise<SendAgentMessageResult> {
+  const byChatbot = clientProductId ? { clientProductId } : {};
   try {
     if (channel === 'telegram') {
       const connection = await prisma.telegramConnection.findFirst({
-        where: { clientId, status: 'active' },
+        where: { clientId, status: 'active', ...byChatbot },
       });
       if (!connection) return { ok: false, error: 'no_connection' };
       const token = decryptChannelCredential({
@@ -165,7 +195,7 @@ async function deliver(
     }
 
     const connection = await prisma.metaChannelConnection.findFirst({
-      where: { clientId, channel, status: 'active' },
+      where: { clientId, channel, status: 'active', ...byChatbot },
     });
     if (!connection) return { ok: false, error: 'no_connection' };
 

@@ -13,7 +13,7 @@ const mockState = vi.hoisted(() => ({
   isDatabaseConfigured: true,
   embedFindUnique: vi.fn(),
   clientFindUnique: vi.fn(),
-  stepFindFirst: vi.fn(),
+  stepFindMany: vi.fn(),
 }));
 
 vi.mock('@/lib/prisma', () => ({
@@ -23,7 +23,16 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     chatWebEmbed: { findUnique: (...args: unknown[]) => mockState.embedFindUnique(...args) },
     chatbotClient: { findUnique: (...args: unknown[]) => mockState.clientFindUnique(...args) },
-    chatbotConfigStep: { findFirst: (...args: unknown[]) => mockState.stepFindFirst(...args) },
+    // Fase 4 multi-instancia — la ruta usa ahora buildChatbotContext (el real,
+    // no mockeado: estos tests siguen comprobando lo que pinta el widget), que
+    // lee los pasos activos del chatbot con findMany.
+    chatbotConfigStep: { findMany: (...args: unknown[]) => mockState.stepFindMany(...args) },
+    // resolveChatbotForChannel: un chatbot, como todos los clientes de hoy.
+    clientProduct: {
+      findMany: async () => [
+        { id: 'cp_web', clientId: 'c1', clientSiteId: null, tenantId: 't1', status: 'active', product: { code: 'chatbot', tier: 'starter' } },
+      ],
+    },
   },
 }));
 
@@ -36,8 +45,8 @@ function makeRequest(token: string | null): NextRequest {
 beforeEach(() => {
   mockState.isDatabaseConfigured = true;
   mockState.embedFindUnique.mockReset();
-  mockState.clientFindUnique.mockReset().mockResolvedValue({ companyName: 'Clínica Orly', name: 'Orly' });
-  mockState.stepFindFirst.mockReset().mockResolvedValue(null);
+  mockState.clientFindUnique.mockReset().mockResolvedValue({ companyName: 'Clínica Orly', name: 'Orly', tier: 'starter' });
+  mockState.stepFindMany.mockReset().mockResolvedValue([]);
   delete process.env.N8N_WEBCHAT_URL;
 });
 
@@ -86,9 +95,12 @@ describe('GET /api/public/channels/web/config', () => {
 
   it('uses the operator-approved (activeForBot) Paso 9 copy when present', async () => {
     mockState.embedFindUnique.mockResolvedValue({ clientId: 'c1', status: 'active', primaryColor: '#FF0000', position: 'bottom-left' });
-    mockState.stepFindFirst.mockResolvedValue({
-      payload: { mensaje_bienvenida: 'Hola, bienvenido', mensaje_despedida: 'Gracias por escribir', prompts_sugeridos: ['Precios', 'Horarios'] },
-    });
+    mockState.stepFindMany.mockResolvedValue([
+      {
+        stepKey: '9',
+        payload: { mensaje_bienvenida: 'Hola, bienvenido', mensaje_despedida: 'Gracias por escribir', prompts_sugeridos: ['Precios', 'Horarios'] },
+      },
+    ]);
     const { GET } = await import('@/app/api/public/channels/web/config/route');
     const res = await GET(makeRequest('wgt_1'));
     const body = await res.json();
@@ -111,5 +123,23 @@ describe('GET /api/public/channels/web/config', () => {
     const res = await GET(makeRequest('wgt_1'));
     expect(res.status).toBe(503);
     expect(mockState.embedFindUnique).not.toHaveBeenCalled();
+  });
+
+  // Fase 4 multi-instancia — el widget enseña lo de SU chatbot. Antes leía el
+  // paso 9 por cliente: con dos chatbots, el widget de un negocio habría
+  // saludado con el mensaje del otro.
+  it('lee la configuración del chatbot al que pertenece el widget', async () => {
+    mockState.embedFindUnique.mockResolvedValue({
+      clientId: 'c1',
+      clientProductId: 'cp_web',
+      status: 'active',
+      primaryColor: '#000',
+      position: 'bottom-right',
+    });
+    const { GET } = await import('@/app/api/public/channels/web/config/route');
+    await GET(makeRequest('wgt_1'));
+    expect(mockState.stepFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ clientProductId: 'cp_web', activeForBot: true }) }),
+    );
   });
 });
