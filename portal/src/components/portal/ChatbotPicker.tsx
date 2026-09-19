@@ -21,19 +21,23 @@ export function ChatbotPicker({
   selectedId,
   basePath,
   description,
+  title = 'Tus chatbots',
 }: {
   chatbots: ChatbotPickerOption[];
   selectedId: string | null;
-  /** La pantalla actual, sin query: el enlace añade `?clientProductId=`. */
+  /** La pantalla actual; el enlace añade `clientProductId=` con `?` o `&`
+   *  según ya lleve query (el panel de operador lleva `?product=`). */
   basePath: string;
   description: string;
+  /** "Tus chatbots" en el portal; el panel de operador habla en tercera persona. */
+  title?: string;
 }) {
   if (chatbots.length <= 1) return null;
 
   return (
-    <section className="card space-y-3" aria-label="Tus chatbots" data-testid="chatbot-picker">
+    <section className="card space-y-3" aria-label={title} data-testid="chatbot-picker">
       <div>
-        <p className="text-sm font-semibold">Tus chatbots</p>
+        <p className="text-sm font-semibold">{title}</p>
         <p className="text-xs text-kairikos-muted">{description}</p>
       </div>
 
