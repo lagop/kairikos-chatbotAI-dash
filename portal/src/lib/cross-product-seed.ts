@@ -140,7 +140,10 @@ export async function getCrossProductSeed(
     Array.from(sources.entries()).map(async ([key, source]) => {
       const row = await prisma.chatbotConfigStep.findFirst({
         where: { clientId, productCode: source.productCode, stepKey: source.stepKey },
-        orderBy: { version: 'desc' },
+        // Fase 4 multi-instancia — con dos contrataciones del producto de
+        // origen, la primera contratada, y de ella la última versión: sin el
+        // primer criterio, la versión más alta podía ser de cualquiera.
+        orderBy: [{ clientProduct: { subscribedAt: 'asc' } }, { version: 'desc' }],
         select: { payload: true },
       });
       sourcePayloads.set(key, jsonToObject((row?.payload as Prisma.JsonValue | undefined) ?? null));
