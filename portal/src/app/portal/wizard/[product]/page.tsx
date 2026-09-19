@@ -5,7 +5,8 @@ import { readLatestStepsForClient } from '@/lib/wizard-tier-prisma';
 import { listStepsForClient, buildSavedStateMap } from '@/lib/wizard-visibility';
 import { parseStepNumber, CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
 import { PRODUCT_CODES } from '@/lib/catalogs';
-import { isProductContracted } from '@/lib/client-product-access';
+import { isProductContracted, resolveContractedInstance } from '@/lib/client-product-access';
+import { withChatbot } from '@/lib/wizard-url';
 
 // =============================================================================
 // WP-16 — per-product wizard entry point. Resolves the first visible step
@@ -21,7 +22,8 @@ export default async function WizardProductIndexPage({
   searchParams,
 }: {
   params: { product: string };
-  searchParams: { step?: string };
+  /** clientProductId: Fase 4 multi-instancia, solo con varios chatbots. */
+  searchParams: { step?: string; clientProductId?: string };
 }) {
   const resolved = await resolveClientFromSession();
   if (!resolved) {
@@ -32,13 +34,17 @@ export default async function WizardProductIndexPage({
     notFound();
   }
 
+  // Se propaga el chatbot que llegó; sin él (un solo chatbot) las URLs son
+  // las de siempre. Ver lib/wizard-url.ts.
+  const incomingChatbotId = searchParams.clientProductId ?? null;
+
   const queryStep = searchParams.step;
   if (queryStep) {
     try {
       parseStepNumber(queryStep);
-      redirect(`/portal/wizard/${params.product}/${queryStep}`);
+      redirect(withChatbot(`/portal/wizard/${params.product}/${queryStep}`, incomingChatbotId));
     } catch {
-      redirect(`/portal/wizard/${params.product}`);
+      redirect(withChatbot(`/portal/wizard/${params.product}`, incomingChatbotId));
     }
   }
 
@@ -60,15 +66,27 @@ export default async function WizardProductIndexPage({
     notFound();
   }
 
+  // Fase 4 multi-instancia — de QUÉ chatbot. Con varios y sin decir cuál,
+  // al índice, que ofrece elegir.
+  const chatbot = await resolveContractedInstance(prisma, {
+    clientId: resolved.clientId,
+    productCode: params.product,
+    clientProductId: incomingChatbotId,
+  });
+  if (!chatbot) {
+    redirect('/portal/wizard');
+  }
+
   const [client, savedRows] = await Promise.all([
     prisma.chatbotClient.findUnique({
       where: { id: resolved.clientId },
       select: { tier: true },
     }),
-    readLatestStepsForClient(prisma, resolved.clientId, CHATBOT_PRODUCT_CODE),
+    readLatestStepsForClient(prisma, resolved.clientId, CHATBOT_PRODUCT_CODE, chatbot.clientProductId),
   ]);
 
-  const tier = client?.tier ?? 'starter';
+  // La tarifa de ESTE chatbot decide cuál es el primer paso visible.
+  const tier = chatbot.tier ?? client?.tier ?? 'starter';
   const savedMap = buildSavedStateMap(
     savedRows.map((r) => ({
       stepKey: r.stepKey,
@@ -86,5 +104,5 @@ export default async function WizardProductIndexPage({
   const { steps } = listStepsForClient(tier as 'starter' | 'pro' | 'premium', savedMap);
   const firstVisible = steps.find((s) => s.visible && !s.v11Deferred);
 
-  redirect(`/portal/wizard/${CHATBOT_PRODUCT_CODE}/${firstVisible?.key ?? '1'}`);
+  redirect(withChatbot(`/portal/wizard/${CHATBOT_PRODUCT_CODE}/${firstVisible?.key ?? '1'}`, incomingChatbotId));
 }

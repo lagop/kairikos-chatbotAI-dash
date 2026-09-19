@@ -49,7 +49,6 @@ const MODELS = [
 
 /** Escritores sin convertir todavía. `archivo#modelo.método`. */
 const PENDING = new Set<string>([
-  'lib/wizard-client.ts#chatbotConfigStep.create',
 ]);
 
 function walk(dir: string): string[] {

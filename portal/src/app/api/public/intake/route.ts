@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createHash, randomUUID } from 'node:crypto';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
+import { resolveSoleChatbotInstance } from '@/lib/client-product-access';
 import {
   INTAKE_SLUG,
   deriveVertical,
@@ -298,12 +299,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     try {
       const seeded = mapIntakeToWizardSteps(payload);
       const seededStepKeys = Object.keys(seeded);
+      // Fase 4 multi-instancia — los pasos sembrados son del chatbot que esta
+      // misma alta acaba de crear. Un cliente nuevo tiene exactamente uno.
+      const chatbot = await resolveSoleChatbotInstance(prisma, client.clientId);
       for (const stepKey of seededStepKeys) {
         const data = seeded[stepKey as keyof typeof seeded];
         if (!data) continue;
         await saveWizardStep(
           prisma,
-          { clientId: client.clientId, email: payload.human_handoff_email, productCode: CHATBOT_PRODUCT_CODE },
+          {
+            clientId: client.clientId,
+            email: payload.human_handoff_email,
+            productCode: CHATBOT_PRODUCT_CODE,
+            clientProductId: chatbot?.clientProductId ?? null,
+          },
           { stepKey, data: data as unknown as Record<string, unknown>, status: 'draft' },
           {
             actor: 'system',

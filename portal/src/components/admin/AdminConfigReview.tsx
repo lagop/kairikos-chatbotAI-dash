@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { withChatbot } from '@/lib/wizard-url';
 
 type WizardBlock = 'identidad' | 'comportamiento' | 'activacion';
 type WizardStepNumber = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
@@ -68,6 +69,11 @@ interface StepDetailResponse {
 interface AdminConfigReviewProps {
   clientId: string;
   productCode?: string;
+  /** Fase 4 multi-instancia — de qué chatbot se revisa. Viaja en las cuatro
+   *  llamadas (lista, detalle, aprobar, devolver): aprobar en el chatbot
+   *  equivocado desactivaría la configuración activa del otro. null con un
+   *  solo chatbot. */
+  clientProductId?: string | null;
 }
 
 const BLOCK_LABEL: Record<WizardBlock, string> = {
@@ -210,7 +216,7 @@ function PayloadViewer({ payload, label }: { payload: unknown; label: string }) 
   );
 }
 
-export default function AdminConfigReview({ clientId, productCode = 'chatbot' }: AdminConfigReviewProps) {
+export default function AdminConfigReview({ clientId, productCode = 'chatbot', clientProductId = null }: AdminConfigReviewProps) {
   const [steps, setSteps] = useState<StepListEntry[] | null>(null);
   const [stepDetails, setStepDetails] = useState<Map<string, StepDetailResponse>>(new Map());
   const [loading, setLoading] = useState(true);
@@ -226,7 +232,7 @@ export default function AdminConfigReview({ clientId, productCode = 'chatbot' }:
     setLoading(true);
     setError(null);
 
-    fetch(`/api/admin/portal/wizard/${encodeURIComponent(clientId)}/steps?productCode=${encodeURIComponent(productCode)}`)
+    fetch(withChatbot(`/api/admin/portal/wizard/${encodeURIComponent(clientId)}/steps?productCode=${encodeURIComponent(productCode)}`, clientProductId))
       .then(async (res) => {
         if (!res.ok) {
           if (res.status === 503) throw new Error('database_not_configured');
@@ -246,7 +252,7 @@ export default function AdminConfigReview({ clientId, productCode = 'chatbot' }:
       });
 
     return () => { cancelled = true; };
-  }, [clientId, productCode]);
+  }, [clientId, productCode, clientProductId]);
 
   useEffect(() => {
     if (!steps || steps.length === 0) return;
@@ -258,7 +264,7 @@ export default function AdminConfigReview({ clientId, productCode = 'chatbot' }:
 
     Promise.all(
       activeSteps.map((s) =>
-        fetch(`/api/admin/portal/wizard/${encodeURIComponent(clientId)}/${s.key}?productCode=${encodeURIComponent(productCode)}`)
+        fetch(withChatbot(`/api/admin/portal/wizard/${encodeURIComponent(clientId)}/${s.key}?productCode=${encodeURIComponent(productCode)}`, clientProductId))
           .then(async (res) => {
             if (!res.ok) return null;
             const detail: StepDetailResponse = await res.json();
@@ -276,13 +282,13 @@ export default function AdminConfigReview({ clientId, productCode = 'chatbot' }:
     });
 
     return () => { cancelled = true; };
-  }, [clientId, productCode, steps]);
+  }, [clientId, productCode, clientProductId, steps]);
 
   const handleApprove = useCallback(async (stepKey: string) => {
     setActionLoading(stepKey);
     setActionError(null);
     try {
-      const res = await fetch(`/api/admin/portal/wizard/${encodeURIComponent(clientId)}/${stepKey}?productCode=${encodeURIComponent(productCode)}`, {
+      const res = await fetch(withChatbot(`/api/admin/portal/wizard/${encodeURIComponent(clientId)}/${stepKey}?productCode=${encodeURIComponent(productCode)}`, clientProductId), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'approve' }),
@@ -338,7 +344,7 @@ export default function AdminConfigReview({ clientId, productCode = 'chatbot' }:
     } finally {
       setActionLoading(null);
     }
-  }, [clientId, productCode]);
+  }, [clientId, productCode, clientProductId]);
 
   const handleRequestRevision = useCallback(async (stepKey: string) => {
     if (!revisionComment.trim()) {
@@ -348,7 +354,7 @@ export default function AdminConfigReview({ clientId, productCode = 'chatbot' }:
     setActionLoading(stepKey);
     setActionError(null);
     try {
-      const res = await fetch(`/api/admin/portal/wizard/${encodeURIComponent(clientId)}/${stepKey}?productCode=${encodeURIComponent(productCode)}`, {
+      const res = await fetch(withChatbot(`/api/admin/portal/wizard/${encodeURIComponent(clientId)}/${stepKey}?productCode=${encodeURIComponent(productCode)}`, clientProductId), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'request_revision', comment: revisionComment.trim() }),
@@ -393,7 +399,7 @@ export default function AdminConfigReview({ clientId, productCode = 'chatbot' }:
     } finally {
       setActionLoading(null);
     }
-  }, [clientId, productCode, revisionComment]);
+  }, [clientId, productCode, clientProductId, revisionComment]);
 
   const toggleExpand = useCallback((stepKey: string) => {
     setExpandedStep((prev) => (prev === stepKey ? null : stepKey));

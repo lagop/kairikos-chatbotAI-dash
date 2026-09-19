@@ -31,6 +31,15 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     clientProduct: {
       findFirst: (...args: unknown[]) => findFirstClientProduct(...args),
+      // Fase 4 multi-instancia — la ruta resuelve de qué chatbot es el
+      // asistente (resolveContractedInstance), que pide hasta dos filas para
+      // detectar ambigüedad. Atado al mismo mock: contratado → un chatbot.
+      findMany: async (...args: unknown[]) => {
+        const row = await findFirstClientProduct(...args);
+        return row
+          ? [{ id: 'cp_chatbot_1', clientId: 'client_1', clientSiteId: null, tenantId: 't1', status: 'active', product: { code: 'chatbot', tier: 'starter' } }]
+          : [];
+      },
     },
     chatbotClient: {
       findUnique: (...args: unknown[]) => findUniqueChatbotClient(...args),
@@ -58,12 +67,16 @@ import { GET, PATCH } from '@/app/api/portal/wizard/[product]/[step]/route';
 
 const CLIENT_ID = 'client_1';
 
+// nextUrl: la ruta lee ?clientProductId para saber de qué chatbot es el
+// asistente; un NextRequest real siempre lo trae.
+const URL_ = new URL('https://portal.kairikos.test/api/portal/wizard/chatbot/1');
+
 function makeGetRequest() {
-  return {} as unknown as Parameters<typeof GET>[0];
+  return { url: URL_.toString(), nextUrl: URL_ } as unknown as Parameters<typeof GET>[0];
 }
 
 function makePatchRequest(body: unknown) {
-  return { json: async () => body } as unknown as Parameters<typeof PATCH>[0];
+  return { json: async () => body, url: URL_.toString(), nextUrl: URL_ } as unknown as Parameters<typeof PATCH>[0];
 }
 
 beforeEach(() => {
@@ -91,7 +104,7 @@ describe('GET /api/portal/wizard/[product]/[step]', () => {
   });
 
   it('returns 403 when the product is not contracted', async () => {
-    findFirstClientProduct.mockResolvedValueOnce(null);
+    findFirstClientProduct.mockResolvedValue(null);
     const res = await GET(makeGetRequest(), { params: { product: 'chatbot', step: '1' } });
     expect(res.status).toBe(403);
     expect(findFirstClientProduct).toHaveBeenCalledWith({
@@ -102,18 +115,19 @@ describe('GET /api/portal/wizard/[product]/[step]', () => {
   });
 
   it('returns 404 for a contracted product with no wizard content yet (empty catalog)', async () => {
-    findFirstClientProduct.mockResolvedValueOnce({ id: 'cp1' });
+    findFirstClientProduct.mockResolvedValue({ id: 'cp1' });
     const res = await GET(makeGetRequest(), { params: { product: 'web', step: '1' } });
     expect(res.status).toBe(404);
     expect(readWizardStep).not.toHaveBeenCalled();
   });
 
   it('reads the step for a contracted chatbot product', async () => {
-    findFirstClientProduct.mockResolvedValueOnce({ id: 'cp1' });
+    findFirstClientProduct.mockResolvedValue({ id: 'cp1' });
     readWizardStep.mockResolvedValueOnce(null);
     const res = await GET(makeGetRequest(), { params: { product: 'chatbot', step: '1' } });
     expect(res.status).toBe(200);
-    expect(readWizardStep).toHaveBeenCalledWith(expect.anything(), CLIENT_ID, 'chatbot', '1');
+    // Fase 4 multi-instancia — el paso de ESTE chatbot.
+    expect(readWizardStep).toHaveBeenCalledWith(expect.anything(), CLIENT_ID, 'chatbot', '1', 'cp_chatbot_1');
   });
 });
 
@@ -135,7 +149,7 @@ describe('PATCH /api/portal/wizard/[product]/[step]', () => {
   });
 
   it('WP-16 AC: returns 403 when PATCHing a product the client has not contracted', async () => {
-    findFirstClientProduct.mockResolvedValueOnce(null);
+    findFirstClientProduct.mockResolvedValue(null);
     const res = await PATCH(makePatchRequest({ data: { foo: 'bar' }, status: 'draft' }), {
       params: { product: 'chatbot', step: '1' },
     });
@@ -146,7 +160,7 @@ describe('PATCH /api/portal/wizard/[product]/[step]', () => {
   });
 
   it('returns 404 for a contracted product with no wizard content yet (empty catalog)', async () => {
-    findFirstClientProduct.mockResolvedValueOnce({ id: 'cp1' });
+    findFirstClientProduct.mockResolvedValue({ id: 'cp1' });
     const res = await PATCH(makePatchRequest({ data: {}, status: 'draft' }), {
       params: { product: 'leads', step: '1' },
     });
@@ -155,7 +169,7 @@ describe('PATCH /api/portal/wizard/[product]/[step]', () => {
   });
 
   it('saves the step for a contracted chatbot product', async () => {
-    findFirstClientProduct.mockResolvedValueOnce({ id: 'cp1' });
+    findFirstClientProduct.mockResolvedValue({ id: 'cp1' });
     saveWizardStep.mockResolvedValueOnce({ stepId: 's1', version: 1, status: 'draft' });
     const res = await PATCH(
       makePatchRequest({ data: { servicios: [] }, status: 'draft' }),
@@ -164,7 +178,9 @@ describe('PATCH /api/portal/wizard/[product]/[step]', () => {
     expect(res.status).toBe(200);
     expect(saveWizardStep).toHaveBeenCalledWith(
       expect.anything(),
-      { clientId: CLIENT_ID, email: 'c@example.com', productCode: 'chatbot' },
+      // Fase 4 multi-instancia — el paso se guarda en ESTE chatbot; sin esto
+      // sería invisible para su bot, que lee la configuración por chatbot.
+      { clientId: CLIENT_ID, email: 'c@example.com', productCode: 'chatbot', clientProductId: 'cp_chatbot_1' },
       { stepKey: '1', data: { servicios: [] }, status: 'draft' },
     );
   });

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
+import { resolveInstanceForOperator } from '@/lib/client-product-access';
 import { authenticateAdminRequest } from '@/lib/operator-session';
 import {
   applyWizardReview,
@@ -103,7 +104,22 @@ export async function GET(
   }
   const productCode = productCodeRaw;
 
-  const data = await getWizardStepReview(prisma, clientId, productCode, step);
+  // Fase 4 multi-instancia — de QUÉ chatbot es el paso que revisa el
+  // operador. Con varios y sin decir cuál se pide elegir: aprobar en el
+  // equivocado desactivaría la configuración activa del otro bot.
+  const chatbot = await resolveInstanceForOperator(
+    prisma,
+    clientId,
+    productCode,
+    req.nextUrl.searchParams.get('clientProductId'),
+  );
+  if (!chatbot.ok) {
+    return chatbot.reason === 'ambiguous'
+      ? errorResponse('chatbot_not_specified', 409, 'this client has several chatbots; pass clientProductId')
+      : errorResponse('not_found', 404, 'clientProductId does not belong to this client and product');
+  }
+
+  const data = await getWizardStepReview(prisma, clientId, productCode, step, chatbot.clientProductId);
   if (!data) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
@@ -120,7 +136,9 @@ export async function GET(
     }
     stepNumber = parseStepNumber(step);
     const def = getStepDefinition(stepNumber);
-    const clientTier: WizardTier | null = normalizeTier(data.client.tier);
+    // Fase 4 multi-instancia — la tarifa de ESTE chatbot decide qué ve el
+    // cliente en este paso; la del cliente queda solo como respaldo.
+    const clientTier: WizardTier | null = normalizeTier(chatbot.tier ?? data.client.tier);
     // Use the latest version's payload (matches the BE-2 cliente view).
     // `data.versions` is newest-first; the [0] is the latest.
     const latestRow = data.versions[0];
@@ -179,7 +197,7 @@ export async function GET(
       name: data.client.name,
       companyName: data.client.companyName,
       email: data.client.email,
-      tier: data.client.tier,
+      tier: chatbot.tier ?? data.client.tier,
       state: data.client.state,
       goLiveAt: data.client.goLiveAt?.toISOString() ?? null,
     },
@@ -235,6 +253,21 @@ export async function PATCH(
     return errorResponse('bad_request', 400, 'unknown productCode');
   }
   const productCode = productCodeRaw;
+
+  // Fase 4 multi-instancia — de QUÉ chatbot es el paso que revisa el
+  // operador. Con varios y sin decir cuál se pide elegir: aprobar en el
+  // equivocado desactivaría la configuración activa del otro bot.
+  const chatbot = await resolveInstanceForOperator(
+    prisma,
+    clientId,
+    productCode,
+    req.nextUrl.searchParams.get('clientProductId'),
+  );
+  if (!chatbot.ok) {
+    return chatbot.reason === 'ambiguous'
+      ? errorResponse('chatbot_not_specified', 409, 'this client has several chatbots; pass clientProductId')
+      : errorResponse('not_found', 404, 'clientProductId does not belong to this client and product');
+  }
 
   // BE-4 gate: Step 12 is v1.1 deferred and cannot be approved /
   // sent-back through the operator flow. Surface a clear 409. This gate
@@ -295,7 +328,7 @@ export async function PATCH(
   try {
     const result = await applyWizardReview(
       prisma,
-      { clientId, productCode, stepKey: step, action, comment },
+      { clientId, productCode, stepKey: step, action, comment, clientProductId: chatbot.clientProductId },
       { operatorId: operator.id, email: operator.email },
     );
     return NextResponse.json({

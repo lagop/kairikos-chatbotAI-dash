@@ -143,48 +143,15 @@ export async function canAccessWebProduct(prisma: PrismaClient, clientId: string
   return row !== null;
 }
 
-export interface ContractedProduct {
-  code: string;
-  tier: string;
-}
-
-/**
- * Every product this client currently has active, deduped by product code.
- *
- * Ese dedup nació como defensa contra data drift ("un cliente no debería
- * tener dos filas activas del mismo código"). Desde la fase 1 multi-instancia
- * esa premisa ya no vale: dos contrataciones del mismo código son el caso
- * normal, no una anomalía. El dedup se queda, pero por otra razón — su único
- * llamante es el selector del asistente (/portal/wizard), que enruta por
- * CÓDIGO (`/portal/wizard/seo`) y no tiene concepto de instancia: dos filas
- * darían dos tarjetas hacia la misma URL.
- *
- * Para "qué contrataciones tiene, una por una", usa listContractedInstances.
- */
-export async function listContractedProducts(
-  prisma: PrismaClient,
-  clientId: string,
-): Promise<ContractedProduct[]> {
-  const rows = await prisma.clientProduct.findMany({
-    where: { clientId, status: 'active' },
-    select: { product: { select: { code: true, tier: true } } },
-  });
-  const byCode = new Map<string, ContractedProduct>();
-  for (const row of rows) {
-    if (!byCode.has(row.product.code)) {
-      byCode.set(row.product.code, { code: row.product.code, tier: row.product.tier });
-    }
-  }
-  return Array.from(byCode.values());
-}
-
 /**
  * Fase 1 multi-instancia — las contrataciones activas del cliente, UNA POR
  * UNA y con su sitio, sin deduplicar por código.
  *
  * Es lo que necesita cualquier superficie agrupada por negocio ("Clínica
- * Centro: chatbot, seo, reseñas"), frente a listContractedProducts, que
- * responde a la pregunta más pobre de "¿qué productos tiene?".
+ * Centro: chatbot, seo, reseñas"). Sustituyó a listContractedProducts, que
+ * deduplicaba por código y se eliminó en la fase 4 al perder su único
+ * llamante: el selector del asistente, que ahora pinta una tarjeta por
+ * contratación.
  *
  * Mismo orden estable que resolveContractedInstance, por el mismo motivo.
  */
@@ -302,4 +269,47 @@ export async function resolveChatbotForChannel(
     });
   }
   return resolveSoleChatbotInstance(prisma, clientId);
+}
+
+export type OperatorInstanceResolution =
+  | { ok: true; clientProductId: string | null; tier: string | null }
+  | { ok: false; reason: 'not_found' | 'ambiguous' };
+
+/**
+ * Fase 4 multi-instancia — de qué contratación habla una pantalla o ruta de
+ * OPERADOR. Distinta de resolveContractedInstance a propósito:
+ *
+ *  - el cliente viene de la URL del operador, no de una sesión de cliente;
+ *  - NO exige \`status: 'active'\`. Un operador revisa hoy el asistente de un
+ *    chatbot cancelado o en pausa, y convertir esto no debe quitarle eso.
+ *
+ * Con \`rawClientProductId\` se comprueba que sea de ese cliente y de ese
+ * producto (el de otro cliente da not_found). Sin él: ninguno → null (la
+ * vista por cliente de siempre), uno → ése, varios → ambiguous, para que la
+ * ruta pida elegir en vez de revisar el equivocado.
+ */
+export async function resolveInstanceForOperator(
+  prisma: PrismaClient,
+  clientId: string,
+  productCode: string,
+  rawClientProductId: string | null | undefined,
+): Promise<OperatorInstanceResolution> {
+  const rows = await prisma.clientProduct.findMany({
+    where: {
+      clientId,
+      product: { code: productCode },
+      ...(rawClientProductId ? { id: rawClientProductId } : {}),
+    },
+    select: { id: true, product: { select: { tier: true } } },
+    orderBy: { subscribedAt: 'asc' },
+    take: 2,
+  });
+  if (rawClientProductId) {
+    return rows.length === 1
+      ? { ok: true, clientProductId: rows[0].id, tier: rows[0].product.tier }
+      : { ok: false, reason: 'not_found' };
+  }
+  if (rows.length === 0) return { ok: true, clientProductId: null, tier: null };
+  if (rows.length === 1) return { ok: true, clientProductId: rows[0].id, tier: rows[0].product.tier };
+  return { ok: false, reason: 'ambiguous' };
 }

@@ -47,33 +47,33 @@ const BY_CLIENT =
   /isProductContracted\(|hasLeadsInboxAccess\(|hasGoogleBusinessConnectAccess\(|(prisma|tx)\.clientProduct\.findFirst/;
 
 /**
+ * Fase 4 multi-instancia — una ruta que RESUELVE la instancia está convertida
+ * aunque siga llamando a isProductContracted: la regla es que ese helper
+ * decide QUÉ SE VE y la resolución decide QUÉ SE TOCA, y una ruta puede
+ * necesitar las dos (la del asistente comprueba primero si el cliente tiene el
+ * producto y después de qué chatbot habla). Sin esto, el trinquete habría
+ * seguido contando como deuda rutas que cumplen la regla al pie de la letra.
+ */
+const RESOLVES_INSTANCE =
+  /resolveContractedInstance\(|resolveInstanceForOperator\(|resolveChatbotForChannel\(|resolveSoleChatbotInstance\(/;
+
+/**
  * Rutas que escriben y hoy resuelven por cliente. NO es una lista de fallos:
  * es la deuda conocida, congelada. Cada fase vacía su parte.
+ *
+ * Vacía desde la fase 4: SEO (fase 2), Recall (fase 3) y el chatbot (fase 4)
+ * están convertidos, y lo que quedaba aquí resultó no ser deuda — ver
+ * CLIENT_SCOPED_BY_NATURE. Se deja el conjunto y su test para que el
+ * próximo producto multi-instancia tenga dónde apuntar lo que le falte.
  */
-const PENDING = new Set([
-  // Fase 3 — Reseñas, por ficha de Google. (Recall salió de aquí al
-  // convertirse en 20260929090000_recall_multi_line.)
-  'google-business/campaigns/route.ts',
-  'google-business/reviews/[reviewId]/draft/route.ts',
-  'google-business/reviews/[reviewId]/publish/route.ts',
-  'google-business/sync/route.ts',
-  // Fase 4 — Prospección.
-  'prospecting/campaign/route.ts',
-  'prospecting/campaign/consent/route.ts',
-  // Fase 5 — Chatbot y sus canales.
-  'chatbot/knowledge/route.ts',
-  'wizard/[product]/[step]/route.ts',
-  // Fase 5 también, pero por otra razón: la bandeja de leads NO será
-  // multi-instancia (ver el plan). Estas dos pasarán a filtrar por sitio,
-  // no a separarse por instancia.
-  'leads/qualification/route.ts',
-  'leads/webhook/route.ts',
-]);
+const PENDING = new Set<string>([]);
 
 /**
  * Rutas que resuelven por cliente Y ESTÁ BIEN QUE LO HAGAN, para siempre.
- * No hay instancia que resolver porque todavía no existe, o porque la
- * petición no escribe nada de un producto ya contratado.
+ * No hay instancia que resolver porque todavía no existe, porque la petición
+ * no escribe nada de un producto ya contratado, o porque el producto se vende
+ * con UN contrato por cliente por decisión (la regla del coste marginal, en
+ * CLAUDE.md: "Cuando un cliente quiere dos de algo").
  */
 const CLIENT_SCOPED_BY_NATURE = new Set([
   // Crea la contratación: antes de ella no hay instancia a la que apuntar.
@@ -81,12 +81,29 @@ const CLIENT_SCOPED_BY_NATURE = new Set([
   // POST que no escribe: devuelve una propuesta y el cliente la confirma
   // con el PATCH de siempre (Fase A de Prospección).
   'prospecting/campaign/suggest/route.ts',
+  // Reseñas: UN contrato con tope de fichas por tarifa. Varias fichas por
+  // cliente ya existían (review-locations.ts) y estas rutas actúan sobre una
+  // ficha concreta por su id, no sobre "la contratación". Recall, que sí es
+  // multi-instancia, se ata a su ficha desde su propia ruta (review-location).
+  'google-business/campaigns/route.ts',
+  'google-business/reviews/[reviewId]/draft/route.ts',
+  'google-business/reviews/[reviewId]/publish/route.ts',
+  'google-business/sync/route.ts',
+  // Prospección: UN contrato, porque TIER_LEAD_CAP ya ata el gasto y una
+  // búsqueda más no nos cuesta nada. Varias búsquedas por contrato es su
+  // Fase B, no multi-instancia.
+  'prospecting/campaign/route.ts',
+  'prospecting/campaign/consent/route.ts',
+  // La bandeja de leads NO es multi-instancia: un cliente con dos negocios
+  // quiere una bandeja con filtro por negocio, no dos bandejas.
+  'leads/qualification/route.ts',
+  'leads/webhook/route.ts',
 ]);
 
 const offenders = walk(PORTAL_API)
   .filter((file) => {
     const src = stripComments(readFileSync(file, 'utf8'));
-    return WRITES.test(src) && BY_CLIENT.test(src);
+    return WRITES.test(src) && BY_CLIENT.test(src) && !RESOLVES_INSTANCE.test(src);
   })
   .map((file) => relative(PORTAL_API, file).replace(/\\/g, '/'));
 
@@ -96,7 +113,7 @@ describe('autorización por instancia en las rutas que escriben', () => {
     // forma de declarar los handlers, este test pasaría a no comprobar nada
     // y nadie se enteraría.
     expect(offenders.length).toBeGreaterThan(5);
-    expect(offenders).toContain('chatbot/knowledge/route.ts');
+    expect(offenders).toContain('google-business/sync/route.ts');
   });
 
   it('ninguna ruta nueva resuelve la contratación por cliente', () => {
