@@ -49,7 +49,6 @@ const MODELS = [
 
 /** Escritores sin convertir todavía. `archivo#modelo.método`. */
 const PENDING = new Set<string>([
-  'lib/conversation-digest.ts#conversationDigest.create',
   'lib/wizard-client.ts#chatbotConfigStep.create',
 ]);
 
