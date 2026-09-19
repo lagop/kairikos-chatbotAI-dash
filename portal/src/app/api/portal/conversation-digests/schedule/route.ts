@@ -106,7 +106,15 @@ export async function PATCH(req: NextRequest) {
     // tabla era clientId @unique: un cliente, un horario.
     where: { clientProductId: auth.instance.clientProductId },
     update: data,
-    create: { clientId: auth.resolved.clientId, tenantId: client?.tenantId ?? null, ...data },
+    // clientProductId en el create es imprescindible: el where busca por él,
+    // así que una fila creada sin él no se volvería a encontrar y cada guardado
+    // añadiría otra cadencia huérfana en vez de actualizar la existente.
+    create: {
+      clientId: auth.resolved.clientId,
+      clientProductId: auth.instance.clientProductId,
+      tenantId: client?.tenantId ?? null,
+      ...data,
+    },
   });
 
   return NextResponse.json({

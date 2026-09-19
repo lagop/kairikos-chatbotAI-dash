@@ -11,6 +11,8 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { NextResponse } from 'next/server';
 
 // Hoisted state for the mocked Prisma module.
+const TEST_CLIENT_PRODUCT_ID = '33333333-3333-4333-8333-333333333333';
+
 const mockState = vi.hoisted(() => ({
   findUniqueActivity: vi.fn(),
   findManyActivity: vi.fn(),
@@ -62,6 +64,21 @@ vi.mock('@/lib/prisma', () => ({
         mockState.findUniqueClient(...(args as [])),
       update: (...args: unknown[]) =>
         mockState.updateClient(...(args as [])),
+    },
+    // Fase 4 multi-instancia — los hitos resuelven de qué chatbot son con
+    // resolveSoleChatbotInstance, que pide hasta dos contrataciones para
+    // poder detectar ambigüedad. Un chatbot, como todos los clientes de hoy.
+    clientProduct: {
+      findMany: async () => [
+        {
+          id: TEST_CLIENT_PRODUCT_ID,
+          clientId: 'client_1',
+          clientSiteId: null,
+          tenantId: 'tenant_1',
+          status: 'active',
+          product: { code: 'chatbot', tier: 'starter' },
+        },
+      ],
     },
     operatorNotification: {
       findUnique: (...args: unknown[]) =>

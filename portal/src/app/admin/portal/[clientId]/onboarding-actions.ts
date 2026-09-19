@@ -105,6 +105,10 @@ export async function advanceOnboardingMilestone(
       },
     },
     create: {
+      // Imprescindible: el where busca por (clientProductId, milestone). Sin esto la
+      // fila nace con NULL, no se vuelve a encontrar, y cada llamada crearía otro
+      // hito — en wizard_abandoned eso rompería la deduplicación y reenviaría el correo.
+      clientProductId: instance.clientProductId,
       clientId,
       tenantId: client.tenantId,
       productCode,
