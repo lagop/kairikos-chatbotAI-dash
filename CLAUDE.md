@@ -89,14 +89,24 @@ en la cabecera `x-kairikos-internal-key`, y todo sale por webhooks salientes
 > **Esta frase describía un objetivo, no la realidad, hasta el 20/09/2026.** Una auditoría de
 > la instancia real encontró que el turno del bot lo generaba n8n —prompt escrito a mano en un
 > nodo Code y llamada a OpenAI— y que el motor del portal (`/api/internal/channels/*/reply`,
-> `chatbot-conversation.ts`) no lo llamaba nadie. Telegram y el widget web ya están
-> convertidos; **Meta (WhatsApp/Messenger/Instagram) todavía no**: su flujo sigue armando el
-> prompt por su cuenta. Si tocas canales, mira antes `automations/desplegado/` —que es lo que
-> de verdad corre— y `docs/plan-motor-chatbot.md`.
+> `chatbot-conversation.ts`) no lo llamaba nadie. Telegram, el widget web y (desde el
+> 20/09/2026) el WhatsApp de Meta ya están convertidos; **Messenger e Instagram todavía
+> no** — siguen en `meta-multi-tenant.json`, armando el prompt a mano y sin verificar
+> la firma de Meta en absoluto. Si tocas canales, mira antes `automations/desplegado/`
+> —que es lo que de verdad corre— y `docs/plan-motor-chatbot.md`.
 >
 > Y hay un prerrequisito que invalida cualquier prueba mientras falte: `PORTAL_API_URL` y
 > `PORTAL_API_KEY` **no están definidas en los contenedores de n8n**, así que ninguna llamada
 > de n8n al portal ha funcionado nunca. Ver el README de `automations/desplegado/`.
+>
+> **Incidente de seguridad encontrado el 20/09/2026, sin resolver**: el flujo de WhatsApp
+> tenía la `PORTAL_API_KEY` real escrita en texto plano (ya corregido para usar `$env`, pero
+> el valor viejo sigue siendo válido y sigue en el historial de git de una rama ya empujada).
+> **`PORTAL_API_KEY` debe rotarse en la VPS** antes de dar esto por cerrado — no lo puede
+> hacer Claude, el clasificador de modo automático bloquea la lectura del `.env` de
+> producción. `META_APP_SECRET` y el verify token de Meta de ese mismo flujo probablemente
+> también están expuestos y solo se rotan desde el panel de Meta. Ver el README de
+> `automations/desplegado/`.
 
 **El cliente nunca se toma del cuerpo de la petición.** Las rutas internas resuelven
 `clientId`/`tenantId` desde un identificador externo (un `conversationId`, un

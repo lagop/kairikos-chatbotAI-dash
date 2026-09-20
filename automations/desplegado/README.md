@@ -128,6 +128,62 @@ así que **ninguna web de cliente hay que tocarla**.
 - `Widget Desconocido?` distingue 404/403 del portal (token que no existe o
   widget apagado) del resto de fallos, que sí merecen una respuesta.
 
+## WhatsApp de Meta — confirmado y corregido el 20/09/2026
+
+La pantalla de configuración de Meta (WhatsApp → Configuration → Webhook) apunta
+a `/webhook/meta-whatsapp`, que es la ruta exacta de **`meta-whatsapp-inbound.json`**,
+no la de `meta-multi-tenant`. Es decir: todo el WhatsApp real de un cliente entra
+por aquí, y `meta-multi-tenant` está activo pero huérfano para este canal —
+nadie lo invoca.
+
+Se decidió mantener `meta-whatsapp-inbound` como base para WhatsApp, no
+`meta-multi-tenant`, porque **verifica la firma HMAC de Meta** (SHA-256 escrito
+a mano, ya que los nodos Code no pueden usar `require('crypto')`) y
+`meta-multi-tenant` no verifica nada en su rama de WhatsApp — cualquiera podría
+mandarle mensajes falsos.
+
+**Hallazgo grave al revisarlo a fondo: tenía la clave real del portal escrita en
+texto plano.** El nodo `X-Kairikos-Internal-Key` traía el valor literal de
+`PORTAL_API_KEY`, no una referencia `$env`, a diferencia de todos los demás
+flujos. Confirmado comparándolo contra el `.env` real sin imprimirlo. Ese
+archivo llevaba commiteado desde el 8030def, en una rama ya empujada a GitHub
+(PR #218) — la clave estuvo expuesta en el remoto.
+
+Aplicado el mismo día:
+- El nodo ya usa `$env.PORTAL_API_KEY` y `$env.PORTAL_API_URL`, igual que el
+  resto de flujos.
+- **Pendiente y urgente, y no lo puede hacer nadie más que el propietario**:
+  rotar `PORTAL_API_KEY` en la VPS (bloqueado para mí por el clasificador de
+  modo automático al intentar leer el `.env` de producción — "Production
+  Reads"). Hasta que se rote, el valor expuesto en el historial de git sigue
+  siendo válido.
+- `META_APP_SECRET` y el verify token de Meta **también están hardcodeados**
+  en este flujo (nodos `Verify Signature` y `Check Verify Token`) y no se
+  pudieron verificar contra el `.env` porque no viven ahí — probablemente en
+  Postgres, cifrados, vía el patrón de credencial de operador. No se tocaron:
+  no hay forma de rotarlos sin pasar por el panel de Meta, y cambiarlos aquí a
+  ciegas rompería una verificación de firma que hoy funciona. **También deben
+  rotarse desde el panel de Meta cuando puedas.** El export de este archivo
+  los sustituye por `META-APP-SECRET-REDACTED.ejemplo` y
+  `META-VERIFY-TOKEN-REDACTED.ejemplo` — nunca el valor real.
+- La rama del chatbot dejó de llamar solo a `.../whatsapp/message` (que
+  guarda el turno pero no contesta ni envía nada) y ahora sigue el mismo
+  patrón que Telegram: `POST .../whatsapp/reply` → si hay `reply`, `POST
+  .../whatsapp/send`. `reply: null` (traspaso a humano o tope del mes) ya no
+  intenta enviar nada.
+
+**Lo que queda pendiente, aparte de rotar las claves:**
+- Messenger e Instagram siguen solo en `meta-multi-tenant`, con el patrón
+  antiguo (prompt a mano + OpenAI) y sin verificación de firma. Portarles la
+  verificación de firma y el motor real es trabajo aparte, no incluido aquí.
+- `Extract Message` en este flujo **descarta cualquier mensaje que no sea
+  texto** (`message.type === 'text'`) antes de que llegue a
+  `/api/internal/recall/whatsapp-reply` — así que una nota de voz de recall
+  nunca llega a esa ruta pese a que la ruta sí sabe procesarlas
+  (`audioMediaId`). Es un hallazgo de esta revisión, no un arreglo: hace
+  falta extraer el `type: 'audio'` y su `media.id` antes de decidir si se
+  ignora el mensaje.
+
 ## Dos flujos que se ejecutaban sin hacer nada — arreglado el 20/09/2026
 
 `wizard-abandoned` y `config-review-overdue` tenían las **conexiones indexadas
