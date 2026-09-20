@@ -228,9 +228,9 @@ jobs:
             N8N_WEBCHAT_URL=https://n8n.srv1170607.hstgr.cloud/webhook/kairikos-webchat-multitenant
             # El portal usa esto para registrar el webhook de CADA bot de
             # Telegram que un cliente conecta (telegram/connect/route.ts
-            # llama a setWebhook con esta URL + "?connectionId=<id>" —
-            # QUERY, no segmento de ruta, porque asi es como el nodo
-            # "Extract Input" del flujo de n8n lo lee). Tambien faltaba
+            # llama a setWebhook con esta URL mas el parametro connectionId
+            # en la query, no como segmento de ruta, porque asi es como el
+            # nodo Extract Input del flujo de n8n lo lee. Tambien faltaba
             # aqui: confirmado contra una ejecucion real que Telegram SI
             # llamaba al webhook pero sin query ni params, asi que todo
             # mensaje de cualquier cliente conectado se descartaba en
