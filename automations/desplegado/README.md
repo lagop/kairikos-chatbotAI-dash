@@ -172,27 +172,51 @@ Aplicado el mismo día:
   .../whatsapp/send`. `reply: null` (traspaso a humano o tope del mes) ya no
   intenta enviar nada.
 
-**Lo que queda pendiente, aparte de rotar las claves:**
-- ~~Messenger e Instagram siguen solo en `meta-multi-tenant`~~ — revisado el
-  20/09/2026: **`meta-multi-tenant` tiene 0 ejecuciones en toda su historia**,
-  para ningún canal, ni siquiera el `GET` de verificación que Meta dispara
-  solo. Confirmado contra el panel de Meta: en "Casos de uso" **solo aparece
-  WhatsApp** — Messenger e Instagram nunca se activaron como producto en esta
-  app, así que no hay webhook suscrito ni tráfico que migrar. No es un flujo
-  con arquitectura vieja esperando su turno; es un flujo sin ningún cliente al
-  otro lado.
-- **`meta-multi-tenant` debería desactivarse** — sigue activo en n8n sin
-  verificar la firma de Meta en su rama de WhatsApp (huérfana desde que ese
-  canal vive en `meta-whatsapp-inbound`) y sin ningún beneficio, solo
-  superficie expuesta. El clasificador de modo automático bloqueó
-  desactivarlo por API ("Interfere With Workloads"); pendiente de hacerlo a
-  mano desde la UI de n8n (Workflows → Kairikos Meta Multi-tenant → toggle
-  Active → Inactive) o de dar permiso explícito para reintentarlo.
-- Si en el futuro se activan Messenger/Instagram como casos de uso en Meta,
-  ese es el momento de decidir si se reconstruye sobre `meta-multi-tenant`
-  (portándole antes la verificación de firma de `meta-whatsapp-inbound`) o
-  se empieza de cero — no antes, porque hoy no hay nada que probar contra
-  tráfico real.
+## Messenger — migrado al motor real el 20/09/2026
+
+Corrección sobre lo anterior: no era "sin cliente al otro lado" de forma
+permanente. El producto SÍ promete Messenger e Instagram como canales
+(`MetaChannelCard.tsx`, el wizard) — el hueco era que la app de Meta nunca
+había activado esos casos de uso, no que no hicieran falta. Confirmado
+permiso a permiso: `pages_messaging`, `pages_manage_metadata`,
+`pages_show_list` y `business_management` (lo que pide Messenger) aparecían
+como "Listo para la prueba" — sin revisión de Meta de por medio —, mientras
+que `instagram_basic` e `instagram_manage_messages` no, así que Instagram
+sigue bloqueado por una revisión de Meta con plazo propio.
+
+Con Messenger desbloqueado, se aplicó en `meta-multi-tenant`:
+
+- **Verificación de firma HMAC delante de las tres ramas** (WhatsApp,
+  Messenger, Instagram) — hasta ahora no había ninguna. Reutiliza el mismo
+  código y el mismo `META_APP_SECRET` real que ya corría en
+  `meta-whatsapp-inbound`, no uno nuevo. De paso deja de importar que la
+  rama de WhatsApp de este flujo esté huérfana: ya no admite peticiones sin
+  firmar. Probado contra el flujo real con una petición forjada — se corta
+  en `Check Signature Valid` sin llegar a ningún routing.
+- **Messenger deja de montar el prompt a mano y llamar a OpenAI**: ahora
+  sigue el mismo patrón que Telegram y WhatsApp — `POST
+  .../messenger/reply` → si hay respuesta, `POST .../messenger/send`.
+- La clasificación de leads de Messenger se mantiene (mismo criterio que
+  WhatsApp/Telegram: no se retira todavía, es una decisión de producto
+  aparte), recableada a los nodos nuevos.
+- El *verify token* de la pantalla de webhook de Messenger quedó fijo en el
+  nodo (no hay variable de entorno equivalente en n8n, y las Variables
+  propias de n8n no están disponibles — licencia Community, sin
+  `feat:variables`). Redactado en este export como
+  `MESSENGER-VERIFY-TOKEN-REDACTED.ejemplo`.
+
+**Lo que queda pendiente:**
+- **Instagram sigue sin tocar**, a la espera de que Meta apruebe
+  `instagram_basic`/`instagram_manage_messages`. Ya queda protegido por la
+  verificación de firma nueva, pero su rama sigue con el prompt a mano y
+  OpenAI directo — migrarla es el mismo trabajo que Messenger, en cuanto
+  Meta apruebe los permisos.
+- **`meta-multi-tenant` sigue sin poder desactivarse por API** — el
+  clasificador de modo automático lo bloquea ("Interfere With Workloads");
+  ya no aplica de todos modos, ahora que Messenger vive aquí de verdad.
+- La copy de `MetaChannelCard.tsx` (*"WhatsApp, Messenger e Instagram... un
+  solo paso para los tres canales"*) sigue prometiendo Instagram antes de
+  tiempo — pendiente de ajustar mientras Instagram no esté aprobado.
 - `Extract Message` en este flujo **descarta cualquier mensaje que no sea
   texto** (`message.type === 'text'`) antes de que llegue a
   `/api/internal/recall/whatsapp-reply` — así que una nota de voz de recall
