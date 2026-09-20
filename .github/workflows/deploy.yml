@@ -218,5 +218,13 @@ jobs:
             TWILIO_WEBHOOK_BASE_URL=${{ vars.NEXT_PUBLIC_PORTAL_URL }}
             TWILIO_VOICE_WEBHOOK_URL=${{ vars.NEXT_PUBLIC_PORTAL_URL }}/api/webhooks/twilio/voice
             N8N_BASE_URL=https://n8n.srv1170607.hstgr.cloud
+            # El widget web (public/widget/embed.js) lee esta URL de
+            # /api/public/channels/web/config y habla DIRECTO con n8n desde
+            # el navegador del visitante -- el portal nunca ve ese tráfico.
+            # No es secreta (se manda a cualquier web que pegue el snippet),
+            # así que va literal, igual que N8N_BASE_URL. Faltaba aquí desde
+            # siempre: sin ella el widget no se rompe (embed.js comprueba
+            # chatEndpoint y no se muestra), pero tampoco funciona jamás.
+            N8N_WEBCHAT_URL=https://n8n.srv1170607.hstgr.cloud/webhook/kairikos-webchat-multitenant
             DEPLOY_MODE=dev-ip-port
             APP_PORT=3001
