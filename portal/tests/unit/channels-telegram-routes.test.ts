@@ -200,7 +200,10 @@ describe('POST /api/portal/channels/telegram/connect', () => {
         botUsername: 'kairikos_bot',
       }),
     });
-    expect(mockState.setWebhook).toHaveBeenCalledWith('123:abc', 'https://n8n.example.com/webhook/kairikos-telegram/conn_1');
+    // connectionId va en la query string, no como segmento de ruta -- es
+    // asi como "Extract Input" lo lee en el flujo real de n8n
+    // (query.connectionId). Ver el comentario en la ruta.
+    expect(mockState.setWebhook).toHaveBeenCalledWith('123:abc', 'https://n8n.example.com/webhook/kairikos-telegram?connectionId=conn_1');
     expect(mockState.deliverChannelEvent).toHaveBeenCalledWith({
       connectionType: 'telegram',
       connectionId: 'conn_1',
