@@ -205,12 +205,19 @@ Con Messenger desbloqueado, se aplicó en `meta-multi-tenant`:
   `feat:variables`). Redactado en este export como
   `MESSENGER-VERIFY-TOKEN-REDACTED.ejemplo`.
 
+**Instagram — migrado al motor real el 20/09/2026, sin esperar a Meta.**
+El código no depende de la revisión de Meta, solo las pruebas contra
+tráfico real la necesitan — así que se migró igual que Messenger: `POST
+.../instagram/reply` → si hay respuesta, `POST .../instagram/send`,
+clasificación de leads recableada, verificación de firma ya cubriéndola
+desde la migración de Messenger (se reutiliza, no se duplicó). Probado
+con una petición forjada en forma de Instagram — se corta en `Check
+Signature Valid`, igual que WhatsApp y Messenger.
+
 **Lo que queda pendiente:**
-- **Instagram sigue sin tocar**, a la espera de que Meta apruebe
-  `instagram_basic`/`instagram_manage_messages`. Ya queda protegido por la
-  verificación de firma nueva, pero su rama sigue con el prompt a mano y
-  OpenAI directo — migrarla es el mismo trabajo que Messenger, en cuanto
-  Meta apruebe los permisos.
+- **Instagram no se puede probar contra tráfico real** hasta que Meta
+  apruebe `instagram_basic`/`instagram_manage_messages`. El código está
+  listo; falta el permiso, no la implementación.
 - **`meta-multi-tenant` sigue sin poder desactivarse por API** — el
   clasificador de modo automático lo bloquea ("Interfere With Workloads");
   ya no aplica de todos modos, ahora que Messenger vive aquí de verdad.

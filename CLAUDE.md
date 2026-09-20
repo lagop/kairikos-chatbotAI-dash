@@ -89,14 +89,13 @@ en la cabecera `x-kairikos-internal-key`, y todo sale por webhooks salientes
 > **Esta frase describía un objetivo, no la realidad, hasta el 20/09/2026.** Una auditoría de
 > la instancia real encontró que el turno del bot lo generaba n8n —prompt escrito a mano en un
 > nodo Code y llamada a OpenAI— y que el motor del portal (`/api/internal/channels/*/reply`,
-> `chatbot-conversation.ts`) no lo llamaba nadie. Telegram, el widget web, el WhatsApp
-> de Meta y (desde el 20/09/2026) **Messenger** ya están convertidos, con verificación
-> de firma HMAC delante. **Instagram todavía no**: sus permisos
-> (`instagram_basic`/`instagram_manage_messages`) piden revisión de Meta, a diferencia
-> de los de Messenger, que no la necesitaron. Su rama en `meta-multi-tenant.json` sigue
-> con el prompt a mano y OpenAI directo, aunque ya protegida por la firma. Si tocas
-> canales, mira antes `automations/desplegado/` —que es lo que de verdad corre— y
-> `docs/plan-motor-chatbot.md`.
+> `chatbot-conversation.ts`) no lo llamaba nadie. Los seis canales (Telegram, widget web,
+> WhatsApp, Messenger e Instagram de Meta) ya están convertidos y con verificación de
+> firma HMAC delante donde aplica. **Instagram es el único sin probar contra tráfico
+> real**: sus permisos (`instagram_basic`/`instagram_manage_messages`) piden revisión de
+> Meta, a diferencia de los de Messenger, que no la necesitaron — el código está listo,
+> falta el permiso. Si tocas canales, mira antes `automations/desplegado/` —que es lo que
+> de verdad corre— y `docs/plan-motor-chatbot.md`.
 >
 > Y hay un prerrequisito que invalida cualquier prueba mientras falte: `PORTAL_API_URL` y
 > `PORTAL_API_KEY` **no están definidas en los contenedores de n8n**, así que ninguna llamada

@@ -500,246 +500,6 @@
       }
     },
     {
-      "id": "ig-get-context",
-      "name": "Get Client Context (Instagram)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1100,
-        720
-      ],
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $env.PORTAL_API_URL }}/api/internal/channels/instagram/context",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "X-Kairikos-Internal-Key",
-              "value": "={{ $env.PORTAL_API_KEY }}"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ igUserId: $json.igUserId }) }}",
-        "options": {
-          "timeout": 10000,
-          "response": {
-            "response": {
-              "neverError": true
-            }
-          }
-        }
-      }
-    },
-    {
-      "id": "ig-context-ok",
-      "name": "Context OK? (Instagram)",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [
-        1320,
-        720
-      ],
-      "parameters": {
-        "conditions": {
-          "boolean": [
-            {
-              "value1": "={{ $json.ok === true }}",
-              "value2": true
-            }
-          ]
-        }
-      }
-    },
-    {
-      "id": "ig-build-prompt",
-      "name": "Build System Prompt (Instagram)",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1540,
-        640
-      ],
-      "parameters": {
-        "jsCode": "const ctx = $input.first().json;\nconst businessName = ctx.businessName || 'nuestro negocio';\nconst prompts = Array.isArray(ctx.suggestedPrompts) ? ctx.suggestedPrompts : [];\nconst systemPrompt = [\n  `Eres el asistente virtual de \"${businessName}\", respondiendo por Instagram.`,\n  'Tu objetivo:',\n  '1. Responder dudas del usuario con tono cercano y profesional, en espanol, de forma breve (maximo 60 palabras salvo que pidan mas detalle).',\n  '2. Si detectas intencion de contacto (pedir cita, presupuesto, hablar con alguien, reservar), pide amablemente nombre y datos de contacto, y confirma que el equipo respondera pronto.',\n  '3. NUNCA inventes precios, horarios, servicios ni datos concretos que no te hayan dado explicitamente -- si no lo sabes, dilo con honestidad y ofrece derivar a un humano.',\n  prompts.length ? ('Temas frecuentes que este negocio espera que puedas ayudar a resolver: ' + prompts.join(', ') + '.') : '',\n].filter(Boolean).join('\\n');\nreturn [{ json: { systemPrompt, businessName } }];"
-      }
-    },
-    {
-      "id": "ig-call-llm",
-      "name": "Call LLM (Instagram)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1760,
-        640
-      ],
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $env.OPENAI_API_KEY }}"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o-mini', temperature: 0.4, max_tokens: 350, messages: [ { role: 'system', content: $json.systemPrompt }, { role: 'user', content: $('Extract Input (Instagram)').first().json.text } ] }) }}",
-        "options": {
-          "timeout": 20000,
-          "retry": {
-            "maxTries": 2,
-            "waitBetween": 1500
-          },
-          "response": {
-            "response": {
-              "neverError": true
-            }
-          }
-        }
-      }
-    },
-    {
-      "id": "ig-format-response",
-      "name": "Format Response (Instagram)",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1980,
-        640
-      ],
-      "parameters": {
-        "jsCode": "const llm = $input.first().json;\nconst ctx = $('Build System Prompt (Instagram)').first().json;\nconst input = $('Extract Input (Instagram)').first().json;\nconst msgLower = (input.text || '').toLowerCase();\nconst contactIntent = /(cita|presupuesto|contacto|llamar|llamame|reuni[oó]n|hablar|contratar|me interesa|quiero|necesito|reservar|agendar|disponibilidad|horario|email|correo|tel[eé]fono|whatsapp)/i.test(msgLower);\nlet reply = '';\nlet mode = 'llm';\nlet errorDetail = null;\nif (llm && llm.choices && Array.isArray(llm.choices) && llm.choices[0] && llm.choices[0].message && llm.choices[0].message.content) {\n  reply = llm.choices[0].message.content.toString().trim();\n} else {\n  mode = 'fallback';\n  errorDetail = (llm && llm.error && llm.error.message) || 'unknown';\n  reply = contactIntent\n    ? ('Gracias por escribir. Para ayudarte mejor, cuentame tu nombre y un email o telefono de contacto -- alguien de ' + ctx.businessName + ' te respondera en breve.')\n    : ('Gracias por tu mensaje. Ahora mismo no puedo darte una respuesta detallada, pero el equipo de ' + ctx.businessName + ' lo revisara. Si quieres, dejame tus datos de contacto.');\n}\nreturn [{ json: { igUserId: input.igUserId, senderId: input.senderId, text: input.text, reply, mode, contactIntent, error: errorDetail } }];"
-      }
-    },
-    {
-      "id": "ig-send",
-      "name": "Send Reply (Instagram)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        2200,
-        640
-      ],
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $env.PORTAL_API_URL }}/api/internal/channels/instagram/send",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "X-Kairikos-Internal-Key",
-              "value": "={{ $env.PORTAL_API_KEY }}"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ igUserId: $json.igUserId, recipientId: $json.senderId, text: $json.reply }) }}",
-        "options": {
-          "timeout": 10000,
-          "response": {
-            "response": {
-              "neverError": true
-            }
-          }
-        }
-      }
-    },
-    {
-      "id": "ig-log-user",
-      "name": "Log User Message (Instagram)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        2420,
-        640
-      ],
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $env.PORTAL_API_URL }}/api/internal/channels/instagram/message",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "X-Kairikos-Internal-Key",
-              "value": "={{ $env.PORTAL_API_KEY }}"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ igUserId: $('Format Response (Instagram)').first().json.igUserId, senderId: $('Format Response (Instagram)').first().json.senderId, role: 'user', content: $('Format Response (Instagram)').first().json.text }) }}",
-        "options": {
-          "timeout": 8000,
-          "response": {
-            "response": {
-              "neverError": true
-            }
-          }
-        }
-      }
-    },
-    {
-      "id": "ig-log-bot",
-      "name": "Log Bot Message (Instagram)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        2640,
-        640
-      ],
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $env.PORTAL_API_URL }}/api/internal/channels/instagram/message",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "X-Kairikos-Internal-Key",
-              "value": "={{ $env.PORTAL_API_KEY }}"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify(Object.assign({ igUserId: $('Format Response (Instagram)').first().json.igUserId, senderId: $('Format Response (Instagram)').first().json.senderId, role: 'assistant', content: $('Format Response (Instagram)').first().json.reply }, $('Format Response (Instagram)').first().json.contactIntent ? { outcome: 'escalated' } : {})) }}",
-        "options": {
-          "timeout": 8000,
-          "response": {
-            "response": {
-              "neverError": true
-            }
-          }
-        }
-      }
-    },
-    {
       "id": "has-contact-intent-whatsapp",
       "name": "Has Contact Intent?",
       "type": "n8n-nodes-base.if",
@@ -1022,7 +782,7 @@
         "conditions": {
           "boolean": [
             {
-              "value1": "={{ $('Format Response (Instagram)').first().json.contactIntent === true }}",
+              "value1": "={{ /(cita|presupuesto|contacto|llamar|llamame|reuni[oó]n|hablar|contratar|me interesa|quiero|necesito|reservar|agendar|disponibilidad|horario|email|correo|tel[eé]fono|whatsapp)/i.test($('Extract Input (Instagram)').first().json.text || '') }}",
               "value2": true
             }
           ]
@@ -1056,7 +816,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o-mini', temperature: 0.1, max_tokens: 200, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: \"Analiza el mensaje de un posible cliente que le escribio a un chatbot de atencion al cliente. Decide si muestra intencion comercial real (pedir presupuesto, reservar, comprar, contratar, pedir cita) y extrae los datos de contacto que haya dado, si los hay. Responde UNICAMENTE con un objeto JSON, sin texto adicional, con esta forma exacta: {\\\"isLead\\\": boolean, \\\"score\\\": numero entre 0 y 100 (que tan probable es que se convierta en cliente), \\\"contactName\\\": string o null, \\\"contactPhone\\\": string o null, \\\"contactEmail\\\": string o null, \\\"summary\\\": resumen breve (menos de 20 palabras) de que pidio, o null}. Si no hay intencion comercial clara, isLead debe ser false.\" }, { role: 'user', content: $('Format Response (Instagram)').first().json.text } ] }) }}",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o-mini', temperature: 0.1, max_tokens: 200, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: \"Analiza el mensaje de un posible cliente que le escribio a un chatbot de atencion al cliente. Decide si muestra intencion comercial real (pedir presupuesto, reservar, comprar, contratar, pedir cita) y extrae los datos de contacto que haya dado, si los hay. Responde UNICAMENTE con un objeto JSON, sin texto adicional, con esta forma exacta: {\\\"isLead\\\": boolean, \\\"score\\\": numero entre 0 y 100 (que tan probable es que se convierta en cliente), \\\"contactName\\\": string o null, \\\"contactPhone\\\": string o null, \\\"contactEmail\\\": string o null, \\\"summary\\\": resumen breve (menos de 20 palabras) de que pidio, o null}. Si no hay intencion comercial clara, isLead debe ser false.\" }, { role: 'user', content: $('Extract Input (Instagram)').first().json.text } ] }) }}",
         "options": {
           "timeout": 15000,
           "retry": {
@@ -1132,7 +892,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ conversationId: $('Log Bot Message (Instagram)').first().json.conversationId, contactName: $json.contactName || undefined, contactPhone: $json.contactPhone || undefined, contactEmail: $json.contactEmail || undefined, summary: $json.summary || undefined, score: $json.score, channel: 'instagram' }) }}",
+        "jsonBody": "={{ JSON.stringify({ conversationId: $('POST /api/internal/channels/instagram/reply').first().json.conversationId, contactName: $json.contactName || undefined, contactPhone: $json.contactPhone || undefined, contactEmail: $json.contactEmail || undefined, summary: $json.summary || undefined, score: $json.score, channel: 'instagram' }) }}",
         "options": {
           "timeout": 8000,
           "response": {
@@ -1273,6 +1033,102 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ pageId: $('Extract Input (Messenger)').first().json.pageId, recipientId: $('Extract Input (Messenger)').first().json.senderId, text: $json.reply }) }}",
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "ig-reply",
+      "name": "POST /api/internal/channels/instagram/reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        800
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/channels/instagram/reply",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ igUserId: $json.igUserId, senderId: $json.senderId, text: $json.text }) }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "ig-has-reply",
+      "name": "Has Reply To Send? (Instagram)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1320,
+        800
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.ok === true && typeof $json.reply === 'string' && $json.reply.trim().length > 0 }}",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ig-send-reply",
+      "name": "Send Reply (Instagram)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        800
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/channels/instagram/send",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ igUserId: $('Extract Input (Instagram)').first().json.igUserId, recipientId: $('Extract Input (Instagram)').first().json.senderId, text: $json.reply }) }}",
         "options": {
           "timeout": 10000,
           "response": {
@@ -1512,90 +1368,12 @@
       "main": [
         [
           {
-            "node": "Get Client Context (Instagram)",
+            "node": "POST /api/internal/channels/instagram/reply",
             "type": "main",
             "index": 0
           }
         ],
         []
-      ]
-    },
-    "Get Client Context (Instagram)": {
-      "main": [
-        [
-          {
-            "node": "Context OK? (Instagram)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Context OK? (Instagram)": {
-      "main": [
-        [
-          {
-            "node": "Build System Prompt (Instagram)",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        []
-      ]
-    },
-    "Build System Prompt (Instagram)": {
-      "main": [
-        [
-          {
-            "node": "Call LLM (Instagram)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Call LLM (Instagram)": {
-      "main": [
-        [
-          {
-            "node": "Format Response (Instagram)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Format Response (Instagram)": {
-      "main": [
-        [
-          {
-            "node": "Send Reply (Instagram)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Send Reply (Instagram)": {
-      "main": [
-        [
-          {
-            "node": "Log User Message (Instagram)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Log User Message (Instagram)": {
-      "main": [
-        [
-          {
-            "node": "Log Bot Message (Instagram)",
-            "type": "main",
-            "index": 0
-          }
-        ]
       ]
     },
     "Log Bot Message": {
@@ -1701,17 +1479,6 @@
         []
       ]
     },
-    "Log Bot Message (Instagram)": {
-      "main": [
-        [
-          {
-            "node": "Has Contact Intent? (Instagram)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Has Contact Intent? (Instagram)": {
       "main": [
         [
@@ -1809,6 +1576,40 @@
         [
           {
             "node": "Has Contact Intent? (Messenger)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST /api/internal/channels/instagram/reply": {
+      "main": [
+        [
+          {
+            "node": "Has Reply To Send? (Instagram)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Reply To Send? (Instagram)": {
+      "main": [
+        [
+          {
+            "node": "Send Reply (Instagram)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Send Reply (Instagram)": {
+      "main": [
+        [
+          {
+            "node": "Has Contact Intent? (Instagram)",
             "type": "main",
             "index": 0
           }
