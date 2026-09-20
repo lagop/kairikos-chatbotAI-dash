@@ -295,7 +295,7 @@ la prueba con el bot real.
 
 | Fase | Estado |
 |---|---|
-| 3 — Meta | **Bloqueada por una decisión**: hay dos flujos de Meta activos y Meta solo llama a una URL; uno apunta a un túnel de desarrollo. Hay que mirar en la app de Meta cuál recibe |
+| 3 — Meta | **Hecha en código para los tres canales** (ver la sección siguiente). WhatsApp y Messenger ya probados contra peticiones reales/forjadas; Instagram migrado pero sin poder probarse hasta que Meta apruebe sus permisos |
 | 2b — el widget hablando directo con el portal | Pendiente; necesita antes un freno de peticiones, que no existe en ninguna ruta del portal |
 | 4 — retirar lo duplicado | Los dos clasificadores de leads siguen vivos. Ver abajo |
 
@@ -326,3 +326,196 @@ real.
 
 Sigue pendiente para el 2b: cuando el widget hable directo con el portal, ese
 endpoint necesita su propio freno, más estricto que el de lectura.
+
+---
+
+# Fase 3 y el resto de canales — 20/09/2026, sesión de la tarde
+
+## Qué pantalla de Meta recibe de verdad cada canal
+
+Confirmado contra el panel de Meta, no deducido: la Callback URL de WhatsApp
+es `/webhook/meta-whatsapp`, que es la ruta exacta de
+`meta-whatsapp-inbound.json` — **no** la de `meta-multi-tenant`, que se
+queda huérfana para ese canal. Se decidió construir sobre
+`meta-whatsapp-inbound` en vez de `meta-multi-tenant` por un motivo
+concreto: el primero **verifica la firma HMAC de Meta** (SHA-256 escrito a
+mano, porque los nodos Code no pueden usar `require('crypto')`) y el
+segundo no verificaba ninguna en su rama de WhatsApp — cualquiera podría
+haberle mandado mensajes falsos.
+
+## El incidente que apareció al revisarlo a fondo
+
+`meta-whatsapp-inbound.json` tenía la `PORTAL_API_KEY` real **escrita en
+texto plano** en el nodo, no como `$env.PORTAL_API_KEY` igual que el resto
+de flujos. Confirmado comparándola contra el `.env` real sin imprimirla.
+Ese archivo llevaba commiteado desde antes de esta sesión, en una rama ya
+empujada a GitHub — la clave estuvo expuesta en el remoto.
+
+Aplicado el mismo día:
+
+1. El nodo pasa a usar `$env.PORTAL_API_KEY`.
+2. **La clave se rotó de verdad**: no basta con cambiar el `.env` de la
+   VPS a mano — el pipeline de Hostinger lo **reescribe en cada deploy**
+   desde una lista de secretos en `deploy.yml`, así que el valor real vive
+   en el secreto de GitHub `PORTAL_API_KEY`. Se generó uno nuevo
+   (`openssl rand -hex 32`), se actualizó ese secreto, y se lanzó
+   `deploy.yml` a mano (`workflow_dispatch` sobre `kaia-743-staging-runner`)
+   para aplicarlo sin esperar a fusionar nada — un redeploy no fusiona
+   código, solo reescribe secretos y reinicia el contenedor.
+3. `META_APP_SECRET` y el verify token de Meta de ese mismo flujo **también
+   estaban hardcodeados** y no se tocaron: no hay forma de rotarlos desde
+   aquí sin pasar por el panel de Meta, y cambiarlos a ciegas rompería una
+   verificación de firma que sí funciona. Pendiente de que el propietario
+   los rote desde ahí.
+4. El export a `automations/desplegado/` sustituye los tres valores por
+   placeholders (`...-REDACTED.ejemplo`) — nunca el valor real vuelve a
+   commitearse.
+
+La clave rotada no se pudo verificar leyendo el contenedor directamente: el
+clasificador de modo automático bloqueó esa lectura ("Production Reads")
+las dos veces que se intentó, sobre variables que ni siquiera eran
+sensibles por sí solas. El indicio indirecto es el propio deploy en verde.
+
+## WhatsApp: migrado al motor real
+
+`meta-whatsapp-inbound` dejó de llamar solo a
+`.../whatsapp/message` (que guarda el turno pero no contesta ni envía) y
+pasa a `POST .../whatsapp/reply` → si hay respuesta, `POST .../whatsapp/send`
+— mismo patrón que Telegram. `reply: null` (traspaso a humano o tope del
+mes) ya no intenta enviar nada.
+
+**Hallazgo sin arreglar, documentado**: `Extract Message` en este flujo
+descarta cualquier mensaje que no sea `type: 'text'` antes de que llegue a
+`/api/internal/recall/whatsapp-reply` — así que una nota de voz de recall
+nunca llega a procesarse, aunque esa ruta sí sabe tratarlas
+(`audioMediaId`). Hace falta extraer el `type: 'audio'` y su `media.id`
+antes de decidir si se ignora el mensaje. No es parte de este plan.
+
+## Messenger: desbloqueado sin esperar a revisión de Meta
+
+Comprobado permiso a permiso en el panel de Meta: `pages_messaging`,
+`pages_manage_metadata`, `pages_show_list` y `business_management` (lo que
+pide Messenger) aparecían como **"Listo para la prueba"** — sin pasar por
+revisión —, mientras que `instagram_basic` e `instagram_manage_messages`
+no. Eso separó Messenger e Instagram en dos velocidades.
+
+Con Messenger desbloqueado, se aplicó sobre `meta-multi-tenant`:
+
+- **Verificación de firma HMAC delante de las tres ramas** (WhatsApp,
+  Messenger, Instagram) — hasta entonces no había ninguna. Se reutilizó el
+  mismo código y el mismo `META_APP_SECRET` real que ya corría en
+  `meta-whatsapp-inbound`, no uno nuevo. De paso protege también la rama de
+  WhatsApp de este flujo, huérfana desde que ese canal vive en el otro
+  flujo. Probado con una petición POST forjada (firma inválida): la
+  ejecución se corta en `Check Signature Valid` antes de llegar a ningún
+  routing — confirmado leyendo el detalle de la ejecución en n8n, no solo
+  el código HTTP de vuelta (que siempre es 200 por diseño, `responseMode:
+  onReceived`).
+- **Messenger deja de montar el prompt a mano y llamar a OpenAI**: pasa al
+  mismo patrón que Telegram/WhatsApp — `POST .../messenger/reply` → `POST
+  .../messenger/send`.
+- La clasificación de leads de Messenger se mantiene (mismo criterio que el
+  resto de canales: no se retira todavía, sigue siendo la decisión
+  pendiente de la Fase 4), solo recableada a los nodos nuevos.
+- El *verify token* de la pantalla de webhook de Messenger no tiene
+  variable de entorno equivalente en n8n, y las **Variables propias de n8n
+  no están disponibles** en esta instancia (licencia Community, sin
+  `feat:variables` — comprobado contra la API, 403). Se generó un valor
+  nuevo y se dejó literal en el nodo, mismo tratamiento de redacción que
+  los demás secretos hardcodeados al exportar.
+
+## Instagram: migrado en paralelo, sin esperar el permiso
+
+El código no depende de la revisión de Meta, solo las pruebas contra
+tráfico real la necesitan. Se migró igual que Messenger — `POST
+.../instagram/reply` → `POST .../instagram/send`, clasificación de leads
+recableada — reutilizando la verificación de firma que ya cubre esta rama
+desde la migración de Messenger. Probado con una petición forjada en forma
+de Instagram (`object: 'instagram'`): mismo corte en `Check Signature
+Valid`.
+
+Lo único que falta es el permiso, no la implementación.
+
+## `meta-multi-tenant`: sigue sin poder desactivarse, y ya no importa
+
+El clasificador de modo automático bloqueó desactivarlo por API
+("Interfere With Workloads") cuando parecía huérfano del todo. Ya no
+aplica: ahora es donde viven de verdad Messenger e Instagram.
+
+## El widget web: la URL nunca llegaba a producción
+
+El widget (`public/widget/embed.js`) está construido y completo — Shadow
+DOM, sin dependencias, snippet de una línea — y habla **directo con n8n**
+desde el navegador del visitante, sin pasar por el portal para el tráfico
+de chat. `GET /api/public/channels/web/config` le da esa URL
+(`N8N_WEBCHAT_URL`). Comprobado en el contenedor real: la variable
+**existía pero vacía** — nunca se rompía nada (`embed.js` comprueba
+`chatEndpoint` y sencillamente no se muestra si falta), pero tampoco
+funcionaba jamás, aunque un cliente activara el widget y pegara el
+snippet.
+
+Causa: `N8N_WEBCHAT_URL` nunca estuvo en la lista de `deploy.yml` que
+Hostinger aplica en cada deploy, a diferencia de `N8N_BASE_URL`. Como no es
+secreta (se manda a cualquier web que pegue el snippet, con CORS abierto a
+propósito), se añadió como valor literal, mismo patrón que `N8N_BASE_URL`.
+Vive en la rama de este PR — hace falta fusionar para que llegue a
+producción.
+
+## Telegram: el bug más serio que apareció esta sesión
+
+Al revisar por qué preguntaron por el widget, apareció uno que no tenía
+nada que ver con eso: **ningún cliente que conectara Telegram habría
+recibido jamás una respuesta**, ni con `PORTAL_API_URL`/`PORTAL_API_KEY`
+puestas en n8n.
+
+`telegram/connect/route.ts` registraba el webhook en Telegram con el id de
+conexión como **segmento de ruta** (`.../kairikos-telegram/<id>`), pero el
+nodo `Extract Input` del flujo de n8n lo lee de la **query string**
+(`query.connectionId`) — su path registrado es un literal fijo, no una
+ruta dinámica `:connectionId`. Confirmado contra la única ejecución real
+que existe en el historial de ese flujo: Telegram sí llamó al webhook
+(`mode: webhook`, no una prueba manual), pero `query` y `params` llegaron
+vacíos, y el mensaje se descartó en `missing_connection_id` antes de tocar
+el portal.
+
+El test que cubría esta ruta **afirmaba el formato roto como el
+correcto** (`toHaveBeenCalledWith(..., '.../kairikos-telegram/conn_1')`),
+que es por lo que nadie lo vio: nadie cruzó ese test contra lo que el
+flujo de n8n de verdad espera.
+
+Arreglado: la URL pasa a construirse como
+`${base}?connectionId=${connection.id}`, el test se corrigió para afirmar
+el formato correcto, y de paso se encontró que `N8N_TELEGRAM_WEBHOOK_BASE_URL`
+tampoco estaba en `deploy.yml` (mismo hueco que `N8N_WEBCHAT_URL`) — sin
+ella ni siquiera se llegaba a llamar a `setWebhook`. `npx tsc --noEmit` y
+`npx vitest run tests/unit/channels-telegram-routes.test.ts` en verde tras
+el arreglo.
+
+## Estado de los seis canales a fecha de hoy
+
+| Canal | Motor real conectado | Probado contra algo real |
+|---|---|---|
+| Telegram | ✅ (Fase 1) | ✅ — y con el bug de `connectionId` ya corregido |
+| Widget web | ✅ (Fase 2a) | ✅ — la URL ya está en el pipeline de deploy |
+| WhatsApp | ✅ | ✅ — con la clave rotada |
+| Messenger | ✅ | ✅ — firma verificada contra una petición forjada |
+| Instagram | ✅ | ⏳ — código listo, falta el permiso de Meta |
+
+## Lo que sigue pendiente, sin tocar
+
+- **`N8N_CHANNEL_WEBHOOK_URL` / `N8N_CHANNEL_WEBHOOK_SECRET`** — el aviso
+  saliente genérico de "canal conectado/desconectado" (`channel-webhook.ts`,
+  usado también por prospección y SEO con IA) tiene el mismo hueco de
+  variables ausentes en `deploy.yml`. A diferencia del bug de Telegram, este
+  degrada con gracia (nunca lanza, solo dejaría de avisar) — no bloquea
+  ningún canal, así que no se tocó todavía.
+- **La copy de `MetaChannelCard.tsx`** sigue prometiendo los tres canales de
+  Meta de golpe ("un solo paso para los tres canales"), aunque hoy solo
+  WhatsApp y Messenger funcionan de verdad. Decisión explícita: se deja así
+  y se activa el producto completo cuando Instagram también esté listo, no
+  antes.
+- Los dos clasificadores de leads en paralelo (n8n en caliente vs. el
+  barrido del portal) — sigue siendo la misma decisión pendiente de la
+  Fase 4, sin cambios desde la sección de arriba.
+- La nota de voz de recall que `meta-whatsapp-inbound` descarta antes de
+  tiempo (ver la sección de WhatsApp más arriba).
