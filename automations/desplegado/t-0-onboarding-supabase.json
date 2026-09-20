@@ -1,0 +1,415 @@
+{
+  "id": "UdPNW3KN4GQJguEZ",
+  "name": "Kairikos · T+0 Onboarding (Day-2 placeholder bot + KB seed) v2",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "kairikos-t0-onboarding",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "t0-webhook",
+      "name": "T+0 Onboarding Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "kairikos-t0-onboarding"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Single T+0 onboarding handler: validate + lookup + patch + response.\nfunction strToBytes(s) {const out = new Uint8Array(s.length * 4);let len = 0;for (let i = 0; i < s.length; i++) {let c = s.charCodeAt(i);if (c < 0x80) { out[len++] = c; }else if (c < 0x800) { out[len++] = 0xc0 | (c >> 6); out[len++] = 0x80 | (c & 0x3f); }else if (c < 0xd800 || c >= 0xe000) { out[len++] = 0xe0 | (c >> 12); out[len++] = 0x80 | ((c >> 6) & 0x3f); out[len++] = 0x80 | (c & 0x3f); }else { i++; const c2 = s.charCodeAt(i); const cp = 0x10000 + (((c & 0x3ff) << 10) | (c2 & 0x3ff)); out[len++] = 0xf0 | (cp >> 18); out[len++] = 0x80 | ((cp >> 12) & 0x3f); out[len++] = 0x80 | ((cp >> 6) & 0x3f); out[len++] = 0x80 | (cp & 0x3f); }}return out.subarray(0, len);}function sha256Hex(bytes) {const K = [0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];let H = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];function rotr(x,n){return (x>>>n)|(x<<(32-n));}const n = bytes.length;const padded = Buffer.alloc(Math.ceil((n + 9) / 64) * 64);for (let i = 0; i < n; i++) padded[i] = bytes[i];padded[n] = 0x80;const bitLen = n * 8;padded.writeUInt32BE(Math.floor(bitLen / 0x100000000), padded.length - 8);padded.writeUInt32BE(bitLen & 0xffffffff, padded.length - 4);for (let i = 0; i < padded.length; i += 64) {const w = new Array(64);for (let j = 0; j < 16; j++) w[j] = padded.readInt32BE(i + j*4);for (let j = 16; j < 64; j++) {const s0 = rotr(w[j-15],7) ^ rotr(w[j-15],18) ^ (w[j-15] >>> 3);const s1 = rotr(w[j-2],17) ^ rotr(w[j-2],19) ^ (w[j-2] >>> 10);w[j] = (w[j-16] + s0 + w[j-7] + s1) | 0;}let [a,b,c,d,e,f,g,h] = H;for (let j = 0; j < 64; j++) {const S1 = rotr(e,6) ^ rotr(e,11) ^ rotr(e,25);const ch = (e & f) ^ (~e & g);const t1 = (h + S1 + ch + K[j] + w[j]) | 0;const S0 = rotr(a,2) ^ rotr(a,13) ^ rotr(a,22);const mj = (a & b) ^ (a & c) ^ (b & c);const t2 = (S0 + mj) | 0;h = g; g = f; f = e; e = (d + t1) | 0;d = c; c = b; b = a; a = (t1 + t2) | 0;}H = [H[0]+a|0, H[1]+b|0, H[2]+c|0, H[3]+d|0, H[4]+e|0, H[5]+f|0, H[6]+g|0, H[7]+h|0];}return H.map(x => (x >>> 0).toString(16).padStart(8, '0')).join('');}function hmacSha256Hex(keyStr, msgStr) {const keyBytes = strToBytes(keyStr);let keyHash;if (keyBytes.length > 64) {const inner = sha256Hex(keyBytes);keyHash = new Uint8Array(32);for (let i = 0; i < 32; i++) keyHash[i] = parseInt(inner.substr(i*2, 2), 16);}else {keyHash = new Uint8Array(64);for (let i = 0; i < keyBytes.length; i++) keyHash[i] = keyBytes[i];}const oKey = new Uint8Array(64);const iKey = new Uint8Array(64);for (let i = 0; i < 64; i++) { oKey[i] = keyHash[i] ^ 0x5c; iKey[i] = keyHash[i] ^ 0x36; }const msgBytes = strToBytes(msgStr);const innerLen = 64 + msgBytes.length;const inner = new Uint8Array(innerLen);for (let i = 0; i < 64; i++) inner[i] = iKey[i];for (let i = 0; i < msgBytes.length; i++) inner[64 + i] = msgBytes[i];const innerHash = sha256Hex(inner);const innerHashBytes = new Uint8Array(32);for (let i = 0; i < 32; i++) innerHashBytes[i] = parseInt(innerHash.substr(i*2, 2), 16);const outerLen = 64 + 32;const outer = new Uint8Array(outerLen);for (let i = 0; i < 64; i++) outer[i] = oKey[i];for (let i = 0; i < 32; i++) outer[64 + i] = innerHashBytes[i];return sha256Hex(outer);}function timingSafeEqual(a, b) {if (!a || a.length !== b.length) return false;let r = 0;for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);return r === 0;}\n\nconst items = this.$input.all();\nconst first = items[0] || { json: {} };\nconst envSecret = $env.T0_WEBHOOK_SHARED_SECRET || '';\nconst debugMode = first.json && first.json.query && first.json.query.debug === '1';\nconst debugSecret = debugMode ? ((first.json.headers || {})['x-t0-debug-secret'] || '') : '';\nconst secret = envSecret || debugSecret;\nconst responseBase = { workflow_run_id: $execution.id };\n\nif (!secret) {\n  return [{ json: { _t0_status: 401, _t0_body: { status: 'rejected', reason: 'secret_not_configured', ...responseBase } } }];\n}\nconst headers = first.json.headers || {};\nlet sigHeader = '';\nfor (const k of Object.keys(headers)) {const lk = k.toLowerCase();if (lk === 'x-t0-signature') { sigHeader = String(headers[k] || ''); break; }}\nconst expected = sigHeader.replace(/^sha256=/, '');\nlet raw = '';\ntry {if (first.binary && first.binary.data && first.binary.data.data) {raw = atob(first.binary.data.data);} else if (first.json.body) {raw = JSON.stringify(first.json.body);} else {raw = JSON.stringify(first.json || {});}} catch (e) {raw = '';}\nconst computed = hmacSha256Hex(secret, raw);\nconst sigValid = !!sigHeader && timingSafeEqual(expected.toLowerCase(), computed.toLowerCase());\nif (!sigValid) {\n  return [{ json: { _t0_status: 401, _t0_body: { status: 'rejected', reason: expected ? 'invalid_signature' : 'missing_signature_header', ...responseBase } } }];\n}\nconst body = first.json.body || {};\nif (typeof body.clientId !== 'string' || !body.clientId || typeof body.event_id !== 'string' || !body.event_id) {\n  return [{ json: { _t0_status: 401, _t0_body: { status: 'rejected', reason: 'invalid_payload', ...responseBase } } }];\n}\nreturn [{ json: { _t0_status: 200, _t0_body: null, _t0_body_passed: body, _t0_signature_valid: true, _t0_debug: debugMode, _t0_secret_source: envSecret ? 'env' : 'debug-header' } }];",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "id": "t0-validate",
+      "name": "Validate + HMAC",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://{{ $env.SUPABASE_PROJECT_REF }}.supabase.co/rest/v1/ChatbotClient?id=eq.{{ $json._t0_body_passed.clientId }}&select=id,state,goLiveAt,notes,updatedAt",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$env.SUPABASE_SERVICE_ROLE_KEY}}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetween": 5000
+          }
+        }
+      },
+      "id": "t0-lookup",
+      "name": "Supabase: Lookup ChatbotClient",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        690,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// $json = Supabase lookup response (a single row object).\n// We need the original body (from Validate + HMAC) to do dedup + build.\nconst row = ($json && $json.id) ? $json : null;\nconst validate = $('Validate + HMAC').first().json;\nconst body = validate._t0_body_passed || {};\nconst notes = (row && row.notes) || '';\nconst submissionId = body.submissionId || '';\nconst alreadyDone = !!row && row.state === 'go-live-pending' && notes.indexOf('Schema: t0-onboarding@1.0.0') >= 0 && notes.indexOf('Submission: ' + submissionId) >= 0;\nreturn [{ json: Object.assign({}, body, { _client: row, _already_done: alreadyDone, _t0_signature_valid: true, _t0_payload_valid: true, _t0_debug: validate._t0_debug, _t0_secret_source: validate._t0_secret_source }) }];",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "id": "t0-dedupe",
+      "name": "Idempotency: already T+0?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json;\nconst knowledgeBase = body.knowledgeBase || [];\nconst submissionId = body.submissionId || 'n/a';\nconst clientId = body.clientId || 'n/a';\nconst payload = {\n  state: 'go-live-pending',\n  goLiveAt: new Date().toISOString(),\n  notes: 'T+0 onboarding (n8n) - bot placeholder seeded with ' + (knowledgeBase.length || 0) + ' FAQs. Submission: ' + submissionId + '. Schema: t0-onboarding@1.0.0.',\n  updatedAt: new Date().toISOString()\n};\nreturn [{ json: { _t0_patch_body: JSON.stringify(payload), _t0_status: 200, _t0_client_id: clientId, _t0_submission_id: submissionId } }];",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "id": "t0-build",
+      "name": "Build PATCH body",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1130,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://{{ $env.SUPABASE_PROJECT_REF }}.supabase.co/rest/v1/ChatbotClient?id=eq.{{ $json._t0_client_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$env.SUPABASE_SERVICE_ROLE_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json._t0_patch_body }}",
+        "options": {
+          "timeout": 15000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetween": 5000
+          }
+        }
+      },
+      "id": "t0-patch",
+      "name": "Supabase: PATCH ChatbotClient -> go-live-pending",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1350,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SLACK_OPERATOR_WEBHOOK_URL || \"https://hooks.slack.com/services/PLACEHOLDER\" }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({text: \"T+0 Onboarding - \" + $json._t0_status + \" - \" + JSON.stringify($json._t0_body_passed || {})}) }}",
+        "options": {
+          "timeout": 10000
+        },
+        "onError": "continueErrorOutput"
+      },
+      "id": "t0-slack",
+      "name": "Slack: #automation-alerts (best-effort)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1570,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({status: \"sent\", clientId: $json._t0_client_id, submissionId: $json._t0_submission_id, state: \"go-live-pending\", workflow_run_id: $execution.id}) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "t0-respond-sent",
+      "name": "Respond 200 (sent)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1790,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({status: \"deduped\", clientId: $(\"T+0 Onboarding Webhook\").first().json.body.clientId, note: \"T+0 already applied; idempotent no-op\", workflow_run_id: $execution.id}) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "t0-respond-dedup",
+      "name": "Respond 200 (deduped)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1130,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json._t0_body) }}",
+        "options": {
+          "responseCode": "={{ $json._t0_status }}"
+        }
+      },
+      "id": "t0-respond-reject",
+      "name": "Respond 401 (rejected)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        690,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-status",
+              "leftValue": "={{ $json._t0_status }}",
+              "rightValue": "200",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "rightValue": "200"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "t0-if-happy",
+      "name": "Status 200?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        580,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-already",
+              "leftValue": "={{ $json._already_done }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "rightValue": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "t0-if-already",
+      "name": "Already T+0?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1130,
+        200
+      ]
+    }
+  ],
+  "connections": {
+    "T+0 Onboarding Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate + HMAC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate + HMAC": {
+      "main": [
+        [
+          {
+            "node": "Status 200?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 401 (rejected)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: Lookup ChatbotClient": {
+      "main": [
+        [
+          {
+            "node": "Idempotency: already T+0?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Idempotency: already T+0?": {
+      "main": [
+        [
+          {
+            "node": "Already T+0?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build PATCH body": {
+      "main": [
+        [
+          {
+            "node": "Supabase: PATCH ChatbotClient -> go-live-pending",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: PATCH ChatbotClient -> go-live-pending": {
+      "main": [
+        [
+          {
+            "node": "Slack: #automation-alerts (best-effort)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Respond 200 (sent)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: #automation-alerts (best-effort)": {
+      "main": [
+        [
+          {
+            "node": "Respond 200 (sent)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status 200?": {
+      "main": [
+        [
+          {
+            "node": "Supabase: Lookup ChatbotClient",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 401 (rejected)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Already T+0?": {
+      "main": [
+        [
+          {
+            "node": "Respond 200 (deduped)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build PATCH body",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "timezone": "Europe/Madrid"
+  }
+}

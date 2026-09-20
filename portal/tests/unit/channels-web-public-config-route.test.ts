@@ -47,7 +47,6 @@ beforeEach(() => {
   mockState.embedFindUnique.mockReset();
   mockState.clientFindUnique.mockReset().mockResolvedValue({ companyName: 'Clínica Orly', name: 'Orly', tier: 'starter' });
   mockState.stepFindMany.mockReset().mockResolvedValue([]);
-  delete process.env.N8N_WEBCHAT_URL;
 });
 
 describe('GET /api/public/channels/web/config', () => {
@@ -74,7 +73,6 @@ describe('GET /api/public/channels/web/config', () => {
 
   it('returns only display copy — never anything resembling an internal id or secret', async () => {
     mockState.embedFindUnique.mockResolvedValue({ clientId: 'c1', status: 'active', primaryColor: '#0E6B5E', position: 'bottom-right' });
-    process.env.N8N_WEBCHAT_URL = 'https://n8n.example.com/webhook/kairikos-webchat-multitenant';
     const { GET } = await import('@/app/api/public/channels/web/config/route');
     const res = await GET(makeRequest('wgt_1'));
     const body = await res.json();
@@ -87,7 +85,7 @@ describe('GET /api/public/channels/web/config', () => {
       suggestedPrompts: [],
       primaryColor: '#0E6B5E',
       position: 'bottom-right',
-      chatEndpoint: 'https://n8n.example.com/webhook/kairikos-webchat-multitenant',
+      chatEndpoint: 'https://portal.kairikos.com/api/public/channels/web/message',
     });
     expect(body.clientId).toBeUndefined();
     expect(body.publicToken).toBeUndefined();
@@ -109,12 +107,12 @@ describe('GET /api/public/channels/web/config', () => {
     expect(body.suggestedPrompts).toEqual(['Precios', 'Horarios']);
   });
 
-  it('returns chatEndpoint=null when N8N_WEBCHAT_URL is not configured', async () => {
+  it('always points chatEndpoint at this same origin — Fase 2b, no n8n in the loop for web chat anymore', async () => {
     mockState.embedFindUnique.mockResolvedValue({ clientId: 'c1', status: 'active', primaryColor: '#000', position: 'bottom-right' });
     const { GET } = await import('@/app/api/public/channels/web/config/route');
     const res = await GET(makeRequest('wgt_1'));
     const body = await res.json();
-    expect(body.chatEndpoint).toBeNull();
+    expect(body.chatEndpoint).toBe('https://portal.kairikos.com/api/public/channels/web/message');
   });
 
   it('503s when the database is not configured', async () => {
@@ -141,5 +139,35 @@ describe('GET /api/public/channels/web/config', () => {
     expect(mockState.stepFindMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ clientProductId: 'cp_web', activeForBot: true }) }),
     );
+  });
+});
+
+// El freno de ráfaga. La ruta está abierta a internet y con CORS: la llama el
+// navegador de cada visitante de la web del cliente.
+describe('freno de peticiones', () => {
+  it('corta la ráfaga del mismo widget con 429, y no toca la base al cortar', async () => {
+    const { GET } = await import('@/app/api/public/channels/web/config/route');
+    const token = 'token-rafaga-' + Math.random().toString(36).slice(2);
+
+    let ultima;
+    let cortes = 0;
+    for (let i = 0; i < 130; i += 1) {
+      ultima = await GET(makeRequest(token));
+      if (ultima.status === 429) cortes += 1;
+    }
+
+    expect(cortes).toBeGreaterThan(0);
+    expect(ultima!.status).toBe(429);
+    // Sigue contestando CORS aunque corte: si no, el navegador enseña un
+    // error de origen cruzado en vez del 429 y nadie entiende qué pasó.
+    expect(ultima!.headers.get('access-control-allow-origin')).toBe('*');
+    const consultasAntesDeCortar = mockState.embedFindUnique.mock.calls.length;
+    expect(consultasAntesDeCortar).toBeLessThan(130);
+  });
+
+  it('un widget distinto no paga la ráfaga del anterior', async () => {
+    const { GET } = await import('@/app/api/public/channels/web/config/route');
+    const res = await GET(makeRequest('token-tranquilo-' + Math.random().toString(36).slice(2)));
+    expect(res.status).not.toBe(429);
   });
 });

@@ -1,0 +1,227 @@
+{
+  "id": "SpbahgfJqf5FA56o",
+  "name": "Kairikos Telegram Multi-tenant",
+  "active": true,
+  "nodes": [
+    {
+      "id": "webhook-telegram",
+      "name": "Webhook: Telegram Update",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "kairikos-telegram",
+        "responseMode": "onReceived",
+        "responseData": {
+          "responseCode": 200,
+          "responseBody": "",
+          "responseHeaders": {
+            "values": []
+          }
+        },
+        "options": {
+          "rawBody": false
+        }
+      },
+      "webhookId": "d132930b-4a1f-4621-90c5-505248340430"
+    },
+    {
+      "id": "extract-input",
+      "name": "Extract Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst body = item.body || {};\nconst query = item.query || {};\nconst connectionId = (query.connectionId || '').toString().trim();\nconst message = body.message || body.edited_message || null;\nconst text = message && typeof message.text === 'string' ? message.text.trim() : '';\nconst chatId = message && message.chat ? message.chat.id : null;\nconst errorCode = !connectionId ? 'missing_connection_id' : (!text || chatId === null ? 'not_a_text_message' : '');\nreturn [{ json: { _error: errorCode, connectionId, chatId, text } }];"
+      }
+    },
+    {
+      "id": "has-input?",
+      "name": "Has Valid Input?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json._error === '' }}",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "portal-reply",
+      "name": "POST /api/internal/channels/telegram/reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        -80
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/channels/telegram/reply",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ connectionId: $json.connectionId, chatId: $json.chatId, text: $json.text }) }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "has-reply",
+      "name": "Has Reply To Send?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        880,
+        -80
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.ok === true && typeof $json.reply === 'string' && $json.reply.trim().length > 0 }}",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "send-telegram",
+      "name": "Send Telegram Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        -80
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/channels/telegram/send",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ connectionId: $('Extract Input').first().json.connectionId, chatId: $('Extract Input').first().json.chatId, text: $json.reply }) }}",
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook: Telegram Update": {
+      "main": [
+        [
+          {
+            "node": "Extract Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Input": {
+      "main": [
+        [
+          {
+            "node": "Has Valid Input?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Valid Input?": {
+      "main": [
+        [
+          {
+            "node": "POST /api/internal/channels/telegram/reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "POST /api/internal/channels/telegram/reply": {
+      "main": [
+        [
+          {
+            "node": "Has Reply To Send?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Reply To Send?": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveExecutionProgress": true
+  }
+}

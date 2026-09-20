@@ -11,15 +11,32 @@ import { logError } from './observability';
 // rest, called from GET /api/cron/classify-leads (wired into
 // scripts/scheduler.sh's ENDPOINTS).
 //
-// "Due" = ChatbotConversation.outcome IS NOT NULL (the conversation is
-// closed — classifying a still-open chat would score an incomplete
-// signal) AND leadsClassifiedAt IS NULL (never run through the classifier)
-// AND the client has 'leads' contracted. A conversation that never
-// receives an outcome is never classified in v1 — known limitation,
-// documented in the schema comment on leadsClassifiedAt, not fixed here.
+// "Due" = leadsClassifiedAt IS NULL (nunca clasificada), el cliente tiene
+// 'leads' contratado, y la conversación está terminada. Terminada significa
+// una de dos:
+//
+//   • outcome IS NOT NULL — alguien la cerró (el motor marca 'escalated' al
+//     derivar a una persona), o
+//   • empezó hace más de CONVERSATION_STALE_HOURS horas.
+//
+// Lo segundo se añadió el 20/09/2026 y cierra un agujero de producto: la
+// mayoría de las conversaciones NUNCA reciben outcome —el motor solo lo pone
+// al escalar—, así que con la regla anterior una conversación con intención
+// de compra clarísima no se clasificaba jamás y su lead se perdía sin rastro.
+//
+// Es el momento de INICIO y no el de última actividad porque
+// ChatbotConversation no tiene columna de actualización, y `duration` no se
+// puede sumar dentro de un where de Prisma. Por eso el margen es generoso:
+// una conversación que empezó hace dos horas no va a continuar, y si
+// continuara, el turno nuevo llega después de haberla clasificado — el lead
+// ya existe y ingestClassifiedLead no lo duplica.
 // =============================================================================
 
 const SWEEP_BATCH_SIZE = 200;
+
+/** Desde que empieza una conversación, cuánto se espera antes de darla por
+ *  terminada aunque nadie la haya cerrado. Ver la cabecera. */
+export const CONVERSATION_STALE_HOURS = 2;
 
 export interface ClassificationSweepResult {
   /** Conversations that matched the "due" query this tick. */
@@ -134,9 +151,12 @@ export async function sweepDueConversationsForClassification(
 ): Promise<ClassificationSweepResult> {
   const conversations = await prisma.chatbotConversation.findMany({
     where: {
-      outcome: { not: null },
       leadsClassifiedAt: null,
       client: { clientProducts: { some: { status: 'active', product: { code: 'leads' } } } },
+      OR: [
+        { outcome: { not: null } },
+        { startedAt: { lt: new Date(Date.now() - CONVERSATION_STALE_HOURS * 60 * 60 * 1000) } },
+      ],
     },
     select: { id: true, clientId: true, tenantId: true, outcome: true, transcript: true, channel: true },
     orderBy: { startedAt: 'asc' },

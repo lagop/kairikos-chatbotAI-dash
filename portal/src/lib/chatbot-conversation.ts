@@ -4,6 +4,8 @@ import { buildChatbotContext, type BotInstanceRef } from './chatbot-config';
 import { generateBotReply, type ConversationTurn } from './chatbot-reply-ai';
 import { retrieveKnowledge } from './chatbot-knowledge';
 import { botShouldReply } from './chatbot-handoff';
+import { logError } from './observability';
+import { consumeMessageAllowance } from './chatbot-usage';
 
 // =============================================================================
 // Fase 1.2 — orquestación de un turno de conversación.
@@ -79,6 +81,10 @@ export type ReplyToIncomingMessageResult =
    *  queda guardado, pero no hay respuesta que entregar: contesta el
    *  humano desde el portal. Quien llama (n8n) no debe enviar nada. */
   | { ok: true; skipped: true; reason: 'human_handoff'; conversationId: string }
+  /** El chatbot agotó su tope de mensajes del mes (ver chatbot-usage.ts).
+   *  El turno del cliente queda guardado; no se llama al modelo. Quien
+   *  llama no debe enviar nada NI reintentar: mañana sigue agotado. */
+  | { ok: true; skipped: true; reason: 'monthly_cap_reached'; conversationId: string }
   | { ok: false; error: string; conversationId: string };
 
 interface ExistingConversation {
@@ -215,6 +221,39 @@ export async function replyToIncomingMessage(
       now,
     );
     return { ok: true, skipped: true, reason: 'human_handoff', conversationId };
+  }
+
+  // El tope de mensajes del mes: después de descartar los casos que no
+  // gastan (arriba, el traspaso a una persona) y ANTES de pedir
+  // configuración, conocimiento y respuesta, que es lo que cuesta dinero.
+  // Sin instancia no se puede contar —no se sabe de qué contratación es—, y
+  // entonces se deja pasar: el aislamiento por chatbot ya falló antes que
+  // esto y no es aquí donde se arregla.
+  if (input.instance) {
+    const allowance = await consumeMessageAllowance(prisma, {
+      clientProductId: input.instance.clientProductId,
+      clientId: input.clientId,
+      tenantId: input.tenantId,
+      tier: input.instance.tier,
+    }, now);
+    if (!allowance.allowed) {
+      const conversationId = await persist(
+        prisma,
+        input,
+        existing,
+        [...priorTranscript, userEntry],
+        existing?.outcome ?? null,
+        existing?.handoffRequestedAt ?? null,
+        now,
+      );
+      logError(
+        'chatbot_usage.monthly_cap_reached',
+        new Error('monthly_cap_reached'),
+        { clientId: input.clientId, clientProductId: input.instance.clientProductId, used: allowance.used, cap: allowance.cap },
+        'warn',
+      );
+      return { ok: true, skipped: true, reason: 'monthly_cap_reached', conversationId };
+    }
   }
 
   // Fase 3 — la configuración y el material relevante se piden a la vez:

@@ -48,18 +48,31 @@ Cada endpoint debe ser idempotente y seguro de llamar más veces de las que nece
 porque es exactamente lo que va a pasar. La lógica de "¿toca ya?" vive en TypeScript
 (patrón `isDigestDue` / `isProspectingRunDue`), nunca en la cadencia del scheduler.
 
-### 2. Una variable de entorno nueva necesita tres sitios, no uno
+### 2. Una variable de entorno nueva necesita CUATRO sitios, no tres
 
 ```
-portal/.env.example              la documenta
-.env de la VPS                   tiene el valor real
-docker-compose.yml               la pasa al contenedor  ← el que se olvida
+portal/.env.example                       la documenta
+.github/workflows/deploy.yml (environment-variables:)   el que casi siempre se olvida
+.env de la VPS                            tiene el valor real — pero Hostinger lo REESCRIBE
+                                           entero en cada deploy desde la lista de arriba
+docker-compose.yml                        la pasa al contenedor
 ```
 
 Docker Compose **no** expone automáticamente todo el `.env` al contenedor: cada variable
 tiene que estar listada en el bloque `environment:` del servicio `app`. Si falta ahí, el
 contenedor nunca la ve aunque esté correctamente puesta en la VPS.
 (`GOOGLE_PLACES_API_KEY` estuvo así desde su Fase A hasta que se detectó.)
+
+Y hay un cuarto sitio que no es obvio desde el código: el deploy de Hostinger
+(`hostinger/deploy-on-vps`, en `deploy.yml`) **reescribe el `.env` de la VPS entero** en cada
+deploy, a partir de su propio bloque `environment-variables:`. Poner el valor a mano por SSH
+en la VPS "funciona" hasta el siguiente deploy normal, que lo vuelve a vaciar sin avisar.
+Mordió tres veces ya: `STRIPE_CREDENTIAL_ENCRYPTION_KEY`/`STRIPE_WEBHOOK_SECRET` (añadidas a
+mano, desaparecieron en el siguiente deploy) y, el 20/09/2026, `N8N_WEBCHAT_URL` /
+`N8N_TELEGRAM_WEBHOOK_BASE_URL` — ninguna de las dos estuvo jamás en `deploy.yml`, así que el
+widget web y el webhook de Telegram nunca funcionaron en producción pese a estar
+correctamente escritas en `docker-compose.yml`. Antes de dar una variable nueva por
+desplegada, comprobar que está en `deploy.yml`, no solo en `docker-compose.yml`.
 
 ### 3. `prisma migrate dev` está roto en este repo
 
@@ -85,6 +98,35 @@ es literalmente `"clientId"`, no `"client_id"`. Comprueba el modelo antes de esc
 esta base de datos: todo entra por rutas `/api/internal/*` autenticadas con `PORTAL_API_KEY`
 en la cabecera `x-kairikos-internal-key`, y todo sale por webhooks salientes
 (`channel-webhook.ts`, con reintentos y backoff propios).
+
+> **Esta frase describía un objetivo, no la realidad, hasta el 20/09/2026.** Una auditoría de
+> la instancia real encontró que el turno del bot lo generaba n8n —prompt escrito a mano en un
+> nodo Code y llamada a OpenAI— y que el motor del portal (`/api/internal/channels/*/reply`,
+> `chatbot-conversation.ts`) no lo llamaba nadie. Los seis canales (Telegram, widget web,
+> WhatsApp, Messenger e Instagram de Meta) ya están convertidos y con verificación de
+> firma HMAC delante donde aplica. **Instagram es el único sin probar contra tráfico
+> real**: sus permisos (`instagram_basic`/`instagram_manage_messages`) piden revisión de
+> Meta, a diferencia de los de Messenger, que no la necesitaron — el código está listo,
+> falta el permiso. Si tocas canales, mira antes `automations/desplegado/` —que es lo que
+> de verdad corre— y `docs/plan-motor-chatbot.md`.
+>
+> Y hay un prerrequisito que invalida cualquier prueba mientras falte: `PORTAL_API_URL` y
+> `PORTAL_API_KEY` **no están definidas en los contenedores de n8n**, así que ninguna llamada
+> de n8n al portal ha funcionado nunca. Ver el README de `automations/desplegado/`.
+>
+> **Incidente de seguridad encontrado y resuelto el 20/09/2026**: el flujo de WhatsApp tenía
+> la `PORTAL_API_KEY` real escrita en texto plano (corregido para usar `$env`, como el resto
+> de flujos). La clave **ya se rotó** — el valor viejo, que llegó a estar en el historial de
+> git de una rama ya empujada, quedó inútil. `META_APP_SECRET` y el verify token de ese mismo
+> flujo siguen hardcodeados y sin rotar — no se pueden tocar sin pasar por el panel de Meta.
+> Ver el README de `automations/desplegado/` y `docs/plan-motor-chatbot.md`.
+>
+> **Dos bugs reales aparecieron al revisar los canales que sí llegaban a producción**: el
+> widget web nunca funcionó porque `N8N_WEBCHAT_URL` faltaba en `deploy.yml` (ver la trampa de
+> abajo), y Telegram descartaba en silencio TODO mensaje real porque el id de conexión iba
+> como segmento de ruta en la URL del webhook, pero el flujo de n8n lo lee de la query string
+> — confirmado contra una ejecución real que Telegram sí disparó y que se perdió igual. Los
+> dos, arreglados; detalle en `docs/plan-motor-chatbot.md`.
 
 **El cliente nunca se toma del cuerpo de la petición.** Las rutas internas resuelven
 `clientId`/`tenantId` desde un identificador externo (un `conversationId`, un

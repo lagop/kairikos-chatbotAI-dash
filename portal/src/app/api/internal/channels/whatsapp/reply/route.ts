@@ -87,6 +87,17 @@ export async function POST(req: NextRequest) {
         handledBy: 'human',
       });
     }
+    // El tope del mes, igual que el traspaso: 200 con reply nulo. NO 503,
+    // porque un 503 invita a reintentar y el tope seguirá agotado; el turno
+    // del cliente ya quedó guardado. Ver lib/chatbot-usage.ts.
+    if (result.reason === 'monthly_cap_reached') {
+      return NextResponse.json({
+        ok: true,
+        conversationId: result.conversationId,
+        reply: null,
+        reason: 'monthly_cap_reached',
+      });
+    }
     // El turno del cliente sí quedó guardado; lo que falta es la clave de IA.
     return NextResponse.json(
       { error: 'service_unavailable', detail: 'ai_not_configured', conversationId: result.conversationId },

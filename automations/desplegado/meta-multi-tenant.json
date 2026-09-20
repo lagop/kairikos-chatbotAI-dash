@@ -1,0 +1,1047 @@
+{
+  "id": "aGCDFOHwmq5k1X3O",
+  "name": "Kairikos Meta Multi-tenant",
+  "active": true,
+  "nodes": [
+    {
+      "id": "webhook-verify",
+      "name": "Webhook: Verify (GET)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        -300
+      ],
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "kairikos-whatsapp",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "080fa901-4715-443f-bef1-aa01fb16814a"
+    },
+    {
+      "id": "check-verify-token",
+      "name": "Check Verify Token",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        220,
+        -300
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.query['hub.mode'] === 'subscribe' && $json.query['hub.verify_token'] === 'MESSENGER-VERIFY-TOKEN-REDACTED.ejemplo' }}",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "respond-challenge",
+      "name": "Respond: Challenge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        440,
+        -360
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.query['hub.challenge'] }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "respond-verify-forbidden",
+      "name": "Respond: Forbidden",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        440,
+        -240
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "Forbidden",
+        "options": {
+          "responseCode": 403
+        }
+      }
+    },
+    {
+      "id": "webhook-messages",
+      "name": "Webhook: Messages (POST)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "kairikos-whatsapp",
+        "responseMode": "onReceived",
+        "responseData": {
+          "responseCode": 200,
+          "responseBody": "",
+          "responseHeaders": {
+            "values": []
+          }
+        },
+        "options": {
+          "rawBody": true
+        }
+      },
+      "webhookId": "0f905f15-1ac5-4c45-a322-787e16d721e6"
+    },
+    {
+      "id": "extract-input",
+      "name": "Extract Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || {};\nconst entry = (body.entry && body.entry[0]) || {};\nconst change = (entry.changes && entry.changes[0]) || {};\nconst value = change.value || {};\nconst phoneNumberId = (value.metadata && value.metadata.phone_number_id) || '';\nconst message = (value.messages && value.messages[0]) || null;\nconst from = message ? message.from : '';\nconst text = message && message.text && typeof message.text.body === 'string' ? message.text.body.trim() : '';\nconst errorCode = !phoneNumberId ? 'missing_phone_number_id' : (!message || !text ? 'not_a_text_message' : '');\nreturn [{ json: { _error: errorCode, phoneNumberId, from, text } }];"
+      }
+    },
+    {
+      "id": "has-input?",
+      "name": "Has Valid Input?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json._error === '' }}",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "get-context",
+      "name": "Get Client Context",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        -80
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/channels/whatsapp/context",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ phoneNumberId: $json.phoneNumberId }) }}",
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "context-ok?",
+      "name": "Context OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        880,
+        -80
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.ok === true }}",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "build-system-prompt",
+      "name": "Build System Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        -160
+      ],
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nconst businessName = ctx.businessName || 'nuestro negocio';\nconst prompts = Array.isArray(ctx.suggestedPrompts) ? ctx.suggestedPrompts : [];\nconst systemPrompt = [\n  `Eres el asistente virtual de \"${businessName}\", respondiendo por WhatsApp.`,\n  'Tu objetivo:',\n  '1. Responder dudas del usuario con tono cercano y profesional, en espanol, de forma breve (maximo 60 palabras salvo que pidan mas detalle).',\n  '2. Si detectas intencion de contacto (pedir cita, presupuesto, hablar con alguien, reservar), pide amablemente nombre y datos de contacto, y confirma que el equipo respondera pronto.',\n  '3. NUNCA inventes precios, horarios, servicios ni datos concretos que no te hayan dado explicitamente -- si no lo sabes, dilo con honestidad y ofrece derivar a un humano.',\n  prompts.length ? ('Temas frecuentes que este negocio espera que puedas ayudar a resolver: ' + prompts.join(', ') + '.') : '',\n].filter(Boolean).join('\\n');\nreturn [{ json: { systemPrompt, businessName } }];"
+      }
+    },
+    {
+      "id": "call-llm",
+      "name": "Call LLM (OpenAI via HTTP)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        -160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.OPENAI_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o-mini', temperature: 0.4, max_tokens: 350, messages: [ { role: 'system', content: $json.systemPrompt }, { role: 'user', content: $('Extract Input').first().json.text } ] }) }}",
+        "options": {
+          "timeout": 20000,
+          "retry": {
+            "maxTries": 2,
+            "waitBetween": 1500
+          },
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        -160
+      ],
+      "parameters": {
+        "jsCode": "const llm = $input.first().json;\nconst ctx = $('Build System Prompt').first().json;\nconst input = $('Extract Input').first().json;\nconst msgLower = (input.text || '').toLowerCase();\nconst contactIntent = /(cita|presupuesto|contacto|llamar|llamame|reuni[oó]n|hablar|contratar|me interesa|quiero|necesito|reservar|agendar|disponibilidad|horario|email|correo|tel[eé]fono|whatsapp)/i.test(msgLower);\nlet reply = '';\nlet mode = 'llm';\nlet errorDetail = null;\nif (llm && llm.choices && Array.isArray(llm.choices) && llm.choices[0] && llm.choices[0].message && llm.choices[0].message.content) {\n  reply = llm.choices[0].message.content.toString().trim();\n} else {\n  mode = 'fallback';\n  errorDetail = (llm && llm.error && llm.error.message) || 'unknown';\n  reply = contactIntent\n    ? ('Gracias por escribir. Para ayudarte mejor, cuentame tu nombre y un email o telefono de contacto -- alguien de ' + ctx.businessName + ' te respondera en breve.')\n    : ('Gracias por tu mensaje. Ahora mismo no puedo darte una respuesta detallada, pero el equipo de ' + ctx.businessName + ' lo revisara. Si quieres, dejame tus datos de contacto.');\n}\nreturn [{ json: { phoneNumberId: input.phoneNumberId, from: input.from, text: input.text, reply, mode, contactIntent, error: errorDetail } }];"
+      }
+    },
+    {
+      "id": "send-whatsapp",
+      "name": "Send WhatsApp Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        -160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/channels/whatsapp/send",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ phoneNumberId: $json.phoneNumberId, to: $json.from, text: $json.reply }) }}",
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "log-user-message",
+      "name": "Log User Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        -160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/channels/whatsapp/message",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ phoneNumberId: $('Format Response').first().json.phoneNumberId, from: $('Format Response').first().json.from, role: 'user', content: $('Format Response').first().json.text }) }}",
+        "options": {
+          "timeout": 8000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "log-bot-message",
+      "name": "Log Bot Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2200,
+        -160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/channels/whatsapp/message",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify(Object.assign({ phoneNumberId: $('Format Response').first().json.phoneNumberId, from: $('Format Response').first().json.from, role: 'assistant', content: $('Format Response').first().json.reply }, $('Format Response').first().json.contactIntent ? { outcome: 'escalated' } : {})) }}",
+        "options": {
+          "timeout": 8000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "route-is-whatsapp",
+      "name": "Is WhatsApp?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.body.object === 'whatsapp_business_account' }}",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "route-is-messenger",
+      "name": "Is Messenger?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        440,
+        400
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.body.object === 'page' }}",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "route-is-instagram",
+      "name": "Is Instagram?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        440,
+        800
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.body.object === 'instagram' }}",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "msgr-extract-input",
+      "name": "Extract Input (Messenger)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        400
+      ],
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || {};\nconst entry = (body.entry && body.entry[0]) || {};\nconst pageId = entry.id || '';\nconst messaging = (entry.messaging && entry.messaging[0]) || null;\nconst senderId = messaging && messaging.sender ? messaging.sender.id : '';\nconst text = messaging && messaging.message && typeof messaging.message.text === 'string' ? messaging.message.text.trim() : '';\nconst errorCode = !pageId ? 'missing_page_id' : (!senderId || !text ? 'not_a_text_message' : '');\nreturn [{ json: { _error: errorCode, pageId, senderId, text } }];"
+      }
+    },
+    {
+      "id": "msgr-has-input",
+      "name": "Has Valid Input? (Messenger)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        880,
+        400
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json._error === '' }}",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ig-extract-input",
+      "name": "Extract Input (Instagram)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        800
+      ],
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || {};\nconst entry = (body.entry && body.entry[0]) || {};\nconst igUserId = entry.id || '';\nconst messaging = (entry.messaging && entry.messaging[0]) || null;\nconst senderId = messaging && messaging.sender ? messaging.sender.id : '';\nconst text = messaging && messaging.message && typeof messaging.message.text === 'string' ? messaging.message.text.trim() : '';\nconst errorCode = !igUserId ? 'missing_ig_user_id' : (!senderId || !text ? 'not_a_text_message' : '');\nreturn [{ json: { _error: errorCode, igUserId, senderId, text } }];"
+      }
+    },
+    {
+      "id": "ig-has-input",
+      "name": "Has Valid Input? (Instagram)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        880,
+        800
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json._error === '' }}",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "verify-signature-multitenant",
+      "name": "Verify Signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        150,
+        0
+      ],
+      "parameters": {
+        "jsCode": "function sha256(bytes) {\n  const K = [\n    0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,\n    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,\n    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,\n    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,\n    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,\n    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,\n    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,\n    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2,\n  ];\n  let h0=0x6a09e667,h1=0xbb67ae85,h2=0x3c6ef372,h3=0xa54ff53a,h4=0x510e527f,h5=0x9b05688c,h6=0x1f83d9ab,h7=0x5be0cd19;\n  const bitLen = bytes.length * 8;\n  const withOne = new Uint8Array(bytes.length + 1);\n  withOne.set(bytes);\n  withOne[bytes.length] = 0x80;\n  let totalLen = withOne.length;\n  while (totalLen % 64 !== 56) totalLen++;\n  const padded = new Uint8Array(totalLen + 8);\n  padded.set(withOne);\n  const view = new DataView(padded.buffer);\n  view.setUint32(padded.length - 8, Math.floor(bitLen / 4294967296), false);\n  view.setUint32(padded.length - 4, bitLen >>> 0, false);\n  const rotr = (x, n) => ((x >>> n) | (x << (32 - n))) >>> 0;\n  const w = new Uint32Array(64);\n  for (let offset = 0; offset < padded.length; offset += 64) {\n    for (let i = 0; i < 16; i++) w[i] = view.getUint32(offset + i * 4, false);\n    for (let i = 16; i < 64; i++) {\n      const s0 = rotr(w[i-15],7) ^ rotr(w[i-15],18) ^ (w[i-15] >>> 3);\n      const s1 = rotr(w[i-2],17) ^ rotr(w[i-2],19) ^ (w[i-2] >>> 10);\n      w[i] = (w[i-16] + s0 + w[i-7] + s1) >>> 0;\n    }\n    let a=h0,b=h1,c=h2,d=h3,e=h4,f=h5,g=h6,h=h7;\n    for (let i = 0; i < 64; i++) {\n      const S1 = rotr(e,6) ^ rotr(e,11) ^ rotr(e,25);\n      const ch = (e & f) ^ (~e & g);\n      const temp1 = (h + S1 + ch + K[i] + w[i]) >>> 0;\n      const S0 = rotr(a,2) ^ rotr(a,13) ^ rotr(a,22);\n      const maj = (a & b) ^ (a & c) ^ (b & c);\n      const temp2 = (S0 + maj) >>> 0;\n      h=g; g=f; f=e; e=(d+temp1)>>>0; d=c; c=b; b=a; a=(temp1+temp2)>>>0;\n    }\n    h0=(h0+a)>>>0; h1=(h1+b)>>>0; h2=(h2+c)>>>0; h3=(h3+d)>>>0;\n    h4=(h4+e)>>>0; h5=(h5+f)>>>0; h6=(h6+g)>>>0; h7=(h7+h)>>>0;\n  }\n  const out = new Uint8Array(32);\n  const outView = new DataView(out.buffer);\n  [h0,h1,h2,h3,h4,h5,h6,h7].forEach((v, i) => outView.setUint32(i * 4, v, false));\n  return out;\n}\nfunction hmacSha256(keyBytes, msgBytes) {\n  const blockSize = 64;\n  let key = keyBytes;\n  if (key.length > blockSize) key = sha256(key);\n  const padded = new Uint8Array(blockSize);\n  padded.set(key);\n  const ipad = new Uint8Array(blockSize);\n  const opad = new Uint8Array(blockSize);\n  for (let i = 0; i < blockSize; i++) { ipad[i] = padded[i] ^ 0x36; opad[i] = padded[i] ^ 0x5c; }\n  const concat = (a, b) => { const o = new Uint8Array(a.length + b.length); o.set(a); o.set(b, a.length); return o; };\n  const inner = sha256(concat(ipad, msgBytes));\n  return sha256(concat(opad, inner));\n}\nfunction hmacSha256Hex(secretString, msgBuffer) {\n  const keyBytes = Buffer.from(secretString, 'utf8');\n  const digest = hmacSha256(keyBytes, msgBuffer);\n  return Buffer.from(digest).toString('hex');\n}\nconst secret = \"META-APP-SECRET-REDACTED.ejemplo\";\nif (!secret) { throw new Error('META_APP_SECRET not configured'); }\nconst header = $input.first().json.headers['x-hub-signature-256'] || '';\nconst expectedPrefix = 'sha256=';\nconst rawBuffer = $input.first().binary?.data?.data\n  ? Buffer.from($input.first().binary.data.data, 'base64')\n  : Buffer.from(JSON.stringify($input.first().json), 'utf8');\nconst digest = hmacSha256Hex(secret, rawBuffer);\nconst expected = expectedPrefix + digest;\n// Constant-time compare, implemented by hand — the equivalent\n// built-in comparison function lives in the disallowed 'crypto' module.\nlet valid = header.length === expected.length;\nlet diff = 0;\nfor (let i = 0; i < expected.length; i++) {\n  diff |= (header.charCodeAt(i) || 0) ^ expected.charCodeAt(i);\n}\nvalid = valid && diff === 0;\nreturn [{ json: { valid, body: JSON.parse(rawBuffer.toString('utf8')) } }];"
+      }
+    },
+    {
+      "id": "check-signature-valid-multitenant",
+      "name": "Check Signature Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [
+        300,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "signature-valid-condition",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              },
+              "leftValue": "={{ $json.valid }}"
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "msgr-reply",
+      "name": "POST /api/internal/channels/messenger/reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        400
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/channels/messenger/reply",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ pageId: $json.pageId, senderId: $json.senderId, text: $json.text }) }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "msgr-has-reply",
+      "name": "Has Reply To Send? (Messenger)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1320,
+        400
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.ok === true && typeof $json.reply === 'string' && $json.reply.trim().length > 0 }}",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "msgr-send-reply",
+      "name": "Send Reply (Messenger)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        400
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/channels/messenger/send",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ pageId: $('Extract Input (Messenger)').first().json.pageId, recipientId: $('Extract Input (Messenger)').first().json.senderId, text: $json.reply }) }}",
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "ig-reply",
+      "name": "POST /api/internal/channels/instagram/reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        800
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/channels/instagram/reply",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ igUserId: $json.igUserId, senderId: $json.senderId, text: $json.text }) }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "ig-has-reply",
+      "name": "Has Reply To Send? (Instagram)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1320,
+        800
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.ok === true && typeof $json.reply === 'string' && $json.reply.trim().length > 0 }}",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ig-send-reply",
+      "name": "Send Reply (Instagram)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        800
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PORTAL_API_URL }}/api/internal/channels/instagram/send",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kairikos-Internal-Key",
+              "value": "={{ $env.PORTAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ igUserId: $('Extract Input (Instagram)').first().json.igUserId, recipientId: $('Extract Input (Instagram)').first().json.senderId, text: $json.reply }) }}",
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook: Verify (GET)": {
+      "main": [
+        [
+          {
+            "node": "Check Verify Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Verify Token": {
+      "main": [
+        [
+          {
+            "node": "Respond: Challenge",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond: Forbidden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook: Messages (POST)": {
+      "main": [
+        [
+          {
+            "node": "Verify Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Input": {
+      "main": [
+        [
+          {
+            "node": "Has Valid Input?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Valid Input?": {
+      "main": [
+        [
+          {
+            "node": "Get Client Context",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Get Client Context": {
+      "main": [
+        [
+          {
+            "node": "Context OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Context OK?": {
+      "main": [
+        [
+          {
+            "node": "Build System Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Build System Prompt": {
+      "main": [
+        [
+          {
+            "node": "Call LLM (OpenAI via HTTP)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call LLM (OpenAI via HTTP)": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send WhatsApp Reply": {
+      "main": [
+        [
+          {
+            "node": "Log User Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log User Message": {
+      "main": [
+        [
+          {
+            "node": "Log Bot Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is WhatsApp?": {
+      "main": [
+        [
+          {
+            "node": "Extract Input",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Messenger?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Messenger?": {
+      "main": [
+        [
+          {
+            "node": "Extract Input (Messenger)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Instagram?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Instagram?": {
+      "main": [
+        [
+          {
+            "node": "Extract Input (Instagram)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Extract Input (Messenger)": {
+      "main": [
+        [
+          {
+            "node": "Has Valid Input? (Messenger)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Valid Input? (Messenger)": {
+      "main": [
+        [
+          {
+            "node": "POST /api/internal/channels/messenger/reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Extract Input (Instagram)": {
+      "main": [
+        [
+          {
+            "node": "Has Valid Input? (Instagram)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Valid Input? (Instagram)": {
+      "main": [
+        [
+          {
+            "node": "POST /api/internal/channels/instagram/reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Verify Signature": {
+      "main": [
+        [
+          {
+            "node": "Check Signature Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Signature Valid": {
+      "main": [
+        [
+          {
+            "node": "Is WhatsApp?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "POST /api/internal/channels/messenger/reply": {
+      "main": [
+        [
+          {
+            "node": "Has Reply To Send? (Messenger)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Reply To Send? (Messenger)": {
+      "main": [
+        [
+          {
+            "node": "Send Reply (Messenger)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "POST /api/internal/channels/instagram/reply": {
+      "main": [
+        [
+          {
+            "node": "Has Reply To Send? (Instagram)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Reply To Send? (Instagram)": {
+      "main": [
+        [
+          {
+            "node": "Send Reply (Instagram)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

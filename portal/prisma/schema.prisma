@@ -125,6 +125,7 @@ model ChatbotClient {
   supportRequests                SupportRequest[]
   tenant                         Tenant?                         @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   clientProducts                 ClientProduct[]
+  chatbotUsages                  ChatbotUsage[]
   clientSites                    ClientSite[]
   productAudits                  ClientProductAudit[]
   subscriptions                  Subscription[]
@@ -540,6 +541,7 @@ model Tenant {
   supportRequests                SupportRequest[]
   n8nExecutions                  N8nExecution[]
   clientProducts                 ClientProduct[]
+  chatbotUsages                  ChatbotUsage[]
   clientSites                    ClientSite[]
   productAudits                  ClientProductAudit[]
   subscriptions                  Subscription[]
@@ -803,6 +805,7 @@ model ClientProduct {
   chatWebEmbeds              ChatWebEmbed[]
   conversationDigests        ConversationDigest[]
   conversationDigestSchedule ConversationDigestSchedule?
+  chatbotUsage               ChatbotUsage?
   googleSeoConnection        GoogleSeoConnection?
   googleAnalyticsConnection  GoogleAnalyticsConnection?
 
@@ -3681,6 +3684,59 @@ model SeoContentDraft {
   @@index([profileId])
   @@index([clientId])
   @@index([status])
+}
+
+// =============================================================================
+// Chatbot — el tope de mensajes que el bot contesta al mes, por contratación.
+//
+// POR QUÉ EXISTE: cada mensaje contestado es una llamada de pago al modelo, y
+// hasta ahora no había techo en ningún sitio. El webhook del widget está
+// abierto a internet: cualquiera con el token público de un widget podía
+// gastar sin límite. Un tope no es una optimización, es lo que separa una
+// factura previsible de una sorpresa.
+//
+// Singleton con fila fija (CHATBOT_SETTINGS_SINGLETON_ID en
+// lib/chatbot-settings.ts), mismo criterio que SeoSettings: una columna
+// tipada por valor en vez de una bolsa JSON. Un tope por tarifa porque el
+// coste es lineal en mensajes y el precio de la tarifa es lo que lo paga.
+// =============================================================================
+model ChatbotSettings {
+  id                       String   @id @db.Uuid
+  monthlyMessageCapStarter Int      @default(2000) @map("monthly_message_cap_starter")
+  monthlyMessageCapPro     Int      @default(6000) @map("monthly_message_cap_pro")
+  monthlyMessageCapPremium Int      @default(15000) @map("monthly_message_cap_premium")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+  updatedBy                String?  @map("updated_by")
+}
+
+// =============================================================================
+// Chatbot — cuánto lleva gastado ESTE chatbot este mes.
+//
+// Una fila por contratación, no por cliente: un cliente con dos chatbots
+// tiene dos topes, porque paga dos tarifas. Mismo patrón que
+// ProspectingCampaign.leadsFoundThisMonth + usageResetAt: el contador se
+// pone a cero cuando el mes cambia, en el momento de usarlo, sin cron.
+//
+// capOverride es la válvula del operador para un cliente concreto sin tocar
+// el tope de todos; null significa "el de su tarifa".
+// =============================================================================
+model ChatbotUsage {
+  id                String   @id @default(uuid()) @db.Uuid
+  clientProductId   String   @unique @map("client_product_id") @db.Uuid
+  clientId          String   @map("client_id")
+  tenantId          String?  @map("tenant_id") @db.Uuid
+  messagesThisMonth Int      @default(0) @map("messages_this_month")
+  usageResetAt      DateTime @default(now()) @map("usage_reset_at")
+  capOverride       Int?     @map("cap_override")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  clientProduct ClientProduct @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
+  client        ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant        Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@index([tenantId])
 }
 
 // =============================================================================

@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { buildChatbotContext } from '@/lib/chatbot-config';
 import { resolveChatbotForChannel } from '@/lib/client-product-access';
+import { InMemoryRateLimiter } from '@/lib/operator-crypto';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -9,20 +10,22 @@ export const runtime = 'nodejs';
 // =============================================================================
 // Canales Fase 4 — GET /api/public/channels/web/config?token=wgt_...
 //
-// The ONLY route the widget bundle (public/widget/embed.js) calls on
-// the portal directly — everything else (chat traffic itself) goes
-// straight to n8n, per the plan's "el widget NO pasa por el portal para
-// el tráfico de mensajes" design. Genuinely public/unauthenticated: it
-// runs in an anonymous visitor's browser on a THIRD-PARTY site, so it
-// can carry no shared secret. publicToken is the only credential and is
-// deliberately non-sensitive by design (same posture as an analytics
-// write key) — this route only ever returns display copy plus the
-// (non-secret) n8n webchat endpoint URL, never anything from
-// /api/internal/*.
+// Genuinely public/unauthenticated: it runs in an anonymous visitor's
+// browser on a THIRD-PARTY site, so it can carry no shared secret.
+// publicToken is the only credential and is deliberately non-sensitive
+// by design (same posture as an analytics write key).
 //
 // CORS: Access-Control-Allow-Origin: * — the whole point of this route
 // is to be called cross-origin from whatever domain a client pastes the
 // snippet into, which is unknown ahead of time.
+//
+// Fase 2b — chatEndpoint used to be N8N_WEBCHAT_URL: the widget's chat
+// traffic went straight to n8n, bypassing the portal entirely (n8n only
+// translated the response). It now points back at this same origin's own
+// /api/public/channels/web/message, which calls replyToIncomingMessage
+// directly — no n8n, no PORTAL_API_URL/PORTAL_API_KEY in the loop for
+// this channel anymore. embed.js didn't need to change: it already just
+// POSTs to whatever chatEndpoint this route hands it.
 // =============================================================================
 
 const CORS_HEADERS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS' };
@@ -31,10 +34,21 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
 }
 
+/** Abierta a internet y con CORS: la llama el navegador de cada visitante.
+ *  Es de lectura, así que el límite es holgado — está para frenar un bucle,
+ *  no a un visitante con varias pestañas. Se cuenta por token de widget y no
+ *  por IP: detrás de una IP puede haber una oficina entera mirando la misma
+ *  web. */
+const tokenRateLimiter = new InMemoryRateLimiter(60 * 1000);
+const CONFIG_MAX_POR_MINUTO = 120;
+
 export async function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get('token');
   if (!token) {
     return NextResponse.json({ error: 'missing_token' }, { status: 400, headers: CORS_HEADERS });
+  }
+  if (!tokenRateLimiter.check(`widget-config:${token}`, CONFIG_MAX_POR_MINUTO)) {
+    return NextResponse.json({ error: 'too_many_requests' }, { status: 429, headers: CORS_HEADERS });
   }
   if (!isDatabaseConfigured) {
     return NextResponse.json({ error: 'service_unavailable' }, { status: 503, headers: CORS_HEADERS });
@@ -63,7 +77,7 @@ export async function GET(req: NextRequest) {
       suggestedPrompts: context.suggestedPrompts,
       primaryColor: embed.primaryColor,
       position: embed.position,
-      chatEndpoint: process.env.N8N_WEBCHAT_URL ?? null,
+      chatEndpoint: `${req.nextUrl.origin}/api/public/channels/web/message`,
     },
     { headers: CORS_HEADERS },
   );

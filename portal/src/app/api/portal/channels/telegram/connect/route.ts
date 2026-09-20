@@ -31,9 +31,11 @@ export const runtime = 'nodejs';
 // — the token is still in memory here, unencrypted, right after getMe
 // validated it, so the portal registers the webhook itself instead of
 // handing the raw token to n8n over the wire. The webhook URL is
-// per-connection (N8N_TELEGRAM_WEBHOOK_BASE_URL/<connectionId>), which
-// is how the multi-tenant n8n workflow tells which client an incoming
-// Telegram update belongs to. A setWebhook failure doesn't fail the
+// per-connection (N8N_TELEGRAM_WEBHOOK_BASE_URL?connectionId=<id>, a
+// QUERY parameter — n8n's "Extract Input" reads query.connectionId, its
+// webhook path itself is fixed), which is how the multi-tenant n8n
+// workflow tells which client an incoming Telegram update belongs to.
+// A setWebhook failure doesn't fail the
 // whole request — the credential IS valid (getMe already proved that)
 // — it's recorded as lastSyncError so the operator sees it
 // (/admin/portal/[clientId], Fase 5) and the client isn't left thinking
@@ -131,7 +133,18 @@ export async function POST(req: NextRequest) {
   const webhookBaseUrl = process.env.N8N_TELEGRAM_WEBHOOK_BASE_URL;
   let webhookWarning = false;
   if (webhookBaseUrl) {
-    const webhookResult = await setWebhook(botToken, `${webhookBaseUrl.replace(/\/$/, '')}/${connection.id}`);
+    // n8n's "Extract Input" node reads the connection id from the QUERY
+    // string (query.connectionId), not a path segment — its webhook path
+    // is a fixed literal, not a dynamic ":connectionId" route. A path
+    // segment here silently 404s the id away: confirmed against a real
+    // production execution where Telegram called the webhook but
+    // query/params both came back empty, so every connected client's
+    // messages were dropped at "missing_connection_id" before reaching
+    // the portal at all.
+    const webhookResult = await setWebhook(
+      botToken,
+      `${webhookBaseUrl.replace(/\/$/, '')}?connectionId=${encodeURIComponent(connection.id)}`,
+    );
     if (!webhookResult.ok) {
       webhookWarning = true;
       await prisma.telegramConnection

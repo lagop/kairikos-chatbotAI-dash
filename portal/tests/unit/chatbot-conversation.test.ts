@@ -17,6 +17,7 @@ const mockState = vi.hoisted(() => ({
   buildChatbotContext: vi.fn(),
   generateBotReply: vi.fn(),
   retrieveKnowledge: vi.fn(),
+  consumeMessageAllowance: vi.fn(),
 }));
 
 vi.mock('@/lib/chatbot-config', () => ({
@@ -32,6 +33,13 @@ vi.mock('@/lib/chatbot-reply-ai', () => ({
 // sobre la recuperación (que tiene los suyos en chatbot-knowledge.test.ts).
 vi.mock('@/lib/chatbot-knowledge', () => ({
   retrieveKnowledge: (...a: unknown[]) => mockState.retrieveKnowledge(...a),
+}));
+
+// El tope de mensajes del mes. Por defecto deja pasar: estos tests son sobre
+// qué queda escrito, no sobre el tope (que tiene los suyos en
+// chatbot-usage.test.ts).
+vi.mock('@/lib/chatbot-usage', () => ({
+  consumeMessageAllowance: (...a: unknown[]) => mockState.consumeMessageAllowance(...a),
 }));
 
 import { replyToIncomingMessage, readTranscriptTurns, dropDanglingRetry } from '@/lib/chatbot-conversation';
@@ -68,6 +76,7 @@ beforeEach(() => {
   mockState.findFirst.mockReset().mockResolvedValue(null);
   mockState.create.mockReset().mockResolvedValue({ id: 'conv_new' });
   mockState.update.mockReset().mockResolvedValue({ id: 'conv_existing' });
+  mockState.consumeMessageAllowance.mockReset().mockResolvedValue({ allowed: true, used: 1, cap: 2000 });
   mockState.buildChatbotContext.mockReset().mockResolvedValue({
     businessName: 'Clínica Orly',
     welcomeMessage: 'Hola',
@@ -456,5 +465,52 @@ describe('replyToIncomingMessage — un chatbot concreto', () => {
     expect(mockState.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ clientProductId: null }) }),
     );
+  });
+});
+
+describe('el tope de mensajes del mes', () => {
+  const CON_CHATBOT = {
+    ...BASE,
+    instance: { clientProductId: 'cp_a', tier: 'starter', clientSiteId: null },
+  };
+
+  it('agotado: no llama al modelo, guarda el turno del cliente y lo dice', async () => {
+    mockState.consumeMessageAllowance.mockResolvedValue({ allowed: false, used: 2000, cap: 2000 });
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const res = await replyToIncomingMessage(prismaMock, CON_CHATBOT);
+
+    expect(res).toEqual({ ok: true, skipped: true, reason: 'monthly_cap_reached', conversationId: 'conv_new' });
+    expect(mockState.generateBotReply).not.toHaveBeenCalled();
+    // El turno del cliente sí queda guardado: perder lo que escribió alguien
+    // porque su chatbot agotó el mes sería el peor de los fallos.
+    const guardado = transcriptOf(mockState.create.mock.calls[0][0]);
+    expect(guardado).toEqual([expect.objectContaining({ role: 'user', content: 'quiero pedir cita' })]);
+    spy.mockRestore();
+  });
+
+  it('se cuenta contra SU chatbot y con la tarifa de SU contratación', async () => {
+    await replyToIncomingMessage(prismaMock, CON_CHATBOT);
+    expect(mockState.consumeMessageAllowance).toHaveBeenCalledWith(
+      prismaMock,
+      { clientProductId: 'cp_a', clientId: 'c1', tenantId: 't1', tier: 'starter' },
+      NOW,
+    );
+  });
+
+  it('no se cuenta cuando una persona tiene la conversación: ese turno no gasta modelo', async () => {
+    mockState.findFirst.mockResolvedValue({
+      id: 'conv_existing',
+      startedAt: NOW,
+      duration: 10,
+      outcome: 'escalated',
+      transcript: [],
+      handoffRequestedAt: NOW,
+      handoffTakenAt: NOW,
+      handoffClosedAt: null,
+    });
+    const res = await replyToIncomingMessage(prismaMock, CON_CHATBOT);
+    expect('skipped' in res && res.reason).toBe('human_handoff');
+    expect(mockState.consumeMessageAllowance).not.toHaveBeenCalled();
   });
 });
