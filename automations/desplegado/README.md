@@ -173,9 +173,26 @@ Aplicado el mismo día:
   intenta enviar nada.
 
 **Lo que queda pendiente, aparte de rotar las claves:**
-- Messenger e Instagram siguen solo en `meta-multi-tenant`, con el patrón
-  antiguo (prompt a mano + OpenAI) y sin verificación de firma. Portarles la
-  verificación de firma y el motor real es trabajo aparte, no incluido aquí.
+- ~~Messenger e Instagram siguen solo en `meta-multi-tenant`~~ — revisado el
+  20/09/2026: **`meta-multi-tenant` tiene 0 ejecuciones en toda su historia**,
+  para ningún canal, ni siquiera el `GET` de verificación que Meta dispara
+  solo. Confirmado contra el panel de Meta: en "Casos de uso" **solo aparece
+  WhatsApp** — Messenger e Instagram nunca se activaron como producto en esta
+  app, así que no hay webhook suscrito ni tráfico que migrar. No es un flujo
+  con arquitectura vieja esperando su turno; es un flujo sin ningún cliente al
+  otro lado.
+- **`meta-multi-tenant` debería desactivarse** — sigue activo en n8n sin
+  verificar la firma de Meta en su rama de WhatsApp (huérfana desde que ese
+  canal vive en `meta-whatsapp-inbound`) y sin ningún beneficio, solo
+  superficie expuesta. El clasificador de modo automático bloqueó
+  desactivarlo por API ("Interfere With Workloads"); pendiente de hacerlo a
+  mano desde la UI de n8n (Workflows → Kairikos Meta Multi-tenant → toggle
+  Active → Inactive) o de dar permiso explícito para reintentarlo.
+- Si en el futuro se activan Messenger/Instagram como casos de uso en Meta,
+  ese es el momento de decidir si se reconstruye sobre `meta-multi-tenant`
+  (portándole antes la verificación de firma de `meta-whatsapp-inbound`) o
+  se empieza de cero — no antes, porque hoy no hay nada que probar contra
+  tráfico real.
 - `Extract Message` en este flujo **descarta cualquier mensaje que no sea
   texto** (`message.type === 'text'`) antes de que llegue a
   `/api/internal/recall/whatsapp-reply` — así que una nota de voz de recall

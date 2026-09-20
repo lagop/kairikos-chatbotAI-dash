@@ -90,10 +90,12 @@ en la cabecera `x-kairikos-internal-key`, y todo sale por webhooks salientes
 > la instancia real encontró que el turno del bot lo generaba n8n —prompt escrito a mano en un
 > nodo Code y llamada a OpenAI— y que el motor del portal (`/api/internal/channels/*/reply`,
 > `chatbot-conversation.ts`) no lo llamaba nadie. Telegram, el widget web y (desde el
-> 20/09/2026) el WhatsApp de Meta ya están convertidos; **Messenger e Instagram todavía
-> no** — siguen en `meta-multi-tenant.json`, armando el prompt a mano y sin verificar
-> la firma de Meta en absoluto. Si tocas canales, mira antes `automations/desplegado/`
-> —que es lo que de verdad corre— y `docs/plan-motor-chatbot.md`.
+> 20/09/2026) el WhatsApp de Meta ya están convertidos. **Messenger e Instagram no
+> están ni conectados**: en el panel de Meta, "Casos de uso" solo lista WhatsApp —esos
+> dos productos nunca se activaron— y `meta-multi-tenant.json` (el flujo pensado para
+> ellos) tiene 0 ejecuciones en toda su historia. No es deuda técnica pendiente de
+> migrar, es un canal que aún no existe del lado de Meta. Si tocas canales, mira antes
+> `automations/desplegado/` —que es lo que de verdad corre— y `docs/plan-motor-chatbot.md`.
 >
 > Y hay un prerrequisito que invalida cualquier prueba mientras falte: `PORTAL_API_URL` y
 > `PORTAL_API_KEY` **no están definidas en los contenedores de n8n**, así que ninguna llamada
