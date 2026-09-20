@@ -39,10 +39,10 @@ recibe nada.
 
 | Archivo | Estado | Qué hace |
 |---|---|---|
-| `webchat-multi-tenant.json` | activo | **Fase 2a aplicada**: widget web; el portal contesta (`/channels/web/reply`) y n8n solo traduce al contrato del widget |
+| `webchat-multi-tenant.json` | activo, pero ya no en el camino del widget | **Fase 2a aplicada, superada por la 2b**: el widget habla ahora directo con `/api/public/channels/web/message` — este flujo queda como lo que era antes de la 2a (recibe y traduce), sin tráfico real |
 | `telegram-multi-tenant.json` | activo | **Fase 1 aplicada**: recibe de Telegram, el portal contesta (`/channels/telegram/reply`) y n8n envía (`/channels/telegram/send`) |
-| `meta-multi-tenant.json` | activo | Igual, para WhatsApp, Messenger e Instagram |
-| `meta-whatsapp-inbound.json` | activo | Recibe de Meta, verifica firma y reparte entre Recall y chatbot. **Apunta a un túnel de desarrollo personal** (sustituido aquí por `TUNEL-DE-DESARROLLO.ejemplo`), así que en producción no llega a ningún sitio |
+| `meta-multi-tenant.json` | activo | Messenger e Instagram migrados al motor real; su rama de WhatsApp queda huérfana pero protegida por la verificación de firma |
+| `meta-whatsapp-inbound.json` | activo | Recibe de WhatsApp, verifica firma, reparte entre Recall y chatbot, y ya contesta con el motor real (`/channels/whatsapp/reply` + `/send`) |
 | `wizard-abandoned.json` | activo | Barrido y aviso de asistente abandonado |
 | `config-review-overdue.json` | activo | Barrido y aviso de revisión pendiente del operador |
 | `t-0-onboarding-supabase.json` | activo | Onboarding del día 0. **Escribe en Supabase**, la base antigua: no toca este portal |
@@ -243,3 +243,23 @@ seguidas en verde sin efecto ninguno.
 Se reescribieron las 20 referencias de cada uno a nombres. A partir de ahora sí
 recorren el flujo — y, mientras falte `PORTAL_API_URL`, fallarán de forma
 visible en vez de mentir en verde. Eso es una mejora, no un empeoramiento.
+
+## Fase 2b y el clasificador de leads único — 20/09/2026
+
+**El widget web ya no pasa por n8n para el tráfico de mensajes.**
+`webchat-multi-tenant` sigue existiendo y activo, pero
+`/api/public/channels/web/config` le da al widget `chatEndpoint:
+/api/public/channels/web/message` (una ruta nueva del propio portal), no
+la URL de este flujo. `embed.js` no cambió ni una línea — sigue mandando
+lo mismo, solo que ahora a otro sitio.
+
+**Los cinco clasificadores de leads en caliente de n8n se quitaron** —
+`telegram-multi-tenant`, las tres ramas de `meta-multi-tenant` y
+`webchat-multi-tenant` terminan ahora en el envío de la respuesta.
+Decisión tomada con datos, no a ojo: el barrido del portal
+(`/api/cron/classify-leads`) corre cada 5 minutos vía
+`scripts/scheduler.sh`, así que la latencia real que se perdía era de
+minutos, no de horas, y a cambio se gana una sola factura de IA (Anthropic,
+no OpenAI), el perfil de cualificación de cada cliente, tope de gasto real
+y cero duplicación entre cinco sitios. Detalle completo en
+`docs/plan-motor-chatbot.md`.

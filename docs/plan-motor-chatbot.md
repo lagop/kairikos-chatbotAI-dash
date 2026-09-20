@@ -296,22 +296,62 @@ la prueba con el bot real.
 | Fase | Estado |
 |---|---|
 | 3 — Meta | **Hecha en código para los tres canales** (ver la sección siguiente). WhatsApp y Messenger ya probados contra peticiones reales/forjadas; Instagram migrado pero sin poder probarse hasta que Meta apruebe sus permisos |
-| 2b — el widget hablando directo con el portal | Pendiente; necesita antes un freno de peticiones, que no existe en ninguna ruta del portal |
-| 4 — retirar lo duplicado | Los dos clasificadores de leads siguen vivos. Ver abajo |
+| 2b — el widget hablando directo con el portal | **Hecha** — ver la sección de más abajo |
+| 4 — retirar lo duplicado | **Hecha** — un solo clasificador de leads, el del portal. Ver abajo |
 
-### Por qué no se retiró aún el clasificador de leads de n8n
+### El clasificador de leads: decisión tomada y aplicada — 20/09/2026
 
-El del portal es mejor —usa el perfil de cualificación que rellena el cliente,
-que el de n8n ni conoce— pero corre por barrido, no en caliente. Quitar el de
-n8n hoy retrasaría cada lead hasta el siguiente barrido. Antes de retirarlo
-hace falta decidir si se acepta ese retraso o si el portal clasifica en el
-mismo turno.
+Comparados los dos con datos, no a ojo, antes de decidir:
 
-Lo que sí se arregló, porque era un agujero de verdad: el barrido solo miraba
-conversaciones **cerradas**, y el motor solo cierra una conversación cuando
-escala a una persona. Una conversación con intención de compra clarísima que
-terminara sin escalar **no se clasificaba jamás y su lead se perdía sin
-rastro**. Ahora también entran las que empezaron hace más de dos horas.
+| | n8n (en caliente, OpenAI) | Portal (barrido, Anthropic) |
+|---|---|---|
+| Conoce el perfil de cualificación del cliente (`LeadQualificationProfile`) | No | Sí |
+| Proveedor de IA | OpenAI — el único uso de OpenAI que quedaba en todo el sistema | Anthropic — el mismo que ya usa el resto (respuestas, resúmenes, reseñas, SEO) |
+| Tope de gasto | Ninguno — cada mensaje con "intención de contacto" dispara una llamada, sin límite | El del cron ya respeta `LEADS_CLASSIFICATION_MONTHLY_CAP` |
+| Duplicación | Copiado y pegado en 5 sitios (Telegram, WhatsApp, Messenger, Instagram, Web) — cuatro sin poder mantenerse sincronizados con el quinto | Un único camino, cualquier canal |
+| Latencia real | Instantánea | `scripts/scheduler.sh` llama a `/api/cron/classify-leads` cada 5 minutos (`INTERVAL_SECONDS=300`), sin ninguna espera adicional en la ruta — así que el peor caso real es **~5 minutos**, no "el siguiente barrido" en abstracto |
+
+La latencia era la única ventaja real del de n8n, y resultó ser de minutos, no
+de horas — insignificante para un lead que de todos modos espera a que un
+humano lo revise. Con eso resuelto, todo lo demás apunta al portal: mejor
+señal (conoce al cliente ideal de cada negocio), un solo proveedor de IA y
+una sola factura (el objetivo que ya proponía la Opción A de este plan), tope
+de gasto real, y cero duplicación.
+
+**Aplicado**: se quitaron los cinco clasificadores en caliente de n8n —
+`Has Contact Intent?` → `Classify Lead` → `Parse Lead Classification` →
+`Is Lead Detected?` → `POST Lead`, en `telegram-multi-tenant`, las tres
+ramas de `meta-multi-tenant` (WhatsApp, Messenger, Instagram) y
+`webchat-multi-tenant`. Cada flujo termina ahora en el envío de la
+respuesta; la clasificación queda enteramente en el barrido del portal.
+
+Lo que ya se había arreglado sigue siendo la base de esto: el barrido solo
+miraba conversaciones **cerradas**, y el motor solo cierra una conversación
+cuando escala a una persona. Una conversación con intención de compra
+clarísima que terminara sin escalar **no se clasificaba jamás y su lead se
+perdía sin rastro**. Ahora también entran las que empezaron hace más de dos
+horas (`CONVERSATION_STALE_HOURS`).
+
+### Fase 2b — el widget habla directo con el portal, aplicado el mismo día
+
+`POST /api/public/channels/web/message` (nueva) hace lo que hacía el nodo
+`Format Response` de `webchat-multi-tenant`: llama a `replyToIncomingMessage`
+directamente y traduce el resultado al contrato exacto que `embed.js` ya
+espera (`{ success, data: { reply, sessionId, mode, contactIntent, error } }`,
+con los mismos textos de reserva para traspaso a humano, tope de gasto
+agotado y fallo del motor). `GET /api/public/channels/web/config` cambia
+`chatEndpoint` para apuntar aquí en vez de a `N8N_WEBCHAT_URL` — **n8n sale
+del camino del widget por completo**, `embed.js` no cambió ni una línea.
+
+Freno de peticiones propio, más estricto que el de `/config` (que es de solo
+lectura): 20 mensajes por minuto por `publicToken`, porque esta ruta sí gasta
+— cada llamada válida golpea el motor de IA. Igual que en `/config`, se
+cuenta por token y no por IP.
+
+`webchat-multi-tenant.json` queda como lo que hacía antes de la Fase 2a
+(recibir el POST, traducir), sin usarse ya para el tráfico de mensajes —
+no se desactivó, por si hace falta como respaldo, pero es código muerto en
+la práctica desde este cambio.
 
 ## El freno de ráfaga, hecho el 20/09/2026
 
@@ -514,8 +554,5 @@ el arreglo.
   WhatsApp y Messenger funcionan de verdad. Decisión explícita: se deja así
   y se activa el producto completo cuando Instagram también esté listo, no
   antes.
-- Los dos clasificadores de leads en paralelo (n8n en caliente vs. el
-  barrido del portal) — sigue siendo la misma decisión pendiente de la
-  Fase 4, sin cambios desde la sección de arriba.
 - La nota de voz de recall que `meta-whatsapp-inbound` descarta antes de
   tiempo (ver la sección de WhatsApp más arriba).

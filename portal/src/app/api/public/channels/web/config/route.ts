@@ -10,20 +10,22 @@ export const runtime = 'nodejs';
 // =============================================================================
 // Canales Fase 4 — GET /api/public/channels/web/config?token=wgt_...
 //
-// The ONLY route the widget bundle (public/widget/embed.js) calls on
-// the portal directly — everything else (chat traffic itself) goes
-// straight to n8n, per the plan's "el widget NO pasa por el portal para
-// el tráfico de mensajes" design. Genuinely public/unauthenticated: it
-// runs in an anonymous visitor's browser on a THIRD-PARTY site, so it
-// can carry no shared secret. publicToken is the only credential and is
-// deliberately non-sensitive by design (same posture as an analytics
-// write key) — this route only ever returns display copy plus the
-// (non-secret) n8n webchat endpoint URL, never anything from
-// /api/internal/*.
+// Genuinely public/unauthenticated: it runs in an anonymous visitor's
+// browser on a THIRD-PARTY site, so it can carry no shared secret.
+// publicToken is the only credential and is deliberately non-sensitive
+// by design (same posture as an analytics write key).
 //
 // CORS: Access-Control-Allow-Origin: * — the whole point of this route
 // is to be called cross-origin from whatever domain a client pastes the
 // snippet into, which is unknown ahead of time.
+//
+// Fase 2b — chatEndpoint used to be N8N_WEBCHAT_URL: the widget's chat
+// traffic went straight to n8n, bypassing the portal entirely (n8n only
+// translated the response). It now points back at this same origin's own
+// /api/public/channels/web/message, which calls replyToIncomingMessage
+// directly — no n8n, no PORTAL_API_URL/PORTAL_API_KEY in the loop for
+// this channel anymore. embed.js didn't need to change: it already just
+// POSTs to whatever chatEndpoint this route hands it.
 // =============================================================================
 
 const CORS_HEADERS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS' };
@@ -75,7 +77,7 @@ export async function GET(req: NextRequest) {
       suggestedPrompts: context.suggestedPrompts,
       primaryColor: embed.primaryColor,
       position: embed.position,
-      chatEndpoint: process.env.N8N_WEBCHAT_URL ?? null,
+      chatEndpoint: `${req.nextUrl.origin}/api/public/channels/web/message`,
     },
     { headers: CORS_HEADERS },
   );
