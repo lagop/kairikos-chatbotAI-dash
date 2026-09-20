@@ -17,6 +17,7 @@ import { mapIntakeToWizardSteps } from '@/lib/intake-to-wizard';
 import { saveWizardStep } from '@/lib/wizard-client';
 import { logError } from '@/lib/observability';
 import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
+import { InMemoryRateLimiter } from '@/lib/operator-crypto';
 
 // =============================================================================
 // POST /api/public/intake — KAIA-2913
@@ -74,8 +75,21 @@ interface FinalResponse {
   day2Issue?: { issueIdentifier?: string; skipped?: string };
 }
 
+/** El alta pública crea un cliente, su contratación y su sitio, y dispara
+ *  correo: es la ruta escribiente más cara que hay abierta a internet. Mismo
+ *  limitador que el registro de autoservicio, con la misma ventana. */
+const ipRateLimiter = new InMemoryRateLimiter(15 * 60 * 1000);
+const INTAKE_MAX_POR_IP = 10;
+
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const startedAt = Date.now();
+
+  const ipDelAlta = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    || req.headers.get('x-real-ip')?.trim()
+    || '127.0.0.1';
+  if (!ipRateLimiter.check(`intake:${ipDelAlta}`, INTAKE_MAX_POR_IP)) {
+    return NextResponse.json({ error: 'too_many_requests' }, { status: 429 });
+  }
 
   // ---- 0. body size guard --------------------------------------------------
   const contentLength = Number(req.headers.get('content-length') ?? '0');

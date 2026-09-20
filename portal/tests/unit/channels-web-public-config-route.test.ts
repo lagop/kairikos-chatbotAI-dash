@@ -143,3 +143,33 @@ describe('GET /api/public/channels/web/config', () => {
     );
   });
 });
+
+// El freno de ráfaga. La ruta está abierta a internet y con CORS: la llama el
+// navegador de cada visitante de la web del cliente.
+describe('freno de peticiones', () => {
+  it('corta la ráfaga del mismo widget con 429, y no toca la base al cortar', async () => {
+    const { GET } = await import('@/app/api/public/channels/web/config/route');
+    const token = 'token-rafaga-' + Math.random().toString(36).slice(2);
+
+    let ultima;
+    let cortes = 0;
+    for (let i = 0; i < 130; i += 1) {
+      ultima = await GET(makeRequest(token));
+      if (ultima.status === 429) cortes += 1;
+    }
+
+    expect(cortes).toBeGreaterThan(0);
+    expect(ultima!.status).toBe(429);
+    // Sigue contestando CORS aunque corte: si no, el navegador enseña un
+    // error de origen cruzado en vez del 429 y nadie entiende qué pasó.
+    expect(ultima!.headers.get('access-control-allow-origin')).toBe('*');
+    const consultasAntesDeCortar = mockState.embedFindUnique.mock.calls.length;
+    expect(consultasAntesDeCortar).toBeLessThan(130);
+  });
+
+  it('un widget distinto no paga la ráfaga del anterior', async () => {
+    const { GET } = await import('@/app/api/public/channels/web/config/route');
+    const res = await GET(makeRequest('token-tranquilo-' + Math.random().toString(36).slice(2)));
+    expect(res.status).not.toBe(429);
+  });
+});

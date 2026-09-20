@@ -201,7 +201,10 @@ los dos flujos de Meta recibe de verdad la llamada de Meta (fase 0).
 
 ## Riesgos y lo que hay que decidir antes
 
-**No hay ningún límite de gasto, y ya es así hoy.** El webhook de n8n está
+**No hay ningún límite de gasto, y ya es así hoy.** (Corrección del 20/09/2026: el
+portal sí tenía freno de ráfaga, pero solo en las rutas de acceso —login,
+contraseñas, registro—, no en el alta pública, ni en la configuración del
+widget, ni en nada del camino del chatbot.) El webhook de n8n está
 abierto a internet: cualquiera con el token público de un widget puede quemar
 crédito de OpenAI a base de mensajes. El portal tampoco tiene limitación de
 peticiones en ninguna ruta. Antes de la fase 2b —y en realidad antes de vender—
@@ -309,3 +312,17 @@ conversaciones **cerradas**, y el motor solo cierra una conversación cuando
 escala a una persona. Una conversación con intención de compra clarísima que
 terminara sin escalar **no se clasificaba jamás y su lead se perdía sin
 rastro**. Ahora también entran las que empezaron hace más de dos horas.
+
+## El freno de ráfaga, hecho el 20/09/2026
+
+Se reutilizó el `InMemoryRateLimiter` que ya existía (mismo patrón que el
+registro de autoservicio) en las dos rutas públicas que no lo tenían: el alta
+pública (10 por IP cada 15 minutos, porque crea cliente, contratación y sitio
+y dispara correo) y la configuración del widget (120 por token y minuto,
+contado por token y no por IP porque detrás de una IP puede haber una oficina
+entera mirando la misma web). El 429 del widget sigue llevando cabeceras CORS:
+sin ellas el navegador enseñaría un error de origen cruzado en vez del motivo
+real.
+
+Sigue pendiente para el 2b: cuando el widget hable directo con el portal, ese
+endpoint necesita su propio freno, más estricto que el de lectura.
