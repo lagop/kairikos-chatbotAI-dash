@@ -8,6 +8,8 @@ import { TelegramChannelCard, type TelegramConnectionSummary } from '@/component
 import { MetaChannelCard, type MetaConnectionSummary } from '@/components/portal/MetaChannelCard';
 import { WebChannelCard, type WebEmbedSummary } from '@/components/portal/WebChannelCard';
 import { resolveActiveMetaCredentials } from '@/lib/meta-credentials';
+import { resolvePortalChatbot, chatbotParamFor, type PortalChatbotSelection } from '@/lib/portal-chatbot';
+import { ChatbotPicker } from '@/components/portal/ChatbotPicker';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,9 +28,14 @@ export const metadata: Metadata = {
 // /portal/conversations.
 // =============================================================================
 
-export default async function PortalCanalesPage() {
+export default async function PortalCanalesPage({
+  searchParams,
+}: {
+  searchParams: { clientProductId?: string };
+}) {
   await requirePortalSession();
   const resolved = await resolveClientFromSession();
+  let selection: PortalChatbotSelection = { chatbots: [], selected: null };
 
   let allowedChannels: string[] = [];
   let telegramConnection: TelegramConnectionSummary | null = null;
@@ -36,21 +43,38 @@ export default async function PortalCanalesPage() {
   let webEmbed: WebEmbedSummary | null = null;
 
   if (isDatabaseConfigured && resolved?.source === 'database') {
-    allowedChannels = await getAllowedChannelsForClient(prisma, resolved.clientId);
+    // Fase 4 multi-instancia — cada chatbot tiene sus canales: su bot de
+    // Telegram, su widget, sus números de Meta, y su tarifa decide cuáles
+    // puede usar.
+    selection = await resolvePortalChatbot(prisma, resolved.clientId, searchParams.clientProductId);
+    const chatbotId = selection.selected?.clientProductId ?? null;
+    const several = selection.chatbots.length > 1;
+    allowedChannels = await getAllowedChannelsForClient(prisma, resolved.clientId, chatbotId);
     const [telegramRow, metaRows, webRow] = await Promise.all([
-      prisma.telegramConnection.findUnique({
-        where: { clientId: resolved.clientId },
-        select: { status: true, botUsername: true, lastSyncError: true },
-      }),
+      chatbotId
+        ? prisma.telegramConnection.findUnique({
+            where: { clientProductId: chatbotId },
+            select: { status: true, botUsername: true, lastSyncError: true },
+          })
+        : null,
       prisma.metaChannelConnection.findMany({
-        where: { clientId: resolved.clientId },
+        // Con un chatbot, todas las del cliente, como siempre. Con varios,
+        // las de éste más las que aún no tienen dueño (conectadas antes de
+        // la conversión): no pueden aparecer en ningún otro sitio, y
+        // esconderlas dejaría un número conectado que nadie puede
+        // desconectar.
+        where: several
+          ? { clientId: resolved.clientId, OR: [{ clientProductId: chatbotId }, { clientProductId: null }] }
+          : { clientId: resolved.clientId },
         select: { id: true, channel: true, externalId: true, label: true, status: true },
         orderBy: { connectedAt: 'asc' },
       }),
-      prisma.chatWebEmbed.findFirst({
-        where: { clientId: resolved.clientId },
-        select: { publicToken: true, status: true, primaryColor: true, position: true },
-      }),
+      chatbotId
+        ? prisma.chatWebEmbed.findFirst({
+            where: { clientId: resolved.clientId, clientProductId: chatbotId },
+            select: { publicToken: true, status: true, primaryColor: true, position: true },
+          })
+        : null,
     ]);
     telegramConnection = telegramRow
       ? {
@@ -77,6 +101,8 @@ export default async function PortalCanalesPage() {
   }
 
   const metaCreds = await resolveActiveMetaCredentials();
+  const chatbotParam = chatbotParamFor(selection);
+  const chatbotKey = selection.selected?.clientProductId ?? 'none';
 
   return (
     <div className="space-y-6">
@@ -85,9 +111,30 @@ export default async function PortalCanalesPage() {
         title="Canales"
         description="Conecta tu chatbot a los canales por los que tus clientes te contactan."
       />
-      <WebChannelCard embed={webEmbed} allowed={allowedChannels.includes('web')} />
-      <TelegramChannelCard connection={telegramConnection} allowed={allowedChannels.includes('telegram')} />
+      <ChatbotPicker
+        chatbots={selection.chatbots}
+        selectedId={selection.selected?.clientProductId ?? null}
+        basePath="/portal/canales"
+        description="Cada chatbot tiene sus propios canales: lo que conectes aquí responde con el que tienes seleccionado."
+      />
+      {/* key por chatbot: cambiar de chatbot es una navegación suave, y sin
+          esto las tarjetas conservarían el estado (color, token a medio
+          escribir) del chatbot anterior. */}
+      <WebChannelCard
+        key={`web-${chatbotKey}`}
+        embed={webEmbed}
+        allowed={allowedChannels.includes('web')}
+        clientProductId={chatbotParam}
+      />
+      <TelegramChannelCard
+        key={`telegram-${chatbotKey}`}
+        connection={telegramConnection}
+        allowed={allowedChannels.includes('telegram')}
+        clientProductId={chatbotParam}
+      />
       <MetaChannelCard
+        key={`meta-${chatbotKey}`}
+        clientProductId={chatbotParam}
         metaAppId={metaCreds?.appId ?? null}
         metaConfigId={metaCreds?.configId ?? null}
         connections={metaConnections}

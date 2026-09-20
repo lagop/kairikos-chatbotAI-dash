@@ -1,7 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
+import { resolveContractedInstance } from '@/lib/client-product-access';
 import { deliverChannelEvent } from '@/lib/channel-webhook';
 import { decryptChannelCredential } from '@/lib/channel-crypto';
 import { deleteWebhook } from '@/lib/telegram-api';
@@ -23,7 +24,7 @@ export const runtime = 'nodejs';
 // with a fresh token and re-registers the webhook.
 // =============================================================================
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   const session = await getSession();
   if (!session.hasClientAccess) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
@@ -37,7 +38,15 @@ export async function POST() {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
-  const connection = await prisma.telegramConnection.findUnique({ where: { clientId: resolved.clientId } });
+  // Fase 4 multi-instancia — de qué chatbot se desconecta el bot.
+  const instance = await resolveContractedInstance(prisma, {
+    clientId: resolved.clientId,
+    productCode: 'chatbot',
+    clientProductId: req.nextUrl.searchParams.get('clientProductId'),
+  });
+  const connection = instance
+    ? await prisma.telegramConnection.findUnique({ where: { clientProductId: instance.clientProductId } })
+    : null;
   if (!connection) {
     return NextResponse.json({ error: 'not_connected' }, { status: 404 });
   }

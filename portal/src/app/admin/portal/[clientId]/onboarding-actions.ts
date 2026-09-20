@@ -46,6 +46,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { isDatabaseConfigured, prisma } from '@/lib/prisma';
+import { resolveInstanceForOperator } from '@/lib/client-product-access';
 import { getSession } from '@/lib/session';
 import { isAllowedMilestone } from './onboarding-constants';
 import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
@@ -88,17 +89,35 @@ export async function advanceOnboardingMilestone(
     return;
   }
 
+  // Fase 4 multi-instancia — de qué contratación es el hito: del producto
+  // del formulario (antes se colgaba siempre del chatbot, aunque el hito
+  // fuera de otro producto) y, si el panel lo dice, de esa contratación en
+  // concreto. Con dos y sin elección no se escribe: marcar el hito de la
+  // equivocada daría por arrancado un alta que no lo está.
+  const rawClientProductId = formData.get('clientProductId');
+  const resolution = await resolveInstanceForOperator(
+    prisma,
+    clientId,
+    productCode,
+    typeof rawClientProductId === 'string' && rawClientProductId ? rawClientProductId : null,
+  );
+  if (!resolution.ok || !resolution.clientProductId) return;
+  const instance = { clientProductId: resolution.clientProductId };
+
   const now = new Date();
   const note = `Marcado por el operador (${session.email ?? 'operador'}) el ${now.toISOString()}`;
   await prisma.chatbotActivity.upsert({
     where: {
-      clientId_productCode_milestone: {
-        clientId,
-        productCode,
+      clientProductId_milestone: {
+        clientProductId: instance.clientProductId,
         milestone,
       },
     },
     create: {
+      // Imprescindible: el where busca por (clientProductId, milestone). Sin esto la
+      // fila nace con NULL, no se vuelve a encontrar, y cada llamada crearía otro
+      // hito — en wizard_abandoned eso rompería la deduplicación y reenviaría el correo.
+      clientProductId: instance.clientProductId,
       clientId,
       tenantId: client.tenantId,
       productCode,

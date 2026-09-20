@@ -12,12 +12,16 @@ import { buildSavedStateMap, listStepsForOperator } from '@/lib/wizard-visibilit
 import { getStepDefinition, WIZARD_STEP_NUMBERS, CHATBOT_PRODUCT_CODE, type WizardStepNumber } from '@/lib/wizard-catalog';
 import { PRODUCT_CODES, getProductCatalog } from '@/lib/catalogs';
 import { TIER_LABEL } from '@/lib/billing-tier';
+import { resolveInstanceForOperator } from '@/lib/client-product-access';
+import { withChatbot } from '@/lib/wizard-url';
 
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
   params: { clientId: string };
-  searchParams: { product?: string };
+  /** clientProductId — Fase 4 multi-instancia: de qué chatbot, cuando el
+   *  cliente tiene varios. */
+  searchParams: { product?: string; clientProductId?: string };
 }
 
 const BLOCK_LABEL: Record<string, string> = {
@@ -89,6 +93,51 @@ export default async function AdminClientWizardPage({ params, searchParams }: Pa
     notFound();
   }
 
+  // Fase 4 multi-instancia — de QUÉ chatbot se revisa el asistente. Sin base
+  // de datos (modo demo) no hay nada que resolver. Con varios chatbots y sin
+  // decir cuál, se ofrece elegir: revisar el equivocado llevaría al operador
+  // a aprobar pasos del bot de otro negocio.
+  const chatbot = isDatabaseConfigured
+    ? await resolveInstanceForOperator(prisma, params.clientId, productCode, searchParams.clientProductId)
+    : ({ ok: true, clientProductId: null, tier: null } as const);
+  if (!chatbot.ok && chatbot.reason === 'not_found') {
+    notFound();
+  }
+  if (!chatbot.ok) {
+    const options = await prisma.clientProduct.findMany({
+      where: { clientId: params.clientId, product: { code: productCode } },
+      orderBy: { subscribedAt: 'asc' },
+      select: { id: true, status: true, clientSite: { select: { name: true } }, product: { select: { tier: true } } },
+    });
+    return (
+      <div className="space-y-6">
+        <PageHeading
+          eyebrow="Asistente de configuración"
+          title="Este cliente tiene varios chatbots"
+          description="Elige de cuál quieres revisar el asistente."
+        />
+        <ul className="space-y-2">
+          {options.map((option) => (
+            <li key={option.id}>
+              <Link
+                href={withChatbot(`/admin/portal/${params.clientId}/wizard?product=${productCode}`, option.id)}
+                className="card flex items-center justify-between hover:border-kairikos-accent/40"
+                data-testid="admin-wizard-chatbot-option"
+              >
+                <span className="font-medium">{option.clientSite?.name ?? 'Negocio sin nombre'}</span>
+                <span className="text-sm text-kairikos-muted">
+                  {option.product.tier} · {option.status}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+  // Se propaga el que llegó: con un solo chatbot las URLs siguen sin él.
+  const chatbotParam = searchParams.clientProductId ?? null;
+
   let companyName = 'Cliente';
   let email = '';
   let tier = 'starter';
@@ -139,7 +188,9 @@ export default async function AdminClientWizardPage({ params, searchParams }: Pa
         foundInDb = true;
         companyName = fullClient.companyName ?? fullClient.name ?? 'Cliente';
         email = fullClient.email ?? client.email;
-        tier = fullClient.tier ?? 'starter';
+        // La tarifa de ESTE chatbot decide qué pasos ve; la del cliente es
+        // solo el respaldo.
+        tier = chatbot.tier ?? fullClient.tier ?? 'starter';
         goLiveAt = fullClient.goLiveAt;
       }
     } else {
@@ -162,7 +213,7 @@ export default async function AdminClientWizardPage({ params, searchParams }: Pa
 
   if (foundInDb) {
     try {
-      const savedRows = await readLatestStepsForClient(prisma, params.clientId, productCode);
+      const savedRows = await readLatestStepsForClient(prisma, params.clientId, productCode, chatbot.clientProductId);
       const savedMap = buildSavedStateMap(
         savedRows.map((r) => ({
           stepKey: r.stepKey,
@@ -192,7 +243,11 @@ export default async function AdminClientWizardPage({ params, searchParams }: Pa
       }));
 
       const stepRows = await prisma.chatbotConfigStep.findMany({
-        where: { clientId: params.clientId, productCode },
+        where: {
+          clientId: params.clientId,
+          productCode,
+          ...(chatbot.clientProductId ? { clientProductId: chatbot.clientProductId } : {}),
+        },
         orderBy: [{ stepKey: 'asc' }, { version: 'desc' }],
         select: {
           stepKey: true,
@@ -414,7 +469,7 @@ export default async function AdminClientWizardPage({ params, searchParams }: Pa
                   </td>
                   <td className="py-3">
                     <Link
-                      href={`/admin/portal/${params.clientId}/wizard/${step.key}?product=${productCode}`}
+                      href={withChatbot(`/admin/portal/${params.clientId}/wizard/${step.key}?product=${productCode}`, chatbotParam)}
                       className="text-kairikos-accent2 underline"
                       data-testid={`admin-wizard-step-open-${step.key}`}
                     >

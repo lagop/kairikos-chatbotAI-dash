@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { withChatbot } from '@/lib/wizard-url';
 
 // =============================================================================
 // Canales Fase 4 — tarjeta "Web" en /portal/canales. A diferencia de
@@ -27,7 +28,17 @@ const ERROR_LABEL: Record<string, string> = {
   invalid_body: 'Color u posición inválidos.',
 };
 
-export function WebChannelCard({ embed, allowed }: { embed: WebEmbedSummary | null; allowed: boolean }) {
+export function WebChannelCard({
+  embed,
+  allowed,
+  clientProductId = null,
+}: {
+  embed: WebEmbedSummary | null;
+  allowed: boolean;
+  /** Fase 4 multi-instancia — de qué chatbot es el canal. Null con uno
+   *  solo: las llamadas son las de siempre. */
+  clientProductId?: string | null;
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +56,7 @@ export function WebChannelCard({ embed, allowed }: { embed: WebEmbedSummary | nu
     setError(null);
     setBusy(true);
     try {
-      const res = await fetch('/api/portal/channels/web/enable', { method: 'POST' });
+      const res = await fetch(withChatbot('/api/portal/channels/web/enable', clientProductId), { method: 'POST' });
       if (!res.ok) {
         const detail = await res.json().catch(() => null);
         setError(ERROR_LABEL[detail?.error] ?? 'No se pudo activar el widget.');
@@ -63,7 +74,7 @@ export function WebChannelCard({ embed, allowed }: { embed: WebEmbedSummary | nu
     setError(null);
     setBusy(true);
     try {
-      const res = await fetch('/api/portal/channels/web/disable', { method: 'POST' });
+      const res = await fetch(withChatbot('/api/portal/channels/web/disable', clientProductId), { method: 'POST' });
       if (!res.ok) {
         const detail = await res.json().catch(() => null);
         setError(ERROR_LABEL[detail?.error] ?? 'No se pudo desactivar el widget.');
@@ -81,7 +92,7 @@ export function WebChannelCard({ embed, allowed }: { embed: WebEmbedSummary | nu
     setError(null);
     setBusy(true);
     try {
-      const res = await fetch('/api/portal/channels/web', {
+      const res = await fetch(withChatbot('/api/portal/channels/web', clientProductId), {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ primaryColor: color, position }),

@@ -1,9 +1,9 @@
 import { randomBytes } from 'node:crypto';
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
-import { isProductContracted } from '@/lib/client-product-access';
+import { resolveContractedInstance } from '@/lib/client-product-access';
 import { isChannelAllowedForClient } from '@/lib/channel-access';
 import { deliverChannelEvent } from '@/lib/channel-webhook';
 import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
@@ -30,7 +30,7 @@ function generatePublicToken(): string {
   return `wgt_${randomBytes(24).toString('base64url')}`;
 }
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   const session = await getSession();
   if (!session.hasClientAccess) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
@@ -44,17 +44,29 @@ export async function POST() {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
-  const hasChatbot = await isProductContracted(prisma, resolved.clientId, CHATBOT_PRODUCT_CODE);
-  if (!hasChatbot) {
+  // Fase 4 multi-instancia — a QUÉ chatbot se le activa el widget. Cada
+  // negocio pega el suyo en su propia web; el id llega por query desde la
+  // pantalla de canales de ese chatbot.
+  const instance = await resolveContractedInstance(prisma, {
+    clientId: resolved.clientId,
+    productCode: CHATBOT_PRODUCT_CODE,
+    clientProductId: req.nextUrl.searchParams.get('clientProductId'),
+  });
+  if (!instance) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
-  const channelAllowed = await isChannelAllowedForClient(prisma, resolved.clientId, 'web');
+  // La tarifa que cuenta es la de ESTE chatbot.
+  const channelAllowed = await isChannelAllowedForClient(prisma, resolved.clientId, 'web', instance.clientProductId);
   if (!channelAllowed) {
     return NextResponse.json({ error: 'channel_not_in_plan' }, { status: 403 });
   }
 
-  const existing = await prisma.chatWebEmbed.findFirst({ where: { clientId: resolved.clientId } });
+  // El widget de ESTE chatbot. Antes era el del cliente: con dos chatbots,
+  // activar el del segundo habría reactivado el del primero.
+  const existing = await prisma.chatWebEmbed.findFirst({
+    where: { clientId: resolved.clientId, clientProductId: instance.clientProductId },
+  });
 
   let embed;
   if (existing) {
@@ -62,7 +74,13 @@ export async function POST() {
   } else {
     const client = await prisma.chatbotClient.findUnique({ where: { id: resolved.clientId }, select: { tenantId: true } });
     embed = await prisma.chatWebEmbed.create({
-      data: { clientId: resolved.clientId, tenantId: client?.tenantId ?? null, publicToken: generatePublicToken(), status: 'active' },
+      data: {
+        clientId: resolved.clientId,
+        clientProductId: instance.clientProductId,
+        tenantId: client?.tenantId ?? null,
+        publicToken: generatePublicToken(),
+        status: 'active',
+      },
     });
   }
 

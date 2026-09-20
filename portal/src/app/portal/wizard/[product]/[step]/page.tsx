@@ -18,7 +18,7 @@ import {
   type WizardTier,
 } from '@/lib/wizard-catalog';
 import { PRODUCT_CODES } from '@/lib/catalogs';
-import { isProductContracted } from '@/lib/client-product-access';
+import { isProductContracted, resolveContractedInstance } from '@/lib/client-product-access';
 import { readWizardStep } from '@/lib/wizard-client';
 import { jsonToObject } from '@/lib/wizard-tier-prisma';
 import { getCrossProductSeed } from '@/lib/cross-product-seed';
@@ -37,6 +37,9 @@ import { getDevMockClientById } from '@/lib/portal-data';
 
 interface PageProps {
   params: { product: string; step: string };
+  /** Fase 4 multi-instancia — de qué chatbot es el asistente. Solo llega
+   *  cuando el cliente tiene varios; ver lib/wizard-url.ts. */
+  searchParams?: { clientProductId?: string };
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -63,7 +66,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function WizardStepPage({ params }: PageProps) {
+export default async function WizardStepPage({ params, searchParams }: PageProps) {
+  // Se propaga el que llegó, no se inventa: sin él (un solo chatbot) los
+  // enlaces siguen sin él y las URLs son las de siempre.
+  const incomingChatbotId = searchParams?.clientProductId ?? null;
   const resolved = await resolveClientFromSession();
   if (!resolved) {
     redirect(
@@ -154,6 +160,7 @@ export default async function WizardStepPage({ params }: PageProps) {
         savedPayload={null}
         saved={{ hasSavedVersion: false }}
         isDatabaseConfigured={false}
+        clientProductId={null}
         steps={mockList}
       />
     );
@@ -173,6 +180,17 @@ export default async function WizardStepPage({ params }: PageProps) {
     notFound();
   }
 
+  // Fase 4 multi-instancia — de QUÉ chatbot es este paso. Con varios y sin
+  // decir cuál, de vuelta al índice del asistente, que ofrece elegir.
+  const chatbot = await resolveContractedInstance(prisma, {
+    clientId: resolved.clientId,
+    productCode: params.product,
+    clientProductId: incomingChatbotId,
+  });
+  if (!chatbot) {
+    redirect('/portal/wizard');
+  }
+
   let stepNumber: WizardStepNumber;
   try {
     stepNumber = parseStepNumber(params.step);
@@ -187,10 +205,11 @@ export default async function WizardStepPage({ params }: PageProps) {
       where: { id: resolved.clientId },
       select: { tier: true },
     }),
-    readLatestStepsForClient(prisma, resolved.clientId, CHATBOT_PRODUCT_CODE),
+    readLatestStepsForClient(prisma, resolved.clientId, CHATBOT_PRODUCT_CODE, chatbot.clientProductId),
   ]);
 
-  const tier = normalizeTier(client?.tier ?? null);
+  // La tarifa de ESTE chatbot decide qué pasos se ven.
+  const tier = normalizeTier(chatbot.tier ?? client?.tier ?? null);
   const savedMap = buildSavedStateMap(
     savedRows.map((r) => ({
       stepKey: r.stepKey,
@@ -224,12 +243,13 @@ export default async function WizardStepPage({ params }: PageProps) {
         savedPayload={null}
         saved={{ hasSavedVersion: false }}
         isDatabaseConfigured={true}
+        clientProductId={incomingChatbotId}
         steps={steps}
       />
     );
   }
 
-  const result = await readWizardStep(prisma, resolved.clientId, CHATBOT_PRODUCT_CODE, params.step);
+  const result = await readWizardStep(prisma, resolved.clientId, CHATBOT_PRODUCT_CODE, params.step, chatbot.clientProductId);
   const latestPayload = jsonToObject(
     (result?.latest?.payload as Parameters<typeof jsonToObject>[0]) ?? null,
   );
@@ -288,6 +308,7 @@ export default async function WizardStepPage({ params }: PageProps) {
       }}
       inheritedFrom={inheritedSeed?.inheritedFrom ?? []}
       isDatabaseConfigured={true}
+      clientProductId={incomingChatbotId}
       steps={steps}
     />
   );

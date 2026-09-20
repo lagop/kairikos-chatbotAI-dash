@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { getSession } from '@/lib/session';
@@ -8,7 +8,7 @@ import {
 } from '@/lib/wizard-tier-prisma';
 import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
 import { getProductCatalog, ProductCatalogError } from '@/lib/catalogs';
-import { isProductContracted } from '@/lib/client-product-access';
+import { isProductContracted, resolveContractedInstance } from '@/lib/client-product-access';
 
 // =============================================================================
 // KAIA-1166 (BE-4) + WP-16 — Cliente-facing tier-filtered wizard step list,
@@ -25,7 +25,7 @@ import { isProductContracted } from '@/lib/client-product-access';
 // =============================================================================
 
 export async function GET(
-  _req: Request,
+  req: NextRequest,
   { params }: { params: { product: string } },
 ) {
   const session = await getSession();
@@ -69,6 +69,21 @@ export async function GET(
     return NextResponse.json({ clientTier: null, steps: [] });
   }
 
+  // Fase 4 multi-instancia — la lista de pasos es de UN chatbot: qué pasos
+  // hay depende de su tarifa, y su estado de SUS versiones. Ver
+  // resolveWizardChatbot en la ruta del paso.
+  const chatbot = await resolveContractedInstance(prisma, {
+    clientId: resolved.clientId,
+    productCode: params.product,
+    clientProductId: req.nextUrl.searchParams.get('clientProductId'),
+  });
+  if (!chatbot) {
+    return NextResponse.json(
+      { error: 'chatbot_not_specified', detail: 'this account has several chatbots; say which one' },
+      { status: 409 },
+    );
+  }
+
   // We need the tier to drive the visibility predicate. Fetch it once,
   // then read the latest step rows for the cliente. Both are simple
   // primary-key reads; the volume is small (1 client + ~12 step rows
@@ -78,10 +93,11 @@ export async function GET(
       where: { id: resolved.clientId },
       select: { tier: true },
     }),
-    readLatestStepsForClient(prisma, resolved.clientId, CHATBOT_PRODUCT_CODE),
+    readLatestStepsForClient(prisma, resolved.clientId, CHATBOT_PRODUCT_CODE, chatbot.clientProductId),
   ]);
 
-  const tier = client?.tier ?? 'starter';
+  // La tarifa de ESTE chatbot; la del cliente solo como respaldo.
+  const tier = chatbot.tier ?? client?.tier ?? 'starter';
   const savedMap = buildSavedStateMap(
     savedRows.map((r) => ({
       stepKey: r.stepKey,

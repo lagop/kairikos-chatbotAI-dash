@@ -8,6 +8,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { NextRequest } from 'next/server';
 
+const TEST_CLIENT_PRODUCT_ID = '33333333-3333-4333-8333-333333333333';
+
 const mockState = vi.hoisted(() => ({
   getSession: vi.fn(),
   resolveClientFromSession: vi.fn(),
@@ -28,6 +30,20 @@ vi.mock('@/lib/portal-session', () => ({
 
 vi.mock('@/lib/client-product-access', () => ({
   isProductContracted: (...args: unknown[]) => mockState.isProductContracted(...args),
+  // Fase 4 multi-instancia — la cadencia es de UN chatbot. Atado al mismo
+  // mock para conservar la intencion de cada caso.
+  resolveContractedInstance: async () =>
+    (await mockState.isProductContracted())
+      ? {
+          clientProductId: TEST_CLIENT_PRODUCT_ID,
+          clientId: 'client_1',
+          clientSiteId: null,
+          tenantId: 'tenant_1',
+          code: 'chatbot',
+          tier: 'starter',
+          status: 'active',
+        }
+      : null,
 }));
 
 vi.mock('@/lib/prisma', () => ({
@@ -48,7 +64,9 @@ const SESSION_DENIED = { hasClientAccess: false };
 const RESOLVED = { clientId: 'client_1', email: 'a@b.com', source: 'database' as const };
 
 function jsonRequest(body: unknown): NextRequest {
-  return { json: async () => body } as unknown as NextRequest;
+  // nextUrl: la ruta lee ?clientProductId; un NextRequest real siempre lo trae.
+  const url = new URL('https://portal.kairikos.test/api/portal/conversation-digests/schedule');
+  return { json: async () => body, url: url.toString(), nextUrl: url } as unknown as NextRequest;
 }
 
 beforeEach(() => {
@@ -71,20 +89,20 @@ describe('GET /api/portal/conversation-digests/schedule', () => {
   it('401s without a real session', async () => {
     mockState.getSession.mockResolvedValue(SESSION_DENIED);
     const { GET } = await import('@/app/api/portal/conversation-digests/schedule/route');
-    const res = await GET();
+    const res = await GET(jsonRequest(null));
     expect(res.status).toBe(401);
   });
 
   it('403s when the client has no active chatbot product', async () => {
     mockState.isProductContracted.mockResolvedValue(false);
     const { GET } = await import('@/app/api/portal/conversation-digests/schedule/route');
-    const res = await GET();
+    const res = await GET(jsonRequest(null));
     expect(res.status).toBe(403);
   });
 
   it('returns sensible defaults when no schedule row exists yet', async () => {
     const { GET } = await import('@/app/api/portal/conversation-digests/schedule/route');
-    const res = await GET();
+    const res = await GET(jsonRequest(null));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.schedule).toEqual({
@@ -105,7 +123,7 @@ describe('GET /api/portal/conversation-digests/schedule', () => {
       lastGeneratedAt: new Date('2026-08-19T09:00:00Z'),
     });
     const { GET } = await import('@/app/api/portal/conversation-digests/schedule/route');
-    const res = await GET();
+    const res = await GET(jsonRequest(null));
     const body = await res.json();
     expect(body.schedule).toEqual({
       enabled: true,
@@ -150,7 +168,8 @@ describe('PATCH /api/portal/conversation-digests/schedule', () => {
     const res = await PATCH(jsonRequest({ enabled: true, preset: 'morning_noon_evening', intervalHours: 4 }));
     expect(res.status).toBe(200);
     expect(mockState.scheduleUpsert).toHaveBeenCalledWith({
-      where: { clientId: 'client_1' },
+      // Fase 4 multi-instancia — la cadencia se guarda contra la contratacion.
+      where: { clientProductId: TEST_CLIENT_PRODUCT_ID },
       update: { enabled: true, preset: 'morning_noon_evening', intervalHours: null, timezone: 'Europe/Madrid' },
       create: expect.objectContaining({ clientId: 'client_1', tenantId: 'tenant_1', enabled: true, intervalHours: null }),
     });

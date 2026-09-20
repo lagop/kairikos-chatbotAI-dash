@@ -174,6 +174,25 @@ describe('sendAgentMessage', () => {
     expect(mockState.sendWhatsapp).toHaveBeenCalledWith('tok', 'phone_id_1', '34600111222', input.text);
   });
 
+  // Fase 4 multi-instancia — la respuesta sale por la conexión del chatbot
+  // de la conversación. Por (cliente, canal) ya fallaba antes: el WhatsApp del
+  // chatbot y el de recall son dos conexiones de WhatsApp del mismo cliente.
+  it('responde por la conexión del chatbot de la conversación, no por otra del cliente', async () => {
+    state.conversationFindFirst.mockResolvedValue({ ...conversation, clientProductId: 'cp_clinica' });
+    await sendAgentMessage(prisma, input);
+    expect(state.metaFindFirst).toHaveBeenCalledWith({
+      where: { clientId: 'c1', channel: 'whatsapp', status: 'active', clientProductId: 'cp_clinica' },
+    });
+  });
+
+  it('una conversación sin chatbot atribuido se entrega como siempre, por cliente y canal', async () => {
+    state.conversationFindFirst.mockResolvedValue({ ...conversation, clientProductId: null });
+    await sendAgentMessage(prisma, input);
+    expect(state.metaFindFirst).toHaveBeenCalledWith({
+      where: { clientId: 'c1', channel: 'whatsapp', status: 'active' },
+    });
+  });
+
   it('deja el turno en el transcript marcado como del equipo, no del bot', async () => {
     await sendAgentMessage(prisma, input);
     const entries = state.conversationUpdate.mock.calls[0][0].data.transcript;

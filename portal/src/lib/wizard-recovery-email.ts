@@ -69,6 +69,10 @@ export interface RecoveryEmailVariables {
   lastStepHuman: string;
   hoursSinceLastDraft: number;
   portalUrl: string;
+  /** Fase 4 multi-instancia — con varios chatbots, el enlace lleva al
+   *  asistente del que se quedó parado. Null con uno solo: el enlace es el
+   *  de siempre. */
+  clientProductId?: string | null;
 }
 
 export interface SendRecoveryEmailInput {
@@ -84,6 +88,7 @@ export interface SendRecoveryEmailInput {
   // https://portal.kairikos.com). Useful for tests and for the future
   // per-client branded portal.
   portalUrl?: string;
+  clientProductId?: string | null;
 }
 
 export type SendRecoveryEmailResult =
@@ -102,7 +107,9 @@ export function buildRecoveryEmail(
   vars: RecoveryEmailVariables,
 ): { subject: string; text: string; html: string; template: typeof RECOVERY_EMAIL_TEMPLATE } {
   const subject = 'Hemos parado a medias con tu configuración — ¿sigues por aquí?';
-  const portalLink = `${vars.portalUrl}/portal/wizard?step=${encodeURIComponent(vars.lastStepKey)}`;
+  const portalLink =
+    `${vars.portalUrl}/portal/wizard?step=${encodeURIComponent(vars.lastStepKey)}` +
+    (vars.clientProductId ? `&clientProductId=${encodeURIComponent(vars.clientProductId)}` : '');
   const text = [
     `Hola ${vars.clientFirstName},`,
     '',
@@ -149,6 +156,7 @@ export async function sendRecoveryEmail(
     lastStepHuman: input.lastStepHuman,
     hoursSinceLastDraft: input.hoursSinceLastDraft,
     portalUrl,
+    clientProductId: input.clientProductId,
   });
 
   const requireResend = (0, eval)('require') as NodeJS.Require;

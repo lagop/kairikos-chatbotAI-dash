@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
+import { resolveChatbotForChannel } from '@/lib/client-product-access';
 import { authenticateInternalRequest, internalAuthFailureResponse } from '@/lib/internal-auth';
 import { markProspectReplied } from '@/lib/prospecting-replies';
 
@@ -63,8 +64,16 @@ export async function POST(req: NextRequest) {
   const sessionPrefix = `whatsapp-${body.data.from}-`;
   const entry = { role: body.data.role, content: body.data.content, at: now.toISOString() };
 
+  // Fase 4 multi-instancia — la conversación es del chatbot al que sirve
+  // ESTE canal. Mismo motivo que en replyToIncomingMessage: la clave de
+  // sesión es de quien escribe, no del negocio.
+  const instance = await resolveChatbotForChannel(prisma, connection.clientId, connection.clientProductId);
   const latest = await prisma.chatbotConversation.findFirst({
-    where: { clientId: connection.clientId, externalSessionId: { startsWith: sessionPrefix } },
+    where: {
+      clientId: connection.clientId,
+      externalSessionId: { startsWith: sessionPrefix },
+      ...(instance ? { clientProductId: instance.clientProductId } : {}),
+    },
     orderBy: { startedAt: 'desc' },
   });
   const lastActivityMs = latest ? latest.startedAt.getTime() + (latest.duration ?? 0) * 1000 : null;
@@ -74,6 +83,7 @@ export async function POST(req: NextRequest) {
     const created = await prisma.chatbotConversation.create({
       data: {
         clientId: connection.clientId,
+        clientProductId: instance?.clientProductId ?? null,
         tenantId: connection.tenantId,
         externalSessionId: `${sessionPrefix}${now.getTime()}`,
         channel: 'whatsapp',

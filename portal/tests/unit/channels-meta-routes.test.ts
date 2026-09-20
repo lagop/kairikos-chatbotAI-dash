@@ -42,6 +42,20 @@ vi.mock('@/lib/portal-session', () => ({
 
 vi.mock('@/lib/client-product-access', () => ({
   isProductContracted: (...args: unknown[]) => mockState.isProductContracted(...args),
+  // Fase 4 multi-instancia — las superficies de Meta se conectan a UN
+  // chatbot. Atado al mismo mock para conservar la intencion de cada caso.
+  resolveContractedInstance: async () =>
+    (await mockState.isProductContracted())
+      ? {
+          clientProductId: '33333333-3333-4333-8333-333333333333',
+          clientId: 'client_1',
+          clientSiteId: null,
+          tenantId: 'tenant_1',
+          code: 'chatbot',
+          tier: 'premium',
+          status: 'active',
+        }
+      : null,
 }));
 
 vi.mock('@/lib/channel-access', () => ({
@@ -244,8 +258,11 @@ describe('POST /api/portal/channels/meta/complete-signup', () => {
     expect(mockState.metaUpsert).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { clientId_channel_externalId: { clientId: 'client_1', channel: 'whatsapp', externalId: 'phone_1' } },
-        update: expect.objectContaining({ wabaId: 'waba_1' }),
-        create: expect.objectContaining({ wabaId: 'waba_1' }),
+        // Fase 4 multi-instancia — la conexion queda atribuida al chatbot en los
+        // dos caminos: es el ancla desde la que las rutas internas sabran que
+        // bot contesta a este numero.
+        update: expect.objectContaining({ wabaId: 'waba_1', clientProductId: '33333333-3333-4333-8333-333333333333' }),
+        create: expect.objectContaining({ wabaId: 'waba_1', clientProductId: '33333333-3333-4333-8333-333333333333' }),
       }),
     );
     expect(mockState.subscribeWaba).toHaveBeenCalledWith('long_lived', 'waba_1');

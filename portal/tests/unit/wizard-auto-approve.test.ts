@@ -87,7 +87,26 @@ describe('sweepAutoApprovableWizardSteps', () => {
     const call = mockState.stepFindMany.mock.calls[0][0];
     expect(call.where.productCode).toBe('chatbot');
     expect([...call.where.stepKey.in].sort()).toEqual(['3', '4', '5']);
-    expect(call.distinct).toEqual(['clientId', 'stepKey']);
+    // Fase 4 multi-instancia — el grupo incluye el chatbot; ver el caso de
+    // "dos chatbots" más abajo.
+    expect(call.distinct).toEqual(['clientId', 'clientProductId', 'stepKey']);
+    // Y el orderBy lleva el mismo prefijo: es lo que hace que el primero de
+    // cada grupo sea la versión más alta.
+    expect(call.orderBy.slice(0, 3)).toEqual([{ clientId: 'asc' }, { clientProductId: 'asc' }, { stepKey: 'asc' }]);
+  });
+
+  it('con dos chatbots del mismo cliente, aprueba el pendiente de CADA uno', async () => {
+    // Antes se agrupaba por (cliente, paso) y un chatbot escondía al otro.
+    mockState.stepFindMany.mockResolvedValue([
+      { clientId: 'client_1', clientProductId: 'cp_a', stepKey: '5', status: 'submitted', submittedAt: new Date('2026-09-09T00:00:00.000Z') },
+      { clientId: 'client_1', clientProductId: 'cp_b', stepKey: '5', status: 'submitted', submittedAt: new Date('2026-09-09T00:00:00.000Z') },
+    ]);
+
+    const result = await sweep();
+
+    expect(result.approved).toBe(2);
+    const approvedFor = mockState.applySystemAutoApproval.mock.calls.map((c) => c[1].clientProductId).sort();
+    expect(approvedFor).toEqual(['cp_a', 'cp_b']);
   });
 
   it('approves a candidate past the veto window', async () => {

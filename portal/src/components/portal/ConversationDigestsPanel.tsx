@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { withChatbot } from '@/lib/wizard-url';
 
 // =============================================================================
 // Canales Fase 7 — sección "Resúmenes" de /portal/conversations: timeline
@@ -37,6 +38,9 @@ export interface ConversationDigestScheduleConfig {
 export interface ConversationDigestsPanelProps {
   digests: ConversationDigestSummary[];
   schedule: ConversationDigestScheduleConfig;
+  /** Fase 4 multi-instancia — de qué chatbot es el horario. Null con uno
+   *  solo: la llamada es la de siempre. */
+  clientProductId?: string | null;
 }
 
 const DATE_FMT = new Intl.DateTimeFormat('es-ES', {
@@ -62,7 +66,7 @@ function formatRelative(iso: string | null): string {
   return `hace ${days} d`;
 }
 
-export function ConversationDigestsPanel({ digests, schedule }: ConversationDigestsPanelProps) {
+export function ConversationDigestsPanel({ digests, schedule, clientProductId = null }: ConversationDigestsPanelProps) {
   const router = useRouter();
   const [enabled, setEnabled] = useState(schedule.enabled);
   const [preset, setPreset] = useState<DigestPreset>(schedule.preset);
@@ -74,7 +78,7 @@ export function ConversationDigestsPanel({ digests, schedule }: ConversationDige
     setSaving(true);
     setMessage(null);
     try {
-      const res = await fetch('/api/portal/conversation-digests/schedule', {
+      const res = await fetch(withChatbot('/api/portal/conversation-digests/schedule', clientProductId), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

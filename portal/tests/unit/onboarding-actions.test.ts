@@ -11,6 +11,8 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { NextResponse } from 'next/server';
 
 // Hoisted state for the mocked Prisma module.
+const TEST_CLIENT_PRODUCT_ID = '33333333-3333-4333-8333-333333333333';
+
 const mockState = vi.hoisted(() => ({
   findUniqueActivity: vi.fn(),
   findManyActivity: vi.fn(),
@@ -62,6 +64,21 @@ vi.mock('@/lib/prisma', () => ({
         mockState.findUniqueClient(...(args as [])),
       update: (...args: unknown[]) =>
         mockState.updateClient(...(args as [])),
+    },
+    // Fase 4 multi-instancia — los hitos resuelven de qué chatbot son con
+    // resolveSoleChatbotInstance, que pide hasta dos contrataciones para
+    // poder detectar ambigüedad. Un chatbot, como todos los clientes de hoy.
+    clientProduct: {
+      findMany: async () => [
+        {
+          id: TEST_CLIENT_PRODUCT_ID,
+          clientId: 'client_1',
+          clientSiteId: null,
+          tenantId: 'tenant_1',
+          status: 'active',
+          product: { code: 'chatbot', tier: 'starter' },
+        },
+      ],
     },
     operatorNotification: {
       findUnique: (...args: unknown[]) =>
@@ -252,6 +269,55 @@ describe('handleGoLiveReady', () => {
     expect(status).toBe(200);
     expect(body.deduped).toBe(true);
     expect(body.state).toBe('go-live-pending');
+  });
+});
+
+describe('Fase 4 multi-instancia — de qué chatbot es el hito', () => {
+  async function withClientProducts(rows: unknown[], run: (findMany: ReturnType<typeof vi.fn>) => Promise<void>) {
+    const { prisma } = await import('@/lib/prisma');
+    const cp = (prisma as unknown as { clientProduct: { findMany: unknown } }).clientProduct;
+    const original = cp.findMany;
+    const findMany = vi.fn().mockResolvedValue(rows);
+    cp.findMany = findMany;
+    try {
+      await run(findMany);
+    } finally {
+      cp.findMany = original;
+    }
+  }
+  const bot = (id: string) => ({
+    id, clientId: 'c1', clientSiteId: null, tenantId: 't1', status: 'active', product: { code: 'chatbot', tier: 'starter' },
+  });
+
+  it('con dos chatbots y sin decir cuál, 409 y no escribe', async () => {
+    await withClientProducts([bot('cp_a'), bot('cp_b')], async () => {
+      const res = await handleAssetsUploaded('c1', {});
+      expect(res.status).toBe(409);
+      expect(mockState.upsertActivity).not.toHaveBeenCalled();
+    });
+  });
+
+  it('si la pantalla dice cuál, lo busca entre los de ESTE cliente y escribe en él', async () => {
+    await withClientProducts([bot('cp_b')], async (findMany) => {
+      mockState.findUniqueActivity.mockResolvedValueOnce(null);
+      mockState.findUniqueClient.mockResolvedValueOnce({ tenantId: 't1' });
+      mockState.upsertActivity.mockResolvedValueOnce({ id: 'a9', milestone: 'T+3', completedAt: new Date(), notes: null });
+      await handleAssetsUploaded('c1', { clientProductId: 'cp_b' });
+      expect(findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ id: 'cp_b', clientId: 'c1' }) }),
+      );
+      expect(mockState.upsertActivity).toHaveBeenCalledWith(
+        expect.objectContaining({ create: expect.objectContaining({ clientProductId: 'cp_b' }) }),
+      );
+    });
+  });
+
+  it('un id que no es de este cliente no encuentra nada: 409', async () => {
+    await withClientProducts([], async () => {
+      const res = await handleSnooze('c1', { milestoneId: 'T+3', days: 1, clientProductId: 'cp_ajeno' });
+      expect(res.status).toBe(409);
+      expect(mockState.updateActivity).not.toHaveBeenCalled();
+    });
   });
 });
 

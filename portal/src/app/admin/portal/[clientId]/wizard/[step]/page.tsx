@@ -3,6 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { PageHeading } from '@/components/portal/PageHeading';
 import AdminConfigReview from '@/components/admin/AdminConfigReview';
+import { withChatbot } from '@/lib/wizard-url';
 import { getSession } from '@/lib/session';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { parseStepNumber, getStepDefinition, WIZARD_STEP_NUMBERS, CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
@@ -12,7 +13,8 @@ export const dynamic = 'force-dynamic';
 
 interface PageProps {
   params: { clientId: string; step: string };
-  searchParams: { product?: string };
+  /** clientProductId — Fase 4 multi-instancia, solo con varios chatbots. */
+  searchParams: { product?: string; clientProductId?: string };
 }
 
 const STEP_KEY_RE = /^[a-z0-9_-]{1,64}$/i;
@@ -97,7 +99,7 @@ export default async function AdminClientWizardStepPage({ params, searchParams }
     <div className="space-y-6">
       <div className="text-sm text-kairikos-muted">
         <Link
-          href={`/admin/portal/${params.clientId}/wizard?product=${productCode}`}
+          href={withChatbot(`/admin/portal/${params.clientId}/wizard?product=${productCode}`, searchParams.clientProductId)}
           className="hover:text-kairikos-text"
         >
           ← Volver al wizard de {clientLabel}
@@ -114,7 +116,7 @@ export default async function AdminClientWizardStepPage({ params, searchParams }
         }
         actions={
           <Link
-            href={`/admin/portal/${params.clientId}/wizard?product=${productCode}`}
+            href={withChatbot(`/admin/portal/${params.clientId}/wizard?product=${productCode}`, searchParams.clientProductId)}
             className="btn-ghost"
             data-testid="admin-wizard-step-back-to-summary"
           >
@@ -130,7 +132,11 @@ export default async function AdminClientWizardStepPage({ params, searchParams }
         data-step-number={def.number}
         data-v11-deferred={def.v11Deferred ? 'true' : 'false'}
       >
-        <AdminConfigReview clientId={params.clientId} productCode={productCode} />
+        <AdminConfigReview
+          clientId={params.clientId}
+          productCode={productCode}
+          clientProductId={searchParams.clientProductId ?? null}
+        />
       </section>
     </div>
   );

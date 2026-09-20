@@ -39,12 +39,14 @@ import { isStuck, stuckThresholdDays } from '@/lib/recall';
 import { loadRecallOwnerSettings, type RecallOwnerSettingsView } from '@/lib/recall-owner-settings';
 import { RecallOwnerSettingsCard } from '@/components/portal/RecallOwnerSettingsCard';
 import { RecallManualMetaConnectCard } from '@/components/admin/RecallManualMetaConnectCard';
+import { resolvePortalChatbot, type PortalChatbotSelection } from '@/lib/portal-chatbot';
+import { ChatbotPicker } from '@/components/portal/ChatbotPicker';
 
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
   params: { clientId: string };
-  searchParams: { tab?: string; product?: string };
+  searchParams: { tab?: string; product?: string; clientProductId?: string };
 }
 
 // WP-XX — one entry per 'web' ClientProduct row (see WebProjects fetch
@@ -239,6 +241,8 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
   // panel (+ manual webhook-delivery retry) renders inside that
   // product's tab, same pattern as WebQuote's editor under 'web'.
   let channelsTelegram: TelegramConnectionRow | null = null;
+  // Fase 4 multi-instancia — de qué chatbot son los canales del panel.
+  let chatbotSelection: PortalChatbotSelection = { chatbots: [], selected: null };
   let channelsMeta: MetaConnectionRow[] = [];
   let channelsAllowed: string[] = [];
   let channelsFailedDeliveries: FailedDeliveryRow[] = [];
@@ -407,17 +411,27 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
         }
 
         if (productCode === CHATBOT_PRODUCT_CODE) {
+          // Fase 4 multi-instancia — los canales son de UN chatbot. Mismo
+          // selector y mismo criterio que /portal/canales: sin id, el primero;
+          // las conexiones de Meta sin dueño se enseñan con cualquiera.
+          chatbotSelection = await resolvePortalChatbot(prisma, client.id, searchParams.clientProductId);
+          const chatbotId = chatbotSelection.selected?.clientProductId ?? null;
+          const severalChatbots = chatbotSelection.chatbots.length > 1;
           const [telegramRow, metaRows, allowed, failedRows] = await Promise.all([
-            prisma.telegramConnection.findUnique({
-              where: { clientId: client.id },
-              select: { status: true, botUsername: true },
-            }),
+            chatbotId
+              ? prisma.telegramConnection.findUnique({
+                  where: { clientProductId: chatbotId },
+                  select: { status: true, botUsername: true },
+                })
+              : null,
             prisma.metaChannelConnection.findMany({
-              where: { clientId: client.id },
+              where: severalChatbots
+                ? { clientId: client.id, OR: [{ clientProductId: chatbotId }, { clientProductId: null }] }
+                : { clientId: client.id },
               select: { id: true, channel: true, externalId: true, label: true, status: true },
               orderBy: { connectedAt: 'asc' },
             }),
-            getAllowedChannelsForClient(prisma, client.id),
+            getAllowedChannelsForClient(prisma, client.id, chatbotId),
             prisma.channelWebhookDelivery.findMany({
               where: { clientId: client.id, status: 'failed' },
               select: { id: true, connectionType: true, attempts: true, lastError: true, lastAttemptAt: true },
@@ -952,6 +966,15 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
                 <h2 className="text-lg font-semibold">Canales</h2>
                 <p className="mt-1 text-xs text-kairikos-muted">Solo lectura — el cliente conecta y desconecta desde su portal.</p>
               </header>
+              <div className="mb-4">
+                <ChatbotPicker
+                  chatbots={chatbotSelection.chatbots}
+                  selectedId={chatbotSelection.selected?.clientProductId ?? null}
+                  basePath={`/admin/portal/${params.clientId}?product=${CHATBOT_PRODUCT_CODE}`}
+                  title="Chatbots del cliente"
+                  description="Este cliente tiene varios chatbots; cada uno tiene sus propios canales y su propia tarifa."
+                />
+              </div>
               <ChannelsOperatorPanel
                 telegram={channelsTelegram}
                 meta={channelsMeta}

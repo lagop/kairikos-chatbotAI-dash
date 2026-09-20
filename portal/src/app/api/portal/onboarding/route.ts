@@ -92,6 +92,7 @@ export async function POST(req: NextRequest) {
     return handleSnooze(resolved.clientId, {
       milestoneId: typeof body.milestoneId === 'string' ? body.milestoneId : '',
       days: typeof body.days === 'number' ? body.days : 1,
+      clientProductId: typeof body.clientProductId === 'string' ? body.clientProductId : null,
     });
   }
   if (body.state === 'go-live-ready') {

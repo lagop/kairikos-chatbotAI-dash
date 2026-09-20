@@ -20,6 +20,10 @@ export interface HandoffInboxRow {
   requestedAt: string;
   takenBy: string | null;
   lastMessage: string | null;
+  /** Fase 4 multi-instancia — la bandeja es una sola para todo el cliente
+   *  (quien atiende es la misma persona), así que con varios chatbots cada
+   *  fila dice de cuál es. Null con uno solo. */
+  chatbotName?: string | null;
 }
 
 const CHANNEL_LABEL: Record<string, string> = {
@@ -94,6 +98,9 @@ export function HandoffInbox({ rows, now = new Date() }: { rows: HandoffInboxRow
                 <span className="text-xs text-kairikos-muted">
                   {CHANNEL_LABEL[row.channel ?? ''] ?? 'Otro canal'} · {waitingFor(row.requestedAt, now)}
                 </span>
+                {row.chatbotName ? (
+                  <span className="text-xs text-kairikos-muted">· {row.chatbotName}</span>
+                ) : null}
                 {row.state === 'taken' && row.takenBy ? (
                   <span className="text-xs text-kairikos-muted">· {row.takenBy}</span>
                 ) : null}

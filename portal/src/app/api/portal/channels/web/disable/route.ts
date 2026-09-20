@@ -1,8 +1,9 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { deliverChannelEvent } from '@/lib/channel-webhook';
+import { resolveClientWebEmbed } from '@/lib/chat-web-embed';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -17,7 +18,7 @@ export const runtime = 'nodejs';
 // client's site.
 // =============================================================================
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   const session = await getSession();
   if (!session.hasClientAccess) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
@@ -31,7 +32,16 @@ export async function POST() {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
-  const embed = await prisma.chatWebEmbed.findFirst({ where: { clientId: resolved.clientId } });
+  // Fase 4 multi-instancia — el widget de UN chatbot. Ver lib/chat-web-embed.ts.
+  const found = await resolveClientWebEmbed(
+    prisma,
+    resolved.clientId,
+    req.nextUrl.searchParams.get('clientProductId'),
+  );
+  if (!found.ok && found.reason === 'ambiguous') {
+    return NextResponse.json({ error: 'chatbot_not_specified' }, { status: 409 });
+  }
+  const embed = found.ok ? found.embed : null;
   if (!embed) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }

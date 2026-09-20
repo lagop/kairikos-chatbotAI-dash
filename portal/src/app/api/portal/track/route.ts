@@ -55,7 +55,9 @@ export async function POST(req: NextRequest) {
       // when no DB is configured, so the same handler covers both.
       return handleAssetsUploaded(resolved.clientId, { milestone, notes });
     }
-    return handleAssetsUploaded(resolved.clientId, { milestone, notes });
+    // Fase 4 multi-instancia — de qué chatbot es el material, si lo dice.
+    const clientProductId = typeof body.clientProductId === 'string' ? body.clientProductId : null;
+    return handleAssetsUploaded(resolved.clientId, { milestone, notes, clientProductId });
   }
 
   return NextResponse.json({ ok: true, ignored: true });

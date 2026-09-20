@@ -7,6 +7,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { NextRequest } from 'next/server';
 
+const TEST_CLIENT_PRODUCT_ID = '33333333-3333-4333-8333-333333333333';
+
 const mockState = vi.hoisted(() => ({
   fetch: vi.fn(),
   getSession: vi.fn(),
@@ -37,6 +39,21 @@ vi.mock('@/lib/portal-session', () => ({
 
 vi.mock('@/lib/client-product-access', () => ({
   isProductContracted: (...args: unknown[]) => mockState.isProductContracted(...args),
+  // Fase 4 multi-instancia — las rutas resuelven el chatbot concreto al que
+  // se conecta el bot. Se ata al mismo mock para conservar la intencion de
+  // cada caso (contratado / no contratado).
+  resolveContractedInstance: async () =>
+    (await mockState.isProductContracted())
+      ? {
+          clientProductId: TEST_CLIENT_PRODUCT_ID,
+          clientId: 'client_1',
+          clientSiteId: null,
+          tenantId: 'tenant_1',
+          code: 'chatbot',
+          tier: 'starter',
+          status: 'active',
+        }
+      : null,
 }));
 
 vi.mock('@/lib/channel-access', () => ({
@@ -76,7 +93,9 @@ const SESSION_DENIED = { hasClientAccess: false };
 const RESOLVED = { clientId: 'client_1', email: 'a@b.com', source: 'database' as const };
 
 function jsonRequest(body: unknown): NextRequest {
-  return { json: async () => body } as unknown as NextRequest;
+  // nextUrl: las rutas leen ?clientProductId; un NextRequest real siempre lo trae.
+  const url = new URL('https://portal.kairikos.test/api/portal/channels/telegram');
+  return { json: async () => body, url: url.toString(), nextUrl: url } as unknown as NextRequest;
 }
 
 function telegramGetMeResponse(ok = true, username = 'kairikos_bot') {
@@ -171,9 +190,15 @@ describe('POST /api/portal/channels/telegram/connect', () => {
 
     expect(mockState.encryptChannelCredential).toHaveBeenCalledWith('123:abc');
     expect(mockState.telegramUpsert).toHaveBeenCalledWith({
-      where: { clientId: 'client_1' },
+      // Fase 4 multi-instancia — un bot por contratacion, no por cliente.
+      where: { clientProductId: TEST_CLIENT_PRODUCT_ID },
       update: expect.objectContaining({ botUsername: 'kairikos_bot', status: 'active' }),
-      create: expect.objectContaining({ clientId: 'client_1', tenantId: 'tenant_1', botUsername: 'kairikos_bot' }),
+      create: expect.objectContaining({
+        clientId: 'client_1',
+        clientProductId: TEST_CLIENT_PRODUCT_ID,
+        tenantId: 'tenant_1',
+        botUsername: 'kairikos_bot',
+      }),
     });
     expect(mockState.setWebhook).toHaveBeenCalledWith('123:abc', 'https://n8n.example.com/webhook/kairikos-telegram/conn_1');
     expect(mockState.deliverChannelEvent).toHaveBeenCalledWith({
@@ -213,21 +238,21 @@ describe('POST /api/portal/channels/telegram/disconnect', () => {
   it('401s without a real session', async () => {
     mockState.getSession.mockResolvedValue(SESSION_DENIED);
     const { POST } = await import('@/app/api/portal/channels/telegram/disconnect/route');
-    const res = await POST();
+    const res = await POST(jsonRequest(null));
     expect(res.status).toBe(401);
   });
 
   it('404s when there is no connection to disconnect', async () => {
     mockState.telegramFindUnique.mockResolvedValue(null);
     const { POST } = await import('@/app/api/portal/channels/telegram/disconnect/route');
-    const res = await POST();
+    const res = await POST(jsonRequest(null));
     expect(res.status).toBe(404);
   });
 
   it('is idempotent when already revoked, without calling deleteWebhook or re-delivering a webhook', async () => {
     mockState.telegramFindUnique.mockResolvedValue({ id: 'conn_1', status: 'revoked' });
     const { POST } = await import('@/app/api/portal/channels/telegram/disconnect/route');
-    const res = await POST();
+    const res = await POST(jsonRequest(null));
     const body = await res.json();
     expect(body).toEqual({ ok: true, status: 'revoked', alreadyRevoked: true });
     expect(mockState.telegramUpdate).not.toHaveBeenCalled();
@@ -244,7 +269,7 @@ describe('POST /api/portal/channels/telegram/disconnect', () => {
       botTokenTag: Buffer.from('t'),
     });
     const { POST } = await import('@/app/api/portal/channels/telegram/disconnect/route');
-    const res = await POST();
+    const res = await POST(jsonRequest(null));
     expect(res.status).toBe(200);
     expect(mockState.deleteWebhook).toHaveBeenCalledWith('123:abc');
     expect(mockState.telegramUpdate).toHaveBeenCalledWith({ where: { id: 'conn_1' }, data: { status: 'revoked' } });
@@ -266,7 +291,7 @@ describe('POST /api/portal/channels/telegram/disconnect', () => {
     });
     mockState.deleteWebhook.mockResolvedValue({ ok: false, error: 'network down' });
     const { POST } = await import('@/app/api/portal/channels/telegram/disconnect/route');
-    const res = await POST();
+    const res = await POST(jsonRequest(null));
     expect(res.status).toBe(200);
     expect(mockState.telegramUpdate).toHaveBeenCalledWith({ where: { id: 'conn_1' }, data: { status: 'revoked' } });
   });

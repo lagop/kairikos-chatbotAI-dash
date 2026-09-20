@@ -7,6 +7,14 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// Fase 4 multi-instancia — el sitio de cada contratación tiene sus propios
+// tests (client-site.test.ts); aquí solo se comprueba que se pide.
+const clientSiteMock = vi.hoisted(() => ({
+  assignSiteToNewContract: vi.fn(),
+  ensurePrimaryClientSite: vi.fn(),
+}));
+vi.mock('@/lib/client-site', () => clientSiteMock);
+
 const mockState = vi.hoisted(() => ({
   invoicesCreate: vi.fn(),
   invoiceItemsCreate: vi.fn(),
@@ -261,6 +269,13 @@ describe('activateClientProductFromWebQuotePayment', () => {
       expect.objectContaining({ data: expect.objectContaining({ action: 'web_quote_paid', statusAfter: 'active' }) }),
     );
     expect(mockState.webQuoteUpdate).toHaveBeenCalledWith({ where: { id: 'wq_1' }, data: { status: 'paid' } });
+    // Fase 4 — la web pagada apunta a su negocio.
+    expect(clientSiteMock.assignSiteToNewContract).toHaveBeenCalledWith(expect.anything(), {
+      clientId: 'c1',
+      tenantId: 't1',
+      clientProductId: 'cp_1',
+      productCode: 'web',
+    });
   });
 
   const DEPOSIT_INVOICE = {

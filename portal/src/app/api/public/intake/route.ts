@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createHash, randomUUID } from 'node:crypto';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
+import { resolveSoleChatbotInstance } from '@/lib/client-product-access';
+import { ensurePrimaryClientSite, assignSiteToNewContract } from '@/lib/client-site';
 import {
   INTAKE_SLUG,
   deriveVertical,
@@ -190,6 +192,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           select: { id: true, name: true, companyName: true, tenantId: true },
         });
 
+    // Fase 4 multi-instancia — todo cliente con su sitio primario; idempotente,
+    // así que un segundo envío del mismo correo no crea otro. Ver
+    // lib/client-site.ts.
+    await ensurePrimaryClientSite(tx, {
+      clientId: clientRecord.id,
+      tenantId: clientRecord.tenantId,
+      name: clientRecord.companyName ?? clientRecord.name,
+    });
+
     // WP-14 — a brand-new client needs a ClientProduct row for 'chatbot'
     // too, or ClientProduct.onboardingState (the WP-14 source of truth for
     // per-product lifecycle) never gets created and every wizard-review
@@ -204,7 +215,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         select: { id: true },
       });
       if (chatbotProduct) {
-        await tx.clientProduct.create({
+        const chatbotContract = await tx.clientProduct.create({
           data: {
             clientId: clientRecord.id,
             productId: chatbotProduct.id,
@@ -213,6 +224,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             onboardingState: DEFAULT_STATE,
             createdBy: 'system:intake',
           },
+          select: { id: true },
+        });
+        // Fase 4 multi-instancia — la contratación apunta a su negocio: el
+        // primario, o uno nuevo si es la segunda de un producto multi-instancia.
+        // Ver lib/client-site.ts.
+        await assignSiteToNewContract(tx, {
+          clientId: clientRecord.id,
+          tenantId: clientRecord.tenantId,
+          clientProductId: chatbotContract.id,
+          productCode: CHATBOT_PRODUCT_CODE,
         });
       } else {
         logError(
@@ -298,12 +319,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     try {
       const seeded = mapIntakeToWizardSteps(payload);
       const seededStepKeys = Object.keys(seeded);
+      // Fase 4 multi-instancia — los pasos sembrados son del chatbot que esta
+      // misma alta acaba de crear. Un cliente nuevo tiene exactamente uno.
+      const chatbot = await resolveSoleChatbotInstance(prisma, client.clientId);
       for (const stepKey of seededStepKeys) {
         const data = seeded[stepKey as keyof typeof seeded];
         if (!data) continue;
         await saveWizardStep(
           prisma,
-          { clientId: client.clientId, email: payload.human_handoff_email, productCode: CHATBOT_PRODUCT_CODE },
+          {
+            clientId: client.clientId,
+            email: payload.human_handoff_email,
+            productCode: CHATBOT_PRODUCT_CODE,
+            clientProductId: chatbot?.clientProductId ?? null,
+          },
           { stepKey, data: data as unknown as Record<string, unknown>, status: 'draft' },
           {
             actor: 'system',

@@ -37,16 +37,36 @@ function isChannelCode(value: unknown): value is ChannelCode {
  * ClientProduct, or if that tier's Product.features.channels is missing
  * or malformed (fails closed — a misconfigured catalog row should block
  * connecting channels, not silently allow everything).
+ *
+ * Fase 4 multi-instancia — los canales los da la TARIFA de un chatbot
+ * concreto, y un cliente puede tener dos de tarifas distintas: un Starter sin
+ * WhatsApp para un negocio y un Premium con WhatsApp para otro. Esto hacía
+ * findFirst SIN orden, así que con dos chatbots podía leer la tarifa del
+ * Premium y dejar conectar WhatsApp al Starter. No era un fallo de datos sino
+ * de plan: el cliente obtenía un canal que no había pagado para ese negocio.
+ *
+ * Con `clientProductId` se mira esa contratación. Sin él se mira la única que
+ * haya; con dos y sin decir cuál se devuelve [] — cerrar, igual que ya hacía
+ * esta función con un catálogo mal configurado.
  */
 export async function getAllowedChannelsForClient(
   prisma: PrismaClient,
   clientId: string,
+  clientProductId?: string | null,
 ): Promise<ChannelCode[]> {
-  const clientProduct = await prisma.clientProduct.findFirst({
-    where: { clientId, status: 'active', product: { code: CHATBOT_PRODUCT_CODE } },
+  const rows = await prisma.clientProduct.findMany({
+    where: {
+      ...(clientProductId ? { id: clientProductId } : {}),
+      clientId,
+      status: 'active',
+      product: { code: CHATBOT_PRODUCT_CODE },
+    },
     select: { product: { select: { features: true } } },
+    orderBy: { subscribedAt: 'asc' },
+    take: 2,
   });
-  if (!clientProduct) return [];
+  if (rows.length !== 1) return [];
+  const clientProduct = rows[0];
 
   const features = clientProduct.product.features;
   if (!features || typeof features !== 'object' || Array.isArray(features)) return [];
@@ -66,7 +86,10 @@ export async function isChannelAllowedForClient(
   prisma: PrismaClient,
   clientId: string,
   channel: ChannelCode,
+  /** El chatbot al que se conecta el canal. Las rutas de conexión lo pasan
+   *  siempre: la tarifa que cuenta es la de ESE chatbot. */
+  clientProductId?: string | null,
 ): Promise<boolean> {
-  const allowed = await getAllowedChannelsForClient(prisma, clientId);
+  const allowed = await getAllowedChannelsForClient(prisma, clientId, clientProductId);
   return allowed.includes(channel);
 }
