@@ -92,6 +92,18 @@ Cuidado con los nombres de columna al escribir el SQL: los modelos nuevos usan `
 snake_case, pero **los modelos antiguos no lo hacen** — en `ChatbotConversation` la columna
 es literalmente `"clientId"`, no `"client_id"`. Comprueba el modelo antes de escribir el DDL.
 
+Eso es cómo se **escribe** una migración. Cómo se **aplica de verdad contra el Postgres de
+la VPS** no estaba documentado en ningún sitio hasta el 20/09/2026, y se reconstruyó a mano
+con dos tropiezos reales — usa `scripts/vps-migrate-deploy.sh` en vez de repetirlos:
+Postgres no está publicado fuera de la red interna de Docker de la VPS, y el contenedor de
+producción no lleva el CLI de Prisma (solo el cliente ya generado). El script clona una copia
+aislada del repo en la propia VPS (nunca toca `/root/kairikos-portal`, que tiene cambios sin
+commitear que gestiona el pipeline de Hostinger) y corre un contenedor de un solo uso en la
+misma red que Postgres. Fija `prisma@5.22.0` a propósito — sin versión, `npx prisma` descarga
+la última del registro (hoy 7.x), que ya no soporta `url = env(...)` en el datasource y falla
+con un error que no señala la causa real. E instala `openssl` a propósito — sin él, el motor
+nativo de Prisma falla al arrancar con un `Schema engine error:` completamente vacío.
+
 ## Fronteras de la arquitectura
 
 **El portal decide, n8n interpreta plataformas externas.** n8n no tiene acceso de lectura a
