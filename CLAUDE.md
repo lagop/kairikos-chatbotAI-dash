@@ -154,6 +154,13 @@ escribir en cualquier tenant.
 | `/api/internal/*` | `PORTAL_API_KEY` por cabecera, comparación en tiempo constante |
 | `/api/cron/*` | `Authorization: Bearer ${CRON_SECRET}` |
 
+**Ser operador sale SOLO de la `OperatorSession`** (cookie `kairikos_operator_session` + fila
+en Postgres), tanto en `/api/admin/*` como en las páginas `/admin/*` vía `getSession().isOperator`.
+Esa sesión nace después del segundo factor (`src/lib/operator-login.ts`) y es revocable. NextAuth
+es solo para clientes: hasta el 22/09/2026 el operador entraba también por NextAuth con la
+contraseña sola, sin límite de intentos y con un JWT de 30 días imposible de revocar. No vuelvas a
+derivar `isOperator` del rol del JWT.
+
 ## Cómo se escribe una integración de IA
 
 Hay ocho construidas y todas siguen el mismo molde: `review-reply-ai.ts`,

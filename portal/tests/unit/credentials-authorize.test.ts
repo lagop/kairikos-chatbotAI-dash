@@ -33,12 +33,16 @@ vi.mock('@/lib/prisma', () => ({
 // Mock @/lib/operator-crypto so we can control verifyPassword behavior.
 const verifyPassword = vi.fn();
 
-vi.mock('@/lib/operator-crypto', () => ({
+// Parcial: el limitador de intentos y la huella de la contraseña son los
+// reales — son parte de lo que se prueba abajo.
+vi.mock('@/lib/operator-crypto', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/operator-crypto')>()),
   verifyPassword: (...args: unknown[]) => verifyPassword(...args),
 }));
 
 // Import AFTER the mocks are in place.
 import { authConfig } from '../../auth';
+import { passwordFingerprint } from '@/lib/operator-crypto';
 
 const KNOWN_EMAIL = 'aurora@example.com';
 const KNOWN_CLIENT_ID = 'client_aurora_001';
@@ -122,6 +126,7 @@ describe('authConfig.providers[0].authorize (Credentials)', () => {
       email: KNOWN_EMAIL,
       clientId: KNOWN_CLIENT_ID,
       role: 'client',
+      pwf: passwordFingerprint('argon2hash'),
     });
     expect(findUniqueClientUser).toHaveBeenCalledWith({
       where: { userId: KNOWN_USER_ID },
@@ -154,19 +159,89 @@ describe('authConfig.providers[0].authorize (Credentials)', () => {
   });
 });
 
+// Seguridad (22/09/2026): el endpoint de NextAuth no limitaba intentos.
+describe('authorize — límite de intentos', () => {
+  it('deja de comprobar contraseñas tras 10 intentos seguidos al mismo email', async () => {
+    findUnique.mockResolvedValue({ id: KNOWN_USER_ID, role: 'client', passwordHash: 'argon2hash' });
+    verifyPassword.mockResolvedValue(false);
+    const authorize = getAuthorize();
+    for (let i = 0; i < 12; i++) {
+      await authorize(buildCredentials('fuerza-bruta@example.com', `intento-${i}`));
+    }
+    expect(verifyPassword).toHaveBeenCalledTimes(10);
+  });
+
+  it('cuenta la IP real que pone el proxy, no la que escribe el cliente en X-Forwarded-For', async () => {
+    findUnique.mockResolvedValue(null);
+    const provider = authConfig.providers[0] as unknown as {
+      options: { authorize: (c: unknown, r: Request) => Promise<unknown> };
+    };
+    let lookups = 0;
+    findUnique.mockImplementation(async () => {
+      lookups++;
+      return null;
+    });
+    for (let i = 0; i < 40; i++) {
+      const request = new Request('https://portal.example/api/auth/callback/portal-credentials', {
+        headers: { 'x-forwarded-for': `10.0.0.${i}, 203.0.113.7`, 'x-real-ip': '203.0.113.7' },
+      });
+      await provider.options.authorize(buildCredentials(`probe-${i}@example.com`, 'x'), request);
+    }
+    expect(lookups).toBe(30);
+  });
+});
+
 describe('authConfig.callbacks.jwt', () => {
   it('embeds clientId and role from user into token', async () => {
     const jwt = authConfig.callbacks?.jwt;
     expect(jwt).toBeTypeOf('function');
-    const token = await jwt!({ token: {}, user: { id: 'u1', email: 'a@b.com', clientId: 'cid1', role: 'client' } });
+    findUnique.mockResolvedValueOnce({ passwordHash: 'argon2hash' });
+    const token = await jwt!({
+      token: { sub: 'u1' },
+      user: { id: 'u1', email: 'a@b.com', clientId: 'cid1', role: 'client', pwf: passwordFingerprint('argon2hash') } as never,
+    } as never);
     expect(token).toMatchObject({ clientId: 'cid1', role: 'client' });
   });
 
   it('passes token through when no user', async () => {
     const jwt = authConfig.callbacks?.jwt;
     const token = { foo: 'bar' };
-    const result = await jwt!({ token, user: undefined });
+    const result = await jwt!({ token, user: undefined } as never);
     expect(result).toEqual(token);
+  });
+
+  // Seguridad (22/09/2026): antes el JWT valía 30 días pasara lo que pasara.
+  it('cambiar la contraseña cierra las sesiones abiertas: la huella ya no coincide', async () => {
+    const jwt = authConfig.callbacks?.jwt;
+    findUnique.mockResolvedValueOnce({ passwordHash: 'hash-nuevo-tras-el-cambio' });
+    const result = await jwt!({
+      token: { sub: 'u1', role: 'client', pwf: passwordFingerprint('hash-antiguo') },
+      user: undefined,
+    } as never);
+    expect(result).toBeNull();
+  });
+
+  it('una contraseña pendiente de resetear por soporte también las cierra', async () => {
+    const jwt = authConfig.callbacks?.jwt;
+    findUnique.mockResolvedValueOnce({ passwordHash: '__must_reset__' });
+    const result = await jwt!({
+      token: { sub: 'u1', role: 'client', pwf: passwordFingerprint('hash-antiguo') },
+      user: undefined,
+    } as never);
+    expect(result).toBeNull();
+  });
+
+  it('con la misma contraseña, el token sigue valiendo', async () => {
+    const jwt = authConfig.callbacks?.jwt;
+    findUnique.mockResolvedValueOnce({ passwordHash: 'argon2hash' });
+    const token = { sub: 'u1', role: 'client', pwf: passwordFingerprint('argon2hash') };
+    expect(await jwt!({ token, user: undefined } as never)).toEqual(token);
+  });
+
+  it('un JWT de operador (entrada retirada) ya no abre nada', async () => {
+    const jwt = authConfig.callbacks?.jwt;
+    const result = await jwt!({ token: { sub: 'op1', role: 'operator' }, user: undefined } as never);
+    expect(result).toBeNull();
   });
 });
 

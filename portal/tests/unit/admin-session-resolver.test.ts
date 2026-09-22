@@ -59,9 +59,23 @@ vi.mock('@/lib/portal-session', () => ({
   isPortalDevMock: () => isPortalDevMock(),
 }));
 
+const getValidSession = vi.fn();
+const touchSession = vi.fn();
+vi.mock('@/lib/operator-session', () => ({
+  SESSION_COOKIE_NAME: 'kairikos_operator_session',
+  getValidSession: (...args: unknown[]) => getValidSession(...args),
+  touchSession: (...args: unknown[]) => touchSession(...args),
+}));
+
 import { getSession } from '@/lib/session';
 
 const OPERATOR_EMAIL = 'lucia@kairikos.com';
+
+function withOperatorCookie(sessionId = 'sess_op_1') {
+  cookiesGet.mockImplementation((name: string) =>
+    name === 'kairikos_operator_session' ? { value: sessionId } : undefined,
+  );
+}
 
 beforeEach(() => {
   auth.mockReset();
@@ -70,32 +84,67 @@ beforeEach(() => {
   cookiesGet.mockReset().mockReturnValue(undefined);
   headersGet.mockReset().mockReturnValue(null);
   isPortalDevMock.mockReset();
+  getValidSession.mockReset().mockResolvedValue(null);
+  touchSession.mockReset().mockResolvedValue(undefined);
   delete process.env.KAIA_OPERATOR_API_KEY;
 });
 
-describe('getSession — real operator session takes priority over dev-mock (bug fix)', () => {
-  it('resolves isOperator: true for a real NextAuth operator session, even when isPortalDevMock() is true', async () => {
+// Seguridad (22/09/2026): ser operador sale SOLO de la OperatorSession, que
+// nace después del segundo factor y se puede revocar. El rol del JWT de
+// NextAuth ya no cuenta — era la puerta con contraseña sola.
+describe('getSession — el operador sale de su OperatorSession, no del JWT', () => {
+  it('una OperatorSession válida da isOperator, aunque isPortalDevMock() sea true', async () => {
     isPortalDevMock.mockReturnValue(true);
-    auth.mockResolvedValueOnce({ user: { email: OPERATOR_EMAIL, role: 'operator' } });
-    findUniqueUser.mockResolvedValueOnce(null); // operators have no User table row
-    findUniqueClientUser.mockResolvedValueOnce(null);
+    withOperatorCookie();
+    getValidSession.mockResolvedValueOnce({
+      operatorId: 'op_1', email: OPERATOR_EMAIL, totpVerifiedAt: new Date(), lastUsedAt: new Date(),
+    });
 
     const session = await getSession();
 
-    expect(auth).toHaveBeenCalledTimes(1);
+    expect(getValidSession).toHaveBeenCalledWith('sess_op_1');
     expect(session.isOperator).toBe(true);
     expect(session.email).toBe(OPERATOR_EMAIL);
+    expect(session.userId).toBe('op_1');
+    expect(auth).not.toHaveBeenCalled();
   });
 
-  it('resolves isOperator: true for a real operator session when isPortalDevMock() is false too (unaffected)', async () => {
+  it('un JWT de NextAuth con rol operador, sin OperatorSession, ya no es operador', async () => {
     isPortalDevMock.mockReturnValue(false);
     auth.mockResolvedValueOnce({ user: { email: OPERATOR_EMAIL, role: 'operator' } });
-    findUniqueUser.mockResolvedValueOnce(null);
+    findUniqueUser.mockResolvedValueOnce({ id: 'user_op', role: 'operator' });
     findUniqueClientUser.mockResolvedValueOnce(null);
 
     const session = await getSession();
 
-    expect(session.isOperator).toBe(true);
+    expect(session.isOperator).toBe(false);
+  });
+
+  it('una cookie de sesión revocada, caducada o sin segundo factor no es operador', async () => {
+    isPortalDevMock.mockReturnValue(false);
+    withOperatorCookie('sess_revocada');
+    getValidSession.mockResolvedValueOnce(null);
+    auth.mockResolvedValueOnce(null);
+
+    const session = await getSession();
+
+    expect(session.isOperator).toBe(false);
+    expect(session.reason).toBe('no_session');
+  });
+
+  it('marca el uso de la sesión como mucho cada 5 minutos', async () => {
+    withOperatorCookie();
+    getValidSession.mockResolvedValueOnce({
+      operatorId: 'op_1', email: OPERATOR_EMAIL, totpVerifiedAt: new Date(), lastUsedAt: new Date(),
+    });
+    await getSession();
+    expect(touchSession).not.toHaveBeenCalled();
+
+    getValidSession.mockResolvedValueOnce({
+      operatorId: 'op_1', email: OPERATOR_EMAIL, totpVerifiedAt: new Date(), lastUsedAt: new Date(Date.now() - 10 * 60_000),
+    });
+    await getSession();
+    expect(touchSession).toHaveBeenCalledWith('sess_op_1');
   });
 
   it('still resolves a real client session correctly (existing behavior preserved)', async () => {

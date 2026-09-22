@@ -206,6 +206,47 @@ export async function sendVerifyEmail(params: { to: string; verifyUrl: string })
   });
 }
 
+// Seguridad (22/09/2026) — el alta del TOTP de un operador exige, además de
+// la contraseña, este código enviado a su email: quien solo tenga la
+// contraseña no puede registrar su propio autenticador. Ver operator-login.ts.
+export async function sendOperatorEnrollmentCode(params: { to: string; code: string }): Promise<void> {
+  const subject = `${params.code} es tu código para activar la verificación en dos pasos — Kairikos`;
+  const text = [
+    'Hola,',
+    '',
+    'Alguien ha entrado con tu contraseña en la vista de soporte de Kairikos y va a activar la verificación en dos pasos.',
+    '',
+    `Tu código: ${params.code}`,
+    '',
+    'Caduca en 10 minutos. Si no has sido tú, no lo compartas y cambia tu contraseña: alguien la conoce.',
+    '',
+    '— Equipo Kairikos',
+  ].join('\n');
+
+  await sendEmail({
+    to: params.to,
+    subject,
+    text,
+    html: `<!doctype html>
+<html lang="es">
+  <body style="font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #111;">
+    <div style="border-bottom: 1px solid #e5e7eb; padding-bottom: 12px; margin-bottom: 20px;">
+      <p style="margin: 0; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: #6b7280;">Kairikos · Soporte</p>
+      <h1 style="margin: 4px 0 0; font-size: 20px;">Activa la verificación en dos pasos</h1>
+    </div>
+    <p>Alguien ha entrado con tu contraseña en la vista de soporte y va a activar la verificación en dos pasos. Este es el código:</p>
+    <p style="margin: 24px 0; font-size: 32px; font-weight: 700; letter-spacing: 0.3em; font-family: ui-monospace, Menlo, monospace;">${params.code}</p>
+    <p style="font-size: 12px; color: #6b7280;">Caduca en 10 minutos.</p>
+    <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 28px 0;" />
+    <p style="font-size: 12px; color: #6b7280;">
+      ¿No has sido tú? No compartas el código y cambia tu contraseña: alguien la conoce.<br />
+      Escríbenos a <a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a>.
+    </p>
+  </body>
+</html>`,
+  });
+}
+
 export {
   FROM_ADDRESS,
   SUPPORT_EMAIL,

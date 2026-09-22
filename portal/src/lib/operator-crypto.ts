@@ -83,6 +83,14 @@ export function parseHexKey(envVarName: string, raw: string | undefined): Buffer
   return key;
 }
 
+/** Huella corta del hash de una contraseña: cambia cuando cambia la
+ *  contraseña. La llevan el reto de entrada del operador y el JWT del
+ *  cliente, para que un cambio de contraseña los invalide. No revela nada
+ *  útil fuera de esa comparación. */
+export function passwordFingerprint(passwordHash: string): string {
+  return crypto.createHash('sha256').update(passwordHash).digest('base64url').slice(0, 16);
+}
+
 export async function hashPassword(password: string): Promise<string> {
   return argon2Hash(password, { algorithm: ARGON2ID });
 }

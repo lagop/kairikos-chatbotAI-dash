@@ -6,6 +6,27 @@ import { prisma } from './prisma';
 import { MOCK_CLIENT, MOCK_SECONDARY_CLIENT } from './portal-data';
 import { constantTimeEqual } from './operator-crypto';
 import { isPortalDevMock } from './portal-session';
+import { SESSION_COOKIE_NAME, getValidSession, touchSession, type ValidOperatorSession } from './operator-session';
+
+/** Marca de uso como mucho cada 5 minutos: cada página del admin pasa por
+ *  aquí y no hace falta una escritura por petición para el tiempo de
+ *  inactividad de 12 horas. */
+const TOUCH_EVERY_MS = 5 * 60_000;
+
+async function resolveOperatorFromCookie(): Promise<ValidOperatorSession | null> {
+  let sessionId: string | undefined;
+  try {
+    sessionId = cookies().get(SESSION_COOKIE_NAME)?.value;
+  } catch {
+    return null;
+  }
+  if (!sessionId) return null;
+  const session = await getValidSession(sessionId);
+  if (session && Date.now() - session.lastUsedAt.getTime() > TOUCH_EVERY_MS) {
+    touchSession(sessionId).catch(() => {});
+  }
+  return session;
+}
 
 export type SessionReason = 'no_session' | 'no_client_access' | 'cross_tenant';
 
@@ -54,6 +75,28 @@ export async function getSession(): Promise<PortalSession> {
   const operatorKeyBypass = resolveOperatorKeyBypass();
   if (operatorKeyBypass) {
     return operatorKeyBypass;
+  }
+
+  // Seguridad (22/09/2026) — ser operador sale SOLO de la OperatorSession
+  // (cookie + fila en Postgres), que nace después del segundo factor y se
+  // puede revocar. Antes salía del rol del JWT de NextAuth: bastaba la
+  // contraseña, no había límite de intentos y el token valía 30 días aunque
+  // se cambiara la contraseña o se desactivara al operador. Ver
+  // operator-login.ts. Va primero: con las dos sesiones en el mismo
+  // navegador, manda la de operador.
+  const operator = await resolveOperatorFromCookie();
+  if (operator) {
+    return {
+      email: operator.email.toLowerCase(),
+      accessToken: null,
+      userId: operator.operatorId,
+      role: 'operator',
+      hasClientAccess: false,
+      isOperator: true,
+      clientSlug: null,
+      clientId: null,
+      reason: 'no_client_access',
+    };
   }
 
   // A real, valid NextAuth session (client OR operator) always takes
@@ -145,7 +188,8 @@ export async function getSession(): Promise<PortalSession> {
     userId: session.user.id ?? null,
     role: userRow?.role ?? (session.user as { role?: string }).role ?? null,
     hasClientAccess: Boolean(clientUser?.clientId),
-    isOperator: (userRow?.role ?? (session.user as { role?: string }).role) === 'operator',
+    // Nunca desde el JWT: ver resolveOperatorFromCookie más arriba.
+    isOperator: false,
     clientSlug: clientUser?.client?.email ?? null,
     clientId: clientUser?.clientId ?? (session.user as { clientId?: string }).clientId ?? null,
     reason: clientUser?.clientId ? undefined : 'no_client_access',
