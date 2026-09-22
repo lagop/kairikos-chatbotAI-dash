@@ -129,20 +129,6 @@ describe('POST /api/admin/portal/settings/integrations/google-business', () => {
     );
   });
 
-  it('the legacy KAIA_OPERATOR_API_KEY auth path saves with a null operatorId instead of crashing on a non-UUID lookup', async () => {
-    mockState.authenticateAdminRequest.mockResolvedValue({ ok: true, sessionId: 'legacy', operatorId: 'legacy' });
-    const res = await POST(makeRequest(VALID_BODY));
-    expect(res.status).toBe(200);
-    expect(mockState.operatorFindUnique).not.toHaveBeenCalled();
-    expect(mockState.saveIntegrationCredential).toHaveBeenCalledWith(
-      'google_business',
-      'Google Business (Reseñas/Recall)',
-      VALID_BODY.clientSecret,
-      { operatorId: null, operatorEmail: null },
-      VALID_BODY.clientId,
-    );
-  });
-
   it('trims surrounding whitespace before validating and saving', async () => {
     await POST(makeRequest({ clientId: `  ${VALID_BODY.clientId}  `, clientSecret: `  ${VALID_BODY.clientSecret}  ` }));
     expect(mockState.saveIntegrationCredential).toHaveBeenCalledWith(

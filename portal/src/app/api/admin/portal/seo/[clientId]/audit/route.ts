@@ -39,11 +39,8 @@ export async function POST(req: NextRequest, { params }: { params: { clientId: s
     return NextResponse.json({ error: 'no_site_url', detail: 'el cliente aun no indico la URL de su sitio' }, { status: 400 });
   }
 
-  const isLegacyAuth = auth.operatorId === 'legacy';
-  const operator = isLegacyAuth
-    ? null
-    : await prisma.operator.findUnique({ where: { id: auth.operatorId }, select: { email: true } });
-  const actorOperatorId = isLegacyAuth ? null : auth.operatorId;
+  const operator = await prisma.operator.findUnique({ where: { id: auth.operatorId }, select: { email: true } });
+  const actorOperatorId = auth.operatorId;
   const actorEmail = operator?.email ?? null;
 
   const now = new Date();

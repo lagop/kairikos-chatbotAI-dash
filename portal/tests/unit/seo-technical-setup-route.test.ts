@@ -1,9 +1,6 @@
 // =============================================================================
 // SEO con IA, Fase A — unit tests for
-// PATCH /api/admin/portal/seo/[clientId]/technical-setup. Includes a
-// regression test for the legacy KAIA_OPERATOR_API_KEY auth bug found and
-// fixed on the Google Places integrations route (authenticateAdminRequest
-// returns the placeholder id 'legacy', which is not a real Operator row).
+// PATCH /api/admin/portal/seo/[clientId]/technical-setup.
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -162,16 +159,6 @@ describe('PATCH /api/admin/portal/seo/[clientId]/technical-setup', () => {
       expect.objectContaining({
         data: expect.objectContaining({ actorType: 'operator', actorOperatorId: 'op_1', actorEmail: 'op@kairikos.com' }),
       }),
-    );
-  });
-
-  it('the legacy KAIA_OPERATOR_API_KEY auth path saves with a null actorOperatorId instead of crashing on a non-UUID lookup', async () => {
-    mockState.authenticateAdminRequest.mockResolvedValue({ ok: true, sessionId: 'legacy', operatorId: 'legacy' });
-    const res = await patch('client_1', { wordpressUrl: 'https://x.example' });
-    expect(res.status).toBe(200);
-    expect(mockState.operatorFindUnique).not.toHaveBeenCalled();
-    expect(mockState.auditCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ actorOperatorId: null, actorEmail: null }) }),
     );
   });
 

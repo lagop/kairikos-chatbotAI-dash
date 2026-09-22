@@ -172,15 +172,15 @@ describe('ensureProspectingCampaign', () => {
     });
   });
 
-  it('writes the raw operator id as actorId, and "legacy" when there is none', async () => {
+  it('writes the raw operator id as actorId', async () => {
     const { prisma, tx } = makeProspectingPrisma();
     await ensureProspectingCampaign(
       prisma,
       { clientId: 'client_1', clientProductId: 'cp_1', tenantId: 'tenant_1', tier: 'solo' },
-      { type: 'operator', operatorId: null },
+      { type: 'operator', operatorId: 'op_1' },
     );
     expect(tx.prospectingCampaignAudit.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ actorId: 'legacy' }),
+      data: expect.objectContaining({ actorId: 'op_1' }),
     });
   });
 
@@ -255,15 +255,15 @@ describe('ensureLeadQualificationProfile', () => {
     });
   });
 
-  it('formats an operator actorEmail as operator:<id>, and operator:legacy when there is none', async () => {
+  it('formats an operator actorEmail as operator:<id>', async () => {
     const { prisma, tx } = makeLeadsPrisma();
     await ensureLeadQualificationProfile(
       prisma,
       { clientId: 'client_1', clientProductId: 'cp_1', tenantId: null },
-      { type: 'operator', operatorId: null },
+      { type: 'operator', operatorId: 'op_1' },
     );
     expect(tx.leadQualificationProfileAudit.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ actorEmail: 'operator:legacy' }),
+      data: expect.objectContaining({ actorEmail: 'operator:op_1' }),
     });
   });
 

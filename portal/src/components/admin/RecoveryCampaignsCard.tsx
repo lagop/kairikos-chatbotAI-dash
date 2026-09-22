@@ -74,7 +74,6 @@ const STATE_LABEL: Record<string, string> = {
 };
 
 const ERROR_LABEL: Record<string, string> = {
-  not_attributable: 'Aprobar tiene que quedar a nombre de un operador. Entra con tu cuenta en vez de con la clave de API.',
   not_draft: 'Esta campaña ya no está en borrador.',
   not_cancellable: 'Esta campaña ya ha terminado y no se puede cancelar.',
   no_candidates: 'Ahora mismo no hay nadie a quien escribir con este disparador.',

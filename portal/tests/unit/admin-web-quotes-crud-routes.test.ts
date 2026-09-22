@@ -103,15 +103,14 @@ describe('POST /api/admin/portal/web-quotes (create draft)', () => {
     );
   });
 
-  it("resuelve el operador legacy a null en vez de pasar el string 'legacy' (createdByOperatorId/actorOperatorId son FKs reales)", async () => {
-    mockState.authenticateAdminRequest.mockResolvedValueOnce({ ok: true, operatorId: 'legacy' });
+  it("escribe el operador de la sesión en createdByOperatorId y en la auditoría", async () => {
     const res = await callRoute({ clientProductId: '11111111-1111-1111-1111-111111111111', amountCents: 99900, description: 'Sitio web' });
     expect(res.status).toBe(201);
     expect(mockState.webQuoteCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ createdByOperatorId: null }) }),
+      expect.objectContaining({ data: expect.objectContaining({ createdByOperatorId: 'op_1' }) }),
     );
     expect(mockState.webQuoteAuditCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ actorOperatorId: null }) }),
+      expect.objectContaining({ data: expect.objectContaining({ actorOperatorId: 'op_1' }) }),
     );
   });
 });
@@ -168,13 +167,12 @@ describe('PATCH /api/admin/portal/web-quotes/[id] (edit)', () => {
     );
   });
 
-  it("resuelve el operador legacy a null en vez de pasar el string 'legacy' (WebQuoteAudit.actorOperatorId es una FK real)", async () => {
-    mockState.authenticateAdminRequest.mockResolvedValueOnce({ ok: true, operatorId: 'legacy' });
+  it("escribe el operador de la sesión en WebQuoteAudit.actorOperatorId", async () => {
     mockState.findUniqueWebQuote.mockResolvedValueOnce({ id: 'wq_1', status: 'draft', amountCents: 99900, depositCents: null, description: 'x' });
     const res = await callRoute({ amountCents: 120000 });
     expect(res.status).toBe(200);
     expect(mockState.webQuoteAuditCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ actorOperatorId: null }) }),
+      expect.objectContaining({ data: expect.objectContaining({ actorOperatorId: 'op_1' }) }),
     );
   });
 });
@@ -201,13 +199,12 @@ describe('POST /api/admin/portal/web-quotes/[id]/cancel', () => {
     );
   });
 
-  it("resuelve el operador legacy a null en vez de pasar el string 'legacy' (WebQuoteAudit.actorOperatorId es una FK real)", async () => {
-    mockState.authenticateAdminRequest.mockResolvedValueOnce({ ok: true, operatorId: 'legacy' });
+  it("escribe el operador de la sesión en WebQuoteAudit.actorOperatorId", async () => {
     mockState.findUniqueWebQuote.mockResolvedValueOnce({ id: 'wq_1', status: 'draft' });
     const res = await callRoute();
     expect(res.status).toBe(200);
     expect(mockState.webQuoteAuditCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ actorOperatorId: null }) }),
+      expect.objectContaining({ data: expect.objectContaining({ actorOperatorId: 'op_1' }) }),
     );
   });
 });
@@ -233,13 +230,12 @@ describe('POST /api/admin/portal/web-quotes/[id]/reset', () => {
     );
   });
 
-  it("resuelve el operador legacy a null en vez de pasar el string 'legacy' (WebQuoteAudit.actorOperatorId es una FK real)", async () => {
-    mockState.authenticateAdminRequest.mockResolvedValueOnce({ ok: true, operatorId: 'legacy' });
+  it("escribe el operador de la sesión en WebQuoteAudit.actorOperatorId", async () => {
     mockState.findUniqueWebQuote.mockResolvedValueOnce({ id: 'wq_1', status: 'cancelled' });
     const res = await callRoute();
     expect(res.status).toBe(200);
     expect(mockState.webQuoteAuditCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ actorOperatorId: null }) }),
+      expect.objectContaining({ data: expect.objectContaining({ actorOperatorId: 'op_1' }) }),
     );
   });
 });

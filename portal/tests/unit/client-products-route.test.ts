@@ -254,27 +254,6 @@ describe("POST /api/admin/portal/client-products — Fase 6, arranca la RecallSu
 
     expect(mockState.ensureRecallSubscription).not.toHaveBeenCalled();
   });
-
-  it("resuelve el operador legacy a null en vez de pasar el string 'legacy' (RecallSubscriptionAudit.actorOperatorId es una FK real)", async () => {
-    mockState.authenticateAdminRequest.mockResolvedValueOnce({ ok: true, operatorId: 'legacy' });
-    mockState.findUniqueProduct.mockResolvedValueOnce({ id: '44444444-4444-4444-4444-444444444444', isActive: true, code: 'recall' });
-    mockState.createClientProduct.mockResolvedValueOnce({
-      id: 'cp_1',
-      clientId: 'client_1',
-      tenantId: 'tenant_1',
-      productId: '44444444-4444-4444-4444-444444444444',
-      product: { code: 'recall' },
-    });
-
-    const { POST } = await import('@/app/api/admin/portal/client-products/route');
-    await POST(makeRequest({ clientId: 'client_1', productId: '44444444-4444-4444-4444-444444444444' }));
-
-    expect(mockState.ensureRecallSubscription).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.anything(),
-      { type: 'operator', operatorId: null },
-    );
-  });
 });
 
 describe("POST /api/admin/portal/client-products — Fase 6, arranca el perfil de 'seo'/'prospecting'/'leads'", () => {
@@ -338,27 +317,6 @@ describe("POST /api/admin/portal/client-products — Fase 6, arranca el perfil d
       expect.anything(),
       { clientId: 'client_1', clientProductId: 'cp_1', tenantId: 'tenant_1' },
       { type: 'operator', operatorId: 'op_1' },
-    );
-  });
-
-  it("resuelve el operador legacy a null igual que para 'recall'", async () => {
-    mockState.authenticateAdminRequest.mockResolvedValueOnce({ ok: true, operatorId: 'legacy' });
-    mockState.findUniqueProduct.mockResolvedValueOnce({ id: '55555555-5555-5555-5555-555555555555', isActive: true, code: 'seo' });
-    mockState.createClientProduct.mockResolvedValueOnce({
-      id: 'cp_1',
-      clientId: 'client_1',
-      tenantId: 'tenant_1',
-      productId: '55555555-5555-5555-5555-555555555555',
-      product: { code: 'seo' },
-    });
-
-    const { POST } = await import('@/app/api/admin/portal/client-products/route');
-    await POST(makeRequest({ clientId: 'client_1', productId: '55555555-5555-5555-5555-555555555555' }));
-
-    expect(mockState.ensureSeoProfile).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.anything(),
-      { type: 'operator', operatorId: null },
     );
   });
 

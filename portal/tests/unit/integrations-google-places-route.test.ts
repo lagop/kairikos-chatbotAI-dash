@@ -109,24 +109,6 @@ describe('POST /api/admin/portal/settings/integrations/google-places', () => {
     );
   });
 
-  it('the legacy KAIA_OPERATOR_API_KEY auth path saves with a null operatorId instead of crashing on a non-UUID lookup', async () => {
-    // authenticateAdminRequest returns the placeholder id 'legacy' for
-    // this path (see operator-session.ts) — it is not a real Operator
-    // row, so looking it up by id would throw (Operator.id is @db.Uuid).
-    // Caught for real against Postgres during this feature's own
-    // verification: the route 500'd before this fix.
-    mockState.authenticateAdminRequest.mockResolvedValue({ ok: true, sessionId: 'legacy', operatorId: 'legacy' });
-    const res = await POST(makeRequest({ apiKey: 'AIzaSomeRealLookingKey' }));
-    expect(res.status).toBe(200);
-    expect(mockState.operatorFindUnique).not.toHaveBeenCalled();
-    expect(mockState.saveIntegrationCredential).toHaveBeenCalledWith(
-      'google_places',
-      'Google Places',
-      'AIzaSomeRealLookingKey',
-      { operatorId: null, operatorEmail: null },
-    );
-  });
-
   it('trims surrounding whitespace before validating and saving', async () => {
     await POST(makeRequest({ apiKey: '  AIzaSomeRealLookingKey  ' }));
     expect(mockState.saveIntegrationCredential).toHaveBeenCalledWith(

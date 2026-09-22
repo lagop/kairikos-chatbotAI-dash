@@ -136,8 +136,9 @@ export function isTotpStillVerified(totpVerifiedAt: Date | null): boolean {
  * Hasta el 22/09/2026 también valía la cabecera `x-kaia-operator-key` con la
  * clave compartida KAIA_OPERATOR_API_KEY: abría todo el admin salvo las
  * acciones con TOTP, sin decir quién la usaba, y no caducaba. Se retiró
- * entera. Las rutas que aún comparan `operatorId === 'legacy'` son restos
- * de aquel camino: la comparación ya siempre da falso.
+ * entera, y con ella el operatorId de relleno 'legacy' que devolvía: las
+ * rutas ya no lo comprueban y pasan `operatorId` tal cual a las FKs de
+ * auditoría.
  */
 export async function authenticateAdminRequest(req: NextRequest): Promise<{
   ok: true; sessionId: string; operatorId: string

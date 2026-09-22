@@ -20,9 +20,6 @@ export const runtime = 'nodejs';
 export async function DELETE(req: NextRequest, { params }: { params: { promotionCodeId: string } }) {
   const auth = await authenticateAdminRequest(req);
   if (!auth.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  if (auth.operatorId === 'legacy') {
-    return NextResponse.json({ error: 'operator_session_required' }, { status: 403 });
-  }
   if (!/^promo_[A-Za-z0-9]+$/.test(params.promotionCodeId)) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
