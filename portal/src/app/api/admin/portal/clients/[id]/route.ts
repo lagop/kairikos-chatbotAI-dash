@@ -46,6 +46,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import * as crypto from 'node:crypto';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateAdminRequest } from '@/lib/operator-session';
+import { requireTotpStepUp } from '@/lib/operator-totp-stepup';
 import { sendSetupPassword, SETUP_EMAIL_LINK_EXPIRY_DAYS } from '@/lib/auth-email';
 import { mirrorChatbotStateToClientProduct } from '@/lib/client-product-lifecycle';
 
@@ -421,6 +422,15 @@ export async function PATCH(
   const parsed = parseBody(body, current);
   if (!parsed.ok) {
     return jsonError(parsed.status, parsed.error, parsed.detail);
+  }
+
+  // Seguridad (22/09/2026): cambiar el email resetea la contraseña del
+  // cliente y manda el enlace para crear otra al email nuevo — es quedarse
+  // con la cuenta. Solo ese cambio pide TOTP reciente; editar el nombre, la
+  // tarifa o las notas sigue sin pedirlo.
+  if (parsed.changes.some((c) => c.field === 'email')) {
+    const stepUp = await requireTotpStepUp(req);
+    if (!stepUp.ok) return jsonError(stepUp.status, stepUp.error);
   }
 
   if (parsed.changes.length === 0) {

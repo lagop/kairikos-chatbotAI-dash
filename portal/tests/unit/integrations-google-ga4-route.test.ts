@@ -5,6 +5,17 @@
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// Seguridad (22/09/2026): estas rutas piden TOTP reciente. Aquí se da por
+// verificado; el rechazo sin él se prueba en stepup-gated-admin-routes.test.ts.
+const stepUpState = vi.hoisted(() => ({ requireTotpStepUp: vi.fn() }));
+vi.mock('@/lib/operator-totp-stepup', () => ({
+  requireTotpStepUp: (...a: unknown[]) => stepUpState.requireTotpStepUp(...a),
+}));
+beforeEach(() => {
+  stepUpState.requireTotpStepUp.mockReset().mockResolvedValue({ ok: true, operatorId: 'op_1', sessionId: 's1' });
+});
+
 import type { NextRequest } from 'next/server';
 
 const mockState = vi.hoisted(() => ({
@@ -140,5 +151,14 @@ describe('POST /api/admin/portal/settings/integrations/google-ga4', () => {
     const res = await POST(makeRequest(VALID_BODY));
     expect(res.status).toBe(500);
     expect(JSON.stringify(mockState.logError.mock.calls)).not.toContain(VALID_BODY.clientSecret);
+  });
+});
+
+describe('TOTP reciente (seguridad, 22/09/2026)', () => {
+  it('sin TOTP reciente no deja cambiar el cliente OAuth de GA4: 403 totp_step_up_required', async () => {
+    stepUpState.requireTotpStepUp.mockResolvedValueOnce({ ok: false, status: 403, error: 'totp_step_up_required' });
+    const res = await POST(makeRequest({ clientId: '123-abc.apps.googleusercontent.com', clientSecret: 'gocspx-real-looking-secret' }));
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toBe('totp_step_up_required');
   });
 });

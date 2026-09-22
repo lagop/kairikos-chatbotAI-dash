@@ -27,6 +27,7 @@ import * as crypto from 'node:crypto';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { sendEmail, buildPasswordResetHtml } from '@/lib/auth-email';
 import { InMemoryRateLimiter } from '@/lib/operator-crypto';
+import { clientIpFromHeaders } from '@/lib/client-ip';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -52,8 +53,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
   }
 
-  const forwardedFor = req.headers.get('x-forwarded-for') ?? null;
-  const ip = forwardedFor?.split(',')[0]?.trim() ?? '127.0.0.1';
+  // La IP que pone el proxy, no la primera de X-Forwarded-For (ver client-ip.ts).
+  const ip = clientIpFromHeaders(req.headers);
 
   if (!ipRateLimiter.check(`ip:${ip}`, 20)) {
     return NextResponse.json({ error: 'too_many_requests' }, { status: 429 });

@@ -14,7 +14,8 @@
 #   DEPLOY_MODE=dev-ip-port   (default for now)
 #     - App exposed directly on a host port (default 3001, override with APP_PORT)
 #     - No nginx, no certbot, no DNS needed
-#     - Access the portal at http://<VPS_IP>:3001
+#     - Access the portal at http://<VPS_IP>:3001 — only with APP_BIND=0.0.0.0
+#       (the default binds 127.0.0.1; see the app service `ports`).
 #     - Use this when kairikos.com is hosted elsewhere and you just need to
 #       see the portal working end-to-end on the VPS.
 #
@@ -39,11 +40,16 @@ services:
     pull_policy: always
     container_name: kairikos-portal-app
     restart: unless-stopped
-    # dev-ip-port mode: expose the app directly on APP_PORT (default 3001).
-    # prod-dns-tls mode: nginx proxies to app:3000 internally, so the app
-    # only needs to be reachable on the internal Docker network.
+    # Seguridad (22/09/2026): publicado SOLO en 127.0.0.1. Antes se publicaba
+    # en todas las interfaces: cualquiera llegaba a http://<IP de la VPS>:3001
+    # saltándose Traefik — sin HTTPS, y pudiendo escribir la cabecera
+    # X-Real-Ip/X-Forwarded-For que leen los límites de intentos. Producción
+    # entra por Traefik (https://portal.kairikos.cloud) por la red interna de
+    # Docker, que no usa este puerto; desde la propia VPS sigue funcionando
+    # http://localhost:3001. Para volver al modo "IP y puerto" en una máquina
+    # de pruebas: APP_BIND=0.0.0.0.
     ports:
-      - "${APP_PORT:-3001}:3000"
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-3001}:3000"
     environment:
       NODE_ENV: production
       PORT: 3000

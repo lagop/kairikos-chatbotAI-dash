@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useStepUpFetch } from '@/components/portal/useStepUpFetch';
 
 // =============================================================================
 // /admin/portal/settings/alerts — destinatarios de las alertas de operador.
@@ -64,6 +65,7 @@ async function safeJson(res: Response): Promise<Record<string, unknown>> {
 
 export function OperatorAlertSettingsPanel({ initial }: { initial: OperatorAlertSettingsInitial }) {
   const router = useRouter();
+  const { stepUpFetch, stepUpModal } = useStepUpFetch();
   const [operatorEmails, setOperatorEmails] = useState(initial.operatorEmails.join('\n'));
   const [ceoEmail, setCeoEmail] = useState(initial.ceoEmail ?? '');
   const [saving, setSaving] = useState(false);
@@ -75,7 +77,7 @@ export function OperatorAlertSettingsPanel({ initial }: { initial: OperatorAlert
     setSaved(false);
     setSaving(true);
     try {
-      const res = await fetch('/api/admin/portal/settings/alerts', {
+      const res = await stepUpFetch('/api/admin/portal/settings/alerts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ operatorEmails, ceoEmail }),
@@ -99,6 +101,7 @@ export function OperatorAlertSettingsPanel({ initial }: { initial: OperatorAlert
 
   return (
     <section className="card space-y-5" aria-label="Destinatarios de las alertas" data-testid="alert-settings-card">
+      {stepUpModal}
       <div className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <label htmlFor="alert-operator-emails" className="font-semibold">

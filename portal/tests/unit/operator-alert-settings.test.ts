@@ -5,6 +5,17 @@
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// Seguridad (22/09/2026): estas rutas piden TOTP reciente. Aquí se da por
+// verificado; el rechazo sin él se prueba en stepup-gated-admin-routes.test.ts.
+const stepUpState = vi.hoisted(() => ({ requireTotpStepUp: vi.fn() }));
+vi.mock('@/lib/operator-totp-stepup', () => ({
+  requireTotpStepUp: (...a: unknown[]) => stepUpState.requireTotpStepUp(...a),
+}));
+beforeEach(() => {
+  stepUpState.requireTotpStepUp.mockReset().mockResolvedValue({ ok: true, operatorId: 'op_1', sessionId: 's1' });
+});
+
 import type { NextRequest } from 'next/server';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -232,5 +243,14 @@ describe('nadie lee KAIRIKOS_OPERATOR_EMAILS / KAIRIKOS_CEO_EMAIL fuera del mód
 
   it('ningún otro archivo la lee', () => {
     expect(readers.filter((r) => !ALLOWED.has(r))).toEqual([]);
+  });
+});
+
+describe('TOTP reciente (seguridad, 22/09/2026)', () => {
+  it('sin TOTP reciente no deja cambiar a quién le llegan las alertas: 403 totp_step_up_required', async () => {
+    stepUpState.requireTotpStepUp.mockResolvedValueOnce({ ok: false, status: 403, error: 'totp_step_up_required' });
+    const res = await POST(makeRequest({ operatorEmails: 'a@kairikos.com', ceoEmail: '' }));
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toBe('totp_step_up_required');
   });
 });

@@ -21,6 +21,14 @@ export interface ResolvedClient {
 // test runner can boot the dev-mock mode without having to override the
 // Supabase env vars.
 export function isPortalDevMock(): boolean {
+  // Seguridad (22/09/2026): este modo se activaba con solo FALTAR las
+  // variables de Supabase — y en producción faltan (no se usa Supabase para
+  // nada). Fallaba en abierto: /api/portal/dev-session y la cookie
+  // kairikos-portal-dev-session-active daban una sesión de cliente de
+  // pruebas sin credenciales. En producción ya no se activa nunca, salvo
+  // que se pida explícitamente (solo lo hace CI, que arranca `next start`
+  // sin base de datos para el smoke).
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_PORTAL_DEV_MOCK !== '1') return false;
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
   if (!supabaseUrl || !supabaseKey) return true;
