@@ -41,8 +41,16 @@ async function sendEmail(to: string, rendered: { subject: string; text: string; 
     return { ok: true, skipped: true, messageId: null, reason: 'no_api_key' };
   }
 
-  const requireResend = (0, eval)('require') as NodeJS.Require;
-  const { Resend } = requireResend('resend') as typeof import('resend');
+  // 22/09/2026 — aquí el SDK se pedía con un require sacado de un eval,
+  // copiado de review-request-campaign.ts y de ahí a otros seis módulos.
+  // En desarrollo funciona; en la compilación de producción NO existe
+  // `require`, así que cada envío moría con "require is not defined",
+  // logError lo anotaba como warn y la ruta seguía como si nada. Ningún
+  // email de Resend salvo los de auth-email.ts (que siempre usó import
+  // normal) ha salido jamás de producción. Se cambió a import dinámico,
+  // que sigue siendo perezoso y sí existe en el bundle. Hay un test que
+  // impide que el truco vuelva.
+  const { Resend } = await import('resend');
   const resend = new Resend(apiKey);
 
   try {

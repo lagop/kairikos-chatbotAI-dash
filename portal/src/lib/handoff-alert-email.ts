@@ -10,7 +10,7 @@ import 'server-only';
 // resumen periódico (conversation-digest.ts) cuenta las derivadas, pero es
 // opcional, hay que configurarlo y llega tarde por definición.
 //
-// Calcado de conversation-digest-email.ts: require dinámico del SDK de
+// Calcado de conversation-digest-email.ts: carga perezosa del SDK de
 // Resend, nunca lanza, degrada sin RESEND_API_KEY. La conversación ya está
 // guardada antes de intentar el envío, así que un email perdido no pierde
 // nada — solo retrasa el aviso hasta que alguien mire el portal.
@@ -128,8 +128,7 @@ export async function sendHandoffAlertEmail(
     return { ok: true, skipped: true, messageId: null, reason: 'no_api_key' };
   }
 
-  const requireResend = (0, eval)('require') as NodeJS.Require;
-  const { Resend } = requireResend('resend') as typeof import('resend');
+  const { Resend } = await import('resend');
   const resend = new Resend(apiKey);
 
   try {
@@ -220,8 +219,7 @@ export async function sendWidgetContactEmail(
     return { ok: true, skipped: true, messageId: null, reason: 'no_api_key' };
   }
 
-  const requireResend = (0, eval)('require') as NodeJS.Require;
-  const { Resend } = requireResend('resend') as typeof import('resend');
+  const { Resend } = await import('resend');
   const resend = new Resend(apiKey);
 
   try {

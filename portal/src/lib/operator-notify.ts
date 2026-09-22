@@ -121,8 +121,7 @@ export async function sendOperatorNotification(
   // Same dynamic-require trick as auth-email.ts to keep the SDK out of
   // the Edge bundle. Webpack's static analyser can't follow the computed
   // specifier, so it leaves the import as a runtime resolution.
-  const requireResend = (0, eval)('require') as NodeJS.Require;
-  const { Resend } = requireResend('resend') as typeof import('resend');
+  const { Resend } = await import('resend');
   const resend = new Resend(apiKey);
 
   try {
