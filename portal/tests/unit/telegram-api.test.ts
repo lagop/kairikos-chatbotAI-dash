@@ -14,7 +14,7 @@ vi.mock('@/lib/observability', () => ({
   logError: (...args: unknown[]) => mockState.logError(...args),
 }));
 
-import { setWebhook, deleteWebhook, sendMessage } from '@/lib/telegram-api';
+import { setWebhook, deleteWebhook, sendMessage, telegramWebhookSecret, telegramWebhookSecretMatches } from '@/lib/telegram-api';
 
 function jsonResponse(body: unknown, ok = true, status = 200) {
   return { ok, status, json: async () => body } as unknown as Response;
@@ -32,7 +32,11 @@ describe('setWebhook', () => {
     expect(result).toEqual({ ok: true, data: true });
     const [url, init] = mockState.fetch.mock.calls[0];
     expect(url).toBe('https://api.telegram.org/bot123:abc/setWebhook');
-    expect(JSON.parse(init.body)).toEqual({ url: 'https://n8n.example.com/webhook/kairikos-telegram/conn_1' });
+    expect(JSON.parse(init.body)).toEqual({
+      url: 'https://n8n.example.com/webhook/kairikos-telegram/conn_1',
+      // Revisión de seguridad 22/09/2026 — Telegram firmará cada entrega con esto.
+      secret_token: telegramWebhookSecret('123:abc'),
+    });
   });
 
   it('returns an error result (not a throw) when Telegram rejects the call', async () => {
@@ -72,5 +76,25 @@ describe('sendMessage', () => {
     mockState.fetch.mockResolvedValueOnce(jsonResponse({ ok: false, description: 'Forbidden: bot was blocked by the user' }, false, 403));
     const result = await sendMessage('123:abc', 987654, 'hola');
     expect(result).toEqual({ ok: false, error: 'Forbidden: bot was blocked by the user' });
+  });
+});
+
+describe('telegramWebhookSecret', () => {
+  it('is deterministic per bot token and fits the secret_token charset Telegram accepts', () => {
+    const a = telegramWebhookSecret('123:abc');
+    expect(a).toBe(telegramWebhookSecret('123:abc'));
+    expect(a).not.toBe(telegramWebhookSecret('123:abd'));
+    expect(a).toMatch(/^[A-Za-z0-9_-]{1,256}$/);
+    // Nunca el propio token: el secreto viaja en cada entrega a n8n.
+    expect(a).not.toContain('123:abc');
+  });
+
+  it('matches only the exact secret for that token', () => {
+    const good = telegramWebhookSecret('123:abc');
+    expect(telegramWebhookSecretMatches('123:abc', good)).toBe(true);
+    expect(telegramWebhookSecretMatches('123:abc', telegramWebhookSecret('999:zzz'))).toBe(false);
+    expect(telegramWebhookSecretMatches('123:abc', good.slice(1))).toBe(false);
+    expect(telegramWebhookSecretMatches('123:abc', '')).toBe(false);
+    expect(telegramWebhookSecretMatches('123:abc', undefined)).toBe(false);
   });
 });

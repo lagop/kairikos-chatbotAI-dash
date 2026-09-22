@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { isDatabaseConfigured } from '@/lib/prisma';
 import { generateDueDigests } from '@/lib/conversation-digest';
+import { isAuthorizedCronRequest } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -19,11 +20,6 @@ export const maxDuration = 60;
  * duplicate or too-frequent digests — it just means a client's digest
  * lands later than its configured slot.
  */
-function isAuthorizedCronRequest(req: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  return req.headers.get('authorization') === `Bearer ${secret}`;
-}
 
 export async function GET(req: NextRequest) {
   if (!isAuthorizedCronRequest(req)) {

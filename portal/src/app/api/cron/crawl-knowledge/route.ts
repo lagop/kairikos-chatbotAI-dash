@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { sweepPendingKnowledgeCrawls } from '@/lib/chatbot-knowledge-crawl';
+import { isAuthorizedCronRequest } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -21,11 +22,6 @@ export const maxDuration = 60;
  * Misma autenticación que cualquier /api/cron/*:
  * `Authorization: Bearer <CRON_SECRET>`, cerrado si la variable no está.
  */
-function isAuthorizedCronRequest(req: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  return req.headers.get('authorization') === `Bearer ${secret}`;
-}
 
 export async function GET(req: NextRequest) {
   if (!isAuthorizedCronRequest(req)) {

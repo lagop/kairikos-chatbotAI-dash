@@ -6,6 +6,7 @@ import { transcribeCallEventInBackground } from '@/lib/recall-transcription';
 import { notifyOwnerInBackground } from '@/lib/recall-messaging';
 import { resolveActiveTwilioCredentials } from '@/lib/twilio-credentials';
 import { logError } from '@/lib/observability';
+import { isTwilioRecordingUrl } from '@/lib/twilio-recording-url';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -58,6 +59,13 @@ export async function POST(req: NextRequest) {
   const recordingUrl = params.RecordingUrl;
   if (!callSid || !recordingSid || !recordingUrl) {
     return new Response('bad_request', { status: 400 });
+  }
+  // Firmado por Twilio, pero se guarda una URL que luego se descarga con las
+  // credenciales de la cuenta: solo si es de Twilio (lib/twilio-recording-url.ts).
+  // 200, no 4xx: reintentar no la va a cambiar.
+  if (!isTwilioRecordingUrl(recordingUrl)) {
+    logError('twilio_recording.url_rejected', new Error('not_a_twilio_recording_url'), { callSid }, 'warn');
+    return new Response('ignored', { status: 200 });
   }
 
   const durationRaw = params.RecordingDuration;

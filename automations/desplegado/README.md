@@ -35,6 +35,32 @@ compartida y un secreto:
 Hasta entonces, cualquier cambio en estos flujos es teoría: el portal no
 recibe nada.
 
+## PENDIENTE DE APLICAR EN LA INSTANCIA — secreto del webhook de Telegram (22/09/2026)
+
+Excepción a la regla de arriba: `telegram-multi-tenant.json` lleva un cambio
+que **todavía no está en n8n**. Se hizo aquí primero porque va atado a un
+cambio del portal (revisión de seguridad del 22/09/2026):
+
+- El portal registra ahora el webhook con `secret_token`, y Telegram manda en
+  cada entrega la cabecera `X-Telegram-Bot-Api-Secret-Token`.
+- `Extract Input` la lee (`item.headers['x-telegram-bot-api-secret-token']`) y
+  el nodo `POST …/telegram/reply` la reenvía como `webhookSecret`.
+- `/api/internal/channels/telegram/reply` contesta **401** si falta o no
+  coincide. Antes bastaba con conocer el `connectionId` de la URL para meter
+  mensajes y gastar crédito de IA.
+
+Para aplicarlo:
+
+1. Importar este JSON en la instancia (o copiar a mano los dos cambios: el
+   código de `Extract Input` y el `jsonBody` del nodo de `/reply`).
+2. Cada bot conectado **antes** del deploy del portal tiene el webhook
+   registrado sin secreto: hay que desconectarlo y volver a conectarlo desde
+   el portal (o el cliente, desde el suyo). Según la auditoría del 20/09 no
+   había tráfico real por este canal — ver el hallazgo de arriba —, pero
+   conviene mirar la tabla `TelegramConnection` antes de dar esto por cerrado.
+
+Cuando esté aplicado, borrar esta sección.
+
 ## Los siete flujos
 
 | Archivo | Estado | Qué hace |

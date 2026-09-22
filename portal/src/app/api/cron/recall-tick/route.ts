@@ -11,6 +11,7 @@ import { advanceSubscriptionsWithApprovedTemplates, ensureRecallTemplatesSubmitt
 import { sweepDueNumberAssignments } from '@/lib/recall-numbers';
 import { resolveActiveTwilioCredentials } from '@/lib/twilio-credentials';
 import { logError } from '@/lib/observability';
+import { isAuthorizedCronRequest } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -42,11 +43,6 @@ export const maxDuration = 60;
  * way a job reports trouble — the response is telemetry the scheduler
  * logs, not a control signal.
  */
-function isAuthorizedCronRequest(req: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  return req.headers.get('authorization') === `Bearer ${secret}`;
-}
 
 type JobOutcome = { ok: true; result: unknown } | { ok: false; error: string };
 
