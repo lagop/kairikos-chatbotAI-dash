@@ -1,6 +1,7 @@
 import 'server-only';
 import { decryptWordPressAppPassword, type EncryptedWordPressAppPassword } from './seo';
 import { logError } from './observability';
+import { safeFetch, BlockedUrlError } from './safe-fetch';
 
 // =============================================================================
 // SEO con IA, Fase C — the final publish step. WordPress via REST API is
@@ -82,7 +83,10 @@ export async function publishDraftToWordPress(
   const basicAuth = Buffer.from(`${profile.wordpressUsername}:${appPassword}`).toString('base64');
 
   try {
-    const res = await fetch(buildPostsUrl(profile.wordpressUrl), {
+    // wordpressUrl la escribe el cliente (a mano o en el callback de
+    // conexión) y el error de abajo devuelve 300 bytes de la respuesta: sin
+    // safeFetch, apuntarla a un servicio interno servía para leerlo.
+    const res = await safeFetch(buildPostsUrl(profile.wordpressUrl), {
       method: 'POST',
       headers: { authorization: `Basic ${basicAuth}`, 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -102,6 +106,7 @@ export async function publishDraftToWordPress(
     }
     return { ok: true, postId: String(json.id), postUrl: json.link };
   } catch (err) {
+    if (err instanceof BlockedUrlError) return { ok: false, error: 'wordpress_url_not_allowed' };
     logError('wordpress_publish.request_failed', err, { url: buildPostsUrl(profile.wordpressUrl) }, 'warn');
     return { ok: false, error: err instanceof Error ? err.message : 'unknown_error' };
   }

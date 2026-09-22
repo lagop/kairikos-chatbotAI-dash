@@ -7,6 +7,15 @@
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// safeFetch conecta con http/https de Node, no con fetch: aquí se enruta al
+// fetch simulado de este archivo. Sus propias garantías (qué IPs, qué
+// redirecciones) se prueban en safe-fetch.test.ts.
+vi.mock('@/lib/safe-fetch', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/safe-fetch')>()),
+  safeFetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
+}));
+
 import { auditWebsite } from '@/lib/seo-audit';
 
 const mockState = vi.hoisted(() => ({ fetch: vi.fn() }));

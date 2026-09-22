@@ -1,6 +1,7 @@
 import 'server-only';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { logError } from './observability';
+import { safeFetch, BlockedUrlError } from './safe-fetch';
 
 // =============================================================================
 // SEO con IA, Fase A — the operator's diagnostic tool: technical signals
@@ -58,7 +59,9 @@ async function fetchPageHtml(url: string): Promise<{ ok: true; html: string } | 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), AUDIT_TIMEOUT_MS);
   try {
-    const res = await fetch(url, {
+    // La URL es la web que escribió el cliente: safeFetch no deja que apunte
+    // a la red interna, ni directamente ni por redirección.
+    const res = await safeFetch(url, {
       headers: { 'User-Agent': USER_AGENT, Accept: 'text/html' },
       signal: controller.signal,
     });
@@ -71,6 +74,7 @@ async function fetchPageHtml(url: string): Promise<{ ok: true; html: string } | 
     }
     return { ok: true, html: await res.text() };
   } catch (err) {
+    if (err instanceof BlockedUrlError) return { ok: false, error: 'url_not_allowed' };
     const isAbort = err instanceof Error && err.name === 'AbortError';
     return { ok: false, error: isAbort ? 'timeout' : err instanceof Error ? err.message : 'unknown_error' };
   } finally {
@@ -152,7 +156,9 @@ async function checkLinkStatus(url: string): Promise<number | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), LINK_CHECK_TIMEOUT_MS);
   try {
-    const res = await fetch(url, { method: 'HEAD', headers: { 'User-Agent': USER_AGENT }, signal: controller.signal });
+    // Los enlaces salen del HTML de la web del cliente: los mismos límites.
+    // Uno prohibido cuenta como no comprobable (null), no como roto.
+    const res = await safeFetch(url, { method: 'HEAD', headers: { 'User-Agent': USER_AGENT }, signal: controller.signal });
     return res.status;
   } catch {
     return null;

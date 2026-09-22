@@ -8,6 +8,15 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+// safeFetch conecta con http/https de Node, no con fetch: aquí se enruta al
+// fetch simulado de este archivo. Sus propias garantías (qué IPs, qué
+// redirecciones) se prueban en safe-fetch.test.ts.
+vi.mock('@/lib/safe-fetch', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/safe-fetch')>()),
+  safeFetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
+}));
+
+
 const mockState = vi.hoisted(() => ({
   fetch: vi.fn(),
   decryptWordPressAppPassword: vi.fn(),
@@ -25,6 +34,7 @@ vi.mock('@/lib/observability', () => ({
 }));
 
 import { publishDraftToWordPress, hasWordPressCredentials } from '@/lib/wordpress-publish';
+import { BlockedUrlError } from '@/lib/safe-fetch';
 
 function jsonResponse(body: unknown, ok = true, status = 200) {
   return { ok, status, json: async () => body, text: async () => JSON.stringify(body) } as unknown as Response;
@@ -120,6 +130,15 @@ describe('publishDraftToWordPress', () => {
     mockState.fetch.mockResolvedValueOnce(jsonResponse({ status: 'ok' }));
     const result = await publishDraftToWordPress(FULL_CREDENTIALS, DRAFT);
     expect(result).toEqual({ ok: false, error: 'unexpected_response_shape' });
+  });
+
+  // Seguridad (22/09/2026): wordpressUrl la escribe el cliente, y el error
+  // de WordPress devuelve 300 bytes de la respuesta. Apuntarla a un servicio
+  // interno servía para leerlo; ahora safeFetch lo rechaza al conectar.
+  it('a wordpressUrl pointing inside the network is refused with a clear error', async () => {
+    mockState.fetch.mockRejectedValueOnce(new BlockedUrlError('hostname'));
+    const result = await publishDraftToWordPress({ ...FULL_CREDENTIALS, wordpressUrl: 'http://n8n:5678' }, DRAFT);
+    expect(result).toEqual({ ok: false, error: 'wordpress_url_not_allowed' });
   });
 
   it('maps a network failure to its message, never throws', async () => {

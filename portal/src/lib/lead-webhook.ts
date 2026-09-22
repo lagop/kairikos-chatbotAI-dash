@@ -2,6 +2,7 @@ import 'server-only';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { PrismaClient, Prisma } from '@prisma/client';
 import { logError } from './observability';
+import { safeFetch, BlockedUrlError } from './safe-fetch';
 
 // =============================================================================
 // Fase 4 — entrega de leads al CRM del cliente.
@@ -109,7 +110,9 @@ async function attempt(url: string, secret: string, body: string): Promise<Deliv
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DELIVERY_TIMEOUT_MS);
   try {
-    const res = await fetch(url, {
+    // La URL del CRM la escribe el cliente, y el error devuelve 300 bytes de
+    // la respuesta: safeFetch impide apuntarla a la red interna.
+    const res = await safeFetch(url, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -124,6 +127,7 @@ async function attempt(url: string, secret: string, body: string): Promise<Deliv
     }
     return { ok: true };
   } catch (err) {
+    if (err instanceof BlockedUrlError) return { ok: false, error: 'webhook_url_not_allowed' };
     const isAbort = err instanceof Error && err.name === 'AbortError';
     return { ok: false, error: isAbort ? 'timeout' : err instanceof Error ? err.message : 'unknown_error' };
   } finally {

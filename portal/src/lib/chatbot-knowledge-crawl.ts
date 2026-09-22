@@ -2,6 +2,7 @@ import 'server-only';
 import type { PrismaClient } from '@prisma/client';
 import { ingestKnowledgeDocument } from './chatbot-knowledge';
 import { logError } from './observability';
+import { safeFetch, BlockedUrlError } from './safe-fetch';
 
 // =============================================================================
 // Fase 3 — rastreo de la propia web del cliente para la base de conocimiento.
@@ -41,10 +42,12 @@ export type FetchPageResult =
  * servidor como sonda de su red — el fallo clásico de cualquier función
  * que descarga una URL que manda el usuario (SSRF).
  *
- * La comprobación es por nombre, no por IP resuelta: un DNS que apunta a
- * una privada se colaría. Es una limitación conocida; cubre el caso real
- * (una URL pegada a mano) y no el ataque deliberado, que aquí exigiría
- * además una cuenta de cliente de pago.
+ * Esto es solo el filtro rápido para dar un error claro al guardar: mira el
+ * nombre, no la IP. La barrera de verdad es safe-fetch.ts, que comprueba la
+ * IP al conectar y en cada redirección. Hasta el 22/09/2026 este filtro era
+ * la única defensa y la descarga seguía redirecciones: un 302 hacia
+ * `http://n8n:5678` metía páginas internas en la base de conocimiento, que el
+ * cliente podía leer preguntándole a su propio bot.
  */
 export function isCrawlableUrl(raw: string): boolean {
   let url: URL;
@@ -85,10 +88,10 @@ export async function fetchPageAsText(url: string): Promise<FetchPageResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), CRAWL_TIMEOUT_MS);
   try {
-    const res = await fetch(url, {
+    const res = await safeFetch(url, {
       headers: { 'User-Agent': USER_AGENT, Accept: 'text/html' },
       signal: controller.signal,
-      redirect: 'follow',
+      maxBytes: MAX_HTML_BYTES,
     });
     if (!res.ok) return { ok: false, error: `http_${res.status}` };
 
@@ -107,6 +110,7 @@ export async function fetchPageAsText(url: string): Promise<FetchPageResult> {
     }
     return { ok: true, data: { title: extractTitle(html), text } };
   } catch (err) {
+    if (err instanceof BlockedUrlError) return { ok: false, error: 'url_not_allowed' };
     const isAbort = err instanceof Error && err.name === 'AbortError';
     return { ok: false, error: isAbort ? 'timeout' : err instanceof Error ? err.message : 'unknown_error' };
   } finally {
