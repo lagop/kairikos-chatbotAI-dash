@@ -1,10 +1,9 @@
 import 'server-only';
-import { cookies, headers } from 'next/headers';
+import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { auth } from '../../auth';
 import { prisma } from './prisma';
 import { MOCK_CLIENT, MOCK_SECONDARY_CLIENT } from './portal-data';
-import { constantTimeEqual } from './operator-crypto';
 import { isPortalDevMock } from './portal-session';
 import { SESSION_COOKIE_NAME, getValidSession, touchSession, type ValidOperatorSession } from './operator-session';
 
@@ -65,18 +64,6 @@ async function resolveDevMockSession(): Promise<PortalSession> {
 }
 
 export async function getSession(): Promise<PortalSession> {
-  // KAIA-1909: production-stage QA bypass — honor the same operator-key
-  // header the API routes (`/api/admin/portal/*`) already honor. When the
-  // request carries `x-kaia-operator-key` matching `KAIA_OPERATOR_API_KEY`,
-  // return an operator session without redirecting. This is intentionally
-  // an explicit opt-in header — no cookie is required and no Supabase
-  // configuration is touched — so it works on staging where the operator
-  // cookie is never populated by middleware.
-  const operatorKeyBypass = resolveOperatorKeyBypass();
-  if (operatorKeyBypass) {
-    return operatorKeyBypass;
-  }
-
   // Seguridad (22/09/2026) — ser operador sale SOLO de la OperatorSession
   // (cookie + fila en Postgres), que nace después del segundo factor y se
   // puede revocar. Antes salía del rol del JWT de NextAuth: bastaba la
@@ -108,7 +95,7 @@ export async function getSession(): Promise<PortalSession> {
   // all) a genuinely logged-in operator via the real /admin/login form
   // was silently bounced to "no session" — /admin/portal/* was
   // structurally unreachable through the real login form, only through
-  // the dev-mock cookie or the operator-key bypass above. Same bug class,
+  // the dev-mock cookie. Same bug class,
   // same fix, as resolveClientFromSession() in portal-session.ts.
   let session;
   try {
@@ -225,33 +212,3 @@ export function setSessionCookieMarker(value: string) {
     maxAge: 60 * 60 * 12,
   });
 }
-
-// KAIA-1909 — production-stage operator bypass via `x-kaia-operator-key`
-// header. Mirrors the gate the API route uses (`src/app/api/admin/portal/flows/route.ts`)
-// so the same operator credential unlocks both the page and the JSON API.
-// Constant-time comparison guards against timing oracles on the shared key.
-export function resolveOperatorKeyBypass(): PortalSession | null {
-  const envKey = process.env.KAIA_OPERATOR_API_KEY;
-  if (!envKey) return null;
-  let provided: string | null = null;
-  try {
-    provided = headers().get('x-kaia-operator-key');
-  } catch {
-    // headers() may throw outside a request context (e.g. background work).
-    // Treat as "no header" rather than crashing.
-    provided = null;
-  }
-  if (!provided) return null;
-  if (!constantTimeEqual(provided, envKey)) return null;
-  return {
-    email: 'operator-key-bypass@kairikos.local',
-    accessToken: 'operator-key',
-    userId: 'operator-key-bypass',
-    role: 'operator',
-    hasClientAccess: true,
-    isOperator: true,
-    clientSlug: null,
-    clientId: null,
-  };
-}
-

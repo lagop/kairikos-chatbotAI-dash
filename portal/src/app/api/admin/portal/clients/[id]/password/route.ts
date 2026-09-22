@@ -1,5 +1,5 @@
 // KAIA-2103 — Admin: set or reset password for a client user.
-// Operator-only; requires valid operator session or x-kaia-operator-key header.
+// Operator-only; requires a valid operator session (la cabecera x-kaia-operator-key se retiró el 22/09/2026).
 
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';

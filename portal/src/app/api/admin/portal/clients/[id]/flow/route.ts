@@ -11,7 +11,7 @@ import {
 
 // GET /api/admin/portal/clients/[id]/flow
 // Returns per-client flow history for the operator detail view (KAIA-1060 / KAIA-1072).
-// Auth: operator session OR x-kaia-operator-key header matching KAIA_OPERATOR_API_KEY
+// Auth: operator session (authenticateAdminRequest). La cabecera x-kaia-operator-key se retiró el 22/09/2026.
 // (both paths handled by authenticateAdminRequest).
 
 const STUCK_DAYS = 3;
