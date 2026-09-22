@@ -30,6 +30,31 @@ export const runtime = 'nodejs';
 
 const CORS_HEADERS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS' };
 
+/**
+ * El origen PÚBLICO del portal, que no es el que ve el servidor.
+ *
+ * Esto se devolvía como `req.nextUrl.origin`, y en la VPS eso es
+ * `https://0.0.0.0:3000` — la dirección con la que el contenedor escucha
+ * detrás de Traefik, no una a la que pueda llamar el navegador de nadie.
+ * Resultado: el widget cargaba, se pintaba, y cada mensaje del visitante
+ * moría en su navegador. Visto el 22/09/2026 en la primera prueba real del
+ * widget en producción.
+ *
+ * Mismo criterio que resolveWebhookUrl (telephony/twilio-signature.ts):
+ * la variable configurada manda, y las cabeceras del proxy son el respaldo
+ * para desarrollo local. Aquí el host reenviado no da ningún poder — lo
+ * peor que consigue quien lo falsee es que su propio widget hable con su
+ * propio servidor.
+ */
+function publicOrigin(req: NextRequest): string {
+  const configured = process.env.NEXT_PUBLIC_PORTAL_URL;
+  if (configured) return configured.replace(/\/+$/, '');
+  const proto = req.headers.get('x-forwarded-proto') ?? 'https';
+  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host');
+  if (host) return `${proto}://${host}`;
+  return req.nextUrl.origin;
+}
+
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
 }
@@ -77,7 +102,7 @@ export async function GET(req: NextRequest) {
       suggestedPrompts: context.suggestedPrompts,
       primaryColor: embed.primaryColor,
       position: embed.position,
-      chatEndpoint: `${req.nextUrl.origin}/api/public/channels/web/message`,
+      chatEndpoint: `${publicOrigin(req)}/api/public/channels/web/message`,
     },
     { headers: CORS_HEADERS },
   );
