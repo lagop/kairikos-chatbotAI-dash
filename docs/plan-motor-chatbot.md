@@ -278,18 +278,21 @@ persona y no incrementó el contador.
 **Nada de esto ocurría antes en ningún canal**: el prompt de n8n solo llevaba el
 nombre del negocio y los prompts sugeridos, sin historial ni conocimiento.
 
-## EL BLOQUEO: n8n no tiene cómo llamar al portal
+## El bloqueo de n8n → portal — resuelto el 22/09/2026
 
-`PORTAL_API_URL` y `PORTAL_API_KEY` **no existen** en `root-n8n-1` ni en
-`root-n8n-worker-1`. Cada nodo que llama al portal construye una URL vacía y
-falla con *"Invalid URL"*. Es decir: la integración n8n → portal **nunca ha
-funcionado**, y eso explica por qué producción está vacía.
+Hasta el 22/09/2026, `PORTAL_API_URL` y `PORTAL_API_KEY` **no existían** en
+`root-n8n-1` ni en `root-n8n-worker-1`. Cada nodo que llamaba al portal
+construía una URL vacía y fallaba con *"Invalid URL"*: la integración n8n →
+portal **nunca había funcionado**, y eso explica por qué producción estaba
+vacía.
 
-Lo que hay que hacer (toca infraestructura compartida y un secreto, así que lo
-decide el propietario): añadir las dos variables al servicio de n8n en su
-`docker-compose.yml`, reiniciar los dos contenedores —lo que corta un momento
-automatizaciones ajenas a Kairikos que viven en la misma instancia— y repetir
-la prueba con el bot real.
+Ya están en `/root/.env` de la VPS y en los dos servicios de
+`/root/docker-compose.yml`; comprobado desde el worker que el portal acepta la
+clave. La clave queda duplicada respecto a la del portal — rotarla obliga a
+tocar los dos sitios. Detalle y comando en el README de `automations/desplegado/`.
+
+Lo que falta es la prueba de extremo a extremo con un bot real, que hasta hoy
+no podía salir bien.
 
 ## Lo que queda
 

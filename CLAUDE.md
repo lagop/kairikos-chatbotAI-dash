@@ -122,9 +122,11 @@ en la cabecera `x-kairikos-internal-key`, y todo sale por webhooks salientes
 > falta el permiso. Si tocas canales, mira antes `automations/desplegado/` —que es lo que
 > de verdad corre— y `docs/plan-motor-chatbot.md`.
 >
-> Y hay un prerrequisito que invalida cualquier prueba mientras falte: `PORTAL_API_URL` y
-> `PORTAL_API_KEY` **no están definidas en los contenedores de n8n**, así que ninguna llamada
-> de n8n al portal ha funcionado nunca. Ver el README de `automations/desplegado/`.
+> Hasta el 22/09/2026 `PORTAL_API_URL` y `PORTAL_API_KEY` **no estaban en los contenedores
+> de n8n**, así que ninguna llamada de n8n al portal funcionó antes de esa fecha. Ya están, en
+> `/root/.env` + `/root/docker-compose.yml` de la VPS — un Compose aparte que el deploy del
+> portal no toca. **La clave queda duplicada**: si rotas `PORTAL_API_KEY`, cámbiala también
+> ahí y recrea n8n, o los canales enmudecen sin error. Ver el README de `automations/desplegado/`.
 >
 > **Incidente de seguridad encontrado y resuelto el 20/09/2026**: el flujo de WhatsApp tenía
 > la `PORTAL_API_KEY` real escrita en texto plano (corregido para usar `$env`, como el resto
