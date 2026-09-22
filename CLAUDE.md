@@ -33,10 +33,10 @@ npm test                            # ¡ojo! esto es Playwright (e2e), no los un
 
 Los tests unitarios viven en `portal/tests/unit/**/*.test.ts` y corren en Node, sin DOM.
 
-## Tres trampas que fallan en silencio
+## Cuatro trampas que fallan en silencio
 
-Estas tres no dan error: simplemente el código no se ejecuta nunca. Son la causa habitual
-de "lo implementé y no pasa nada".
+Estas cuatro no dan error: el código no se ejecuta nunca, o se ejecuta y no llega a
+ninguna parte. Son la causa habitual de "lo implementé y no pasa nada".
 
 ### 1. Un cron nuevo no corre si no se añade a `scripts/scheduler.sh`
 
@@ -103,6 +103,37 @@ misma red que Postgres. Fija `prisma@5.22.0` a propósito — sin versión, `npx
 la última del registro (hoy 7.x), que ya no soporta `url = env(...)` en el datasource y falla
 con un error que no señala la causa real. E instala `openssl` a propósito — sin él, el motor
 nativo de Prisma falla al arrancar con un `Schema engine error:` completamente vacío.
+
+### 4. Un correo que "se manda" en local puede no salir nunca de producción
+
+Entre agosto y el 22/09/2026 **ningún email del portal salió de producción** salvo los de
+`auth-email.ts`. Ni presupuestos, ni avisos de leads, ni notificaciones al operador, ni
+alertas de reseñas, ni campañas de reseñas, ni recuperación del wizard, ni resúmenes de
+conversaciones. En local todos funcionaban. Dos causas encadenadas, y ninguna de las dos
+rompe nada visible: el envío devuelve `{ok:false}`, el llamante lo registra con `logError`
+en nivel `warn` —porque el email es best-effort por diseño— y la ruta responde con éxito.
+
+1. **Cargar el SDK con `(0, eval)('require')`.** Funciona en local (Node, CommonJS) y no en
+   el bundle de producción de Next, donde `require` no existe: cada envío moría con
+   `require is not defined`. El patrón nació en el primer módulo que mandó correos y se
+   copió a los seis siguientes. Hoy todos usan `await import('resend')`, que sigue siendo
+   perezoso y sí existe en el bundle. Hay un test (`email-resend-loading.test.ts`) que
+   impide que vuelva al copiar de un módulo hermano.
+
+2. **`process.env.X ?? process.env.Y` con una variable vacía.** `??` solo salta cuando la
+   variable **no existe**, y `docker-compose.yml` declara todas las del bloque
+   `environment:` aunque el `.env` de la VPS las tenga vacías. `OPERATOR_NOTIFY_FROM`
+   existía valiendo `''`, ganaba el `??`, y todos los envíos salían con el remitente en
+   blanco. Resend lo rechaza con **`The domain is invalid`**, un mensaje que apunta al DNS
+   del dominio y no tiene nada que ver — el informe de pendientes llevaba semanas pidiendo
+   "verificar el dominio en Resend" por esa pista falsa. El remitente se resuelve ahora en
+   `lib/email-sender.ts`, donde vacío o con espacios cuenta como ausente.
+
+La regla general, que vale más allá del correo: **en este stack, una variable de entorno
+declarada y vacía no es lo mismo que ausente, y `??` no las distingue.** Usa `||`, o un
+helper que descarte las vacías. Y como la suite mockea el envío, una suite verde no dice
+nada sobre si el correo sale: eso solo se sabe mandando uno de verdad desde producción y
+mirando los logs.
 
 ## Fronteras de la arquitectura
 
@@ -315,4 +346,11 @@ Dos restricciones descubiertas en la instancia real: los nodos Code **no pueden 
 3. **Los tests unitarios mockean Prisma**, así que una suite verde no dice nada sobre el
    esquema. Si tocaste el modelo de datos, compruébalo contra el Postgres real.
 4. Si añadiste un cron, ¿está en `scheduler.sh`? Si añadiste una variable, ¿está en
-   `docker-compose.yml`?
+   `docker-compose.yml`? ¿Y en `deploy.yml`?
+5. Si lo que hiciste sale del servidor —un email, una llamada a una plataforma externa, un
+   webhook—, **pruébalo contra producción después de desplegar**. Esa clase de código
+   degrada con gracia a propósito: cuando falla no rompe nada, solo deja un `warn` que nadie
+   lee. Los tres fallos encontrados el 22/09/2026 (el widget apuntando a `0.0.0.0:3000`,
+   el SDK de email sin cargar y el remitente vacío) llevaban semanas o meses en producción
+   con la suite en verde, y los tres aparecieron en los diez minutos siguientes a probar de
+   verdad.
