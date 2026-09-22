@@ -4,6 +4,11 @@ const path = require('path');
 const nextConfig = {
   output: 'standalone',
   reactStrictMode: true,
+  // Revisión de seguridad 22/09/2026 — el portal no usa next/image, pero el
+  // endpoint /_next/image existe igual y es donde se concentran varios avisos
+  // de Next 14 sin arreglo en la rama 14.x (DoS del optimizador y de su caché
+  // en disco). Apagarlo no cambia nada visible y quita esa superficie.
+  images: { unoptimized: true },
   webpack: (config, { isServer }) => {
     config.resolve = config.resolve || {};
     config.resolve.alias = {

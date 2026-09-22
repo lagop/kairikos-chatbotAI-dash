@@ -4,9 +4,12 @@
 # Multi-stage build to keep the runtime image small:
 #   deps    — installs only production deps
 #   builder — installs all deps, runs prisma generate, builds Next.js
-#   runner  — minimal Node 20-bookworm-slim (Debian 12), non-root user, runs `next start`
+#   runner  — minimal Node 22-bookworm-slim (Debian 12), non-root user, runs `next start`
 #
-# Base: node:20-bookworm-slim (glibc). Rejected: alpine (musl), bullseye-slim (older).
+# Base: node:22-bookworm-slim (glibc). Rejected: alpine (musl), bullseye-slim (older).
+# Node 22 LTS since 22/09/2026: Node 20 left support in April 2026 (no more
+# security patches), and sanitize-html >= 2.17.6 — the first without the two
+# XSS-bypass advisories — requires Node >= 22.12.
 # bookworm-slim ships ~150MB vs alpine's ~120MB, but has a better security-patch
 # surface and standard glibc (no musl compatibility issues with Node.js native modules).
 #
@@ -15,14 +18,14 @@
 # =============================================================================
 
 # ---------- deps ----------
-FROM node:20-bookworm-slim AS deps
+FROM node:22-bookworm-slim AS deps
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY portal/package.json portal/package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 
 # ---------- builder ----------
-FROM node:20-bookworm-slim AS builder
+FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY portal/package.json portal/package-lock.json ./
@@ -46,7 +49,7 @@ RUN npx prisma generate
 RUN npm run build
 
 # ---------- runner ----------
-FROM node:20-bookworm-slim AS runner
+FROM node:22-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1

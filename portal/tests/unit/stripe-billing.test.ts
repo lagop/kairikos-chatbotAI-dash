@@ -284,6 +284,7 @@ describe('createOneTimeInvoice', () => {
         auto_advance: false,
         metadata: { kairikos_client_product_id: 'cp_web_1' },
       }),
+      undefined, // sin clave de idempotencia: solo la usan las facturas de presupuesto
     );
     expect(mockState.invoiceItemsCreate).toHaveBeenCalledWith({
       customer: 'cus_1',
