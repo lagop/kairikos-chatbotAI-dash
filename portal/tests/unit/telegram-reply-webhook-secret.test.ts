@@ -33,7 +33,7 @@ import { POST } from '@/app/api/internal/channels/telegram/reply/route';
 import { telegramWebhookSecret } from '@/lib/telegram-api';
 
 const CONNECTION = {
-  id: 'conn_1',
+  id: '11111111-1111-4111-8111-111111111111',
   clientId: 'client_1',
   tenantId: 't1',
   clientProductId: null,
@@ -44,7 +44,7 @@ const CONNECTION = {
 };
 
 function call(extra: Record<string, unknown>) {
-  const body = { connectionId: 'conn_1', chatId: 42, text: 'Hola', ...extra };
+  const body = { connectionId: '11111111-1111-4111-8111-111111111111', chatId: 42, text: 'Hola', ...extra };
   return POST({ json: async () => body, headers: new Headers() } as unknown as NextRequest);
 }
 
@@ -70,5 +70,13 @@ describe('POST /api/internal/channels/telegram/reply — webhook secret', () => 
     const res = await call({ webhookSecret: telegramWebhookSecret('123:bot-token') });
     expect(res.status).toBe(200);
     expect(m.replyToIncomingMessage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('POST /api/internal/channels/telegram/reply — connectionId que no es un UUID', () => {
+  it('responde 400 sin tocar la base de datos (antes, 500 por "Error creating UUID")', async () => {
+    const res = await call({ connectionId: 'probe-sin-conexion' });
+    expect(res.status).toBe(400);
+    expect(m.findUnique).not.toHaveBeenCalled();
   });
 });
