@@ -1018,7 +1018,8 @@ model StripeWebhookEvent {
   receivedAt       DateTime  @default(now()) @map("received_at")
   processedAt      DateTime? @map("processed_at")
   // 'pending' | 'processed' | 'failed'. failed means the handler
-  // threw; we keep the row so retry deliveries are still no-ops.
+  // threw; Stripe's re-delivery claims the row back and retries it
+  // (claimForRetry in stripe-webhook.ts). Only 'processed' is final.
   status           String    @default("pending")
   errorMessage     String?   @map("error_message")
   // 'subscription' | 'invoice' | 'ignored' — what the event mutated.

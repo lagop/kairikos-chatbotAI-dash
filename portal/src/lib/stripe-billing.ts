@@ -1071,9 +1071,24 @@ export async function createProductCheckoutSession(params: {
     return { ok: false, error: 'stripe_customer_create_failed' };
   }
 
+  // Qué fila se reaprovecha. Revisión de seguridad del 22/09/2026: esto
+  // era `findFirst({clientId, productId})` sin mirar el estado, y en un
+  // producto multi-instancia la primera fila es la línea que el cliente
+  // YA paga. Comprar una segunda web de SEO o una segunda línea de recall
+  // la pasaba a 'pending_payment' (el cliente perdía el acceso en el
+  // acto) y, si abandonaba el pago, checkout.session.expired la dejaba en
+  // 'cancelled' — mientras su suscripción de Stripe seguía cobrando.
+  //
+  // Solo se reaprovecha lo que ya no está vivo. En multi-instancia ni
+  // siquiera un 'pending_payment': dos pagos abiertos a la vez para dos
+  // líneas nuevas acabarían activando la misma fila dos veces.
+  const reusableStatuses = isMultiInstanceProduct(product.code)
+    ? ['cancelled']
+    : ['cancelled', 'pending_payment'];
   const existing = await prisma.clientProduct.findFirst({
-    where: { clientId, productId: product.id },
-    select: { id: true, status: true },
+    where: { clientId, productId: product.id, status: { in: reusableStatuses } },
+    orderBy: { subscribedAt: 'desc' },
+    select: { id: true, status: true, cancelledAt: true },
   });
 
   const cp = await prisma.$transaction(async (tx) => {
@@ -1154,7 +1169,9 @@ export async function createProductCheckoutSession(params: {
     await prisma.$transaction(async (tx) => {
       const row = await tx.clientProduct.update({
         where: { id: cp.id },
-        data: { status: existing?.status ?? 'cancelled', cancelledAt: existing?.status ? null : new Date() },
+        data: existing
+          ? { status: existing.status, cancelledAt: existing.cancelledAt }
+          : { status: 'cancelled', cancelledAt: new Date() },
       });
       await tx.clientProductAudit.create({
         data: {
