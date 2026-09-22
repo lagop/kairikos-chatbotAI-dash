@@ -186,3 +186,22 @@ describe('transcribeRecording', () => {
     await expect(transcribeRecording(REC_URL)).resolves.toEqual({ ok: true, text: 'hola' });
   });
 });
+
+// Revisión de seguridad del 22/09/2026 — la descarga lleva las credenciales
+// de la cuenta de Twilio: solo se hace contra Twilio. Ver
+// src/lib/twilio-recording-url.ts.
+describe('transcribeRecording — only ever downloads from Twilio', () => {
+  it.each([
+    'https://evil.example/2010-04-01/Accounts/AC1/Recordings/RE1',
+    'http://api.twilio.com/2010-04-01/Accounts/AC1/Recordings/RE1',
+    'https://api.twilio.com.evil.example/rec/RE1',
+    'https://user:pass@api.twilio.com/rec/RE1',
+    'https://api.twilio.com:8443/rec/RE1',
+  ])('refuses %s without making any request, and does not retry', async (url) => {
+    const fetchSpy = vi.fn();
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    const result = await transcribeRecording(url, { auth: { accountSid: 'AC1', authToken: 'secret' } });
+    expect(result).toEqual({ ok: false, error: 'recording_url_not_twilio', retryable: false });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
