@@ -4,6 +4,7 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveChatbotForChannel } from '@/lib/client-product-access';
 import { authenticateInternalRequest, internalAuthFailureResponse } from '@/lib/internal-auth';
 import { replyToIncomingMessage } from '@/lib/chatbot-conversation';
+import { isReservedSessionId } from '@/lib/conversation-session-id';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -20,7 +21,8 @@ export const runtime = 'nodejs';
 
 const BodySchema = z.object({
   publicToken: z.string().trim().min(1),
-  sessionId: z.string().trim().min(1).max(200),
+  // Llega desde el navegador vía n8n: ver conversation-session-id.ts.
+  sessionId: z.string().trim().min(1).max(200).refine((id) => !isReservedSessionId(id)),
   text: z.string().trim().min(1).max(4000),
 });
 

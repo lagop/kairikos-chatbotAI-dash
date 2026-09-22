@@ -6,6 +6,7 @@ import { retrieveKnowledge } from './chatbot-knowledge';
 import { botShouldReply } from './chatbot-handoff';
 import { logError } from './observability';
 import { consumeMessageAllowance } from './chatbot-usage';
+import { isReservedSessionId } from './conversation-session-id';
 
 // =============================================================================
 // Fase 1.2 — orquestación de un turno de conversación.
@@ -97,6 +98,7 @@ interface ExistingConversation {
   handoffRequestedAt: Date | null;
   handoffTakenAt: Date | null;
   handoffClosedAt: Date | null;
+  channel: string | null;
 }
 
 /** Turnos legibles a partir del transcript guardado, que es un Json libre
@@ -135,10 +137,21 @@ export function dropDanglingRetry(entries: unknown[], message: string): unknown[
   return role === 'user' && content === message ? entries.slice(0, -1) : entries;
 }
 
+/** La clave exacta la manda el navegador del visitante (widget web), así
+ *  que no puede tener la forma de la de otro canal. Ver
+ *  conversation-session-id.ts. */
+export class ReservedSessionIdError extends Error {
+  constructor() {
+    super('reserved_session_id');
+    this.name = 'ReservedSessionIdError';
+  }
+}
+
 async function findOpenConversation(
   prisma: PrismaClient,
   clientId: string,
   key: ConversationKey,
+  channel: string,
   now: Date,
   clientProductId: string | null,
 ): Promise<ExistingConversation | null> {
@@ -151,19 +164,28 @@ async function findOpenConversation(
     handoffRequestedAt: true,
     handoffTakenAt: true,
     handoffClosedAt: true,
+    channel: true,
   };
 
   if (key.kind === 'exact') {
-    return prisma.chatbotConversation.findUnique({
+    if (isReservedSessionId(key.externalSessionId)) throw new ReservedSessionIdError();
+    const row = await prisma.chatbotConversation.findUnique({
       where: { clientId_externalSessionId: { clientId, externalSessionId: key.externalSessionId } },
       select,
     });
+    // Segunda capa: una fila de otro canal nunca se devuelve a este, aunque
+    // la clave coincida. NULL es una fila anterior a Fase 1.5 y se acepta.
+    if (row && row.channel != null && row.channel !== channel) throw new ReservedSessionIdError();
+    return row;
   }
 
   const latest = await prisma.chatbotConversation.findFirst({
     where: {
       clientId,
       externalSessionId: { startsWith: key.sessionPrefix },
+      // El prefijo solo no basta: una fila creada por otro canal con un id
+      // que imita este prefijo se tomaría como la conversación abierta.
+      channel,
       // Ver ReplyToIncomingMessageInput.instance: sin esto, dos chatbots del
       // mismo cliente compartirían la conversación de quien escribe a ambos.
       ...(clientProductId ? { clientProductId } : {}),
@@ -194,6 +216,7 @@ export async function replyToIncomingMessage(
     prisma,
     input.clientId,
     input.key,
+    input.channel,
     now,
     input.instance?.clientProductId ?? null,
   );

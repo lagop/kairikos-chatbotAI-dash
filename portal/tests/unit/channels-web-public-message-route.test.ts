@@ -63,6 +63,16 @@ describe('POST /api/public/channels/web/message', () => {
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
   });
 
+  // Seguridad (22/09/2026): con este id, la ruta de WhatsApp tomaba la
+  // conversación del atacante como la de esa persona. Ver
+  // conversation-session-id.ts.
+  it('400 si el sessionId imita el de otro canal, sin llegar al motor', async () => {
+    const res = await post({ ...VALID_BODY, sessionId: 'whatsapp-34600111222-x' });
+    expect(res.status).toBe(400);
+    expect(mockState.embedFindUnique).not.toHaveBeenCalled();
+    expect(mockState.replyToIncomingMessage).not.toHaveBeenCalled();
+  });
+
   it('resuelve el widget por publicToken, nunca por un clientId del cuerpo', async () => {
     await post({ ...VALID_BODY, clientId: 'otro_cliente' });
     expect(mockState.embedFindUnique).toHaveBeenCalledWith({ where: { publicToken: 'wgt_1' } });
