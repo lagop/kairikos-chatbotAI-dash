@@ -23,6 +23,8 @@ const mockState = vi.hoisted(() => ({
   subscribeWaba: vi.fn(),
   unsubscribeWaba: vi.fn(),
   getPhoneNumberInfo: vi.fn(),
+  getPhoneNumbersForWaba: vi.fn(),
+  metaFindFirst: vi.fn(),
   subscribePage: vi.fn(),
   deliverChannelEvent: vi.fn(),
   findUniqueClient: vi.fn(),
@@ -77,6 +79,7 @@ vi.mock('@/lib/whatsapp-api', () => ({
   subscribeWaba: (...args: unknown[]) => mockState.subscribeWaba(...args),
   unsubscribeWaba: (...args: unknown[]) => mockState.unsubscribeWaba(...args),
   getPhoneNumberInfo: (...args: unknown[]) => mockState.getPhoneNumberInfo(...args),
+  getPhoneNumbersForWaba: (...args: unknown[]) => mockState.getPhoneNumbersForWaba(...args),
 }));
 
 vi.mock('@/lib/messenger-api', () => ({
@@ -96,6 +99,7 @@ vi.mock('@/lib/prisma', () => ({
     metaChannelConnection: {
       upsert: (...args: unknown[]) => mockState.metaUpsert(...args),
       findUnique: (...args: unknown[]) => mockState.metaFindUnique(...args),
+      findFirst: (...args: unknown[]) => mockState.metaFindFirst(...args),
       update: (...args: unknown[]) => mockState.metaUpdate(...args),
     },
   },
@@ -135,6 +139,8 @@ beforeEach(() => {
   mockState.findUniqueClient.mockReset().mockResolvedValue({ tenantId: 'tenant_1' });
   mockState.metaUpsert.mockReset().mockResolvedValue({ id: 'conn_1' });
   mockState.metaFindUnique.mockReset().mockResolvedValue(null);
+  mockState.metaFindFirst.mockReset().mockResolvedValue(null);
+  mockState.getPhoneNumbersForWaba.mockReset().mockResolvedValue({ ok: true, data: { data: [{ id: '400500600', display_phone_number: '+34 600 11 22 33' }] } });
   mockState.metaUpdate.mockReset().mockResolvedValue({});
   mockState.isDatabaseConfigured = true;
 });
@@ -196,7 +202,7 @@ describe('POST /api/portal/channels/meta/complete-signup', () => {
     const before = Date.now();
 
     const { POST } = await import('@/app/api/portal/channels/meta/complete-signup/route');
-    await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: 'waba_1', phoneNumberId: 'phone_1' } }));
+    await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: '100200300', phoneNumberId: '400500600' } }));
 
     const { create, update } = mockState.metaUpsert.mock.calls[0][0];
     for (const data of [create, update]) {
@@ -215,16 +221,16 @@ describe('POST /api/portal/channels/meta/complete-signup', () => {
     mockState.exchangeForLongLivedToken.mockResolvedValue({ accessToken: 'long_lived', expiresIn: null });
 
     const { POST } = await import('@/app/api/portal/channels/meta/complete-signup/route');
-    await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: 'waba_1', phoneNumberId: 'phone_1' } }));
+    await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: '100200300', phoneNumberId: '400500600' } }));
 
     expect(mockState.metaUpsert.mock.calls[0][0].create.tokenExpiresAt).toBeNull();
   });
 
   it('resolves and stores the real phone number, which the portal never knew before', async () => {
     const { POST } = await import('@/app/api/portal/channels/meta/complete-signup/route');
-    await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: 'waba_1', phoneNumberId: 'phone_1' } }));
+    await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: '100200300', phoneNumberId: '400500600' } }));
 
-    expect(mockState.getPhoneNumberInfo).toHaveBeenCalledWith('long_lived', 'phone_1');
+    expect(mockState.getPhoneNumberInfo).toHaveBeenCalledWith('long_lived', '400500600');
     expect(mockState.metaUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -243,7 +249,7 @@ describe('POST /api/portal/channels/meta/complete-signup', () => {
     mockState.getPhoneNumberInfo.mockResolvedValue({ ok: false, error: 'meta_down' });
 
     const { POST } = await import('@/app/api/portal/channels/meta/complete-signup/route');
-    const res = await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: 'waba_1', phoneNumberId: 'phone_1' } }));
+    const res = await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: '100200300', phoneNumberId: '400500600' } }));
 
     expect(res.status).toBe(200);
     expect((await res.json()).connected).toHaveLength(1);
@@ -251,26 +257,26 @@ describe('POST /api/portal/channels/meta/complete-signup', () => {
 
   it('connects the WhatsApp surface when provided and allowed, storing wabaId and subscribing the app', async () => {
     const { POST } = await import('@/app/api/portal/channels/meta/complete-signup/route');
-    const res = await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: 'waba_1', phoneNumberId: 'phone_1' } }));
+    const res = await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: '100200300', phoneNumberId: '400500600' } }));
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.connected).toEqual([{ channel: 'whatsapp', externalId: 'phone_1', label: 'WhatsApp (waba_1)' }]);
+    expect(body.connected).toEqual([{ channel: 'whatsapp', externalId: '400500600', label: 'WhatsApp (100200300)' }]);
     expect(mockState.metaUpsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { clientId_channel_externalId: { clientId: 'client_1', channel: 'whatsapp', externalId: 'phone_1' } },
+        where: { clientId_channel_externalId: { clientId: 'client_1', channel: 'whatsapp', externalId: '400500600' } },
         // Fase 4 multi-instancia — la conexion queda atribuida al chatbot en los
         // dos caminos: es el ancla desde la que las rutas internas sabran que
         // bot contesta a este numero.
-        update: expect.objectContaining({ wabaId: 'waba_1', clientProductId: '33333333-3333-4333-8333-333333333333' }),
-        create: expect.objectContaining({ wabaId: 'waba_1', clientProductId: '33333333-3333-4333-8333-333333333333' }),
+        update: expect.objectContaining({ wabaId: '100200300', clientProductId: '33333333-3333-4333-8333-333333333333' }),
+        create: expect.objectContaining({ wabaId: '100200300', clientProductId: '33333333-3333-4333-8333-333333333333' }),
       }),
     );
-    expect(mockState.subscribeWaba).toHaveBeenCalledWith('long_lived', 'waba_1');
+    expect(mockState.subscribeWaba).toHaveBeenCalledWith('long_lived', '100200300');
     expect(mockState.deliverChannelEvent).toHaveBeenCalledWith({
       connectionType: 'meta',
       connectionId: 'conn_1',
       clientId: 'client_1',
-      payload: { event: 'connected', channel: 'whatsapp', externalId: 'phone_1', label: 'WhatsApp (waba_1)' },
+      payload: { event: 'connected', channel: 'whatsapp', externalId: '400500600', label: 'WhatsApp (100200300)' },
     });
   });
 
@@ -286,10 +292,10 @@ describe('POST /api/portal/channels/meta/complete-signup', () => {
   it('still connects the surface, recording lastSyncError, when subscribeWaba fails — the token IS valid', async () => {
     mockState.subscribeWaba.mockResolvedValue({ ok: false, error: 'Invalid OAuth access token' });
     const { POST } = await import('@/app/api/portal/channels/meta/complete-signup/route');
-    const res = await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: 'waba_1', phoneNumberId: 'phone_1' } }));
+    const res = await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: '100200300', phoneNumberId: '400500600' } }));
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.connected).toEqual([{ channel: 'whatsapp', externalId: 'phone_1', label: 'WhatsApp (waba_1)' }]);
+    expect(body.connected).toEqual([{ channel: 'whatsapp', externalId: '400500600', label: 'WhatsApp (100200300)' }]);
     expect(mockState.metaUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'conn_1' }, data: { lastSyncError: 'Invalid OAuth access token' } }),
     );
@@ -337,7 +343,7 @@ describe('POST /api/portal/channels/meta/complete-signup', () => {
       { pageId: 'page_1', pageName: 'Peluquería Aurora', instagramAccountId: 'ig_1' },
     ]);
     const { POST } = await import('@/app/api/portal/channels/meta/complete-signup/route');
-    const res = await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: 'w', phoneNumberId: 'p' } }));
+    const res = await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: '100200300', phoneNumberId: '400500600' } }));
     const body = await res.json();
     expect(body.connected).toEqual([{ channel: 'messenger', externalId: 'page_1', label: 'Peluquería Aurora' }]);
     expect(body.blocked.sort()).toEqual(['instagram', 'whatsapp']);
@@ -351,11 +357,59 @@ describe('POST /api/portal/channels/meta/complete-signup', () => {
     expect(res.status).toBe(409);
   });
 
+  // Seguridad (22/09/2026) — el número llega en el cuerpo. Antes se guardaba
+  // sin comprobar que perteneciera a la cuenta que acaba de autorizar Meta.
+  describe('el número de WhatsApp tiene que ser de quien conecta', () => {
+    it('comprueba el número contra las cuentas que ve el token recién emitido', async () => {
+      const { POST } = await import('@/app/api/portal/channels/meta/complete-signup/route');
+      await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: '100200300', phoneNumberId: '400500600' } }));
+      expect(mockState.getPhoneNumbersForWaba).toHaveBeenCalledWith('long_lived', '100200300');
+    });
+
+    it('400 phone_not_in_waba con el número de otro negocio, sin guardar nada', async () => {
+      const { POST } = await import('@/app/api/portal/channels/meta/complete-signup/route');
+      const res = await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: '100200300', phoneNumberId: '999888777' } }));
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe('phone_not_in_waba');
+      expect(mockState.metaUpsert).not.toHaveBeenCalled();
+      expect(mockState.subscribeWaba).not.toHaveBeenCalled();
+    });
+
+    it('502 sin guardar nada si el token no puede ver esa cuenta de WhatsApp', async () => {
+      mockState.getPhoneNumbersForWaba.mockResolvedValue({ ok: false, error: '(#100) Unsupported get request' });
+      const { POST } = await import('@/app/api/portal/channels/meta/complete-signup/route');
+      const res = await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: '555666777', phoneNumberId: '400500600' } }));
+      expect(res.status).toBe(502);
+      expect(mockState.metaUpsert).not.toHaveBeenCalled();
+    });
+
+    it('409 si el número ya está activo en otro cliente — no se reparten sus mensajes entre dos cuentas', async () => {
+      mockState.metaFindFirst.mockResolvedValue({ id: 'conn_de_otro' });
+      const { POST } = await import('@/app/api/portal/channels/meta/complete-signup/route');
+      const res = await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: '100200300', phoneNumberId: '400500600' } }));
+      expect(res.status).toBe(409);
+      expect((await res.json()).error).toBe('whatsapp_number_in_use');
+      expect(mockState.metaFindFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { channel: 'whatsapp', externalId: '400500600', status: 'active', NOT: { clientId: 'client_1' } },
+        }),
+      );
+      expect(mockState.metaUpsert).not.toHaveBeenCalled();
+    });
+
+    it('400 si los ids no son numéricos: wabaId acaba dentro de una ruta de la Graph API', async () => {
+      const { POST } = await import('@/app/api/portal/channels/meta/complete-signup/route');
+      const res = await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: 'me/accounts?x=', phoneNumberId: '400500600' } }));
+      expect(res.status).toBe(400);
+      expect(mockState.exchangeCodeForToken).not.toHaveBeenCalled();
+    });
+  });
+
   it('falls back to the short-lived token when the long-lived exchange fails — if Meta says it does not expire', async () => {
     mockState.exchangeForLongLivedToken.mockResolvedValue(null);
     mockState.inspectAccessToken.mockResolvedValue({ isValid: true, expiresAt: null, type: 'SYSTEM_USER' });
     const { POST } = await import('@/app/api/portal/channels/meta/complete-signup/route');
-    const res = await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: 'w', phoneNumberId: 'p' } }));
+    const res = await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: '100200300', phoneNumberId: '400500600' } }));
     expect(res.status).toBe(200);
     expect(mockState.encryptMetaToken).toHaveBeenCalledWith('short_lived');
   });
@@ -365,7 +419,7 @@ describe('POST /api/portal/channels/meta/complete-signup', () => {
   it('rechaza la conexión, sin guardar nada, si el token que queda caduca en horas', async () => {
     mockState.exchangeForLongLivedToken.mockResolvedValue(null);
     const { POST } = await import('@/app/api/portal/channels/meta/complete-signup/route');
-    const res = await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: 'w', phoneNumberId: 'p' } }));
+    const res = await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: '100200300', phoneNumberId: '400500600' } }));
     expect(res.status).toBe(502);
     expect(await res.json()).toEqual({ error: 'meta_api_error', detail: 'short_lived_token' });
     expect(mockState.metaUpsert).not.toHaveBeenCalled();
@@ -376,7 +430,7 @@ describe('POST /api/portal/channels/meta/complete-signup', () => {
     mockState.exchangeForLongLivedToken.mockResolvedValue({ accessToken: 'long_lived', expiresIn: null });
     mockState.inspectAccessToken.mockResolvedValue({ isValid: true, expiresAt: realExpiry, type: 'USER' });
     const { POST } = await import('@/app/api/portal/channels/meta/complete-signup/route');
-    await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: 'waba_1', phoneNumberId: 'phone_1' } }));
+    await POST(jsonRequest({ code: 'auth_code', whatsapp: { wabaId: '100200300', phoneNumberId: '400500600' } }));
     expect(mockState.inspectAccessToken).toHaveBeenCalledWith('long_lived');
     expect(mockState.metaUpsert.mock.calls[0][0].create.tokenExpiresAt).toEqual(realExpiry);
   });
@@ -445,8 +499,8 @@ describe('POST /api/portal/channels/meta/disconnect', () => {
       clientId: 'client_1',
       status: 'active',
       channel: 'whatsapp',
-      externalId: 'phone_1',
-      wabaId: 'waba_1',
+      externalId: '400500600',
+      wabaId: '100200300',
       accessTokenCiphertext: Buffer.from('c'),
       accessTokenIv: Buffer.from('i'),
       accessTokenTag: Buffer.from('t'),
@@ -454,7 +508,7 @@ describe('POST /api/portal/channels/meta/disconnect', () => {
     const { POST } = await import('@/app/api/portal/channels/meta/disconnect/route');
     const res = await POST(jsonRequest({ connectionId: '00000000-0000-0000-0000-000000000001' }));
     expect(res.status).toBe(200);
-    expect(mockState.unsubscribeWaba).toHaveBeenCalledWith('long_lived', 'waba_1');
+    expect(mockState.unsubscribeWaba).toHaveBeenCalledWith('long_lived', '100200300');
     expect(mockState.metaUpdate).toHaveBeenCalledWith({ where: { id: 'conn_1' }, data: { status: 'revoked' } });
   });
 
@@ -464,8 +518,8 @@ describe('POST /api/portal/channels/meta/disconnect', () => {
       clientId: 'client_1',
       status: 'active',
       channel: 'whatsapp',
-      externalId: 'phone_1',
-      wabaId: 'waba_1',
+      externalId: '400500600',
+      wabaId: '100200300',
       accessTokenCiphertext: Buffer.from('c'),
       accessTokenIv: Buffer.from('i'),
       accessTokenTag: Buffer.from('t'),

@@ -14,7 +14,7 @@ import {
   encryptMetaToken,
 } from '@/lib/meta-business';
 import { resolveTokenExpiry, isUnusableToken } from '@/lib/meta-token-expiry';
-import { subscribeWaba, getPhoneNumberInfo } from '@/lib/whatsapp-api';
+import { subscribeWaba, getPhoneNumberInfo, getPhoneNumbersForWaba } from '@/lib/whatsapp-api';
 import { subscribePage } from '@/lib/messenger-api';
 import { deliverChannelEvent } from '@/lib/channel-webhook';
 import { logError } from '@/lib/observability';
@@ -43,9 +43,13 @@ const META_CHANNELS: readonly ChannelCode[] = ['whatsapp', 'messenger', 'instagr
 // way to verify live against a real Meta App anyway).
 // =============================================================================
 
+// Los ids de Meta son numéricos. Se exige aquí porque wabaId acaba dentro de
+// una ruta de la Graph API (`/<wabaId>/phone_numbers`).
+const META_ID = z.string().regex(/^[0-9]{1,32}$/);
+
 const BodySchema = z.object({
   code: z.string().min(1, 'required'),
-  whatsapp: z.object({ wabaId: z.string().min(1), phoneNumberId: z.string().min(1) }).optional(),
+  whatsapp: z.object({ wabaId: META_ID, phoneNumberId: META_ID }).optional(),
   // Fase 4 multi-instancia — a qué chatbot se conectan estas superficies.
   // Opcional: sin él, solo vale si el cliente tiene un chatbot.
   clientProductId: z.string().uuid().optional(),
@@ -111,6 +115,39 @@ export async function POST(req: NextRequest) {
   const tokenExpiresAt = resolveTokenExpiry({ inspected, expiresIn, now });
   if (isUnusableToken({ inspected, expiresAt: tokenExpiresAt, now })) {
     return NextResponse.json({ error: 'meta_api_error', detail: 'short_lived_token' }, { status: 502 });
+  }
+
+  // Seguridad (22/09/2026) — el número y la cuenta de WhatsApp llegan en el
+  // cuerpo, que escribe el navegador. Hasta hoy se guardaban tal cual: un
+  // cliente con chatbot podía hacer su propio alta y mandar el
+  // phone_number_id de OTRO negocio, y los mensajes que entran a ese número
+  // podían acabar en su bandeja (las rutas internas buscan la conexión solo
+  // por ese id). Se comprueba con el token recién emitido, que solo ve las
+  // cuentas de quien acaba de pasar por el popup de Meta: la misma
+  // comprobación que ya hacía recall (recall-meta.ts, phone_not_in_waba).
+  // Si la tarifa no incluye WhatsApp, upsertSurface lo va a bloquear igual y
+  // no hay nada que comprobar.
+  if (body.data.whatsapp && allowedChannels.includes('whatsapp')) {
+    const { wabaId, phoneNumberId } = body.data.whatsapp;
+    const numbers = await getPhoneNumbersForWaba(accessToken, wabaId);
+    if (!numbers.ok) {
+      return NextResponse.json({ error: 'meta_api_error', detail: 'waba_not_accessible' }, { status: 502 });
+    }
+    if (!(numbers.data.data ?? []).some((n) => n.id === phoneNumberId)) {
+      return NextResponse.json({ error: 'phone_not_in_waba' }, { status: 400 });
+    }
+    // Un número solo puede servir a un cliente: si otro lo tiene activo, las
+    // rutas internas elegirían entre los dos según el orden de Postgres.
+    // Aunque quien conecta demuestre que es suyo, se para aquí y lo resuelve
+    // soporte, en vez de partir los mensajes entre dos cuentas en silencio.
+    const takenElsewhere = await prisma.metaChannelConnection.findFirst({
+      where: { channel: 'whatsapp', externalId: phoneNumberId, status: 'active', NOT: { clientId: resolved.clientId } },
+      select: { id: true },
+    });
+    if (takenElsewhere) {
+      logError('channels.meta_complete_signup.number_owned_by_other_client', new Error('whatsapp_number_in_use'), { clientId: resolved.clientId, phoneNumberId }, 'warn');
+      return NextResponse.json({ error: 'whatsapp_number_in_use' }, { status: 409 });
+    }
   }
 
   const client = await prisma.chatbotClient.findUnique({
