@@ -1,4 +1,5 @@
 import 'server-only';
+import { notifyFromAddress } from './email-sender';
 
 // =============================================================================
 // WebQuote v2 — email notifications to the client when a quote arrives
@@ -9,8 +10,7 @@ import 'server-only';
 // request the email is a side effect of.
 // =============================================================================
 
-const FROM_ADDRESS =
-  process.env.OPERATOR_NOTIFY_FROM ?? process.env.AUTH_EMAIL_FROM ?? 'Kairikos Ops <ops@kairikos.com>';
+const FROM_ADDRESS = notifyFromAddress();
 const PORTAL_BASE_URL = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://portal.kairikos.com';
 const PORTAL_WEB_URL = `${PORTAL_BASE_URL}/portal/web`;
 

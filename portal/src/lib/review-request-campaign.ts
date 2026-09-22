@@ -1,4 +1,5 @@
 import 'server-only';
+import { notifyFromAddress } from './email-sender';
 import type { GoogleBusinessConnection } from '@prisma/client';
 import { prisma } from './prisma';
 import { getValidAccessToken, fetchLocationReviewUrl } from './google-business';
@@ -19,8 +20,7 @@ import { sendTemplate } from './whatsapp-api';
 // ReviewRequest row instead of aborting a whole batch on one failure.
 // =============================================================================
 
-const FROM_ADDRESS =
-  process.env.OPERATOR_NOTIFY_FROM ?? process.env.AUTH_EMAIL_FROM ?? 'Kairikos Ops <ops@kairikos.com>';
+const FROM_ADDRESS = notifyFromAddress();
 const PORTAL_BASE_URL = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://portal.kairikos.com';
 
 export const MAX_RECIPIENTS_PER_CAMPAIGN = 200;

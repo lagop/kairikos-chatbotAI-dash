@@ -1,4 +1,5 @@
 import 'server-only';
+import { notifyFromAddress } from './email-sender';
 
 // =============================================================================
 // Leads Fase 6 — email notification to the client when a NEW lead is
@@ -15,8 +16,7 @@ import 'server-only';
 // this would re-notify on every message of an ongoing chat.
 // =============================================================================
 
-const FROM_ADDRESS =
-  process.env.OPERATOR_NOTIFY_FROM ?? process.env.AUTH_EMAIL_FROM ?? 'Kairikos Ops <ops@kairikos.com>';
+const FROM_ADDRESS = notifyFromAddress();
 const PORTAL_BASE_URL = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://portal.kairikos.com';
 const PORTAL_LEADS_URL = `${PORTAL_BASE_URL}/portal/leads`;
 
