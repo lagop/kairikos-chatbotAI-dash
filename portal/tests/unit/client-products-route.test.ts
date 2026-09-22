@@ -43,6 +43,7 @@ const mockState = vi.hoisted(() => ({
   ensureSeoProfile: vi.fn(),
   ensureProspectingCampaign: vi.fn(),
   ensureLeadQualificationProfile: vi.fn(),
+  ensureConversationDigestSchedule: vi.fn(),
 }));
 
 vi.mock('@/lib/recall-onboarding', () => ({
@@ -53,6 +54,7 @@ vi.mock('@/lib/product-onboarding', () => ({
   ensureSeoProfile: (...args: unknown[]) => mockState.ensureSeoProfile(...args),
   ensureProspectingCampaign: (...args: unknown[]) => mockState.ensureProspectingCampaign(...args),
   ensureLeadQualificationProfile: (...args: unknown[]) => mockState.ensureLeadQualificationProfile(...args),
+  ensureConversationDigestSchedule: (...args: unknown[]) => mockState.ensureConversationDigestSchedule(...args),
 }));
 
 const mockTx = {
@@ -103,6 +105,7 @@ beforeEach(() => {
   mockState.ensureSeoProfile.mockReset().mockResolvedValue({ created: true, id: 'seo_profile_1' });
   mockState.ensureProspectingCampaign.mockReset().mockResolvedValue({ created: true, id: 'campaign_1' });
   mockState.ensureLeadQualificationProfile.mockReset().mockResolvedValue({ created: true, id: 'lqp_1' });
+  mockState.ensureConversationDigestSchedule.mockReset().mockResolvedValue({ created: true, id: 'digest_1' });
 });
 
 describe('POST /api/admin/portal/client-products — multi-product assignment', () => {
@@ -362,7 +365,10 @@ describe("POST /api/admin/portal/client-products — Fase 6, arranca el perfil d
     );
   });
 
-  it('no llama a ninguno de los tres para un producto sin perfil propio', async () => {
+  // El chatbot no tiene perfil propio, pero desde el 22/09/2026 sí estrena
+  // algo al activarse: el resumen periódico, encendido. Antes nacía apagado
+  // y había que descubrir la pantalla, así que no lo tenía nadie.
+  it('da de alta el resumen de conversaciones al activar un chatbot', async () => {
     mockState.findUniqueProduct.mockResolvedValueOnce({ id: '88888888-8888-8888-8888-888888888888', isActive: true, code: 'chatbot' });
     mockState.createClientProduct.mockResolvedValueOnce({
       id: 'cp_1',
@@ -378,5 +384,9 @@ describe("POST /api/admin/portal/client-products — Fase 6, arranca el perfil d
     expect(mockState.ensureSeoProfile).not.toHaveBeenCalled();
     expect(mockState.ensureProspectingCampaign).not.toHaveBeenCalled();
     expect(mockState.ensureLeadQualificationProfile).not.toHaveBeenCalled();
+    expect(mockState.ensureConversationDigestSchedule).toHaveBeenCalledWith(
+      expect.anything(),
+      { clientId: 'client_1', clientProductId: 'cp_1', tenantId: 'tenant_1' },
+    );
   });
 });

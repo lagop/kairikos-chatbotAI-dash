@@ -35,6 +35,7 @@ const mockState = vi.hoisted(() => ({
   ensureSeoProfile: vi.fn(),
   ensureProspectingCampaign: vi.fn(),
   ensureLeadQualificationProfile: vi.fn(),
+  ensureConversationDigestSchedule: vi.fn(),
 }));
 
 vi.mock('@/lib/recall-onboarding', () => ({
@@ -45,6 +46,7 @@ vi.mock('@/lib/product-onboarding', () => ({
   ensureSeoProfile: (...args: unknown[]) => mockState.ensureSeoProfile(...args),
   ensureProspectingCampaign: (...args: unknown[]) => mockState.ensureProspectingCampaign(...args),
   ensureLeadQualificationProfile: (...args: unknown[]) => mockState.ensureLeadQualificationProfile(...args),
+  ensureConversationDigestSchedule: (...args: unknown[]) => mockState.ensureConversationDigestSchedule(...args),
 }));
 
 const mockTx = {
@@ -114,6 +116,7 @@ beforeEach(() => {
   mockState.ensureSeoProfile.mockReset().mockResolvedValue({ created: true, id: 'seo_profile_1' });
   mockState.ensureProspectingCampaign.mockReset().mockResolvedValue({ created: true, id: 'campaign_1' });
   mockState.ensureLeadQualificationProfile.mockReset().mockResolvedValue({ created: true, id: 'lqp_1' });
+  mockState.ensureConversationDigestSchedule.mockReset().mockResolvedValue({ created: true, id: 'digest_1' });
 });
 
 function makeStripeSubscription(overrides: Record<string, unknown> = {}) {
@@ -447,7 +450,9 @@ describe('activateClientProductFromCheckout (WP-30)', () => {
       expect(mockState.ensureProspectingCampaign).not.toHaveBeenCalled();
     });
 
-    it('no llama a ninguno de los tres para un producto sin perfil propio', async () => {
+    // Un chatbot no tiene perfil propio, pero desde el 22/09/2026 estrena el
+    // resumen periódico ya encendido — ver ensureConversationDigestSchedule.
+    it('da de alta el resumen de conversaciones al pagar un chatbot', async () => {
       mockState.findUniqueClientProduct.mockResolvedValueOnce({
         status: 'pending_payment',
         clientId: 'client_1',
@@ -458,6 +463,10 @@ describe('activateClientProductFromCheckout (WP-30)', () => {
       expect(mockState.ensureSeoProfile).not.toHaveBeenCalled();
       expect(mockState.ensureProspectingCampaign).not.toHaveBeenCalled();
       expect(mockState.ensureLeadQualificationProfile).not.toHaveBeenCalled();
+      expect(mockState.ensureConversationDigestSchedule).toHaveBeenCalledWith(
+        expect.anything(),
+        { clientId: 'client_1', clientProductId: 'cp_1', tenantId: 'tenant_1' },
+      );
     });
   });
 });
