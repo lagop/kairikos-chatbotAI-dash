@@ -4,6 +4,7 @@ import { buildChatbotContext, type BotInstanceRef } from './chatbot-config';
 import { generateBotReply, type ConversationTurn } from './chatbot-reply-ai';
 import { retrieveKnowledge } from './chatbot-knowledge';
 import { botShouldReply } from './chatbot-handoff';
+import { sendHandoffAlertEmail } from './handoff-alert-email';
 import { logError } from './observability';
 import { consumeMessageAllowance } from './chatbot-usage';
 import { isReservedSessionId } from './conversation-session-id';
@@ -304,16 +305,27 @@ export async function replyToIncomingMessage(
   // ordena por ese dato. Reescribirlo en cada turno haría que la que lleva
   // más tiempo esperando pareciera la más reciente.
   let handoffRequestedAt: Date | null = existing?.handoffRequestedAt ?? null;
+  let escalateReason: string | null = null;
 
   if (generated.ok && !('skipped' in generated)) {
     entries.push({ role: 'assistant', content: generated.reply, at: now.toISOString() } satisfies TranscriptEntry);
     if (generated.escalate) {
       outcome = 'escalated';
       handoffRequestedAt ??= now;
+      escalateReason = generated.escalateReason;
     }
   }
 
+  const firstHandoff = handoffRequestedAt !== null && existing?.handoffRequestedAt == null;
   const conversationId = await persist(prisma, input, existing, entries, outcome, handoffRequestedAt, now);
+
+  // El aviso va DESPUÉS de guardar y nunca rompe el turno: si el email
+  // falla, la conversación ya está en la bandeja y el negocio la verá al
+  // entrar — que es exactamente lo que pasaba siempre antes de esto.
+  // Solo en la primera derivación: uno por turno sería ruido.
+  if (firstHandoff) {
+    await notifyHandoff(prisma, input, conversationId, context.businessName, escalateReason).catch(() => null);
+  }
 
   if ('skipped' in generated) {
     return { ok: true, skipped: true, reason: generated.reason, conversationId };
@@ -328,6 +340,38 @@ export async function replyToIncomingMessage(
     escalate: generated.escalate,
     escalateReason: generated.escalateReason,
   };
+}
+
+/**
+ * El email de "tienes a alguien esperando". Aislado aquí y no en línea
+ * arriba para que el camino feliz del turno se lea de un vistazo, y para
+ * poder tragarse cualquier fallo —incluida una base de datos que no
+ * contesta al buscar el email— sin tocar la respuesta que ya se generó.
+ */
+async function notifyHandoff(
+  prisma: PrismaClient,
+  input: ReplyToIncomingMessageInput,
+  conversationId: string,
+  businessName: string,
+  escalateReason: string | null,
+): Promise<void> {
+  const client = await prisma.chatbotClient.findUnique({
+    where: { id: input.clientId },
+    select: { email: true },
+  });
+  if (!client?.email) return;
+
+  const result = await sendHandoffAlertEmail({
+    to: client.email,
+    businessName,
+    conversationId,
+    channel: input.channel,
+    lastMessage: input.message,
+    reason: escalateReason,
+  });
+  if (!result.ok) {
+    logError('chatbot_conversation.handoff_alert_failed', new Error(result.error), { conversationId }, 'warn');
+  }
 }
 
 async function persist(

@@ -18,6 +18,14 @@ const mockState = vi.hoisted(() => ({
   generateBotReply: vi.fn(),
   retrieveKnowledge: vi.fn(),
   consumeMessageAllowance: vi.fn(),
+  clientFindUnique: vi.fn(),
+  sendHandoffAlertEmail: vi.fn(),
+}));
+
+// El aviso de "tienes a alguien esperando". Aquí interesa CUÁNDO se manda,
+// no qué dice (eso está en handoff-alert-email.test.ts).
+vi.mock('@/lib/handoff-alert-email', () => ({
+  sendHandoffAlertEmail: (...a: unknown[]) => mockState.sendHandoffAlertEmail(...a),
 }));
 
 vi.mock('@/lib/chatbot-config', () => ({
@@ -51,6 +59,9 @@ const prismaMock = {
     findFirst: (...a: unknown[]) => mockState.findFirst(...a),
     create: (...a: unknown[]) => mockState.create(...a),
     update: (...a: unknown[]) => mockState.update(...a),
+  },
+  chatbotClient: {
+    findUnique: (...a: unknown[]) => mockState.clientFindUnique(...a),
   },
 } as unknown as Parameters<typeof replyToIncomingMessage>[0];
 
@@ -89,6 +100,8 @@ beforeEach(() => {
   mockState.generateBotReply.mockReset().mockResolvedValue({
     ok: true, reply: 'Claro, ¿qué día te viene bien?', escalate: false, escalateReason: null,
   });
+  mockState.clientFindUnique.mockReset().mockResolvedValue({ email: 'duena@clinica.example' });
+  mockState.sendHandoffAlertEmail.mockReset().mockResolvedValue({ ok: true, messageId: 'msg_1' });
 });
 
 describe('readTranscriptTurns', () => {
@@ -599,5 +612,73 @@ describe('isReservedSessionId', () => {
     expect(isReservedSessionId('sess_4f2c9a1b')).toBe(false);
     expect(isReservedSessionId('9b1d-whatsapp-')).toBe(false);
     expect(isReservedSessionId('web-abc')).toBe(false);
+  });
+});
+
+// El aviso inmediato al negocio. Antes de esto, la conversación se quedaba
+// esperando en la bandeja y nadie se enteraba salvo que entrara a mirar.
+describe('replyToIncomingMessage — aviso al negocio cuando el bot deriva', () => {
+  const derivando = {
+    ok: true,
+    reply: 'Te paso con una persona del equipo.',
+    escalate: true,
+    escalateReason: 'pregunta médica',
+  };
+
+  it('manda el aviso en la primera derivación, con el mensaje y el motivo', async () => {
+    mockState.generateBotReply.mockResolvedValue(derivando);
+
+    await replyToIncomingMessage(prismaMock, BASE);
+
+    expect(mockState.sendHandoffAlertEmail).toHaveBeenCalledTimes(1);
+    expect(mockState.sendHandoffAlertEmail.mock.calls[0][0]).toMatchObject({
+      to: 'duena@clinica.example',
+      businessName: 'Clínica Orly',
+      conversationId: 'conv_new',
+      channel: 'whatsapp',
+      lastMessage: 'quiero pedir cita',
+      reason: 'pregunta médica',
+    });
+  });
+
+  it('no repite el aviso mientras la misma conversación sigue esperando', async () => {
+    mockState.findFirst.mockResolvedValue({
+      id: 'conv_existing',
+      startedAt: new Date('2026-09-07T09:30:00Z'),
+      duration: 60,
+      outcome: 'escalated',
+      transcript: [],
+      handoffRequestedAt: new Date('2026-09-07T09:31:00Z'),
+      handoffTakenAt: null,
+      handoffClosedAt: null,
+    });
+    mockState.generateBotReply.mockResolvedValue(derivando);
+
+    await replyToIncomingMessage(prismaMock, BASE);
+
+    expect(mockState.sendHandoffAlertEmail).not.toHaveBeenCalled();
+  });
+
+  it('no manda nada cuando el bot resuelve sin derivar', async () => {
+    await replyToIncomingMessage(prismaMock, BASE);
+    expect(mockState.sendHandoffAlertEmail).not.toHaveBeenCalled();
+  });
+
+  it('un email que falla no rompe el turno: la respuesta sale igual', async () => {
+    mockState.generateBotReply.mockResolvedValue(derivando);
+    mockState.sendHandoffAlertEmail.mockRejectedValue(new Error('resend caído'));
+
+    const result = await replyToIncomingMessage(prismaMock, BASE);
+
+    expect(result).toMatchObject({ ok: true, reply: 'Te paso con una persona del equipo.' });
+  });
+
+  it('sin email del cliente no intenta mandar nada', async () => {
+    mockState.clientFindUnique.mockResolvedValue({ email: null });
+    mockState.generateBotReply.mockResolvedValue(derivando);
+
+    await replyToIncomingMessage(prismaMock, BASE);
+
+    expect(mockState.sendHandoffAlertEmail).not.toHaveBeenCalled();
   });
 });
