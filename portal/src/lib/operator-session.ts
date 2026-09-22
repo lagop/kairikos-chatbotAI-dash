@@ -2,8 +2,11 @@ import { prisma } from './prisma';
 import { constantTimeEqual } from './operator-crypto';
 import type { NextRequest } from 'next/server';
 
-const SESSION_COOKIE_NAME = 'kairikos_operator_session';
+export const SESSION_COOKIE_NAME = 'kairikos_operator_session';
 const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+// Sin uso durante este tiempo, la sesión muere aunque no haya caducado: un
+// portátil olvidado abierto no debe seguir dentro del admin una semana.
+export const SESSION_IDLE_TIMEOUT_MS = 12 * 60 * 60 * 1000;
 const TOTP_STEPUP_TTL_MS = 5 * 60 * 1000;
 
 export function getSessionCookieId(req: NextRequest): string | null {
@@ -41,6 +44,9 @@ export function clearSessionCookie(): { name: string; value: string; options: Re
   };
 }
 
+/** Solo la llama la entrada, DESPUÉS del segundo factor (operator-login.ts):
+ *  la sesión nace con el TOTP verificado, que además abre la ventana de 5
+ *  minutos de las acciones sensibles. */
 export async function createSession(
   operatorId: string,
   ip: string | null,
@@ -51,6 +57,7 @@ export async function createSession(
     data: {
       operatorId,
       lastUsedAt: now,
+      totpVerifiedAt: now,
       expiresAt: new Date(now.getTime() + SESSION_MAX_AGE_MS),
       ip,
       userAgent,
@@ -59,18 +66,39 @@ export async function createSession(
   return session.id;
 }
 
-export async function getValidSession(sessionId: string): Promise<{
+export interface ValidOperatorSession {
   operatorId: string;
+  email: string;
   totpVerifiedAt: Date | null;
-} | null> {
+  lastUsedAt: Date;
+}
+
+/**
+ * Una sesión de operador vale si no está revocada ni caducada, se usó en
+ * las últimas 12 horas, su operador sigue activo, y pasó el segundo factor
+ * al menos una vez. Esto último deja fuera, sin migración, las sesiones que
+ * la entrada antigua creaba solo con la contraseña (antes del 22/09/2026):
+ * las nuevas nacen con totpVerifiedAt puesto.
+ */
+export async function getValidSession(sessionId: string): Promise<ValidOperatorSession | null> {
   try {
     const session = await prisma.operatorSession.findUnique({
       where: { id: sessionId },
+      include: { operator: { select: { email: true, isActive: true } } },
     });
     if (!session) return null;
     if (session.revokedAt) return null;
-    if (session.expiresAt < new Date()) return null;
-    return { operatorId: session.operatorId, totpVerifiedAt: session.totpVerifiedAt };
+    const now = Date.now();
+    if (session.expiresAt.getTime() < now) return null;
+    if (now - session.lastUsedAt.getTime() > SESSION_IDLE_TIMEOUT_MS) return null;
+    if (!session.totpVerifiedAt) return null;
+    if (!session.operator?.isActive) return null;
+    return {
+      operatorId: session.operatorId,
+      email: session.operator.email,
+      totpVerifiedAt: session.totpVerifiedAt,
+      lastUsedAt: session.lastUsedAt,
+    };
   } catch {
     return null;
   }
