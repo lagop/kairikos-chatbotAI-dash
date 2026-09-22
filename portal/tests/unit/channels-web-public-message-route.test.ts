@@ -124,9 +124,25 @@ describe('POST /api/public/channels/web/message', () => {
         timestamp: expect.any(String),
         mode: 'portal',
         contactIntent: false,
+        askContact: false,
         error: null,
       },
     });
+  });
+
+  // askContact — por este canal no se puede contestar al visitante, así
+  // que al derivar hay que pedirle un teléfono o un correo o la promesa
+  // del bot queda en nada. Ver .../web/contact.
+  it('cuando el bot deriva, le dice al widget que pida el contacto', async () => {
+    mockState.replyToIncomingMessage.mockResolvedValue({
+      ok: true,
+      conversationId: 'conv_1',
+      reply: 'Te paso con una persona del equipo.',
+      escalate: true,
+      escalateReason: 'no sé el horario',
+    });
+    const body = await (await post(VALID_BODY)).json();
+    expect(body.data.askContact).toBe(true);
   });
 
   it('traspaso a humano: mode "human", reply nunca null — el widget no sabe pintar null', async () => {

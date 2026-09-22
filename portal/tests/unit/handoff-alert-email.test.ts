@@ -6,7 +6,7 @@
 // =============================================================================
 
 import { describe, it, expect } from 'vitest';
-import { buildHandoffAlertEmail } from '@/lib/handoff-alert-email';
+import { buildHandoffAlertEmail, buildWidgetContactEmail } from '@/lib/handoff-alert-email';
 import { HANDOFF_CHANNELS } from '@/lib/chatbot-handoff';
 
 const BASE = {
@@ -67,5 +67,45 @@ describe('buildHandoffAlertEmail', () => {
       expect(buildHandoffAlertEmail({ ...BASE, channel }).text).toContain('Puedes contestarle tú desde el portal');
     }
     expect(buildHandoffAlertEmail({ ...BASE, channel: 'web' }).text).not.toContain('Puedes contestarle tú desde el portal');
+  });
+});
+
+// El correo de "te han dejado un contacto". Es el otro extremo del mismo
+// problema: en la web no se puede contestar, así que este email lleva la
+// única forma de localizar a quien preguntó.
+describe('buildWidgetContactEmail', () => {
+  const BASE_CONTACTO = {
+    businessName: 'Clínica Orly',
+    conversationId: 'conv_9',
+    visitorName: 'Marta',
+    contact: 'marta@example.com',
+    lastMessage: '¿Hacéis urgencias los domingos?',
+  };
+
+  it('pone el nombre en el asunto y el contacto en el cuerpo', () => {
+    const mail = buildWidgetContactEmail(BASE_CONTACTO);
+
+    expect(mail.subject).toContain('Marta');
+    expect(mail.text).toContain('marta@example.com');
+    expect(mail.text).toContain('¿Hacéis urgencias los domingos?');
+    expect(mail.text).toContain('/portal/conversations/conv_9');
+  });
+
+  it('sin nombre sigue siendo un asunto legible', () => {
+    const mail = buildWidgetContactEmail({ ...BASE_CONTACTO, visitorName: null });
+
+    expect(mail.subject).toBe('Te han dejado un contacto en el chat de tu web');
+    expect(mail.text).not.toContain('Nombre:');
+  });
+
+  it('dice claramente que hay que escribirle, porque por el chat no se puede', () => {
+    const mail = buildWidgetContactEmail(BASE_CONTACTO);
+    expect(mail.text).toContain('Escríbele tú');
+  });
+
+  it('escapa el HTML de lo que escribió un desconocido', () => {
+    const mail = buildWidgetContactEmail({ ...BASE_CONTACTO, visitorName: '<img onerror=x>' });
+    expect(mail.html).not.toContain('<img');
+    expect(mail.html).toContain('&lt;img');
   });
 });

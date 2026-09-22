@@ -62,11 +62,17 @@ const CHAT_MAX_POR_MINUTO = 20;
 const CONTACT_INTENT_RE =
   /(cita|presupuesto|contacto|llamar|llamame|reuni[oó]n|hablar|contratar|me interesa|quiero|necesito|reservar|agendar|disponibilidad|horario|email|correo|tel[eé]fono|whatsapp)/i;
 
+// askContact — 22/09/2026. Por el chat de la web NO se puede contestar
+// (ver chatbot-handoff.ts), así que cuando el bot deriva, la única forma
+// de que "te paso con alguien del equipo" sea verdad es que el visitante
+// deje un teléfono o un correo. El widget enseña el formulario cuando
+// esto viene en true; lo recibe .../web/contact.
 function widgetPayload(data: {
   sessionId: string | null;
   reply: string;
   mode: string;
   contactIntent: boolean;
+  askContact?: boolean;
   error?: string | null;
 }) {
   return {
@@ -77,6 +83,7 @@ function widgetPayload(data: {
       timestamp: new Date().toISOString(),
       mode: data.mode,
       contactIntent: data.contactIntent,
+      askContact: data.askContact ?? false,
       error: data.error ?? null,
     },
   };
@@ -200,7 +207,7 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json(
-    widgetPayload({ sessionId, reply: result.reply, mode: 'portal', contactIntent }),
+    widgetPayload({ sessionId, reply: result.reply, mode: 'portal', contactIntent, askContact: result.escalate }),
     { headers: CORS_HEADERS },
   );
 }
