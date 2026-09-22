@@ -2,6 +2,7 @@ import 'server-only';
 import type { PrismaClient } from '@prisma/client';
 import { applyLeadEnrichment } from './leads';
 import { logError } from './observability';
+import { safeFetch, BlockedUrlError } from './safe-fetch';
 
 // =============================================================================
 // Prospección con IA, Fase B — website enrichment. Para cada Lead outbound
@@ -59,7 +60,9 @@ export async function crawlWebsite(url: string): Promise<CrawlWebsiteResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), CRAWL_TIMEOUT_MS);
   try {
-    const res = await fetch(url, {
+    // La URL viene del cliente (su propia web, en `suggest`) o de Google
+    // Places (la de un prospecto): en ningún caso es nuestra.
+    const res = await safeFetch(url, {
       headers: { 'User-Agent': USER_AGENT, Accept: 'text/html' },
       signal: controller.signal,
     });
@@ -73,6 +76,7 @@ export async function crawlWebsite(url: string): Promise<CrawlWebsiteResult> {
     const html = await res.text();
     return { ok: true, data: { rawText: htmlToText(html) } };
   } catch (err) {
+    if (err instanceof BlockedUrlError) return { ok: false, error: 'url_not_allowed' };
     const isAbort = err instanceof Error && err.name === 'AbortError';
     return { ok: false, error: isAbort ? 'timeout' : err instanceof Error ? err.message : 'unknown_error' };
   } finally {

@@ -3,15 +3,24 @@
 //
 // Dos cosas se prueban a fondo porque las dos fallan en silencio:
 //
-//   • isCrawlableUrl. Es lo único que impide que un cliente nos haga
-//     descargar http://localhost:5432 y usar nuestro servidor como sonda
-//     de su red. Un agujero aquí no da error: da una respuesta.
+//   • isCrawlableUrl. Es el filtro rápido que da un error claro al guardar
+//     una URL interna. La barrera de verdad, la que comprueba la IP al
+//     conectar y en cada redirección, es safe-fetch.ts (con sus tests).
 //   • htmlToParagraphs. Si se pierden los saltos de párrafo, chunkText
 //     recibe un solo bloque gigante y el troceado deja de existir sin que
 //     nada avise.
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// safeFetch conecta con http/https de Node, no con fetch: aquí se enruta al
+// fetch simulado de este archivo. Sus propias garantías (qué IPs, qué
+// redirecciones) se prueban en safe-fetch.test.ts.
+vi.mock('@/lib/safe-fetch', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/safe-fetch')>()),
+  safeFetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
+}));
+
 import type { PrismaClient } from '@prisma/client';
 
 const mockState = vi.hoisted(() => ({ logError: vi.fn(), ingest: vi.fn() }));
@@ -28,6 +37,7 @@ import {
   sweepPendingKnowledgeCrawls,
   CRAWL_BATCH_SIZE,
 } from '@/lib/chatbot-knowledge-crawl';
+import { BlockedUrlError } from '@/lib/safe-fetch';
 
 describe('isCrawlableUrl', () => {
   it('acepta una web pública', () => {
@@ -144,6 +154,14 @@ describe('fetchPageAsText', () => {
       }),
     );
     expect(await fetchPageAsText('https://aurora.example/')).toEqual({ ok: false, error: 'no_readable_text' });
+  });
+
+  // Seguridad (22/09/2026): una web pública que redirige a n8n o a una IP
+  // interna. safeFetch lo rechaza al conectar; aquí se comprueba que el
+  // rastreo lo convierte en un motivo claro y no en un fallo raro.
+  it('una redirección hacia la red interna se reporta como URL no permitida', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new BlockedUrlError('address')));
+    expect(await fetchPageAsText('https://aurora.example/r')).toEqual({ ok: false, error: 'url_not_allowed' });
   });
 
   it('un error HTTP se devuelve con su código, para poder explicárselo al cliente', async () => {
