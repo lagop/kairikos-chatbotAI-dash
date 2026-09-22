@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
+import { telegramConnectionIdSchema } from '@/lib/telegram-connection-id';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveChatbotForChannel } from '@/lib/client-product-access';
 import { authenticateInternalRequest, internalAuthFailureResponse } from '@/lib/internal-auth';
@@ -29,7 +30,7 @@ export const runtime = 'nodejs';
 // =============================================================================
 
 const BodySchema = z.object({
-  connectionId: z.string().trim().min(1),
+  connectionId: telegramConnectionIdSchema,
   chatId: z.union([z.string(), z.number()]),
   text: z.string().trim().min(1).max(4000),
   webhookSecret: z.string().max(256).optional(),
