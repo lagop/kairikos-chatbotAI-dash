@@ -19,6 +19,7 @@ const mockState = vi.hoisted(() => ({
   draftFindFirst: vi.fn(),
   draftFindUnique: vi.fn(),
   draftUpdate: vi.fn(),
+  draftUpdateMany: vi.fn(),
   profileFindUnique: vi.fn(),
   publishDraftToWordPress: vi.fn(),
   hasWordPressCredentials: vi.fn(),
@@ -48,6 +49,7 @@ vi.mock('@/lib/prisma', () => ({
       findFirst: (...a: unknown[]) => mockState.draftFindFirst(...a),
       findUnique: (...a: unknown[]) => mockState.draftFindUnique(...a),
       update: (...a: unknown[]) => mockState.draftUpdate(...a),
+      updateMany: (...a: unknown[]) => mockState.draftUpdateMany(...a),
     },
     seoProfile: {
       findUnique: (...a: unknown[]) => mockState.profileFindUnique(...a),
@@ -81,6 +83,7 @@ beforeEach(() => {
   mockState.operatorFindUnique.mockReset().mockResolvedValue({ email: 'op@kairikos.com' });
   mockState.draftFindFirst.mockReset().mockResolvedValue(DRAFT);
   mockState.draftFindUnique.mockReset().mockResolvedValue(FULL_DRAFT);
+  mockState.draftUpdateMany.mockReset().mockResolvedValue({ count: 1 });
   mockState.draftUpdate.mockReset().mockImplementation(({ data }: { data: Record<string, unknown> }) =>
     Promise.resolve({ ...DRAFT, ...data }),
   );
@@ -217,5 +220,15 @@ describe('PATCH action=retry_publish', () => {
     const res = await patch('client_1', 'draft_1', { action: 'retry_publish' });
     const body = await res.json();
     expect(body).toEqual({ ok: false, draftId: 'draft_1', publishError: 'still_unreachable' });
+  });
+
+  // Revisión de seguridad 22/09/2026 — dos reintentos a la vez publicaban dos
+  // veces. El que pierde el reclamo recibe 409 y no toca WordPress.
+  it('409s without publishing when another request already claimed the draft', async () => {
+    mockState.draftFindFirst.mockResolvedValue({ ...DRAFT, status: 'publishing' });
+    mockState.draftUpdateMany.mockResolvedValueOnce({ count: 0 });
+    const res = await patch('client_1', 'draft_1', { action: 'retry_publish' });
+    expect(res.status).toBe(409);
+    expect(mockState.publishDraftToWordPress).not.toHaveBeenCalled();
   });
 });

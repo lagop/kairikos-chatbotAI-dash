@@ -20,6 +20,7 @@ import Credentials from 'next-auth/providers/credentials';
 import { prisma } from '@/lib/prisma';
 import { verifyPassword, passwordFingerprint, InMemoryRateLimiter } from '@/lib/operator-crypto';
 import { clientIpFromHeaders } from '@/lib/client-ip';
+import { isPendingSignupHash } from '@/lib/pending-signup';
 
 const SUPPORT_EMAIL = process.env.AUTH_SUPPORT_EMAIL ?? 'hola@kairikos.com';
 
@@ -70,6 +71,11 @@ function buildAuthConfig(): NextAuthConfig {
           }
 
           if (user.passwordHash === '__must_reset__') {
+            return null;
+          }
+          // Alta de autoservicio cuyo email aún no se ha confirmado: no entra
+          // hasta pulsar el enlace del correo. Ver lib/pending-signup.ts.
+          if (isPendingSignupHash(user.passwordHash)) {
             return null;
           }
 

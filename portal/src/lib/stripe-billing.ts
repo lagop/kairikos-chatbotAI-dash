@@ -286,14 +286,18 @@ async function createDraftInvoice(
   stripe: Stripe,
   stripeCustomerId: string,
   metadata: Record<string, string>,
+  requestOptions?: Stripe.RequestOptions,
 ): Promise<Stripe.Invoice> {
-  return stripe.invoices.create({
-    customer: stripeCustomerId,
-    collection_method: 'send_invoice',
-    days_until_due: 14,
-    auto_advance: false,
-    metadata,
-  });
+  return stripe.invoices.create(
+    {
+      customer: stripeCustomerId,
+      collection_method: 'send_invoice',
+      days_until_due: 14,
+      auto_advance: false,
+      metadata,
+    },
+    requestOptions,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -315,17 +319,30 @@ export async function createWebQuoteInvoice(params: {
   currency: string;
   description: string;
   metadata: Record<string, string>;
+  // Revisión de seguridad del 22/09/2026 — dos clics seguidos en
+  // "aceptar", o el cliente aceptando mientras un operador pulsa
+  // "generar factura", creaban DOS facturas en Stripe: los dos llamantes
+  // veían el presupuesto en 'accepted' antes de que ninguno lo moviera.
+  // Con la misma clave, Stripe devuelve la factura ya creada (o rechaza
+  // la llamada simultánea) en vez de crear otra. Stripe guarda la clave
+  // 24 h, que es de sobra para esa carrera; un reintento días después de
+  // un fallo real crea una factura nueva, que es lo correcto.
+  idempotencyKey?: string;
 }): Promise<Stripe.Invoice> {
   const stripe = await getStripe();
-  const draft = await createDraftInvoice(stripe, params.stripeCustomerId, params.metadata);
-  await stripe.invoiceItems.create({
-    customer: params.stripeCustomerId,
-    invoice: draft.id,
-    amount: params.amountCents,
-    currency: params.currency,
-    description: params.description,
-  });
-  return stripe.invoices.finalizeInvoice(draft.id);
+  const key = (step: string) => (params.idempotencyKey ? { idempotencyKey: `${params.idempotencyKey}:${step}` } : undefined);
+  const draft = await createDraftInvoice(stripe, params.stripeCustomerId, params.metadata, key('draft'));
+  await stripe.invoiceItems.create(
+    {
+      customer: params.stripeCustomerId,
+      invoice: draft.id,
+      amount: params.amountCents,
+      currency: params.currency,
+      description: params.description,
+    },
+    key('item'),
+  );
+  return stripe.invoices.finalizeInvoice(draft.id!, {}, key('finalize'));
 }
 
 export type MarkInvoicePaidManuallyError =
@@ -1071,9 +1088,24 @@ export async function createProductCheckoutSession(params: {
     return { ok: false, error: 'stripe_customer_create_failed' };
   }
 
+  // Qué fila se reaprovecha. Revisión de seguridad del 22/09/2026: esto
+  // era `findFirst({clientId, productId})` sin mirar el estado, y en un
+  // producto multi-instancia la primera fila es la línea que el cliente
+  // YA paga. Comprar una segunda web de SEO o una segunda línea de recall
+  // la pasaba a 'pending_payment' (el cliente perdía el acceso en el
+  // acto) y, si abandonaba el pago, checkout.session.expired la dejaba en
+  // 'cancelled' — mientras su suscripción de Stripe seguía cobrando.
+  //
+  // Solo se reaprovecha lo que ya no está vivo. En multi-instancia ni
+  // siquiera un 'pending_payment': dos pagos abiertos a la vez para dos
+  // líneas nuevas acabarían activando la misma fila dos veces.
+  const reusableStatuses = isMultiInstanceProduct(product.code)
+    ? ['cancelled']
+    : ['cancelled', 'pending_payment'];
   const existing = await prisma.clientProduct.findFirst({
-    where: { clientId, productId: product.id },
-    select: { id: true, status: true },
+    where: { clientId, productId: product.id, status: { in: reusableStatuses } },
+    orderBy: { subscribedAt: 'desc' },
+    select: { id: true, status: true, cancelledAt: true },
   });
 
   const cp = await prisma.$transaction(async (tx) => {
@@ -1154,7 +1186,9 @@ export async function createProductCheckoutSession(params: {
     await prisma.$transaction(async (tx) => {
       const row = await tx.clientProduct.update({
         where: { id: cp.id },
-        data: { status: existing?.status ?? 'cancelled', cancelledAt: existing?.status ? null : new Date() },
+        data: existing
+          ? { status: existing.status, cancelledAt: existing.cancelledAt }
+          : { status: 'cancelled', cancelledAt: new Date() },
       });
       await tx.clientProductAudit.create({
         data: {

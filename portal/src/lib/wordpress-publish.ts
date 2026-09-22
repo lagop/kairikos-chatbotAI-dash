@@ -2,6 +2,7 @@ import 'server-only';
 import { decryptWordPressAppPassword, type EncryptedWordPressAppPassword } from './seo';
 import { logError } from './observability';
 import { safeFetch, BlockedUrlError } from './safe-fetch';
+import { sanitizeArticleHtml, toPlainText } from './seo-article-html';
 
 // =============================================================================
 // SEO con IA, Fase C — the final publish step. WordPress via REST API is
@@ -89,11 +90,12 @@ export async function publishDraftToWordPress(
     const res = await safeFetch(buildPostsUrl(profile.wordpressUrl), {
       method: 'POST',
       headers: { authorization: `Basic ${basicAuth}`, 'content-type': 'application/json' },
+      // Limpio aquí, en el único punto de salida — ver seo-article-html.ts.
       body: JSON.stringify({
-        title: draft.title,
-        content: draft.bodyHtml,
+        title: toPlainText(draft.title),
+        content: sanitizeArticleHtml(draft.bodyHtml),
         status: 'publish',
-        ...(draft.metaDescription ? { excerpt: draft.metaDescription } : {}),
+        ...(draft.metaDescription ? { excerpt: toPlainText(draft.metaDescription) } : {}),
       }),
     });
     if (!res.ok) {

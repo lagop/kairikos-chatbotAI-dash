@@ -18,6 +18,7 @@ const mockState = vi.hoisted(() => ({
   draftFindFirst: vi.fn(),
   draftFindUnique: vi.fn(),
   draftUpdate: vi.fn(),
+  draftUpdateMany: vi.fn(),
   profileFindUnique: vi.fn(),
   publishDraftToWordPress: vi.fn(),
   hasWordPressCredentials: vi.fn(),
@@ -50,6 +51,7 @@ vi.mock('@/lib/prisma', () => ({
       findFirst: (...a: unknown[]) => mockState.draftFindFirst(...a),
       findUnique: (...a: unknown[]) => mockState.draftFindUnique(...a),
       update: (...a: unknown[]) => mockState.draftUpdate(...a),
+      updateMany: (...a: unknown[]) => mockState.draftUpdateMany(...a),
     },
     seoProfile: {
       findUnique: (...a: unknown[]) => mockState.profileFindUnique(...a),
@@ -85,6 +87,7 @@ beforeEach(() => {
   mockState.resolveClientFromSession.mockReset().mockResolvedValue(RESOLVED);
   mockState.draftFindFirst.mockReset().mockResolvedValue(DRAFT);
   mockState.draftFindUnique.mockReset().mockResolvedValue(FULL_DRAFT);
+  mockState.draftUpdateMany.mockReset().mockResolvedValue({ count: 1 });
   mockState.draftUpdate.mockReset().mockImplementation(({ data }: { data: Record<string, unknown> }) =>
     Promise.resolve({ ...DRAFT, ...data }),
   );
@@ -176,9 +179,12 @@ describe('PATCH action=approve — publishes to WordPress', () => {
     const body = await res.json();
     expect(body).toEqual({ ok: true, draftId: 'draft_1', status: 'published', publishError: undefined });
 
-    expect(mockState.draftUpdate).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({ data: expect.objectContaining({ clientReviewedBy: 'client:client_1' }) }),
+    // Quién aprobó viaja en el mismo update que reclama el borrador
+    // (revisión de seguridad 22/09/2026, ver attemptPublishDraft).
+    expect(mockState.draftUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ clientReviewedBy: 'client:client_1', status: 'publishing' }),
+      }),
     );
     expect(mockState.publishDraftToWordPress).toHaveBeenCalledWith(PROFILE_WITH_CREDS, {
       title: FULL_DRAFT.title,
@@ -186,7 +192,7 @@ describe('PATCH action=approve — publishes to WordPress', () => {
       metaDescription: FULL_DRAFT.metaDescription,
     });
     expect(mockState.draftUpdate).toHaveBeenNthCalledWith(
-      2,
+      1,
       expect.objectContaining({
         data: expect.objectContaining({ status: 'published', wordpressPostId: '42', wordpressPostUrl: 'https://negocio.example/articulo' }),
       }),

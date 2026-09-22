@@ -26,11 +26,21 @@ import { notifyOperatorOfExecutionFailure } from './operator-notify';
  *   2. If RETURNING returns 0 rows, the event has been seen — respond
  *      200 OK with `{ duplicate: true }` and short-circuit.
  *   3. If the insert is new, we run the actual handler logic. Any
- *      thrown error is caught and written back to the event row so
- *      future retries stay no-ops (we never retry; Stripe will keep
- *      re-delivering failed events for up to 3 days, so we want them
- *      to converge to a stable "failed" state and stay out of the
- *      way).
+ *      thrown error is caught and written back to the event row as
+ *      'failed', and the route answers 500 so Stripe re-delivers.
+ *   3b. A re-delivery of a 'failed' event (or of a 'pending' one whose
+ *      worker died mid-run, older than STALE_PENDING_MS) is CLAIMED
+ *      back with a conditional updateMany and processed again.
+ *
+ *      Revisión de seguridad del 22/09/2026: esto antes era "any retry
+ *      stays a no-op" — pero el 500 le pedía a Stripe que reintentara,
+ *      y el reintento chocaba con la fila 'failed' y se contestaba
+ *      'duplicate'. Resultado: un fallo transitorio (Postgres caído
+ *      diez segundos) dejaba para siempre sin activar a un cliente que
+ *      había pagado. Los manejadores de `dispatch` son sincronizaciones
+ *      idempotentes contra el estado de Stripe, así que reprocesar es
+ *      seguro; el updateMany condicional evita que dos reintentos
+ *      simultáneos lo procesen a la vez.
  *   4. The handler always returns 200 OK unless the signature itself
  *      is invalid — Stripe does not retry 4xx, so any auth failure is
  *      terminal.
@@ -96,7 +106,7 @@ export async function handleStripeEvent(
       throw err;
     });
 
-  if (!inserted) {
+  if (!inserted && !(await claimForRetry(event.id))) {
     return { statusCode: 200, body: { status: 'duplicate', eventId: event.id, eventType: event.type } };
   }
 
@@ -131,16 +141,42 @@ export async function handleStripeEvent(
     }).catch(() => {
       // Best-effort — logError above already guarantees this isn't silent.
     });
-    // Return 500 so Stripe retries. The idempotency row keeps future
-    // retries of the SAME delivery no-op, but a new delivery of the
-    // SAME event id is impossible (it's the PK) — so we rely on
-    // Stripe to eventually give up.
+    // Return 500 so Stripe retries; the retry claims the 'failed' row
+    // back (claimForRetry) and runs the handler again.
     //
     // WP-19 — this used to report `status: 'ok'` on a 500, which is a
     // lie the moment anyone reads the response body without also
     // checking the HTTP status: the handler failed, nothing here is ok.
     return { statusCode: 500, body: { status: 'error', eventId: event.id, eventType: event.type, detail: `handler_error:${message}` } };
   }
+}
+
+// A 'pending' row this old belongs to a worker that died mid-dispatch
+// (container restart during a deploy): nothing will ever finish it.
+// Generous on purpose — dispatch takes seconds, and a live run claimed
+// twice would just re-sync the same Stripe state.
+const STALE_PENDING_MS = 10 * 60 * 1000;
+
+/**
+ * Atomically takes back an already-recorded event for reprocessing.
+ * Only one concurrent delivery can win: the WHERE matches the row's
+ * current status, and the winner flips it to a fresh 'pending'.
+ * `receivedAt` is bumped so the stale-pending clock restarts with the
+ * new attempt.
+ */
+async function claimForRetry(eventId: string): Promise<boolean> {
+  const now = new Date();
+  const { count } = await prisma.stripeWebhookEvent.updateMany({
+    where: {
+      eventId,
+      OR: [
+        { status: 'failed' },
+        { status: 'pending', receivedAt: { lt: new Date(now.getTime() - STALE_PENDING_MS) } },
+      ],
+    },
+    data: { status: 'pending', receivedAt: now, processedAt: null, errorMessage: null },
+  });
+  return count === 1;
 }
 
 async function dispatch(event: Stripe.Event): Promise<string> {

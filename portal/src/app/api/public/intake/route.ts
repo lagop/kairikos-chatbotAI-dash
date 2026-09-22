@@ -51,7 +51,21 @@ import { clientIpFromHeaders } from '@/lib/client-ip';
 //      notify-operator internal endpoint with kind='escalation' semantics,
 //      and creates the Paperclip Day-2 issue for the Automation Engineer.
 //
-//   6. Returns 200 with { ok: true, submissionId, clientId, vertical }.
+//   6. Returns 200 with { ok: true, submissionId, vertical, idempotencyKey }.
+//
+// Revisión de seguridad del 22/09/2026 — la ruta es pública y sin sesión, y
+// con el email de un cliente existente hacía tres cosas que no debía:
+//   - sobrescribía su companyName (cualquiera podía renombrar el negocio de
+//     otro con solo conocer su correo);
+//   - re-vinculaba el login con ese email al cliente del formulario
+//     (chatbotClientUser.upsert con update): un envío podía mover el acceso
+//     de una persona a otra cuenta;
+//   - creaba OTRA carpeta de Drive, otro correo al operador y otra
+//     incidencia de Paperclip por cada envío.
+// Ahora un email ya conocido solo deja su IntakeSubmission (el operador lo
+// ve en la vista forense) y no toca nada más. Y la respuesta ya no devuelve
+// clientId, clientUserId ni la URL de la carpeta de Drive: el formulario solo
+// mira res.ok, y devolverlos decía a cualquiera si un email era cliente.
 //
 // Auth: the endpoint is public. Rate limiting is delegated to the edge
 // (Vercel firewall / Cloudflare); the route refuses any payload over 64 KB
@@ -65,15 +79,13 @@ const MAX_BODY_BYTES = 64 * 1024; // 64 KB hard cap
 const DEFAULT_TIER = 'starter';
 const DEFAULT_STATE = 'in-progress';
 
+// Igual para un cliente nuevo, uno existente y un reintento: la respuesta
+// no puede delatar si el email ya estaba dado de alta.
 interface FinalResponse {
   ok: true;
   submissionId: string;
-  clientId: string;
-  clientUserId: string;
   vertical: string;
   idempotencyKey: string;
-  drive?: { folderId?: string; folderUrl?: string; skipped?: string };
-  day2Issue?: { issueIdentifier?: string; skipped?: string };
 }
 
 /** El alta pública crea un cliente, su contratación y su sitio, y dispara
@@ -157,12 +169,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const replay: FinalResponse = {
       ok: true,
       submissionId: existing.id,
-      clientId: existing.clientId,
-      clientUserId: '', // unknown on replay; lookup not required
       vertical: existing.vertical,
       idempotencyKey,
-      drive: { skipped: 'replay' },
-      day2Issue: { skipped: 'replay' },
     };
     logIntake('intake.replay', { idempotencyKey, submissionId: existing.id });
     return NextResponse.json(replay, { status: 200 });
@@ -173,22 +181,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const userAgent = (req.headers.get('user-agent') ?? '').slice(0, 400) || null;
 
   const client = await prisma.$transaction(async (tx) => {
-    // ChatbotClient.email is the unique join — first write wins, second
-    // write reuses the row (same business owner).
+    // ChatbotClient.email is the unique join — first write wins. A second
+    // submission for the same email is only recorded (IntakeSubmission
+    // below); the existing client is never modified from here — see the
+    // security note in the header.
     const existingClient = await tx.chatbotClient.findUnique({
       where: { email: payload.human_handoff_email },
       select: { id: true, name: true, companyName: true, tenantId: true },
     });
 
     const clientRecord = existingClient
-      ? await tx.chatbotClient.update({
-          where: { id: existingClient.id },
-          data: {
-            companyName: payload.business_name,
-            // Don't overwrite tier/state — Stripe webhook owns those.
-          },
-          select: { id: true, name: true, companyName: true, tenantId: true },
-        })
+      ? existingClient
       : await tx.chatbotClient.create({
           data: {
             email: payload.human_handoff_email,
@@ -258,17 +261,24 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
     }
 
-    // ChatbotClientUser.nextAuthEmail is UNIQUE — upsert.
-    const clientUser = await tx.chatbotClientUser.upsert({
-      where: { nextAuthEmail: payload.human_handoff_email },
-      update: { clientId: clientRecord.id, tenantId: clientRecord.tenantId },
-      create: {
-        nextAuthEmail: payload.human_handoff_email,
-        clientId: clientRecord.id,
-        tenantId: clientRecord.tenantId,
-      },
-      select: { id: true },
-    });
+    // ChatbotClientUser.nextAuthEmail is UNIQUE. Only ever CREATED here,
+    // never re-pointed: an existing login with this email keeps the client
+    // it already belongs to (this used to be an upsert whose update moved it).
+    if (!existingClient) {
+      const existingLogin = await tx.chatbotClientUser.findUnique({
+        where: { nextAuthEmail: payload.human_handoff_email },
+        select: { id: true },
+      });
+      if (!existingLogin) {
+        await tx.chatbotClientUser.create({
+          data: {
+            nextAuthEmail: payload.human_handoff_email,
+            clientId: clientRecord.id,
+            tenantId: clientRecord.tenantId,
+          },
+        });
+      }
+    }
 
     // IntakeSubmission — UNIQUE on idempotency_key, so on race the second
     // insert collapses to a no-op via a follow-up findUnique.
@@ -292,7 +302,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
       return {
         clientId: clientRecord.id,
-        clientUserId: clientUser.id,
         submissionId: submission.id,
         // WP-24 — the wizard-seeding step below only runs for a client
         // that didn't exist before this request. A second intake
@@ -314,7 +323,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         if (winner && winner.clientId) {
           return {
             clientId: winner.clientId,
-            clientUserId: clientUser.id,
             submissionId: winner.id,
             isNewClient: existingClient === null,
           };
@@ -373,6 +381,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     vertical,
     business: payload.business_name,
   });
+
+  // An email that was already a client: the submission is recorded and
+  // that's all. No Drive folder, operator email or Paperclip issue — those
+  // are what a public form could otherwise be used to spam.
+  if (!client.isNewClient) {
+    logIntake('intake.existing_client_resubmission', {
+      submissionId: client.submissionId,
+      clientId: client.clientId,
+    });
+    const response: FinalResponse = { ok: true, submissionId: client.submissionId, vertical, idempotencyKey };
+    return NextResponse.json(response, { status: 200 });
+  }
 
   // ---- 4. fire side effects in parallel (best-effort) ----------------------
   // The route returns 200 once the DB write commits. Drive / notify /
@@ -468,16 +488,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const response: FinalResponse = {
     ok: true,
     submissionId: client.submissionId,
-    clientId: client.clientId,
-    clientUserId: client.clientUserId,
     vertical,
     idempotencyKey,
-    drive: driveResult.ok
-      ? { folderId: driveResult.folderId, folderUrl: driveResult.folderUrl }
-      : { skipped: driveResult.skipped ?? 'api_error' },
-    day2Issue: day2Result.ok
-      ? { issueIdentifier: day2Result.issueIdentifier }
-      : { skipped: day2Result.skipped ?? 'api_error' },
   };
 
   logIntake('intake.done', {

@@ -66,10 +66,16 @@ export async function PATCH(req: NextRequest, { params }: { params: { clientId: 
   }
 
   if (body.data.action === 'retry_publish') {
-    if (draft.status !== 'publish_failed') {
+    // 'publishing' también pasa este filtro: un intento que murió a medias
+    // se puede reintentar, y quien decide si de verdad está colgado (o sigue
+    // en marcha) es el reclamo atómico de attemptPublishDraft.
+    if (draft.status !== 'publish_failed' && draft.status !== 'publishing') {
       return NextResponse.json({ error: 'not_retryable', status: draft.status }, { status: 409 });
     }
-    const publishResult = await attemptPublishDraft(prisma, draft.id, params.clientId);
+    const publishResult = await attemptPublishDraft(prisma, draft.id, params.clientId, { fromStatus: 'publish_failed' });
+    if (!publishResult.ok && 'notClaimed' in publishResult) {
+      return NextResponse.json({ error: 'not_retryable', status: 'publishing' }, { status: 409 });
+    }
     return NextResponse.json({ ok: publishResult.ok, draftId: draft.id, publishError: publishResult.ok ? undefined : publishResult.error });
   }
 
