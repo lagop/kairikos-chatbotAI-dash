@@ -4,6 +4,9 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveChatbotForChannel } from '@/lib/client-product-access';
 import { authenticateInternalRequest, internalAuthFailureResponse } from '@/lib/internal-auth';
 import { replyToIncomingMessage } from '@/lib/chatbot-conversation';
+import { decryptChannelCredential } from '@/lib/channel-crypto';
+import { telegramWebhookSecretMatches } from '@/lib/telegram-api';
+import { logError } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -16,12 +19,20 @@ export const runtime = 'nodejs';
 // ruta y lib/chatbot-conversation.ts para el diseño completo.
 //
 // El clientId se resuelve desde la conexión de Telegram, nunca del cuerpo.
+//
+// Revisión de seguridad del 22/09/2026 — `webhookSecret` es la cabecera
+// X-Telegram-Bot-Api-Secret-Token de la entrega original, reenviada por n8n.
+// Sin ella, cualquiera que conociera el connectionId de la URL del webhook
+// podía inyectar mensajes. Ver telegramWebhookSecret en lib/telegram-api.ts.
+// Una conexión creada antes de esto no tiene el secreto registrado en
+// Telegram: hay que reconectar el bot (desconectar y conectar) una vez.
 // =============================================================================
 
 const BodySchema = z.object({
   connectionId: z.string().trim().min(1),
   chatId: z.union([z.string(), z.number()]),
   text: z.string().trim().min(1).max(4000),
+  webhookSecret: z.string().max(256).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -44,6 +55,19 @@ export async function POST(req: NextRequest) {
   }
   if (connection.status !== 'active') {
     return NextResponse.json({ error: 'disabled' }, { status: 403 });
+  }
+
+  const botToken = decryptChannelCredential({
+    ciphertext: connection.botTokenCiphertext,
+    iv: connection.botTokenIv,
+    tag: connection.botTokenTag,
+  });
+  if (!telegramWebhookSecretMatches(botToken, body.data.webhookSecret)) {
+    logError('channels.telegram_reply.bad_webhook_secret', new Error('webhook_secret_mismatch'), {
+      connectionId: connection.id,
+      hadSecret: Boolean(body.data.webhookSecret),
+    }, 'warn');
+    return NextResponse.json({ error: 'invalid_webhook_secret' }, { status: 401 });
   }
 
   // Fase 4 multi-instancia — contesta el chatbot al que sirve ESTE canal (el
