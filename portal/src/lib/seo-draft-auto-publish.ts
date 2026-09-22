@@ -122,7 +122,9 @@ export async function sweepAutoPublishableSeoDrafts(
         clientReviewedBy: AUTO_PUBLISH_REVIEWED_BY,
       });
       if (publishResult.status === 'published') result.published += 1;
-      else result.publishFailed += 1;
+      else if (publishResult.status === 'publish_failed') result.publishFailed += 1;
+      // 'not_publishable': el cliente lo aprobó (o rechazó) entre la
+      // consulta y este paso. Ya no es cosa del barrido.
     } catch (err) {
       logError('seo_draft_auto_publish.draft_failed', err, { clientId: draft.clientId, draftId: draft.id }, 'warn');
       result.failed.push({

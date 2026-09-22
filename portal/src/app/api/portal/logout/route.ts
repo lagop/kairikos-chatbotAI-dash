@@ -11,6 +11,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { signOut } from '../../../../../auth';
 import { getSession } from '@/lib/session';
+import { safeInternalPath } from '@/lib/safe-redirect';
 
 const PORTAL_LOGIN = '/portal/login';
 const ADMIN_LOGIN = '/admin/login';
@@ -54,12 +55,9 @@ export async function POST(req: NextRequest) {
     // the explicit cookie clears below still land the user on the login page.
   }
 
-  const target =
-    returnTo && returnTo.startsWith('/')
-      ? returnTo
-      : role === 'operator'
-        ? ADMIN_LOGIN
-        : PORTAL_LOGIN;
+  // safeInternalPath, no `startsWith('/')`: `//otro-dominio` también
+  // empieza por "/" y era una redirección abierta (revisión 22/09/2026).
+  const target = safeInternalPath(returnTo, role === 'operator' ? ADMIN_LOGIN : PORTAL_LOGIN);
 
   const res = NextResponse.redirect(new URL(target, req.url), 303);
   clearAuthCookies(res);

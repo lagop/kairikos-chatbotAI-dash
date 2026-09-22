@@ -40,6 +40,7 @@ const STATUS_LABEL: Record<string, string> = {
   drafted: 'Pendiente de revisión (operador)',
   rejected: 'Rechazado',
   pending_client_review: 'Pendiente de revisión (cliente)',
+  publishing: 'Publicando…',
   published: 'Publicado',
   publish_failed: 'Fallo al publicar',
 };
@@ -161,11 +162,18 @@ function DraftCard({ draft, clientId }: { draft: SeoContentDraftData; clientId: 
         </p>
       ) : null}
 
-      {draft.status === 'publish_failed' ? (
+      {draft.status === 'publish_failed' || draft.status === 'publishing' ? (
         <div className="mb-3 space-y-2">
-          <p className="text-xs text-kairikos-danger" data-testid="seo-content-draft-publish-error">
-            No se pudo publicar{draft.publishError ? `: ${draft.publishError}` : '.'}
-          </p>
+          {draft.status === 'publishing' ? (
+            <p className="text-xs text-kairikos-muted" data-testid="seo-content-draft-publishing">
+              Publicación en curso. Si sigue así pasados 10 minutos, el intento se quedó a medias y se puede
+              reintentar.
+            </p>
+          ) : (
+            <p className="text-xs text-kairikos-danger" data-testid="seo-content-draft-publish-error">
+              No se pudo publicar{draft.publishError ? `: ${draft.publishError}` : '.'}
+            </p>
+          )}
           <button
             type="button"
             className="btn-ghost"

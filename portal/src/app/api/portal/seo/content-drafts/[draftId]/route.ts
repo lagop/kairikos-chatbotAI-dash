@@ -73,6 +73,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { draftId: s
       clientId: resolved.clientId,
       clientReviewedBy: `client:${resolved.clientId}`,
     });
+    if (result.status === 'not_publishable') {
+      // Un doble clic: la otra petición ya lo está publicando.
+      return NextResponse.json({ error: 'not_reviewable', status: 'publishing' }, { status: 409 });
+    }
     return NextResponse.json({ ok: true, draftId: draft.id, status: result.status, publishError: result.publishError });
   } catch (err) {
     logError('seo_content_review.client_decision_failed', err, { clientId: resolved.clientId, draftId: params.draftId }, 'warn');

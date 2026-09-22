@@ -15,6 +15,8 @@ const mockState = vi.hoisted(() => ({
   getSession: vi.fn(),
   resolveWebQuoteContext: vi.fn(),
   webQuoteUpdate: vi.fn(),
+  webQuoteUpdateMany: vi.fn(),
+  webQuoteFindUniqueOrThrow: vi.fn(),
   webQuoteAuditCreate: vi.fn(),
   generateWebQuoteInvoice: vi.fn(),
   logError: vi.fn(),
@@ -29,7 +31,11 @@ vi.mock('@/lib/observability', () => ({
 }));
 
 const mockTx = {
-  webQuote: { update: (...args: unknown[]) => mockState.webQuoteUpdate(...args) },
+  webQuote: {
+    update: (...args: unknown[]) => mockState.webQuoteUpdate(...args),
+    updateMany: (...args: unknown[]) => mockState.webQuoteUpdateMany(...args),
+    findUniqueOrThrow: (...args: unknown[]) => mockState.webQuoteFindUniqueOrThrow(...args),
+  },
   webQuoteAudit: { create: (...args: unknown[]) => mockState.webQuoteAuditCreate(...args) },
 };
 
@@ -58,6 +64,8 @@ beforeEach(() => {
   mockState.getSession.mockReset().mockResolvedValue({ hasClientAccess: true });
   mockState.resolveWebQuoteContext.mockReset();
   mockState.webQuoteUpdate.mockReset().mockResolvedValue({ id: 'wq_1', status: 'accepted' });
+  mockState.webQuoteUpdateMany.mockReset().mockResolvedValue({ count: 1 });
+  mockState.webQuoteFindUniqueOrThrow.mockReset().mockResolvedValue({ id: 'wq_1', status: 'accepted' });
   mockState.webQuoteAuditCreate.mockReset().mockResolvedValue({});
   mockState.generateWebQuoteInvoice
     .mockReset()
@@ -105,7 +113,7 @@ describe('POST /api/portal/web-quote/accept', () => {
     });
     const res = await callRoute();
     expect(res.status).toBe(404);
-    expect(mockState.webQuoteUpdate).not.toHaveBeenCalled();
+    expect(mockState.webQuoteUpdateMany).not.toHaveBeenCalled();
   });
 
   it('404s when there is no WebQuote for this project', async () => {
@@ -126,7 +134,7 @@ describe('POST /api/portal/web-quote/accept', () => {
     expect(res.status).toBe(409);
     const body = await res.clone().json();
     expect(body.error).toBe('not_sent');
-    expect(mockState.webQuoteUpdate).not.toHaveBeenCalled();
+    expect(mockState.webQuoteUpdateMany).not.toHaveBeenCalled();
   });
 
   it('accepts a sent quote on the happy path', async () => {
@@ -137,12 +145,28 @@ describe('POST /api/portal/web-quote/accept', () => {
     const res = await callRoute();
     expect(res.status).toBe(200);
     expect(mockState.resolveWebQuoteContext).toHaveBeenCalledWith(expect.anything(), CLIENT_PRODUCT_ID);
-    expect(mockState.webQuoteUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'wq_1' }, data: expect.objectContaining({ status: 'accepted' }) }),
+    expect(mockState.webQuoteUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'wq_1', status: 'sent' }, data: expect.objectContaining({ status: 'accepted' }) }),
     );
     expect(mockState.webQuoteAuditCreate).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ action: 'accepted', actorType: 'client' }) }),
     );
+  });
+
+  // Revisión de seguridad 22/09/2026 — con un doble clic las dos peticiones
+  // leían 'sent' antes de que ninguna escribiera: dos aceptaciones y dos
+  // facturas. El estado va ahora en el WHERE; la que pierde recibe 409.
+  it('a second, simultaneous accept loses the claim: 409, no audit row, no invoice', async () => {
+    mockState.resolveWebQuoteContext.mockResolvedValueOnce({
+      clientProduct: { id: CLIENT_PRODUCT_ID, clientId: 'client_1', tenantId: 't1', status: 'quote_pending' },
+      webQuote: { id: 'wq_1', status: 'sent' },
+    });
+    mockState.webQuoteUpdateMany.mockResolvedValueOnce({ count: 0 });
+    const res = await callRoute();
+    expect(res.status).toBe(409);
+    expect((await res.clone().json()).error).toBe('not_sent');
+    expect(mockState.webQuoteAuditCreate).not.toHaveBeenCalled();
+    expect(mockState.generateWebQuoteInvoice).not.toHaveBeenCalled();
   });
 });
 
@@ -168,7 +192,7 @@ describe('POST /api/portal/web-quote/accept — Fase 6, factura automática', ()
     });
     // La aceptación ya está confirmada en base de datos ANTES de intentar
     // facturar — no dentro de la misma transacción.
-    expect(mockState.webQuoteUpdate.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(mockState.webQuoteUpdateMany.mock.invocationCallOrder[0]).toBeLessThan(
       mockState.generateWebQuoteInvoice.mock.invocationCallOrder[0],
     );
   });

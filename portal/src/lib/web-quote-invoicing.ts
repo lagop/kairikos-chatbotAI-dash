@@ -89,6 +89,9 @@ export async function generateWebQuoteInvoice(
         kairikos_product_code: 'web',
         kairikos_invoice_role: role,
       },
+      // Una sola factura por presupuesto y papel aunque aceptar y
+      // "generar factura" corran a la vez — ver createWebQuoteInvoice.
+      idempotencyKey: `web_quote_invoice:${webQuote.id}:${role}`,
     });
     // Se persiste el espejo del Invoice de forma síncrona (mismo patrón
     // que la ruta de checkout de operador) para que quien lea el
