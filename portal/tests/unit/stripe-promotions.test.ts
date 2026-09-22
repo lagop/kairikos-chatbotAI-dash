@@ -3,8 +3,6 @@
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-
 import type { NextRequest } from 'next/server';
 
 const mockState = vi.hoisted(() => ({
