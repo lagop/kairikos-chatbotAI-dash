@@ -52,8 +52,7 @@ async function sendEmail(to: string, rendered: { subject: string; text: string; 
     return { ok: true, skipped: true, messageId: null, reason: 'no_api_key' };
   }
 
-  const requireResend = (0, eval)('require') as NodeJS.Require;
-  const { Resend } = requireResend('resend') as typeof import('resend');
+  const { Resend } = await import('resend');
   const resend = new Resend(apiKey);
 
   try {
