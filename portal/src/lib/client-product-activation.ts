@@ -1,7 +1,12 @@
 import 'server-only';
 import type { PrismaClient } from '@prisma/client';
 import { ensureRecallSubscription } from './recall-onboarding';
-import { ensureSeoProfile, ensureProspectingCampaign, ensureLeadQualificationProfile } from './product-onboarding';
+import {
+  ensureSeoProfile,
+  ensureProspectingCampaign,
+  ensureLeadQualificationProfile,
+  ensureConversationDigestSchedule,
+} from './product-onboarding';
 import { isMultiInstanceProduct } from './client-product-access';
 import { assignSiteToNewContract } from './client-site';
 
@@ -120,6 +125,9 @@ export async function activateClientProductForOperator(
   }
   if (row.product?.code === 'leads') {
     await ensureLeadQualificationProfile(prisma, { clientId, clientProductId: row.id, tenantId: row.tenantId }, operatorActor);
+  }
+  if (row.product?.code === 'chatbot') {
+    await ensureConversationDigestSchedule(prisma, { clientId, clientProductId: row.id, tenantId: row.tenantId });
   }
 
   // product.code (del findUnique de arriba), no row.product?.code: el

@@ -2,7 +2,12 @@ import 'server-only';
 import { prisma } from './prisma';
 import { getStripe, isStripeConfigured, StripeUnavailableError } from './stripe';
 import { ensureRecallSubscription } from './recall-onboarding';
-import { ensureSeoProfile, ensureProspectingCampaign, ensureLeadQualificationProfile } from './product-onboarding';
+import {
+  ensureSeoProfile,
+  ensureProspectingCampaign,
+  ensureLeadQualificationProfile,
+  ensureConversationDigestSchedule,
+} from './product-onboarding';
 import { isProductContracted, isMultiInstanceProduct } from './client-product-access';
 import { assignSiteToNewContract } from './client-site';
 import type { Prisma } from '@prisma/client';
@@ -645,6 +650,14 @@ export async function activateClientProductFromCheckout(session: Stripe.Checkout
       prisma,
       { clientId: cp.clientId, clientProductId: cpId, tenantId: cp.tenantId },
       { type: 'system', source: 'stripe_checkout' },
+    );
+  }
+  // El resumen periódico de conversaciones, encendido desde el pago. Ver
+  // ensureConversationDigestSchedule: es el único que nace activo.
+  if (cp.product.code === 'chatbot') {
+    await ensureConversationDigestSchedule(
+      prisma,
+      { clientId: cp.clientId, clientProductId: cpId, tenantId: cp.tenantId },
     );
   }
 }

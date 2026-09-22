@@ -226,3 +226,58 @@ export async function ensureLeadQualificationProfile(
     throw err;
   }
 }
+
+/**
+ * Crea —y deja ENCENDIDO— el horario de resúmenes de un ClientProduct de
+ * 'chatbot'.
+ *
+ * Es el único ensure* de este archivo que nace activo, y es a propósito.
+ * Los demás crean una fila vacía que el cliente rellena; aquí la fila ya
+ * tiene una cadencia útil (9/13/18h, hora de España) y encenderla es el
+ * valor entero: hasta el 22/09/2026 `enabled` nacía en false y había que
+ * descubrir la pantalla y activarlo a mano, así que en producción NINGÚN
+ * cliente tenía resumen y el correo que cuenta las conversaciones
+ * derivadas no se mandaba nunca. Un resumen tres veces al día es
+ * recuperable con un clic si molesta; enterarse tarde de que alguien
+ * esperaba respuesta, no.
+ *
+ * Si el cliente ya tiene un horario —aunque lo haya APAGADO él— no se
+ * toca: volver a encender lo que alguien apagó a conciencia sería peor
+ * que no haber encendido nunca nada.
+ *
+ * Compare-and-swap contra la unicidad de `clientProductId`, igual que sus
+ * hermanas. No tiene tabla de auditoría (el modelo no la tiene), así que
+ * esta es la única que no escribe una.
+ */
+export async function ensureConversationDigestSchedule(
+  prisma: PrismaClient,
+  params: EnsureProductRowParams,
+): Promise<EnsureProductRowResult> {
+  const existing = await prisma.conversationDigestSchedule.findUnique({
+    where: { clientProductId: params.clientProductId },
+    select: { id: true },
+  });
+  if (existing) return { created: false, id: existing.id };
+
+  try {
+    const row = await prisma.conversationDigestSchedule.create({
+      data: {
+        clientId: params.clientId,
+        clientProductId: params.clientProductId,
+        tenantId: params.tenantId,
+        enabled: true,
+        preset: 'morning_noon_evening',
+      },
+    });
+    return { created: true, id: row.id };
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      const winner = await prisma.conversationDigestSchedule.findUniqueOrThrow({
+        where: { clientProductId: params.clientProductId },
+        select: { id: true },
+      });
+      return { created: false, id: winner.id };
+    }
+    throw err;
+  }
+}
