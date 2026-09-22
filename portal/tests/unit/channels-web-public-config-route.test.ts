@@ -6,7 +6,7 @@
 // headers on every response (including errors), and status/token gates.
 // =============================================================================
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { NextRequest } from 'next/server';
 
 const mockState = vi.hoisted(() => ({
@@ -36,10 +36,10 @@ vi.mock('@/lib/prisma', () => ({
   },
 }));
 
-function makeRequest(token: string | null): NextRequest {
+function makeRequest(token: string | null, headers: Record<string, string> = {}): NextRequest {
   const url = new URL('https://portal.kairikos.com/api/public/channels/web/config');
   if (token !== null) url.searchParams.set('token', token);
-  return { nextUrl: url } as unknown as NextRequest;
+  return { nextUrl: url, headers: new Headers(headers) } as unknown as NextRequest;
 }
 
 beforeEach(() => {
@@ -47,6 +47,11 @@ beforeEach(() => {
   mockState.embedFindUnique.mockReset();
   mockState.clientFindUnique.mockReset().mockResolvedValue({ companyName: 'Clínica Orly', name: 'Orly', tier: 'starter' });
   mockState.stepFindMany.mockReset().mockResolvedValue([]);
+  process.env.NEXT_PUBLIC_PORTAL_URL = 'https://portal.kairikos.com';
+});
+
+afterEach(() => {
+  delete process.env.NEXT_PUBLIC_PORTAL_URL;
 });
 
 describe('GET /api/public/channels/web/config', () => {
@@ -113,6 +118,43 @@ describe('GET /api/public/channels/web/config', () => {
     const res = await GET(makeRequest('wgt_1'));
     const body = await res.json();
     expect(body.chatEndpoint).toBe('https://portal.kairikos.com/api/public/channels/web/message');
+  });
+
+  // El origen que ve el servidor detrás de Traefik es https://0.0.0.0:3000, y
+  // devolver ESO le daba al visitante una dirección a la que su navegador no
+  // puede llamar: el widget se pintaba y ningún mensaje llegaba nunca. Visto
+  // en producción el 22/09/2026, en la primera prueba real del widget.
+  describe('chatEndpoint — el origen público, no el que ve el servidor', () => {
+    beforeEach(() => {
+      mockState.embedFindUnique.mockResolvedValue({ clientId: 'c1', status: 'active', primaryColor: '#000', position: 'bottom-right' });
+    });
+
+    it('usa NEXT_PUBLIC_PORTAL_URL aunque el origen de la petición sea el interno', async () => {
+      process.env.NEXT_PUBLIC_PORTAL_URL = 'https://portal.kairikos.cloud/';
+      const { GET } = await import('@/app/api/public/channels/web/config/route');
+      const res = await GET({
+        nextUrl: new URL('https://0.0.0.0:3000/api/public/channels/web/config?token=wgt_1'),
+        headers: new Headers(),
+      } as unknown as NextRequest);
+      const body = await res.json();
+      expect(body.chatEndpoint).toBe('https://portal.kairikos.cloud/api/public/channels/web/message');
+    });
+
+    it('cae en las cabeceras del proxy cuando la variable no está', async () => {
+      delete process.env.NEXT_PUBLIC_PORTAL_URL;
+      const { GET } = await import('@/app/api/public/channels/web/config/route');
+      const res = await GET(makeRequest('wgt_1', { 'x-forwarded-proto': 'https', 'x-forwarded-host': 'proxy.example' }));
+      const body = await res.json();
+      expect(body.chatEndpoint).toBe('https://proxy.example/api/public/channels/web/message');
+    });
+
+    it('cae en el origen de la petición cuando no hay ni variable ni cabeceras', async () => {
+      delete process.env.NEXT_PUBLIC_PORTAL_URL;
+      const { GET } = await import('@/app/api/public/channels/web/config/route');
+      const res = await GET(makeRequest('wgt_1'));
+      const body = await res.json();
+      expect(body.chatEndpoint).toBe('https://portal.kairikos.com/api/public/channels/web/message');
+    });
   });
 
   it('503s when the database is not configured', async () => {
