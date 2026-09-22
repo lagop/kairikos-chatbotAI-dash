@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { InMemoryRateLimiter, hashPassword } from '@/lib/operator-crypto';
 import { createClientForSelfServe, mintEmailVerificationToken } from '@/lib/self-serve-onboarding';
-import { sendVerifyEmail } from '@/lib/auth-email';
+import { sendVerifyEmail, sendAccountExistsEmail } from '@/lib/auth-email';
 import { logError } from '@/lib/observability';
 import { clientIpFromHeaders } from '@/lib/client-ip';
 
@@ -26,7 +26,20 @@ import { clientIpFromHeaders } from '@/lib/client-ip';
 // route trusts that flag as the single source of truth rather than
 // hardcoding product codes here, so an operator can turn a tier on/off
 // from /admin/portal/settings/billing without a deploy.
+//
+// Revisión de seguridad del 22/09/2026 — verificar antes de pagar.
+//   - La cuenta nace con la contraseña BLOQUEADA (lib/pending-signup.ts):
+//     no se puede entrar ni pagar hasta pulsar el enlace que llega al
+//     buzón. Antes, cualquiera podía registrar el correo de otro negocio y
+//     quedarse la cuenta. El enlace lleva el producto elegido, y la página
+//     de verificación sigue desde ahí: entrar → pagar (o pedir presupuesto).
+//   - La respuesta es la MISMA (202) si el email es nuevo o ya tiene cuenta:
+//     antes un 409 'client_already_exists' decía a cualquiera si un correo
+//     era cliente. Al dueño real le llega un aviso por correo en su lugar.
 // =============================================================================
+
+// Lo único que ve quien rellena el formulario, sea cual sea el caso.
+const ACCEPTED = { ok: true, verificationSent: true } as const;
 
 const SelfServeSignupSchema = z.object({
   email: z.string().email(),
@@ -76,24 +89,50 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'product_not_self_serve_eligible' }, { status: 400 });
   }
 
-  const passwordHash = await hashPassword(password);
-  const created = await createClientForSelfServe(prisma, { email, name, companyName, passwordHash });
+  const normalizedEmail = email.toLowerCase().trim();
+  const origin = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'http://localhost:3001';
+
+  // Un login con este email puede existir sin que sea el email de contacto
+  // de ningún cliente (un segundo usuario de otro cliente): también cuenta
+  // como "ya tiene cuenta", o el create de User reventaría con un 500.
+  const existingLogin = await prisma.user.findUnique({ where: { email: normalizedEmail }, select: { id: true } });
+  const created = existingLogin
+    ? ({ ok: false, error: 'client_already_exists' } as const)
+    : await createClientForSelfServe(prisma, {
+        email,
+        name,
+        companyName,
+        passwordHash: await hashPassword(password),
+      });
+
   if (!created.ok) {
-    return NextResponse.json({ error: created.error }, { status: 409 });
+    // Nada de cambiar contraseñas ni reenviar el enlace de activación: si la
+    // cuenta existente sigue pendiente, ese enlace activaría la contraseña de
+    // quien la creó, que no tiene por qué ser el dueño del buzón.
+    try {
+      await sendAccountExistsEmail({
+        to: normalizedEmail,
+        loginUrl: `${origin}/portal/login`,
+        forgotUrl: `${origin}/portal/forgot-password`,
+      });
+    } catch (err) {
+      logError('self_serve_signup.account_exists_email_failed', err, {}, 'warn');
+    }
+    return NextResponse.json(ACCEPTED, { status: 202 });
   }
 
-  // Best-effort, same reasoning as the operator-onboarding route: the
-  // account already exists and works without this succeeding.
+  // Sin este correo la cuenta no se puede usar, pero reintentar el alta no
+  // ayuda (el email ya existe): quien no lo reciba entra por "he olvidado
+  // mi contraseña", que también prueba que el buzón es suyo.
   try {
-    const normalizedEmail = email.toLowerCase().trim();
     const token = await mintEmailVerificationToken(prisma, normalizedEmail);
-    const verifyUrl = `${process.env.NEXT_PUBLIC_PORTAL_URL ?? 'http://localhost:3001'}/portal/verify-email?email=${encodeURIComponent(normalizedEmail)}&token=${encodeURIComponent(token)}`;
+    const verifyUrl = `${origin}/portal/verify-email?email=${encodeURIComponent(normalizedEmail)}&token=${encodeURIComponent(token)}&product=${encodeURIComponent(productId)}${product.code === 'web' ? '&quote=1' : ''}`;
     await sendVerifyEmail({ to: email, verifyUrl });
   } catch (err) {
-    logError('self_serve_signup.verify_email_failed', err, { clientId: created.clientId }, 'warn');
+    logError('self_serve_signup.verify_email_failed', err, { clientId: created.clientId }, 'error');
   }
 
-  return NextResponse.json({ ok: true, clientId: created.clientId }, { status: 201 });
+  return NextResponse.json(ACCEPTED, { status: 202 });
 }
 
 export const dynamic = 'force-dynamic';

@@ -100,13 +100,14 @@ export function buildVerifyEmailHtml(verifyUrl: string): string {
       <h1 style="margin: 4px 0 0; font-size: 20px;">Confirma tu email</h1>
     </div>
     <p>Hola,</p>
-    <p>Gracias por crear tu cuenta en Kairikos. Confirma que este es tu correo:</p>
+    <p>Gracias por crear tu cuenta en Kairikos. Confirma que este es tu correo para activarla y continuar con el pago:</p>
     <p style="margin: 28px 0;">
       <a href="${verifyUrl}" style="background: #111827; color: #ffffff; padding: 12px 20px; border-radius: 8px; text-decoration: none; display: inline-block; font-weight: 600;">
-        Confirmar mi email
+        Confirmar mi email y continuar
       </a>
     </p>
-    <p style="font-size: 12px; color: #6b7280;">Este enlace es personal y caduca en 7 días. Tu cuenta ya funciona sin este paso — es solo para confirmar que este correo es tuyo.</p>
+    <p style="font-size: 12px; color: #6b7280;">Este enlace es personal y caduca en 7 días. Hasta que lo pulses, nadie puede entrar en la cuenta.</p>
+    <p style="font-size: 12px; color: #6b7280;">¿No has creado tú esta cuenta? No pulses el enlace: sin él la cuenta no se activa. Puedes ignorar este mensaje.</p>
     <p style="font-size: 12px; color: #6b7280;">Si el botón no funciona, copia y pega este enlace en tu navegador:</p>
     <p style="font-size: 12px; color: #6b7280; word-break: break-all;">${verifyUrl}</p>
     <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 28px 0;" />
@@ -190,10 +191,12 @@ export async function sendVerifyEmail(params: { to: string; verifyUrl: string })
   const text = [
     'Hola,',
     '',
-    'Gracias por crear tu cuenta en Kairikos. Confirma que este es tu correo:',
+    'Gracias por crear tu cuenta en Kairikos. Confirma que este es tu correo para activarla y continuar con el pago:',
     params.verifyUrl,
     '',
-    'Este enlace es personal y caduca en 7 días. Tu cuenta ya funciona sin este paso — es solo para confirmar que este correo es tuyo.',
+    'Este enlace es personal y caduca en 7 días. Hasta que lo pulses, nadie puede entrar en la cuenta.',
+    '',
+    '¿No has creado tú esta cuenta? No pulses el enlace: sin él la cuenta no se activa. Puedes ignorar este mensaje.',
     '',
     '— Equipo Kairikos',
   ].join('\n');
@@ -245,6 +248,50 @@ export async function sendOperatorEnrollmentCode(params: { to: string; code: str
   </body>
 </html>`,
   });
+}
+
+// Revisión de seguridad del 22/09/2026 — el alta de autoservicio contesta
+// igual tanto si el email es nuevo como si ya tiene cuenta (así no delata
+// quién es cliente). La diferencia llega aquí, al buzón del dueño real: en
+// vez del enlace de activación, un aviso con la entrada y el "he olvidado
+// mi contraseña". Si el alta no la hizo él, no tiene que hacer nada.
+export async function sendAccountExistsEmail(params: { to: string; loginUrl: string; forgotUrl: string }): Promise<void> {
+  const subject = 'Ya tienes una cuenta en Kairikos';
+  const text = [
+    'Hola,',
+    '',
+    'Alguien ha intentado crear una cuenta en Kairikos con este correo, pero ya tienes una.',
+    '',
+    `Para entrar: ${params.loginUrl}`,
+    `Si no recuerdas la contraseña: ${params.forgotUrl}`,
+    '',
+    'Si no has sido tú, no tienes que hacer nada: tu cuenta sigue igual.',
+    '',
+    '— Equipo Kairikos',
+  ].join('\n');
+  const html = `<!doctype html>
+<html lang="es">
+  <body style="font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #111;">
+    <div style="border-bottom: 1px solid #e5e7eb; padding-bottom: 12px; margin-bottom: 20px;">
+      <p style="margin: 0; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: #6b7280;">Kairikos</p>
+      <h1 style="margin: 4px 0 0; font-size: 20px;">Ya tienes una cuenta</h1>
+    </div>
+    <p>Hola,</p>
+    <p>Alguien ha intentado crear una cuenta en Kairikos con este correo, pero ya tienes una.</p>
+    <p style="margin: 28px 0;">
+      <a href="${params.loginUrl}" style="background: #111827; color: #ffffff; padding: 12px 20px; border-radius: 8px; text-decoration: none; display: inline-block; font-weight: 600;">
+        Entrar en el portal
+      </a>
+    </p>
+    <p style="font-size: 12px; color: #6b7280;">¿No recuerdas la contraseña? <a href="${params.forgotUrl}">Restablécela aquí</a>.</p>
+    <p style="font-size: 12px; color: #6b7280;">Si no has sido tú, no tienes que hacer nada: tu cuenta sigue igual.</p>
+    <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 28px 0;" />
+    <p style="font-size: 12px; color: #6b7280;">
+      ¿Necesitas ayuda? Escríbenos a <a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a>.
+    </p>
+  </body>
+</html>`;
+  await sendEmail({ to: params.to, subject, text, html });
 }
 
 export {
