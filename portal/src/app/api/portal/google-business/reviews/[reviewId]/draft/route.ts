@@ -4,6 +4,7 @@ import { resolveClientFromSession } from '@/lib/portal-session';
 import { getSession } from '@/lib/session';
 import { hasGoogleBusinessConnectAccess } from '@/lib/google-business';
 import { generateReviewReplyDraft } from '@/lib/review-reply-ai';
+import { takeAiRequest, AI_RATE_LIMITED_RESPONSE } from '@/lib/ai-route-limits';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -30,6 +31,11 @@ export async function POST(_req: NextRequest, { params }: { params: { reviewId: 
   const review = await prisma.googleReview.findUnique({ where: { id: params.reviewId } });
   if (!review || review.clientId !== resolved.clientId) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
+
+  // Cupo por cliente para las llamadas al modelo — lib/ai-route-limits.ts.
+  if (!takeAiRequest('review_reply_draft', resolved.clientId)) {
+    return NextResponse.json(AI_RATE_LIMITED_RESPONSE, { status: 429 });
   }
 
   const client = await prisma.chatbotClient.findUnique({

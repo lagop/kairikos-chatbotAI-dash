@@ -7,6 +7,7 @@ import { isProductContracted } from '@/lib/client-product-access';
 import { crawlWebsite } from '@/lib/prospecting-enrichment';
 import { suggestProspectingTargets, MAX_WEBSITE_CHARS } from '@/lib/prospecting-brief-ai';
 import { logError } from '@/lib/observability';
+import { takeAiRequest, AI_RATE_LIMITED_RESPONSE } from '@/lib/ai-route-limits';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -81,6 +82,12 @@ export async function POST(req: NextRequest) {
 
   const body = BodySchema.safeParse(await req.json().catch(() => null));
   if (!body.success) return NextResponse.json({ error: 'invalid_body' }, { status: 400 });
+
+  // Rastrea la web del cliente y llama al modelo: cupo por cliente —
+  // lib/ai-route-limits.ts.
+  if (!takeAiRequest('prospecting_suggest', resolved.clientId)) {
+    return NextResponse.json(AI_RATE_LIMITED_RESPONSE, { status: 429 });
+  }
 
   const client = await prisma.chatbotClient.findUnique({
     where: { id: resolved.clientId },
