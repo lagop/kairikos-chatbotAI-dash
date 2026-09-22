@@ -1,4 +1,5 @@
 import 'server-only';
+import { notifyFromAddress } from './email-sender';
 
 // =============================================================================
 // Canales Fase 7 — email best-effort al cliente cuando se genera un
@@ -10,8 +11,7 @@ import 'server-only';
 // los leads del Paso 6 del wizard.
 // =============================================================================
 
-const FROM_ADDRESS =
-  process.env.OPERATOR_NOTIFY_FROM ?? process.env.AUTH_EMAIL_FROM ?? 'Kairikos Ops <ops@kairikos.com>';
+const FROM_ADDRESS = notifyFromAddress();
 const PORTAL_BASE_URL = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://portal.kairikos.com';
 const PORTAL_CONVERSATIONS_URL = `${PORTAL_BASE_URL}/portal/conversations`;
 

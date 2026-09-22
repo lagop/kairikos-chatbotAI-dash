@@ -2,6 +2,7 @@
 // Wraps the Resend API with consistent error handling.
 
 import { Resend } from 'resend';
+import { authFromAddress } from './email-sender';
 
 let _Resend: Resend | null = null;
 
@@ -13,7 +14,7 @@ function getResendClient(): Resend {
   return _Resend;
 }
 
-const FROM_ADDRESS = process.env.AUTH_EMAIL_FROM ?? 'Kairikos Portal <hola@kairikos.com>';
+const FROM_ADDRESS = authFromAddress();
 const SUPPORT_EMAIL = process.env.AUTH_SUPPORT_EMAIL ?? 'hola@kairikos.com';
 
 export interface SendEmailParams {

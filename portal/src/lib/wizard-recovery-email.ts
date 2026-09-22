@@ -1,4 +1,5 @@
 import 'server-only';
+import { notifyFromAddress } from './email-sender';
 
 // =============================================================================
 // KAIA-1177 (KAIA-1172 / AU-2) — wizard recovery email.
@@ -24,10 +25,7 @@ import 'server-only';
 //   portalUrl.
 // =============================================================================
 
-const FROM_ADDRESS =
-  process.env.OPERATOR_NOTIFY_FROM ??
-  process.env.AUTH_EMAIL_FROM ??
-  'Kairikos Ops <ops@kairikos.com>';
+const FROM_ADDRESS = notifyFromAddress();
 
 const PORTAL_BASE_URL = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://portal.kairikos.com';
 

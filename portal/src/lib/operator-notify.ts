@@ -22,11 +22,9 @@
 // =============================================================================
 
 import 'server-only';
+import { notifyFromAddress } from './email-sender';
 
-const FROM_ADDRESS =
-  process.env.OPERATOR_NOTIFY_FROM ??
-  process.env.AUTH_EMAIL_FROM ??
-  'Kairikos Ops <ops@kairikos.com>';
+const FROM_ADDRESS = notifyFromAddress();
 
 // KAIA-1177 (KAIA-1172 / AU-2): the two review-overdue kinds extend the
 // original three. They share the same Resend dispatch path and the same
