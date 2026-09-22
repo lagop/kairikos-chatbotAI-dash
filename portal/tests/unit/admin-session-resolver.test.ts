@@ -199,14 +199,17 @@ describe('getSession — dev-mock fallback only when there is no real session', 
   });
 });
 
-describe('getSession — operator-key bypass still takes priority over everything', () => {
-  it('short-circuits before auth() when x-kaia-operator-key matches', async () => {
+// Seguridad (22/09/2026): la clave compartida KAIA_OPERATOR_API_KEY abría
+// todo el admin sin decir quién. Se retiró entera.
+describe('getSession — la cabecera x-kaia-operator-key ya no da nada', () => {
+  it('con la cabecera y la variable puestas, no hay sesión de operador', async () => {
     process.env.KAIA_OPERATOR_API_KEY = 'shared-secret';
     headersGet.mockImplementation((name: string) => (name === 'x-kaia-operator-key' ? 'shared-secret' : null));
+    auth.mockResolvedValueOnce(null);
 
     const session = await getSession();
 
-    expect(session.isOperator).toBe(true);
-    expect(auth).not.toHaveBeenCalled();
+    expect(session.isOperator).toBe(false);
+    expect(session.reason).toBe('no_session');
   });
 });

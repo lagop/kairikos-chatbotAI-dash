@@ -30,7 +30,7 @@ import { PRODUCT_CODES, type ProductCode } from '@/lib/catalogs';
 // onto products that don't have any, this route short-circuits to an
 // empty step list for every non-chatbot productCode.
 //
-// Auth: operator session cookie OR legacy `x-kaia-operator-key` header.
+// Auth: operator session cookie (la cabecera x-kaia-operator-key se retiró el 22/09/2026).
 // =============================================================================
 
 function isProductCode(value: string): value is ProductCode {

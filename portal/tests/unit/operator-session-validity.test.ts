@@ -75,3 +75,17 @@ describe('createSession', () => {
     expect(data.operatorId).toBe('op_1');
   });
 });
+
+describe('authenticateAdminRequest', () => {
+  it('la cabecera x-kaia-operator-key ya no autentica, aunque coincida con la variable (retirada el 22/09/2026)', async () => {
+    process.env.KAIA_OPERATOR_API_KEY = 'shared-secret';
+    const { authenticateAdminRequest } = await import('@/lib/operator-session');
+    const req = {
+      cookies: { get: () => undefined },
+      headers: new Headers({ 'x-kaia-operator-key': 'shared-secret' }),
+      nextUrl: { pathname: '/api/admin/portal/clients' },
+    } as never;
+    expect(await authenticateAdminRequest(req)).toEqual({ ok: false });
+    delete process.env.KAIA_OPERATOR_API_KEY;
+  });
+});

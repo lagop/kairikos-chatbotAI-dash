@@ -5,7 +5,7 @@ import { MOCK_FLOW_HEALTH_ROWS, getFlowHealthRows } from '@/lib/flow-health';
 
 // GET /api/admin/portal/flows
 // Returns per-client flow health for the operator dashboard (KAIA-1060 / KAIA-1072).
-// Auth: operator session OR x-kaia-operator-key header matching KAIA_OPERATOR_API_KEY
+// Auth: operator session (authenticateAdminRequest). La cabecera x-kaia-operator-key se retiró el 22/09/2026.
 // (both paths handled by authenticateAdminRequest).
 
 export async function GET(req: NextRequest) {

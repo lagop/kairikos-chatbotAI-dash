@@ -1,5 +1,4 @@
 import { prisma } from './prisma';
-import { constantTimeEqual } from './operator-crypto';
 import type { NextRequest } from 'next/server';
 
 export const SESSION_COOKIE_NAME = 'kairikos_operator_session';
@@ -131,11 +130,14 @@ export function isTotpStillVerified(totpVerifiedAt: Date | null): boolean {
 }
 
 /**
- * Authenticate an admin portal request. Priority:
- * 1. Valid operator session cookie
- * 2. Legacy `x-kaia-operator-key` header matching KAIA_OPERATOR_API_KEY
+ * Autentica una petición a /api/admin/*: solo con una OperatorSession
+ * válida (ver getValidSession).
  *
- * Logs a WARN when the legacy fallback is used. Returns null if both fail.
+ * Hasta el 22/09/2026 también valía la cabecera `x-kaia-operator-key` con la
+ * clave compartida KAIA_OPERATOR_API_KEY: abría todo el admin salvo las
+ * acciones con TOTP, sin decir quién la usaba, y no caducaba. Se retiró
+ * entera. Las rutas que aún comparan `operatorId === 'legacy'` son restos
+ * de aquel camino: la comparación ya siempre da falso.
  */
 export async function authenticateAdminRequest(req: NextRequest): Promise<{
   ok: true; sessionId: string; operatorId: string
@@ -148,18 +150,5 @@ export async function authenticateAdminRequest(req: NextRequest): Promise<{
       return { ok: true, sessionId, operatorId: session.operatorId };
     }
   }
-
-  const envKey = process.env.KAIA_OPERATOR_API_KEY;
-  if (envKey) {
-    const provided = req.headers.get('x-kaia-operator-key');
-    if (provided && constantTimeEqual(provided, envKey)) {
-      const ip = req.headers.get('x-forwarded-for') ?? 'unknown';
-      console.warn(
-        `[WARN] Legacy KAIA_OPERATOR_API_KEY auth used from IP ${ip} for ${req.nextUrl.pathname}`,
-      );
-      return { ok: true, sessionId: 'legacy', operatorId: 'legacy' };
-    }
-  }
-
   return { ok: false };
 }

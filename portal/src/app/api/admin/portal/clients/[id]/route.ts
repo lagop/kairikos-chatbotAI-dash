@@ -29,14 +29,11 @@
 //     set by /api/operator/login) — this is the path the admin UI uses
 //     after the operator signs in. Resolved by authenticateAdminRequest
 //     in src/lib/operator-session.ts.
-//   * `x-kaia-operator-key` header matching KAIA_OPERATOR_API_KEY (the
-//     same bypass the sibling admin routes already honor — see
-//     src/app/api/admin/portal/clients/[id]/password/route.ts).
-//   * NextAuth session with role='operator' — kept as a final fallback
-//     for the legacy operator context that flows through the client
-//     portal's NextAuth sign-in.
-//     getSession().isOperator, but the operator session cookie is the
-//     primary path. See KAIA-1107 / KAIA-1166.
+//   Es el único camino desde el 22/09/2026: la cabecera x-kaia-operator-key
+//   (KAIA_OPERATOR_API_KEY) y el JWT de NextAuth con role='operator' se
+//   retiraron — la primera abría esta ruta sin decir quién, y con ella se
+//   podía cambiar el email de cualquier cliente y mandarle a otro sitio el
+//   enlace para crear contraseña.
 //
 // Failure modes:
 //   * 401 — not authenticated, or session is not an operator
@@ -48,9 +45,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import * as crypto from 'node:crypto';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
-import { getSession } from '@/lib/session';
 import { authenticateAdminRequest } from '@/lib/operator-session';
-import { constantTimeEqual } from '@/lib/operator-crypto';
 import { sendSetupPassword, SETUP_EMAIL_LINK_EXPIRY_DAYS } from '@/lib/auth-email';
 import { mirrorChatbotStateToClientProduct } from '@/lib/client-product-lifecycle';
 
@@ -97,18 +92,6 @@ const EMAIL_RESEND_DEDUP_WINDOW_MS = 5 * 60 * 1000;
 // email. Defaults to the local dev portal so the smoke can run without
 // Vercel env wiring. Production uses NEXT_PUBLIC_PORTAL_URL.
 const PORTAL_BASE_URL = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'http://localhost:3001';
-
-// KAIA-1909 — operator-key bypass used by sibling admin routes so QA
-// can curl against staging without a NextAuth cookie. Mirrors the
-// constant-time comparison in src/lib/session.ts so the two paths are
-// equivalent in their leak profile.
-function operatorKeyAuth(req: NextRequest): boolean {
-  const envKey = process.env.KAIA_OPERATOR_API_KEY;
-  if (!envKey) return false;
-  const provided = req.headers.get('x-kaia-operator-key');
-  if (!provided) return false;
-  return constantTimeEqual(provided, envKey);
-}
 
 interface CurrentClient {
   companyName: string | null;
@@ -311,20 +294,8 @@ function parseBody(raw: unknown, current: CurrentClient): ParseOk | ParseErr {
 }
 
 async function resolveActorId(req: NextRequest): Promise<string> {
-  if (operatorKeyAuth(req)) {
-    return 'operator-key-bypass@kairikos.local';
-  }
-  // Prefer the operator session cookie (admin-portal login path).
   const adminAuth = await authenticateAdminRequest(req);
-  if (adminAuth.ok) {
-    return adminAuth.operatorId;
-  }
-  try {
-    const session = await getSession();
-    return session.email ?? 'unknown-operator';
-  } catch {
-    return 'unknown-operator';
-  }
+  return adminAuth.ok ? adminAuth.operatorId : 'unknown-operator';
 }
 
 function buildPrismaPatch(changes: FieldChange[]): Record<string, unknown> {
@@ -408,33 +379,9 @@ export async function PATCH(
     return jsonError(503, 'service_unavailable', 'DATABASE_URL is not configured');
   }
 
-  // Three parallel auth paths, in priority order:
-  //   1. kairikos_operator_session cookie (admin-portal login flow,
-  //      resolved by authenticateAdminRequest). This is the path the
-  //      admin UI uses after the operator signs in via
-  //      /api/operator/login.
-  //   2. x-kaia-operator-key header matching KAIA_OPERATOR_API_KEY
-  //      (service-account / CI bypass).
-  //   3. NextAuth session with role='operator' (legacy fallback).
-  // Any one of these passing is sufficient for operator authority.
-  let operatorAuthorized = false;
-  if (operatorKeyAuth(req)) {
-    operatorAuthorized = true;
-  } else {
-    const adminAuth = await authenticateAdminRequest(req);
-    if (adminAuth.ok) {
-      operatorAuthorized = true;
-    } else {
-      try {
-        const session = await getSession();
-        operatorAuthorized = session.isOperator;
-      } catch (err) {
-        console.error('[PATCH /api/admin/portal/clients/[id]] getSession failed', err);
-        operatorAuthorized = false;
-      }
-    }
-  }
-  if (!operatorAuthorized) {
+  // Solo la OperatorSession — ver la cabecera del archivo.
+  const adminAuth = await authenticateAdminRequest(req);
+  if (!adminAuth.ok) {
     return jsonError(401, 'unauthorized');
   }
 

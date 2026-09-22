@@ -13,12 +13,8 @@ export type StepUpResult =
  * create real Stripe billing objects, so a stale or hijacked session
  * cookie alone isn't enough.
  *
- * Deliberately does NOT accept the legacy `x-kaia-operator-key` bypass
- * that authenticateAdminRequest() falls back to — that path has no real
- * OperatorSession row to hang totpVerifiedAt off of, so there is no way
- * to prove step-up happened. A caller on that path gets a clean 401
- * here, not a silent bypass of the two most sensitive actions in the
- * system.
+ * Solo con una OperatorSession: la cabecera x-kaia-operator-key, que nunca
+ * valió aquí, se retiró del todo el 22/09/2026.
  */
 export async function requireTotpStepUp(req: NextRequest): Promise<StepUpResult> {
   const sessionId = getSessionCookieId(req);

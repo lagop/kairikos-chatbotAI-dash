@@ -67,13 +67,12 @@ services:
       PORTAL_API_KEY: ${PORTAL_API_KEY}
 
       # --- Required for Canales (chatbot channel activation), the cron
-      # routes, operator 2FA, and the QA/operator-key bypass. Without
+      # routes and operator 2FA. Without
       # these, the app still boots, but those features are dead — see
       # .env.production.example for how to generate each one.
       CHANNEL_CREDENTIAL_ENCRYPTION_KEY: ${CHANNEL_CREDENTIAL_ENCRYPTION_KEY}
       OPERATOR_TOTP_ENCRYPTION_KEY: ${OPERATOR_TOTP_ENCRYPTION_KEY}
       CRON_SECRET: ${CRON_SECRET}
-      KAIA_OPERATOR_API_KEY: ${KAIA_OPERATOR_API_KEY}
       N8N_CHANNEL_WEBHOOK_URL: ${N8N_CHANNEL_WEBHOOK_URL}
       N8N_CHANNEL_WEBHOOK_SECRET: ${N8N_CHANNEL_WEBHOOK_SECRET}
       N8N_TELEGRAM_WEBHOOK_BASE_URL: ${N8N_TELEGRAM_WEBHOOK_BASE_URL}

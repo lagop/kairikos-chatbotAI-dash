@@ -177,8 +177,9 @@ export class InMemoryRateLimiter {
 }
 
 // WP-25 — the canonical constant-time comparison for every shared-secret
-// header check in this repo (x-kaia-operator-key, x-qa-probe-token,
-// x-qa-seed-token, x-internal-activity-key, PORTAL_API_KEY). Previously
+// header check in this repo (x-qa-seed-token, x-internal-activity-key,
+// PORTAL_API_KEY; x-kaia-operator-key and x-qa-probe-token were retired
+// on 22/09/2026). Previously
 // this returned early on a length mismatch, which leaks the expected
 // secret's length through response timing — a real (if minor) side
 // channel, and the exact same class of bug the early-return variants in

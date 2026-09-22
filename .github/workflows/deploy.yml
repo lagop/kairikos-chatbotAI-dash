@@ -82,7 +82,6 @@ jobs:
           #     CHANNEL_CREDENTIAL_ENCRYPTION_KEY  openssl rand -hex 32
           #     OPERATOR_TOTP_ENCRYPTION_KEY       openssl rand -hex 32
           #     CRON_SECRET                        openssl rand -hex 32
-          #     KAIA_OPERATOR_API_KEY              openssl rand -hex 32
           #     SEO_CMS_CREDENTIAL_ENCRYPTION_KEY  openssl rand -hex 32 —
           #       si ya hay contraseñas de WordPress cifradas en esta VPS,
           #       tiene que ser la MISMA clave que se usó entonces.
@@ -170,7 +169,6 @@ jobs:
             CHANNEL_CREDENTIAL_ENCRYPTION_KEY=${{ secrets.CHANNEL_CREDENTIAL_ENCRYPTION_KEY }}
             OPERATOR_TOTP_ENCRYPTION_KEY=${{ secrets.OPERATOR_TOTP_ENCRYPTION_KEY }}
             CRON_SECRET=${{ secrets.CRON_SECRET }}
-            KAIA_OPERATOR_API_KEY=${{ secrets.KAIA_OPERATOR_API_KEY }}
             SEO_CMS_CREDENTIAL_ENCRYPTION_KEY=${{ secrets.SEO_CMS_CREDENTIAL_ENCRYPTION_KEY }}
             STRIPE_CREDENTIAL_ENCRYPTION_KEY=${{ secrets.STRIPE_CREDENTIAL_ENCRYPTION_KEY }}
             STRIPE_WEBHOOK_SECRET=${{ secrets.STRIPE_WEBHOOK_SECRET }}

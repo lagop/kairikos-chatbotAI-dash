@@ -53,7 +53,7 @@ function isProductCode(value: string): value is ProductCode {
 //   status='needs_revision'. `comment` is required. One audit row:
 //   'request_revision'.
 //
-// Auth: operator session cookie OR legacy `x-kaia-operator-key` header.
+// Auth: operator session cookie (la cabecera x-kaia-operator-key se retiró el 22/09/2026).
 // =============================================================================
 
 const STEP_KEY_RE = /^[a-z0-9_-]{1,64}$/i;
