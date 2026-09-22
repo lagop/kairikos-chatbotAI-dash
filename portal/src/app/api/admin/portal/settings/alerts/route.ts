@@ -20,9 +20,8 @@ export const runtime = 'nodejs';
 // secreto ni una credencial de pago; lo peor de un valor equivocado es que
 // una alerta llegue a otra bandeja, y eso se ve en la propia pantalla.
 //
-// Quién guardó queda en updatedBy. Con la API key heredada se guarda como
-// 'legacy_operator', igual que en SEO: aquí no hay nada que atribuir más
-// allá de "quién tocó el destinatario".
+// Quién guardó queda en updatedBy (el email del operador): aquí no hay nada
+// que atribuir más allá de "quién tocó el destinatario".
 // =============================================================================
 
 export async function GET(req: NextRequest) {
@@ -54,13 +53,10 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const isLegacyAuth = auth.operatorId === 'legacy';
-    const operator = isLegacyAuth
-      ? null
-      : await prisma.operator.findUnique({ where: { id: auth.operatorId }, select: { email: true } });
+    const operator = await prisma.operator.findUnique({ where: { id: auth.operatorId }, select: { email: true } });
     await updateOperatorAlertSettings(
       { operatorEmails: normalised.operatorEmails, ceoEmail: normalised.ceoEmail },
-      operator?.email ?? (isLegacyAuth ? 'legacy_operator' : null),
+      operator?.email ?? null,
     );
   } catch (err) {
     logError('operator_alert_settings.save_failed', err, {});

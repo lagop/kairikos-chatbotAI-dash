@@ -115,20 +115,6 @@ describe('POST /api/admin/portal/settings/integrations/google-seo', () => {
     );
   });
 
-  it('the legacy KAIA_OPERATOR_API_KEY auth path saves with a null operatorId instead of crashing on a non-UUID lookup', async () => {
-    mockState.authenticateAdminRequest.mockResolvedValue({ ok: true, sessionId: 'legacy', operatorId: 'legacy' });
-    const res = await POST(makeRequest(VALID_BODY));
-    expect(res.status).toBe(200);
-    expect(mockState.operatorFindUnique).not.toHaveBeenCalled();
-    expect(mockState.saveIntegrationCredential).toHaveBeenCalledWith(
-      'google_seo',
-      'Google Search Console (SEO)',
-      VALID_BODY.clientSecret,
-      { operatorId: null, operatorEmail: null },
-      VALID_BODY.clientId,
-    );
-  });
-
   it('503s when the database is not configured', async () => {
     mockState.isDatabaseConfigured = false;
     const res = await POST(makeRequest(VALID_BODY));

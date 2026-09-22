@@ -27,7 +27,6 @@ vi.mock('@/lib/twilio-credentials', () => ({
 }));
 
 const AUTH_OK = { ok: true, sessionId: 's1', operatorId: 'op_1' };
-const AUTH_LEGACY = { ok: true, sessionId: 'legacy', operatorId: 'legacy' };
 
 function makeRequest(body: unknown) {
   return { json: async () => body } as unknown as NextRequest;
@@ -73,19 +72,6 @@ describe('POST /api/admin/portal/settings/twilio/regulatory-ids', () => {
       VALID_BODY.bundleSid,
       VALID_BODY.addressSid,
       { operatorId: 'op_1', operatorEmail: 'lucia@kairikos.com' },
-    );
-  });
-
-  it('passes operatorId: null for the legacy key path instead of the non-UUID "legacy" sentinel', async () => {
-    mockState.authenticateAdminRequest.mockResolvedValueOnce(AUTH_LEGACY);
-    const { POST } = await import('@/app/api/admin/portal/settings/twilio/regulatory-ids/route');
-    await POST(makeRequest(VALID_BODY));
-
-    expect(mockState.findUniqueOperator).not.toHaveBeenCalled();
-    expect(mockState.saveTwilioRegulatoryIds).toHaveBeenCalledWith(
-      VALID_BODY.bundleSid,
-      VALID_BODY.addressSid,
-      { operatorId: null, operatorEmail: null },
     );
   });
 

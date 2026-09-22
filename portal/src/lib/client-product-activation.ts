@@ -21,9 +21,7 @@ import { assignSiteToNewContract } from './client-site';
 // =============================================================================
 
 export interface ActivateProductActor {
-  /** 'legacy' (cabecera KAIA_OPERATOR_API_KEY) no es una fila real de
-   *  Operator — se traduce a null antes de escribir en cualquier FK. */
-  operatorId: string | null;
+  operatorId: string;
 }
 
 export type ActivateProductResult =
@@ -66,7 +64,7 @@ export async function activateClientProductForOperator(
         select: { id: true, status: true },
       });
 
-  const changedBy = actor.operatorId ?? undefined;
+  const changedBy = actor.operatorId;
 
   const row = await prisma.$transaction(async (tx) => {
     const clientProduct = existing
@@ -97,7 +95,7 @@ export async function activateClientProductForOperator(
         action: existing ? 'reactivate' : 'assign',
         statusBefore: existing?.status ?? null,
         statusAfter: 'active',
-        actorId: actor.operatorId ?? 'operator:legacy',
+        actorId: actor.operatorId,
       },
     });
     return clientProduct;

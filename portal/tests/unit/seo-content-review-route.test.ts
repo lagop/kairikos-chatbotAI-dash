@@ -1,8 +1,7 @@
 // =============================================================================
 // SEO con IA, Fase C/6 — unit tests for
 // PATCH /api/admin/portal/seo/[clientId]/content-drafts/[draftId]. Same
-// conventions as seo-audit-route.test.ts, including the legacy-auth
-// regression coverage. Covers approve (Fase 6: moves the draft to
+// conventions as seo-audit-route.test.ts. Covers approve (Fase 6: moves the draft to
 // 'pending_client_review', no longer publishes — see
 // seo-portal-content-drafts-route.test.ts for the client's own
 // approve/publish), reject, and retry_publish (still WordPress-facing,
@@ -174,16 +173,6 @@ describe('PATCH action=approve — moves the draft to the client, never publishe
     const res = await patch('client_1', 'draft_1', { action: 'approve' });
     expect(res.status).toBe(409);
     expect(mockState.draftUpdate).not.toHaveBeenCalled();
-  });
-
-  it('the legacy KAIA_OPERATOR_API_KEY auth path reviews with a fallback reviewedBy instead of crashing', async () => {
-    mockState.authenticateAdminRequest.mockResolvedValue({ ok: true, sessionId: 'legacy', operatorId: 'legacy' });
-    const res = await patch('client_1', 'draft_1', { action: 'approve' });
-    expect(res.status).toBe(200);
-    expect(mockState.operatorFindUnique).not.toHaveBeenCalled();
-    expect(mockState.draftUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ reviewedBy: 'legacy_operator' }) }),
-    );
   });
 
   it('500s cleanly and logs when the approve write itself throws', async () => {

@@ -12,17 +12,20 @@ import type { PrismaClient } from '@prisma/client';
 //      contactos o crear campañas en la cuenta de otro negocio.
 //
 //   2. HAY ACCIONES QUE TIENEN QUE QUEDAR ATRIBUIDAS A UNA PERSONA.
-//      authenticateAdminRequest acepta también la clave de API heredada
-//      (x-kaia-operator-key), y en ese caso devuelve operatorId 'legacy':
-//      no hay nadie detrás. Eso vale para leer o para una vista previa,
-//      pero no para APROBAR una campaña —que es la decisión de escribir a
-//      clientes reales— ni para CONFIRMAR una importación con su
-//      declaración de origen. Ambas dejan un registro cuyo único valor es
-//      decir quién fue.
+//      APROBAR una campaña —la decisión de escribir a clientes reales— y
+//      CONFIRMAR una importación con su declaración de origen dejan un
+//      registro cuyo único valor es decir quién fue, así que el operador
+//      se lee de la base antes de actuar: una sesión cuyo Operator ya no
+//      existe se niega en vez de firmar a nombre de nadie.
 //
 // Es la misma idea con la que se diseñó RecoveryCampaign: la aprobación
-// humana no es un paso del flujo, es la garantía, y una garantía firmada
-// por "legacy" no garantiza nada.
+// humana no es un paso del flujo, es la garantía, y una garantía sin
+// nadie detrás no garantiza nada.
+//
+// Hasta el 22/09/2026 había además un motivo 'not_attributable' para la
+// clave compartida KAIA_OPERATOR_API_KEY (operatorId 'legacy'); esa
+// clave se retiró y authenticateAdminRequest solo devuelve operadores
+// reales.
 // =============================================================================
 
 export interface RecallSubscriptionRef {
@@ -46,14 +49,13 @@ export async function loadRecallSubscription(
 
 export type AttributableOperator =
   | { ok: true; operatorId: string; email: string }
-  | { ok: false; reason: 'not_attributable' | 'operator_not_found' };
+  | { ok: false; reason: 'operator_not_found' };
 
 /** Resuelve el operador de verdad detrás de la sesión, o se niega. */
 export async function resolveAttributableOperator(
   prisma: PrismaClient,
   operatorId: string,
 ): Promise<AttributableOperator> {
-  if (operatorId === 'legacy') return { ok: false, reason: 'not_attributable' };
   const operator = await prisma.operator.findUnique({
     where: { id: operatorId },
     select: { id: true, email: true },

@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
   // de cliente) necesita exactamente lo mismo al activar un producto sin
   // pasar por Stripe.
   const result = await activateClientProductForOperator(prisma, { clientId, productId }, {
-    operatorId: auth.operatorId === 'legacy' ? null : auth.operatorId,
+    operatorId: auth.operatorId,
   });
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 404 });

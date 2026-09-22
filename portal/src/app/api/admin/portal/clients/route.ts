@@ -96,7 +96,6 @@ export async function POST(req: NextRequest) {
   }
   const { clientId } = created;
 
-  const operatorIdForAudit = auth.operatorId === 'legacy' ? null : auth.operatorId;
   const actorId = `operator:${auth.operatorId}`;
 
   const activated: string[] = [];
@@ -105,7 +104,7 @@ export async function POST(req: NextRequest) {
 
   for (const { productId, mode } of products) {
     if (mode === 'active') {
-      const result = await activateClientProductForOperator(prisma, { clientId, productId }, { operatorId: operatorIdForAudit });
+      const result = await activateClientProductForOperator(prisma, { clientId, productId }, { operatorId: auth.operatorId });
       if (result.ok) {
         activated.push(result.productCode);
       } else {

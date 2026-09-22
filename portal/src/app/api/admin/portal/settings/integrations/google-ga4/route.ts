@@ -46,15 +46,12 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const isLegacyAuth = auth.operatorId === 'legacy';
-    const operator = isLegacyAuth
-      ? null
-      : await prisma.operator.findUnique({ where: { id: auth.operatorId }, select: { email: true } });
+    const operator = await prisma.operator.findUnique({ where: { id: auth.operatorId }, select: { email: true } });
     await saveIntegrationCredential(
       TOOL_KEY,
       DISPLAY_NAME,
       body.data.clientSecret,
-      { operatorId: isLegacyAuth ? null : auth.operatorId, operatorEmail: operator?.email ?? null },
+      { operatorId: auth.operatorId, operatorEmail: operator?.email ?? null },
       body.data.clientId,
     );
   } catch (err) {

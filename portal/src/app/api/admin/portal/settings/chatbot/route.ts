@@ -53,11 +53,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const isLegacyAuth = auth.operatorId === 'legacy';
-    const operator = isLegacyAuth
-      ? null
-      : await prisma.operator.findUnique({ where: { id: auth.operatorId }, select: { email: true } });
-    await updateChatbotMessageCaps(body.data, operator?.email ?? (isLegacyAuth ? 'legacy_operator' : null));
+    const operator = await prisma.operator.findUnique({ where: { id: auth.operatorId }, select: { email: true } });
+    await updateChatbotMessageCaps(body.data, operator?.email ?? null);
   } catch (err) {
     logError('chatbot_settings.save_failed', err, {});
     return NextResponse.json({ error: 'internal_error' }, { status: 500 });

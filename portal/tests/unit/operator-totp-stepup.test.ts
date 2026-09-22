@@ -3,7 +3,7 @@
 // admin actions (saving/rotating a Stripe key, confirming a price change).
 // Confirms it is stricter than authenticateAdminRequest(): no cookie → 401,
 // valid session without a fresh TOTP verification → 403, and explicitly
-// that the legacy x-kaia-operator-key bypass never satisfies this gate
+// that the retired x-kaia-operator-key header never satisfies this gate
 // (it has no OperatorSession row to prove step-up against).
 // =============================================================================
 
@@ -80,15 +80,13 @@ describe('requireTotpStepUp', () => {
     expect(result).toEqual({ ok: true, operatorId: 'op_1', sessionId: 'sess_1' });
   });
 
-  it('a request carrying only the legacy x-kaia-operator-key header (no cookie) still 401s', async () => {
-    // Regression pin: requireTotpStepUp() must never consult the legacy
-    // header — only getSessionCookieId/getValidSession, which have no
-    // OperatorSession to hang totpVerifiedAt off of for that bypass.
+  it('a request carrying only the retired x-kaia-operator-key header (no cookie) still 401s', async () => {
+    // Regression pin: the shared key was retired on 22/09/2026 — a stale
+    // client still sending the header must not get anywhere without a
+    // session cookie.
     getSessionCookieId.mockReturnValueOnce(null);
-    process.env.KAIA_OPERATOR_API_KEY = 'shared-secret';
     const { requireTotpStepUp } = await import('@/lib/operator-totp-stepup');
     const result = await requireTotpStepUp(makeRequest({ 'x-kaia-operator-key': 'shared-secret' }));
     expect(result).toEqual({ ok: false, status: 401, error: 'unauthorized' });
-    delete process.env.KAIA_OPERATOR_API_KEY;
   });
 });

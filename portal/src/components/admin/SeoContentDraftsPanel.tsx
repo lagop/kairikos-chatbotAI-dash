@@ -53,8 +53,9 @@ const DATE_FORMAT = new Intl.DateTimeFormat('es-ES', {
 });
 
 /** 'system:auto_approve' (lib/seo-content-review.ts) traducido a algo
- *  legible; cualquier otro valor es ya un email de operador o
- *  'legacy_operator', que se muestra tal cual. */
+ *  legible; cualquier otro valor es ya un email de operador (o, en filas
+ *  anteriores al 22/09/2026, 'legacy_operator' — la clave compartida ya
+ *  retirada), que se muestra tal cual. */
 function reviewerLabel(reviewedBy: string | null): string | null {
   if (!reviewedBy) return null;
   if (reviewedBy === 'system:auto_approve') return 'Aprobación automática (sin veto a tiempo)';

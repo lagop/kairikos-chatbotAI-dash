@@ -157,14 +157,6 @@ describe('markContractSigned', () => {
     });
   });
 
-  it('never writes a synthetic operator id for the legacy auth path', async () => {
-    const { prisma, tx } = makeMarkPrisma({ id: 'sub_1', clientId: 'client_1', status: 'paid' });
-    await markContractSigned(prisma, 'sub_1', { operatorId: null });
-    expect(tx.recallSubscriptionAudit.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ actorOperatorId: null }),
-    });
-  });
-
   it('rejects with subscription_not_found when the row does not exist', async () => {
     const { prisma } = makeMarkPrisma(null);
     const result = await markContractSigned(prisma, 'sub_missing', { operatorId: 'op_1' });

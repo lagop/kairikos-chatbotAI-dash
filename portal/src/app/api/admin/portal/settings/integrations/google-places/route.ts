@@ -52,16 +52,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // authenticateAdminRequest returns the placeholder id 'legacy' for the
-    // KAIA_OPERATOR_API_KEY header path, which is not a real Operator row
-    // — looking it up would throw (not a valid UUID). The audit's
-    // actorOperatorId is nullable for exactly this case.
-    const isLegacyAuth = auth.operatorId === 'legacy';
-    const operator = isLegacyAuth
-      ? null
-      : await prisma.operator.findUnique({ where: { id: auth.operatorId }, select: { email: true } });
+    const operator = await prisma.operator.findUnique({ where: { id: auth.operatorId }, select: { email: true } });
     await saveIntegrationCredential(TOOL_KEY, DISPLAY_NAME, body.data.apiKey, {
-      operatorId: isLegacyAuth ? null : auth.operatorId,
+      operatorId: auth.operatorId,
       operatorEmail: operator?.email ?? null,
     });
   } catch (err) {

@@ -34,8 +34,8 @@ export const maxDuration = 30;
 // exactly the same step.
 //
 // The client never approves a draft THROUGH THIS route — same
-// authenticateAdminRequest + isLegacyAuth guard as every other operator
-// route this session (audit route, technical-setup route). Two other
+// authenticateAdminRequest guard as every other operator route (audit
+// route, technical-setup route). Two other
 // reviewers exist, neither of them this route: the client themselves
 // (the portal route above) and the system, past either party's veto
 // window (seo-draft-auto-approve.ts, seo-draft-auto-publish.ts).
@@ -77,11 +77,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { clientId: 
     return NextResponse.json({ error: 'not_reviewable', status: draft.status }, { status: 409 });
   }
 
-  const isLegacyAuth = auth.operatorId === 'legacy';
-  const operator = isLegacyAuth
-    ? null
-    : await prisma.operator.findUnique({ where: { id: auth.operatorId }, select: { email: true } });
-  const reviewedBy = operator?.email ?? (isLegacyAuth ? 'legacy_operator' : auth.operatorId);
+  const operator = await prisma.operator.findUnique({ where: { id: auth.operatorId }, select: { email: true } });
+  const reviewedBy = operator?.email ?? auth.operatorId;
 
   try {
     if (body.data.action === 'reject') {

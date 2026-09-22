@@ -17,11 +17,7 @@ import { encryptBuffer, decryptBuffer, parseHexKey } from './operator-crypto';
 // =============================================================================
 
 export interface IntegrationActor {
-  // Null for the legacy KAIA_OPERATOR_API_KEY header path
-  // (operator-session.ts's authenticateAdminRequest returns the
-  // placeholder id 'legacy', not a real Operator row) — the audit FK is
-  // nullable specifically so that path still records an event.
-  operatorId: string | null;
+  operatorId: string;
   operatorEmail: string | null;
 }
 
