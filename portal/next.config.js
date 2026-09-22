@@ -9,6 +9,31 @@ const nextConfig = {
   // de Next 14 sin arreglo en la rama 14.x (DoS del optimizador y de su caché
   // en disco). Apagarlo no cambia nada visible y quita esa superficie.
   images: { unoptimized: true },
+  // Revisión de seguridad 22/09/2026 — cabeceras que faltaban (Traefik ya
+  // pone HSTS, nosniff y X-Frame-Options: DENY; ver docker-compose.yml).
+  //
+  // La CSP es de base A PROPÓSITO: no restringe script-src. Next 14 mete
+  // scripts inline propios (hidratación, y el THEME_INIT_SCRIPT de
+  // layout.tsx), así que una script-src estricta exige nonces por petición,
+  // y los nonces de CSP en la rama 14.x tienen un aviso de XSS sin arreglo
+  // (GHSA-ffhc-5mcf-pf4q). Esa parte va con la migración a Next 15. Lo que
+  // sí se cierra ya: que otra web meta el portal en un iframe, que un
+  // <base> inyectado redirija las rutas relativas, y los plugins.
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          {
+            key: 'Content-Security-Policy',
+            value: "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; upgrade-insecure-requests",
+          },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=()' },
+        ],
+      },
+    ];
+  },
   webpack: (config, { isServer }) => {
     config.resolve = config.resolve || {};
     config.resolve.alias = {
