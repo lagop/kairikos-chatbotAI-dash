@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateAdminRequest } from '@/lib/operator-session';
+import { requireTotpStepUp } from '@/lib/operator-totp-stepup';
 import { getTelephonyProvider, isTelephonyConfigured } from '@/lib/telephony';
 import { provisionIntoPool, getPoolSummary } from '@/lib/recall-numbers';
 
@@ -77,6 +78,9 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const auth = await authenticateAdminRequest(req);
   if (!auth.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  // Seguridad (22/09/2026): comprar un número de Twilio, que se cobra cada mes. Pide TOTP reciente, no solo sesión.
+  const stepUp = await requireTotpStepUp(req);
+  if (!stepUp.ok) return NextResponse.json({ error: stepUp.error }, { status: stepUp.status });
   if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
   if (!(await isTelephonyConfigured())) {
     return NextResponse.json({ error: 'service_unavailable', detail: 'telephony_not_configured' }, { status: 503 });

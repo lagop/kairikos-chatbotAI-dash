@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateAdminRequest } from '@/lib/operator-session';
+import { requireTotpStepUp } from '@/lib/operator-totp-stepup';
 import {
   getOperatorAlertSettingsView,
   normaliseAlertSettings,
@@ -41,6 +42,9 @@ const BodySchema = z.object({
 export async function POST(req: NextRequest) {
   const auth = await authenticateAdminRequest(req);
   if (!auth.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  // Seguridad (22/09/2026): a quién le llegan las alertas: cambiarlo silencia los avisos de seguridad y de consumo. Pide TOTP reciente, no solo sesión.
+  const stepUp = await requireTotpStepUp(req);
+  if (!stepUp.ok) return NextResponse.json({ error: stepUp.error }, { status: stepUp.status });
   if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
 
   const body = BodySchema.safeParse(await req.json().catch(() => null));

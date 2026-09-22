@@ -18,6 +18,7 @@ import { saveWizardStep } from '@/lib/wizard-client';
 import { logError } from '@/lib/observability';
 import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
 import { InMemoryRateLimiter } from '@/lib/operator-crypto';
+import { clientIpFromHeaders } from '@/lib/client-ip';
 
 // =============================================================================
 // POST /api/public/intake — KAIA-2913
@@ -84,9 +85,8 @@ const INTAKE_MAX_POR_IP = 10;
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const startedAt = Date.now();
 
-  const ipDelAlta = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-    || req.headers.get('x-real-ip')?.trim()
-    || '127.0.0.1';
+  // La IP que pone el proxy, no la primera de X-Forwarded-For (ver client-ip.ts).
+  const ipDelAlta = clientIpFromHeaders(req.headers);
   if (!ipRateLimiter.check(`intake:${ipDelAlta}`, INTAKE_MAX_POR_IP)) {
     return NextResponse.json({ error: 'too_many_requests' }, { status: 429 });
   }
@@ -516,9 +516,8 @@ function isUniqueViolation(err: unknown): boolean {
 }
 
 function hashIp(req: NextRequest): string | null {
-  const forwarded = req.headers.get('x-forwarded-for');
-  const ip = (forwarded?.split(',')[0] ?? '').trim();
-  if (!ip) return null;
+  const ip = clientIpFromHeaders(req.headers);
+  if (ip === 'unknown') return null;
   return createHash('sha256').update(ip).digest('hex').slice(0, 32);
 }
 

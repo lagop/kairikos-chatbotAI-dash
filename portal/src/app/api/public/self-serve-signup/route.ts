@@ -5,6 +5,7 @@ import { InMemoryRateLimiter, hashPassword } from '@/lib/operator-crypto';
 import { createClientForSelfServe, mintEmailVerificationToken } from '@/lib/self-serve-onboarding';
 import { sendVerifyEmail } from '@/lib/auth-email';
 import { logError } from '@/lib/observability';
+import { clientIpFromHeaders } from '@/lib/client-ip';
 
 // =============================================================================
 // POST /api/public/self-serve-signup — WP-31.
@@ -48,8 +49,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
   }
 
-  const forwardedFor = req.headers.get('x-forwarded-for') ?? null;
-  const ip = forwardedFor?.split(',')[0]?.trim() ?? '127.0.0.1';
+  // La IP que pone el proxy, no la primera de X-Forwarded-For (ver client-ip.ts).
+  const ip = clientIpFromHeaders(req.headers);
   if (!ipRateLimiter.check(`ip:${ip}`, 10)) {
     return NextResponse.json({ error: 'too_many_requests' }, { status: 429 });
   }

@@ -2,6 +2,7 @@
 
 import { useState, useTransition, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import { useStepUpFetch } from '@/components/portal/useStepUpFetch';
 import { TIER_LABEL } from '@/lib/billing-tier';
 
 export interface OperatorEditorInitial {
@@ -52,6 +53,8 @@ type PendingConfirm =
 
 export function OperatorEditor({ clientId, initial }: OperatorEditorProps) {
   const router = useRouter();
+  // Cambiar el email pide TOTP reciente (ver la ruta PATCH): el hook abre el modal.
+  const { stepUpFetch, stepUpModal } = useStepUpFetch();
   const [isPending, startTransition] = useTransition();
   const [toast, setToast] = useState<ToastState | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
@@ -85,7 +88,7 @@ export function OperatorEditor({ clientId, initial }: OperatorEditorProps) {
   ): Promise<void> {
     setBusyField(field);
     try {
-      const res = await fetch(`/api/admin/portal/clients/${encodeURIComponent(clientId)}`, {
+      const res = await stepUpFetch(`/api/admin/portal/clients/${encodeURIComponent(clientId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -207,6 +210,7 @@ export function OperatorEditor({ clientId, initial }: OperatorEditorProps) {
       aria-label="Editar datos del cliente"
       data-testid="operator-editor"
     >
+      {stepUpModal}
       <header className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Editar</h2>
         <span className="text-xs text-kairikos-muted">
