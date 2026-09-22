@@ -45,6 +45,8 @@ const ERROR_LABEL: Record<string, string> = {
   forbidden: 'Este producto no está disponible ahora mismo.',
   meta_api_error: 'No se pudo completar la conexión con Meta. Intenta de nuevo en un momento.',
   no_surfaces_connected: 'No se encontró ninguna Página o número que se pueda conectar con tu plan actual.',
+  phone_not_in_waba: 'Ese número de WhatsApp no pertenece a la cuenta que acabas de autorizar en Meta. Vuelve a conectar eligiendo tu número.',
+  whatsapp_number_in_use: 'Ese número de WhatsApp ya está conectado a otra cuenta. Escríbenos a soporte y lo movemos.',
   not_configured: 'La conexión con Meta no está disponible ahora mismo.',
   service_unavailable: 'No disponible en este momento — contacta con soporte.',
 };
