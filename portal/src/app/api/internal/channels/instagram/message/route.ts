@@ -59,6 +59,8 @@ export async function POST(req: NextRequest) {
     where: {
       clientId: connection.clientId,
       externalSessionId: { startsWith: sessionPrefix },
+      // El prefijo solo no basta — ver conversation-session-id.ts.
+      channel: 'instagram',
       ...(instance ? { clientProductId: instance.clientProductId } : {}),
     },
     orderBy: { startedAt: 'desc' },

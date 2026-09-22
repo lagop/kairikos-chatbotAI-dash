@@ -4,6 +4,7 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveChatbotForChannel } from '@/lib/client-product-access';
 import { replyToIncomingMessage } from '@/lib/chatbot-conversation';
 import { InMemoryRateLimiter } from '@/lib/operator-crypto';
+import { isReservedSessionId } from '@/lib/conversation-session-id';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -42,9 +43,12 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
+// sessionId lo elige el navegador: no puede tener la forma del de otro canal
+// (ver conversation-session-id.ts — era la puerta a las conversaciones de
+// WhatsApp de los clientes del negocio).
 const BodySchema = z.object({
   publicToken: z.string().trim().min(1),
-  sessionId: z.string().trim().min(1).max(200),
+  sessionId: z.string().trim().min(1).max(200).refine((id) => !isReservedSessionId(id)),
   message: z.string().trim().min(1).max(4000),
 });
 

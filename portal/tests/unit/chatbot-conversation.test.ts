@@ -42,7 +42,8 @@ vi.mock('@/lib/chatbot-usage', () => ({
   consumeMessageAllowance: (...a: unknown[]) => mockState.consumeMessageAllowance(...a),
 }));
 
-import { replyToIncomingMessage, readTranscriptTurns, dropDanglingRetry } from '@/lib/chatbot-conversation';
+import { replyToIncomingMessage, readTranscriptTurns, dropDanglingRetry, ReservedSessionIdError } from '@/lib/chatbot-conversation';
+import { isReservedSessionId } from '@/lib/conversation-session-id';
 
 const prismaMock = {
   chatbotConversation: {
@@ -512,5 +513,91 @@ describe('el tope de mensajes del mes', () => {
     const res = await replyToIncomingMessage(prismaMock, CON_CHATBOT);
     expect('skipped' in res && res.reason).toBe('human_handoff');
     expect(mockState.consumeMessageAllowance).not.toHaveBeenCalled();
+  });
+});
+
+// =============================================================================
+// Seguridad (22/09/2026) — un canal no puede tocar la conversación de otro.
+//
+// El id de sesión del widget web lo elige el navegador. Antes de este
+// arreglo, desde el widget público de un negocio se podía abrir una
+// conversación con id `whatsapp-<teléfono>-x` que la ruta de WhatsApp
+// tomaba luego como la conversación abierta de esa persona, y pedir por
+// clave exacta una conversación de WhatsApp. Ver conversation-session-id.ts.
+// =============================================================================
+
+describe('replyToIncomingMessage — aislamiento entre canales', () => {
+  it('la búsqueda por inactividad filtra por el canal, no solo por el prefijo', async () => {
+    await replyToIncomingMessage(prismaMock, BASE);
+    expect(mockState.findFirst.mock.calls[0][0].where).toMatchObject({
+      externalSessionId: { startsWith: 'whatsapp-34600-' },
+      channel: 'whatsapp',
+    });
+  });
+
+  it('el widget no puede usar un id de sesión con forma de otro canal', async () => {
+    for (const externalSessionId of ['whatsapp-34600111222-x', 'WhatsApp-34600-1', 'telegram-99-1', ' messenger-1-2', 'instagram-5-5']) {
+      mockState.findUnique.mockClear();
+      await expect(
+        replyToIncomingMessage(prismaMock, { ...BASE, channel: 'web', key: { kind: 'exact', externalSessionId } }),
+      ).rejects.toThrow(ReservedSessionIdError);
+      expect(mockState.findUnique).not.toHaveBeenCalled();
+    }
+    expect(mockState.create).not.toHaveBeenCalled();
+    expect(mockState.generateBotReply).not.toHaveBeenCalled();
+  });
+
+  it('una fila de otro canal nunca se devuelve por clave exacta, aunque coincida', async () => {
+    mockState.findUnique.mockResolvedValue({
+      id: 'conv_whatsapp',
+      startedAt: new Date('2026-09-07T09:30:00Z'),
+      duration: 60,
+      outcome: null,
+      transcript: [{ role: 'user', content: 'mi DNI es 12345678Z', at: '2026-09-07T09:30:00Z' }],
+      handoffRequestedAt: null,
+      handoffTakenAt: null,
+      handoffClosedAt: null,
+      channel: 'whatsapp',
+    });
+    await expect(
+      replyToIncomingMessage(prismaMock, { ...BASE, channel: 'web', key: { kind: 'exact', externalSessionId: 'sess_x' } }),
+    ).rejects.toThrow(ReservedSessionIdError);
+    expect(mockState.generateBotReply).not.toHaveBeenCalled();
+    expect(mockState.update).not.toHaveBeenCalled();
+  });
+
+  it('una fila web anterior a que existiera el campo channel sigue funcionando', async () => {
+    mockState.findUnique.mockResolvedValue({
+      id: 'conv_old_web',
+      startedAt: new Date('2026-09-07T09:30:00Z'),
+      duration: 60,
+      outcome: null,
+      transcript: [],
+      handoffRequestedAt: null,
+      handoffTakenAt: null,
+      handoffClosedAt: null,
+      channel: null,
+    });
+    const res = await replyToIncomingMessage(prismaMock, {
+      ...BASE, channel: 'web', key: { kind: 'exact', externalSessionId: 'sess_old' },
+    });
+    expect(res.ok).toBe(true);
+    expect(mockState.update.mock.calls[0][0].where).toEqual({ id: 'conv_old_web' });
+  });
+});
+
+describe('isReservedSessionId', () => {
+  it('reconoce los prefijos de los cuatro canales de mensajería', () => {
+    expect(isReservedSessionId('whatsapp-34600-1')).toBe(true);
+    expect(isReservedSessionId('telegram-1-1')).toBe(true);
+    expect(isReservedSessionId('messenger-1-1')).toBe(true);
+    expect(isReservedSessionId('instagram-1-1')).toBe(true);
+    expect(isReservedSessionId('  WHATSAPP-1')).toBe(true);
+  });
+
+  it('deja pasar los ids que genera el widget', () => {
+    expect(isReservedSessionId('sess_4f2c9a1b')).toBe(false);
+    expect(isReservedSessionId('9b1d-whatsapp-')).toBe(false);
+    expect(isReservedSessionId('web-abc')).toBe(false);
   });
 });
