@@ -2898,7 +2898,11 @@ model ChannelWebhookDelivery {
   connectionId   String    @map("connection_id") @db.Uuid
   clientId       String    @map("client_id")
   payload        Json
-  // 'pending' | 'delivered' | 'failed'
+  // 'pending' | 'delivered' | 'failed' | 'skipped'
+  // 'skipped' = no hay puente configurado (N8N_CHANNEL_WEBHOOK_URL /
+  // _SECRET sin valor), así que no se intentó nada y no hay nada que
+  // reintentar: el rastro queda, pero no cuenta como fallo. Ver
+  // lib/channel-webhook.ts.
   status         String    @default("pending")
   attempts       Int       @default(0)
   lastAttemptAt  DateTime? @map("last_attempt_at")

@@ -52,7 +52,7 @@ export interface ChannelWebhookEvent {
 export interface ChannelWebhookDeliveryResult {
   ok: boolean;
   deliveryId: string;
-  status: 'delivered' | 'failed';
+  status: 'delivered' | 'failed' | 'skipped';
   error?: string;
 }
 
@@ -113,6 +113,27 @@ export async function deliverChannelEvent(event: ChannelWebhookEvent): Promise<C
     },
   });
 
+  // Sin puente configurado no hay fallo que arreglar: la fila queda
+  // 'skipped' y nadie la reintenta. Antes se marcaba 'failed' y se
+  // registraba un error por cada conexión/desconexión, lo que ponía en el
+  // panel de operador y en los logs un problema que no existe.
+  //
+  // Por qué hoy no está configurado (22/09/2026): este aviso es de cuando
+  // el motor del bot vivía en n8n y era n8n quien suscribía el webhook de
+  // cada plataforma. Ya no: el portal llama él mismo a setWebhook
+  // (telegram-api.ts) y a subscribed_apps (meta/complete-signup). No hay
+  // ningún flujo escuchando en la instancia real — se comprobaron los 89
+  // — así que poner una URL solo cambiaría este aviso por un 404 con
+  // reintentos. La fontanería se queda porque 'prospecting' y
+  // 'seo_content' usan el mismo camino y sí pueden necesitarlo.
+  if (!isConfigured()) {
+    await prisma.channelWebhookDelivery.update({
+      where: { id: delivery.id },
+      data: { status: 'skipped', lastError: 'not_configured: N8N_CHANNEL_WEBHOOK_URL/N8N_CHANNEL_WEBHOOK_SECRET unset' },
+    });
+    return { ok: false, deliveryId: delivery.id, status: 'skipped', error: 'not_configured' };
+  }
+
   const fullPayload = {
     deliveryId: delivery.id,
     connectionType: event.connectionType,
@@ -152,6 +173,12 @@ export async function retryChannelWebhookDelivery(deliveryId: string): Promise<C
   const delivery = await prisma.channelWebhookDelivery.findUnique({ where: { id: deliveryId } });
   if (!delivery) {
     return { ok: false, deliveryId, status: 'failed', error: 'delivery_not_found' };
+  }
+  // Un reintento a mano sin puente configurado no puede salir bien: se
+  // responde sin tocar la fila, en vez de dejarla 'failed' y sumar un
+  // intento contra el techo de MAX_ATTEMPTS.
+  if (!isConfigured()) {
+    return { ok: false, deliveryId: delivery.id, status: 'skipped', error: 'not_configured' };
   }
 
   const fullPayload = {
