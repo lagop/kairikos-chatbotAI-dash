@@ -58,6 +58,19 @@ export interface CompetitorComparison {
    *  la conversación deje de ser abstracta. */
   reviewLeaderName: string | null;
   reviewLeaderCount: number | null;
+  /** 23/09/2026 — el ranking POR NÚMERO DE RESEÑAS, que en la práctica pesa
+   *  más que el de estrellas y faltaba.
+   *
+   *  El caso que lo trajo: una peluquería con 4,9 y 1.129 reseñas salía
+   *  "3ª de 4" porque dos competidores tenían 5,0 con 124 y 48 reseñas. Un
+   *  5,0 con 48 reseñas no es mejor que un 4,9 con 1.129, es más fácil.
+   *  Enseñar solo el ranking de estrellas le dice algo desagradable y falso
+   *  a un negocio que domina su zona. */
+  reviewRank: number | null;
+  /** Cuántas veces más reseñas que el siguiente, cuando es el que más
+   *  tiene. 9,1 se lee "nueve veces más que el siguiente" y es el dato que
+   *  de verdad impresiona. Null si no lidera o falta el dato. */
+  reviewLeadMultiple: number | null;
 }
 
 /** Un competidor sin valoración no resta ni suma: se descarta. Ver la nota
@@ -110,6 +123,19 @@ export function buildCompetitorComparison(
       ? leader.reviewCount
       : null;
 
+  // Mismo criterio de empate que el ranking de estrellas: cuentan los que
+  // superan estrictamente.
+  const reviewRank =
+    subjectReviews === null || reviewCounts.length === 0
+      ? null
+      : reviewCounts.filter((n) => n > subjectReviews).length + 1;
+  const runnerUpReviews =
+    reviewCounts.length > 0 ? Math.max(...reviewCounts.filter((n) => subjectReviews === null || n <= subjectReviews), 0) : 0;
+  const reviewLeadMultiple =
+    reviewRank === 1 && subjectReviews !== null && runnerUpReviews > 0
+      ? roundTo(subjectReviews / runnerUpReviews, 1)
+      : null;
+
   return {
     comparedCount: rated.length,
     averageRating: avgRating === null ? null : roundTo(avgRating, 1),
@@ -121,6 +147,8 @@ export function buildCompetitorComparison(
       subjectReviews === null || leaderCount === null ? null : Math.max(0, leaderCount - subjectReviews),
     reviewLeaderName: leaderCount === null ? null : (leader?.name ?? null),
     reviewLeaderCount: leaderCount,
+    reviewRank,
+    reviewLeadMultiple,
   };
 }
 
@@ -286,8 +314,64 @@ export interface ReportSubjectInput extends ComparisonSubject {
   primaryType: string | null;
 }
 
+/**
+ * ¿La web que Google tiene de este negocio es SUYA, o es su ficha en un
+ * directorio? (23/09/2026)
+ *
+ * El caso que lo trajo: una peluquería cuya "web" era
+ * canariasbeauty.com/peluquerias/gran-canaria/maurizio-celletti/. El
+ * informe la presentaba como si tuviera sitio propio, cuando en realidad
+ * depende de un tercero para existir en internet — que es uno de los
+ * mejores argumentos de venta que puede dar este informe.
+ *
+ * Heurística, y se trata como tal: si el dominio no guarda ninguna
+ * relación con el nombre del negocio Y la URL cuelga de varios niveles de
+ * ruta, es una ficha ajena. En la duda devuelve 'own' y el informe no dice
+ * nada: acusar de no tener web a quien sí la tiene es peor que callarse.
+ */
+export type WebsiteKind = 'none' | 'own' | 'directory';
+
+function normalize(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '');
+}
+
+export function classifyWebsite(website: string | null, businessName: string | null): WebsiteKind {
+  if (!website) return 'none';
+  let url: URL;
+  try {
+    url = new URL(website);
+  } catch {
+    return 'own';
+  }
+  const host = normalize(url.hostname.replace(/^www\./, ''));
+  const segments = url.pathname.split('/').filter(Boolean);
+  // Una web propia casi siempre se enlaza por su raíz o por una página
+  // suelta; una ficha de directorio cuelga de dos o más niveles
+  // (/peluquerias/gran-canaria/nombre).
+  if (segments.length < 2) return 'own';
+
+  // ¿Aparece alguna palabra del nombre del negocio en el dominio? Palabras
+  // de 4+ letras para no casar por "de", "la" o "spa".
+  const words = normalize(businessName ?? '')
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length >= 4);
+  const hostMatchesName = words.some((w) => host.includes(w));
+  return hostMatchesName ? 'own' : 'directory';
+}
+
 export type ReportFinding = {
-  kind: 'website_missing' | 'reviews_behind' | 'rating_behind' | 'no_reviews' | 'rating_ahead';
+  kind:
+    | 'website_missing'
+    | 'website_directory'
+    | 'reviews_behind'
+    | 'rating_behind'
+    | 'no_reviews'
+    | 'rating_ahead'
+    | 'review_leader'
+    | 'strong_position';
   /** Frase ya escrita, en el tono del informe. La plantilla no compone
    *  texto: aquí se decide qué se dice y con qué números. */
   text: string;
@@ -318,7 +402,7 @@ export function buildReportModel(params: {
     comparison,
     competitors: params.competitors,
     estimate,
-    findings: buildFindings(params.subject, comparison),
+    findings: buildFindings(params.subject, comparison, classifyWebsite(params.subject.website, params.subject.name)),
     capturedAt: params.capturedAt,
   };
 }
@@ -329,7 +413,11 @@ export function buildReportModel(params: {
  *  informe que solo trae malas noticias suena a vendedor, y el negocio que
  *  va por delante de su zona es justo el que más fácil entiende que
  *  perder llamadas le cuesta dinero. */
-function buildFindings(subject: ComparisonSubject, comparison: CompetitorComparison): ReportFinding[] {
+function buildFindings(
+  subject: ComparisonSubject,
+  comparison: CompetitorComparison,
+  website: WebsiteKind,
+): ReportFinding[] {
   const findings: ReportFinding[] = [];
 
   // 23/09/2026 — null y 0 NO son lo mismo, y tratarlos igual hacía que el
@@ -361,6 +449,44 @@ function buildFindings(subject: ComparisonSubject, comparison: CompetitorCompari
         text: `Está ${comparison.ratingGap} estrellas por encima de la media de su zona: la reputación ya la tiene ganada.`,
       });
     }
+  }
+
+  // Liderar en reseñas es la mejor noticia que puede dar este informe, y
+  // hasta el 23/09/2026 no se decía: el negocio que manda en su zona salía
+  // con la página vacía. Es además el que mejor entiende el argumento de
+  // venta — quien ya tiene a la gente convencida es quien más pierde cada
+  // vez que no coge el teléfono.
+  if (comparison.reviewRank === 1 && subject.reviewCount !== null && subject.reviewCount > 0) {
+    const multiple =
+      comparison.reviewLeadMultiple !== null && comparison.reviewLeadMultiple >= 1.5
+        ? `, ${String(comparison.reviewLeadMultiple).replace('.', ',')} veces más que el siguiente`
+        : '';
+    findings.push({
+      kind: 'review_leader',
+      text: `Es el negocio con más reseñas de su zona (${subject.reviewCount}${multiple}): la clientela ya le elige.`,
+    });
+  }
+
+  if (website === 'none') {
+    findings.push({
+      kind: 'website_missing',
+      text: 'No tiene web en su ficha de Google: quien le busca fuera de Maps no le encuentra.',
+    });
+  } else if (website === 'directory') {
+    findings.push({
+      kind: 'website_directory',
+      text: 'Su "web" es una ficha dentro de un directorio de terceros, no un sitio propio: no controla lo que aparece ni se queda con las visitas.',
+    });
+  }
+
+  // Un informe sin hallazgos no abre ninguna conversación. Si el negocio
+  // está bien en todo, se dice en positivo — y eso es exactamente el gancho
+  // para hablar de llamadas perdidas.
+  if (findings.length === 0) {
+    findings.push({
+      kind: 'strong_position',
+      text: 'Su presencia en Google está en orden: reputación sólida y a la altura de su zona. Lo que se pierde no está en internet, está en el teléfono.',
+    });
   }
 
   return findings;

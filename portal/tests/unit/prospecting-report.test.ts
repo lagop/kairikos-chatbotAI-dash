@@ -22,6 +22,7 @@ import {
   buildReportModel,
   estimateMissedCallValue,
   defaultAssumptionsFor,
+  classifyWebsite,
   haversineMeters,
   DEFAULT_MISSED_CALL_ASSUMPTIONS,
   type CompetitorInput,
@@ -126,6 +127,80 @@ describe('estimateMissedCallValue', () => {
 // mal: a una peluquería de Las Palmas se le dijo que perdía 14.040 € al año
 // (300 € por corte de pelo) y que no tenía reseñas en Google, cuando lo que
 // pasaba es que no habíamos podido leerlas.
+// 23/09/2026, segunda tanda del mismo informe real: la peluquería tenía 4,9
+// con 1.129 reseñas, sus competidores 5,0 con 124 y 5,0 con 48, y el informe
+// la colocaba "3ª de 4" sin decir una palabra de que lidera su zona por
+// goleada. Cierto de forma literal, falso de fondo, e inútil para vender.
+describe('ranking por reseñas', () => {
+  const subject = { name: 'Peluquería Ejemplo', rating: 4.9, reviewCount: 1129 };
+  const zone = [
+    competitor({ placeId: 'a', name: 'Supremo', rating: 5, reviewCount: 124 }),
+    competitor({ placeId: 'b', name: 'Dreams', rating: 4.7, reviewCount: 70 }),
+    competitor({ placeId: 'c', name: 'Ellyzor', rating: 5, reviewCount: 48 }),
+  ];
+
+  it('es primero por reseñas aunque sea tercero por estrellas', () => {
+    const c = buildCompetitorComparison(subject, zone);
+    expect(c.reviewRank).toBe(1);
+    expect(c.ratingRank).toBe(3);
+  });
+
+  it('calcula cuántas veces supera al siguiente', () => {
+    const c = buildCompetitorComparison(subject, zone);
+    expect(c.reviewLeadMultiple).toBe(9.1);
+  });
+
+  it('quien no lidera no tiene múltiplo', () => {
+    const c = buildCompetitorComparison({ name: 'Yo', rating: 4.5, reviewCount: 10 }, zone);
+    expect(c.reviewRank).toBe(4);
+    expect(c.reviewLeadMultiple).toBeNull();
+  });
+
+  it('el líder de la zona recibe un hallazgo, no una página en blanco', () => {
+    const m = buildReportModel({
+      subject: {
+        ...subject,
+        address: null,
+        phone: null,
+        website: 'https://peluqueriaejemplo.es',
+        category: 'peluquería',
+        location: 'Las Palmas',
+        primaryType: 'hair_salon',
+      },
+      competitors: zone,
+      capturedAt: new Date('2026-09-23'),
+    });
+    expect(m.findings.map((f) => f.kind)).toContain('review_leader');
+    expect(m.findings.length).toBeGreaterThan(0);
+  });
+});
+
+describe('classifyWebsite', () => {
+  it('una ficha de directorio no es web propia', () => {
+    expect(
+      classifyWebsite('https://canariasbeauty.com/peluquerias/gran-canaria/maurizio-celletti/', 'Maurizio Celletti'),
+    ).toBe('directory');
+  });
+
+  it('un dominio propio lo es aunque la URL lleve ruta', () => {
+    expect(classifyWebsite('https://fontaneriamartinez.es/servicios/urgencias', 'Fontanería Martínez')).toBe('own');
+  });
+
+  it('en la duda dice que es suya: acusar en falso es peor que callarse', () => {
+    expect(classifyWebsite('https://abc123.com/a/b/c', 'Bar Pepe')).toBe('directory');
+    expect(classifyWebsite('https://abc123.com/contacto', 'Bar Pepe')).toBe('own');
+    expect(classifyWebsite('no-es-una-url', 'Bar Pepe')).toBe('own');
+  });
+
+  it('sin web, es sin web', () => {
+    expect(classifyWebsite(null, 'Bar Pepe')).toBe('none');
+  });
+
+  it('ignora acentos y mayúsculas al comparar con el dominio', () => {
+    expect(classifyWebsite('https://peluqueriamaria.es/precios/corte', 'Peluquería María')).toBe('own');
+  });
+});
+
 describe('encargo medio por sector', () => {
   it('una peluquería no supone 300 € por servicio', () => {
     const e = estimateMissedCallValue({}, defaultAssumptionsFor('hair_salon'));
