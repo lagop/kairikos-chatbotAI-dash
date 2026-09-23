@@ -157,12 +157,79 @@ export interface MissedCallEstimate {
 /** Valores por defecto deliberadamente conservadores: es mejor que el
  *  negocio conteste "pierdo más que eso" a tener que defender una cifra
  *  inflada. 3 llamadas perdidas a la semana es lo que reconoce cualquier
- *  autónomo de oficio en cuanto se le pregunta. */
+ *  autónomo de oficio en cuanto se le pregunta.
+ *
+ *  El encargo medio de 300 € es el del oficio típico (fontanería,
+ *  electricidad, climatización) y **solo vale para ese sector**: ver
+ *  JOB_VALUE_BY_PRIMARY_TYPE. */
 export const DEFAULT_MISSED_CALL_ASSUMPTIONS: Readonly<MissedCallAssumptions> = Object.freeze({
   missedCallsPerWeek: 3,
   averageJobValue: 300,
   closeRate: 0.3,
 });
+
+/**
+ * Encargo medio por categoría de Google (23/09/2026).
+ *
+ * Nació de un informe real: a una peluquería de Las Palmas se le dijo que
+ * perdía 14.040 € al año suponiendo 300 € por servicio. Un corte son 25 €.
+ * Una cifra así no es "optimista", es indefendible: el negocio deja de
+ * creerse el informe entero en la primera línea, incluida la parte de las
+ * reseñas, que sí era verdad.
+ *
+ * Son órdenes de magnitud prudentes por el lado bajo, no estudios de
+ * mercado. El informe SIEMPRE imprime el supuesto al lado de la cifra y se
+ * puede cambiar en la llamada (?encargo=), que es la defensa de verdad:
+ * aquí solo se trata de que el punto de partida no sea ridículo.
+ *
+ * Una categoría que no esté en esta lista cae al valor por defecto de
+ * oficios. Al añadir una nueva, prefiere quedarte corto.
+ */
+export const JOB_VALUE_BY_PRIMARY_TYPE: Readonly<Record<string, number>> = Object.freeze({
+  // Servicios personales: ticket bajo, mucha repetición
+  hair_salon: 30,
+  barber_shop: 20,
+  beauty_salon: 45,
+  nail_salon: 30,
+  spa: 60,
+  // Salud
+  dentist: 350,
+  dental_clinic: 350,
+  physiotherapist: 45,
+  veterinary_care: 70,
+  doctor: 80,
+  // Oficios e instalación: el caso para el que se diseñó el informe
+  plumber: 300,
+  electrician: 250,
+  locksmith: 150,
+  roofing_contractor: 1500,
+  general_contractor: 2500,
+  painter: 800,
+  moving_company: 400,
+  // Automoción
+  car_repair: 250,
+  car_wash: 25,
+  // Servicios profesionales
+  lawyer: 600,
+  accounting: 300,
+  real_estate_agency: 1500,
+  insurance_agency: 400,
+  // Hostelería y comercio: la llamada perdida es una reserva, no un encargo
+  restaurant: 60,
+  cafe: 20,
+  bakery: 20,
+});
+
+/** Supuestos de partida para ESTE negocio, según su categoría de Google.
+ *  `primaryType` es la de Google ('hair_salon'), no el rubro que escribió
+ *  el cliente en su campaña: esa es texto libre y no se puede indexar. */
+export function defaultAssumptionsFor(primaryType: string | null): MissedCallAssumptions {
+  const jobValue = primaryType ? JOB_VALUE_BY_PRIMARY_TYPE[primaryType] : undefined;
+  return {
+    ...DEFAULT_MISSED_CALL_ASSUMPTIONS,
+    averageJobValue: jobValue ?? DEFAULT_MISSED_CALL_ASSUMPTIONS.averageJobValue,
+  };
+}
 
 const WEEKS_PER_MONTH = 52 / 12;
 
@@ -171,8 +238,8 @@ const WEEKS_PER_MONTH = 52 / 12;
  *  "pierdes 4.800.000 € al año" por un cero de más no se puede enseñar.
  *  Se recorta en silencio al rango defendible en vez de fallar: el
  *  informe tiene que salir igualmente. */
-function sanitize(input: Partial<MissedCallAssumptions>): MissedCallAssumptions {
-  const d = DEFAULT_MISSED_CALL_ASSUMPTIONS;
+function sanitize(input: Partial<MissedCallAssumptions>, base: MissedCallAssumptions): MissedCallAssumptions {
+  const d = base;
   const clamp = (value: unknown, fallback: number, min: number, max: number): number => {
     const n = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
     return Math.min(Math.max(n, min), max);
@@ -184,8 +251,14 @@ function sanitize(input: Partial<MissedCallAssumptions>): MissedCallAssumptions 
   };
 }
 
-export function estimateMissedCallValue(input: Partial<MissedCallAssumptions> = {}): MissedCallEstimate {
-  const assumptions = sanitize(input);
+export function estimateMissedCallValue(
+  input: Partial<MissedCallAssumptions> = {},
+  /** Punto de partida cuando el operador no escribe un valor: lo normal es
+   *  pasarle defaultAssumptionsFor(primaryType) para que el encargo medio
+   *  sea el del sector del negocio y no el del oficio genérico. */
+  base: MissedCallAssumptions = DEFAULT_MISSED_CALL_ASSUMPTIONS,
+): MissedCallEstimate {
+  const assumptions = sanitize(input, base);
   const monthly =
     assumptions.missedCallsPerWeek * WEEKS_PER_MONTH * assumptions.averageJobValue * assumptions.closeRate;
   return {
@@ -208,6 +281,9 @@ export interface ReportSubjectInput extends ComparisonSubject {
   website: string | null;
   category: string | null;
   location: string | null;
+  /** Categoría de Google ('hair_salon'), la que decide el encargo medio de
+   *  partida — ver JOB_VALUE_BY_PRIMARY_TYPE. */
+  primaryType: string | null;
 }
 
 export type ReportFinding = {
@@ -233,7 +309,10 @@ export function buildReportModel(params: {
   capturedAt: Date;
 }): ReportModel {
   const comparison = buildCompetitorComparison(params.subject, params.competitors);
-  const estimate = estimateMissedCallValue(params.assumptions ?? {});
+  const estimate = estimateMissedCallValue(
+    params.assumptions ?? {},
+    defaultAssumptionsFor(params.subject.primaryType),
+  );
   return {
     subject: params.subject,
     comparison,
@@ -253,12 +332,16 @@ export function buildReportModel(params: {
 function buildFindings(subject: ComparisonSubject, comparison: CompetitorComparison): ReportFinding[] {
   const findings: ReportFinding[] = [];
 
-  if (subject.reviewCount === null || subject.reviewCount === 0) {
+  // 23/09/2026 — null y 0 NO son lo mismo, y tratarlos igual hacía que el
+  // informe afirmara "no tiene reseñas en Google" a negocios que sí las
+  // tienen, solo porque no habíamos podido leer el dato. Sin dato no se
+  // dice nada: callarse es gratis, mentirle al negocio cuesta la venta.
+  if (subject.reviewCount === 0) {
     findings.push({
       kind: 'no_reviews',
       text: 'No tiene reseñas en Google: hoy es invisible frente a quien sí las tiene.',
     });
-  } else if (comparison.reviewGapToTop !== null && comparison.reviewGapToTop > 0) {
+  } else if (subject.reviewCount !== null && comparison.reviewGapToTop !== null && comparison.reviewGapToTop > 0) {
     const leader = comparison.reviewLeaderName ? ` (${comparison.reviewLeaderName})` : '';
     findings.push({
       kind: 'reviews_behind',

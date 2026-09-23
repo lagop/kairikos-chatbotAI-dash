@@ -21,6 +21,7 @@ import {
   buildCompetitorComparison,
   buildReportModel,
   estimateMissedCallValue,
+  defaultAssumptionsFor,
   haversineMeters,
   DEFAULT_MISSED_CALL_ASSUMPTIONS,
   type CompetitorInput,
@@ -121,6 +122,32 @@ describe('estimateMissedCallValue', () => {
   });
 });
 
+// 23/09/2026 — los tres tests siguientes salen de un informe REAL que salió
+// mal: a una peluquería de Las Palmas se le dijo que perdía 14.040 € al año
+// (300 € por corte de pelo) y que no tenía reseñas en Google, cuando lo que
+// pasaba es que no habíamos podido leerlas.
+describe('encargo medio por sector', () => {
+  it('una peluquería no supone 300 € por servicio', () => {
+    const e = estimateMissedCallValue({}, defaultAssumptionsFor('hair_salon'));
+    expect(e.assumptions.averageJobValue).toBe(30);
+    expect(e.annualLostRevenue).toBeLessThan(2000);
+  });
+
+  it('un oficio mantiene el valor con el que se diseñó el informe', () => {
+    expect(defaultAssumptionsFor('plumber').averageJobValue).toBe(300);
+  });
+
+  it('una categoría desconocida cae al valor de oficios, no a 0', () => {
+    expect(defaultAssumptionsFor('gato_de_tres_cabezas').averageJobValue).toBe(300);
+    expect(defaultAssumptionsFor(null).averageJobValue).toBe(300);
+  });
+
+  it('lo que escriba el operador en la llamada manda sobre el sector', () => {
+    const e = estimateMissedCallValue({ averageJobValue: 75 }, defaultAssumptionsFor('hair_salon'));
+    expect(e.assumptions.averageJobValue).toBe(75);
+  });
+});
+
 describe('buildReportModel — hallazgos', () => {
   const subject = {
     name: 'Fontanería Ejemplo',
@@ -129,13 +156,36 @@ describe('buildReportModel — hallazgos', () => {
     website: null,
     category: 'fontanero',
     location: 'Elche',
+    primaryType: 'plumber' as string | null,
     rating: null as number | null,
     reviewCount: null as number | null,
   };
 
-  it('un negocio sin reseñas se dice tal cual, sin hablar de distancias', () => {
-    const m = buildReportModel({ subject, competitors: [competitor()], capturedAt: new Date('2026-09-22') });
+  it('sin dato de reseñas NO afirma que el negocio no tiene ninguna', () => {
+    const m = buildReportModel({
+      subject: { ...subject, reviewCount: null },
+      competitors: [competitor({ reviewCount: 120 })],
+      capturedAt: new Date('2026-09-23'),
+    });
+    expect(m.findings.map((f) => f.kind)).not.toContain('no_reviews');
+    expect(m.findings.map((f) => f.kind)).not.toContain('reviews_behind');
+  });
+
+  it('cero reseñas sí se dice, porque ahí el dato existe', () => {
+    const m = buildReportModel({
+      subject: { ...subject, rating: null, reviewCount: 0 },
+      competitors: [competitor({ reviewCount: 120 })],
+      capturedAt: new Date('2026-09-23'),
+    });
     expect(m.findings.map((f) => f.kind)).toContain('no_reviews');
+  });
+
+  it('con cero reseñas no se habla además de cuántas le faltan', () => {
+    const m = buildReportModel({
+      subject: { ...subject, reviewCount: 0 },
+      competitors: [competitor()],
+      capturedAt: new Date('2026-09-22'),
+    });
     expect(m.findings.map((f) => f.kind)).not.toContain('reviews_behind');
   });
 

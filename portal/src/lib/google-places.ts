@@ -252,6 +252,48 @@ interface RawPlaceDetails {
   location?: { latitude?: number; longitude?: number };
 }
 
+// A1 (23/09/2026) — la valoración del propio prospecto, pedida a Google por
+// su place id.
+//
+// Nació porque el informe mentía: la valoración del negocio se sacaba de los
+// resultados de la búsqueda de competidores, y Google NO siempre devuelve al
+// propio negocio entre ellos. Cuando no venía, el informe afirmaba "no tiene
+// reseñas en Google" a un negocio que sí las tiene — confirmado contra una
+// peluquería real de Las Palmas cuyos 3 competidores sí llegaron con sus
+// estrellas. Decirle algo falso al negocio que estás intentando convencer es
+// el peor fallo posible en esta pantalla.
+//
+// Esta máscara SÍ es Enterprise + Atmosphere, el SKU más caro (25 $/1.000,
+// 1.000 gratis al mes). Por eso va en una función aparte y NO en
+// getPlaceDetails: el barrido semanal crea cientos de leads y no debe pagar
+// Atmosphere por ninguno. Aquí se paga una vez por informe generado, que son
+// unos pocos al día, y queda cacheado 30 días en el snapshot.
+const RATING_FIELD_MASK = 'id,rating,userRatingCount';
+
+export interface PlaceRating {
+  rating: number | null;
+  userRatingCount: number | null;
+}
+
+export async function getPlaceRating(placeId: string): Promise<GooglePlacesResult<PlaceRating>> {
+  const result = await callPlacesApi<{ id?: string; rating?: number; userRatingCount?: number }>(
+    `/places/${encodeURIComponent(placeId)}`,
+    'GET',
+    RATING_FIELD_MASK,
+  );
+  if (!result.ok) return result;
+  return {
+    ok: true,
+    data: {
+      // Un negocio nuevo SIN reseñas devuelve los campos ausentes, igual que
+      // un fallo de lectura: quien llama no puede distinguirlos aquí y debe
+      // tratarlos como "sin dato", nunca como 0 — ver prospecting-report.ts.
+      rating: typeof result.data.rating === 'number' ? result.data.rating : null,
+      userRatingCount: typeof result.data.userRatingCount === 'number' ? result.data.userRatingCount : null,
+    },
+  };
+}
+
 /**
  * The paid step — this is the call that actually costs money per lead
  * (Enterprise-tier pricing, since it asks for phone/website), unlike
