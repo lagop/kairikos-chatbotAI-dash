@@ -159,6 +159,8 @@ model ChatbotClient {
   prospectingCampaignAudits      ProspectingCampaignAudit[]
   prospectingCompetitorSnaps     ProspectingCompetitorSnapshot[]
   prospectingWebDrafts           ProspectingWebDraft[]
+  clientWebsites                 ClientWebsite[]
+  clientWebsiteAudits            ClientWebsiteAudit[]
   seoProfiles                    SeoProfile[]
   seoProfileAudits               SeoProfileAudit[]
   seoContentDrafts               SeoContentDraft[]
@@ -576,6 +578,8 @@ model Tenant {
   prospectingCampaignAudits      ProspectingCampaignAudit[]
   prospectingCompetitorSnaps     ProspectingCompetitorSnapshot[]
   prospectingWebDrafts           ProspectingWebDraft[]
+  clientWebsites                 ClientWebsite[]
+  clientWebsiteAudits            ClientWebsiteAudit[]
   seoProfiles                    SeoProfile[]
   seoProfileAudits               SeoProfileAudit[]
   seoContentDrafts               SeoContentDraft[]
@@ -785,6 +789,7 @@ model ClientProduct {
   tenant                     Tenant?                     @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   auditLogs                  ClientProductAudit[]
   subscription               Subscription?
+  website                    ClientWebsite?
   // WP-19 — one-time-purchase products (no recurring price) invoice
   // directly against the ClientProduct instead of through a Subscription
   // — see Invoice.clientProductId.
@@ -3521,6 +3526,235 @@ model ProspectingWebDraft {
 
   @@index([clientId, generatedAt])
   @@index([tenantId])
+}
+
+// =============================================================================
+// Producto Web, Fase 1 — el sitio de un cliente, generado desde el portal y
+// publicado por SFTP en SU alojamiento.
+//
+// Por qué SFTP y no alojarlo nosotros, de momento: publicar en el servidor
+// del cliente evita construir dominios y certificados antes de saber si
+// hacen falta, no nos convierte en el único punto de fallo de webs ajenas, y
+// hace verdad lo que promete el contrato ("si te vas, tu web es tuya"), que
+// deja de ser una promesa porque los archivos ya están en su casa.
+//
+// Lo que se pierde a cambio, escrito aquí para que no parezca un descuido:
+// el control de la calidad. Si su alojamiento es lento o sin HTTPS, la web
+// que vendimos se ve lenta y con aviso de "no segura", y la queja llega a
+// nosotros igual. Alojarlo en infraestructura propia sigue siendo el destino
+// del plan estándar cuando haya webs suficientes para justificarlo.
+//
+// UNA FILA POR UNIDAD CONTRATADA (clientProductId), no por cliente: 'web' es
+// multi-instancia porque la segunda web cuesta dinero cada mes. Ver
+// MULTI_INSTANCE_PRODUCT_CODES en client-product-access.ts.
+// =============================================================================
+model ClientWebsite {
+  id              String  @id @default(uuid()) @db.Uuid
+  clientId        String  @map("client_id")
+  clientProductId String  @unique @map("client_product_id") @db.Uuid
+  tenantId        String? @map("tenant_id") @db.Uuid
+
+  businessName String  @map("business_name")
+  phone        String?
+  address      String?
+  city         String?
+  // Categoría de Google del negocio: decide plantilla y paleta.
+  primaryType  String? @map("primary_type")
+  // 'beauty-3': familia del sector + variante. Misma clave que el borrador,
+  // para que un sitio nacido de un borrador conserve su aspecto.
+  themeKey     String  @map("theme_key")
+
+  // WebDraftCopy: titular, subtítulo, descripción, servicios y cierre. El
+  // mismo objeto que el borrador, para que convertir uno en sitio sea copiar
+  // la fila y no rehacer el contenido.
+  copy Json
+
+  // 'draft' | 'published'. Texto libre con los valores documentados aquí,
+  // como el resto de columnas de estado del esquema.
+  status String @default("draft")
+
+  // Alojamiento: 'sftp' (en el servidor del cliente) o 'kairikos' (en el
+  // nuestro, servido desde /sitios/<slug>). Texto libre con los valores
+  // documentados aquí, como el resto de columnas de estado.
+  //
+  // El destino por defecto es el del cliente: es el que no nos convierte en
+  // el único punto de fallo de webs ajenas. El nuestro existe para quien no
+  // tiene alojamiento, que es justo el caso en el que no se puede vender de
+  // otra manera.
+  publishTarget String  @default("sftp") @map("publish_target")
+  // Solo para el alojamiento propio: la parte de la URL que lo identifica.
+  slug          String? @unique
+  // El dominio propio del cliente apuntando a nuestro servidor. La emisión
+  // del certificado la hace el proxy (Caddy) por su cuenta; aquí solo se
+  // guarda para saber qué sitio servir según la cabecera Host.
+  customDomain  String? @unique @map("custom_domain")
+
+  // El identificador con el que el formulario de SU web publicada envía a
+  // nuestra API. Va en el HTML que está en su servidor, así que es público
+  // por definición: por eso es aleatorio y no el id del sitio — que un
+  // tercero adivine este valor solo le permitiría mandar mensajes a ese
+  // negocio, nunca leer nada ni alcanzar a otro cliente.
+  formToken String @unique @map("form_token")
+
+  lastPublishedAt  DateTime? @map("last_published_at")
+  // El error de la última publicación fallida, para que el operador vea por
+  // qué no salió sin bucear en los logs. Se limpia al publicar bien.
+  lastPublishError String?   @map("last_publish_error")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  client        ChatbotClient             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientProduct ClientProduct             @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
+  tenant        Tenant?                   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  credential    WebsitePublishCredential?
+  releases      ClientWebsiteRelease[]
+  files         ClientWebsiteFile[]
+  auditLogs     ClientWebsiteAudit[]
+
+  @@index([clientId])
+  @@index([tenantId])
+}
+
+// Cada publicación guarda una copia del contenido con el que salió. Es lo que
+// permite volver atrás: restaurar una versión es copiar su contenido a la
+// fila viva y volver a publicar, no "deshacer" nada.
+//
+// Se guarda el CONTENIDO y no los archivos generados: el HTML se vuelve a
+// construir igual desde el mismo contenido, y guardar el binario de cada
+// publicación multiplicaría la base de datos por nada.
+model ClientWebsiteRelease {
+  id        String @id @default(uuid()) @db.Uuid
+  websiteId String @map("website_id") @db.Uuid
+  // 1, 2, 3… por sitio. Se enseña tal cual al operador ("volver a la v3").
+  version   Int
+
+  copy     Json
+  themeKey String @map("theme_key")
+
+  publishedAt DateTime @default(now()) @map("published_at")
+  // 'operator' | 'client' — quién publicó esta versión.
+  actorType   String   @map("actor_type")
+
+  website ClientWebsite @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@unique([websiteId, version])
+  @@index([websiteId, publishedAt])
+}
+
+// Los archivos del sitio cuando se aloja en nuestra infraestructura. Van en
+// la base de datos y no en disco a propósito: el contenedor se recrea en cada
+// despliegue y un volumen más es una cosa más que respaldar y que se puede
+// olvidar. Son dos archivos por sitio y unos 300 KB.
+model ClientWebsiteFile {
+  id        String @id @default(uuid()) @db.Uuid
+  websiteId String @map("website_id") @db.Uuid
+  // Ruta relativa: 'index.html', 'assets/portada.jpg'.
+  path      String
+
+  contentType String @map("content_type")
+  content     Bytes
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  website ClientWebsite @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@unique([websiteId, path])
+}
+
+// Auditoría de todo lo que se escribe en un sitio, append-only, como el resto
+// del esquema. actorType separa al cliente del operador porque aquí escriben
+// los dos: el cliente cambiando textos y el operador publicando.
+model ClientWebsiteAudit {
+  id        String  @id @default(uuid()) @db.Uuid
+  websiteId String  @map("website_id") @db.Uuid
+  clientId  String  @map("client_id")
+  tenantId  String? @map("tenant_id") @db.Uuid
+
+  // 'created' | 'content_updated' | 'credential_saved' | 'published' |
+  // 'publish_failed'
+  action String
+  before Json?
+  after  Json?
+
+  // 'client' | 'operator' | 'system'
+  actorType       String  @map("actor_type")
+  actorOperatorId String? @map("actor_operator_id") @db.Uuid
+  actorEmail      String? @map("actor_email")
+
+  changedAt DateTime @default(now()) @map("changed_at")
+
+  website ClientWebsite @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  client  ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  tenant  Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([websiteId, changedAt])
+  @@index([clientId, changedAt])
+  @@index([tenantId])
+}
+
+// La credencial de SFTP del alojamiento del cliente. Da control total sobre
+// su sitio, así que va cifrada con SU PROPIA clave (AES-256-GCM vía
+// operator-crypto.ts), nunca en el .env y nunca en la auditoría: allí se
+// guardan host, usuario y hasPassword, jamás la contraseña ni su ciphertext.
+//
+// Solo SFTP. FTP a secas manda usuario y contraseña en texto plano por la
+// red, y esto es la llave del sitio de un cliente.
+model WebsitePublishCredential {
+  id        String @id @default(uuid()) @db.Uuid
+  websiteId String @unique @map("website_id") @db.Uuid
+
+  host       String
+  port       Int    @default(22)
+  username   String
+  // Directorio remoto donde vive el sitio ('/public_html').
+  remotePath String @map("remote_path")
+
+  passwordCiphertext Bytes @map("password_ciphertext")
+  passwordIv         Bytes @map("password_iv")
+  passwordTag        Bytes @map("password_tag")
+
+  savedAt DateTime @default(now()) @map("saved_at")
+
+  website ClientWebsite @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+}
+
+// =============================================================================
+// A11, capa 3 — cada "Ver cómo quedaría mi web" pedido desde kairikos.com.
+//
+// Es a la vez el borrador que se le enseña al visitante y el LEAD que deja al
+// pedirlo: quien escribe el nombre de su negocio y su teléfono para ver su
+// web está diciendo que le interesa una web. Por eso se guarda el contacto,
+// y por eso esta tabla se mira todas las mañanas.
+//
+// La IP va hasheada con sal: sirve para contar (el tope por IP y día) y no
+// para identificar a nadie, que es exactamente lo que hace falta.
+// =============================================================================
+model PublicDraftRequest {
+  id    String @id @default(uuid()) @db.Uuid
+  // El testigo del enlace público del borrador, igual que en prospección.
+  token String @unique
+
+  ipHash String @map("ip_hash")
+
+  businessName String @map("business_name")
+  city         String
+  // Teléfono o email que dejó. Es el lead.
+  contact      String
+  sector       String
+  primaryType  String @map("primary_type")
+  themeKey     String @map("theme_key")
+
+  copy  Json
+  model String
+
+  // Cuándo se le contactó, si se hizo. Null es "pendiente de llamar", que es
+  // como se usa esta tabla en la práctica.
+  contactedAt DateTime? @map("contacted_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([ipHash, createdAt])
 }
 
 // =============================================================================

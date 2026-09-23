@@ -50,7 +50,20 @@ const nextConfig = {
     // Listing it as external makes Next.js leave it as a runtime require()
     // so Vercel's Lambda resolves the N-API binary from node_modules at
     // cold start.
-    serverComponentsExternalPackages: ['resend', '@node-rs/argon2', '@node-rs/argon2-linux-x64-gnu'],
+    //
+    // Producto Web, Fase 1 — ssh2 (bajo ssh2-sftp-client, con el que se
+    // publica la web del cliente) tiene exactamente el mismo problema: trae
+    // sshcrypto.node y el build muere con el mismo mensaje. Va en ESTA lista
+    // y no en un segundo bloque 'experimental', que pisaría este entero.
+    // Encontrado en CI, no en local: 'next dev' no empaqueta el servidor
+    // igual que 'next build'.
+    serverComponentsExternalPackages: [
+      'resend',
+      '@node-rs/argon2',
+      '@node-rs/argon2-linux-x64-gnu',
+      'ssh2',
+      'ssh2-sftp-client',
+    ],
   },
   async redirects() {
     return [
