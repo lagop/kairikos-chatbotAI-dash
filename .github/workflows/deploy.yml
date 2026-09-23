@@ -27,6 +27,10 @@ on:
       - 'scripts/backup-postgres.sh'
       - 'scripts/scheduler.Dockerfile'
       - 'scripts/backup.Dockerfile'
+      # 23/09/2026 — cambiar un workflow no cambia nada en la VPS: el
+      # propio workflow se lee del repositorio en cada ejecución. Sin
+      # esta línea, tocar este archivo disparaba un despliegue.
+      - '.github/**'
   workflow_run:
     workflows: ['Build and push portal image', 'Build and push scheduler/backup images']
     types: [completed]
@@ -43,6 +47,35 @@ jobs:
     # el evento es realmente workflow_run.
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     steps:
+      # paths-ignore tiene un agujero que se ve poco: GitHub se salta el
+      # disparo solo si TODOS los archivos del commit están ignorados. Un
+      # commit que toca portal/** Y algo no ignorado —docker-compose.yml,
+      # por ejemplo— dispara igual, y lo hace EN PARALELO con la
+      # construcción de la imagen. Ese despliegue recrea el contenedor con
+      # la imagen ANTERIOR, porque la nueva todavía se está construyendo.
+      #
+      # Pasó el 23/09/2026 con el PR #243: a las 15:13:59 arrancaron a la
+      # vez la construcción y un despliegue por push; el contenedor se
+      # recreó con la versión de hacía dos horas.
+      #
+      # Esta guarda lo corta: si el commit toca algo que produce imagen,
+      # el despliegue por push se salta, porque ya viene otro detrás
+      # disparado por workflow_run —el que espera a que la imagen exista.
+      - name: ¿Este push produce imagen? Entonces espera al workflow_run
+        id: guard
+        if: ${{ github.event_name == 'push' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -u
+          ARCHIVOS=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}" --jq '.files[].filename' || true)
+          if printf '%s\n' "${ARCHIVOS}" | grep -qE '^(portal/|scripts/(scheduler|backup))'; then
+            echo "Este commit produce imagen nueva; el despliegue lo hará el workflow_run."
+            echo "saltar=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "saltar=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Checkout
         # En un workflow_run, github.sha/github.ref apuntan al ESTADO
         # ACTUAL de la rama del propio workflow, no necesariamente al
@@ -55,6 +88,7 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Deploy to Hostinger VPS
+        if: ${{ steps.guard.outputs.saltar != 'true' }}
         uses: hostinger/deploy-on-vps@v2
         with:
           api-key: ${{ secrets.HOSTINGER_API_KEY }}
@@ -272,6 +306,7 @@ jobs:
       # rato no coincide, el job FALLA — que es el punto: que se entere
       # quien despliega y no el cliente.
       - name: Verificar que la versión desplegada es esta
+        if: ${{ steps.guard.outputs.saltar != 'true' }}
         env:
           ESPERADA: ${{ github.event.workflow_run.head_sha || github.sha }}
           PORTAL_URL: ${{ vars.NEXT_PUBLIC_PORTAL_URL }}
