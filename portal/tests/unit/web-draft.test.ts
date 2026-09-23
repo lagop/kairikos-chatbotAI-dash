@@ -10,7 +10,13 @@
 
 import { describe, it, expect } from 'vitest';
 import { parseWebDraftResponse } from '@/lib/web-draft-ai';
-import { themeFor, renderWebDraftHtml, DEFAULT_WEB_DRAFT_OFFER } from '@/lib/web-draft-html';
+import {
+  themeFor,
+  renderWebDraftHtml,
+  formatSpanishPhone,
+  heroImageUrls,
+  DEFAULT_WEB_DRAFT_OFFER,
+} from '@/lib/web-draft-html';
 
 const VALID = JSON.stringify({
   headline: 'Peluquería en Las Palmas con cita previa',
@@ -92,6 +98,29 @@ describe('themeFor', () => {
   });
 });
 
+// 23/09/2026 — del primer borrador real: el teléfono salía cuatro veces y
+// como +34928040058, que en una portada parece un número de serie.
+describe('formatSpanishPhone', () => {
+  it('parte un número español con prefijo', () => {
+    expect(formatSpanishPhone('+34928040058')).toBe('928 04 00 58');
+  });
+
+  it('parte también uno sin prefijo y con espacios de Google', () => {
+    expect(formatSpanishPhone('928 040 058')).toBe('928 04 00 58');
+  });
+
+  it('un número que no encaja se deja crudo: mejor crudo que mal cortado', () => {
+    expect(formatSpanishPhone('+33 1 42 00 00 00')).toBe('+33 1 42 00 00 00');
+    expect(formatSpanishPhone('sin teléfono')).toBe('sin teléfono');
+  });
+});
+
+describe('heroImageUrls', () => {
+  it('propone la foto del sector y, detrás, el degradado de respaldo', () => {
+    expect(heroImageUrls(themeFor('hair_salon'))).toEqual(['/web-draft/beauty.jpg', '/web-draft/beauty.svg']);
+  });
+});
+
 describe('renderWebDraftHtml', () => {
   const copy = parseWebDraftResponse(VALID)!;
   const subject = {
@@ -139,6 +168,13 @@ describe('renderWebDraftHtml', () => {
       generatedAt: new Date('2026-09-23'),
     });
     expect(html).not.toContain('reseñas en Google');
+  });
+
+  it('escribe el teléfono como se lee en España, no como lo guarda Google', () => {
+    const html = renderWebDraftHtml({ subject, copy, generatedAt: new Date('2026-09-23') });
+    expect(html).toContain('928 00 00 00');
+    // El href sí lleva el formato marcable, con prefijo y sin espacios.
+    expect(html).toContain('href="tel:+34928000000"');
   });
 
   it('sin teléfono no pinta un botón de llamar roto', () => {

@@ -6,21 +6,24 @@ import type { WebDraftCopy } from './web-draft-ai';
 // Lo que el prospecto abre en su móvil mientras hablas con él por teléfono.
 // Una sola página, sin JavaScript, con sus datos reales de Google.
 //
-// La estructura es CÓDIGO, no IA: secciones fijas, orden fijo, paleta elegida
-// por sector. La IA solo pone las palabras (web-draft-ai.ts). Eso es lo que
-// permite que el borrador se genere en segundos y que dos negocios del mismo
-// sector no salgan con webs raras cada uno de su padre y de su madre.
+// La estructura es CÓDIGO, no IA: secciones fijas, orden fijo, paleta y
+// tipografía por sector. La IA solo pone las palabras (web-draft-ai.ts). Eso
+// es lo que permite que el borrador se genere en segundos y que dos negocios
+// del mismo sector no salgan cada uno de su padre y de su madre.
 //
-// Y por eso los datos duros —teléfono, dirección, estrellas, número de
-// reseñas— se pintan AQUÍ desde la base de datos y nunca se le piden al
-// modelo: son los que el dueño del negocio va a mirar primero, y un teléfono
-// alucinado tira por tierra la propuesta entera.
+// Los datos duros —teléfono, dirección, estrellas, número de reseñas— se
+// pintan AQUÍ desde la base de datos y nunca se le piden al modelo: son los
+// que el dueño del negocio va a mirar primero, y un teléfono alucinado tira
+// por tierra la propuesta entera.
 //
-// Capa 1 de cuatro: un borrador bajo demanda, sobre una plantilla por sector,
-// sin editor, sin dominio y sin publicación. Las capas 2-4 (generación
-// automática, formulario público y el producto web de verdad) están en el
-// plan; esto se escribe ya pensando en ellas, de ahí que el contenido viva en
-// un objeto y no incrustado en el HTML.
+// Segunda versión (23/09/2026), tras ver la primera sobre un negocio real.
+// El texto salió bien; el diseño "se veía muy básico", y con razón: no había
+// una sola imagen, el teléfono aparecía cuatro veces sin formato y todas las
+// secciones pesaban igual. Una web sin fotos parece un esquema por bien
+// escrita que esté, y el borrador se juega el sí en los tres primeros
+// segundos. De ahí: portada a pantalla con imagen de fondo, tipografía por
+// sector, tarjetas con aire, banda de reseñas y UNA llamada a la acción
+// repetida donde toca, no en todas partes.
 // =============================================================================
 
 export interface WebDraftTheme {
@@ -30,18 +33,53 @@ export interface WebDraftTheme {
   accent: string;
   accentDark: string;
   tint: string;
-  fontHeading: string;
+  /** Familia tipográfica de titulares, de Google Fonts. Cambia el carácter de
+   *  la página más que ningún otro ajuste, y es gratis. */
+  headingFont: string;
+  headingStack: string;
 }
 
-/** Una paleta por familia de sector. No es decoración: una peluquería y una
- *  fontanería de urgencias no se venden con los mismos colores, y el prospecto
- *  tiene que reconocerse en lo que ve en los tres primeros segundos. */
 const THEMES: Readonly<Record<string, WebDraftTheme>> = Object.freeze({
-  beauty: { key: 'beauty', accent: '#b4467a', accentDark: '#7d2f54', tint: '#fdf2f7', fontHeading: "'Georgia', serif" },
-  trades: { key: 'trades', accent: '#1f6feb', accentDark: '#144a9e', tint: '#eef4ff', fontHeading: "system-ui, sans-serif" },
-  health: { key: 'health', accent: '#0f9488', accentDark: '#0b6b62', tint: '#eefaf8', fontHeading: "system-ui, sans-serif" },
-  food: { key: 'food', accent: '#c2410c', accentDark: '#8a2d08', tint: '#fff4ed', fontHeading: "'Georgia', serif" },
-  professional: { key: 'professional', accent: '#334155', accentDark: '#1e293b', tint: '#f1f5f9', fontHeading: "'Georgia', serif" },
+  beauty: {
+    key: 'beauty',
+    accent: '#b4467a',
+    accentDark: '#6d2748',
+    tint: '#fdf2f7',
+    headingFont: 'Playfair+Display:wght@600;700',
+    headingStack: "'Playfair Display', Georgia, serif",
+  },
+  trades: {
+    key: 'trades',
+    accent: '#1f6feb',
+    accentDark: '#11386f',
+    tint: '#eef4ff',
+    headingFont: 'Barlow+Condensed:wght@600;700',
+    headingStack: "'Barlow Condensed', system-ui, sans-serif",
+  },
+  health: {
+    key: 'health',
+    accent: '#0f9488',
+    accentDark: '#0a544d',
+    tint: '#eefaf8',
+    headingFont: 'Source+Sans+3:wght@600;700',
+    headingStack: "'Source Sans 3', system-ui, sans-serif",
+  },
+  food: {
+    key: 'food',
+    accent: '#c2410c',
+    accentDark: '#7a2607',
+    tint: '#fff4ed',
+    headingFont: 'Bitter:wght@600;700',
+    headingStack: "'Bitter', Georgia, serif",
+  },
+  professional: {
+    key: 'professional',
+    accent: '#3b5a80',
+    accentDark: '#1e293b',
+    tint: '#f1f5f9',
+    headingFont: 'Libre+Baskerville:wght@700',
+    headingStack: "'Libre Baskerville', Georgia, serif",
+  },
 });
 
 const THEME_BY_PRIMARY_TYPE: Readonly<Record<string, keyof typeof THEMES>> = Object.freeze({
@@ -77,6 +115,19 @@ const THEME_BY_PRIMARY_TYPE: Readonly<Record<string, keyof typeof THEMES>> = Obj
 export function themeFor(primaryType: string | null): WebDraftTheme {
   const key = primaryType ? THEME_BY_PRIMARY_TYPE[primaryType] : undefined;
   return THEMES[key ?? 'trades'];
+}
+
+/**
+ * La portada usa la foto del sector si está subida, y si no un degradado
+ * generado con su color. Las dos rutas se listan en el CSS en ese orden: el
+ * navegador usa la primera que exista.
+ *
+ * Por qué así y no comprobando el archivo en disco: esta función es pura y se
+ * prueba sin sistema de ficheros, y el navegador ya sabe resolverlo. Ver
+ * public/web-draft/README.md para qué foto poner y de dónde sacarla.
+ */
+export function heroImageUrls(theme: WebDraftTheme): string[] {
+  return [`/web-draft/${theme.key}.jpg`, `/web-draft/${theme.key}.svg`];
 }
 
 export interface WebDraftSubject {
@@ -115,6 +166,19 @@ function telHref(phone: string): string {
   return phone.replace(/[^+0-9]/g, '');
 }
 
+/**
+ * El teléfono como lo escribe un español, no como lo guarda Google.
+ * `+34928040058` en una portada parece un número de serie; `928 04 00 58` se
+ * lee y se marca. Un número que no encaje en el patrón español se devuelve
+ * tal cual: mejor crudo que mal cortado.
+ */
+export function formatSpanishPhone(phone: string): string {
+  const digits = phone.replace(/[^0-9]/g, '');
+  const national = digits.startsWith('34') && digits.length === 11 ? digits.slice(2) : digits;
+  if (national.length !== 9) return phone.trim();
+  return `${national.slice(0, 3)} ${national.slice(3, 5)} ${national.slice(5, 7)} ${national.slice(7)}`;
+}
+
 export function renderWebDraftHtml(params: {
   subject: WebDraftSubject;
   copy: WebDraftCopy;
@@ -124,35 +188,38 @@ export function renderWebDraftHtml(params: {
   const { subject, copy, generatedAt } = params;
   const offer = params.offer ?? DEFAULT_WEB_DRAFT_OFFER;
   const theme = themeFor(subject.primaryType);
+  const [photo, fallback] = heroImageUrls(theme);
 
-  const phoneBlock = subject.phone
-    ? `<a class="cta" href="tel:${esc(telHref(subject.phone))}">Llamar ${esc(subject.phone)}</a>`
-    : '';
+  const phoneText = subject.phone ? formatSpanishPhone(subject.phone) : null;
+  const phoneHref = subject.phone ? telHref(subject.phone) : null;
+  const callButton = (label: string): string =>
+    phoneHref ? `<a class="cta" href="tel:${esc(phoneHref)}">${esc(label)}</a>` : '';
 
   // Las reseñas van tal cual vienen de Google. Es el elemento que más
   // convence al dueño de que esto es SU web y no una plantilla genérica.
   const reviewsBlock =
     subject.rating !== null && subject.reviewCount !== null
-      ? `<section class="reviews">
-          <div class="stars">${'★'.repeat(Math.round(subject.rating))}</div>
-          <p><strong>${subject.rating.toFixed(1)}</strong> sobre 5 ·
-            ${new Intl.NumberFormat('es-ES').format(subject.reviewCount)} reseñas en Google</p>
-        </section>`
+      ? `<section class="reviews"><div class="wrap">
+          <div class="stars" aria-hidden="true">${'★'.repeat(Math.round(subject.rating))}</div>
+          <p class="score"><strong>${subject.rating.toFixed(1)}</strong> sobre 5</p>
+          <p class="count">${new Intl.NumberFormat('es-ES').format(subject.reviewCount)} reseñas en Google</p>
+        </div></section>`
       : '';
 
   const servicesBlock =
     copy.services.length > 0
-      ? `<section class="services">
+      ? `<section id="servicios"><div class="wrap">
           <h2>Servicios</h2>
           <div class="grid">
             ${copy.services
               .map(
-                (s) =>
-                  `<article><h3>${esc(s.name)}</h3><p>${esc(s.description)}</p></article>`,
+                (s, i) =>
+                  `<article><span class="num">${String(i + 1).padStart(2, '0')}</span>
+                    <h3>${esc(s.name)}</h3><p>${esc(s.description)}</p></article>`,
               )
               .join('')}
           </div>
-        </section>`
+        </div></section>`
       : '';
 
   return `<!DOCTYPE html>
@@ -163,35 +230,97 @@ export function renderWebDraftHtml(params: {
 <!-- Es una propuesta sobre un negocio de terceros: nunca indexada. -->
 <meta name="robots" content="noindex, nofollow">
 <title>${esc(subject.businessName)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=${theme.headingFont}&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-:root { color-scheme: light; --accent: ${theme.accent}; --accent-dark: ${theme.accentDark}; --tint: ${theme.tint}; }
+:root {
+  color-scheme: light;
+  --accent: ${theme.accent};
+  --accent-dark: ${theme.accentDark};
+  --tint: ${theme.tint};
+  --ink: #16181d;
+  --muted: #5b6472;
+}
 * { box-sizing: border-box; }
-body { margin: 0; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; color: #1b1f26; line-height: 1.55; }
-h1, h2, h3 { font-family: ${theme.fontHeading}; }
-.wrap { max-width: 900px; margin: 0 auto; padding: 0 20px; }
-header { background: var(--accent-dark); color: #fff; padding: 14px 0; }
-header .wrap { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
-header .brand { font-weight: 700; font-size: 17px; }
-header .phone { color: #fff; text-decoration: none; font-size: 15px; }
-.hero { background: var(--tint); padding: 56px 0; }
-.hero h1 { font-size: 34px; margin: 0 0 12px; line-height: 1.15; }
-.hero p { font-size: 18px; color: #48505c; margin: 0 0 24px; max-width: 34em; }
-.cta { display: inline-block; background: var(--accent); color: #fff; text-decoration: none;
-  padding: 13px 26px; border-radius: 8px; font-weight: 600; }
-section { padding: 44px 0; }
-section h2 { font-size: 24px; margin: 0 0 18px; }
-.grid { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
-.grid article { border: 1px solid #e6e9ee; border-radius: 10px; padding: 18px; }
-.grid h3 { margin: 0 0 6px; font-size: 17px; color: var(--accent-dark); }
-.grid p { margin: 0; color: #55606e; font-size: 15px; }
-.reviews { background: var(--tint); text-align: center; }
-.reviews .stars { color: var(--accent); font-size: 26px; letter-spacing: 2px; }
+/* Fondo explícito, no heredado del navegador: sin esto, un móvil en modo
+   oscuro pinta el cuerpo en negro y las secciones claras quedan con texto
+   oscuro sobre negro. Visto en la primera prueba de esta plantilla, y el
+   borrador se abre casi siempre en un móvil ajeno. */
+body { margin: 0; background: #fff; font-family: 'Inter', system-ui, sans-serif;
+  color: var(--ink); line-height: 1.6; }
+h1, h2, h3 { font-family: ${theme.headingStack}; font-weight: 700; margin: 0; }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 22px; }
+a.cta { display: inline-block; background: var(--accent); color: #fff; text-decoration: none;
+  padding: 15px 30px; border-radius: 999px; font-weight: 600; letter-spacing: .01em;
+  box-shadow: 0 8px 20px rgba(0,0,0,.16); }
+a.cta:hover { background: var(--accent-dark); }
+
+/* Cabecera fina y translúcida sobre la portada: la portada tiene que ser lo
+   primero que se ve, no una barra de navegación. */
+/* En el flujo, no absoluta. Con position:absolute la cabecera y el titular se
+   pisaban en cuanto la ventana era baja, porque cada uno se colocaba respecto
+   a un origen distinto. Aquí la portada es una columna: cabecera arriba,
+   titular abajo, y no hay forma de que se solapen. */
+header { position: relative; z-index: 2; padding: 18px 0; }
+header .wrap { display: flex; justify-content: space-between; align-items: center; gap: 14px; }
+header .brand { color: #fff; font-family: ${theme.headingStack}; font-size: 20px;
+  text-shadow: 0 1px 12px rgba(0,0,0,.45); }
+header .phone { color: #fff; text-decoration: none; font-weight: 600; font-size: 15px;
+  background: rgba(255,255,255,.16); padding: 8px 16px; border-radius: 999px;
+  backdrop-filter: blur(6px); }
+
+/* La foto del sector si está subida; si no, el degradado generado. El
+   navegador se queda con la primera que exista — ver heroImageUrls. */
+/* min-height en max(): con solo 78vh, una ventana baja (un portátil pequeño,
+   un móvil apaisado) encogía la portada hasta que la cabecera se comía el
+   titular. Visto en la prueba en navegador. */
+.hero { position: relative; min-height: max(78vh, 540px); display: flex; flex-direction: column;
+  background-image: image-set(url('${photo}') 1x), url('${fallback}');
+  background-color: var(--accent-dark); background-size: cover; background-position: center; }
+.hero::after { content: ''; position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,.35) 0%, rgba(0,0,0,.18) 40%, rgba(0,0,0,.78) 100%); }
+.hero > .wrap { position: relative; z-index: 1; margin-top: auto; padding-top: 40px; padding-bottom: 58px; color: #fff; }
+.hero h1 { font-size: clamp(30px, 5.4vw, 52px); line-height: 1.08; max-width: 16em;
+  text-shadow: 0 2px 24px rgba(0,0,0,.4); }
+.hero p { font-size: clamp(16px, 2.2vw, 20px); max-width: 34em; margin: 16px 0 28px;
+  color: rgba(255,255,255,.92); }
+
+section { padding: 72px 0; }
+section h2 { font-size: clamp(24px, 3.4vw, 34px); margin-bottom: 8px; }
+section h2 + p.lead { color: var(--muted); margin: 0 0 30px; max-width: 40em; font-size: 17px; }
+.about p { font-size: 18px; color: #333a44; max-width: 42em; }
+
+.grid { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+.grid article { border: 1px solid #e6e9ee; border-radius: 14px; padding: 26px 22px; background: #fff;
+  transition: box-shadow .2s, transform .2s; }
+.grid article:hover { box-shadow: 0 12px 28px rgba(16,20,28,.09); transform: translateY(-2px); }
+.grid .num { display: inline-block; font-family: ${theme.headingStack}; font-size: 13px;
+  color: var(--accent); letter-spacing: .14em; margin-bottom: 10px; }
+.grid h3 { font-size: 19px; margin-bottom: 8px; }
+.grid p { margin: 0; color: var(--muted); font-size: 15px; }
+
+.reviews { background: var(--tint); text-align: center; padding: 58px 0; }
+.reviews .stars { color: var(--accent); font-size: 30px; letter-spacing: 5px; }
+.reviews .score { font-size: 24px; margin: 10px 0 2px; font-family: ${theme.headingStack}; }
+.reviews .count { margin: 0; color: var(--muted); }
+
 .closing { background: var(--accent-dark); color: #fff; text-align: center; }
-.closing h2, .closing p { color: #fff; }
-footer { background: #10141a; color: #aeb7c4; font-size: 13px; padding: 26px 0; }
-.banner { background: #111827; color: #fff; padding: 12px 0; font-size: 13px; }
+.closing h2 { color: #fff; margin-bottom: 10px; }
+.closing .tel { display: block; font-family: ${theme.headingStack}; font-size: clamp(26px, 4.4vw, 38px);
+  color: #fff; text-decoration: none; margin: 6px 0 26px; }
+
+footer { background: #10141a; color: #97a1b0; font-size: 13px; padding: 30px 0 40px; }
+footer strong { color: #d6dce5; }
+footer .note { margin: 16px 0 0; padding-top: 14px; border-top: 1px solid #222934; }
+
+.banner { background: #111827; color: #fff; padding: 11px 0; font-size: 13px; position: relative; z-index: 3; }
 .banner strong { color: #ffd166; }
-@media (max-width: 600px) { .hero h1 { font-size: 27px; } }
+@media (max-width: 640px) {
+  .hero { min-height: 74vh; }
+  section { padding: 52px 0; }
+  header .brand { font-size: 17px; }
+}
 </style>
 </head>
 <body>
@@ -203,32 +332,40 @@ footer { background: #10141a; color: #aeb7c4; font-size: 13px; padding: 26px 0; 
   borrador con sus datos públicos de Google, todavía no publicado
 </div></div>
 
-<header><div class="wrap">
-  <span class="brand">${esc(subject.businessName)}</span>
-  ${subject.phone ? `<a class="phone" href="tel:${esc(telHref(subject.phone))}">${esc(subject.phone)}</a>` : ''}
-</div></header>
+<div class="hero">
+  <header><div class="wrap">
+    <span class="brand">${esc(subject.businessName)}</span>
+    ${phoneText && phoneHref ? `<a class="phone" href="tel:${esc(phoneHref)}">${esc(phoneText)}</a>` : ''}
+  </div></header>
+  <div class="wrap">
+    <h1>${esc(copy.headline)}</h1>
+    ${copy.subheadline ? `<p>${esc(copy.subheadline)}</p>` : ''}
+    ${callButton(phoneText ? `Llamar al ${phoneText}` : 'Pedir cita')}
+  </div>
+</div>
 
-<div class="hero"><div class="wrap">
-  <h1>${esc(copy.headline)}</h1>
-  ${copy.subheadline ? `<p>${esc(copy.subheadline)}</p>` : ''}
-  ${phoneBlock}
-</div></div>
+${
+  copy.about
+    ? `<section class="about"><div class="wrap"><h2>El negocio</h2><p>${esc(copy.about)}</p></div></section>`
+    : ''
+}
 
-${copy.about ? `<section><div class="wrap"><h2>El negocio</h2><p>${esc(copy.about)}</p></div></section>` : ''}
+${servicesBlock}
 
-${servicesBlock ? `<div class="wrap">${servicesBlock}</div>` : ''}
-
-${reviewsBlock ? `<div class="wrap">${reviewsBlock}</div>` : ''}
+${reviewsBlock}
 
 <section class="closing"><div class="wrap">
-  <h2>${esc(copy.callToAction || 'Pide cita hoy mismo')}</h2>
-  ${subject.phone ? `<p style="margin-bottom:22px">${esc(subject.phone)}</p>${phoneBlock}` : ''}
+  <h2>${esc(copy.callToAction || 'Pide tu cita hoy mismo')}</h2>
+  ${phoneText && phoneHref ? `<a class="tel" href="tel:${esc(phoneHref)}">${esc(phoneText)}</a>` : ''}
+  ${callButton('Llamar ahora')}
 </div></section>
 
 <footer><div class="wrap">
+  <strong>${esc(subject.businessName)}</strong><br>
   ${esc(subject.address ?? subject.city ?? '')}
-  <p style="margin:14px 0 0">
+  <p class="note">
     Borrador generado por Kairikos el ${generatedAt.toLocaleDateString('es-ES')}.
+    Las imágenes son de muestra: en tu web irían las tuyas.
     Tu web publicada, con tus fotos y tu dominio: ${esc(offer.priceLabel)} y lista en ${esc(offer.daysLabel)}.
   </p>
 </div></footer>
