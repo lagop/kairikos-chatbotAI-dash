@@ -158,6 +158,7 @@ model ChatbotClient {
   prospectingCampaigns           ProspectingCampaign[]
   prospectingCampaignAudits      ProspectingCampaignAudit[]
   prospectingCompetitorSnaps     ProspectingCompetitorSnapshot[]
+  prospectingWebDrafts           ProspectingWebDraft[]
   seoProfiles                    SeoProfile[]
   seoProfileAudits               SeoProfileAudit[]
   seoContentDrafts               SeoContentDraft[]
@@ -574,6 +575,7 @@ model Tenant {
   prospectingCampaigns           ProspectingCampaign[]
   prospectingCampaignAudits      ProspectingCampaignAudit[]
   prospectingCompetitorSnaps     ProspectingCompetitorSnapshot[]
+  prospectingWebDrafts           ProspectingWebDraft[]
   seoProfiles                    SeoProfile[]
   seoProfileAudits               SeoProfileAudit[]
   seoContentDrafts               SeoContentDraft[]
@@ -3167,6 +3169,7 @@ model Lead {
   contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
 
   competitorSnapshot ProspectingCompetitorSnapshot?
+  webDraft           ProspectingWebDraft?
 
   @@unique([clientId, externalPlaceId])
   @@index([clientId, status])
@@ -3460,6 +3463,49 @@ model ProspectingCompetitorSnapshot {
   tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([clientId, capturedAt])
+  @@index([tenantId])
+}
+
+// =============================================================================
+// A11, capa 1 — el borrador de web de un prospecto.
+//
+// Se guarda y no se genera al vuelo en cada apertura por la misma razón que
+// el snapshot de competidores, más una: el texto lo escribe un modelo, y dos
+// generaciones seguidas NO dan lo mismo. El comercial enseña un borrador por
+// teléfono y el prospecto abre el enlace media hora después; tienen que ver
+// la misma página o la conversación se rompe.
+//
+// Guarda también el modelo con el que se escribió: cuando se cambie (hoy
+// Sonnet 5), sirve para saber qué borradores son de la tanda vieja sin
+// adivinarlo por la fecha.
+// =============================================================================
+model ProspectingWebDraft {
+  id       String  @id @default(uuid()) @db.Uuid
+  // 1:1 con el lead: un prospecto, un borrador, el último. Regenerar
+  // sustituye la fila (upsert) — el borrador viejo no interesa.
+  leadId   String  @unique @map("lead_id") @db.Uuid
+  clientId String  @map("client_id")
+  tenantId String? @map("tenant_id") @db.Uuid
+
+  // WebDraftCopy de web-draft-ai.ts: titular, subtítulo, descripción,
+  // servicios y cierre. En JSON porque es el resultado ya cuajado de una
+  // generación, no datos que nadie vaya a consultar por separado — y porque
+  // las capas 2-4 le añadirán campos sin migrar cada vez.
+  copy Json
+
+  // La plantilla y la paleta con las que se pintó. Hoy se derivan del sector;
+  // se guardan desde ya porque la capa 2 necesita saber qué combinación se ha
+  // usado para no repetirla entre competidores de la misma zona.
+  themeKey String @map("theme_key")
+
+  model       String
+  generatedAt DateTime @default(now()) @map("generated_at")
+
+  lead   Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, generatedAt])
   @@index([tenantId])
 }
 
