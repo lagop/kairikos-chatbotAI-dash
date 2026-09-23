@@ -60,6 +60,13 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Se lo lleva dentro la imagen para que la aplicación pueda
+          # decir qué versión corre — lo comprueba el paso de
+          # verificación de deploy.yml. La etiqueta OCI
+          # (image.revision) ya lo decía, pero eso solo lo ve quien
+          # tiene acceso al demonio de Docker de la VPS.
+          build-args: |
+            BUILD_REVISION=${{ github.sha }}
           # No cache-from or cache-to — the GHA runner's default `docker`
           # driver doesn't support the `gha` cache backend (unknown cache
           # importer) AND doesn't support cache export. The first attempt

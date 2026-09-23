@@ -250,3 +250,50 @@ jobs:
             N8N_TELEGRAM_WEBHOOK_BASE_URL=https://n8n.srv1170607.hstgr.cloud/webhook/kairikos-telegram
             DEPLOY_MODE=dev-ip-port
             APP_PORT=3001
+
+      # ---------------------------------------------------------------
+      # Comprobar que el despliegue de verdad ocurrió (23/09/2026).
+      #
+      # El paso de arriba dura ~20 ms: lanza la petición a la API de
+      # Hostinger y da SUCCESS sin esperar a que la VPS haga nada. Ese día
+      # el PR #242 se desplegó "con éxito" y la VPS siguió doce minutos
+      # con la versión anterior — hasta que se relanzó el workflow a mano.
+      # Un despliegue en verde no significaba nada, y eso convierte
+      # cualquier prueba posterior en una mentira: se prueba un código que
+      # no está.
+      #
+      # Se pregunta a la propia aplicación qué commit corre
+      # (/api/internal/health-probe/ping devuelve `revision`, que viene
+      # del build-arg BUILD_REVISION). Autenticada con PORTAL_API_KEY,
+      # porque la versión desplegada no es dato público.
+      #
+      # Cinco minutos de margen: el despliegue observado tarda entre uno y
+      # dos, y un contenedor que arranca tiene su propia cuesta. Si en ese
+      # rato no coincide, el job FALLA — que es el punto: que se entere
+      # quien despliega y no el cliente.
+      - name: Verificar que la versión desplegada es esta
+        env:
+          ESPERADA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          PORTAL_URL: ${{ vars.NEXT_PUBLIC_PORTAL_URL }}
+          PORTAL_API_KEY: ${{ secrets.PORTAL_API_KEY }}
+        run: |
+          set -u
+          if [ -z "${PORTAL_API_KEY}" ] || [ -z "${PORTAL_URL}" ]; then
+            echo "::warning::Sin PORTAL_API_KEY o NEXT_PUBLIC_PORTAL_URL no se puede verificar; se omite."
+            exit 0
+          fi
+          echo "Esperando a que ${PORTAL_URL} responda con ${ESPERADA}"
+          for intento in $(seq 1 30); do
+            RESPUESTA=$(curl -sS --max-time 15 \
+              -H "x-kairikos-internal-key: ${PORTAL_API_KEY}" \
+              "${PORTAL_URL}/api/internal/health-probe/ping" || true)
+            DESPLEGADA=$(printf '%s' "${RESPUESTA}" | sed -n 's/.*"revision":"\([^"]*\)".*/\1/p')
+            if [ "${DESPLEGADA}" = "${ESPERADA}" ]; then
+              echo "✅ En producción corre ${DESPLEGADA} (intento ${intento})"
+              exit 0
+            fi
+            echo "intento ${intento}/30 — en producción: ${DESPLEGADA:-sin respuesta}"
+            sleep 10
+          done
+          echo "::error::La VPS sigue sin servir ${ESPERADA} cinco minutos después. El despliegue de Hostinger dio OK pero no se aplicó: relanza este workflow y comprueba la VPS."
+          exit 1
