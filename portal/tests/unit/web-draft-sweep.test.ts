@@ -27,6 +27,7 @@ vi.mock('@/lib/observability', () => ({
 }));
 
 import { sweepPendingWebDrafts, pickVariant, DAILY_DRAFT_CAP } from '@/lib/web-draft-sweep';
+import { VARIANTS_PER_THEME } from '@/lib/web-draft-html';
 import type { PrismaClient } from '@prisma/client';
 
 const COPY = { headline: 'Titular', subheadline: '', about: '', services: [], callToAction: '' };
@@ -79,8 +80,19 @@ describe('pickVariant', () => {
   });
 
   it('con todas usadas rota en vez de fallar: mejor repetir que no tener borrador', () => {
-    const v = pickVariant('beauty', ['beauty-1', 'beauty-2', 'beauty-3'], 3);
-    expect(['beauty-1', 'beauty-2', 'beauty-3']).toContain(v);
+    // Escrito contra VARIANTS_PER_THEME y no contra un número fijo: la
+    // constante ya subió de 3 a 8 cuando el primer barrido real repitió
+    // variante, y volverá a moverse.
+    const todas = Array.from({ length: VARIANTS_PER_THEME }, (_, i) => `beauty-${i + 1}`);
+    expect(todas).toContain(pickVariant('beauty', todas, VARIANTS_PER_THEME));
+  });
+
+  it('con ocho variantes hacen falta nueve negocios del mismo rubro y zona para repetir', () => {
+    const usadas: string[] = [];
+    for (let i = 0; i < VARIANTS_PER_THEME; i += 1) {
+      usadas.push(pickVariant('beauty', [...usadas], i));
+    }
+    expect(new Set(usadas).size).toBe(VARIANTS_PER_THEME);
   });
 });
 
