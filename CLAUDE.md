@@ -11,6 +11,7 @@ fallar en silencio, no con un error.
 portal/            La aplicación entera (Next.js + Prisma). Casi todo el trabajo ocurre aquí.
 automations/       Workflows de n8n como código: un generador TS por workflow.
 scripts/           scheduler.sh — el que de verdad dispara los crons en producción.
+                   vps-disk-cleanup.sh — corre por cron EN la VPS (04:30), no aquí.
 docker-compose.yml Producción. Cada variable de entorno debe estar listada aquí explícitamente.
 ```
 
@@ -33,9 +34,9 @@ npm test                            # ¡ojo! esto es Playwright (e2e), no los un
 
 Los tests unitarios viven en `portal/tests/unit/**/*.test.ts` y corren en Node, sin DOM.
 
-## Cuatro trampas que fallan en silencio
+## Cinco trampas que fallan en silencio
 
-Estas cuatro no dan error: el código no se ejecuta nunca, o se ejecuta y no llega a
+Estas cinco no dan error: el código no se ejecuta nunca, o se ejecuta y no llega a
 ninguna parte. Son la causa habitual de "lo implementé y no pasa nada".
 
 ### 1. Un cron nuevo no corre si no se añade a `scripts/scheduler.sh`
@@ -134,6 +135,33 @@ declarada y vacía no es lo mismo que ausente, y `??` no las distingue.** Usa `|
 helper que descarte las vacías. Y como la suite mockea el envío, una suite verde no dice
 nada sobre si el correo sale: eso solo se sabe mandando uno de verdad desde producción y
 mirando los logs.
+
+### 5. Un despliegue en verde no significa que el código esté en producción
+
+El paso `hostinger/deploy-on-vps` dura ~20 ms: lanza la petición a su API y da SUCCESS sin
+esperar a que la VPS descargue nada. El 23/09/2026 el disco de la VPS estaba **al 100%** —
+359 MB libres de 96 GB—, cada `docker pull` moría con `no space left on device` y los
+despliegues seguían saliendo verdes. Se pasaron horas probando código que no estaba
+desplegado, y el síntoma nunca fue "disco lleno": fue "esto que acabo de arreglar sigue
+fallando".
+
+Tres defensas, ya puestas:
+
+- `deploy.yml` termina preguntando a la propia aplicación qué commit corre
+  (`/api/internal/health-probe/ping` devuelve `revision`, que viene del build-arg
+  `BUILD_REVISION`) y **falla el job** si no coincide en cinco minutos.
+- Una guarda salta el despliegue por `push` cuando el commit produce imagen: `paths-ignore`
+  solo omite el disparo si **todos** los archivos del commit están ignorados, así que un
+  commit mixto disparaba un despliegue en paralelo con la construcción y recreaba el
+  contenedor con la imagen anterior.
+- `scripts/vps-disk-cleanup.sh`, por cron en la VPS a las 04:30, borra caché de
+  construcción e imágenes sin etiqueta cuando el disco pasa del 75%. Cada despliegue deja
+  ~1,5 GB. **Nunca toca volúmenes ni imágenes con etiqueta** — en esa máquina hay imágenes
+  construidas en local que no están en ningún registro. Log en
+  `/var/log/kairikos-disk-cleanup.log`.
+
+Y la regla que queda: cuando algo desplegado no se comporta como el código que acabas de
+escribir, **comprueba primero qué versión corre de verdad**, antes de dudar del código.
 
 ## Fronteras de la arquitectura
 
