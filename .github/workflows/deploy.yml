@@ -123,6 +123,10 @@ jobs:
           #       misma cautela: si ya hay una clave de Stripe cifrada en
           #       esta VPS, tiene que ser la MISMA clave que se usó al
           #       guardarla, o deja de poder descifrarse.
+          #     WEBSITE_PUBLISH_CREDENTIAL_ENCRYPTION_KEY  openssl rand -hex 32 —
+          #       cifra la contraseña de SFTP del alojamiento de cada cliente,
+          #       con la que se publica su web. Si ya hay alguna guardada en
+          #       esta VPS, tiene que ser la MISMA clave.
           #     INTEGRATION_CREDENTIAL_ENCRYPTION_KEY  openssl rand -hex 32 —
           #       cifra las claves de terceros que pega el operador en
           #       /admin/portal/settings/integrations (hoy: Google Places).
@@ -249,6 +253,7 @@ jobs:
             # Hostinger reescribe el .env de la VPS entero desde ESTA lista,
             # así que lo que no esté aquí no llega al contenedor.
             INTEGRATION_CREDENTIAL_ENCRYPTION_KEY=${{ secrets.INTEGRATION_CREDENTIAL_ENCRYPTION_KEY }}
+            WEBSITE_PUBLISH_CREDENTIAL_ENCRYPTION_KEY=${{ secrets.WEBSITE_PUBLISH_CREDENTIAL_ENCRYPTION_KEY }}
             TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }}
             TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }}
             TWILIO_BUNDLE_SID=${{ secrets.TWILIO_BUNDLE_SID }}
