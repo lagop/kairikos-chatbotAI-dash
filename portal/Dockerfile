@@ -56,6 +56,17 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
+# El commit del que salió esta imagen, para que la aplicación pueda
+# responder qué versión corre. Lo usa el paso de verificación de
+# deploy.yml: el 23/09/2026 un despliegue se marcó OK en GitHub y la VPS
+# siguió doce minutos con la versión anterior — el paso de Hostinger dura
+# 20 ms, solo lanza la petición y da éxito sin esperar a nada.
+#
+# Vacío por defecto a propósito: una imagen construida a mano en local no
+# miente diciendo que es un commit que no es.
+ARG BUILD_REVISION=""
+ENV BUILD_REVISION=$BUILD_REVISION
+
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates curl dumb-init && rm -rf /var/lib/apt/lists/* \
     && addgroup --system --gid 1001 nodejs \
     && adduser  --system --uid 1001 nextjs \
