@@ -184,6 +184,10 @@ export function renderWebDraftHtml(params: {
   copy: WebDraftCopy;
   offer?: WebDraftOffer;
   generatedAt: Date;
+  /** Solo cuando lo abre el operador: el enlace público que puede copiar y
+   *  mandar por WhatsApp. El prospecto nunca lo ve — él ya está dentro de ese
+   *  enlace, y enseñarle la cocina no ayuda a venderle. */
+  shareUrl?: string | null;
 }): string {
   const { subject, copy, generatedAt } = params;
   const offer = params.offer ?? DEFAULT_WEB_DRAFT_OFFER;
@@ -316,6 +320,10 @@ footer .note { margin: 16px 0 0; padding-top: 14px; border-top: 1px solid #22293
 
 .banner { background: #111827; color: #fff; padding: 11px 0; font-size: 13px; position: relative; z-index: 3; }
 .banner strong { color: #ffd166; }
+.banner .share { color: #9aa6b8; }
+.banner code { color: #cfe0ff; font-size: 12px; word-break: break-all; }
+.banner .share { color: #9aa6b8; }
+.banner code { color: #cfe0ff; font-size: 12px; word-break: break-all; }
 @media (max-width: 640px) {
   .hero { min-height: 74vh; }
   section { padding: 52px 0; }
@@ -330,6 +338,7 @@ footer .note { margin: 16px 0 0; padding-top: 14px; border-top: 1px solid #22293
 <div class="banner"><div class="wrap">
   Propuesta de Kairikos para <strong>${esc(subject.businessName)}</strong> ·
   borrador con sus datos públicos de Google, todavía no publicado
+  ${params.shareUrl ? `<br><span class="share">Enlace para mandarle: <code>${esc(params.shareUrl)}</code></span>` : ''}
 </div></div>
 
 <div class="hero">

@@ -3,6 +3,7 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateAdminRequest } from '@/lib/operator-session';
 import { generateWebDraftCopy, type WebDraftCopy } from '@/lib/web-draft-ai';
 import { renderWebDraftHtml, themeFor } from '@/lib/web-draft-html';
+import { createShareToken, webDraftShareUrl } from '@/lib/prospecting-share';
 import { logError } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
@@ -75,6 +76,7 @@ export async function GET(req: NextRequest, ctx: { params: { leadId: string } })
   const url = new URL(req.url);
   const regenerate = url.searchParams.get('regenerar') === '1';
 
+  let shareToken: string | null = lead.webDraft?.shareToken ?? null;
   let copy: WebDraftCopy | null =
     !regenerate && lead.webDraft ? (lead.webDraft.copy as unknown as WebDraftCopy) : null;
   let generatedAt = lead.webDraft?.generatedAt ?? new Date();
@@ -109,11 +111,16 @@ export async function GET(req: NextRequest, ctx: { params: { leadId: string } })
       generatedAt,
     };
     try {
-      await prisma.prospectingWebDraft.upsert({
+      // El testigo se crea UNA vez y no cambia al regenerar: un enlace que ya
+      // mandaste por WhatsApp tiene que seguir abriendo aunque después
+      // reescribas el texto.
+      const saved = await prisma.prospectingWebDraft.upsert({
         where: { leadId: lead.id },
-        create: { leadId: lead.id, ...payload },
+        create: { leadId: lead.id, ...payload, shareToken: createShareToken() },
         update: payload,
+        select: { shareToken: true },
       });
+      shareToken = saved.shareToken;
     } catch (err) {
       // La generación ya está pagada: que no se pueda guardar no debe
       // impedir que el comercial vea el borrador que acaba de pedir.
@@ -121,7 +128,12 @@ export async function GET(req: NextRequest, ctx: { params: { leadId: string } })
     }
   }
 
-  return new NextResponse(renderWebDraftHtml({ subject, copy, generatedAt }), {
+  // El operador ve además el enlace público que puede copiar y mandar: sin
+  // esto tendría que construirlo a mano, y el enlace de esta misma ruta NO
+  // sirve — pedirá sesión al prospecto.
+  const shareUrl = shareToken ? webDraftShareUrl(new URL(req.url).origin, shareToken) : null;
+
+  return new NextResponse(renderWebDraftHtml({ subject, copy, generatedAt, shareUrl }), {
     status: 200,
     headers: {
       'content-type': 'text/html; charset=utf-8',

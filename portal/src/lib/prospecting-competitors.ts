@@ -2,6 +2,7 @@ import 'server-only';
 import type { PrismaClient } from '@prisma/client';
 import { isGooglePlacesConfigured, searchPlaces, getPlaceRating, type PlaceSearchResult } from './google-places';
 import { logError } from './observability';
+import { createShareToken } from './prospecting-share';
 import {
   buildCompetitorComparison,
   haversineMeters,
@@ -55,6 +56,8 @@ export interface CompetitorSnapshotData {
   subjectReviewCount: number | null;
   competitors: CompetitorInput[];
   capturedAt: Date;
+  /** Testigo del enlace público que se le manda al prospecto. */
+  shareToken: string | null;
   /** true = se sirvió de la caché, sin llamar a Google ni gastar. */
   fromCache: boolean;
 }
@@ -189,6 +192,7 @@ export async function captureCompetitorSnapshot(
         subjectReviewCount: cached.subjectReviewCount,
         competitors: cached.competitors as unknown as CompetitorInput[],
         capturedAt: cached.capturedAt,
+        shareToken: cached.shareToken,
         fromCache: true,
       },
     };
@@ -243,12 +247,17 @@ export async function captureCompetitorSnapshot(
     capturedAt: now,
   };
 
+  let shareToken: string | null = cached?.shareToken ?? null;
   try {
-    await prisma.prospectingCompetitorSnapshot.upsert({
+    // Igual que en el borrador: el testigo se crea una vez y sobrevive a los
+    // refrescos, para que un enlace ya enviado siga abriendo.
+    const saved = await prisma.prospectingCompetitorSnapshot.upsert({
       where: { leadId: subject.leadId },
-      create: { leadId: subject.leadId, ...payload },
+      create: { leadId: subject.leadId, ...payload, shareToken: createShareToken() },
       update: payload,
+      select: { shareToken: true },
     });
+    shareToken = saved.shareToken;
   } catch (err) {
     // La búsqueda ya está pagada: que no se pueda guardar no debe impedir
     // que el comercial vea el informe que acaba de pedir. Se devuelve el
@@ -263,6 +272,7 @@ export async function captureCompetitorSnapshot(
       subjectReviewCount: subjectRating.reviewCount,
       competitors,
       capturedAt: now,
+      shareToken,
       fromCache: false,
     },
   };

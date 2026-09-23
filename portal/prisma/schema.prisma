@@ -3458,6 +3458,10 @@ model ProspectingCompetitorSnapshot {
 
   capturedAt DateTime @default(now()) @map("captured_at")
 
+  // Mismo motivo que en ProspectingWebDraft: el informe también se manda por
+  // WhatsApp a quien no tiene sesión.
+  shareToken String @unique @map("share_token")
+
   lead   Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
   client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
@@ -3500,6 +3504,16 @@ model ProspectingWebDraft {
 
   model       String
   generatedAt DateTime @default(now()) @map("generated_at")
+
+  // El enlace que se le manda al prospecto por WhatsApp. Él no tiene sesión de
+  // operador —ni cuenta, ni nada— así que la única forma de que vea su
+  // borrador es una URL que valga por sí sola. 32 bytes aleatorios: adivinarla
+  // es imposible, y quien la tiene es porque se la mandaste tú.
+  //
+  // El enlace público solo LEE lo ya generado; generar sigue siendo del
+  // operador, y eso es lo que impide que alguien queme la cuenta de Anthropic
+  // recargando una página.
+  shareToken String @unique @map("share_token")
 
   lead   Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
   client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
