@@ -133,12 +133,15 @@ export async function GET(req: NextRequest, ctx: { params: { leadId: string } })
   // sirve — pedirá sesión al prospecto.
   const shareUrl = shareToken ? webDraftShareUrl(new URL(req.url).origin, shareToken) : null;
 
-  return new NextResponse(renderWebDraftHtml({ subject, copy, generatedAt, shareUrl }), {
-    status: 200,
-    headers: {
-      'content-type': 'text/html; charset=utf-8',
-      'cache-control': 'private, no-store',
-      'x-robots-tag': 'noindex, nofollow',
+  return new NextResponse(
+    renderWebDraftHtml({ subject, copy, generatedAt, shareUrl, themeKey: lead.webDraft?.themeKey ?? null }),
+    {
+      status: 200,
+      headers: {
+        'content-type': 'text/html; charset=utf-8',
+        'cache-control': 'private, no-store',
+        'x-robots-tag': 'noindex, nofollow',
+      },
     },
-  });
+  );
 }

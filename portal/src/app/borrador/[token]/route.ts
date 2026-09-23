@@ -36,6 +36,7 @@ export async function GET(_req: NextRequest, { params }: { params: { token: stri
       where: { shareToken: params.token },
       select: {
         copy: true,
+        themeKey: true,
         generatedAt: true,
         lead: {
           select: {
@@ -69,6 +70,7 @@ export async function GET(_req: NextRequest, { params }: { params: { token: stri
       },
       copy: draft.copy as unknown as WebDraftCopy,
       generatedAt: draft.generatedAt,
+      themeKey: draft.themeKey,
     });
 
     return new NextResponse(html, {
