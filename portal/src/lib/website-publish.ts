@@ -164,6 +164,11 @@ export async function publishWebsite(
   let files: WebsiteFile[];
   try {
     files = await buildWebsiteFiles({
+      formToken: website.formToken,
+      // El dominio del portal sale de la variable pública que ya usan los
+      // correos: codificarlo aquí dejaría el formulario mudo el día que
+      // cambie, y nadie se enteraría hasta que un cliente se quejara.
+      portalOrigin: process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://portal.kairikos.cloud',
       businessName: website.businessName,
       primaryType: website.primaryType,
       themeKey: website.themeKey,

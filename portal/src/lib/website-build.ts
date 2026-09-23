@@ -28,6 +28,13 @@ export interface WebsiteFile {
 }
 
 export interface WebsiteBuildInput {
+  /** El testigo del formulario. Con él, la página publicada lleva su
+   *  formulario de contacto apuntando a nuestro buzón. */
+  formToken?: string | null;
+  /** Origen del portal, para componer la URL del buzón. Sale de la petición
+   *  o de NEXT_PUBLIC_PORTAL_URL: nunca se codifica a mano aquí, porque un
+   *  dominio equivocado deja el formulario mudo sin que nadie se entere. */
+  portalOrigin?: string | null;
   businessName: string;
   primaryType: string | null;
   themeKey: string;
@@ -58,6 +65,11 @@ export function stripDraftChrome(html: string): string {
 export const HERO_ASSET_PATH = 'assets/portada.jpg';
 
 export async function buildWebsiteFiles(input: WebsiteBuildInput): Promise<WebsiteFile[]> {
+  const formAction =
+    input.formToken && input.portalOrigin
+      ? `${input.portalOrigin.replace(/\/+$/, '')}/api/public/website-form/${input.formToken}`
+      : null;
+
   const html = renderWebDraftHtml({
     subject: {
       businessName: input.businessName,
@@ -74,6 +86,7 @@ export async function buildWebsiteFiles(input: WebsiteBuildInput): Promise<Websi
     copy: input.copy,
     themeKey: input.themeKey,
     generatedAt: input.generatedAt,
+    formAction,
   });
 
   const family = input.themeKey.split('-')[0];

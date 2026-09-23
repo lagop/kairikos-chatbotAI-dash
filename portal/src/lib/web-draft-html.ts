@@ -243,6 +243,10 @@ export function renderWebDraftHtml(params: {
   /** La variante guardada en el borrador ('beauty-2'). Sin ella se usa la
    *  familia del sector tal cual, que es lo que hacía la capa 1. */
   themeKey?: string | null;
+  /** URL del buzón del formulario. Solo la lleva el sitio PUBLICADO: en un
+   *  borrador no hay formulario, porque el negocio todavía no es cliente y
+   *  sus visitantes no existen. */
+  formAction?: string | null;
 }): string {
   const { subject, copy, generatedAt } = params;
   const offer = params.offer ?? DEFAULT_WEB_DRAFT_OFFER;
@@ -283,6 +287,58 @@ export function renderWebDraftHtml(params: {
         </div></section>`
       : '';
 
+
+  // El formulario es lo ÚNICO del sitio que depende del portal, y solo lo
+  // lleva el sitio publicado. Si el envío falla —servidor caído, visitante
+  // sin cobertura— no se le deja con un formulario mudo: se le enseña el
+  // teléfono, que es lo que el negocio quería de todas formas.
+  const fallbackNote =
+    phoneText && phoneHref
+      ? 'No hemos podido enviarlo. Llámanos al <a href="tel:' + esc(phoneHref) + '">' + esc(phoneText) + '</a>.'
+      : 'No hemos podido enviarlo. Inténtalo de nuevo en un momento.';
+  const formBlock = params.formAction
+    ? [
+        '<section id="contacto"><div class="wrap">',
+        '  <h2>Escríbenos</h2>',
+        '  <p class="lead">Cuéntanos qué necesitas y te respondemos.</p>',
+        '  <form id="kairikos-form" class="contact">',
+        '    <input name="name" placeholder="Tu nombre" maxlength="200" autocomplete="name">',
+        '    <input name="contact" placeholder="Teléfono o email" maxlength="200" required>',
+        '    <textarea name="message" rows="4" placeholder="¿Qué necesitas?" maxlength="2000"></textarea>',
+        '    <button type="submit">Enviar</button>',
+        '    <p class="form-note" id="kairikos-form-note" hidden></p>',
+        '  </form>',
+        '</div></section>',
+        '<script>',
+        '(function () {',
+        '  var form = document.getElementById("kairikos-form");',
+        '  var note = document.getElementById("kairikos-form-note");',
+        '  if (!form) return;',
+        '  form.addEventListener("submit", function (event) {',
+        '    event.preventDefault();',
+        '    var data = new FormData(form);',
+        '    note.hidden = false;',
+        '    note.textContent = "Enviando…";',
+        '    fetch(' + JSON.stringify(params.formAction) + ', {',
+        '      method: "POST",',
+        '      headers: { "content-type": "application/json" },',
+        '      body: JSON.stringify({',
+        '        name: String(data.get("name") || ""),',
+        '        contact: String(data.get("contact") || ""),',
+        '        message: String(data.get("message") || "")',
+        '      })',
+        '    })',
+        '      .then(function (res) {',
+        '        if (!res.ok) throw new Error("bad_status");',
+        '        form.reset();',
+        '        note.textContent = "Recibido. Te respondemos enseguida.";',
+        '      })',
+        '      .catch(function () { note.innerHTML = ' + JSON.stringify(fallbackNote) + '; });',
+        '  });',
+        '})();',
+        '</script>',
+      ].join(String.fromCharCode(10))
+    : '';
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -369,6 +425,12 @@ section h2 + p.lead { color: var(--muted); margin: 0 0 30px; max-width: 40em; fo
 .reviews .score { font-size: 24px; margin: 10px 0 2px; font-family: ${theme.headingStack}; }
 .reviews .count { margin: 0; color: var(--muted); }
 
+form.contact { display: grid; gap: 12px; max-width: 32em; }
+form.contact input, form.contact textarea { font: inherit; padding: 12px 14px; border-radius: 10px;
+  border: 1px solid #d8dde5; background: #fff; color: var(--ink); width: 100%; }
+form.contact button { font: inherit; font-weight: 600; background: var(--accent); color: #fff; border: 0;
+  padding: 13px 26px; border-radius: 999px; cursor: pointer; justify-self: start; }
+form.contact .form-note { margin: 0; font-size: 14px; color: var(--muted); }
 .closing { background: var(--accent-dark); color: #fff; text-align: center; }
 .closing h2 { color: #fff; margin-bottom: 10px; }
 .closing .tel { display: block; font-family: ${theme.headingStack}; font-size: clamp(26px, 4.4vw, 38px);
@@ -422,6 +484,8 @@ ${
 ${servicesBlock}
 
 ${reviewsBlock}
+
+${formBlock}
 
 <section class="closing"><div class="wrap">
   <h2>${esc(copy.callToAction || 'Pide tu cita hoy mismo')}</h2>

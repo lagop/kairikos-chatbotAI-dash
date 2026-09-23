@@ -31,6 +31,8 @@ export async function GET(req: NextRequest, { params }: { params: { websiteId: s
   if (!website) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
   const files = await buildWebsiteFiles({
+    formToken: website.formToken,
+    portalOrigin: new URL(req.url).origin,
     businessName: website.businessName,
     primaryType: website.primaryType,
     themeKey: website.themeKey,

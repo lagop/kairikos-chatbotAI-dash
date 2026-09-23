@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateAdminRequest } from '@/lib/operator-session';
 import { themeFor } from '@/lib/web-draft-html';
+import { createFormToken } from '@/lib/website-form';
 import type { WebDraftCopy } from '@/lib/web-draft-ai';
 import { logError } from '@/lib/observability';
 
@@ -116,6 +117,7 @@ export async function POST(req: NextRequest) {
             callToAction: '',
           }) as unknown as object,
           status: 'draft',
+          formToken: createFormToken(),
         },
       });
       await tx.clientWebsiteAudit.create({

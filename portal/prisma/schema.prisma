@@ -3573,6 +3573,13 @@ model ClientWebsite {
   // como el resto de columnas de estado del esquema.
   status String @default("draft")
 
+  // El identificador con el que el formulario de SU web publicada envía a
+  // nuestra API. Va en el HTML que está en su servidor, así que es público
+  // por definición: por eso es aleatorio y no el id del sitio — que un
+  // tercero adivine este valor solo le permitiría mandar mensajes a ese
+  // negocio, nunca leer nada ni alcanzar a otro cliente.
+  formToken String @unique @map("form_token")
+
   lastPublishedAt  DateTime? @map("last_published_at")
   // El error de la última publicación fallida, para que el operador vea por
   // qué no salió sin bucear en los logs. Se limpia al publicar bien.

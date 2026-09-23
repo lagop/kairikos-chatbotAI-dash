@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS "ClientWebsite" (
     "theme_key" TEXT NOT NULL,
     "copy" JSONB NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'draft',
+    "form_token" TEXT NOT NULL,
     "last_published_at" TIMESTAMP(3),
     "last_publish_error" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -29,6 +30,10 @@ CREATE TABLE IF NOT EXISTS "ClientWebsite" (
 -- porque la segunda web cuesta dinero cada mes.
 CREATE UNIQUE INDEX IF NOT EXISTS "ClientWebsite_client_product_id_key"
     ON "ClientWebsite"("client_product_id");
+-- El testigo del formulario de la web publicada: aleatorio y público por
+-- definición, porque viaja en el HTML que vive en el servidor del cliente.
+CREATE UNIQUE INDEX IF NOT EXISTS "ClientWebsite_form_token_key"
+    ON "ClientWebsite"("form_token");
 CREATE INDEX IF NOT EXISTS "ClientWebsite_client_id_idx" ON "ClientWebsite"("client_id");
 CREATE INDEX IF NOT EXISTS "ClientWebsite_tenant_id_idx" ON "ClientWebsite"("tenant_id");
 
