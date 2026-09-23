@@ -467,10 +467,24 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
         // reconoce hasLeadsInboxAccess (leads O prospecting) en
         // client-product-access.ts; esta página no lo usaba.
         if (productCode === 'leads' || productCode === 'prospecting') {
-          leads = await prisma.lead.findMany({
+          // A11 — se trae también si el prospecto ya tiene informe y
+          // borrador generados. No es adorno: abrir uno que NO existe gasta
+          // dinero (una búsqueda de Google, una generación de Sonnet) y el
+          // operador tiene derecho a saber cuál de los dos botones cuesta
+          // antes de pulsarlo.
+          const rows = await prisma.lead.findMany({
             where: { clientId: client.id },
             orderBy: [{ createdAt: 'desc' }],
+            include: {
+              webDraft: { select: { id: true } },
+              competitorSnapshot: { select: { id: true } },
+            },
           });
+          leads = rows.map((row) => ({
+            ...row,
+            hasWebDraft: row.webDraft !== null,
+            hasReport: row.competitorSnapshot !== null,
+          }));
         }
 
         if (productCode === 'recall') {

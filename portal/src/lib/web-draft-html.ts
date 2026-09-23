@@ -127,16 +127,37 @@ export function themeFor(primaryType: string | null): WebDraftTheme {
 // competidores que el informe compara.
 //
 // Son desplazamientos de tono sobre el color de la familia, no paletas
-// inventadas: la variante 2 tira a cálido y la 3 a oscuro, y las tres siguen
-// siendo reconocibles como del mismo sector.
-export const VARIANTS_PER_THEME = 3;
+// inventadas: siguen siendo reconocibles como del mismo sector.
+//
+// Ocho y no tres (24/09/2026). Con tres, el primer barrido real sobre Las
+// Palmas generó cinco borradores de peluquería y los dos últimos repitieron
+// variante: tres estaba pensado para los tres competidores que compara el
+// informe, pero el barrido no compara, barre la ciudad entera. Con ocho hacen
+// falta nueve negocios del mismo rubro y zona para que se repita una.
+export const VARIANTS_PER_THEME = 8;
 
+/** Cada variante mezcla el color de la familia con un tercero. Los ocho
+ *  destinos están elegidos para que ninguno se coma la identidad del sector:
+ *  la mezcla nunca baja del 72 % del color base. */
 const VARIANT_SHIFT: Readonly<Record<number, { accent: string; accentDark: string; tint: string } | null>> =
   Object.freeze({
-    1: null,
-    2: { accent: 'color-mix(in srgb, var(--base) 78%, #e2a03f)', accentDark: 'color-mix(in srgb, var(--base-dark) 82%, #6b3f10)', tint: 'color-mix(in srgb, var(--base-tint) 88%, #fff6e8)' },
-    3: { accent: 'color-mix(in srgb, var(--base) 82%, #111827)', accentDark: 'color-mix(in srgb, var(--base-dark) 70%, #000)', tint: 'color-mix(in srgb, var(--base-tint) 92%, #eef1f6)' },
+    1: null, // la familia tal cual
+    2: shift('#e2a03f', '#6b3f10', '#fff6e8'), // cálido
+    3: shift('#111827', '#000000', '#eef1f6'), // oscuro
+    4: shift('#0f9488', '#07403a', '#e9f7f5'), // verde azulado
+    5: shift('#7c3aed', '#3b1877', '#f3eefe'), // violeta
+    6: shift('#b91c1c', '#5c0f0f', '#fdeeee'), // rojo
+    7: shift('#0369a1', '#053b57', '#eaf4fb'), // azul profundo
+    8: shift('#4d7c0f', '#26400a', '#f2f8e8'), // oliva
   });
+
+function shift(accent: string, dark: string, tint: string): { accent: string; accentDark: string; tint: string } {
+  return {
+    accent: `color-mix(in srgb, var(--base) 78%, ${accent})`,
+    accentDark: `color-mix(in srgb, var(--base-dark) 80%, ${dark})`,
+    tint: `color-mix(in srgb, var(--base-tint) 88%, ${tint})`,
+  };
+}
 
 /** 'beauty-2' → la familia beauty con el desplazamiento 2. Un valor
  *  desconocido cae a la variante 1, que es la familia tal cual: un borrador

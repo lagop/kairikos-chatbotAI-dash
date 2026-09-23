@@ -34,6 +34,10 @@ export interface LeadSummaryRow {
   channel: string | null;
   source: string;
   createdAt: Date;
+  /** A11 — ya generado y guardado: abrirlo no cuesta nada. Sin generar, la
+   *  primera apertura paga (Google en el informe, Sonnet en el borrador). */
+  hasWebDraft?: boolean;
+  hasReport?: boolean;
 }
 
 export function LeadsSummaryPanel({ leads }: { leads: LeadSummaryRow[] }) {
@@ -86,8 +90,14 @@ export function LeadsSummaryPanel({ leads }: { leads: LeadSummaryRow[] }) {
                 href={`/api/admin/portal/prospecting/report/${lead.id}`}
                 target="_blank"
                 rel="noreferrer"
-                className="btn-ghost mt-2 inline-block text-sm"
+                className={`mt-2 inline-block text-sm ${lead.hasReport ? 'btn-primary' : 'btn-ghost'}`}
+                title={
+                  lead.hasReport
+                    ? 'Ya generado: abrirlo no gasta nada.'
+                    : 'Sin generar: la primera apertura gasta una búsqueda de Google.'
+                }
                 data-testid="leads-summary-report-link"
+                data-generated={String(Boolean(lead.hasReport))}
               >
                 Ver informe comparativo
               </a>
@@ -101,8 +111,14 @@ export function LeadsSummaryPanel({ leads }: { leads: LeadSummaryRow[] }) {
                 href={`/api/admin/portal/prospecting/web-draft/${lead.id}`}
                 target="_blank"
                 rel="noreferrer"
-                className="btn-ghost ml-2 mt-2 inline-block text-sm"
+                className={`ml-2 mt-2 inline-block text-sm ${lead.hasWebDraft ? 'btn-primary' : 'btn-ghost'}`}
+                title={
+                  lead.hasWebDraft
+                    ? 'Ya generado: abrirlo no gasta nada.'
+                    : 'Sin generar: la primera apertura gasta una generación con Sonnet (~2 céntimos).'
+                }
                 data-testid="leads-summary-web-draft-link"
+                data-generated={String(Boolean(lead.hasWebDraft))}
               >
                 Ver borrador de web
               </a>
