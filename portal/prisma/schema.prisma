@@ -3884,7 +3884,10 @@ model RecallSubscription {
   callEvents       CallEvent[]
   jobs             Job[]
   serviceQuotes    ServiceQuote[]
-  outboundMessages OutboundMessage[]
+  // Sin `outboundMessages OutboundMessage[]`: esa lista obligaba a Prisma
+  // a completar el otro extremo con una columna que nunca se migró y
+  // rompía el libro mayor entero. Ver el comentario en OutboundMessage.
+  // Los envíos de esta línea se consultan por `subscriptionId`.
   blockedNumbers   RecallBlockedNumber[]
   digests          RecallDigest[]
   usageMonths      RecallUsageMonth[]
@@ -4433,11 +4436,22 @@ model OutboundMessage {
   sentAt    DateTime @default(now()) @map("sent_at")
   createdAt DateTime @default(now()) @map("created_at")
 
-  client               ChatbotClient       @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant               Tenant?             @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  callEvent            CallEvent?          @relation(fields: [callEventId], references: [id], onDelete: SetNull)
-  RecallSubscription   RecallSubscription? @relation(fields: [recallSubscriptionId], references: [id])
-  recallSubscriptionId String?             @db.Uuid
+  client    ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant    Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  callEvent CallEvent?    @relation(fields: [callEventId], references: [id], onDelete: SetNull)
+  // NO hay relación declarada hacia RecallSubscription, y es a propósito.
+  // `subscriptionId` de arriba guarda ese id, pero como escalar suelto: el
+  // libro mayor lo comparten cuatro productos y solo las filas de recall
+  // lo llevan. Cuando alguien añadió `outboundMessages OutboundMessage[]`
+  // en RecallSubscription, `prisma format` completó el otro extremo solo,
+  // inventando `recallSubscriptionId` — un campo sin @map, sin comentario
+  // y, sobre todo, SIN MIGRACIÓN: la columna nunca existió en Postgres.
+  // El cliente de Prisma la incluía en cada INSERT y producción respondía
+  // "The column OutboundMessage.recallSubscriptionId does not exist", así
+  // que NINGÚN mensaje saliente llegó a apuntarse en el libro mayor.
+  // Visto el 23/09/2026 con una llamada real. Si algún día hace falta la
+  // relación de verdad, se declara sobre `subscriptionId` y se escribe su
+  // migración a mano (CLAUDE.md, trampa 3).
 
   /// "Qué mandó este cliente en este periodo", que es la consulta del
   /// informe de margen y la única que va a crecer sin límite.

@@ -32,7 +32,8 @@ const PATH = '/api/webhooks/twilio/recording';
  * promise is actually kept.
  */
 export async function POST(req: NextRequest) {
-  const authToken = (await resolveActiveTwilioCredentials())?.authToken ?? null;
+  const credentials = await resolveActiveTwilioCredentials();
+  const authToken = credentials?.authToken ?? null;
   if (!authToken) return new Response('not_configured', { status: 503 });
   if (!isDatabaseConfigured) return new Response('service_unavailable', { status: 503 });
 
@@ -98,7 +99,20 @@ export async function POST(req: NextRequest) {
     //
     // The CALLER's message is deliberately NOT sent here — it owes a
     // 90-second pause, and the sweep is what serves it.
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    // Las dos mitades de la credencial salen del MISMO sitio. El token ya
+    // venía de resolveActiveTwilioCredentials (la fila cifrada en
+    // Postgres, que es donde el operador las guarda), pero el SID se leía
+    // de TWILIO_ACCOUNT_SID — vacía en la VPS, porque las credenciales de
+    // Twilio se gestionan por pantalla y no por entorno. Sin SID no se
+    // mandaba ninguna autenticación y Twilio devolvía 401 al descargar la
+    // grabación: `transcription_error: recording_fetch_401`.
+    //
+    // No se notaba porque el barrido del cron —que sí resuelve las dos
+    // mitades juntas— rehacía el trabajo en el siguiente tick. O sea: la
+    // transcripción inmediata NUNCA ha funcionado en producción, y todas
+    // las llamadas se transcribían con hasta 5 minutos de retraso.
+    // Comprobado con una llamada real el 23/09/2026.
+    const accountSid = credentials?.accountSid ?? null;
     transcribeCallEventInBackground(
       prisma,
       result.callEventId,
