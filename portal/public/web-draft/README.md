@@ -11,7 +11,7 @@ food.jpg          restaurantes, cafeterías, panaderías
 professional.jpg  abogados, asesorías, inmobiliarias, seguros
 ```
 
-Si un `.jpg` no está, **la plantilla no se rompe**: cae a un degradado
+Las cinco están puestas (Unsplash, 1600×900, ~200-350 KB). Si un `.jpg` faltara, **la plantilla no se rompe**: cae a un degradado
 generado con el color del sector (`<theme>.svg`, en esta misma carpeta), que
 se ve digno aunque sin fotografía. Por eso se puede desplegar sin haber
 elegido todavía las fotos.
@@ -24,7 +24,14 @@ elegido todavía las fotos.
   genérico. Nada de caras reconocibles ni de marcas visibles.
 - Nunca una foto del prospecto ni de su competencia.
 
-## De dónde sacarlas
+## De dónde salieron las actuales
+
+Unsplash, descargadas el 23/09/2026 con la licencia de Unsplash: uso comercial
+libre y sin atribución obligatoria. Se eligieron a ojo descartando dos: un
+salón con una marca de producto repetida por toda la pared, y unas
+herramientas sobre fondo negro que no dejaban leer el titular encima.
+
+## De dónde sacar otras
 
 Bancos con licencia de uso comercial y sin atribución obligatoria
 (Unsplash, Pexels). **Descarga tú el archivo y súbelo aquí**: no se enlaza en

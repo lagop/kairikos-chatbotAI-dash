@@ -258,7 +258,11 @@ a.cta:hover { background: var(--accent-dark); }
 
 /* Cabecera fina y translúcida sobre la portada: la portada tiene que ser lo
    primero que se ve, no una barra de navegación. */
-header { position: absolute; inset: 0 0 auto; z-index: 2; padding: 18px 0; }
+/* En el flujo, no absoluta. Con position:absolute la cabecera y el titular se
+   pisaban en cuanto la ventana era baja, porque cada uno se colocaba respecto
+   a un origen distinto. Aquí la portada es una columna: cabecera arriba,
+   titular abajo, y no hay forma de que se solapen. */
+header { position: relative; z-index: 2; padding: 18px 0; }
 header .wrap { display: flex; justify-content: space-between; align-items: center; gap: 14px; }
 header .brand { color: #fff; font-family: ${theme.headingStack}; font-size: 20px;
   text-shadow: 0 1px 12px rgba(0,0,0,.45); }
@@ -268,12 +272,15 @@ header .phone { color: #fff; text-decoration: none; font-weight: 600; font-size:
 
 /* La foto del sector si está subida; si no, el degradado generado. El
    navegador se queda con la primera que exista — ver heroImageUrls. */
-.hero { position: relative; min-height: 78vh; display: flex; align-items: flex-end;
+/* min-height en max(): con solo 78vh, una ventana baja (un portátil pequeño,
+   un móvil apaisado) encogía la portada hasta que la cabecera se comía el
+   titular. Visto en la prueba en navegador. */
+.hero { position: relative; min-height: max(78vh, 540px); display: flex; flex-direction: column;
   background-image: image-set(url('${photo}') 1x), url('${fallback}');
   background-color: var(--accent-dark); background-size: cover; background-position: center; }
 .hero::after { content: ''; position: absolute; inset: 0;
   background: linear-gradient(180deg, rgba(0,0,0,.35) 0%, rgba(0,0,0,.18) 40%, rgba(0,0,0,.78) 100%); }
-.hero .wrap { position: relative; z-index: 1; padding-top: 120px; padding-bottom: 60px; color: #fff; }
+.hero > .wrap { position: relative; z-index: 1; margin-top: auto; padding-top: 40px; padding-bottom: 58px; color: #fff; }
 .hero h1 { font-size: clamp(30px, 5.4vw, 52px); line-height: 1.08; max-width: 16em;
   text-shadow: 0 2px 24px rgba(0,0,0,.4); }
 .hero p { font-size: clamp(16px, 2.2vw, 20px); max-width: 34em; margin: 16px 0 28px;
