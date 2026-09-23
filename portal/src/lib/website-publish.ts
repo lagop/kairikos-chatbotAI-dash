@@ -3,6 +3,7 @@ import type { PrismaClient } from '@prisma/client';
 import { encryptBuffer, decryptBuffer, parseHexKey } from './operator-crypto';
 import { logError } from './observability';
 import { buildWebsiteFiles, type WebsiteFile } from './website-build';
+import { resolveWebsiteIntegrations } from './website-integrations';
 import type { WebDraftCopy } from './web-draft-ai';
 
 // =============================================================================
@@ -161,9 +162,12 @@ export async function publishWebsite(
   if (!website) return { ok: false, error: 'website_not_found' };
   if (!website.credential) return { ok: false, error: 'credential_missing' };
 
+  const integrations = await resolveWebsiteIntegrations(prisma, website.clientId, now);
+
   let files: WebsiteFile[];
   try {
     files = await buildWebsiteFiles({
+      integrations,
       formToken: website.formToken,
       // El dominio del portal sale de la variable pública que ya usan los
       // correos: codificarlo aquí dejaría el formulario mudo el día que

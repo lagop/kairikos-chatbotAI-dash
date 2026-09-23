@@ -43,6 +43,9 @@ export interface WebsiteBuildInput {
   city: string | null;
   copy: WebDraftCopy;
   generatedAt: Date;
+  /** Lo que aporten otros productos contratados: estrellas de reviews y
+   *  número de recall. Ver website-integrations.ts. */
+  integrations?: { reviews: { rating: number; count: number } | null; recallPhone: string | null } | null;
 }
 
 /**
@@ -76,12 +79,16 @@ export async function buildWebsiteFiles(input: WebsiteBuildInput): Promise<Websi
       primaryType: input.primaryType,
       city: input.city,
       address: input.address,
-      phone: input.phone,
-      // El sitio publicado no enseña las estrellas de Google: en el borrador
-      // son la prueba de que la página es suya, pero en su web ya publicada
-      // serían un dato que envejece solo y que nadie actualiza.
-      rating: null,
-      reviewCount: null,
+      // Con recall contratado, el teléfono de la web es SU número de recall.
+      // Si no, el suyo de siempre. Dejar el viejo haría que el producto que
+      // acaba de comprar no recogiera ninguna llamada de su propia web, y es
+      // un fallo que no da ningún error.
+      phone: input.integrations?.recallPhone ?? input.phone,
+      // Las estrellas solo si paga por reviews: son suyas y las enseña quien
+      // cuida su reputación. Sin ese producto, la web no las muestra —
+      // envejecerían solas y nadie las actualizaría.
+      rating: input.integrations?.reviews?.rating ?? null,
+      reviewCount: input.integrations?.reviews?.count ?? null,
     },
     copy: input.copy,
     themeKey: input.themeKey,

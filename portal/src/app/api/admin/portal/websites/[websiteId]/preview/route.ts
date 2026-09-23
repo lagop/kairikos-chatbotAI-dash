@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateAdminRequest } from '@/lib/operator-session';
 import { buildWebsiteFiles } from '@/lib/website-build';
+import { resolveWebsiteIntegrations } from '@/lib/website-integrations';
 import type { WebDraftCopy } from '@/lib/web-draft-ai';
 
 export const dynamic = 'force-dynamic';
@@ -30,7 +31,13 @@ export async function GET(req: NextRequest, { params }: { params: { websiteId: s
   const website = await prisma.clientWebsite.findUnique({ where: { id: params.websiteId } });
   if (!website) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
+  // La vista previa enseña lo mismo que se va a publicar, integraciones
+  // incluidas: si el teléfono va a cambiar por el de recall, el operador
+  // tiene que verlo ANTES de subirlo, no después.
+  const integrations = await resolveWebsiteIntegrations(prisma, website.clientId);
+
   const files = await buildWebsiteFiles({
+    integrations,
     formToken: website.formToken,
     portalOrigin: new URL(req.url).origin,
     businessName: website.businessName,
