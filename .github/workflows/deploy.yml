@@ -308,7 +308,20 @@ jobs:
       - name: Verificar que la versión desplegada es esta
         if: ${{ steps.guard.outputs.saltar != 'true' }}
         env:
-          ESPERADA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          # Solo hay commit que exigir cuando este despliegue viene DETRÁS
+          # de una construcción de imagen. Un despliegue de infraestructura
+          # —docker-compose.yml, scripts/— no produce imagen: la que corre
+          # lleva, con toda la razón, el SHA del último commit que tocó el
+          # portal. Pedirle el SHA de ESTE commit era exigir algo imposible.
+          #
+          # Pasó el 23/09/2026 con el PR #245 (solo scripts/ y CLAUDE.md):
+          # el despliegue falló señalando un problema que no existía. Un
+          # verificador que da falsos negativos se ignora en dos semanas, y
+          # entonces deja de proteger del fallo de verdad.
+          #
+          # Vacío = no se exige versión; se comprueba que el portal está
+          # vivo, que es todo lo que un despliegue sin imagen puede prometer.
+          ESPERADA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || '' }}
           PORTAL_URL: ${{ vars.NEXT_PUBLIC_PORTAL_URL }}
           PORTAL_API_KEY: ${{ secrets.PORTAL_API_KEY }}
         run: |
@@ -317,6 +330,27 @@ jobs:
             echo "::warning::Sin PORTAL_API_KEY o NEXT_PUBLIC_PORTAL_URL no se puede verificar; se omite."
             exit 0
           fi
+
+          if [ -z "${ESPERADA}" ]; then
+            echo "Despliegue sin imagen nueva: se comprueba que el portal sigue vivo."
+            for intento in $(seq 1 12); do
+              RESPUESTA=$(curl -sS --max-time 15 \
+                -H "x-kairikos-internal-key: ${PORTAL_API_KEY}" \
+                "${PORTAL_URL}/api/internal/health-probe/ping" || true)
+              case "${RESPUESTA}" in
+                *'"ok":true'*)
+                  CORRIENDO=$(printf '%s' "${RESPUESTA}" | sed -n 's/.*"revision":"\([^"]*\)".*/\1/p')
+                  echo "✅ El portal responde (corre ${CORRIENDO:-versión desconocida})"
+                  exit 0
+                  ;;
+              esac
+              echo "intento ${intento}/12 — el portal todavía no contesta"
+              sleep 10
+            done
+            echo "::error::El portal no contesta dos minutos después del despliegue. Algo se quedó por el camino."
+            exit 1
+          fi
+
           echo "Esperando a que ${PORTAL_URL} responda con ${ESPERADA}"
           for intento in $(seq 1 30); do
             RESPUESTA=$(curl -sS --max-time 15 \
