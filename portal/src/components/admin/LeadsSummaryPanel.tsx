@@ -74,6 +74,24 @@ export function LeadsSummaryPanel({ leads }: { leads: LeadSummaryRow[] }) {
               </div>
             </div>
             {lead.summary ? <p className="mt-2 text-sm text-kairikos-text">{lead.summary}</p> : null}
+            {/* A1 — solo en los leads de prospección: el informe compara al
+                negocio con sus competidores de Google, y un lead inbound
+                (alguien que nos escribió) no tiene ni place id ni zona con
+                los que buscarlos. Abrir el enlace GASTA una búsqueda de
+                pago la primera vez y luego sirve de caché 30 días, así que
+                es un enlace explícito y nunca algo que se cargue solo al
+                pintar la lista. */}
+            {lead.source === 'outbound' ? (
+              <a
+                href={`/api/admin/portal/prospecting/report/${lead.id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="btn-ghost mt-2 inline-block text-sm"
+                data-testid="leads-summary-report-link"
+              >
+                Ver informe comparativo
+              </a>
+            ) : null}
             {lead.scoreReason ? (
               <p className="mt-1 text-xs italic text-kairikos-muted" data-testid="leads-summary-score-reason">
                 Por qué esta prioridad: {lead.scoreReason}

@@ -157,6 +157,7 @@ model ChatbotClient {
   whatsappTemplates              WhatsappTemplate[]
   prospectingCampaigns           ProspectingCampaign[]
   prospectingCampaignAudits      ProspectingCampaignAudit[]
+  prospectingCompetitorSnaps     ProspectingCompetitorSnapshot[]
   seoProfiles                    SeoProfile[]
   seoProfileAudits               SeoProfileAudit[]
   seoContentDrafts               SeoContentDraft[]
@@ -572,6 +573,7 @@ model Tenant {
   pushSubscriptions              PushSubscription[]
   prospectingCampaigns           ProspectingCampaign[]
   prospectingCampaignAudits      ProspectingCampaignAudit[]
+  prospectingCompetitorSnaps     ProspectingCompetitorSnapshot[]
   seoProfiles                    SeoProfile[]
   seoProfileAudits               SeoProfileAudit[]
   seoContentDrafts               SeoContentDraft[]
@@ -3138,6 +3140,20 @@ model Lead {
   // porque volver a atascarse en el estado siguiente es una noticia nueva.
   staleAlertSentAt DateTime? @map("stale_alert_sent_at")
 
+  // A1 — lo que Google ya devolvía en el mismo Place Details que se paga
+  // por cada lead y hasta ahora se tiraba. Sin coordenadas no se puede
+  // buscar a los competidores de un negocio sin volver a geocodificar su
+  // dirección, que es otra llamada de pago. Null en los leads inbound y en
+  // los outbound anteriores a esta fase: el informe de esos tira de la
+  // búsqueda por nombre y zona, con menos precisión.
+  //
+  // primaryType es la categoría de Google ('plumber', 'dentist'), no el
+  // `searchCategory` que escribió el cliente: es la que sirve para buscar
+  // "otros como este" sin arrastrar las palabras sueltas de su búsqueda.
+  latitude    Float?  @map("latitude")
+  longitude   Float?  @map("longitude")
+  primaryType String? @map("primary_type")
+
   client       ChatbotClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant       Tenant?              @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   conversation ChatbotConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
@@ -3149,6 +3165,8 @@ model Lead {
   // clasificador creyó entender, y puede no ser un número.
   contactId String?  @map("contact_id") @db.Uuid
   contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  competitorSnapshot ProspectingCompetitorSnapshot?
 
   @@unique([clientId, externalPlaceId])
   @@index([clientId, status])
@@ -3396,6 +3414,52 @@ model ProspectingCampaignAudit {
 
   @@index([campaignId, changedAt])
   @@index([clientId, changedAt])
+  @@index([tenantId])
+}
+
+// =============================================================================
+// A1 — la foto de la zona de un prospecto en el momento en que se generó su
+// informe comparativo.
+//
+// Se guarda y no se recalcula cada vez por dos razones distintas, y las dos
+// importan: las llamadas a Google se pagan (una búsqueda Pro por informe),
+// y las estrellas de un negocio CAMBIAN. Un informe que se enseñó en una
+// llamada tiene que poder volver a abrirse tal y como se enseñó; si se
+// recalculara al vuelo, el comercial diría una cifra y el prospecto vería
+// otra al abrir el enlace media hora después.
+//
+// competitors y metrics van en JSON a propósito: son el resultado ya
+// cuajado de prospecting-report.ts, no datos que nadie vaya a consultar por
+// separado. Normalizarlos en tablas obligaría a migrar cada vez que el
+// informe enseñe un dato más.
+// =============================================================================
+model ProspectingCompetitorSnapshot {
+  id       String  @id @default(uuid()) @db.Uuid
+  // 1:1 con el lead — un prospecto tiene una foto de su zona, la última.
+  // Refrescarla sustituye la fila (upsert), no acumula historial: el
+  // informe viejo no interesa una vez caducado.
+  leadId   String  @unique @map("lead_id") @db.Uuid
+  clientId String  @map("client_id")
+  tenantId String? @map("tenant_id") @db.Uuid
+
+  // Las estrellas del propio prospecto en el momento de la foto. No salen
+  // de Place Details (ahí pertenecen al SKU más caro y se pagarían en cada
+  // lead del barrido) sino de la misma búsqueda que trajo a los
+  // competidores — ver SEARCH_WITH_RATINGS_FIELD_MASK en google-places.ts.
+  subjectRating      Float? @map("subject_rating")
+  subjectReviewCount Int?   @map("subject_review_count")
+
+  // CompetitorInput[] y CompetitorComparison de prospecting-report.ts.
+  competitors Json
+  metrics     Json
+
+  capturedAt DateTime @default(now()) @map("captured_at")
+
+  lead   Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, capturedAt])
   @@index([tenantId])
 }
 
