@@ -92,6 +92,21 @@ export function LeadsSummaryPanel({ leads }: { leads: LeadSummaryRow[] }) {
                 Ver informe comparativo
               </a>
             ) : null}
+            {/* A11 — el otro enlace de la llamada: el informe dice qué le
+                falta, el borrador enseña cómo quedaría resuelto. También
+                explícito y también de pago (una generación con Sonnet la
+                primera vez; después se sirve la guardada). */}
+            {lead.source === 'outbound' ? (
+              <a
+                href={`/api/admin/portal/prospecting/web-draft/${lead.id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="btn-ghost ml-2 mt-2 inline-block text-sm"
+                data-testid="leads-summary-web-draft-link"
+              >
+                Ver borrador de web
+              </a>
+            ) : null}
             {lead.scoreReason ? (
               <p className="mt-1 text-xs italic text-kairikos-muted" data-testid="leads-summary-score-reason">
                 Por qué esta prioridad: {lead.scoreReason}
