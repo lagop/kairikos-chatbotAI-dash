@@ -4,6 +4,7 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateAdminRequest } from '@/lib/operator-session';
 import { themeFor } from '@/lib/web-draft-html';
 import { createFormToken } from '@/lib/website-form';
+import { slugify } from '@/lib/website-publish';
 import type { WebDraftCopy } from '@/lib/web-draft-ai';
 import { logError } from '@/lib/observability';
 
@@ -12,6 +13,9 @@ export const runtime = 'nodejs';
 
 const BodySchema = z.object({
   clientProductId: z.string().uuid(),
+  /** Dónde vivirá: en el alojamiento del cliente (por defecto) o en el
+   *  nuestro, para quien no tiene alojamiento. */
+  publishTarget: z.enum(['sftp', 'kairikos']).optional(),
   /** Cuando el sitio nace de un borrador de prospección: se copian textos,
    *  plantilla y datos del negocio. Es el camino normal — el prospecto ya
    *  vio esa página y por eso compró. */
@@ -118,6 +122,13 @@ export async function POST(req: NextRequest) {
           }) as unknown as object,
           status: 'draft',
           formToken: createFormToken(),
+          publishTarget: body.data.publishTarget ?? 'sftp',
+          // El slug solo tiene sentido con alojamiento propio, y lleva el id
+          // detrás para que dos negocios con el mismo nombre no choquen.
+          slug:
+            (body.data.publishTarget ?? 'sftp') === 'kairikos'
+              ? `${slugify(seed?.businessName ?? body.data.businessName!)}-${Date.now().toString(36).slice(-4)}`
+              : null,
         },
       });
       await tx.clientWebsiteAudit.create({

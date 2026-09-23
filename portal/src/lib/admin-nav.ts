@@ -41,6 +41,9 @@ export const ADMIN_NAV: readonly AdminNavGroup[] = [
       { href: '/admin/portal/recall', label: 'Altas de llamadas' },
       { href: '/admin/portal/leads', label: 'Leads sin cerrar' },
       { href: '/admin/portal/web-quotes', label: 'Presupuestos de web' },
+      // A11 capa 3 — quien pide su borrador en kairikos.com deja su contacto:
+      // es una cola de llamadas, no un archivo.
+      { href: '/admin/portal/borradores', label: 'Borradores pedidos' },
       { href: '/admin/portal/support', label: 'Solicitudes de ayuda' },
     ],
   },

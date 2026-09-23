@@ -43,8 +43,31 @@ export interface PublishCredentialInput {
 }
 
 export type PublishResult =
-  | { ok: true; filesUploaded: number }
+  | { ok: true; filesUploaded: number; version: number; url: string | null }
   | { ok: false; error: string };
+
+/** La URL pública de un sitio alojado por nosotros. El dominio propio manda
+ *  cuando está configurado; si no, la dirección provisional con su slug, que
+ *  es la que permite enseñar la web el mismo día sin esperar a un DNS. */
+export function hostedWebsiteUrl(
+  site: { slug: string | null; customDomain: string | null },
+  portalOrigin: string,
+): string | null {
+  if (site.customDomain) return `https://${site.customDomain}`;
+  return site.slug ? `${portalOrigin.replace(/\/+$/, '')}/sitios/${site.slug}` : null;
+}
+
+/** Un slug legible a partir del nombre del negocio. No es SEO: es para que
+ *  el operador reconozca la dirección provisional de un vistazo. */
+export function slugify(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+}
 
 /** Un host publicable. Mismo criterio que safePublicUrl en la ruta de
  *  sugerencias: el servidor va a conectarse a donde diga esto, y un host
@@ -108,7 +131,7 @@ export async function savePublishCredential(
 export async function uploadFilesOverSftp(
   credential: { host: string; port: number; username: string; password: string; remotePath: string },
   files: WebsiteFile[],
-): Promise<PublishResult> {
+): Promise<{ ok: true; filesUploaded: number } | { ok: false; error: string }> {
   const { default: SftpClient } = await import('ssh2-sftp-client');
   const client = new SftpClient();
   try {
@@ -160,8 +183,13 @@ export async function publishWebsite(
     include: { credential: true },
   });
   if (!website) return { ok: false, error: 'website_not_found' };
-  if (!website.credential) return { ok: false, error: 'credential_missing' };
 
+  const hosted = website.publishTarget === 'kairikos';
+  // La credencial solo hace falta cuando el sitio vive en el servidor del
+  // cliente. Con alojamiento propio no hay nada que pedirle.
+  if (!hosted && !website.credential) return { ok: false, error: 'credential_missing' };
+
+  const portalOrigin = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://portal.kairikos.cloud';
   const integrations = await resolveWebsiteIntegrations(prisma, website.clientId, now);
 
   let files: WebsiteFile[];
@@ -172,7 +200,7 @@ export async function publishWebsite(
       // El dominio del portal sale de la variable pública que ya usan los
       // correos: codificarlo aquí dejaría el formulario mudo el día que
       // cambie, y nadie se enteraría hasta que un cliente se quejara.
-      portalOrigin: process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://portal.kairikos.cloud',
+      portalOrigin,
       businessName: website.businessName,
       primaryType: website.primaryType,
       themeKey: website.themeKey,
@@ -187,46 +215,86 @@ export async function publishWebsite(
     return { ok: false, error: 'build_failed' };
   }
 
-  const password = decryptBuffer(
-    {
-      ciphertext: website.credential.passwordCiphertext,
-      iv: website.credential.passwordIv,
-      tag: website.credential.passwordTag,
-    },
-    encryptionKey(),
-  );
+  // DOS DESTINOS, mismo resto. En el del cliente se sube por SFTP; en el
+  // nuestro, los archivos se guardan y los sirve /sitios/[slug]. Construir,
+  // versionar y auditar es idéntico en los dos, que es justo lo que permite
+  // cambiar de alojamiento sin rehacer el producto.
+  let uploaded: { ok: true; filesUploaded: number } | { ok: false; error: string };
+  if (hosted) {
+    uploaded = await storeHostedFiles(prisma, website.id, files, now);
+  } else {
+    const credential = website.credential;
+    if (!credential) return { ok: false, error: 'credential_missing' };
+    const password = decryptBuffer(
+      {
+        ciphertext: credential.passwordCiphertext,
+        iv: credential.passwordIv,
+        tag: credential.passwordTag,
+      },
+      encryptionKey(),
+    );
+    uploaded = await uploadFilesOverSftp(
+      {
+        host: credential.host,
+        port: credential.port,
+        username: credential.username,
+        password,
+        remotePath: credential.remotePath,
+      },
+      files,
+    );
+  }
 
-  const result = await uploadFilesOverSftp(
-    {
-      host: website.credential.host,
-      port: website.credential.port,
-      username: website.credential.username,
-      password,
-      remotePath: website.credential.remotePath,
-    },
-    files,
-  );
+  // La versión se numera SOLO cuando la publicación salió bien: una versión
+  // que nunca llegó a verse no sirve para volver atrás, y dejaría huecos en
+  // la numeración que el operador tendría que explicarse.
+  let version = 0;
+  if (uploaded.ok) {
+    const last = await prisma.clientWebsiteRelease.findFirst({
+      where: { websiteId },
+      orderBy: { version: 'desc' },
+      select: { version: true },
+    });
+    version = (last?.version ?? 0) + 1;
+  }
 
   await prisma.$transaction(async (tx) => {
     await tx.clientWebsite.update({
       where: { id: websiteId },
-      data: result.ok
+      data: uploaded.ok
         ? { status: 'published', lastPublishedAt: now, lastPublishError: null }
-        : { lastPublishError: result.error.slice(0, 500) },
+        : { lastPublishError: uploaded.error.slice(0, 500) },
     });
+    if (uploaded.ok) {
+      await tx.clientWebsiteRelease.create({
+        data: {
+          websiteId,
+          version,
+          // El contenido, no los archivos: el HTML se reconstruye igual desde
+          // aquí, y guardar el binario de cada publicación multiplicaría la
+          // base de datos por nada.
+          copy: website.copy as unknown as object,
+          themeKey: website.themeKey,
+          publishedAt: now,
+          actorType: actor.type,
+        },
+      });
+    }
     await tx.clientWebsiteAudit.create({
       data: {
         websiteId,
         clientId: website.clientId,
         tenantId: website.tenantId,
-        action: result.ok ? 'published' : 'publish_failed',
-        // Metadatos, nunca la credencial. Host y usuario sí: sirven para
-        // saber dónde se publicó sin poder entrar a ningún sitio con ellos.
+        action: uploaded.ok ? 'published' : 'publish_failed',
+        // Metadatos, nunca la credencial. Host y ruta sí: sirven para saber
+        // dónde se publicó sin poder entrar a ningún sitio con ellos.
         after: {
-          host: website.credential?.host,
-          remotePath: website.credential?.remotePath,
+          target: website.publishTarget,
+          host: website.credential?.host ?? null,
+          remotePath: website.credential?.remotePath ?? null,
+          version: uploaded.ok ? version : null,
           files: files.map((f) => f.path),
-          error: result.ok ? null : result.error.slice(0, 500),
+          error: uploaded.ok ? null : uploaded.error.slice(0, 500),
         },
         actorType: actor.type,
         actorOperatorId: actor.operatorId ?? null,
@@ -235,8 +303,81 @@ export async function publishWebsite(
     });
   });
 
-  if (!result.ok) {
-    logError('website_publish.upload_failed', new Error(result.error), { websiteId }, 'warn');
+  if (!uploaded.ok) {
+    logError('website_publish.upload_failed', new Error(uploaded.error), { websiteId }, 'warn');
+    return { ok: false, error: uploaded.error };
   }
-  return result;
+
+  return {
+    ok: true,
+    filesUploaded: uploaded.filesUploaded,
+    version,
+    url: hosted ? hostedWebsiteUrl(website, portalOrigin) : null,
+  };
+}
+
+/**
+ * Guarda los archivos del sitio para servirlos desde nuestra infraestructura.
+ *
+ * Van a la base de datos y no a disco a propósito: el contenedor se recrea en
+ * cada despliegue —así que un archivo escrito dentro se pierde— y un volumen
+ * más es una cosa más que respaldar y que se puede olvidar. Son dos archivos
+ * por sitio, unos 300 KB.
+ *
+ * Nunca borra antes de escribir, igual que la subida por SFTP: si algo falla
+ * a medias, el sitio sigue sirviendo lo anterior en lugar de quedarse vacío.
+ */
+export async function storeHostedFiles(
+  prisma: PrismaClient,
+  websiteId: string,
+  files: WebsiteFile[],
+  now: Date = new Date(),
+): Promise<{ ok: true; filesUploaded: number } | { ok: false; error: string }> {
+  try {
+    for (const file of files) {
+      const contentType = file.path.endsWith('.html')
+        ? 'text/html; charset=utf-8'
+        : file.path.endsWith('.svg')
+          ? 'image/svg+xml'
+          : file.path.endsWith('.jpg')
+            ? 'image/jpeg'
+            : 'application/octet-stream';
+      await prisma.clientWebsiteFile.upsert({
+        where: { websiteId_path: { websiteId, path: file.path } },
+        create: { websiteId, path: file.path, contentType, content: file.content, updatedAt: now },
+        update: { contentType, content: file.content, updatedAt: now },
+      });
+    }
+    return { ok: true, filesUploaded: files.length };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'store_error' };
+  }
+}
+
+/**
+ * Vuelve a una versión anterior: restaura su contenido en la fila viva y
+ * publica otra vez.
+ *
+ * No "deshace" nada ni toca versiones antiguas — la vuelta atrás genera una
+ * versión NUEVA con el contenido viejo. Así el historial sigue siendo la
+ * lista de lo que estuvo publicado y en qué orden, que es lo que hace falta
+ * cuando hay que explicar qué pasó.
+ */
+export async function rollbackWebsite(
+  prisma: PrismaClient,
+  websiteId: string,
+  targetVersion: number,
+  actor: { type: 'operator' | 'client' | 'system'; operatorId?: string | null; email?: string | null },
+  now: Date = new Date(),
+): Promise<PublishResult> {
+  const release = await prisma.clientWebsiteRelease.findFirst({
+    where: { websiteId, version: targetVersion },
+  });
+  if (!release) return { ok: false, error: 'release_not_found' };
+
+  await prisma.clientWebsite.update({
+    where: { id: websiteId },
+    data: { copy: release.copy as unknown as object, themeKey: release.themeKey },
+  });
+  return publishWebsite(prisma, websiteId, actor, now);
 }

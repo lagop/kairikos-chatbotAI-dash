@@ -18,6 +18,9 @@ CREATE TABLE IF NOT EXISTS "ClientWebsite" (
     "copy" JSONB NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'draft',
     "form_token" TEXT NOT NULL,
+    "publish_target" TEXT NOT NULL DEFAULT 'sftp',
+    "slug" TEXT,
+    "custom_domain" TEXT,
     "last_published_at" TIMESTAMP(3),
     "last_publish_error" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -101,4 +104,46 @@ ALTER TABLE "ClientWebsiteAudit"
 
 ALTER TABLE "WebsitePublishCredential"
     ADD CONSTRAINT "WebsitePublishCredential_website_id_fkey"
+    FOREIGN KEY ("website_id") REFERENCES "ClientWebsite"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- Alojamiento propio: slug en la URL y dominio del cliente apuntando aquí.
+CREATE UNIQUE INDEX IF NOT EXISTS "ClientWebsite_slug_key" ON "ClientWebsite"("slug");
+CREATE UNIQUE INDEX IF NOT EXISTS "ClientWebsite_custom_domain_key" ON "ClientWebsite"("custom_domain");
+
+-- Cada publicación guarda su contenido: volver atrás es restaurar una versión
+-- y volver a publicar, no deshacer nada.
+CREATE TABLE IF NOT EXISTS "ClientWebsiteRelease" (
+    "id" UUID NOT NULL,
+    "website_id" UUID NOT NULL,
+    "version" INTEGER NOT NULL,
+    "copy" JSONB NOT NULL,
+    "theme_key" TEXT NOT NULL,
+    "published_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "actor_type" TEXT NOT NULL,
+
+    CONSTRAINT "ClientWebsiteRelease_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "ClientWebsiteRelease_website_id_version_key"
+    ON "ClientWebsiteRelease"("website_id", "version");
+CREATE INDEX IF NOT EXISTS "ClientWebsiteRelease_website_id_published_at_idx"
+    ON "ClientWebsiteRelease"("website_id", "published_at");
+ALTER TABLE "ClientWebsiteRelease"
+    ADD CONSTRAINT "ClientWebsiteRelease_website_id_fkey"
+    FOREIGN KEY ("website_id") REFERENCES "ClientWebsite"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- Los archivos, cuando el sitio se aloja en nuestra infraestructura.
+CREATE TABLE IF NOT EXISTS "ClientWebsiteFile" (
+    "id" UUID NOT NULL,
+    "website_id" UUID NOT NULL,
+    "path" TEXT NOT NULL,
+    "content_type" TEXT NOT NULL,
+    "content" BYTEA NOT NULL,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ClientWebsiteFile_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "ClientWebsiteFile_website_id_path_key"
+    ON "ClientWebsiteFile"("website_id", "path");
+ALTER TABLE "ClientWebsiteFile"
+    ADD CONSTRAINT "ClientWebsiteFile_website_id_fkey"
     FOREIGN KEY ("website_id") REFERENCES "ClientWebsite"("id") ON DELETE CASCADE ON UPDATE CASCADE;
