@@ -1,6 +1,6 @@
 import 'server-only';
 import type { PrismaClient } from '@prisma/client';
-import { isGooglePlacesConfigured, searchPlaces, type PlaceSearchResult } from './google-places';
+import { isGooglePlacesConfigured, searchPlaces, getPlaceRating, type PlaceSearchResult } from './google-places';
 import { logError } from './observability';
 import {
   buildCompetitorComparison,
@@ -126,17 +126,41 @@ export function selectCompetitors(
   return rows.slice(0, limit);
 }
 
-/** Las estrellas del propio prospecto salen de sus propios resultados de
- *  búsqueda: por eso la búsqueda pide Pro y no se le pregunta a Place
- *  Details, que para esto es el SKU más caro que vende Google. */
-function findSubjectRating(
+/**
+ * Las estrellas del propio prospecto.
+ *
+ * Primero se buscan entre los resultados que ya trajo la búsqueda de
+ * competidores, que es gratis. Pero Google NO siempre devuelve al propio
+ * negocio entre ellos — confirmado el 23/09/2026 contra una peluquería real
+ * de Las Palmas: sus 3 competidores llegaron con estrellas y ella no salía.
+ * El informe entonces afirmaba "no tiene reseñas en Google" a un negocio que
+ * sí las tiene.
+ *
+ * Por eso, cuando no aparece, se le pregunta a Google por su place id. Esa
+ * segunda llamada es Enterprise + Atmosphere (el SKU caro), y se paga como
+ * mucho UNA vez por informe, nunca por lead del barrido. Es el precio de no
+ * mentirle al negocio que intentas convencer.
+ */
+async function resolveSubjectRating(
   results: PlaceSearchResult[],
   subject: CompetitorSnapshotSubject,
-): { rating: number | null; reviewCount: number | null } {
+): Promise<{ rating: number | null; reviewCount: number | null }> {
   const match =
     (subject.placeId ? results.find((r) => r.id === subject.placeId) : undefined) ??
     (subject.name ? results.find((r) => r.name === subject.name) : undefined);
-  return { rating: match?.rating ?? null, reviewCount: match?.userRatingCount ?? null };
+  if (match && typeof match.rating === 'number') {
+    return { rating: match.rating, reviewCount: match.userRatingCount };
+  }
+
+  if (!subject.placeId) return { rating: null, reviewCount: null };
+
+  const details = await getPlaceRating(subject.placeId);
+  if (!details.ok) {
+    // Sin dato, el informe se calla: no afirma "no tiene reseñas".
+    logError('prospecting.subject_rating_failed', new Error(details.error), { leadId: subject.leadId }, 'warn');
+    return { rating: null, reviewCount: null };
+  }
+  return { rating: details.data.rating, reviewCount: details.data.userRatingCount };
 }
 
 /**
@@ -200,7 +224,7 @@ export async function captureCompetitorSnapshot(
   }
 
   const competitors = selectCompetitors(search.data.results, subject);
-  const subjectRating = findSubjectRating(search.data.results, subject);
+  const subjectRating = await resolveSubjectRating(search.data.results, subject);
   const comparison = buildCompetitorComparison(
     { name: subject.name ?? '', rating: subjectRating.rating, reviewCount: subjectRating.reviewCount },
     competitors,

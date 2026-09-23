@@ -103,6 +103,9 @@ export async function GET(req: NextRequest, ctx: { params: { leadId: string } })
       website: lead.website,
       category: lead.searchCategory,
       location: lead.searchLocation,
+      // Decide el encargo medio de partida: 30 € en una peluquería, 300 € en
+      // una fontanería. Ver JOB_VALUE_BY_PRIMARY_TYPE.
+      primaryType: lead.primaryType,
     },
     competitors: snapshot.data.competitors,
     assumptions,

@@ -81,10 +81,14 @@ footer { max-width: 720px; margin: 16px auto 0; font-size: 11px; color: #7b8595;
 export function renderProspectingReportHtml(model: ReportModel): string {
   const { subject, comparison, competitors, estimate, findings, capturedAt } = model;
 
+  // Tres casos distintos, y confundir los dos últimos es mentir: tiene
+  // posición / sabemos que no tiene reseñas / no hemos podido leer el dato.
   const rankLine =
     comparison.ratingRank !== null
       ? `${comparison.ratingRank}º de ${comparison.rankedCount} por valoración en su zona`
-      : 'Sin valoración en Google todavía';
+      : subject.reviewCount === 0
+        ? 'Sin reseñas en Google todavía'
+        : 'Comparado con los negocios de su zona';
 
   // El propio negocio va dentro de la tabla, resaltado, y no en una ficha
   // aparte: la comparación se ve sola cuando las filas están juntas.
