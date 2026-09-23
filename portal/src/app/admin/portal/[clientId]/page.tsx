@@ -458,7 +458,15 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
           }));
         }
 
-        if (productCode === 'leads') {
+        // 23/09/2026 — también con 'prospecting' seleccionado, no solo con
+        // 'leads'. Quien contrata prospección y no leads GENERA leads (el
+        // barrido los crea con source='outbound'), pero el operador no
+        // tenía dónde verlos: sin pestaña 'leads' esta sección no se
+        // pintaba, y con ella se ocultaba el enlace al informe comparativo
+        // (A1), que es exactamente para prospectos. Es el caso que ya
+        // reconoce hasLeadsInboxAccess (leads O prospecting) en
+        // client-product-access.ts; esta página no lo usaba.
+        if (productCode === 'leads' || productCode === 'prospecting') {
           leads = await prisma.lead.findMany({
             where: { clientId: client.id },
             orderBy: [{ createdAt: 'desc' }],
@@ -984,10 +992,10 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
             </section>
           ) : null}
 
-          {productCode === 'leads' ? (
+          {productCode === 'leads' || productCode === 'prospecting' ? (
             <section className="card" aria-label="Leads del cliente" data-testid="client-leads-section">
               <header className="mb-4">
-                <h2 className="text-lg font-semibold">Leads</h2>
+                <h2 className="text-lg font-semibold">{productCode === 'prospecting' ? 'Prospectos encontrados' : 'Leads'}</h2>
                 <p className="mt-1 text-xs text-kairikos-muted">Solo lectura — el ciclo de vida de cada lead lo maneja el equipo del cliente.</p>
               </header>
               <LeadsSummaryPanel leads={leads} />
