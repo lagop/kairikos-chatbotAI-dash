@@ -117,6 +117,37 @@ export function themeFor(primaryType: string | null): WebDraftTheme {
   return THEMES[key ?? 'trades'];
 }
 
+// A11 capa 2 — variantes de una misma familia.
+//
+// La familia la manda el sector (una peluquería no se vende con los colores
+// de una fontanería), pero DENTRO de la familia hacen falta versiones
+// distintas: el escenario que hace daño de verdad es que dos negocios del
+// mismo rubro y la misma zona reciban la misma web, porque se conocen y se
+// enseñan las cosas. Tres variantes por familia cubren a los tres
+// competidores que el informe compara.
+//
+// Son desplazamientos de tono sobre el color de la familia, no paletas
+// inventadas: la variante 2 tira a cálido y la 3 a oscuro, y las tres siguen
+// siendo reconocibles como del mismo sector.
+export const VARIANTS_PER_THEME = 3;
+
+const VARIANT_SHIFT: Readonly<Record<number, { accent: string; accentDark: string; tint: string } | null>> =
+  Object.freeze({
+    1: null,
+    2: { accent: 'color-mix(in srgb, var(--base) 78%, #e2a03f)', accentDark: 'color-mix(in srgb, var(--base-dark) 82%, #6b3f10)', tint: 'color-mix(in srgb, var(--base-tint) 88%, #fff6e8)' },
+    3: { accent: 'color-mix(in srgb, var(--base) 82%, #111827)', accentDark: 'color-mix(in srgb, var(--base-dark) 70%, #000)', tint: 'color-mix(in srgb, var(--base-tint) 92%, #eef1f6)' },
+  });
+
+/** 'beauty-2' → la familia beauty con el desplazamiento 2. Un valor
+ *  desconocido cae a la variante 1, que es la familia tal cual: un borrador
+ *  guardado con una clave vieja tiene que seguir pintándose. */
+export function themeForVariant(themeKey: string): { theme: WebDraftTheme; variant: number } {
+  const [family, raw] = themeKey.split('-');
+  const variant = Number(raw);
+  const theme = THEMES[family] ?? THEMES.trades;
+  return { theme, variant: Number.isInteger(variant) && variant >= 1 && variant <= VARIANTS_PER_THEME ? variant : 1 };
+}
+
 /**
  * La portada usa la foto del sector si está subida, y si no un degradado
  * generado con su color. Las dos rutas se listan en el CSS en ese orden: el
@@ -188,10 +219,15 @@ export function renderWebDraftHtml(params: {
    *  mandar por WhatsApp. El prospecto nunca lo ve — él ya está dentro de ese
    *  enlace, y enseñarle la cocina no ayuda a venderle. */
   shareUrl?: string | null;
+  /** La variante guardada en el borrador ('beauty-2'). Sin ella se usa la
+   *  familia del sector tal cual, que es lo que hacía la capa 1. */
+  themeKey?: string | null;
 }): string {
   const { subject, copy, generatedAt } = params;
   const offer = params.offer ?? DEFAULT_WEB_DRAFT_OFFER;
-  const theme = themeFor(subject.primaryType);
+  const resolved = params.themeKey ? themeForVariant(params.themeKey) : null;
+  const theme = resolved?.theme ?? themeFor(subject.primaryType);
+  const shift = resolved ? VARIANT_SHIFT[resolved.variant] : null;
   const [photo, fallback] = heroImageUrls(theme);
 
   const phoneText = subject.phone ? formatSpanishPhone(subject.phone) : null;
@@ -240,9 +276,12 @@ export function renderWebDraftHtml(params: {
 <style>
 :root {
   color-scheme: light;
-  --accent: ${theme.accent};
-  --accent-dark: ${theme.accentDark};
-  --tint: ${theme.tint};
+  --base: ${theme.accent};
+  --base-dark: ${theme.accentDark};
+  --base-tint: ${theme.tint};
+  --accent: ${shift ? shift.accent : theme.accent};
+  --accent-dark: ${shift ? shift.accentDark : theme.accentDark};
+  --tint: ${shift ? shift.tint : theme.tint};
   --ink: #16181d;
   --muted: #5b6472;
 }

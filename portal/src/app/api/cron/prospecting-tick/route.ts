@@ -5,6 +5,7 @@ import { sweepPendingEnrichment, type EnrichmentSweepResult } from '@/lib/prospe
 import { runProspectingContact } from '@/lib/prospecting-contact';
 import { sendProspectingBatchEmail } from '@/lib/leads-email';
 import { ensureProspectingTemplatesSubmitted, type EnsureProspectingTemplatesResult } from '@/lib/prospecting-templates';
+import { sweepPendingWebDrafts, type WebDraftSweepResult } from '@/lib/web-draft-sweep';
 import { logError } from '@/lib/observability';
 import { isAuthorizedCronRequest } from '@/lib/cron-auth';
 
@@ -149,6 +150,19 @@ export async function GET(req: NextRequest) {
     enrichment = { ok: false, error: err instanceof Error ? err.message : 'unknown error' };
   }
 
+  // A11 capa 2 — los borradores de web, con su propio tope diario. Va aquí
+  // y no en un cron nuevo a propósito: un endpoint más habría que añadirlo a
+  // scripts/scheduler.sh (trampa 1 de CLAUDE.md) y esto tiene exactamente la
+  // misma cadencia que el resto del tick.
+  let webDrafts: ({ ok: true } & WebDraftSweepResult) | { ok: false; error: string };
+  try {
+    const result = await sweepPendingWebDrafts(prisma, now);
+    webDrafts = { ok: true, ...result };
+  } catch (err) {
+    logError('prospecting_tick.web_drafts_failed', err, {}, 'warn');
+    webDrafts = { ok: false, error: err instanceof Error ? err.message : 'unknown error' };
+  }
+
   type ContactOutcome =
     | { ok: true; sent: number; followedUp: number; failed: number; capReached: boolean }
     | { ok: false; error: string };
@@ -172,5 +186,5 @@ export async function GET(req: NextRequest) {
     templates = { ok: false, error: err instanceof Error ? err.message : 'unknown error' };
   }
 
-  return NextResponse.json({ ok: true, dueCount: due.length, results, enrichment, contact, templates });
+  return NextResponse.json({ ok: true, dueCount: due.length, results, enrichment, webDrafts, contact, templates });
 }
