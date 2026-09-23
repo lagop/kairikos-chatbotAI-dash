@@ -109,9 +109,36 @@ describe('syncTemplateStatuses', () => {
       },
     });
 
-    await expect(run()).resolves.toEqual({ connections: 1, templates: 2, failed: 0 });
+    await expect(run()).resolves.toEqual({ connections: 1, templates: 2, failed: 0, drifted: 0 });
     const statuses = state.templateUpsert.mock.calls.map((c) => c[0].update.status);
     expect(statuses).toEqual(['APPROVED', 'PAUSED']);
+  });
+
+  // 23/09/2026 — el sync copiaba nombre, estado y categoría, nunca el
+  // texto. Tres plantillas llevaban semanas enviándose con los acentos
+  // rotos y el sync las daba por buenas cada cinco minutos.
+  it('cuenta como desviada la plantilla cuyo texto en Meta no es el del código, y la sincroniza igual', async () => {
+    state.connectionFindMany.mockResolvedValue([CONNECTION]);
+    mockState.listMessageTemplates.mockResolvedValue({
+      ok: true,
+      data: {
+        data: [
+          {
+            id: 't1',
+            name: 'recall_owner_message',
+            language: 'es',
+            status: 'APPROVED',
+            category: 'UTILITY',
+            components: [{ type: 'BODY', text: 'Tienes un recado nuevo. Te llam? {{1}} y dijo: {{2}}. Contesta cuando puedas.' }],
+          },
+        ],
+      },
+    });
+
+    // Se sigue reflejando: el desvío es un aviso, no un motivo para dejar
+    // de saber en qué estado está la plantilla.
+    await expect(run()).resolves.toEqual({ connections: 1, templates: 1, failed: 0, drifted: 1 });
+    expect(state.templateUpsert).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the rejection reason, which is the only thing that tells an operator what to fix', async () => {
@@ -142,7 +169,7 @@ describe('syncTemplateStatuses', () => {
     state.connectionFindMany.mockResolvedValue([CONNECTION]);
     mockState.listMessageTemplates.mockResolvedValue({ ok: false, error: 'invalid token' });
 
-    await expect(run()).resolves.toEqual({ connections: 1, templates: 0, failed: 1 });
+    await expect(run()).resolves.toEqual({ connections: 1, templates: 0, failed: 1, drifted: 0 });
     expect(state.connectionUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ data: { lastSyncError: 'invalid token' } }),
     );
@@ -160,7 +187,7 @@ describe('syncTemplateStatuses', () => {
       status: 400,
     });
 
-    await expect(run()).resolves.toEqual({ connections: 1, templates: 0, failed: 1 });
+    await expect(run()).resolves.toEqual({ connections: 1, templates: 0, failed: 1, drifted: 0 });
     expect(state.connectionUpdateMany).toHaveBeenCalledWith({
       where: { id: 'conn_1', status: 'active' },
       data: { status: 'needs_reconnect', lastSyncError: 'token_invalid: Error validating access token: Session has expired' },
@@ -188,7 +215,7 @@ describe('syncTemplateStatuses', () => {
     });
     mockState.listMessageTemplates.mockResolvedValue({ ok: true, data: { data: [] } });
 
-    await expect(run()).resolves.toEqual({ connections: 2, templates: 0, failed: 1 });
+    await expect(run()).resolves.toEqual({ connections: 2, templates: 0, failed: 1, drifted: 0 });
   });
 });
 

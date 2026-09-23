@@ -137,7 +137,18 @@ export const RECALL_TEMPLATE_DEFINITIONS: readonly RecallTemplateDefinition[] = 
   {
     ...REPORT_TEMPLATE,
     category: 'UTILITY',
-    bodyText: 'Tu resumen de {{1}}: {{2}} llamadas recuperadas, {{3}} contactadas, {{4}} reseñas nuevas (valoración media {{5}}).',
+    // Redactada larga a propósito (23/09/2026). La versión corta —'Tu
+    // resumen de {{1}}: {{2}} llamadas recuperadas, {{3}} contactadas,
+    // {{4}} reseñas nuevas (valoración media {{5}})'— la rechaza Meta con
+    // error_subcode 2388293: cinco variables en catorce palabras supera
+    // su límite de proporción parámetros/palabras. Se descubrió al
+    // reescribirla para arreglarle los acentos, no al crearla: la que
+    // estaba aprobada entró por otra vía, antes de que el portal mirara.
+    // Cada variable que se añada aquí pide su ración de palabras.
+    bodyText:
+      'Este es tu resumen del mes de {{1}}. Recuperaste {{2}} llamadas que se habrían perdido, '
+      + 'tu equipo contactó con {{3}} personas y conseguiste {{4}} reseñas nuevas, con una '
+      + 'valoración media de {{5}}. Gracias por confiar en nosotros.',
     bodyExamples: ['agosto', '12', '10', '3', '4.8'],
   },
   {
@@ -240,6 +251,72 @@ export function allRecallTemplateDefinitions(
       bodyExamples,
     })),
   ];
+}
+
+// =============================================================================
+// 23/09/2026 — el texto aprobado en Meta puede no ser el del código.
+//
+// Tres plantillas (recall_owner_message, recall_digest_clarify,
+// recall_monthly_report) estaban registradas con los acentos convertidos
+// en interrogantes: "Tienes un recado nuevo. Te llam? {{1}}...". El código
+// las tenía bien escritas desde siempre, pero en un mensaje de plantilla
+// el texto vive en Meta y nosotros solo mandamos las variables, así que
+// cada aviso salía roto. Llevaba semanas pasando.
+//
+// No se detectó porque la sincronización copiaba nombre, estado y
+// categoría, nunca el contenido. Esto compara lo que Meta tiene aprobado
+// con lo que el código dice que debería ser.
+//
+// Se compara con el espacio normalizado y se ignoran mayúsculas ni
+// puntuación: la comparación tiene que cazar un acento perdido, no
+// discutir un espacio de más.
+// =============================================================================
+
+export interface TemplateTextDrift {
+  name: string;
+  /** Lo que el código dice que debería decir. */
+  expected: string;
+  /** Lo que Meta tiene aprobado y de verdad se envía. */
+  actual: string;
+}
+
+function normalizeTemplateText(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Compara el cuerpo aprobado en Meta con el del código.
+ *
+ * Pura y exportada a propósito, igual que los parseos de las
+ * integraciones de IA: así se prueba sin tocar la red.
+ *
+ * Una plantilla que el código no define no es desvío: la cuenta puede
+ * tener plantillas de otros productos, o las de ejemplo de Meta.
+ */
+export function findTemplateTextDrift(
+  remote: Array<{ name?: string; components?: Array<{ type?: string; text?: string }> }>,
+  definitions: ReadonlyArray<{ name: string; bodyText: string }>,
+): TemplateTextDrift[] {
+  const expectedByName = new Map(definitions.map((def) => [def.name, def.bodyText]));
+  const drifts: TemplateTextDrift[] = [];
+
+  for (const template of remote) {
+    if (!template.name) continue;
+    const expected = expectedByName.get(template.name);
+    if (expected === undefined) continue;
+
+    const body = (template.components ?? []).find((c) => c.type === 'BODY');
+    // Sin cuerpo no hay nada que comparar: Meta no lo devolvió (campo no
+    // pedido, o plantilla a medio crear). Callar es mejor que inventar un
+    // desvío que obligue a alguien a revisar algo que está bien.
+    if (!body || typeof body.text !== 'string') continue;
+
+    if (normalizeTemplateText(body.text) !== normalizeTemplateText(expected)) {
+      drifts.push({ name: template.name, expected, actual: body.text });
+    }
+  }
+
+  return drifts;
 }
 
 export interface TemplateSubmissionOutcome {
