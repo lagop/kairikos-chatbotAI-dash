@@ -254,6 +254,7 @@ jobs:
             # así que lo que no esté aquí no llega al contenedor.
             INTEGRATION_CREDENTIAL_ENCRYPTION_KEY=${{ secrets.INTEGRATION_CREDENTIAL_ENCRYPTION_KEY }}
             WEBSITE_PUBLISH_CREDENTIAL_ENCRYPTION_KEY=${{ secrets.WEBSITE_PUBLISH_CREDENTIAL_ENCRYPTION_KEY }}
+            PUBLIC_DRAFT_IP_SALT=${{ secrets.PUBLIC_DRAFT_IP_SALT }}
             TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }}
             TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }}
             TWILIO_BUNDLE_SID=${{ secrets.TWILIO_BUNDLE_SID }}
