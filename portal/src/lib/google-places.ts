@@ -95,6 +95,14 @@ export interface PlaceSearchResult {
   formattedAddress: string | null;
   websiteUri: string | null;
   types: string[];
+  latitude: number | null;
+  longitude: number | null;
+  /** A1 — solo llegan con `includeRatings`; null en una búsqueda normal.
+   *  No confundir "sin valoración" (negocio nuevo, 0 reseñas) con "no se
+   *  pidió": ambos son null aquí y quien compara debe descartar la fila,
+   *  no tratarla como un 0 que hundiría la media de la zona. */
+  rating: number | null;
+  userRatingCount: number | null;
 }
 
 interface RawPlace {
@@ -103,6 +111,9 @@ interface RawPlace {
   formattedAddress?: string;
   websiteUri?: string;
   types?: string[];
+  location?: { latitude?: number; longitude?: number };
+  rating?: number;
+  userRatingCount?: number;
 }
 
 interface SearchTextResponse {
@@ -110,8 +121,25 @@ interface SearchTextResponse {
   nextPageToken?: string;
 }
 
+// places.location es campo Essentials, igual que los cuatro que ya había:
+// añadirlo NO cambia el SKU que factura Google por esta búsqueda, y es lo
+// que permite centrar después la búsqueda de competidores sin geocodificar
+// la zona por nuestra cuenta.
 const SEARCH_FIELD_MASK =
-  'places.id,places.displayName,places.formattedAddress,places.websiteUri,places.types,nextPageToken';
+  'places.id,places.displayName,places.formattedAddress,places.websiteUri,places.types,places.location,nextPageToken';
+
+// A1 — la máscara del informe comparativo. rating y userRatingCount SÍ
+// suben esta llamada de Essentials a Pro, así que van en una máscara
+// aparte y nunca en el barrido semanal de runProspectingSearch: una
+// búsqueda de campaña por cliente y semana no tiene por qué pagar Pro para
+// unas estrellas que solo mira el informe de un prospecto concreto.
+//
+// Por lo mismo, las estrellas del propio prospecto salen de AQUÍ y no de
+// getPlaceDetails: en Place Details, rating/userRatingCount pertenecen al
+// SKU Enterprise + Atmosphere, el más caro de todos, y se pagaría en CADA
+// lead creado. Una sola búsqueda Pro por informe cuesta bastante menos que
+// encarecer los cientos de Details del barrido.
+const SEARCH_WITH_RATINGS_FIELD_MASK = `${SEARCH_FIELD_MASK},places.rating,places.userRatingCount`;
 
 function mapPlace(raw: RawPlace): PlaceSearchResult | null {
   // A result with no id is useless (it's the dedup key against
@@ -124,6 +152,10 @@ function mapPlace(raw: RawPlace): PlaceSearchResult | null {
     formattedAddress: raw.formattedAddress ?? null,
     websiteUri: raw.websiteUri ?? null,
     types: raw.types ?? [],
+    latitude: typeof raw.location?.latitude === 'number' ? raw.location.latitude : null,
+    longitude: typeof raw.location?.longitude === 'number' ? raw.location.longitude : null,
+    rating: typeof raw.rating === 'number' ? raw.rating : null,
+    userRatingCount: typeof raw.userRatingCount === 'number' ? raw.userRatingCount : null,
   };
 }
 
@@ -142,6 +174,10 @@ export interface SearchPlacesParams {
    *  endpoint here: getting more than 20 results per campaign run
    *  doesn't require inventing an area-subdivision strategy. */
   pageToken?: string;
+  /** A1 — pide también rating y userRatingCount. Sube el SKU de esta
+   *  llamada de Essentials a Pro, así que solo lo usa el informe
+   *  comparativo, nunca el barrido de campaña. */
+  includeRatings?: boolean;
 }
 
 export async function searchPlaces(
@@ -164,7 +200,12 @@ export async function searchPlaces(
     };
   }
 
-  const result = await callPlacesApi<SearchTextResponse>('/places:searchText', 'POST', SEARCH_FIELD_MASK, body);
+  const result = await callPlacesApi<SearchTextResponse>(
+    '/places:searchText',
+    'POST',
+    params.includeRatings ? SEARCH_WITH_RATINGS_FIELD_MASK : SEARCH_FIELD_MASK,
+    body,
+  );
   if (!result.ok) return result;
 
   const results = (result.data.places ?? [])
@@ -186,10 +227,19 @@ export interface PlaceDetails {
   /** 'OPERATIONAL' | 'CLOSED_TEMPORARILY' | 'CLOSED_PERMANENTLY'.
    *  Worth surfacing: a permanently-closed business is not a lead. */
   businessStatus: string | null;
+  /** A1 — coordenadas del negocio, para poder buscar después a sus
+   *  competidores alrededor. Campo Essentials: esta llamada ya es
+   *  Enterprise por el teléfono, así que pedirlo no cuesta más. */
+  latitude: number | null;
+  longitude: number | null;
 }
 
+// Sin rating/userRatingCount a propósito: en Details pertenecen al SKU
+// Enterprise + Atmosphere y se pagarían en cada lead del barrido. El
+// informe A1 los obtiene de una búsqueda Pro puntual — ver
+// SEARCH_WITH_RATINGS_FIELD_MASK.
 const DETAILS_FIELD_MASK =
-  'id,displayName,formattedAddress,websiteUri,internationalPhoneNumber,primaryType,businessStatus';
+  'id,displayName,formattedAddress,websiteUri,internationalPhoneNumber,primaryType,businessStatus,location';
 
 interface RawPlaceDetails {
   id?: string;
@@ -199,6 +249,7 @@ interface RawPlaceDetails {
   internationalPhoneNumber?: string;
   primaryType?: string;
   businessStatus?: string;
+  location?: { latitude?: number; longitude?: number };
 }
 
 /**
@@ -230,6 +281,8 @@ export async function getPlaceDetails(placeId: string): Promise<GooglePlacesResu
       phoneNumber: d.internationalPhoneNumber ?? null,
       primaryType: d.primaryType ?? null,
       businessStatus: d.businessStatus ?? null,
+      latitude: typeof d.location?.latitude === 'number' ? d.location.latitude : null,
+      longitude: typeof d.location?.longitude === 'number' ? d.location.longitude : null,
     },
   };
 }
