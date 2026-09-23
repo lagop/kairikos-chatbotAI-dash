@@ -1,4 +1,4 @@
-import type { ReportModel } from './prospecting-report';
+import { classifyWebsite, type ReportModel } from './prospecting-report';
 
 // =============================================================================
 // A1 — el informe de una página, en HTML.
@@ -70,6 +70,8 @@ th { font-weight: 600; color: #5b6472; font-size: 12px; text-transform: uppercas
 tr.subject td { background: #eef4ff; font-weight: 600; }
 ul { margin: 0; padding-left: 18px; }
 li { margin-bottom: 6px; }
+.pill { display: inline-block; background: #fdecec; color: #92400e; border-radius: 999px;
+  padding: 2px 10px; font-size: 12px; white-space: nowrap; }
 .assumptions { font-size: 12px; color: #5b6472; margin-top: 8px; }
 footer { max-width: 720px; margin: 16px auto 0; font-size: 11px; color: #7b8595; }
 @media print {
@@ -83,9 +85,19 @@ export function renderProspectingReportHtml(model: ReportModel): string {
 
   // Tres casos distintos, y confundir los dos últimos es mentir: tiene
   // posición / sabemos que no tiene reseñas / no hemos podido leer el dato.
+  // Los DOS rankings, y el de reseñas primero cuando lidera: enseñar solo
+  // el de estrellas colocaba "3º de 4" a un negocio con 1.129 reseñas por
+  // detrás de dos con 124 y 48. Cierto de forma literal y falso de fondo.
+  const rankParts: string[] = [];
+  if (comparison.reviewRank !== null) {
+    rankParts.push(`${comparison.reviewRank}º de ${comparison.rankedCount} por número de reseñas`);
+  }
+  if (comparison.ratingRank !== null) {
+    rankParts.push(`${comparison.ratingRank}º por valoración`);
+  }
   const rankLine =
-    comparison.ratingRank !== null
-      ? `${comparison.ratingRank}º de ${comparison.rankedCount} por valoración en su zona`
+    rankParts.length > 0
+      ? rankParts.join(' y ') + ' en su zona'
       : subject.reviewCount === 0
         ? 'Sin reseñas en Google todavía'
         : 'Comparado con los negocios de su zona';
@@ -116,8 +128,15 @@ export function renderProspectingReportHtml(model: ReportModel): string {
         </table>`
       : `<p class="sub">Google no devolvió competidores comparables en esta zona.</p>`;
 
+  // Una ficha de directorio no es "su web", y presentarla como tal le quita
+  // al informe uno de sus mejores argumentos.
+  const websiteKind = classifyWebsite(subject.website, subject.name);
   const website = subject.website
-    ? `<a href="${esc(subject.website)}" rel="noopener nofollow">${esc(subject.website)}</a>`
+    ? `<a href="${esc(subject.website)}" rel="noopener nofollow">${esc(subject.website)}</a>${
+        websiteKind === 'directory'
+          ? ' <span class="pill">ficha en un directorio, no web propia</span>'
+          : ''
+      }`
     : 'Sin web en su ficha de Google';
 
   const a = estimate.assumptions;
