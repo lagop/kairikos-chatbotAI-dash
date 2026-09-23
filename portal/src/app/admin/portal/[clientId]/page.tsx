@@ -28,6 +28,7 @@ import {
 } from '@/components/admin/ChannelsOperatorPanel';
 import { getAllowedChannelsForClient } from '@/lib/channel-access';
 import { LeadsSummaryPanel, type LeadSummaryRow } from '@/components/admin/LeadsSummaryPanel';
+import { ClientWebsitePanel, type ClientWebsiteView } from '@/components/admin/ClientWebsitePanel';
 import { RecallOperatorPanel, type RecallPanelData } from '@/components/admin/RecallOperatorPanel';
 import { RecallContractSignButton } from '@/components/admin/RecallContractSignButton';
 import { SeoTechnicalSetupPanel, type SeoProfilePanelData, type SeoQueryOpportunity } from '@/components/admin/SeoTechnicalSetupPanel';
@@ -236,6 +237,11 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
   // tab bar itself is unchanged — there's still one "web" tab, the
   // multiplicity lives inside it.
   let webProjects: WebProjectEntry[] = [];
+  // Producto Web, Fase 1 — el sitio de cada proyecto y los prospectos de este
+  // cliente que ya tienen borrador, para poder crear el sitio a partir de la
+  // página que el negocio ya vio.
+  let websites: Record<string, ClientWebsiteView | null> = {};
+  let draftLeads: { id: string; name: string }[] = [];
   // WP: conexión de canales — Fase 5. Populated only when
   // productCode === CHATBOT_PRODUCT_CODE, so the read-only channels
   // panel (+ manual webhook-delivery retry) renders inside that
@@ -363,6 +369,16 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
           // asc, so `index` gives a stable fallback label when the
           // project's own brief has no businessName yet.
           const webCps = cpRows.filter((cp) => cp.product.code === 'web');
+          // Los prospectos con borrador: el camino normal es crear el sitio
+          // desde la página que el negocio ya vio, no desde cero.
+          draftLeads = (
+            await prisma.lead.findMany({
+              where: { clientId: client.id, webDraft: { isNot: null } },
+              orderBy: { createdAt: 'desc' },
+              take: 25,
+              select: { id: true, contactName: true },
+            })
+          ).map((l) => ({ id: l.id, name: l.contactName ?? 'Sin nombre' }));
           webProjects = await Promise.all(
             webCps.map(async (webCp, index) => {
               const [webQuoteRow, brief] = await Promise.all([
@@ -388,6 +404,28 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
                     }
                   : null;
               }
+              const site = await prisma.clientWebsite.findUnique({
+                where: { clientProductId: webCp.id },
+                include: { credential: { select: { host: true, username: true, remotePath: true, savedAt: true } } },
+              });
+              websites[webCp.id] = site
+                ? {
+                    id: site.id,
+                    businessName: site.businessName,
+                    status: site.status,
+                    themeKey: site.themeKey,
+                    lastPublishedAt: site.lastPublishedAt?.toISOString() ?? null,
+                    lastPublishError: site.lastPublishError,
+                    credential: site.credential
+                      ? {
+                          host: site.credential.host,
+                          username: site.credential.username,
+                          remotePath: site.credential.remotePath,
+                          savedAt: site.credential.savedAt.toISOString(),
+                        }
+                      : null,
+                  }
+                : null;
               return {
                 clientProductId: webCp.id,
                 label: brief?.businessName || `Proyecto ${index + 1} · desde ${webCp.subscribedAt.toISOString().slice(0, 10)}`,
@@ -1087,6 +1125,19 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
                     webQuote={project.webQuote}
                     invoice={project.invoice}
                   />
+                  <div className="card mt-3" data-testid="client-website-section">
+                    <header className="mb-3">
+                      <h3 className="text-base font-semibold">Su web</h3>
+                      <p className="mt-1 text-xs text-kairikos-muted">
+                        Se genera aquí y se publica por SFTP en el alojamiento del cliente. Guardar no publica.
+                      </p>
+                    </header>
+                    <ClientWebsitePanel
+                      clientProductId={project.clientProductId}
+                      website={websites[project.clientProductId] ?? null}
+                      draftLeads={draftLeads}
+                    />
+                  </div>
                 </section>
               ))}
             </div>
