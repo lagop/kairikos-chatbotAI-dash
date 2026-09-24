@@ -204,6 +204,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
   let tier = 'starter';
   let state = 'in-progress';
   let notes: string | null = null;
+  let isInternal = false;
   let goLiveAt: string | null = null;
   let conversationCount = 0;
   let timeline: OnboardingTimelineRow[] = [];
@@ -277,6 +278,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
           tier: true,
           state: true,
           notes: true,
+        isInternal: true,
           goLiveAt: true,
         },
       });
@@ -286,6 +288,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
         tier = client.tier;
         state = client.state;
         notes = client.notes;
+        isInternal = client.isInternal;
         goLiveAt = client.goLiveAt?.toISOString() ?? null;
         resolvedClientId = client.id;
         resolvedGoLiveAt = goLiveAt;
@@ -970,6 +973,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
           state,
           goLiveAt,
           notes,
+          isInternal,
         }}
       />
 
