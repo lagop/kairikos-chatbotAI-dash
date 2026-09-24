@@ -119,14 +119,59 @@ export async function savePublishCredential(
   return { ok: true };
 }
 
+/** Tope de la conexión, contado por nosotros y no por ssh2.
+ *
+ *  `readyTimeout` de ssh2 NO sirve para esto y lo descubrimos probando
+ *  contra un servidor real el 24/09/2026: solo empieza a contar cuando el
+ *  socket TCP ya está abierto, porque mide el saludo SSH. Si al otro lado no
+ *  hay nadie escuchando —un host mal tecleado, un puerto cerrado, un
+ *  cortafuegos que descarta el SYN en silencio— el socket se queda
+ *  reintentando lo que decida el sistema operativo, que en Linux son más de
+ *  dos minutos. La prueba real se colgó 60 segundos enteros con
+ *  `readyTimeout: 20000` puesto.
+ *
+ *  Y el host lo escribe un cliente en un formulario, así que "mal tecleado"
+ *  no es el caso raro: es el caso normal. */
+export const SFTP_CONNECT_TIMEOUT_MS = 20000;
+
+/** Tope de cada subida. Dos archivos pequeños no tardan esto ni de lejos; el
+ *  tope existe para el socket medio muerto, que no da error ni avanza. */
+export const SFTP_PUT_TIMEOUT_MS = 60000;
+
+/**
+ * Corta una promesa que puede no terminar nunca. Pura y exportada para
+ * poder probarla sin red, que es justo lo que no se podía hacer con el
+ * timeout que traía ssh2.
+ *
+ * No cancela nada —no se puede cancelar una promesa— solo deja de
+ * esperarla. Quien la use tiene que cerrar el recurso por su cuenta; aquí lo
+ * hace el `finally` de uploadFilesOverSftp.
+ */
+export function withDeadline<T>(promise: PromiseLike<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(label)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
 /**
  * Sube los archivos por SFTP. Separada de publishWebsite para poder probar
  * todo lo demás —construcción, credenciales, auditoría— sin un servidor
  * SFTP delante: esta función es la única que toca la red.
  *
- * UNVERIFIED AGAINST A REAL HOST: misma advertencia que arrastran
- * google-places.ts y telephony/twilio.ts. La forma sale de la documentación
- * de ssh2-sftp-client, no de una prueba contra un alojamiento real.
+ * Probada contra un servidor real el 24/09/2026 (ver
+ * `tests/real/sftp-publish.test.ts`): sube, crea el subdirectorio que no
+ * existe y sobreescribe en la segunda publicación. De esa prueba salió el
+ * tope de conexión de aquí arriba.
  */
 export async function uploadFilesOverSftp(
   credential: { host: string; port: number; username: string; password: string; remotePath: string },
@@ -135,15 +180,19 @@ export async function uploadFilesOverSftp(
   const { default: SftpClient } = await import('ssh2-sftp-client');
   const client = new SftpClient();
   try {
-    await client.connect({
-      host: credential.host,
-      port: credential.port,
-      username: credential.username,
-      password: credential.password,
-      // Sin esto, un servidor lento o saturado deja la publicación colgada y
-      // con ella la petición del operador.
-      readyTimeout: 20000,
-    });
+    await withDeadline(
+      client.connect({
+        host: credential.host,
+        port: credential.port,
+        username: credential.username,
+        password: credential.password,
+        // Se queda puesto: cubre el otro caso, el del servidor que acepta la
+        // conexión y luego no saluda.
+        readyTimeout: SFTP_CONNECT_TIMEOUT_MS,
+      }),
+      SFTP_CONNECT_TIMEOUT_MS,
+      'sftp_connect_timeout',
+    );
 
     for (const file of files) {
       const remote = `${credential.remotePath}/${file.path}`.replace(/\/{2,}/g, '/');
@@ -154,7 +203,22 @@ export async function uploadFilesOverSftp(
         const exists = await client.exists(dir);
         if (!exists) await client.mkdir(dir, true);
       }
-      await client.put(file.content, remote);
+      await withDeadline(client.put(file.content, remote), SFTP_PUT_TIMEOUT_MS, 'sftp_put_timeout');
+
+      // La prueba contra un servidor real dejó los archivos en 666:
+      // cualquiera con una cuenta en ese alojamiento compartido podría
+      // reescribir el index.html del cliente. Quien manda es el umask de la
+      // sesión SFTP, que no controlamos, y el `mode` de `put` no lo pisa
+      // (probado: sigue saliendo 666 incluso creando el archivo de cero).
+      // Así que se corrige después, con un chmod explícito.
+      //
+      // Y se ignora si falla: hay alojamientos que no dejan cambiar
+      // permisos, y perder una publicación que ya ha subido bien por no
+      // poder ajustar un modo sería cambiar un problema pequeño por uno
+      // grande.
+      await withDeadline(client.chmod(remote, 0o644), SFTP_PUT_TIMEOUT_MS, 'sftp_chmod_timeout').catch(
+        () => undefined,
+      );
     }
 
     return { ok: true, filesUploaded: files.length };
@@ -162,8 +226,10 @@ export async function uploadFilesOverSftp(
     return { ok: false, error: err instanceof Error ? err.message : 'sftp_error' };
   } finally {
     // end() puede lanzar si la conexión ya murió; que eso no tape el error
-    // real de arriba.
-    await client.end().catch(() => undefined);
+    // real de arriba. Y lleva su propio tope: cerrar una conexión que nunca
+    // llegó a abrirse es otra forma de colgarse aquí mismo, en el finally,
+    // donde ya no hay nada que devuelva el error.
+    await withDeadline(client.end(), 5000, 'sftp_end_timeout').catch(() => undefined);
   }
 }
 
