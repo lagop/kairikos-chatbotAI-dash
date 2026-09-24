@@ -149,3 +149,46 @@ describe('markProspectReplied', () => {
     );
   });
 });
+
+// =============================================================================
+// A2, el hueco que quedaba (24/09/2026): hasta ahora CUALQUIER respuesta
+// cortaba la secuencia pero dejaba el lead en su estado. Para un "ahora no
+// puedo" eso está bien —responder no es comprar—, pero para un "no me
+// interesa" significaba que el prospecto seguía apareciendo cada mañana en la
+// lista de a quién llamar.
+// =============================================================================
+describe('markProspectReplied — descartar cuando dicen que no', () => {
+  it('"no me interesa" descarta el lead', async () => {
+    state.leadFindMany.mockResolvedValue([
+      { id: 'l1', tenantId: null, contactPhone: '+34600112233', status: 'contactado' },
+    ]);
+    await markProspectReplied(prisma, {
+      clientId: 'c1',
+      phone: '+34600112233',
+      message: 'no me interesa',
+    });
+    const update = state.leadUpdate.mock.calls[0][0];
+    expect(update.data.status).toBe('descartado');
+    expect(update.data.discardedAt).toBeInstanceOf(Date);
+  });
+
+  it('"no puedo el martes, mejor el miércoles" NO descarta a quien pide que le llamen', async () => {
+    state.leadFindMany.mockResolvedValue([
+      { id: 'l1', tenantId: null, contactPhone: '+34600112233', status: 'contactado' },
+    ]);
+    await markProspectReplied(prisma, {
+      clientId: 'c1',
+      phone: '+34600112233',
+      message: 'no puedo el martes, mejor llamadme el miercoles',
+    });
+    expect(state.leadUpdate.mock.calls[0][0].data.status).toBeUndefined();
+  });
+
+  it('sin texto se comporta como siempre: solo corta la secuencia', async () => {
+    state.leadFindMany.mockResolvedValue([
+      { id: 'l1', tenantId: null, contactPhone: '+34600112233', status: 'nuevo' },
+    ]);
+    await markProspectReplied(prisma, { clientId: 'c1', phone: '+34600112233' });
+    expect(state.leadUpdate.mock.calls[0][0].data.status).toBeUndefined();
+  });
+});

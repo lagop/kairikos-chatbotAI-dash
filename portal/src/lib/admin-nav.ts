@@ -36,6 +36,15 @@ export const ADMIN_NAV: readonly AdminNavGroup[] = [
     ],
   },
   {
+    label: 'Negocio',
+    items: [
+      // A9 — la revisión semanal de 15 minutos del plan, en una pantalla.
+      { href: '/admin/portal/metricas', label: 'Métricas del negocio' },
+      // A7 — la pantalla que se mira antes de pagar comisiones.
+      { href: '/admin/portal/socios', label: 'Socios y referidos' },
+    ],
+  },
+  {
     label: 'Bandejas de trabajo',
     items: [
       { href: '/admin/portal/recall', label: 'Altas de llamadas' },

@@ -50,7 +50,12 @@ export type NotificationKind =
   | 'usage-spike'
   // 2026-09-15 — Meta invalidó el token de un negocio. Ver
   // renderConnectionLost.
-  | 'connection-lost';
+  | 'connection-lost'
+  // A8/A6 (24/09/2026) — el barrido de salud de clientes: quién está a punto
+  // de irse y a quién conviene ofrecerle algo. Kind propio y no 'stuck'
+  // porque el dedupe es por (cliente, kind, día) y compartir kind haría que
+  // un aviso silenciara al otro ese día.
+  | 'churn-risk';
 
 export const ALLOWED_KINDS: ReadonlySet<NotificationKind> = new Set([
   'stuck',
@@ -62,6 +67,7 @@ export const ALLOWED_KINDS: ReadonlySet<NotificationKind> = new Set([
   'go-live-ready',
   'usage-spike',
   'connection-lost',
+  'churn-risk',
 ]);
 
 // Severity → NotificationKind. Used by review-overdue/fire so the route

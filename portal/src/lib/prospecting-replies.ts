@@ -1,6 +1,7 @@
 import 'server-only';
 import type { PrismaClient } from '@prisma/client';
 import { logError } from './observability';
+import { isOptOutRequest } from './recall-optout';
 
 // =============================================================================
 // Fase 3.3 — el corte de la secuencia de seguimiento.
@@ -79,7 +80,7 @@ export interface MarkProspectRepliedResult {
  */
 export async function markProspectReplied(
   prisma: PrismaClient,
-  input: { clientId: string; phone: string; now?: Date },
+  input: { clientId: string; phone: string; now?: Date; message?: string | null },
 ): Promise<MarkProspectRepliedResult> {
   const now = input.now ?? new Date();
 
@@ -104,17 +105,38 @@ export async function markProspectReplied(
       return { matched: 0 };
     }
 
+    // A2 (24/09/2026) — hasta ahora, CUALQUIER respuesta cortaba la
+    // secuencia pero dejaba el lead en su estado: responder no es comprar, y
+    // decidir por el comercial del cliente era pasarse. Eso sigue siendo
+    // cierto para un "ahora no puedo" o un "llamadme el jueves".
+    //
+    // Lo que NO era cierto es para un "no me interesa": ahí el prospecto ya
+    // ha decidido, y dejarlo en 'nuevo' hace que aparezca cada mañana en la
+    // lista de a quién llamar. Se marca descartado y se acabó.
+    //
+    // Se reutiliza isOptOutRequest de recall-optout.ts, con su criterio ya
+    // pensado: 'no' a secas NO cuenta —es la única respuesta de verdad
+    // ambigua— y los tokens sueltos solo valen en mensajes cortos, para que
+    // "no puedo el martes, mejor el miércoles" no descarte a quien está
+    // pidiendo justo lo contrario.
+    const descarta = input.message ? isOptOutRequest(input.message) : false;
+
     for (const lead of matches) {
       await prisma.$transaction(async (tx) => {
-        await tx.lead.update({ where: { id: lead.id }, data: { repliedAt: now } });
+        await tx.lead.update({
+          where: { id: lead.id },
+          data: descarta
+            ? { repliedAt: now, status: 'descartado', discardedAt: now }
+            : { repliedAt: now },
+        });
         await tx.leadAudit.create({
           data: {
             leadId: lead.id,
             clientId: input.clientId,
             tenantId: lead.tenantId,
-            action: 'replied',
+            action: descarta ? 'discarded' : 'replied',
             statusBefore: lead.status,
-            statusAfter: lead.status,
+            statusAfter: descarta ? 'descartado' : lead.status,
             actorId: 'system:prospecting',
           },
         });
