@@ -190,9 +190,15 @@ en la cabecera `x-kairikos-internal-key`, y todo sale por webhooks salientes
 > **Incidente de seguridad encontrado y resuelto el 20/09/2026**: el flujo de WhatsApp tenía
 > la `PORTAL_API_KEY` real escrita en texto plano (corregido para usar `$env`, como el resto
 > de flujos). La clave **ya se rotó** — el valor viejo, que llegó a estar en el historial de
-> git de una rama ya empujada, quedó inútil. `META_APP_SECRET` y el verify token de ese mismo
-> flujo siguen hardcodeados y sin rotar — no se pueden tocar sin pasar por el panel de Meta.
-> Ver el README de `automations/desplegado/` y `docs/plan-motor-chatbot.md`.
+> git de una rama ya empujada, quedó inútil.
+>
+> `META_APP_SECRET` y los dos verify tokens estuvieron hardcodeados hasta el 24/09/2026; hoy
+> los flujos los leen de `$env` (`META_APP_SECRET`, `META_VERIFY_TOKEN_WHATSAPP`,
+> `META_VERIFY_TOKEN_MULTITENANT`, en `/root/.env` y en los dos servicios de n8n). **En n8n
+> Community no existen las _Variables_** —eso es de pago— pero las variables de entorno sí, y
+> un nodo Code las lee con `N8N_BLOCK_ENV_ACCESS_IN_NODE=false`; se comprobó con una sonda
+> antes de tocar los flujos. El secreto **sigue sin rotar**: eso solo se hace desde el panel
+> de Meta. Ver el README de `automations/desplegado/` y `docs/plan-motor-chatbot.md`.
 >
 > **Dos bugs reales aparecieron al revisar los canales que sí llegaban a producción**: el
 > widget web nunca funcionó porque `N8N_WEBCHAT_URL` faltaba en `deploy.yml` (ver la trampa de
