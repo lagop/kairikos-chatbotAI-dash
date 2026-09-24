@@ -111,11 +111,18 @@ export async function loadSectorStats(prisma: PrismaClient): Promise<SectorStatR
   // Solo prospectos (outbound): un lead entrante no dice nada del mercado,
   // dice que alguien nos escribió.
   const rows = await prisma.lead.findMany({
-    // Fuera las cuentas internas: un barrido de pruebas busca lo que a uno
-    // le apetece probar ese día, no un sector de verdad, y esto se publica
-    // como estudio de mercado. Diez peluquerías buscadas para ver si el
-    // botón funciona no son diez peluquerías del mercado.
-    where: { source: 'outbound', client: { isInternal: false } },
+    // NO se filtra por ChatbotClient.isInternal, y es a propósito: lo que
+    // mide esto es EL MERCADO, no a quién pertenece la campaña. Un negocio
+    // encontrado desde nuestra propia cuenta es un negocio de Google igual
+    // que cualquier otro — tiene su web o no la tiene, y sus reseñas son las
+    // que son. Filtrarlo por de quién era la búsqueda dejaría el estudio
+    // vacío justo hoy, que las únicas campañas que existen son nuestras.
+    //
+    // Es la diferencia con business-metrics.ts, y conviene tenerla clara
+    // antes de "arreglar" esto añadiendo el filtro: allí una cuenta nuestra
+    // miente porque nadie paga, aquí no miente nada porque el dato no es
+    // nuestro, es del negocio que se ha mirado.
+    where: { source: 'outbound' },
     select: {
       searchCategory: true,
       searchLocation: true,

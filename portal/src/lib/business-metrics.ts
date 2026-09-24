@@ -16,14 +16,19 @@ import type { PrismaClient } from '@prisma/client';
 // precalcula nada: con decenas de clientes sobra, y una tabla de métricas
 // precalculadas es una cosa más que puede quedarse vieja sin avisar.
 //
-// 24/09/2026 — LAS CUENTAS INTERNAS NO CUENTAN. La cuenta de pruebas tenía
-// cuatro productos activos que nadie pagaba, y este panel los sumaba como
-// 900 €/mes de ingresos recurrentes. No era un fallo de cálculo: el MRR sale
-// de lo contratado y no de lo cobrado en Stripe, a propósito, para que un
-// descuento o una tarifa vieja no mientan. Lo que faltaba era poder decir
-// "esta cuenta es nuestra" — ChatbotClient.isInternal. El filtro va en CADA
-// consulta de aquí, incluidas las del embudo: un prospecto de una campaña de
-// pruebas tampoco es un prospecto.
+// 24/09/2026 — LAS CUENTAS INTERNAS NO SON INGRESOS. La cuenta de pruebas
+// tenía cuatro productos activos que nadie pagaba, y este panel los sumaba
+// como 900 €/mes de ingresos recurrentes. No era un fallo de cálculo: el MRR
+// sale de lo contratado y no de lo cobrado en Stripe, a propósito, para que
+// un descuento o una tarifa vieja no mientan. Lo que faltaba era poder decir
+// "esta cuenta es nuestra" — ChatbotClient.isInternal.
+//
+// El filtro se aplica al DINERO y solo al dinero: MRR, clientes activos,
+// bajas, multiproducto. El embudo va sin filtrar, y no es un olvido: la
+// prospección de una cuenta nuestra es LA prospección, la que hacemos para
+// encontrar clientes. Filtrarla dejaría el embudo a cero el mismo día que se
+// marca la cuenta desde la que se prospecta. La explicación larga está junto
+// a las consultas.
 // =============================================================================
 
 export interface ProductMrrRow {
@@ -78,9 +83,19 @@ export async function loadBusinessMetrics(
       prisma.clientProduct.count({
         where: { status: 'cancelled', changedAt: { gte: hace30 }, client: { isInternal: false } },
       }),
-      prisma.lead.count({ where: { source: 'outbound', client: { isInternal: false } } }),
-      prisma.lead.count({ where: { source: 'outbound', contactedAt: { not: null }, client: { isInternal: false } } }),
-      prisma.lead.count({ where: { source: 'outbound', repliedAt: { not: null }, client: { isInternal: false } } }),
+      // El embudo NO se filtra por isInternal, al revés que el dinero de
+      // arriba, y la diferencia es la que hace falta entender para no
+      // "arreglarlo" luego:
+      //
+      // El MRR de una cuenta nuestra miente, porque nadie lo paga. Su
+      // prospección no miente: es LA prospección, la que hacemos para
+      // encontrar clientes. Hoy la única campaña que existe cuelga de
+      // contacto@kairikos.com, así que filtrar por cuenta interna dejaría el
+      // embudo entero a cero el mismo día que marcamos esa cuenta — y el
+      // embudo es la mitad de la revisión semanal.
+      prisma.lead.count({ where: { source: 'outbound' } }),
+      prisma.lead.count({ where: { source: 'outbound', contactedAt: { not: null } } }),
+      prisma.lead.count({ where: { source: 'outbound', repliedAt: { not: null } } }),
       prisma.prospectingWebDraft.count(),
       prisma.publicDraftRequest.count(),
     ]);
