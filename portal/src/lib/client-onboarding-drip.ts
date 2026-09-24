@@ -38,9 +38,18 @@ export const DRIP_STEPS: readonly DripStep[] = Object.freeze([
   { afterDays: 14, key: 'primer_mes' },
 ]);
 
+/** Pasado este plazo desde el alta, la secuencia ya no tiene sentido y no se
+ *  manda: un correo de bienvenida con tres semanas de retraso no da la
+ *  bienvenida a nada, delata que acabamos de encender algo.
+ *
+ *  Es también lo que impide el efecto que se vio al desplegar esto: los
+ *  clientes activados hace semanas entraban en la secuencia desde el paso
+ *  cero como si acabaran de contratar. */
+export const DRIP_MAX_AGE_DAYS = 21;
+
 /** Qué paso toca ahora, o null si ninguno. Puro para poder probar los bordes
- *  —recién contratado, secuencia terminada, barrido parado una semana— sin
- *  base de datos. */
+ *  —recién contratado, secuencia terminada, alta demasiado vieja, barrido
+ *  parado una semana— sin base de datos. */
 export function nextDripStep(
   subscribedAt: Date,
   stepsSent: number,
@@ -48,8 +57,16 @@ export function nextDripStep(
 ): DripStep | null {
   if (stepsSent >= DRIP_STEPS.length) return null;
   const dias = (now.getTime() - subscribedAt.getTime()) / (24 * 60 * 60 * 1000);
+  if (dias > DRIP_MAX_AGE_DAYS) return null;
   const candidato = DRIP_STEPS[stepsSent];
   return dias >= candidato.afterDays ? candidato : null;
+}
+
+/** Un alta demasiado vieja como para empezar la secuencia. Se marca
+ *  terminada de una vez en lugar de dejarla mirándose en cada tick para
+ *  siempre. */
+export function isTooOldForDrip(subscribedAt: Date, now: Date = new Date()): boolean {
+  return (now.getTime() - subscribedAt.getTime()) / (24 * 60 * 60 * 1000) > DRIP_MAX_AGE_DAYS;
 }
 
 export interface DripEmailInput {
@@ -169,6 +186,17 @@ export async function sweepOnboardingDrip(
   let failed = 0;
 
   for (const row of rows) {
+    // Un alta vieja se cierra entera de una vez: si solo se saltara el paso,
+    // se volvería a mirar en cada tick de aquí a la eternidad.
+    if (isTooOldForDrip(row.subscribedAt, now)) {
+      await prisma.clientProduct.update({
+        where: { id: row.id },
+        data: { onboardingDripStep: DRIP_STEPS.length },
+      });
+      skipped += 1;
+      continue;
+    }
+
     const step = nextDripStep(row.subscribedAt, row.onboardingDripStep, now);
     if (!step) continue;
 
