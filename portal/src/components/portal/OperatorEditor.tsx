@@ -405,9 +405,9 @@ export function OperatorEditor({ clientId, initial }: OperatorEditorProps) {
             <span className="text-sm">
               <span className="font-medium">Cuenta interna</span>
               <span className="block text-xs text-kairikos-muted">
-                Nuestra: la de pruebas, una demo, un cliente interno. Deja de contar en las métricas del negocio y en
-                las estadísticas de mercado — sus productos activos no son ingresos y sus prospectos no son mercado.
-                Los correos le siguen llegando, que es para lo que sirve una cuenta de pruebas.
+                Nuestra: la de pruebas, una demo, un cliente interno. Sus productos activos dejan de contar como
+                ingresos recurrentes, clientes y bajas en las métricas del negocio. Lo demás sigue igual: su
+                prospección cuenta en el embudo y en las estadísticas de mercado, y los correos le siguen llegando.
               </span>
             </span>
           </label>

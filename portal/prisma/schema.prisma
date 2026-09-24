@@ -174,11 +174,19 @@ model ChatbotClient {
   // existen, y ese panel es justo el que se mira para decidir si el negocio
   // va bien.
   //
-  // Lo que apaga y lo que NO: se cae de las métricas del negocio (A9) y de
-  // las estadísticas de mercado (A10) — de todo lo que dice una cifra como
-  // si fuera realidad. NO se cae de los correos (bienvenida, informe de
-  // valor, riesgo de baja): una cuenta interna es justamente donde se
-  // comprueba que esos correos salen y se leen bien.
+  // Lo que apaga: el DINERO de A9 — ingresos recurrentes, clientes activos,
+  // bajas y multiproducto.
+  //
+  // Lo que NO apaga, y en los tres casos a propósito:
+  //   * El embudo de A9. La prospección de una cuenta nuestra es LA
+  //     prospección, la que hacemos para encontrar clientes; filtrarla
+  //     dejaría el embudo a cero el día que se marca esa cuenta.
+  //   * Las estadísticas de mercado (A10). Miden el mercado, no de quién era
+  //     la campaña: un negocio de Google tiene web o no la tiene, y eso no
+  //     cambia según quién lo haya buscado.
+  //   * Los correos (bienvenida, informe de valor, riesgo de baja). Una
+  //     cuenta interna es justamente donde se comprueba que salen y se leen
+  //     bien.
   isInternal                  Boolean                         @default(false) @map("is_internal")
 
   referralCodes                  ReferralCode[]                  @relation("ReferralCodeOwner")

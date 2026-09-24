@@ -7,10 +7,11 @@
 //
 // Lo que se fija:
 //
-// 1. Que las cuentas internas se caigan de TODAS las consultas, no solo del
-//    MRR. Un prospecto de una campaña de pruebas tampoco es un prospecto, y
-//    un embudo con la mitad de las cifras filtradas y la otra mitad no es
-//    peor que no tener embudo: parece que cuadra.
+// 1. Que las cuentas internas se caigan del DINERO —ingresos, clientes,
+//    bajas— y que NO se caigan del embudo. Las dos mitades de esa frase se
+//    fijan aquí, porque cada una se rompe al "completar" la otra por
+//    simetría: el MRR de una cuenta nuestra miente porque nadie lo paga, y
+//    su prospección no miente porque es la nuestra.
 // 2. Que el MRR salga de lo que se cobra y no de la tarifa cuando hay
 //    suscripción — un descuento o un precio viejo facturan lo suyo.
 // 3. Que sin clientes no se invente una tasa de bajas del 0 %.
@@ -73,13 +74,24 @@ describe('loadBusinessMetrics — las cuentas internas no cuentan', () => {
     });
   });
 
-  it('y en las TRES cifras del embudo, no solo en la primera', async () => {
+  // ===========================================================================
+  // Y el reverso, que es el que se rompe solo si alguien "completa" el filtro
+  // de arriba por simetría: el embudo NO se filtra.
+  //
+  // El MRR de una cuenta nuestra miente, porque nadie lo paga. Su prospección
+  // no miente: es LA prospección, la que hacemos para encontrar clientes. Hoy
+  // la única campaña que existe cuelga de nuestra propia cuenta, así que
+  // filtrar por interna dejaría el embudo entero a cero el mismo día que se
+  // marca — y el embudo es la mitad de la revisión semanal.
+  // ===========================================================================
+  it('el embudo NO se filtra: la prospección de una cuenta nuestra es la nuestra', async () => {
     const { prisma, calls } = fakePrisma();
     await loadBusinessMetrics(prisma);
 
     expect(calls.leadCount).toHaveLength(3);
     for (const args of calls.leadCount) {
-      expect(args).toMatchObject({ where: { source: 'outbound', client: { isInternal: false } } });
+      expect(args).toMatchObject({ where: { source: 'outbound' } });
+      expect(JSON.stringify(args)).not.toContain('isInternal');
     }
   });
 });
