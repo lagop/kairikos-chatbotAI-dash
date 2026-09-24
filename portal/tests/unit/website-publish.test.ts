@@ -14,7 +14,12 @@
 
 import { describe, it, expect } from 'vitest';
 import { stripDraftChrome, hasPortalReferences, buildWebsiteFiles } from '@/lib/website-build';
-import { isPublishableHost, normalizeRemotePath } from '@/lib/website-publish';
+import {
+  isPublishableHost,
+  normalizeRemotePath,
+  withDeadline,
+  SFTP_CONNECT_TIMEOUT_MS,
+} from '@/lib/website-publish';
 
 const COPY = {
   headline: 'Fontanería en Elche, urgencias en menos de 60 minutos',
@@ -107,5 +112,37 @@ describe('normalizeRemotePath', () => {
   it('vacío significa la raíz, no una ruta rota', () => {
     expect(normalizeRemotePath('')).toBe('/');
     expect(normalizeRemotePath('   ')).toBe('/');
+  });
+});
+
+// =============================================================================
+// 24/09/2026 — encontrado al probar la subida contra un servidor SFTP de
+// verdad por primera vez (tests/real/sftp-publish.test.ts).
+//
+// `readyTimeout` de ssh2 no cubre el caso que de verdad pasa: un host mal
+// tecleado por el cliente, donde nadie contesta el SYN y el socket se queda
+// reintentando lo que decida el sistema operativo. La prueba real se colgó
+// 60 segundos enteros con readyTimeout puesto a 20.
+//
+// Se prueba el corte, no la red: withDeadline es puro y se exporta justo
+// para eso.
+// =============================================================================
+describe('withDeadline', () => {
+  it('deja pasar el valor cuando la promesa llega a tiempo', async () => {
+    await expect(withDeadline(Promise.resolve('listo'), 1000, 'tarde')).resolves.toBe('listo');
+  });
+
+  it('corta la que no termina nunca, con el motivo puesto', async () => {
+    await expect(withDeadline(new Promise(() => {}), 20, 'sftp_connect_timeout')).rejects.toThrow(
+      'sftp_connect_timeout',
+    );
+  });
+
+  it('un rechazo propio llega tal cual, sin disfrazarse de tiempo agotado', async () => {
+    await expect(withDeadline(Promise.reject(new Error('auth')), 1000, 'tarde')).rejects.toThrow('auth');
+  });
+
+  it('el tope de conexión es el mismo que el readyTimeout: no hay dos números que se contradigan', () => {
+    expect(SFTP_CONNECT_TIMEOUT_MS).toBe(20000);
   });
 });

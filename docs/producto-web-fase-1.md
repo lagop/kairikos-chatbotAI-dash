@@ -56,24 +56,53 @@ permite enseñar la web el mismo día.
 | Formulario de las webs | 20 envíos por hora y sitio | Un bot llenando la bandeja del cliente |
 | Informe comparativo | Bajo demanda, caché 30 días | Cada uno es una búsqueda de pago en Google |
 
-## Lo que NO está probado
+## Probado contra servidores de verdad (24/09/2026)
 
-**La subida por SFTP nunca ha hablado con un servidor real.** La forma sale de
-la documentación de `ssh2-sftp-client`, igual que `google-places.ts` y
-`telephony/twilio.ts` salieron de sus documentaciones. La primera publicación
-de verdad es la prueba que falta, y conviene hacerla contra un alojamiento de
-pruebas antes que contra el de un cliente.
+**La subida por SFTP ya ha hablado con un servidor real.** Se probó contra un
+servidor de usar y tirar (`atmoz/sftp` en la VPS, puerto 2222) y la prueba vive
+en `portal/tests/real/sftp-publish.test.ts`, que se salta sola si no hay
+servidor configurado. Se comprobó que sube, que crea el subdirectorio
+`assets/` que todavía no existe, que la segunda publicación sobreescribe, y
+que una credencial mala devuelve `{ok:false}` en vez de lanzar.
 
-Lo mismo, en menor medida, para el alojamiento propio: está probado con tests
-pero no se ha servido una web real todavía.
+Salieron dos fallos que ninguna suite verde habría enseñado:
+
+1. **`readyTimeout` de `ssh2` no sirve para el caso que de verdad pasa.** Solo
+   empieza a contar cuando el socket TCP ya está abierto, porque mide el saludo
+   SSH. Con un host mal tecleado —donde nadie contesta el SYN— el socket se
+   queda reintentando lo que decida el sistema operativo: la prueba se colgó
+   60 segundos enteros con `readyTimeout: 20000` puesto. Y el host lo escribe
+   un cliente en un formulario, así que «mal tecleado» no es el caso raro. Hay
+   ahora un tope propio (`withDeadline`) en la conexión, en cada subida y en el
+   cierre.
+2. **Los archivos quedaban en 666**, world-writable: en un alojamiento
+   compartido, cualquiera con una cuenta allí podría reescribir el
+   `index.html` del cliente. Manda el umask de la sesión SFTP, y el `mode` de
+   `put` no lo pisa (probado: sale 666 incluso creando el archivo de cero). Se
+   corrige con un `chmod` explícito después de subir, que se ignora si el
+   alojamiento no deja cambiar permisos.
+
+**El alojamiento propio también se ha servido de verdad.** Se publicó un sitio
+de prueba en producción y se comprobó que `/sitios/<slug>` devuelve 200 con su
+`content-type`, que un archivo en `assets/` sale como `image/svg+xml`, y que
+tanto un archivo inexistente como un slug inexistente dan 404. Las filas de
+prueba se borraron después.
+
+## Lo que sigue sin probarse
+
+El dominio propio sobre nuestro alojamiento, que no es código sino la
+configuración de proxy descrita arriba, y que necesita un dominio real
+apuntando a la VPS.
 
 ## Variables de entorno nuevas
 
 `WEBSITE_PUBLISH_CREDENTIAL_ENCRYPTION_KEY` (32 bytes hex) cifra la contraseña
 de SFTP de cada cliente. Está en los cuatro sitios: `portal/.env.example`,
-`docker-compose.yml`, `deploy.yml` y la VPS. **Sin el secret en GitHub, la
-pantalla de credenciales fallará con 500**, igual que falló la de Google
-Places.
+`docker-compose.yml`, `deploy.yml` y la VPS. El secret de GitHub se creó el
+24/09/2026 — hasta entonces la pantalla de credenciales habría fallado con
+500, igual que falló la de Google Places. **No se rota a la ligera**: cambiarlo
+deja ilegible la contraseña SFTP de todos los clientes, que tendrían que
+volver a escribirla.
 
 `PUBLIC_DRAFT_IP_SALT` es opcional: si no está, se usa una sal por defecto.
 Solo afecta al hash con el que se cuentan las peticiones por IP.
