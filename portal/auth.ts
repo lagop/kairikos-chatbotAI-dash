@@ -88,6 +88,19 @@ function buildAuthConfig(): NextAuthConfig {
             select: { clientId: true },
           });
 
+          // A8 — sellar la última entrada del cliente. Es una de las tres
+          // señales de que alguien se va a ir ("lleva un mes sin asomarse"),
+          // y hasta ahora no se podía ni preguntar porque solo el Operator
+          // tenía lastLoginAt. Best-effort: que un fallo escribiéndolo no
+          // impida entrar a nadie.
+          // Optional chaining y catch: esto NO puede impedir un login. Los
+          // tests de authorize mockean un prisma mínimo sin chatbotClient, y
+          // en producción un fallo escribiendo una fecha no vale una sesión
+          // perdida.
+          await prisma.chatbotClient
+            ?.update?.({ where: { id: clientUser?.clientId ?? '' }, data: { lastLoginAt: new Date() } })
+            ?.catch?.(() => undefined);
+
           return {
             id: user.id,
             email,

@@ -115,49 +115,59 @@ model ChatbotClient {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  activities                     ChatbotActivity[]
-  conversations                  ChatbotConversation[]
-  users                          ChatbotClientUser[]
-  operatorNotifications          OperatorNotification[]
-  n8nExecutions                  N8nExecution[]
-  configSteps                    ChatbotConfigStep[]
-  intakeSubmissions              IntakeSubmission[]
-  supportRequests                SupportRequest[]
-  tenant                         Tenant?                         @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  clientProducts                 ClientProduct[]
-  chatbotUsages                  ChatbotUsage[]
-  clientSites                    ClientSite[]
-  productAudits                  ClientProductAudit[]
-  subscriptions                  Subscription[]
-  invoices                       Invoice[]
-  operatorActions                OperatorAction[]
-  googleBusinessConnections      GoogleBusinessConnection[]
+  activities                  ChatbotActivity[]
+  conversations               ChatbotConversation[]
+  users                       ChatbotClientUser[]
+  operatorNotifications       OperatorNotification[]
+  n8nExecutions               N8nExecution[]
+  configSteps                 ChatbotConfigStep[]
+  intakeSubmissions           IntakeSubmission[]
+  supportRequests             SupportRequest[]
+  tenant                      Tenant?                         @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  clientProducts              ClientProduct[]
+  chatbotUsages               ChatbotUsage[]
+  clientSites                 ClientSite[]
+  productAudits               ClientProductAudit[]
+  subscriptions               Subscription[]
+  invoices                    Invoice[]
+  operatorActions             OperatorAction[]
+  googleBusinessConnections   GoogleBusinessConnection[]
   // Fase 2 multi-instancia — dejan de ser 1:1. La conexion de Search Console
   // pertenece a UNA web, y un cliente puede tener varias. Ver el comentario
   // en GoogleSeoConnection.clientProductId.
-  googleSeoConnections           GoogleSeoConnection[]
-  googleAnalyticsConnections     GoogleAnalyticsConnection[]
-  googleReviews                  GoogleReview[]
-  reviewRequestCampaigns         ReviewRequestCampaign[]
-  webBriefs                      WebBrief[]
-  webQuotes                      WebQuote[]
-  chatWebEmbeds                  ChatWebEmbed[]
-  telegramConnections            TelegramConnection[]
-  metaChannelConnections         MetaChannelConnection[]
-  channelWebhookDeliveries       ChannelWebhookDelivery[]
-  conversationDigests            ConversationDigest[]
+  googleSeoConnections        GoogleSeoConnection[]
+  googleAnalyticsConnections  GoogleAnalyticsConnection[]
+  googleReviews               GoogleReview[]
+  reviewRequestCampaigns      ReviewRequestCampaign[]
+  webBriefs                   WebBrief[]
+  webQuotes                   WebQuote[]
+  chatWebEmbeds               ChatWebEmbed[]
+  telegramConnections         TelegramConnection[]
+  metaChannelConnections      MetaChannelConnection[]
+  channelWebhookDeliveries    ChannelWebhookDelivery[]
+  conversationDigests         ConversationDigest[]
   // Fase 4 multi-instancia — deja de ser 1:1: la cadencia del resumen es de
   // un chatbot, y un cliente puede tener varios.
-  conversationDigestSchedules    ConversationDigestSchedule[]
-  leads                          Lead[]
-  leadAudits                     LeadAudit[]
-  recallSubscriptions            RecallSubscription[]
-  recallSubscriptionAudits       RecallSubscriptionAudit[]
-  callEvents                     CallEvent[]
-  whatsappTemplates              WhatsappTemplate[]
-  prospectingCampaigns           ProspectingCampaign[]
-  prospectingCampaignAudits      ProspectingCampaignAudit[]
-  prospectingCompetitorSnaps     ProspectingCompetitorSnapshot[]
+  conversationDigestSchedules ConversationDigestSchedule[]
+  leads                       Lead[]
+  leadAudits                  LeadAudit[]
+  recallSubscriptions         RecallSubscription[]
+  recallSubscriptionAudits    RecallSubscriptionAudit[]
+  callEvents                  CallEvent[]
+  whatsappTemplates           WhatsappTemplate[]
+  prospectingCampaigns        ProspectingCampaign[]
+  prospectingCampaignAudits   ProspectingCampaignAudit[]
+  prospectingCompetitorSnaps  ProspectingCompetitorSnapshot[]
+  // A8 — cuándo entró por última vez alguien de este cliente al portal.
+  // Hasta ahora solo el Operator tenía lastLoginAt, así que "lleva un mes sin
+  // asomarse" —una de las tres señales de que alguien se va a ir— no se podía
+  // ni preguntar. Lo escribe el login del portal.
+  // A4 — cuándo se le mandó el último informe de valor. La cadencia la
+  // decide TypeScript con esta columna, no el scheduler: así el barrido se
+  // puede llamar cada cinco minutos sin que nadie reciba dos correos.
+  lastValueReportAt           DateTime?                       @map("last_value_report_at")
+  lastLoginAt                 DateTime?                       @map("last_login_at")
+
   prospectingWebDrafts           ProspectingWebDraft[]
   clientWebsites                 ClientWebsite[]
   clientWebsiteAudits            ClientWebsiteAudit[]
