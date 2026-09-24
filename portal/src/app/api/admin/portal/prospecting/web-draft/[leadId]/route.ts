@@ -4,6 +4,7 @@ import { authenticateAdminRequest } from '@/lib/operator-session';
 import { generateWebDraftCopy, type WebDraftCopy } from '@/lib/web-draft-ai';
 import { renderWebDraftHtml, themeFor } from '@/lib/web-draft-html';
 import { createShareToken, webDraftShareUrl } from '@/lib/prospecting-share';
+import { publicOrigin } from '@/lib/public-origin';
 import { logError } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
@@ -131,7 +132,7 @@ export async function GET(req: NextRequest, ctx: { params: { leadId: string } })
   // El operador ve además el enlace público que puede copiar y mandar: sin
   // esto tendría que construirlo a mano, y el enlace de esta misma ruta NO
   // sirve — pedirá sesión al prospecto.
-  const shareUrl = shareToken ? webDraftShareUrl(new URL(req.url).origin, shareToken) : null;
+  const shareUrl = shareToken ? webDraftShareUrl(publicOrigin(req), shareToken) : null;
 
   return new NextResponse(
     renderWebDraftHtml({ subject, copy, generatedAt, shareUrl, themeKey: lead.webDraft?.themeKey ?? null }),

@@ -3,6 +3,7 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateAdminRequest } from '@/lib/operator-session';
 import { buildWebsiteFiles } from '@/lib/website-build';
 import { resolveWebsiteIntegrations } from '@/lib/website-integrations';
+import { publicOrigin } from '@/lib/public-origin';
 import type { WebDraftCopy } from '@/lib/web-draft-ai';
 
 export const dynamic = 'force-dynamic';
@@ -39,7 +40,9 @@ export async function GET(req: NextRequest, { params }: { params: { websiteId: s
   const files = await buildWebsiteFiles({
     integrations,
     formToken: website.formToken,
-    portalOrigin: new URL(req.url).origin,
+    // El destino del formulario tiene que ser la dirección PÚBLICA: detrás
+    // del proxy, el origin de la petición es la red interna de Docker.
+    portalOrigin: publicOrigin(req),
     businessName: website.businessName,
     primaryType: website.primaryType,
     themeKey: website.themeKey,

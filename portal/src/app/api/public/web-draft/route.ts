@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { createPublicDraft } from '@/lib/public-draft-request';
+import { publicOrigin } from '@/lib/public-origin';
 import { logError } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
@@ -74,7 +75,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(
-      { ok: true, url: `${new URL(req.url).origin}/mi-web/${result.token}` },
+      { ok: true, url: `${publicOrigin(req)}/mi-web/${result.token}` },
       { headers: CORS },
     );
   } catch (err) {
