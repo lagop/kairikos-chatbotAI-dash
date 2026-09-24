@@ -440,13 +440,14 @@ export function StripeCatalogSettingsPanel({
             message: `${product.name}: listo para crear de nuevo en ${credentials.activeMode}.`,
           });
         } else if (body.error === 'has_active_subscriptions') {
-          // Should not happen in practice — nobody pays with a test
-          // key — but this is exactly the case the count exists to
-          // catch.
+          // Solo llega aquí un escalón creado en LIVE: ahí las
+          // suscripciones son dinero de verdad. Las de un objeto de test
+          // dejaron de frenar el 24/09/2026, cuando bloquearon `seo` sin
+          // que nadie estuviera pagando nada.
           const count = body.count as number;
           showToast({
             kind: 'error',
-            message: `${count} cliente${count === 1 ? '' : 's'} activo${count === 1 ? '' : 's'} en este precio — no se puede reiniciar.`,
+            message: `${count} cliente${count === 1 ? '' : 's'} activo${count === 1 ? '' : 's'} pagando este precio en live — no se puede reiniciar.`,
           });
         } else {
           showToast({ kind: 'error', message: errorLabel(body.error as string) });

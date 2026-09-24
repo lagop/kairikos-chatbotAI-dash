@@ -310,6 +310,31 @@ describe('resetForModeMismatch', () => {
     expect(result).toEqual({ ok: false, error: { kind: 'no_mode_mismatch' } });
   });
 
+
+  // =========================================================================
+  // 24/09/2026 — bloqueo real: el escalón seo estaba creado en TEST, la
+  // credencial activa era LIVE, y había una Subscription 'active' contra él,
+  // de una prueba hecha en su día con la clave de test. El freno la contó
+  // como cliente de verdad y cerró el único camino hacia adelante.
+  //
+  // El freno mira ahora QUÉ objeto se desvincula, no cuántas filas apuntan
+  // a él: en test no puede haber dinero real, porque para cobrar hace falta
+  // la clave de live.
+  // =========================================================================
+  it('un objeto de TEST con suscripciones de prueba NO bloquea: nadie paga con una clave de test', async () => {
+    mockState.findUniqueOrThrow.mockResolvedValueOnce(BOOTSTRAPPED_PRODUCT); // mode: 'test'
+    mockState.resolveActiveStripeSecret.mockResolvedValueOnce({ mode: 'live', key: 'sk_live_x' });
+    mockState.subscriptionCount.mockResolvedValueOnce(1);
+    mockState.update.mockResolvedValueOnce({ ...BOOTSTRAPPED_PRODUCT, stripeProductId: null, stripePriceMode: null });
+
+    const result = await resetForModeMismatch('prod_reviews_basic', ACTOR);
+
+    expect(result.ok).toBe(true);
+    expect(mockState.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ stripeProductId: null, stripePriceMode: null }) }),
+    );
+  });
+
   it('refuses to unlink a tier with active subscribers, and reports how many', async () => {
     mockState.findUniqueOrThrow.mockResolvedValueOnce(MISMATCHED_PRODUCT);
     mockState.resolveActiveStripeSecret.mockResolvedValueOnce({ mode: 'test', key: 'sk_test_x' });
