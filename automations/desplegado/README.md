@@ -189,15 +189,38 @@ Aplicado el mismo día:
   modo automático al intentar leer el `.env` de producción — "Production
   Reads"). Hasta que se rote, el valor expuesto en el historial de git sigue
   siendo válido.
-- `META_APP_SECRET` y el verify token de Meta **también están hardcodeados**
-  en este flujo (nodos `Verify Signature` y `Check Verify Token`) y no se
-  pudieron verificar contra el `.env` porque no viven ahí — probablemente en
-  Postgres, cifrados, vía el patrón de credencial de operador. No se tocaron:
-  no hay forma de rotarlos sin pasar por el panel de Meta, y cambiarlos aquí a
-  ciegas rompería una verificación de firma que hoy funciona. **También deben
-  rotarse desde el panel de Meta cuando puedas.** El export de este archivo
-  los sustituye por `META-APP-SECRET-REDACTED.ejemplo` y
-  `META-VERIFY-TOKEN-REDACTED.ejemplo` — nunca el valor real.
+- `META_APP_SECRET` y los verify tokens **ya no están hardcodeados**
+  (24/09/2026). Estaban en texto plano dentro de `Verify Signature` y
+  `Check Verify Token` de los dos flujos de Meta, así que rotar el secreto
+  obligaba a editar nodos a mano y el valor nuevo volvía a quedar a la vista
+  de cualquiera con acceso a n8n.
+
+  Ahora los flujos leen tres variables de entorno, puestas en `/root/.env` de
+  la VPS y listadas en los servicios `n8n` y `n8n-worker`:
+
+  | variable | dónde se usa |
+  |---|---|
+  | `META_APP_SECRET` | la firma HMAC, en los dos flujos |
+  | `META_VERIFY_TOKEN_WHATSAPP` | `meta-whatsapp-inbound` |
+  | `META_VERIFY_TOKEN_MULTITENANT` | `meta-multi-tenant` |
+
+  Los verify tokens son **distintos** en cada flujo; no son intercambiables.
+
+  **Lo que no existe en n8n Community son las _Variables_** (función de pago).
+  Las variables de entorno sí funcionan, y estos flujos ya las usaban en otros
+  nodos. Se comprobó con una sonda antes de tocar nada: un nodo Code lee
+  `$env.META_APP_SECRET` sin problema con
+  `N8N_BLOCK_ENV_ACCESS_IN_NODE=false`, aunque esa variable no esté en la
+  lista de `N8N_UNRESTRICTED_ENV_VARS`.
+
+  Comprobado después contra la instancia real: el saludo de verificación
+  devuelve el reto con el token bueno y 403 con uno falso, y una entrega
+  firmada se acepta mientras que una con firma inventada da 403.
+
+  **Sigue pendiente rotar el secreto desde el panel de Meta** — eso no lo
+  arregla esto. Pero ahora rotar es cambiar un valor en `/root/.env`, otro en
+  el portal (`/admin/portal/settings/meta`) y el secreto de GitHub, sin tocar
+  ningún flujo.
 - La rama del chatbot dejó de llamar solo a `.../whatsapp/message` (que
   guarda el turno pero no contesta ni envía nada) y ahora sigue el mismo
   patrón que Telegram: `POST .../whatsapp/reply` → si hay `reply`, `POST
