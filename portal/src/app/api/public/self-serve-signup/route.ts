@@ -6,6 +6,7 @@ import { createClientForSelfServe, mintEmailVerificationToken } from '@/lib/self
 import { sendVerifyEmail, sendAccountExistsEmail } from '@/lib/auth-email';
 import { logError } from '@/lib/observability';
 import { clientIpFromHeaders } from '@/lib/client-ip';
+import { attributeClient } from '@/lib/referrals';
 
 // =============================================================================
 // POST /api/public/self-serve-signup — WP-31.
@@ -53,6 +54,11 @@ const SelfServeSignupSchema = z.object({
   // route has no CAPTCHA, and adding one wasn't judged worth the extra
   // dependency/friction until this proves insufficient.
   website: z.string().max(0).optional().default(''),
+  // A7 — el código de socio o de referido con el que llegó, si llegó con
+  // uno. Es el ÚNICO momento en que se puede preguntar: después ya no hay
+  // ninguna pantalla en la que quepa "¿quién te mandó?" sin que suene raro.
+  // Opcional a propósito: un código mal escrito no puede impedir un alta.
+  codigo: z.string().trim().max(40).optional(),
 });
 
 const ipRateLimiter = new InMemoryRateLimiter(15 * 60 * 1000);
@@ -72,7 +78,7 @@ export async function POST(req: NextRequest) {
   if (!body.success) {
     return NextResponse.json({ error: 'invalid_body', details: body.error.flatten() }, { status: 400 });
   }
-  const { email, name, companyName, password, productId } = body.data;
+  const { email, name, companyName, password, productId, codigo } = body.data;
 
   const product = await prisma.product.findUnique({
     where: { id: productId },
@@ -119,6 +125,30 @@ export async function POST(req: NextRequest) {
       logError('self_serve_signup.account_exists_email_failed', err, {}, 'warn');
     }
     return NextResponse.json(ACCEPTED, { status: 202 });
+  }
+
+  // A7 — quién lo trajo se apunta AQUÍ, en el alta, y no más tarde: la
+  // atribución es de una vez y gana el primero, así que el momento en que se
+  // escribe el código es el momento en que hay que guardarlo.
+  //
+  // Va después del create y antes del correo, y nunca puede tumbar el alta:
+  // un código inventado, caducado o de uno mismo devuelve {ok:false} y la
+  // cuenta queda creada igual. Perder una comisión es un problema; perder un
+  // cliente por un código mal tecleado, otro bastante peor.
+  if (codigo) {
+    try {
+      const attribution = await attributeClient(prisma, created.clientId, codigo);
+      if (!attribution.ok) {
+        logError(
+          'self_serve_signup.referral_not_attributed',
+          new Error(attribution.reason),
+          { clientId: created.clientId },
+          'warn',
+        );
+      }
+    } catch (err) {
+      logError('self_serve_signup.referral_failed', err, { clientId: created.clientId }, 'warn');
+    }
   }
 
   // Sin este correo la cuenta no se puede usar, pero reintentar el alta no
