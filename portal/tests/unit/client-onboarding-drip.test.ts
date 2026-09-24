@@ -16,7 +16,7 @@
 // =============================================================================
 
 import { describe, it, expect } from 'vitest';
-import { nextDripStep, buildDripEmail, DRIP_STEPS } from '@/lib/client-onboarding-drip';
+import { nextDripStep, buildDripEmail, isTooOldForDrip, DRIP_STEPS } from '@/lib/client-onboarding-drip';
 
 const ALTA = new Date('2026-09-01T10:00:00Z');
 const dias = (n: number) => new Date(ALTA.getTime() + n * 24 * 60 * 60 * 1000);
@@ -75,5 +75,26 @@ describe('buildDripEmail', () => {
       const email = buildDripEmail(step, { ...base, yaTieneResultados: false });
       if (email) expect(email.text).toContain('Fontanería Ejemplo');
     }
+  });
+});
+
+// =============================================================================
+// 24/09/2026 — encontrado al desplegar: los clientes activados hacía semanas
+// entraban en la secuencia desde el paso cero, como si acabaran de contratar.
+// Un correo de bienvenida con tres semanas de retraso no da la bienvenida a
+// nada: delata que acabamos de encender algo.
+// =============================================================================
+describe('altas demasiado viejas', () => {
+  it('pasado el plazo no se manda nada', () => {
+    expect(nextDripStep(ALTA, 0, dias(30))).toBeNull();
+  });
+
+  it('y se reconocen para poder cerrarlas de una vez', () => {
+    expect(isTooOldForDrip(ALTA, dias(30))).toBe(true);
+    expect(isTooOldForDrip(ALTA, dias(5))).toBe(false);
+  });
+
+  it('dentro del plazo la secuencia sigue funcionando', () => {
+    expect(nextDripStep(ALTA, 3, dias(15))?.key).toBe('primer_mes');
   });
 });
