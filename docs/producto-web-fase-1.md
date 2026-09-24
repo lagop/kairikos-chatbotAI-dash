@@ -46,15 +46,13 @@ de la VPS, no código**:
 Mientras eso no esté, la dirección provisional `/sitios/<slug>` funciona y
 permite enseñar la web el mismo día.
 
-## Frenos de gasto, todos en un sitio
+## Frenos de gasto
 
-| Dónde | Freno | Por qué |
-|---|---|---|
-| Barrido de borradores | 20 al día | Cada uno son ~2 céntimos de Sonnet |
-| Formulario público | 50 al día en total | Único tope que acota el gasto pase lo que pase |
-| Formulario público | 3 por IP y día | El goteo de un curioso |
-| Formulario de las webs | 20 envíos por hora y sitio | Un bot llenando la bandeja del cliente |
-| Informe comparativo | Bajo demanda, caché 30 días | Cada uno es una búsqueda de pago en Google |
+Los cuatro que toca este producto —barrido de borradores, formulario público (dos)
+y formulario de las webs publicadas— están en la tabla de `costes-y-topes.md`,
+junto a los del resto del sistema y con el nombre de cada constante. Se llevaron
+allí el 24/09/2026 para no tener dos tablas que se desincronizan: cuando alguien
+sube un tope, lo sube en un sitio.
 
 ## Probado contra servidores de verdad (24/09/2026)
 
