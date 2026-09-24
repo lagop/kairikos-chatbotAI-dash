@@ -12,6 +12,9 @@ export interface OperatorEditorInitial {
   state: 'pending' | 'in-progress' | 'live' | 'paused' | 'cancelled' | string;
   goLiveAt: string | null;
   notes: string | null;
+  /** A9/A10 — cuenta nuestra: se cae de las métricas y de las
+   *  estadísticas de mercado, pero sigue recibiendo los correos. */
+  isInternal: boolean;
 }
 
 export interface OperatorEditorProps {
@@ -26,7 +29,7 @@ interface ToastState {
   message: string;
 }
 
-type FieldKey = 'companyName' | 'email' | 'tier' | 'state' | 'goLiveAt' | 'notes';
+type FieldKey = 'companyName' | 'email' | 'tier' | 'state' | 'goLiveAt' | 'notes' | 'isInternal';
 
 // Labels come from the shared TIER_LABEL (billing-tier.ts) rather than
 // being hardcoded here a second time — this exact duplication is what
@@ -69,6 +72,7 @@ export function OperatorEditor({ clientId, initial }: OperatorEditorProps) {
     initial.goLiveAt ? initial.goLiveAt.slice(0, 10) : '',
   );
   const [notes, setNotes] = useState<string>(initial.notes ?? '');
+  const [isInternal, setIsInternal] = useState<boolean>(initial.isInternal);
 
   const showToast = (next: ToastState) => {
     setToast(next);
@@ -174,6 +178,21 @@ export function OperatorEditor({ clientId, initial }: OperatorEditorProps) {
       return;
     }
     void sendPatch('notes', { notes: next || null }, 'Notas internas guardadas.');
+  };
+
+  // Sin botón de guardar: el interruptor ES la acción. Un checkbox con su
+  // propio "Guardar" al lado es la forma más fiable de que alguien lo marque,
+  // se vaya, y semanas después no entienda por qué el panel de métricas
+  // sigue contando su cuenta de pruebas.
+  const onToggleInternal = (next: boolean) => {
+    setIsInternal(next);
+    void sendPatch(
+      'isInternal',
+      { isInternal: next },
+      next
+        ? 'Cuenta interna: deja de contar en métricas y estadísticas.'
+        : 'Cuenta normal: vuelve a contar en métricas y estadísticas.',
+    );
   };
 
   const cancelConfirm = () => {
@@ -372,6 +391,27 @@ export function OperatorEditor({ clientId, initial }: OperatorEditorProps) {
             </button>
           </div>
         </form>
+
+        <div className="md:col-span-2">
+          <label className="flex items-start gap-3 rounded-lg border border-kairikos-border p-3">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={isInternal}
+              onChange={(e) => onToggleInternal(e.target.checked)}
+              disabled={busyField === 'isInternal' || isPending}
+              data-testid="operator-edit-is-internal"
+            />
+            <span className="text-sm">
+              <span className="font-medium">Cuenta interna</span>
+              <span className="block text-xs text-kairikos-muted">
+                Nuestra: la de pruebas, una demo, un cliente interno. Deja de contar en las métricas del negocio y en
+                las estadísticas de mercado — sus productos activos no son ingresos y sus prospectos no son mercado.
+                Los correos le siguen llegando, que es para lo que sirve una cuenta de pruebas.
+              </span>
+            </span>
+          </label>
+        </div>
 
         <form onSubmit={onSubmitNotes} className="space-y-2 md:col-span-2" data-testid="operator-edit-form-notes">
           <label htmlFor="operator-edit-notes" className="label">

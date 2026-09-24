@@ -22,7 +22,7 @@
 // in a toast.
 //
 // Allowlist:
-//   companyName | email | tier | goLiveAt | state | notes
+//   companyName | email | tier | goLiveAt | state | notes | isInternal
 //
 // Auth:
 //   * `kairikos_operator_session` cookie (DB-backed OperatorSession row,
@@ -57,6 +57,7 @@ const ALLOWED_FIELDS = new Set([
   'goLiveAt',
   'state',
   'notes',
+  'isInternal',
 ] as const);
 
 const ALLOWED_TIERS = new Set(['starter', 'pro', 'premium'] as const);
@@ -101,6 +102,7 @@ interface CurrentClient {
   goLiveAt: Date | null;
   state: string;
   notes: string | null;
+  isInternal: boolean;
 }
 
 interface FieldChange {
@@ -109,7 +111,7 @@ interface FieldChange {
   afterValue: string | null;
   // The value to write into ChatbotClient.Prisma update (Date for
   // goLiveAt, string|null for everything else).
-  patchValue: string | null | Date;
+  patchValue: string | null | Date | boolean;
 }
 
 interface ParseOk {
@@ -291,6 +293,28 @@ function parseBody(raw: unknown, current: CurrentClient): ParseOk | ParseErr {
     }
   }
 
+  // A9/A10 — "esta cuenta es nuestra". Apaga a este cliente en las métricas
+  // del negocio y en las estadísticas de mercado, y en nada más: los correos
+  // le siguen llegando, que es para lo que existe una cuenta de pruebas.
+  //
+  // Booleano estricto, sin aceptar 'true' ni 1: un campo que decide si un
+  // cliente cuenta como ingresos no es sitio para adivinar lo que quiso
+  // decir el llamante.
+  if ('isInternal' in body) {
+    const raw = body.isInternal;
+    if (typeof raw !== 'boolean') {
+      return { ok: false, status: 400, error: 'bad_request', detail: 'isInternal must be a boolean' };
+    }
+    if (current.isInternal !== raw) {
+      changes.push({
+        field: 'isInternal',
+        beforeValue: String(current.isInternal),
+        afterValue: String(raw),
+        patchValue: raw,
+      });
+    }
+  }
+
   return { ok: true, changes };
 }
 
@@ -409,6 +433,7 @@ export async function PATCH(
         goLiveAt: true,
         state: true,
         notes: true,
+        isInternal: true,
       },
     });
   } catch (err) {
@@ -450,6 +475,7 @@ export async function PATCH(
         state: true,
         goLiveAt: true,
         notes: true,
+        isInternal: true,
         updatedAt: true,
       },
     });
@@ -480,6 +506,7 @@ export async function PATCH(
           state: true,
           goLiveAt: true,
           notes: true,
+          isInternal: true,
           updatedAt: true,
         },
       });

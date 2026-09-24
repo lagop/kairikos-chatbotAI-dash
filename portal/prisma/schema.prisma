@@ -167,6 +167,19 @@ model ChatbotClient {
   // puede llamar cada cinco minutos sin que nadie reciba dos correos.
   lastValueReportAt           DateTime?                       @map("last_value_report_at")
   lastLoginAt                 DateTime?                       @map("last_login_at")
+  // A9 — cuentas nuestras: la de pruebas, las demos, un cliente interno.
+  // Existen para probar productos, así que tienen productos "activos" que
+  // nadie paga, y el MRR se calcula sobre lo contratado. Sin esta columna,
+  // /admin/portal/metricas enseñaba 900 € de ingresos recurrentes que no
+  // existen, y ese panel es justo el que se mira para decidir si el negocio
+  // va bien.
+  //
+  // Lo que apaga y lo que NO: se cae de las métricas del negocio (A9) y de
+  // las estadísticas de mercado (A10) — de todo lo que dice una cifra como
+  // si fuera realidad. NO se cae de los correos (bienvenida, informe de
+  // valor, riesgo de baja): una cuenta interna es justamente donde se
+  // comprueba que esos correos salen y se leen bien.
+  isInternal                  Boolean                         @default(false) @map("is_internal")
 
   referralCodes                  ReferralCode[]                  @relation("ReferralCodeOwner")
   referredBy                     ReferralAttribution?            @relation("ReferredClient")

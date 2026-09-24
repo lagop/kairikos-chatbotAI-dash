@@ -111,7 +111,11 @@ export async function loadSectorStats(prisma: PrismaClient): Promise<SectorStatR
   // Solo prospectos (outbound): un lead entrante no dice nada del mercado,
   // dice que alguien nos escribió.
   const rows = await prisma.lead.findMany({
-    where: { source: 'outbound' },
+    // Fuera las cuentas internas: un barrido de pruebas busca lo que a uno
+    // le apetece probar ese día, no un sector de verdad, y esto se publica
+    // como estudio de mercado. Diez peluquerías buscadas para ver si el
+    // botón funciona no son diez peluquerías del mercado.
+    where: { source: 'outbound', client: { isInternal: false } },
     select: {
       searchCategory: true,
       searchLocation: true,
