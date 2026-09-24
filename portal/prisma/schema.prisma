@@ -168,6 +168,8 @@ model ChatbotClient {
   lastValueReportAt           DateTime?                       @map("last_value_report_at")
   lastLoginAt                 DateTime?                       @map("last_login_at")
 
+  referralCodes                  ReferralCode[]                  @relation("ReferralCodeOwner")
+  referredBy                     ReferralAttribution?            @relation("ReferredClient")
   prospectingWebDrafts           ProspectingWebDraft[]
   clientWebsites                 ClientWebsite[]
   clientWebsiteAudits            ClientWebsiteAudit[]
@@ -3765,6 +3767,94 @@ model PublicDraftRequest {
 
   @@index([createdAt])
   @@index([ipHash, createdAt])
+}
+
+// =============================================================================
+// A5 — quien usó la calculadora de llamadas perdidas y dejó su contacto.
+//
+// La calculadora no pide contacto para dar el número: cobrarlo espanta a más
+// gente de la que captura. Quien lo deja después de ver la cifra es alguien a
+// quien el número le ha dolido, y eso es el mejor lead que hay.
+//
+// Se guarda lo que calculó, no solo que calculó: llamar diciendo "vi que
+// estimaste perder 14.000 € al año" es otra conversación.
+// =============================================================================
+model CalculatorLead {
+  id     String @id @default(uuid()) @db.Uuid
+  ipHash String @map("ip_hash")
+
+  sector       String
+  businessName String? @map("business_name")
+  city         String?
+  contact      String
+
+  missedCallsPerWeek   Int @map("missed_calls_per_week")
+  averageJobValueCents Int @map("average_job_value_cents")
+  annualLossCents      Int @map("annual_loss_cents")
+
+  contactedAt DateTime? @map("contacted_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([createdAt])
+}
+
+// =============================================================================
+// A7 — códigos de referido y de socio.
+//
+// Dos cosas distintas con la misma mecánica, y por eso una sola tabla con un
+// campo que las separa:
+//
+//   referral → un CLIENTE recomienda a otro. Los dos ganan un mes.
+//   partner  → un distribuidor, un gremio o una gestoría. Cobra comisión
+//              recurrente sobre lo que trae.
+//
+// El código NO da descuento por sí mismo: eso lo sigue haciendo Stripe con
+// sus cupones (stripe-promotions.ts). Esto responde a la única pregunta que
+// hoy no se puede responder: QUIÉN trajo a este cliente. Sin atribución, una
+// comisión es una discusión.
+// =============================================================================
+model ReferralCode {
+  id   String @id @default(uuid()) @db.Uuid
+  // Lo que se escribe en el formulario o se imprime en el cartel del
+  // distribuidor. En mayúsculas y sin ambigüedad visual: lo teclea gente.
+  code String @unique
+
+  // 'referral' | 'partner'
+  kind String
+
+  // El cliente que recomienda, cuando es un referido.
+  referrerClientId String? @map("referrer_client_id")
+  // El nombre del socio, cuando no es un cliente (un almacén, un gremio).
+  partnerName      String? @map("partner_name")
+  partnerEmail     String? @map("partner_email")
+
+  // Porcentaje de comisión recurrente, 0-100. Null en los referidos, que se
+  // pagan con un mes gratis y no con dinero.
+  commissionPercent Int? @map("commission_percent")
+
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  referrer     ChatbotClient?        @relation("ReferralCodeOwner", fields: [referrerClientId], references: [id], onDelete: SetNull)
+  attributions ReferralAttribution[]
+
+  @@index([kind, active])
+}
+
+// A quién trajo cada código. Append-only y una fila por cliente atribuido:
+// si alguien llega dos veces con dos códigos, gana el primero, que es el que
+// de verdad lo trajo.
+model ReferralAttribution {
+  id       String @id @default(uuid()) @db.Uuid
+  codeId   String @map("code_id") @db.Uuid
+  clientId String @unique @map("client_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  code   ReferralCode  @relation(fields: [codeId], references: [id], onDelete: Cascade)
+  client ChatbotClient @relation("ReferredClient", fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([codeId, createdAt])
 }
 
 // =============================================================================
