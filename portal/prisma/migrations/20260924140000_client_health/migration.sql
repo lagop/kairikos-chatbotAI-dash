@@ -14,3 +14,8 @@
 
 ALTER TABLE "ChatbotClient" ADD COLUMN IF NOT EXISTS "last_login_at" TIMESTAMP(3);
 ALTER TABLE "ChatbotClient" ADD COLUMN IF NOT EXISTS "last_value_report_at" TIMESTAMP(3);
+
+-- A3 · El contador de la secuencia de bienvenida, por unidad contratada.
+-- Va en ClientProduct y no en una tabla nueva porque es un contador por
+-- contrato y no tiene vida propia.
+ALTER TABLE "ClientProduct" ADD COLUMN IF NOT EXISTS "onboarding_drip_step" INTEGER NOT NULL DEFAULT 0;

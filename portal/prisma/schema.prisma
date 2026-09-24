@@ -756,17 +756,17 @@ model ClientProductAudit {
 // an `@@unique` here. See prisma/migrations/<this migration>/migration.sql.
 // =============================================================================
 model ClientProduct {
-  id              String    @id @default(uuid()) @db.Uuid
-  clientId        String    @map("client_id")
-  productId       String    @map("product_id") @db.Uuid
-  tenantId        String?   @map("tenant_id") @db.Uuid
+  id                 String    @id @default(uuid()) @db.Uuid
+  clientId           String    @map("client_id")
+  productId          String    @map("product_id") @db.Uuid
+  tenantId           String?   @map("tenant_id") @db.Uuid
   // Fase 1 multi-instancia — a QUÉ negocio/web del cliente pertenece esta
   // contratación. Nullable a propósito y para siempre: una contratación sin
   // sitio declarado resuelve al sitio primario del cliente
   // (resolveContractedInstance), que es lo que mantiene simple el alta de
   // operador y lo que permitió un backfill que no tuvo que acertar fila a
   // fila. Ver docs/plan-multi-instancia-fase-1.md.
-  clientSiteId    String?   @map("client_site_id") @db.Uuid
+  clientSiteId       String?   @map("client_site_id") @db.Uuid
   // 'pending_payment' | 'active' | 'paused' | 'cancelled' | 'past_due' |
   // 'quote_pending'. The last one is 'web'-specific (WP-XX): covers the
   // ENTIRE pre-payment stretch of the custom-quote flow — from the
@@ -777,12 +777,12 @@ model ClientProduct {
   // WebQuote.status carries the fine-grained state within this one
   // coarse value, same relationship 'pending_payment' already has to
   // the plain self-serve Stripe Checkout flow.
-  status          String    @default("active")
-  subscribedAt    DateTime  @default(now()) @map("subscribed_at")
-  cancelledAt     DateTime? @map("cancelled_at")
-  createdBy       String?   @map("created_by")
-  changedBy       String?   @map("changed_by")
-  changedAt       DateTime  @default(now()) @map("changed_at")
+  status             String    @default("active")
+  subscribedAt       DateTime  @default(now()) @map("subscribed_at")
+  cancelledAt        DateTime? @map("cancelled_at")
+  createdBy          String?   @map("created_by")
+  changedBy          String?   @map("changed_by")
+  changedAt          DateTime  @default(now()) @map("changed_at")
   // WP-14 — per-product onboarding lifecycle. `status` above is the
   // Stripe-mirroring billing state (active/cancelled/past_due);
   // `onboardingState` is a different axis entirely — where THIS
@@ -792,8 +792,12 @@ model ClientProduct {
   // ChatbotClient.state is kept as a mirror of the chatbot product's
   // onboardingState (n8n still reads it — see the migration's COMPAT
   // note) rather than removed.
-  onboardingState String    @default("in-progress") @map("onboarding_state")
-  goLiveAt        DateTime? @map("go_live_at")
+  onboardingState    String    @default("in-progress") @map("onboarding_state")
+  // A3 — cuántos correos de la secuencia de bienvenida se han mandado ya para
+  // esta unidad contratada. El estado vive aquí y no en una tabla nueva
+  // porque es un contador por contrato y no tiene vida propia.
+  onboardingDripStep Int       @default(0) @map("onboarding_drip_step")
+  goLiveAt           DateTime? @map("go_live_at")
 
   client                     ChatbotClient               @relation(fields: [clientId], references: [id], onDelete: Cascade)
   clientSite                 ClientSite?                 @relation(fields: [clientSiteId], references: [id], onDelete: SetNull)

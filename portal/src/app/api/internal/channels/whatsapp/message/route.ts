@@ -58,7 +58,14 @@ export async function POST(req: NextRequest) {
   // el corte de la secuencia se engancha en ambas. Solo cuando escribe él:
   // un turno 'assistant' es nuestro propio mensaje, no una respuesta suya.
   if (body.data.role === 'user') {
-    await markProspectReplied(prisma, { clientId: connection.clientId, phone: body.data.from, now });
+    await markProspectReplied(prisma, {
+      clientId: connection.clientId,
+      phone: body.data.from,
+      now,
+      // Con el texto, un "no me interesa" descarta el lead en vez de dejarlo
+      // en la lista de a quién llamar mañana.
+      message: body.data.content,
+    });
   }
 
   const sessionPrefix = `whatsapp-${body.data.from}-`;

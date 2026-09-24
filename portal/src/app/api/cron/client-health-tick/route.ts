@@ -3,6 +3,7 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { isAuthorizedCronRequest } from '@/lib/cron-auth';
 import { sweepClientHealth, type ClientHealthResult } from '@/lib/client-health';
 import { sweepValueReports, type ValueReportSweepResult } from '@/lib/client-value-report';
+import { sweepOnboardingDrip, type DripSweepResult } from '@/lib/client-onboarding-drip';
 import { logError } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
@@ -52,5 +53,14 @@ export async function GET(req: NextRequest) {
     valueReports = { ok: false, error: err instanceof Error ? err.message : 'unknown error' };
   }
 
-  return NextResponse.json({ ok: true, health, valueReports });
+  let drip: ({ ok: true } & DripSweepResult) | { ok: false; error: string };
+  try {
+    const result = await sweepOnboardingDrip(prisma, now);
+    drip = { ok: true, ...result };
+  } catch (err) {
+    logError('client_health_tick.drip_failed', err, {}, 'warn');
+    drip = { ok: false, error: err instanceof Error ? err.message : 'unknown error' };
+  }
+
+  return NextResponse.json({ ok: true, health, valueReports, drip });
 }

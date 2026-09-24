@@ -58,7 +58,11 @@ export async function POST(req: NextRequest) {
   // primero a propósito, para que un fallo de la IA más abajo no deje al
   // prospecto recibiendo toques después de haber contestado.
   // markProspectReplied nunca lanza.
-  await markProspectReplied(prisma, { clientId: connection.clientId, phone: body.data.from });
+  await markProspectReplied(prisma, {
+    clientId: connection.clientId,
+    phone: body.data.from,
+    message: body.data.text,
+  });
 
   // Fase 4 multi-instancia — contesta el chatbot al que sirve ESTE canal (el
   // ancla de la fase 1). Ver resolveChatbotForChannel y
