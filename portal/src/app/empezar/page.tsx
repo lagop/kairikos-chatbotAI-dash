@@ -37,7 +37,19 @@ function isProductCode(value: string): value is ProductCode {
 
 export const dynamic = 'force-dynamic';
 
-export default async function EmpezarPage() {
+// A7 — el enlace que reparte un socio es /empezar?ref=SALTOKI-ADEF2. Se lee
+// aquí, en el servidor, y baja ya escrito al formulario: el visitante no
+// teclea nada y el socio no depende de que nadie recuerde su código. No se
+// valida en esta página a propósito — un código inventado en la URL no puede
+// impedir que alguien se dé de alta; eso lo decide el alta, no la portada.
+export default async function EmpezarPage({
+  searchParams,
+}: {
+  searchParams?: { ref?: string | string[] };
+}) {
+  const refParam = searchParams?.ref;
+  const codigoInicial = (Array.isArray(refParam) ? refParam[0] : refParam)?.trim().slice(0, 40) ?? '';
+
   if (!isDatabaseConfigured) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-16 sm:px-6">
@@ -111,7 +123,7 @@ export default async function EmpezarPage() {
       {tiers.length === 0 ? (
         <EmptyState title="Sin productos disponibles" description="Ahora mismo no hay ningún producto en autoservicio. Escríbenos a hola@kairikos.com." />
       ) : (
-        <SelfServeSignupForm tiers={tiers} />
+        <SelfServeSignupForm tiers={tiers} codigoInicial={codigoInicial} />
       )}
 
       <p className="mt-8 text-center text-xs text-kairikos-muted">

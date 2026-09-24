@@ -41,6 +41,10 @@ export interface CommissionRow {
   code: string;
   kind: string;
   beneficiario: string;
+  /** Un código retirado sigue en la lista: las atribuciones que ya trajo
+   *  cuentan para la comisión de este mes, y borrarlo borraría con él quién
+   *  trajo a quién. */
+  active: boolean;
   clientesTraidos: number;
   mrrTraidoCents: number;
   comisionMensualCents: number;
@@ -61,6 +65,7 @@ export function computeCommissions(
     partnerName: string | null;
     referrerName: string | null;
     commissionPercent: number | null;
+    active?: boolean;
     clientMrrCents: number[];
   }[],
 ): CommissionRow[] {
@@ -71,6 +76,7 @@ export function computeCommissions(
         code: row.code,
         kind: row.kind,
         beneficiario: row.partnerName ?? row.referrerName ?? '—',
+        active: row.active ?? true,
         clientesTraidos: row.clientMrrCents.length,
         mrrTraidoCents: mrr,
         // Los referidos no cobran dinero: su premio es un mes gratis, que se
@@ -138,6 +144,7 @@ export async function loadCommissionReport(prisma: PrismaClient): Promise<Commis
       partnerName: row.partnerName,
       referrerName: row.referrer?.name ?? null,
       commissionPercent: row.commissionPercent,
+      active: row.active,
       clientMrrCents: row.attributions.map((a) =>
         a.client.clientProducts.reduce(
           (acc, cp) =>

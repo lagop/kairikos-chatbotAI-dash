@@ -51,7 +51,16 @@ function priceSummary(tier: SignupTierOption): string {
 
 type Step = 'idle' | 'creating_account' | 'check_email';
 
-export function SelfServeSignupForm({ tiers }: { tiers: SignupTierOption[] }) {
+export function SelfServeSignupForm({
+  tiers,
+  codigoInicial = '',
+}: {
+  tiers: SignupTierOption[];
+  /** A7 — el código que venía en ?ref= del enlace del socio. Se resuelve en
+   *  el servidor y llega ya escrito: quien entra por el cartel de un almacén
+   *  no tiene que teclear nada, y quien no, ve el campo vacío y opcional. */
+  codigoInicial?: string;
+}) {
   const id = useId();
   const byCode = useMemo(() => {
     const map = new Map<string, SignupTierOption[]>();
@@ -70,6 +79,7 @@ export function SelfServeSignupForm({ tiers }: { tiers: SignupTierOption[] }) {
   const [password, setPassword] = useState('');
   const [tosAccepted, setTosAccepted] = useState(false);
   const [website, setWebsite] = useState(''); // honeypot — stays empty for real visitors
+  const [codigo, setCodigo] = useState(codigoInicial);
   const [step, setStep] = useState<Step>('idle');
   const [error, setError] = useState<string | null>(null);
 
@@ -105,7 +115,16 @@ export function SelfServeSignupForm({ tiers }: { tiers: SignupTierOption[] }) {
       const signupRes = await fetch('/api/public/self-serve-signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, name, companyName, password, productId: selectedProductId, tosAccepted, website }),
+        body: JSON.stringify({
+          email,
+          name,
+          companyName,
+          password,
+          productId: selectedProductId,
+          tosAccepted,
+          website,
+          codigo: codigo.trim() || undefined,
+        }),
       });
       if (!signupRes.ok) {
         const detail = await signupRes.json().catch(() => null);
@@ -243,6 +262,26 @@ export function SelfServeSignupForm({ tiers }: { tiers: SignupTierOption[] }) {
           autoComplete="new-password"
           minLength={8}
           data-testid="password-input"
+        />
+      </div>
+
+      {/* A7 — opcional y el último campo, a propósito: preguntar "¿quién te
+          mandó?" antes del correo hace que parezca un requisito. El código no
+          se valida aquí ni puede romper el alta; si no existe, el servidor lo
+          apunta como no atribuido y la cuenta se crea igual. */}
+      <div>
+        <label htmlFor={`${id}-codigo`} className="label">
+          Código de socio o de recomendación <span className="text-kairikos-muted">(opcional)</span>
+        </label>
+        <input
+          id={`${id}-codigo`}
+          className="input font-mono uppercase"
+          value={codigo}
+          onChange={(e) => setCodigo(e.target.value)}
+          placeholder="Si alguien te recomendó Kairikos"
+          autoComplete="off"
+          maxLength={40}
+          data-testid="codigo-input"
         />
       </div>
 

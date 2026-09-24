@@ -15,6 +15,11 @@ const mockState = vi.hoisted(() => ({
   sendAccountExistsEmail: vi.fn(),
   findUniqueUser: vi.fn(),
   logError: vi.fn(),
+  attributeClient: vi.fn(),
+}));
+
+vi.mock('@/lib/referrals', () => ({
+  attributeClient: (...args: unknown[]) => mockState.attributeClient(...args),
 }));
 
 vi.mock('@/lib/operator-crypto', () => ({
@@ -74,6 +79,7 @@ beforeEach(() => {
   mockState.sendAccountExistsEmail.mockReset().mockResolvedValue(undefined);
   mockState.findUniqueUser.mockReset().mockResolvedValue(null);
   mockState.logError.mockReset();
+  mockState.attributeClient.mockReset().mockResolvedValue({ ok: true, codeId: 'code_1' });
 });
 
 describe('POST /api/public/self-serve-signup', () => {
@@ -180,6 +186,48 @@ describe('POST /api/public/self-serve-signup', () => {
     const { verifyUrl } = mockState.sendVerifyEmail.mock.calls[0][0];
     expect(verifyUrl).toContain(`product=${PRODUCT_ID}`);
     expect(verifyUrl).not.toContain('quote=1');
+  });
+
+  // ===========================================================================
+  // A7 — el alta es el único sitio donde se puede preguntar quién lo trajo.
+  // Lo que se fija: que se apunte, y que NUNCA pueda tumbar el alta. Un
+  // código mal tecleado cuesta una comisión; un alta perdida, un cliente.
+  // ===========================================================================
+  it('apunta de quién vino el cliente cuando llega con un código', async () => {
+    const { POST } = await import('@/app/api/public/self-serve-signup/route');
+    const res = await POST(makeRequest({ ...VALID_BODY, codigo: ' saltoki-adef2 ' }));
+    expect(res.status).toBe(202);
+    expect(mockState.attributeClient).toHaveBeenCalledWith(expect.anything(), 'client_1', 'saltoki-adef2');
+  });
+
+  it('sin código no se toca la atribución', async () => {
+    const { POST } = await import('@/app/api/public/self-serve-signup/route');
+    await POST(makeRequest(VALID_BODY));
+    expect(mockState.attributeClient).not.toHaveBeenCalled();
+  });
+
+  it('un código que no existe no impide el alta', async () => {
+    mockState.attributeClient.mockResolvedValueOnce({ ok: false, reason: 'unknown_code' });
+    const { POST } = await import('@/app/api/public/self-serve-signup/route');
+    const res = await POST(makeRequest({ ...VALID_BODY, codigo: 'NOEXISTE' }));
+    expect(res.status).toBe(202);
+    expect(mockState.sendVerifyEmail).toHaveBeenCalled();
+    expect(mockState.logError).toHaveBeenCalled();
+  });
+
+  it('si la atribución revienta, el alta sigue adelante igual', async () => {
+    mockState.attributeClient.mockRejectedValueOnce(new Error('db_down'));
+    const { POST } = await import('@/app/api/public/self-serve-signup/route');
+    const res = await POST(makeRequest({ ...VALID_BODY, codigo: 'SALTOKI-ADEF2' }));
+    expect(res.status).toBe(202);
+    expect(mockState.sendVerifyEmail).toHaveBeenCalled();
+  });
+
+  it('a una cuenta que ya existía no se le atribuye nada: no hay cliente nuevo que atribuir', async () => {
+    mockState.createClientForSelfServe.mockResolvedValueOnce({ ok: false, error: 'client_already_exists' });
+    const { POST } = await import('@/app/api/public/self-serve-signup/route');
+    await POST(makeRequest({ ...VALID_BODY, codigo: 'SALTOKI-ADEF2' }));
+    expect(mockState.attributeClient).not.toHaveBeenCalled();
   });
 
   it('still returns 202 when the verification email fails to send', async () => {
