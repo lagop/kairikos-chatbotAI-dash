@@ -208,13 +208,17 @@ describe('encargo medio por sector', () => {
     expect(e.annualLostRevenue).toBeLessThan(2000);
   });
 
-  it('un oficio mantiene el valor con el que se diseñó el informe', () => {
-    expect(defaultAssumptionsFor('plumber').averageJobValue).toBe(300);
+  it('un oficio parte de 200 €, no de 300', () => {
+    // Bajó el 27/09/2026. 300 € es una reparación grande; una salida
+    // corriente está más cerca de 80-150 €, y el punto de partida se pone
+    // por debajo a propósito — ver el comentario de
+    // DEFAULT_MISSED_CALL_ASSUMPTIONS.
+    expect(defaultAssumptionsFor('plumber').averageJobValue).toBe(200);
   });
 
   it('una categoría desconocida cae al valor de oficios, no a 0', () => {
-    expect(defaultAssumptionsFor('gato_de_tres_cabezas').averageJobValue).toBe(300);
-    expect(defaultAssumptionsFor(null).averageJobValue).toBe(300);
+    expect(defaultAssumptionsFor('gato_de_tres_cabezas').averageJobValue).toBe(200);
+    expect(defaultAssumptionsFor(null).averageJobValue).toBe(200);
   });
 
   it('lo que escriba el operador en la llamada manda sobre el sector', () => {
