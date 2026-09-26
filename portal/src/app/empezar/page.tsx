@@ -3,6 +3,7 @@ import { SelfServeSignupForm, type SignupTierOption } from '@/components/public/
 import { ThemeToggle } from '@/components/portal/ThemeToggle';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { PRODUCT_CODES, PRODUCT_CATALOGS, type ProductCode } from '@/lib/catalogs';
+import { tierLabel } from '@/lib/public-catalog';
 
 // =============================================================================
 // /empezar (WP-31) — public, no session required. A visitor creates their
@@ -17,19 +18,12 @@ import { PRODUCT_CODES, PRODUCT_CATALOGS, type ProductCode } from '@/lib/catalog
 // of its own.
 // =============================================================================
 
-// Same small display-label map as /portal/productos's tierLabel() —
-// duplicated rather than shared, it's a 6-line formatting helper, not
-// business logic that would cost anything if the two copies drift.
-const TIER_DISPLAY: Record<string, string> = {
-  standard: 'Estándar',
-  solo: 'Autónomo',
-  team: 'Equipo',
-  business: 'Empresa',
-};
-
-function tierLabel(tier: string): string {
-  return TIER_DISPLAY[tier] ?? tier.charAt(0).toUpperCase() + tier.slice(1);
-}
+// Los nombres de escalón salen de lib/public-catalog. Estuvieron duplicados
+// aquí y en /portal/productos, con la nota de que duplicarlos no costaba nada
+// «porque es formato, no lógica de negocio». Era cierto mientras los dos
+// sitios fueran pantallas internas. Desde el 26/09/2026 los mismos nombres se
+// publican en kairikos.com a través de /api/public/catalogo, y una tercera
+// copia habría sido la que se queda atrás.
 
 function isProductCode(value: string): value is ProductCode {
   return (PRODUCT_CODES as readonly string[]).includes(value);
