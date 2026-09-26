@@ -54,12 +54,19 @@ type Step = 'idle' | 'creating_account' | 'check_email';
 export function SelfServeSignupForm({
   tiers,
   codigoInicial = '',
+  productoInicial,
 }: {
   tiers: SignupTierOption[];
   /** A7 — el código que venía en ?ref= del enlace del socio. Se resuelve en
    *  el servidor y llega ya escrito: quien entra por el cartel de un almacén
    *  no tiene que teclear nada, y quien no, ve el campo vacío y opcional. */
   codigoInicial?: string;
+  /** WP-33 — el escalón que venía en ?producto= (y ?tier=) del enlace de
+   *  kairikos.com. Sin él, esta página preseleccionaba siempre el primero de
+   *  la lista, así que quien pulsaba «Empezar» en Reseñas llegaba con Chatbot
+   *  marcado. El servidor lo resuelve a un productId y comprueba que exista;
+   *  aquí solo se usa. */
+  productoInicial?: string;
 }) {
   const id = useId();
   const byCode = useMemo(() => {
@@ -72,7 +79,11 @@ export function SelfServeSignupForm({
     return map;
   }, [tiers]);
 
-  const [selectedProductId, setSelectedProductId] = useState(tiers[0]?.productId ?? '');
+  const [selectedProductId, setSelectedProductId] = useState(
+    // El respaldo sigue siendo el primero: sin producto en la URL, o con uno
+    // que ya no está a la venta, la página funciona igual que antes.
+    productoInicial ?? tiers[0]?.productId ?? '',
+  );
   const [name, setName] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [email, setEmail] = useState('');

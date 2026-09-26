@@ -39,10 +39,26 @@ export const dynamic = 'force-dynamic';
 export default async function EmpezarPage({
   searchParams,
 }: {
-  searchParams?: { ref?: string | string[] };
+  searchParams?: { ref?: string | string[]; producto?: string | string[]; tier?: string | string[] };
 }) {
   const refParam = searchParams?.ref;
   const codigoInicial = (Array.isArray(refParam) ? refParam[0] : refParam)?.trim().slice(0, 40) ?? '';
+
+  // WP-33 — qué producto traía quien llega desde kairikos.com.
+  //
+  // Los botones «Empezar» de /servicios/ y /planes/ mandaban aquí SIN decir
+  // qué producto había pulsado el visitante, así que esta página preseleccionaba
+  // siempre el primero de la lista —Chatbot IA— y quien venía a contratar
+  // Reseñas se encontraba con otra cosa marcada. Un fallo silencioso de los
+  // caros: no da error, no se ve en los logs, y lo que se pierde es la venta
+  // de alguien que ya había dicho que sí.
+  //
+  // 'producto' es el código; 'tier' es opcional, porque /servicios/ vende el
+  // producto entero y /planes/ vende un escalón concreto. Sin tier, gana el
+  // más barato — que es el primero, porque la consulta ordena por precio.
+  const unParam = (v?: string | string[]) => (Array.isArray(v) ? v[0] : v)?.trim().toLowerCase() ?? '';
+  const productoPedido = unParam(searchParams?.producto).slice(0, 40);
+  const tierPedido = unParam(searchParams?.tier).slice(0, 40);
 
   if (!isDatabaseConfigured) {
     return (
@@ -101,6 +117,15 @@ export default async function EmpezarPage({
     });
   }
 
+  // Se resuelve aquí, con `tiers` ya completo: un código que no exista o un
+  // escalón que no le corresponda devuelven undefined y el formulario se
+  // comporta como siempre. Nadie escribe estas URLs a mano, pero llegan
+  // recortadas de un WhatsApp más a menudo de lo que parece.
+  const productoInicial = productoPedido
+    ? (tiers.find((t) => t.code === productoPedido && (!tierPedido || t.tier === tierPedido))
+        ?? tiers.find((t) => t.code === productoPedido))?.productId
+    : undefined;
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
       <div className="mb-4 flex justify-end">
@@ -117,7 +142,7 @@ export default async function EmpezarPage({
       {tiers.length === 0 ? (
         <EmptyState title="Sin productos disponibles" description="Ahora mismo no hay ningún producto en autoservicio. Escríbenos a hola@kairikos.com." />
       ) : (
-        <SelfServeSignupForm tiers={tiers} codigoInicial={codigoInicial} />
+        <SelfServeSignupForm tiers={tiers} codigoInicial={codigoInicial} productoInicial={productoInicial} />
       )}
 
       <p className="mt-8 text-center text-xs text-kairikos-muted">
