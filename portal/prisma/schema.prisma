@@ -717,11 +717,15 @@ model Product {
   // true (no catalog price — createProductCheckoutSession already
   // rejects it with product_requires_quote regardless of this flag), and
   // 'recall' stays false until its own readiness gate clears (Meta
-  // template approval + the article 28 paperwork). No admin UI toggle
-  // yet (flip it with an UPDATE for now) — the migration backfills the
-  // launch values directly; a checkbox in
-  // /admin/portal/settings/billing is a deliberate fast-follow, not
-  // built in this pass.
+  // template approval + the article 28 paperwork).
+  //
+  // Se cambia desde la casilla «Autoservicio» de
+  // /admin/portal/settings/billing, con segundo factor, y cada cambio
+  // deja fila en StripeCatalogAudit. El fast-follow que este comentario
+  // anunciaba SÍ se construyó (commit fb9d589); la nota de que no existía
+  // sobrevivió hasta el 26/09/2026 y llegó a hacer que se recomendara un
+  // UPDATE a mano para algo que ya tenía interfaz. Un comentario que
+  // describe el pasado es tan caro como uno que miente.
   selfServeEligible      Boolean  @default(false) @map("self_serve_eligible")
   createdAt              DateTime @default(now()) @map("created_at")
 
