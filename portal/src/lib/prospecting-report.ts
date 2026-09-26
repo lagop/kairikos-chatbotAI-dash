@@ -187,12 +187,18 @@ export interface MissedCallEstimate {
  *  inflada. 3 llamadas perdidas a la semana es lo que reconoce cualquier
  *  autónomo de oficio en cuanto se le pregunta.
  *
- *  El encargo medio de 300 € es el del oficio típico (fontanería,
+ *  El encargo medio de 200 € es el del oficio típico (fontanería,
  *  electricidad, climatización) y **solo vale para ese sector**: ver
- *  JOB_VALUE_BY_PRIMARY_TYPE. */
+ *  JOB_VALUE_BY_PRIMARY_TYPE.
+ *
+ *  Bajó de 300 a 200 el 27/09/2026. 300 € es una reparación grande; una
+ *  salida corriente —un desatasco, una fuga— está más cerca de 80-150 €.
+ *  Habrá trabajos de 800 € y los habrá de 90, y por eso el punto de partida
+ *  se pone por debajo: se quiere que el fontanero conteste "pues yo pierdo
+ *  más que eso" y no que tenga que discutir la primera línea del informe. */
 export const DEFAULT_MISSED_CALL_ASSUMPTIONS: Readonly<MissedCallAssumptions> = Object.freeze({
   missedCallsPerWeek: 3,
-  averageJobValue: 300,
+  averageJobValue: 200,
   closeRate: 0.3,
 });
 
@@ -227,7 +233,7 @@ export const JOB_VALUE_BY_PRIMARY_TYPE: Readonly<Record<string, number>> = Objec
   veterinary_care: 70,
   doctor: 80,
   // Oficios e instalación: el caso para el que se diseñó el informe
-  plumber: 300,
+  plumber: 200,
   electrician: 250,
   locksmith: 150,
   roofing_contractor: 1500,
