@@ -3560,6 +3560,39 @@ model ProspeccionZonaCache {
   @@index([miradoEl])
 }
 
+/// La caché del gancho público de /seo/: «dinos tu web y te decimos qué le
+/// falta». Ver lib/auditoria-publica.ts para el porqué de los topes.
+///
+/// Se guardan SEIS NÚMEROS y ni una palabra de la web ajena. Para decir «tu
+/// título son 78 caracteres» basta el 78, y almacenar el contenido de webs de
+/// terceros es una responsabilidad que no compensa a cambio de nada.
+model AuditoriaPublicaCache {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// La URL ya normalizada (ver normalizarUrl). Es la clave: sin normalizar,
+  /// «ejemplo.com» y «https://ejemplo.com/?utm_source=x» serían dos filas y
+  /// dos descargas de la misma página.
+  url String @unique
+
+  tieneTitulo      Boolean @map("tiene_titulo")
+  /// Caracteres, no el texto. 0 cuando no hay título.
+  largoTitulo      Int     @map("largo_titulo")
+  tieneDescripcion Boolean @map("tiene_descripcion")
+  largoDescripcion Int     @map("largo_descripcion")
+  h1               Int
+  imagenes         Int
+  imagenesSinAlt   Int     @map("imagenes_sin_alt")
+
+  /// Quién pidió esta auditoría, en hash. Solo para el tope por IP; no
+  /// identifica a nadie y no se cruza con nada.
+  ipHash String @map("ip_hash")
+
+  /// Cuándo se descargó. Decide la caducidad y se enseña al visitante.
+  miradoEl DateTime @default(now()) @map("mirado_el")
+
+  @@index([miradoEl])
+}
+
 model ProspectingWebDraft {
   id       String  @id @default(uuid()) @db.Uuid
   // 1:1 con el lead: un prospecto, un borrador, el último. Regenerar
