@@ -167,7 +167,27 @@ async function checkLinkStatus(url: string): Promise<number | null> {
   }
 }
 
-export async function auditWebsite(url: string): Promise<AuditWebsiteResult> {
+/**
+ * `checkLinks: false` mira la página y ya está: una petición en vez de once.
+ *
+ * Existe por la auditoría pública (lib/auditoria-publica.ts). Con un cliente
+ * de pago detrás, gastar once peticiones sobre SU web es lo correcto. Con un
+ * formulario abierto en kairikos.com, la URL la escribe cualquiera sobre
+ * cualquier sitio, y entonces cada pulsación es once peticiones contra un
+ * tercero: eso ya no es una auditoría, es un amplificador de tráfico con
+ * nuestra IP en los registros de la víctima.
+ *
+ * El factor once es la parte que importa, no el segundo de CPU. Los topes
+ * limitan cuántas veces se pulsa; esto limita cuánto daño hace cada pulsación,
+ * y son dos frenos distintos: el primero se puede afinar, el segundo no
+ * depende de acertar con un número.
+ */
+export async function auditWebsite(
+  url: string,
+  opciones: { checkLinks?: boolean } = {},
+): Promise<AuditWebsiteResult> {
+  const comprobarEnlaces = opciones.checkLinks ?? true;
+
   const page = await fetchPageHtml(url);
   if (!page.ok) {
     return { ok: false, error: page.error };
@@ -177,7 +197,7 @@ export async function auditWebsite(url: string): Promise<AuditWebsiteResult> {
   const { total: imagesTotal, missingAlt: imagesMissingAlt } = extractImages(html);
   const { internal, external } = extractLinks(html, url);
 
-  const toCheck = internal.slice(0, LINK_CHECK_CAP);
+  const toCheck = comprobarEnlaces ? internal.slice(0, LINK_CHECK_CAP) : [];
   const brokenLinks: { url: string; status: number | null }[] = [];
   for (const link of toCheck) {
     const status = await checkLinkStatus(link);

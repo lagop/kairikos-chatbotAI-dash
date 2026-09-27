@@ -52,7 +52,13 @@ set -Eeuo pipefail
 REPO_CHECKOUT="/root/kairikos-portal"
 TMP_DIR="/root/kairikos-migrate-tmp"
 PRISMA_VERSION="5.22.0"
-BRANCH="kaia-743-staging-runner"
+# La rama que se clona en la VPS. Se puede fijar con MIGRATE_BRANCH, y el
+# motivo es el ORDEN: una migración aditiva (una tabla nueva) se aplica ANTES
+# de mergear, para que el código llegue a una base de datos que ya la tiene. Sin
+# esta variable el script solo sabía clonar la principal, lo que obligaba a
+# mergear primero y dejaba una ventana en la que el código desplegado consulta
+# una tabla que no existe.
+BRANCH="${MIGRATE_BRANCH:-kaia-743-staging-runner}"
 REMOTE_URL="https://github.com/lagop/kairikos-chatbotAI-dash.git"
 
 MODE="status"
