@@ -16,6 +16,9 @@
 // 4. Que un rubro o una provincia fuera de lista NO lleguen a la llamada de
 //    pago. Ese es el freno que hace que el gasto máximo no dependa de lo que
 //    escriba nadie.
+// 5. Que una zona con muestra corta SE GUARDE aunque no se enseñe. Es lo
+//    único que impide que el mínimo de muestra rompa el punto 1: una zona
+//    pobre que no se cachea es una zona que se paga entera cada vez.
 // =============================================================================
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -28,7 +31,8 @@ vi.mock('@/lib/google-places', () => ({
 vi.mock('@/lib/observability', () => ({ logError: () => {} }));
 
 const { fotoDeZona, consultaPara, esRubroConocido, esProvinciaConocida,
-        MAX_BUSQUEDAS_NUEVAS_POR_DIA, MAX_BUSQUEDAS_NUEVAS_POR_IP, PROVINCIAS } =
+        MAX_BUSQUEDAS_NUEVAS_POR_DIA, MAX_BUSQUEDAS_NUEVAS_POR_IP, MUESTRA_MINIMA,
+        PROVINCIAS } =
   await import('@/lib/prospeccion-zona');
 
 const AHORA = new Date('2026-10-02T10:00:00.000Z');
@@ -158,6 +162,57 @@ describe('los topes', () => {
     const r = await fotoDeZona(prisma, ENTRADA, AHORA);
 
     expect(r.ok && r.foto.sinWeb).toBe(4);
+  });
+});
+
+describe('el mínimo de muestra', () => {
+  // El 27/09/2026 cerrajería en Sevilla devolvió siete resultados y la página
+  // publicó «0 de 7» con la tipografía de doce centímetros. Una proporción
+  // sobre siete no es una proporción.
+
+  it('una zona que da poco no enseña cifra, pero SÍ se guarda', async () => {
+    // Lo segundo es lo importante. Si no se guardara, cada visitante que
+    // eligiera esa zona volvería a pagar una llamada para enterarse de lo
+    // mismo, y el tope de coste de 572 combinaciones dejaría de existir.
+    buscar.mockResolvedValue(sitios(5, 2));
+    const { prisma, upsert } = prismaFalso(null);
+
+    const r = await fotoDeZona(prisma, ENTRADA, AHORA);
+
+    expect(r).toEqual({ ok: false, error: 'muestra_insuficiente' });
+    expect(upsert).toHaveBeenCalledOnce();
+    expect(upsert.mock.calls[0][0].create).toMatchObject({ total: 7 });
+  });
+
+  it('y la siguiente vez ya no llama a Google', async () => {
+    const { prisma } = prismaFalso({ sinWeb: 0, total: 7, miradoEl: HACE_DOS_DIAS });
+
+    expect(await fotoDeZona(prisma, ENTRADA, AHORA)).toEqual({ ok: false, error: 'muestra_insuficiente' });
+    expect(buscar).not.toHaveBeenCalled();
+  });
+
+  it('justo en el mínimo sí se enseña', async () => {
+    const { prisma } = prismaFalso({ sinWeb: 3, total: MUESTRA_MINIMA, miradoEl: HACE_DOS_DIAS });
+
+    const r = await fotoDeZona(prisma, ENTRADA, AHORA);
+
+    expect(r.ok && r.foto).toMatchObject({ sinWeb: 3, total: MUESTRA_MINIMA });
+  });
+
+  it('vale también en las tres degradaciones, no solo en el camino feliz', async () => {
+    // Son cuatro sitios que sirven una fila guardada. El mínimo se escribió
+    // una vez, en desdeLaCache(), justamente para que no valga en tres.
+    const corta = { sinWeb: 0, total: 7, miradoEl: HACE_CUARENTA_DIAS };
+
+    const topeGlobal = prismaFalso(corta, { hoy: MAX_BUSQUEDAS_NUEVAS_POR_DIA, ip: 0 });
+    expect(await fotoDeZona(topeGlobal.prisma, ENTRADA, AHORA)).toEqual({ ok: false, error: 'muestra_insuficiente' });
+
+    const topeIp = prismaFalso(corta, { hoy: 0, ip: MAX_BUSQUEDAS_NUEVAS_POR_IP });
+    expect(await fotoDeZona(topeIp.prisma, ENTRADA, AHORA)).toEqual({ ok: false, error: 'muestra_insuficiente' });
+
+    buscar.mockResolvedValue({ ok: false, error: 'boom' });
+    const googleCaido = prismaFalso(corta);
+    expect(await fotoDeZona(googleCaido.prisma, ENTRADA, AHORA)).toEqual({ ok: false, error: 'muestra_insuficiente' });
   });
 });
 
