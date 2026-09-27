@@ -45,7 +45,10 @@ export interface SeoAuditResult {
   h1Count: number;
   h1Texts: string[];
   imagesTotal: number;
+  /** Sin atributo alt. Defecto sin discusión. */
   imagesMissingAlt: number;
+  /** Con `alt=""`: se declaran decorativas. No es un defecto — ver extractImages. */
+  imagesDecorative: number;
   linksInternal: number;
   linksExternal: number;
   brokenLinksChecked: number;
@@ -124,14 +127,38 @@ function extractH1Texts(html: string): string[] {
     .slice(0, MAX_H1_TEXTS);
 }
 
-function extractImages(html: string): { total: number; missingAlt: number } {
+/**
+ * Cuenta imágenes, separando «sin alt» de «alt vacío».
+ *
+ * Hasta el 27/09/2026 las juntaba, y había un test que lo fijaba con su
+ * nombre: «empty alt counts as missing». Era una decisión, y estaba mal.
+ *
+ * `alt=""` es como la especificación de HTML dice «esta imagen es decorativa,
+ * sáltatela»: un icono de cerrar dentro de un botón que ya tiene nombre
+ * accesible DEBE llevarlo vacío. Contarlo como defecto significa decirle a
+ * alguien que arregle un marcado correcto.
+ *
+ * Se vio en la auditoría pública el día que se publicó: la portada de
+ * kairikos.com salía con «1 de 3 imágenes sin describir», y esa una era el
+ * icono de cerrar del banner de cookies, con su `alt=""` bien puesto. Una
+ * herramienta que le dice «mal» a un marcado correcto cría lobos, y eso es
+ * justo lo que la página promete no hacer.
+ *
+ * No se colapsa la información, se separa: quien no lleva el atributo es un
+ * defecto sin discusión; quien lo lleva vacío es una declaración de intención
+ * que no se puede verificar desde el HTML, y se cuenta aparte por si algún día
+ * conviene mirarla.
+ */
+function extractImages(html: string): { total: number; missingAlt: number; decorative: number } {
   const imgTags = Array.from(html.matchAll(/<img\s[^>]*>/gi)).map((m) => m[0]);
   let missingAlt = 0;
+  let decorative = 0;
   for (const tag of imgTags) {
     const altMatch = tag.match(/\salt=["']([^"']*)["']/i);
-    if (!altMatch || altMatch[1].trim() === '') missingAlt += 1;
+    if (!altMatch) missingAlt += 1;
+    else if (altMatch[1].trim() === '') decorative += 1;
   }
-  return { total: imgTags.length, missingAlt };
+  return { total: imgTags.length, missingAlt, decorative };
 }
 
 function extractLinks(html: string, baseUrl: string): { internal: string[]; external: string[] } {
@@ -194,7 +221,7 @@ export async function auditWebsite(
   }
   const { html } = page;
 
-  const { total: imagesTotal, missingAlt: imagesMissingAlt } = extractImages(html);
+  const { total: imagesTotal, missingAlt: imagesMissingAlt, decorative: imagesDecorative } = extractImages(html);
   const { internal, external } = extractLinks(html, url);
 
   const toCheck = comprobarEnlaces ? internal.slice(0, LINK_CHECK_CAP) : [];
@@ -216,6 +243,7 @@ export async function auditWebsite(
       h1Texts: extractH1Texts(html),
       imagesTotal,
       imagesMissingAlt,
+      imagesDecorative,
       linksInternal: internal.length,
       linksExternal: external.length,
       brokenLinksChecked: toCheck.length,
