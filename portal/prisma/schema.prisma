@@ -3525,6 +3525,41 @@ model ProspectingCompetitorSnapshot {
 // Sonnet 5), sirve para saber qué borradores son de la tanda vieja sin
 // adivinarlo por la fecha.
 // =============================================================================
+/// La foto de una zona para el gancho público de /prospeccion/ en
+/// kairikos.com: cuántos negocios de un rubro no tienen web en una
+/// provincia.
+///
+/// Es una CACHÉ, no un registro: una fila por combinación, se reescribe al
+/// refrescarse y no guarda historial. Existe por dinero — cada fallo de caché
+/// es una búsqueda de pago en Google Places, y sin esto cada visitante
+/// costaría. Con ella, y siendo cerradas las dos listas (once rubros, cincuenta
+/// y dos provincias), el gasto máximo queda acotado a 572 búsquedas al mes
+/// aunque alguien las pida todas en bucle. Ver src/lib/prospeccion-zona.ts.
+model ProspeccionZonaCache {
+  id        String @id @default(uuid()) @db.Uuid
+  /// Clave de PUBLIC_SECTORS. Lista cerrada: es el freno, no una etiqueta.
+  rubro     String
+  /// De PROVINCIAS. Ídem.
+  provincia String
+
+  /// Cuántos de la muestra no tienen websiteUri en su ficha de Google.
+  sinWeb Int @map("sin_web")
+  /// El tamaño de la muestra. Se guarda y se enseña: «7 de 20» es verdad,
+  /// «el 35 %» invita a multiplicarlo por el censo de la provincia.
+  total  Int
+
+  /// Quién pagó esta búsqueda, en hash. Solo para el tope por IP; no
+  /// identifica a nadie y no se cruza con nada.
+  ipHash String @map("ip_hash")
+
+  /// Cuándo se miró. Decide la caducidad y se enseña al visitante, para no
+  /// aparentar que la cifra es de este instante.
+  miradoEl DateTime @default(now()) @map("mirado_el")
+
+  @@unique([rubro, provincia], name: "rubro_provincia")
+  @@index([miradoEl])
+}
+
 model ProspectingWebDraft {
   id       String  @id @default(uuid()) @db.Uuid
   // 1:1 con el lead: un prospecto, un borrador, el último. Regenerar
