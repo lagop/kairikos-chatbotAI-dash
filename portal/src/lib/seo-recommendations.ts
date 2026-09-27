@@ -181,6 +181,11 @@ export function parseAuditResult(value: unknown): SeoAuditResult | null {
     h1Texts: Array.isArray(raw.h1Texts) ? raw.h1Texts.filter((t): t is string => typeof t === 'string') : [],
     imagesTotal: typeof raw.imagesTotal === 'number' ? raw.imagesTotal : 0,
     imagesMissingAlt: raw.imagesMissingAlt,
+    // Las auditorías guardadas antes del 27/09/2026 no traen este campo: hasta
+    // entonces un `alt=""` se contaba dentro de imagesMissingAlt. Un 0 aquí
+    // significa «no se sabe», no «no hay decorativas» — y es justo el caso para
+    // el que existe esta función.
+    imagesDecorative: typeof raw.imagesDecorative === 'number' ? raw.imagesDecorative : 0,
     linksInternal: typeof raw.linksInternal === 'number' ? raw.linksInternal : 0,
     linksExternal: typeof raw.linksExternal === 'number' ? raw.linksExternal : 0,
     brokenLinksChecked: typeof raw.brokenLinksChecked === 'number' ? raw.brokenLinksChecked : 0,

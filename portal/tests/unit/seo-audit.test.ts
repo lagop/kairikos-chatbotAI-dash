@@ -101,21 +101,27 @@ describe('auditWebsite — extraction', () => {
     if (result.ok) expect(result.data.h1Count).toBe(2);
   });
 
-  it('counts images and how many are missing alt text (empty alt counts as missing)', async () => {
+  it('separa «sin atributo alt» de «alt vacío», que es marcado correcto', async () => {
     mockState.fetch.mockResolvedValueOnce(
       htmlResponse(`
         <html><body>
           <img src="a.jpg" alt="Fachada de la tienda">
           <img src="b.jpg" alt="">
           <img src="c.jpg">
+          <img src="d.jpg" alt="   ">
         </body></html>
       `),
     );
     const result = await auditWebsite('https://images.example');
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.data.imagesTotal).toBe(3);
-      expect(result.data.imagesMissingAlt).toBe(2);
+      expect(result.data.imagesTotal).toBe(4);
+      // Solo c.jpg, que no lleva el atributo. b.jpg y d.jpg lo llevan vacío:
+      // así es como la especificación marca una imagen decorativa, y decirle
+      // «mal» a un marcado correcto es lo que hace que nadie se fíe de una
+      // auditoría. Se cuentan aparte.
+      expect(result.data.imagesMissingAlt).toBe(1);
+      expect(result.data.imagesDecorative).toBe(2);
     }
   });
 
