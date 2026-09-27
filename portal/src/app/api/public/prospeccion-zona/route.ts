@@ -93,6 +93,11 @@ export async function POST(req: NextRequest) {
     });
 
     if (!r.ok) {
+      // 429 solo para los topes, que son nuestros y se pasan solos. El resto va
+      // con 400, incluido 'muestra_insuficiente': la petición está bien formada
+      // y la zona existe, simplemente da demasiado poco para decir una
+      // proporción. El código sale tal cual porque la web escribe un texto
+      // distinto para cada uno — un «no se pudo» genérico ahí sería mentira.
       const estado = r.error === 'tope_global' || r.error === 'tope_ip' ? 429 : 400;
       return NextResponse.json({ error: r.error }, { status: estado, headers: CORS });
     }

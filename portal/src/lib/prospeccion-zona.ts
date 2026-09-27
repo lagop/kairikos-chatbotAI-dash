@@ -52,6 +52,23 @@ export const DIAS_DE_VIGENCIA = 30;
  *  cuesta exactamente una llamada y no un número que dependa de la zona. */
 const TAMANO_DE_MUESTRA = 20;
 
+/**
+ * Por debajo de esto no se enseña proporción: se dice que la zona da poco.
+ *
+ * El 27/09/2026, el día que se publicó /prospeccion/, cerrajería en Sevilla
+ * devolvió SIETE resultados. La página dijo «0 de 7» —y antes de eso prometía
+ * en su subtítulo que miraba veinte—. Las dos cosas eran ciertas por separado
+ * y juntas quedaban mal: una proporción sobre siete no es una proporción, es
+ * una anécdota, y presentarla con la misma tipografía de doce centímetros que
+ * «8 de 20» le da un peso que no tiene.
+ *
+ * Diez es la mitad de la muestra que se pide. Es el denominador más pequeño
+ * con el que «N de 10» todavía se lee como una parte de un todo. No hay nada
+ * estadístico en el número: hay que elegir uno, y por debajo de éste preferimos
+ * no decir nada a decir algo que suene más firme de lo que es.
+ */
+export const MUESTRA_MINIMA = 10;
+
 export const PROVINCIAS: readonly string[] = Object.freeze([
   'A Coruña', 'Álava', 'Albacete', 'Alicante', 'Almería', 'Asturias', 'Ávila',
   'Badajoz', 'Baleares', 'Barcelona', 'Burgos', 'Cáceres', 'Cádiz', 'Cantabria',
@@ -77,7 +94,7 @@ export interface FotoDeZona {
 
 export type ResultadoDeZona =
   | { ok: true; foto: FotoDeZona }
-  | { ok: false; error: 'rubro_desconocido' | 'provincia_desconocida' | 'sin_configurar' | 'tope_global' | 'tope_ip' | 'sin_resultados' | 'error_externo' };
+  | { ok: false; error: 'rubro_desconocido' | 'provincia_desconocida' | 'sin_configurar' | 'tope_global' | 'tope_ip' | 'sin_resultados' | 'muestra_insuficiente' | 'error_externo' };
 
 export function esRubroConocido(valor: string): boolean {
   return Object.prototype.hasOwnProperty.call(PUBLIC_SECTORS, valor);
@@ -100,6 +117,26 @@ export function consultaPara(rubro: string, provincia: string): string {
 }
 
 type PrismaZona = Pick<PrismaClient, 'prospeccionZonaCache'>;
+
+type FilaGuardada = { sinWeb: number; total: number; miradoEl: Date };
+
+/**
+ * Lo que se devuelve a partir de una fila ya guardada.
+ *
+ * Existe como función porque hay CUATRO caminos que sirven una fila guardada
+ * —la fresca, y las tres degradaciones: tope global, tope por IP y Google
+ * caído— y el mínimo de muestra tiene que valer en los cuatro. Repetirlo
+ * cuatro veces es garantizar que dentro de un mes valga en tres.
+ */
+function desdeLaCache(fila: FilaGuardada): ResultadoDeZona {
+  if (fila.total < MUESTRA_MINIMA) {
+    return { ok: false, error: 'muestra_insuficiente' };
+  }
+  return {
+    ok: true,
+    foto: { sinWeb: fila.sinWeb, total: fila.total, miradoEl: fila.miradoEl.toISOString(), deCache: true },
+  };
+}
 
 function haceDias(dias: number): Date {
   return new Date(Date.now() - dias * 24 * 60 * 60 * 1000);
@@ -127,10 +164,7 @@ export async function fotoDeZona(
   });
 
   if (guardada && guardada.miradoEl >= vigenteDesde) {
-    return {
-      ok: true,
-      foto: { sinWeb: guardada.sinWeb, total: guardada.total, miradoEl: guardada.miradoEl.toISOString(), deCache: true },
-    };
+    return desdeLaCache(guardada);
   }
 
   // A partir de aquí se gasta dinero. Los topes solo miran las búsquedas
@@ -147,20 +181,14 @@ export async function fotoDeZona(
     // Si hay una foto caducada, vale más que un error: una cifra de hace
     // cinco semanas sigue siendo verdad aproximada, y el visitante no se va.
     if (guardada) {
-      return {
-        ok: true,
-        foto: { sinWeb: guardada.sinWeb, total: guardada.total, miradoEl: guardada.miradoEl.toISOString(), deCache: true },
-      };
+      return desdeLaCache(guardada);
     }
     return { ok: false, error: 'tope_global' };
   }
 
   if (nuevasDeEstaIp >= MAX_BUSQUEDAS_NUEVAS_POR_IP) {
     if (guardada) {
-      return {
-        ok: true,
-        foto: { sinWeb: guardada.sinWeb, total: guardada.total, miradoEl: guardada.miradoEl.toISOString(), deCache: true },
-      };
+      return desdeLaCache(guardada);
     }
     return { ok: false, error: 'tope_ip' };
   }
@@ -171,10 +199,7 @@ export async function fotoDeZona(
     // Con una foto vieja se sirve igual: el visitante no tiene por qué pagar
     // que Google esté caído.
     if (guardada) {
-      return {
-        ok: true,
-        foto: { sinWeb: guardada.sinWeb, total: guardada.total, miradoEl: guardada.miradoEl.toISOString(), deCache: true },
-      };
+      return desdeLaCache(guardada);
     }
     return { ok: false, error: 'error_externo' };
   }
@@ -188,11 +213,20 @@ export async function fotoDeZona(
   // dar una cifra honesta, no la buena.
   const sinWeb = muestra.filter((p) => !p.websiteUri).length;
 
+  // Se guarda SIEMPRE, también cuando la muestra se queda corta. Es lo que
+  // mantiene en pie el tope de coste: si una zona pobre no se guardara, cada
+  // visitante que la eligiera volvería a pagar una llamada a Google para
+  // enterarse otra vez de que da poco. Lo que se decide abajo es qué se
+  // enseña, no si se ha mirado.
   const fila = await prisma.prospeccionZonaCache.upsert({
     where: { rubro_provincia: { rubro, provincia } },
     create: { rubro, provincia, sinWeb, total: muestra.length, ipHash, miradoEl: ahora },
     update: { sinWeb, total: muestra.length, ipHash, miradoEl: ahora },
   });
+
+  if (fila.total < MUESTRA_MINIMA) {
+    return { ok: false, error: 'muestra_insuficiente' };
+  }
 
   return {
     ok: true,
