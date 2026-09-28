@@ -3,7 +3,15 @@ import type { PrismaClient } from '@prisma/client';
 import { sendTemplate, getPhoneNumberInfo } from './whatsapp-api';
 import { metaSenderFor } from './recall-messaging';
 import { logError } from './observability';
-import { MAX_CONTACTOS_POR_DIA, normalizarPresentacion, nombreRemitente, SEGUIMIENTOS } from './prospecting-presentacion';
+import {
+  MAX_CONTACTOS_POR_DIA,
+  normalizarPresentacion,
+  nombreRemitente,
+  parametrosDelPaso,
+  pasoUsaPresentacion,
+  SEGUIMIENTOS,
+} from './prospecting-presentacion';
+import { phonesMatch } from './prospecting-replies';
 
 // =============================================================================
 // Prospección con IA, Fase C — the highest-risk piece of this product:
@@ -40,8 +48,13 @@ import { MAX_CONTACTOS_POR_DIA, normalizarPresentacion, nombreRemitente, SEGUIMI
  *  y el consentimiento pasó a ENSEÑARLO. Con la v1 el cliente autorizaba que
  *  se escribiera en su nombre sin haber visto nunca qué se escribía. Ese día
  *  ninguna campaña tenía el consentimiento dado, así que subir la versión no
- *  le quitó el permiso a nadie. */
-export const PROSPECTING_CONSENT_VERSION = 'v2';
+ *  le quitó el permiso a nadie.
+ *
+ *  v3 (28/09/2026, el mismo día): cambió el primer seguimiento —el que
+ *  prometía «no volvemos a escribirte» antes de mandar el segundo—. El
+ *  cliente autoriza los tres mensajes que ve, así que un texto nuevo pide
+ *  permiso nuevo. Tampoco había ningún consentimiento dado. */
+export const PROSPECTING_CONSENT_VERSION = 'v3';
 
 /**
  * The template Meta has to approve for this product. Same contract as
@@ -57,16 +70,17 @@ export const PROSPECTING_TEMPLATES = {
   // se envía. La v1 NO se conserva como respaldo de envío (a diferencia de
   // recall): lo que había que dejar de enviar era justo su texto.
   firstContact: { name: 'prospecting_first_contact_v2', languageCode: 'es' },
-  // Fase 3.3 — los dos toques de seguimiento. Mismos dos parámetros que el
-  // primero a propósito: un único contrato que revisar al enviarlos a
-  // aprobación, y una sola forma de equivocarse en vez de tres.
+  // Fase 3.3 — los dos toques de seguimiento. Cuántos parámetros lleva cada
+  // uno ya no se escribe aquí: sale de su texto (parametrosDelPaso).
   //
   // BLOQUEO EXTERNO: como `prospecting_first_contact`, estas dos plantillas
   // necesitan aprobación de Meta antes de que la secuencia envíe nada. Sin
   // aprobar, sendTemplate falla y el lead consume presupuesto de reintentos
   // (autoContactAttempts) sin gastar toque — que es el comportamiento
   // correcto, pero conviene saber que es esto y no un número malo.
-  followUp1: { name: 'prospecting_follow_up_1', languageCode: 'es' },
+  // v2 desde el 28/09/2026 — la v1 prometía no volver a escribir y el paso
+  // siguiente volvía a escribir. Ver SEGUIMIENTOS en prospecting-presentacion.ts.
+  followUp1: { name: 'prospecting_follow_up_1_v2', languageCode: 'es' },
   followUp2: { name: 'prospecting_follow_up_2', languageCode: 'es' },
 } as const;
 
@@ -248,37 +262,46 @@ export async function runProspectingContact(
   // cada escalón tiene su propia espera: así `take: remaining` devuelve
   // exactamente los que hay que enviar, sin filtrar en memoria un lote que
   // luego se quedaría corto.
-  const followUpDue = PROSPECTING_SEQUENCE.filter((s) => s.step > 1).map((s) => ({
+  // Sin presentación no sale ningún paso cuyo texto la lleve: quedaría «Nos
+  // dedicamos a  y…», en nombre del cliente y a un desconocido. Se normaliza
+  // otra vez aquí aunque la ruta ya la guarde normalizada: es la última
+  // puerta antes de WhatsApp, y un valor viejo o escrito por otro camino no
+  // puede colarse.
+  //
+  // Hoy la llevan el primer mensaje y el primer seguimiento; el último no.
+  // Un lead que se queda en el paso 2 porque el cliente vació la
+  // presentación espera ahí —no se salta al 3—: saltarse un paso sería
+  // mandar «última vez que te escribimos» a quien solo ha recibido uno.
+  const presentacion = normalizarPresentacion(campaign.presentacion);
+
+  const followUpDue = PROSPECTING_SEQUENCE.filter(
+    (s) => s.step > 1 && (presentacion || !pasoUsaPresentacion(s.step)),
+  ).map((s) => ({
     followUpCount: s.step - 1,
     lastAutoContactAt: { lte: new Date(now.getTime() - s.delayDays * DAY_MS) },
   }));
 
-  const followUps = await prisma.lead.findMany({
-    where: {
-      clientId: campaign.clientId,
-      source: 'outbound',
-      status: 'contactado',
-      // El corte: en cuanto contesta, no recibe nada más.
-      repliedAt: null,
-      contactPhone: { not: null },
-      autoContactAttempts: { lt: MAX_AUTO_CONTACT_ATTEMPTS },
-      OR: followUpDue,
-    },
-    // El que lleva más tiempo esperando su siguiente toque, primero.
-    orderBy: { lastAutoContactAt: 'asc' },
-    take: remaining,
-  });
-
-  // Sin presentación no sale ningún PRIMER mensaje: quedaría «Nos dedicamos
-  // a  y creemos que…», en nombre del cliente y a un desconocido. Se
-  // normaliza otra vez aquí aunque la ruta ya la guarde normalizada: es la
-  // última puerta antes de WhatsApp, y un valor viejo o escrito por otro
-  // camino no puede colarse. Los seguimientos siguen: no la usan, y dejarlos
-  // a medias rompería una cadencia ya empezada.
-  const presentacion = normalizarPresentacion(campaign.presentacion);
+  const followUps =
+    followUpDue.length === 0
+      ? []
+      : await prisma.lead.findMany({
+          where: {
+            clientId: campaign.clientId,
+            source: 'outbound',
+            status: 'contactado',
+            // El corte: en cuanto contesta, no recibe nada más.
+            repliedAt: null,
+            contactPhone: { not: null },
+            autoContactAttempts: { lt: MAX_AUTO_CONTACT_ATTEMPTS },
+            OR: followUpDue,
+          },
+          // El que lleva más tiempo esperando su siguiente toque, primero.
+          orderBy: { lastAutoContactAt: 'asc' },
+          take: remaining,
+        });
 
   const firstContacts =
-    followUps.length >= remaining || !presentacion
+    followUps.length >= remaining || (!presentacion && pasoUsaPresentacion(1))
       ? []
       : await prisma.lead.findMany({
           where: {
@@ -292,13 +315,82 @@ export async function runProspectingContact(
           take: remaining - followUps.length,
         });
 
+  // EL BLOQUEO POR TELÉFONO (28/09/2026). Hasta aquí la secuencia se
+  // cortaba por LEAD, y un lead es un local de Google, no una persona. Dos
+  // locales del mismo negocio comparten teléfono a menudo —
+  // markProspectReplied ya lo sabía y marca los dos al responder—, pero el
+  // envío no: un barrido posterior podía encontrar el segundo local de
+  // quien ya había dicho «no me interesa» y empezarle la secuencia desde
+  // cero. Justo lo que el seguimiento v2 promete que no pasará.
+  //
+  // Un primer contacto no sale a un teléfono que ya está en una secuencia,
+  // que ya ha respondido o que está descartado. Ese lead deja de ser
+  // candidato (se agotan sus intentos automáticos) pero sigue en la lista
+  // del cliente para que decida él — salvo que el otro local dijera que no:
+  // entonces se descarta también, por la misma razón que lo hace A2 en
+  // prospecting-replies.ts.
+  const blockers =
+    firstContacts.length === 0
+      ? []
+      : await prisma.lead.findMany({
+          where: {
+            clientId: campaign.clientId,
+            source: 'outbound',
+            contactPhone: { not: null },
+            OR: [{ followUpCount: { gt: 0 } }, { repliedAt: { not: null } }, { status: 'descartado' }],
+          },
+          select: { id: true, contactPhone: true, status: true, repliedAt: true },
+        });
+  // Los teléfonos que ya reciben algo en ESTA pasada: dos locales nuevos con
+  // el mismo número en el mismo barrido no reciben dos primeros mensajes.
+  const phonesThisRun: string[] = [];
+
   let sent = 0;
   let followedUp = 0;
   let failed = 0;
+  let blocked = 0;
 
   for (const lead of [...followUps, ...firstContacts]) {
     const phone = lead.contactPhone;
     if (!phone) continue;
+
+    if (lead.followUpCount === 0) {
+      if (phonesThisRun.some((p) => phonesMatch(p, phone))) {
+        // No se marca: si el envío del otro falla, este vuelve a ser
+        // candidato. Cuando el otro salga, el bloqueo de abajo lo retira.
+        continue;
+      }
+      const blocker = blockers.find((b) => b.id !== lead.id && phonesMatch(b.contactPhone, phone));
+      if (blocker) {
+        const saidNo = blocker.status === 'descartado' && blocker.repliedAt !== null;
+        await prisma.$transaction(async (tx) => {
+          await tx.lead.update({
+            where: { id: lead.id },
+            data: {
+              autoContactAttempts: MAX_AUTO_CONTACT_ATTEMPTS,
+              autoContactError: saidNo ? 'mismo_telefono_rechazo_el_contacto' : 'mismo_telefono_ya_contactado',
+              ...(saidNo ? { status: 'descartado', discardedAt: now } : {}),
+            },
+          });
+          if (saidNo) {
+            await tx.leadAudit.create({
+              data: {
+                leadId: lead.id,
+                clientId: campaign.clientId,
+                tenantId: campaign.tenantId,
+                action: 'discarded',
+                statusBefore: 'nuevo',
+                statusAfter: 'descartado',
+                actorId: 'system:prospecting',
+              },
+            });
+          }
+        });
+        blocked += 1;
+        continue;
+      }
+    }
+    phonesThisRun.push(phone);
 
     const step = nextSequenceStep(lead.followUpCount);
     if (!step) {
@@ -308,15 +400,14 @@ export async function runProspectingContact(
       continue;
     }
 
-    // El primer toque lleva tres parámetros; los seguimientos, dos. Un
-    // parámetro de más o de menos no lo rechaza Meta al revisar la plantilla:
-    // lo rechaza al ENVIAR (132000), mensaje a mensaje. Por eso hay un test
-    // que compara el número de parámetros de cada escalón con los {{n}} de su
-    // texto.
-    const bodyParams =
-      step.step === 1
-        ? [lead.contactName ?? 'equipo', businessName, presentacion ?? '']
-        : [lead.contactName ?? 'equipo', businessName];
+    // Tantos parámetros como variables tenga el texto de ESTE paso. Meta no
+    // avisa de un parámetro de más o de menos al revisar la plantilla: lo
+    // rechaza al enviar (132000), mensaje a mensaje.
+    const bodyParams = parametrosDelPaso(step.step, {
+      prospecto: lead.contactName ?? 'equipo',
+      negocio: businessName,
+      presentacion,
+    });
 
     const result = await sendTemplate(sender.token, sender.phoneNumberId, phone, {
       ...step.template,
@@ -363,6 +454,15 @@ export async function runProspectingContact(
       logError('prospecting_contact.send_failed', new Error(result.error), { leadId: lead.id, campaignId: campaign.id }, 'warn');
       failed += 1;
     }
+  }
+
+  if (blocked > 0) {
+    logError(
+      'prospecting_contact.same_phone_blocked',
+      new Error(`${blocked} primer(os) contacto(s) retenido(s): el teléfono ya estaba en otra secuencia`),
+      { campaignId: campaign.id, blocked },
+      'warn',
+    );
   }
 
   return {

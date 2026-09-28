@@ -104,10 +104,15 @@ function lead(over: Record<string, unknown> = {}) {
  *  diario entre las dos es justo lo que hay que poder probar. Se
  *  distinguen por `status`: solo la de primeros contactos filtra 'nuevo'. */
 function mockLeads(
-  { followUps = [] as unknown[], firstContacts = [] as unknown[] } = {},
+  { followUps = [] as unknown[], firstContacts = [] as unknown[], blockers = [] as unknown[] } = {},
 ) {
+  // Tres consultas: seguimientos ('contactado'), primeros contactos ('nuevo')
+  // y, desde el 28/09/2026, los teléfonos que ya están en una secuencia
+  // (sin filtro de estado).
   state.leadFindMany.mockImplementation((args: { where?: { status?: string } }) =>
-    Promise.resolve(args?.where?.status === 'nuevo' ? firstContacts : followUps),
+    Promise.resolve(
+      args?.where?.status === 'nuevo' ? firstContacts : args?.where?.status === 'contactado' ? followUps : blockers,
+    ),
   );
 }
 
@@ -304,14 +309,34 @@ describe('runProspectingContact — sending', () => {
     },
   );
 
-  it('sin presentación los SEGUIMIENTOS siguen: no la usan, y cortar una cadencia empezada es peor', async () => {
-    mockLeads({ followUps: [lead({ id: 'seguimiento_1', followUpCount: 1, lastAutoContactAt: new Date('2026-09-01') })] });
+  it('sin presentación no se piden seguimientos del paso 2 (la llevan), pero el paso 3 sí sigue', async () => {
+    mockLeads({ followUps: [lead({ id: 'seguimiento_2', followUpCount: 2, lastAutoContactAt: new Date('2026-08-20') })] });
     await runProspectingContact(prisma, campaign({ presentacion: null }), NOW);
+
+    const consultaSeguimientos = state.leadFindMany.mock.calls.find(
+      ([args]) => (args as { where: { status?: string } }).where.status === 'contactado',
+    )?.[0] as { where: { OR: Array<{ followUpCount: number }> } };
+    expect(consultaSeguimientos.where.OR.map((o) => o.followUpCount)).toEqual([2]);
+
     expect(mockState.sendTemplate).toHaveBeenCalledWith(
       'tok',
       'phone_id_1',
       '+34600000001',
-      expect.objectContaining({ name: 'prospecting_follow_up_1', bodyParams: ['Ferretería Central', 'Peluquería Aurora'] }),
+      expect.objectContaining({ name: 'prospecting_follow_up_2', bodyParams: ['Ferretería Central', 'Peluquería Aurora'] }),
+    );
+  });
+
+  it('el primer seguimiento lleva la presentación como tercer parámetro', async () => {
+    mockLeads({ followUps: [lead({ id: 'seguimiento_1', followUpCount: 1, lastAutoContactAt: new Date('2026-09-01') })] });
+    await runProspectingContact(prisma, campaign(), NOW);
+    expect(mockState.sendTemplate).toHaveBeenCalledWith(
+      'tok',
+      'phone_id_1',
+      '+34600000001',
+      expect.objectContaining({
+        name: 'prospecting_follow_up_1_v2',
+        bodyParams: ['Ferretería Central', 'Peluquería Aurora', 'reformas de baños y cocinas para comunidades'],
+      }),
     );
   });
 
@@ -344,7 +369,7 @@ describe('runProspectingContact — sending', () => {
   });
 
   it('processes multiple leads independently — one failure does not stop the next send', async () => {
-    mockLeads({ firstContacts: [lead({ id: 'lead_1' }), lead({ id: 'lead_2' })] });
+    mockLeads({ firstContacts: [lead({ id: 'lead_1' }), lead({ id: 'lead_2', contactPhone: '+34600000002' })] });
     mockState.sendTemplate.mockResolvedValueOnce({ ok: false, error: 'boom' }).mockResolvedValueOnce({ ok: true, data: {} });
 
     const result = await runProspectingContact(prisma, campaign(), NOW);
@@ -367,7 +392,7 @@ describe('nextSequenceStep', () => {
   });
 
   it('avanza por la cadencia toque a toque', () => {
-    expect(nextSequenceStep(1)).toMatchObject({ step: 2, template: { name: 'prospecting_follow_up_1' }, delayDays: 3 });
+    expect(nextSequenceStep(1)).toMatchObject({ step: 2, template: { name: 'prospecting_follow_up_1_v2' }, delayDays: 3 });
     expect(nextSequenceStep(2)).toMatchObject({ step: 3, template: { name: 'prospecting_follow_up_2' }, delayDays: 7 });
   });
 
@@ -392,7 +417,7 @@ describe('runProspectingContact — secuencia de seguimiento', () => {
       'tok',
       'phone_id_1',
       '+34600000001',
-      expect.objectContaining({ name: 'prospecting_follow_up_1' }),
+      expect.objectContaining({ name: 'prospecting_follow_up_1_v2' }),
     );
     // contactedAt sigue siendo "la primera vez": leads.ts lo usa para
     // detectar atascos y moverlo en cada toque lo rompería.
@@ -445,7 +470,7 @@ describe('runProspectingContact — secuencia de seguimiento', () => {
         lead({ id: 'seguimiento_1', followUpCount: 1, lastAutoContactAt: new Date('2026-09-01') }),
         lead({ id: 'seguimiento_2', followUpCount: 2, lastAutoContactAt: new Date('2026-08-25') }),
       ],
-      firstContacts: [lead({ id: 'nuevo_1' })],
+      firstContacts: [lead({ id: 'nuevo_1', contactPhone: '+34600000009' })],
     });
 
     const result = await runProspectingContact(prisma, campaign(), NOW);
@@ -460,7 +485,7 @@ describe('runProspectingContact — secuencia de seguimiento', () => {
   it('con cupo de sobra atiende seguimientos y prospectos nuevos en la misma pasada', async () => {
     mockLeads({
       followUps: [lead({ id: 'seguimiento_1', followUpCount: 1, lastAutoContactAt: new Date('2026-09-01') })],
-      firstContacts: [lead({ id: 'nuevo_1' })],
+      firstContacts: [lead({ id: 'nuevo_1', contactPhone: '+34600000009' })],
     });
 
     const result = await runProspectingContact(prisma, campaign(), NOW);
@@ -480,5 +505,97 @@ describe('runProspectingContact — secuencia de seguimiento', () => {
 
     expect(mockState.sendTemplate).not.toHaveBeenCalled();
     expect(result).toEqual({ ok: true, sent: 0, followedUp: 0, failed: 0, capReached: false });
+  });
+});
+
+// =============================================================================
+// 28/09/2026 — el bloqueo por teléfono. Un lead es un local de Google, no una
+// persona: dos locales del mismo negocio comparten número a menudo. El primer
+// seguimiento promete «dínoslo y no volveremos a hacerlo», y eso solo es
+// verdad si ningún otro local con ese número empieza una secuencia nueva.
+// =============================================================================
+
+describe('runProspectingContact — bloqueo por teléfono', () => {
+  it('no manda un primer mensaje a un teléfono que ya está en una secuencia, y retira ese lead', async () => {
+    mockLeads({
+      firstContacts: [lead({ id: 'segundo_local', contactPhone: '600 00 00 01' })],
+      blockers: [{ id: 'primer_local', contactPhone: '+34600000001', status: 'contactado', repliedAt: null }],
+    });
+
+    const result = await runProspectingContact(prisma, campaign(), NOW);
+
+    expect(mockState.sendTemplate).not.toHaveBeenCalled();
+    expect(state.leadUpdate).toHaveBeenCalledWith({
+      where: { id: 'segundo_local' },
+      data: { autoContactAttempts: MAX_AUTO_CONTACT_ATTEMPTS, autoContactError: 'mismo_telefono_ya_contactado' },
+    });
+    // Sigue en la lista del cliente: no se descarta por él.
+    expect(state.leadAuditCreate).not.toHaveBeenCalled();
+    expect(result).toEqual({ ok: true, sent: 0, followedUp: 0, failed: 0, capReached: false });
+  });
+
+  it('si el otro local dijo que no, este se descarta también — la persona ya decidió', async () => {
+    mockLeads({
+      firstContacts: [lead({ id: 'segundo_local' })],
+      blockers: [{ id: 'primer_local', contactPhone: '+34600000001', status: 'descartado', repliedAt: NOW }],
+    });
+
+    await runProspectingContact(prisma, campaign(), NOW);
+
+    expect(mockState.sendTemplate).not.toHaveBeenCalled();
+    expect(state.leadUpdate).toHaveBeenCalledWith({
+      where: { id: 'segundo_local' },
+      data: {
+        autoContactAttempts: MAX_AUTO_CONTACT_ATTEMPTS,
+        autoContactError: 'mismo_telefono_rechazo_el_contacto',
+        status: 'descartado',
+        discardedAt: NOW,
+      },
+    });
+    expect(state.leadAuditCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ leadId: 'segundo_local', action: 'discarded', statusAfter: 'descartado' }),
+      }),
+    );
+  });
+
+  it('dos locales nuevos con el mismo número en la misma pasada: sale uno, el otro espera sin marcarse', async () => {
+    mockLeads({ firstContacts: [lead({ id: 'local_a' }), lead({ id: 'local_b' })] });
+
+    const result = await runProspectingContact(prisma, campaign(), NOW);
+
+    expect(mockState.sendTemplate).toHaveBeenCalledTimes(1);
+    expect(state.leadUpdate).not.toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'local_b' } }));
+    expect(result).toEqual({ ok: true, sent: 1, followedUp: 0, failed: 0, capReached: false });
+  });
+
+  it('un seguimiento y un primer mensaje al mismo número en la misma pasada: solo el seguimiento', async () => {
+    mockLeads({
+      followUps: [lead({ id: 'en_secuencia', followUpCount: 1, lastAutoContactAt: new Date('2026-09-01') })],
+      firstContacts: [lead({ id: 'otro_local' })],
+    });
+
+    const result = await runProspectingContact(prisma, campaign(), NOW);
+
+    expect(mockState.sendTemplate).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ ok: true, sent: 0, followedUp: 1, failed: 0, capReached: false });
+  });
+
+  it('el propio lead no se bloquea a sí mismo', async () => {
+    mockLeads({
+      firstContacts: [lead({ id: 'lead_1' })],
+      blockers: [{ id: 'lead_1', contactPhone: '+34600000001', status: 'descartado', repliedAt: null }],
+    });
+    const result = await runProspectingContact(prisma, campaign(), NOW);
+    expect(result.ok && result.sent).toBe(1);
+  });
+
+  it('los seguimientos no se bloquean: el bloqueo es solo para EMPEZAR una secuencia', async () => {
+    mockLeads({
+      followUps: [lead({ id: 'en_secuencia', followUpCount: 1, lastAutoContactAt: new Date('2026-09-01') })],
+      blockers: [{ id: 'otro', contactPhone: '+34600000001', status: 'contactado', repliedAt: null }],
+    });
+    const result = await runProspectingContact(prisma, campaign(), NOW);
+    expect(result).toEqual({ ok: true, sent: 0, followedUp: 1, failed: 0, capReached: false });
   });
 });

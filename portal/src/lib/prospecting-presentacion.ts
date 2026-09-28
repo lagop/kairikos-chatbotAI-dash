@@ -117,22 +117,35 @@ export function primerMensaje(p: { prospecto: string; negocio: string; presentac
 }
 
 /**
- * Los dos seguimientos: su texto ({{1}} prospecto, {{2}} cliente) y cuántos
- * días esperan desde el toque ANTERIOR. Viven aquí por la misma razón que el
- * primer mensaje: el consentimiento enseña la secuencia entera, porque lo que
- * el cliente autoriza son los tres mensajes y no solo el primero.
+ * Los dos seguimientos: su texto y cuántos días esperan desde el toque
+ * ANTERIOR. Viven aquí por la misma razón que el primer mensaje: el
+ * consentimiento enseña la secuencia entera, porque lo que el cliente
+ * autoriza son los tres mensajes y no solo el primero.
  * prospecting-templates.ts somete estos textos y prospecting-contact.ts
  * espera estos días; ninguno de los dos tiene copia propia.
  *
- * Los textos son los de las plantillas ya sometidas con estos nombres
- * (prospecting_follow_up_1 / _2). Cambiarlos aquí NO cambia lo que se envía
- * —en WhatsApp viaja el cuerpo aprobado— y además dejaría la vista previa
- * mintiendo. Un texto nuevo exige un nombre nuevo, como el primer mensaje.
+ * Cada texto va con la plantilla de su nombre en PROSPECTING_TEMPLATES.
+ * Cambiar uno aquí NO cambia lo que se envía —en WhatsApp viaja el cuerpo
+ * aprobado— y dejaría la vista previa mintiendo. Texto nuevo, nombre nuevo.
+ *
+ * EL PRIMERO ES v2 (28/09/2026). La v1 decía «si no, no volvemos a
+ * escribirte» y cuatro días después salía el segundo: una promesa rota en
+ * nombre del cliente, en el mensaje justo antes de romperla. La v2 no
+ * promete nada que dependa de que el prospecto calle; dice cómo parar
+ * («dínoslo»), y eso sí es verdad: cualquier respuesta corta la secuencia
+ * (prospecting-replies.ts) y ningún otro local con el mismo teléfono empieza
+ * otra (el bloqueo por teléfono de prospecting-contact.ts, que se montó a la
+ * vez que este texto, porque sin él «no volveremos a hacerlo» tampoco era
+ * verdad).
+ *
+ * Y repite a qué se dedica el cliente con el mismo molde, «nos dedicamos a
+ * {{3}}»: tres días después nadie recuerda un mensaje de un desconocido. Con
+ * «sobre {{3}}» se rompería con los verbos («sobre reparar calderas»).
  */
 export const SEGUIMIENTOS = [
   {
     texto:
-      'Hola de nuevo, {{1}}. Somos {{2}} — te escribimos hace unos días. Si te interesa hablar, seguimos aquí; si no, no volvemos a escribirte.',
+      'Hola de nuevo, {{1}}. Te escribimos hace unos días desde {{2}}: nos dedicamos a {{3}}. Si te interesa, responde a este mensaje y te lo contamos. Si prefieres que no te escribamos más, dínoslo y no volveremos a hacerlo.',
     diasDespues: 3,
   },
   {
@@ -141,6 +154,34 @@ export const SEGUIMIENTOS = [
     diasDespues: 7,
   },
 ] as const;
+
+/** El texto de cada paso de la secuencia (1, 2, 3). */
+export const TEXTO_DEL_PASO: Readonly<Record<number, string>> = Object.freeze({
+  1: PRIMER_CONTACTO_TEXTO,
+  2: SEGUIMIENTOS[0].texto,
+  3: SEGUIMIENTOS[1].texto,
+});
+
+const variablesDe = (texto: string) => new Set(texto.match(/\{\{\d+\}\}/g) ?? []).size;
+
+/** Si el texto de ese paso lleva la presentación del cliente. */
+export function pasoUsaPresentacion(paso: number): boolean {
+  return (TEXTO_DEL_PASO[paso] ?? '').includes('{{3}}');
+}
+
+/**
+ * Los parámetros que se mandan a Meta para un paso: tantos como variables
+ * tenga SU texto, ni uno más. Un parámetro de más o de menos no lo rechaza
+ * Meta al revisar la plantilla, lo rechaza al ENVIAR (132000), mensaje a
+ * mensaje. Contarlos del texto, en vez de escribir «el paso 1 lleva tres»,
+ * es lo que evita que el próximo cambio de texto se olvide del envío.
+ */
+export function parametrosDelPaso(
+  paso: number,
+  p: { prospecto: string; negocio: string; presentacion: string | null },
+): string[] {
+  return [p.prospecto, p.negocio, p.presentacion ?? ''].slice(0, variablesDe(TEXTO_DEL_PASO[paso] ?? ''));
+}
 
 /**
  * El nombre con el que el cliente firma los mensajes. `||` y no `??`: un

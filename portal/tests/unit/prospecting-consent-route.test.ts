@@ -103,7 +103,7 @@ describe('PATCH /api/portal/prospecting/campaign/consent', () => {
         where: { id: 'camp_1' },
         data: expect.objectContaining({
           consentAcknowledgedAt: expect.any(Date),
-          consentVersion: 'v2',
+          consentVersion: 'v3',
           autoContactPausedAt: null,
         }),
       }),
@@ -118,7 +118,7 @@ describe('PATCH /api/portal/prospecting/campaign/consent', () => {
     expect(mockState.campaignAuditCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          after: { consentVersion: 'v2', presentacion: 'reformas de baños y cocinas' },
+          after: { consentVersion: 'v3', presentacion: 'reformas de baños y cocinas' },
         }),
       }),
     );
@@ -139,7 +139,7 @@ describe('PATCH /api/portal/prospecting/campaign/consent', () => {
   );
 
   it('retirar el permiso funciona aunque no haya presentación — nunca se bloquea el «no»', async () => {
-    mockState.campaignFindUnique.mockResolvedValue({ id: 'camp_1', consentVersion: 'v2', presentacion: null });
+    mockState.campaignFindUnique.mockResolvedValue({ id: 'camp_1', consentVersion: 'v3', presentacion: null });
     const res = await PATCH(makeRequest({ consent: false }));
     expect(res.status).toBe(200);
     expect(mockState.campaignUpdate).toHaveBeenCalled();
