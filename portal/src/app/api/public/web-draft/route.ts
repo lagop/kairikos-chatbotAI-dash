@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
-import { createPublicDraft } from '@/lib/public-draft-request';
+import { createPublicDraft, PUBLIC_SECTORS } from '@/lib/public-draft-request';
 import { publicOrigin } from '@/lib/public-origin';
 import { logError } from '@/lib/observability';
 
@@ -24,7 +24,7 @@ export const maxDuration = 60;
 
 const CORS = {
   'access-control-allow-origin': '*',
-  'access-control-allow-methods': 'POST, OPTIONS',
+  'access-control-allow-methods': 'GET, POST, OPTIONS',
   'access-control-allow-headers': 'content-type',
   'access-control-max-age': '86400',
 };
@@ -41,6 +41,26 @@ const BodySchema = z.object({
 
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS });
+}
+
+/**
+ * La lista de sectores, para que el formulario de kairikos.com la pinte.
+ *
+ * Existe por lo mismo que la de /api/public/prospeccion-zona: una copia escrita
+ * a mano en el tema de WordPress es la que se queda atrás el día que se añade
+ * un sector, y así es exactamente como el sitio acabó vendiendo a precios que
+ * no se cobraban.
+ *
+ * Aquí «otro» SÍ sale, al revés que en prospección. Allí era una búsqueda sin
+ * sentido —«Otro en Cuenca» no devuelve nada—; aquí solo elige la plantilla del
+ * borrador, así que es una respuesta legítima y quien no encaje en los once
+ * debe poder decirlo en vez de mentir.
+ */
+export async function GET() {
+  return NextResponse.json(
+    { sectores: Object.entries(PUBLIC_SECTORS).map(([clave, s]) => ({ clave, etiqueta: s.label })) },
+    { status: 200, headers: { ...CORS, 'cache-control': 'public, max-age=86400' } },
+  );
 }
 
 export async function POST(req: NextRequest) {
