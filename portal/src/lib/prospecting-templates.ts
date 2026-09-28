@@ -6,6 +6,7 @@ import { metaSenderFor } from './recall-messaging';
 import { markConnectionNeedsReconnect } from './whatsapp-health';
 import { namesAlreadySubmitted, type TemplateSubmissionOutcome } from './recall-templates';
 import { logError } from './observability';
+import { PRIMER_CONTACTO_TEXTO, SEGUIMIENTOS } from './prospecting-presentacion';
 
 // =============================================================================
 // 2026-09-14 — texto real para las 3 plantillas de "Prospección con IA"
@@ -54,21 +55,24 @@ export const PROSPECTING_TEMPLATE_DEFINITIONS: readonly ProspectingTemplateDefin
   {
     ...PROSPECTING_TEMPLATES.firstContact,
     category: 'MARKETING',
-    bodyText:
-      'Hola {{1}}, soy {{2}}. Vimos tu negocio y creemos que podríamos ayudarte a conseguir más clientes. ¿Te interesa que te contemos cómo, sin compromiso?',
-    bodyExamples: ['Ferretería Central', 'Reformas Orly'],
+    // El texto viene de prospecting-presentacion.ts, el mismo que enseña la
+    // vista previa del portal: lo que el cliente autoriza es lo que se somete.
+    // La v1 decía «creemos que podríamos ayudarte a conseguir más clientes»,
+    // que es lo que diría una agencia de marketing y no quien usa este
+    // producto — ver la cabecera de ese módulo.
+    bodyText: PRIMER_CONTACTO_TEXTO,
+    bodyExamples: ['Fincas Ribera', 'Reformas Orly', 'reformas de baños y cocinas para comunidades'],
   },
   {
     ...PROSPECTING_TEMPLATES.followUp1,
     category: 'MARKETING',
-    bodyText:
-      'Hola de nuevo, {{1}}. Somos {{2}} — te escribimos hace unos días. Si te interesa hablar, seguimos aquí; si no, no volvemos a escribirte.',
+    bodyText: SEGUIMIENTOS[0].texto,
     bodyExamples: ['Ferretería Central', 'Reformas Orly'],
   },
   {
     ...PROSPECTING_TEMPLATES.followUp2,
     category: 'MARKETING',
-    bodyText: 'Última vez que te escribimos, {{1}}. Somos {{2}}, seguimos disponibles si en algún momento te interesa. ¡Que vaya bien!',
+    bodyText: SEGUIMIENTOS[1].texto,
     bodyExamples: ['Ferretería Central', 'Reformas Orly'],
   },
 ];

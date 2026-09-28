@@ -20,6 +20,8 @@ import { SelfServeProductCard, type SelfServeTierOption } from '@/components/por
 import { LeadStatusControls } from '@/components/portal/LeadStatusControls';
 import { suggestedOutreachMessage, whatsappLink, mailtoLink } from '@/lib/lead-contact-links';
 import { ProspectingProfileCard } from '@/components/portal/ProspectingProfileCard';
+import { PROSPECTING_CONSENT_VERSION } from '@/lib/prospecting-contact';
+import { nombreRemitente } from '@/lib/prospecting-presentacion';
 import { ProspectingMetricsCard } from '@/components/portal/ProspectingMetricsCard';
 import { loadProspectingMetrics } from '@/lib/prospecting-metrics';
 import { LeadExportCard, type LeadWebhookState } from '@/components/portal/LeadExportCard';
@@ -201,7 +203,7 @@ export default async function PortalLeadsPage({
   // Fase A — the profile card only makes sense for a client who actually
   // bought 'prospecting'; a 'leads'-only client (the common case) never
   // pays for this extra query.
-  const prospectingProfile = hasProspecting
+  const prospectingCampaign = hasProspecting
     ? await prisma.prospectingCampaign.findFirst({
         where: { clientId: resolved.clientId },
         select: {
@@ -212,10 +214,24 @@ export default async function PortalLeadsPage({
           businessDescription: true,
           idealCustomer: true,
           exclusions: true,
+          presentacion: true,
           consentAcknowledgedAt: true,
+          consentVersion: true,
           autoContactPausedAt: true,
         },
       })
+    : null;
+  // Un consentimiento de una versión anterior no deja enviar nada (ver la
+  // puerta de prospecting-contact.ts), así que la tarjeta no lo recibe: si lo
+  // enseñara como «activo», el cliente creería que se está escribiendo en su
+  // nombre cuando no sale ni un mensaje. Vuelve a ver la vista previa y a
+  // autorizar, que es justo lo que la versión nueva quiere que haga.
+  const prospectingProfile = prospectingCampaign
+    ? (({ consentVersion, ...resto }) => ({
+        ...resto,
+        consentAcknowledgedAt:
+          consentVersion === PROSPECTING_CONSENT_VERSION ? resto.consentAcknowledgedAt : null,
+      }))(prospectingCampaign)
     : null;
 
   // Fase 3.4 — mismo criterio que el perfil: solo se consulta si el cliente
@@ -264,7 +280,7 @@ export default async function PortalLeadsPage({
       />
 
       {hasLeads ? <LeadsQualificationCard profile={leadsQualificationProfile} prefill={leadsPrefill} /> : null}
-      {hasProspecting ? <ProspectingProfileCard profile={prospectingProfile} /> : null}
+      {hasProspecting ? <ProspectingProfileCard profile={prospectingProfile} businessName={nombreRemitente(client)} /> : null}
       {prospectingMetrics ? <ProspectingMetricsCard metrics={prospectingMetrics} /> : null}
 
       <LeadExportCard webhook={webhook} />

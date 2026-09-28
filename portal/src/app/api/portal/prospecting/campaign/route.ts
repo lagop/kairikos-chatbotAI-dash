@@ -6,6 +6,7 @@ import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { TIER_LEAD_CAP } from '@/lib/prospecting';
 import { logError } from '@/lib/observability';
+import { normalizarPresentacion, PRESENTACION_MAX } from '@/lib/prospecting-presentacion';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -40,6 +41,10 @@ const BodySchema = z.object({
   businessDescription: OPTIONAL_TEXT,
   idealCustomer: OPTIONAL_TEXT,
   exclusions: OPTIONAL_TEXT,
+  // «Nos dedicamos a …» — el {{3}} del primer mensaje. Holgura en zod para
+  // que sea la ruta, y no el esquema, quien diga «demasiado larga» con su
+  // propio código — ver más abajo.
+  presentacion: z.string().max(PRESENTACION_MAX * 3).nullish(),
 });
 
 /** Solo los campos del brief que vinieron en la petición: lo que no se manda
@@ -72,6 +77,18 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'invalid_body', details: body.error.flatten() }, { status: 400 });
   }
 
+  // La presentación se normaliza al guardar —la misma función que la última
+  // puerta antes de WhatsApp— y lo que no cabe se RECHAZA en vez de cortarse:
+  // una frase partida a la mitad, dentro de un mensaje con el nombre del
+  // cliente, es peor que pedirle que la acorte.
+  let presentacion: string | null | undefined = undefined;
+  if (body.data.presentacion !== undefined) {
+    presentacion = normalizarPresentacion(body.data.presentacion);
+    if (presentacion && presentacion.length > PRESENTACION_MAX) {
+      return NextResponse.json({ error: 'presentacion_demasiado_larga', max: PRESENTACION_MAX }, { status: 400 });
+    }
+  }
+
   const clientProduct = await prisma.clientProduct.findFirst({
     where: { clientId: resolved.clientId, status: 'active', product: { code: 'prospecting' } },
     select: { id: true, tenantId: true, product: { select: { tier: true } } },
@@ -82,13 +99,22 @@ export async function PATCH(req: NextRequest) {
 
   const existing = await prisma.prospectingCampaign.findUnique({
     where: { clientProductId: clientProduct.id },
-    select: { id: true, category: true, locationQuery: true, radiusMeters: true },
+    select: { id: true, category: true, locationQuery: true, radiusMeters: true, presentacion: true },
   });
 
   let campaign;
   try {
     if (existing) {
-      const before = { category: existing.category, locationQuery: existing.locationQuery, radiusMeters: existing.radiusMeters };
+      // La presentación SÍ entra en la auditoría, a diferencia del resto del
+      // brief: es texto que se envía con el nombre del cliente a un
+      // desconocido. Si alguien pregunta «¿quién escribió esto en mi nombre?»,
+      // la respuesta tiene que estar aquí.
+      const before = {
+        category: existing.category,
+        locationQuery: existing.locationQuery,
+        radiusMeters: existing.radiusMeters,
+        presentacion: existing.presentacion,
+      };
       campaign = await prisma.$transaction(async (tx) => {
         const updated = await tx.prospectingCampaign.update({
           where: { id: existing.id },
@@ -97,6 +123,7 @@ export async function PATCH(req: NextRequest) {
             locationQuery: body.data.locationQuery,
             ...(body.data.radiusMeters !== undefined ? { radiusMeters: body.data.radiusMeters } : {}),
             ...briefFields(body.data),
+            ...(presentacion !== undefined ? { presentacion } : {}),
           },
         });
         await tx.prospectingCampaignAudit.create({
@@ -106,7 +133,12 @@ export async function PATCH(req: NextRequest) {
             tenantId: clientProduct.tenantId,
             action: 'profile_updated',
             before,
-            after: { category: updated.category, locationQuery: updated.locationQuery, radiusMeters: updated.radiusMeters },
+            after: {
+              category: updated.category,
+              locationQuery: updated.locationQuery,
+              radiusMeters: updated.radiusMeters,
+              presentacion: updated.presentacion,
+            },
             actorId: `client:${resolved.clientId}`,
           },
         });
@@ -123,6 +155,7 @@ export async function PATCH(req: NextRequest) {
             locationQuery: body.data.locationQuery,
             ...(body.data.radiusMeters !== undefined ? { radiusMeters: body.data.radiusMeters } : {}),
             ...briefFields(body.data),
+            ...(presentacion !== undefined ? { presentacion } : {}),
             monthlyLeadCap: TIER_LEAD_CAP[clientProduct.product.tier] ?? TIER_LEAD_CAP.solo,
           },
         });
@@ -133,7 +166,12 @@ export async function PATCH(req: NextRequest) {
             tenantId: clientProduct.tenantId,
             action: 'created',
             before: Prisma.JsonNull,
-            after: { category: created.category, locationQuery: created.locationQuery, radiusMeters: created.radiusMeters },
+            after: {
+              category: created.category,
+              locationQuery: created.locationQuery,
+              radiusMeters: created.radiusMeters,
+              presentacion: created.presentacion,
+            },
             actorId: `client:${resolved.clientId}`,
           },
         });

@@ -159,6 +159,72 @@ describe('PATCH /api/portal/prospecting/campaign', () => {
     );
   });
 
+  // ---------------------------------------------------------------------------
+  // 28/09/2026 — la presentación, el {{3}} del primer mensaje.
+  // ---------------------------------------------------------------------------
+
+  it('guarda la presentación ya normalizada, la misma que se enviaría', async () => {
+    await PATCH(makeRequest({ ...VALID_BODY, presentacion: 'Nos dedicamos a las reformas de baños.' }));
+    expect(mockState.campaignCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ presentacion: 'las reformas de baños' }) }),
+    );
+  });
+
+  it('rechaza una presentación demasiado larga en vez de cortarla', async () => {
+    const res = await PATCH(makeRequest({ ...VALID_BODY, presentacion: 'reformas '.repeat(12) }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'presentacion_demasiado_larga', max: 80 });
+    expect(mockState.campaignCreate).not.toHaveBeenCalled();
+  });
+
+  it('una presentación vaciada se guarda como null, no como «»', async () => {
+    mockState.campaignFindUnique.mockResolvedValue({
+      id: 'camp_1',
+      category: 'panadería',
+      locationQuery: 'Tenerife',
+      radiusMeters: 10000,
+      presentacion: 'pan de masa madre',
+    });
+    await PATCH(makeRequest({ ...VALID_BODY, presentacion: '  ' }));
+    expect(mockState.campaignUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ presentacion: null }) }),
+    );
+  });
+
+  it('sin el campo en el cuerpo no toca la presentación guardada', async () => {
+    mockState.campaignFindUnique.mockResolvedValue({
+      id: 'camp_1',
+      category: 'panadería',
+      locationQuery: 'Tenerife',
+      radiusMeters: 10000,
+      presentacion: 'pan de masa madre',
+    });
+    await PATCH(makeRequest(VALID_BODY));
+    const { data } = mockState.campaignUpdate.mock.calls[0][0] as { data: Record<string, unknown> };
+    expect(data).not.toHaveProperty('presentacion');
+  });
+
+  // Es texto que sale con el nombre del cliente hacia un desconocido: si
+  // alguien pregunta quién escribió qué, la respuesta está en la auditoría.
+  it('audita la presentación de antes y la de después', async () => {
+    mockState.campaignFindUnique.mockResolvedValue({
+      id: 'camp_1',
+      category: 'panadería',
+      locationQuery: 'Tenerife',
+      radiusMeters: 10000,
+      presentacion: 'pan de masa madre',
+    });
+    await PATCH(makeRequest({ ...VALID_BODY, presentacion: 'pan y bollería para hostelería' }));
+    expect(mockState.campaignAuditCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          before: expect.objectContaining({ presentacion: 'pan de masa madre' }),
+          after: expect.objectContaining({ presentacion: 'pan y bollería para hostelería' }),
+        }),
+      }),
+    );
+  });
+
   it('500s cleanly and logs when the transaction throws', async () => {
     mockState.campaignCreate.mockRejectedValue(new Error('db down'));
     const res = await PATCH(makeRequest(VALID_BODY));

@@ -6,6 +6,7 @@ import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { PROSPECTING_CONSENT_VERSION } from '@/lib/prospecting-contact';
 import { logError } from '@/lib/observability';
+import { normalizarPresentacion } from '@/lib/prospecting-presentacion';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -61,7 +62,7 @@ export async function PATCH(req: NextRequest) {
 
   const existing = await prisma.prospectingCampaign.findUnique({
     where: { clientProductId: clientProduct.id },
-    select: { id: true, consentVersion: true },
+    select: { id: true, consentVersion: true, presentacion: true },
   });
   if (!existing) {
     return NextResponse.json({ error: 'not_found', detail: 'guarda tu perfil de busqueda primero' }, { status: 404 });
@@ -69,6 +70,15 @@ export async function PATCH(req: NextRequest) {
 
   const now = new Date();
   const consent = body.data.consent;
+
+  // No se puede autorizar un mensaje que no existe. Sin presentación el primer
+  // mensaje no sale de todas formas (prospecting-contact.ts), pero aceptar el
+  // permiso aquí dejaría al cliente creyendo que tiene algo activo que no
+  // envía nada — y sin que ninguna pantalla se lo diga.
+  const presentacion = normalizarPresentacion(existing.presentacion);
+  if (consent && !presentacion) {
+    return NextResponse.json({ error: 'falta_presentacion' }, { status: 409 });
+  }
 
   try {
     const updated = await prisma.$transaction(async (tx) => {
@@ -85,7 +95,13 @@ export async function PATCH(req: NextRequest) {
           tenantId: clientProduct.tenantId,
           action: consent ? 'consent_given' : 'consent_revoked',
           before: existing.consentVersion ? { consentVersion: existing.consentVersion } : Prisma.JsonNull,
-          after: { consentVersion: row.consentVersion },
+          // Qué se autorizó EXACTAMENTE: la versión del texto y la
+          // presentación de ese momento. Si un día alguien pregunta qué
+          // aceptó enviar en su nombre, la respuesta está en esta fila y no
+          // depende de lo que diga hoy la plantilla.
+          after: consent
+            ? { consentVersion: row.consentVersion, presentacion }
+            : { consentVersion: row.consentVersion },
           actorId: `client:${resolved.clientId}`,
         },
       });

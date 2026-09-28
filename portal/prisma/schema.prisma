@@ -3394,6 +3394,12 @@ model ProspectingCampaign {
   idealCustomer       String? @map("ideal_customer")
   exclusions          String?
 
+  /// «Nos dedicamos a …» — el {{3}} del primer mensaje de WhatsApp
+  /// (prospecting_first_contact_v2). La escribe el cliente y viaja con SU
+  /// nombre a un desconocido: por eso se audita, y por eso sin ella el primer
+  /// mensaje no sale. Ver lib/prospecting-presentacion.ts.
+  presentacion String?
+
   // 'active' | 'paused'. No onboarding state machine like
   // RecallSubscription's — there is no external system to wait on here,
   // just a profile and a schedule.
