@@ -3597,6 +3597,30 @@ model AuditoriaPublicaCache {
   @@index([miradoEl])
 }
 
+/// La caché del gancho público de /prospeccion/: «¿Qué vendes?». Ver
+/// lib/que-vendes-publico.ts para el porqué de los topes.
+///
+/// Se guardan los tipos de negocio propuestos y un hash de la entrada. Ni el
+/// texto del visitante ni nada que lo parafrasee — por eso no hay columna para
+/// el resumen que escribe el modelo: sería lo que escribió, dicho de otra forma.
+model QueVendesCache {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// sha256 del texto normalizado más la provincia. Es la clave de la caché.
+  clave String @unique
+
+  /// Los tipos de negocio propuestos, como se buscarían en Google Maps.
+  aQuien String[] @map("a_quien")
+
+  /// Quién pidió esta consulta, en hash. Solo para el tope por IP.
+  ipHash String @map("ip_hash")
+
+  /// Cuándo se generó. Los dos topes cuentan filas por este campo.
+  creadoEl DateTime @default(now()) @map("creado_el")
+
+  @@index([creadoEl])
+}
+
 model ProspectingWebDraft {
   id       String  @id @default(uuid()) @db.Uuid
   // 1:1 con el lead: un prospecto, un borrador, el último. Regenerar
