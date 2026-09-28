@@ -211,6 +211,9 @@ export interface RecallQueueRow {
   since: Date;
   e164: string | null;
   hasGreeting: boolean;
+  /** La conexión de WhatsApp a la que se envían sus plantillas; null hasta
+   *  que conecta. La página la usa para el resumen de aprobaciones. */
+  metaConnectionId: string | null;
 }
 
 /**
@@ -243,6 +246,7 @@ export async function listRecallQueue(prisma: PrismaClient): Promise<RecallQueue
       forwardingVerifiedAt: true,
       createdAt: true,
       greetingRecordedAt: true,
+      metaConnectionId: true,
       client: { select: { name: true, companyName: true, email: true } },
       virtualNumber: { select: { e164: true } },
     },
@@ -251,12 +255,15 @@ export async function listRecallQueue(prisma: PrismaClient): Promise<RecallQueue
   return rows.map((row) => ({
     subscriptionId: row.id,
     clientId: row.clientId,
-    clientName: row.client.companyName ?? row.client.name,
+    // `||` y no `??`: un companyName guardado vacío dejaba la tarjeta sin
+    // título (CLAUDE.md, trampa 4).
+    clientName: row.client.companyName?.trim() || row.client.name,
     clientEmail: row.client.email,
     status: row.status,
     since: enteredCurrentStateAt(row),
     e164: row.virtualNumber?.e164 ?? null,
     hasGreeting: row.greetingRecordedAt !== null,
+    metaConnectionId: row.metaConnectionId,
   }));
 }
 

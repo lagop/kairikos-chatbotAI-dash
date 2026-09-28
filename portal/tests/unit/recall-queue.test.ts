@@ -85,6 +85,21 @@ describe('listRecallQueue', () => {
     expect(rows[1].clientName).toBe('Juan');
   });
 
+  // CLAUDE.md, trampa 4: con `??` un companyName vacío ganaba y la tarjeta
+  // se quedaba sin título.
+  it.each(['', '   '])('un companyName guardado como %j cae al nombre de contacto', async (companyName) => {
+    findMany.mockResolvedValue([row({ client: { name: 'Juan', companyName, email: 'a@b.com' } })]);
+    const [r] = await listRecallQueue(prisma);
+    expect(r.clientName).toBe('Juan');
+  });
+
+  it('trae la conexión de WhatsApp, para el resumen de plantillas', async () => {
+    findMany.mockResolvedValue([row({ metaConnectionId: 'conn_1' }), row({ id: 'sub_2', metaConnectionId: null })]);
+    const rows = await listRecallQueue(prisma);
+    expect(findMany.mock.calls[0][0].select.metaConnectionId).toBe(true);
+    expect(rows.map((r) => r.metaConnectionId)).toEqual(['conn_1', null]);
+  });
+
   it('surfaces the assigned number and greeting state', async () => {
     findMany.mockResolvedValue([
       row({ virtualNumber: { e164: '+34910000001' }, greetingRecordedAt: META }),
