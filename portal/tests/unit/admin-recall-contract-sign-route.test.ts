@@ -2,8 +2,8 @@
 // Fase 6 — unit tests for POST /api/admin/portal/recall/contract/sign.
 //
 // The state-machine logic itself is covered in recall-onboarding.test.ts;
-// this file covers the HTTP layer — auth, validation, status-code
-// mapping, and the legacy-auth → null operatorId guard.
+// this file covers the HTTP layer — auth, validation and status-code
+// mapping.
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -93,12 +93,5 @@ describe('POST /api/admin/portal/recall/contract/sign', () => {
       SUBSCRIPTION_ID,
       { operatorId: 'op_1' },
     );
-  });
-
-  it("resolves the legacy KAIA_OPERATOR_API_KEY auth to a null operatorId, never the literal string 'legacy'", async () => {
-    mockState.authenticateAdminRequest.mockResolvedValueOnce({ ok: true, sessionId: 'legacy', operatorId: 'legacy' });
-    const { POST } = await import('@/app/api/admin/portal/recall/contract/sign/route');
-    await POST(makeRequest({ subscriptionId: SUBSCRIPTION_ID }));
-    expect(mockState.markContractSigned).toHaveBeenCalledWith(expect.anything(), SUBSCRIPTION_ID, { operatorId: null });
   });
 });

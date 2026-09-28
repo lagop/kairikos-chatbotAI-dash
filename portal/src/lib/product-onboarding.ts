@@ -28,7 +28,7 @@ import { TIER_LEAD_CAP } from './prospecting';
 
 export type EnsureProductRowActor =
   | { type: 'system'; source: string }
-  | { type: 'operator'; operatorId: string | null };
+  | { type: 'operator'; operatorId: string };
 
 export interface EnsureProductRowParams {
   clientId: string;
@@ -129,7 +129,7 @@ export async function ensureProspectingCampaign(
   if (existing) return { created: false, id: existing.id };
 
   const monthlyLeadCap = TIER_LEAD_CAP[params.tier] ?? TIER_LEAD_CAP.solo;
-  const actorId = actor.type === 'system' ? `system:${actor.source}` : (actor.operatorId ?? 'legacy');
+  const actorId = actor.type === 'system' ? `system:${actor.source}` : actor.operatorId;
 
   try {
     const created = await prisma.$transaction(async (tx) => {
@@ -190,7 +190,7 @@ export async function ensureLeadQualificationProfile(
   });
   if (existing) return { created: false, id: existing.id };
 
-  const actorEmail = actor.type === 'system' ? `system:${actor.source}` : `operator:${actor.operatorId ?? 'legacy'}`;
+  const actorEmail = actor.type === 'system' ? `system:${actor.source}` : `operator:${actor.operatorId}`;
 
   try {
     const created = await prisma.$transaction(async (tx) => {

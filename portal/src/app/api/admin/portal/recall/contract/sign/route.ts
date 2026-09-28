@@ -40,15 +40,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'invalid_body', details: body.error.flatten() }, { status: 400 });
   }
 
-  // 'legacy' es el id de relleno que devuelve authenticateAdminRequest
-  // para la cabecera KAIA_OPERATOR_API_KEY, no una fila real de
-  // Operator — RecallSubscriptionAudit.actorOperatorId es una FK real
-  // (@db.Uuid) y ese string la haría fallar. Mismo arreglo que las
-  // rutas de SEO de esta sesión.
-  const isLegacyAuth = auth.operatorId === 'legacy';
-
   const result = await markContractSigned(prisma, body.data.subscriptionId, {
-    operatorId: isLegacyAuth ? null : auth.operatorId,
+    operatorId: auth.operatorId,
   });
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: ERROR_STATUS[result.error] ?? 400 });

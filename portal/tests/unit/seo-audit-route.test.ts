@@ -1,8 +1,7 @@
 // =============================================================================
 // SEO con IA, Fase A — unit tests for
 // POST /api/admin/portal/seo/[clientId]/audit. Same conventions as
-// seo-technical-setup-route.test.ts, including the legacy-auth regression
-// coverage.
+// seo-technical-setup-route.test.ts.
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -139,16 +138,6 @@ describe('POST /api/admin/portal/seo/[clientId]/audit', () => {
     expect(res.status).toBe(502);
     expect(mockState.profileUpdate).toHaveBeenCalledWith({ where: { id: 'profile_1' }, data: { lastAuditError: 'timeout' } });
     expect(mockState.auditCreate).not.toHaveBeenCalled();
-  });
-
-  it('the legacy KAIA_OPERATOR_API_KEY auth path saves with a null actorOperatorId instead of crashing', async () => {
-    mockState.authenticateAdminRequest.mockResolvedValue({ ok: true, sessionId: 'legacy', operatorId: 'legacy' });
-    const res = await post('client_1');
-    expect(res.status).toBe(200);
-    expect(mockState.operatorFindUnique).not.toHaveBeenCalled();
-    expect(mockState.auditCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ actorOperatorId: null, actorEmail: null }) }),
-    );
   });
 
   it('503s when the database is not configured', async () => {

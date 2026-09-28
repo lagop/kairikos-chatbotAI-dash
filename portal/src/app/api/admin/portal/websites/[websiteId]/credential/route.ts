@@ -56,10 +56,7 @@ export async function PUT(req: NextRequest, { params }: { params: { websiteId: s
       return NextResponse.json({ error: saved.error }, { status: 422 });
     }
 
-    const operator =
-      auth.operatorId === 'legacy'
-        ? null
-        : await prisma.operator.findUnique({ where: { id: auth.operatorId }, select: { email: true } });
+    const operator = await prisma.operator.findUnique({ where: { id: auth.operatorId }, select: { email: true } });
 
     await prisma.clientWebsiteAudit.create({
       data: {
@@ -76,7 +73,7 @@ export async function PUT(req: NextRequest, { params }: { params: { websiteId: s
           hasPassword: true,
         },
         actorType: 'operator',
-        actorOperatorId: auth.operatorId === 'legacy' ? null : auth.operatorId,
+        actorOperatorId: auth.operatorId,
         actorEmail: operator?.email ?? null,
       },
     });

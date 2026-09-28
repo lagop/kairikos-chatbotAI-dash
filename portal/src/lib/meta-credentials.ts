@@ -59,12 +59,7 @@ export async function getMetaCredentialStatus(): Promise<MetaCredentialStatus> {
 }
 
 export interface CredentialActor {
-  // null for the legacy x-kaia-operator-key path (its 'legacy' sentinel
-  // is not a real Operator row id, so not a valid value for the
-  // actorOperatorId FK — see the config-ids route, the one caller that
-  // can actually reach this with a legacy-authenticated request;
-  // saveMetaCredential's caller is step-up-gated and never sees it).
-  operatorId: string | null;
+  operatorId: string;
   operatorEmail: string | null;
 }
 

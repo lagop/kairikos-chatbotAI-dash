@@ -113,14 +113,6 @@ describe('POST /api/admin/portal/settings/seo', () => {
     expect(mockState.updateContentGenerationMinIntervalDays).toHaveBeenCalledWith(5, 'op@kairikos.com');
   });
 
-  it('the legacy KAIA_OPERATOR_API_KEY auth path saves with a fallback actor instead of crashing', async () => {
-    mockState.authenticateAdminRequest.mockResolvedValue({ ok: true, sessionId: 'legacy', operatorId: 'legacy' });
-    const res = await POST(makeRequest({ contentGenerationMinIntervalDays: 5 }));
-    expect(res.status).toBe(200);
-    expect(mockState.operatorFindUnique).not.toHaveBeenCalled();
-    expect(mockState.updateContentGenerationMinIntervalDays).toHaveBeenCalledWith(5, 'legacy_operator');
-  });
-
   it('503s when the database is not configured', async () => {
     mockState.isDatabaseConfigured = false;
     const res = await POST(makeRequest({ contentGenerationMinIntervalDays: 5 }));

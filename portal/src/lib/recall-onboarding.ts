@@ -18,7 +18,7 @@ import { canSignContract } from './recall';
 
 export type EnsureRecallSubscriptionActor =
   | { type: 'system'; source: string }
-  | { type: 'operator'; operatorId: string | null };
+  | { type: 'operator'; operatorId: string };
 
 export interface EnsureRecallSubscriptionParams {
   clientId: string;
@@ -116,7 +116,7 @@ export type MarkContractSignedResult =
 export async function markContractSigned(
   prisma: PrismaClient,
   subscriptionId: string,
-  actor: { operatorId: string | null },
+  actor: { operatorId: string },
 ): Promise<MarkContractSignedResult> {
   const subscription = await prisma.recallSubscription.findUnique({
     where: { id: subscriptionId },

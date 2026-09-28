@@ -67,10 +67,7 @@ export async function getAnthropicCredentialStatus(): Promise<AnthropicCredentia
 }
 
 export interface CredentialActor {
-  // null for the legacy x-kaia-operator-key path (its 'legacy' sentinel
-  // is not a real Operator row id, so not a valid value for the
-  // actorOperatorId FK).
-  operatorId: string | null;
+  operatorId: string;
   operatorEmail: string | null;
 }
 

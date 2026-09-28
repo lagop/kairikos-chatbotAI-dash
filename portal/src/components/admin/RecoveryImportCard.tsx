@@ -72,8 +72,6 @@ const FIELD_LABEL: Record<string, string> = {
 };
 
 const ERROR_LABEL: Record<string, string> = {
-  not_attributable:
-    'Esta acción tiene que quedar a nombre de un operador. Entra con tu cuenta en vez de con la clave de API.',
   declaration_not_accepted_or_bad_request: 'Marca que el cliente ha aceptado la declaración antes de importar.',
   subscription_not_found: 'No se encuentra la suscripción de este cliente.',
 };

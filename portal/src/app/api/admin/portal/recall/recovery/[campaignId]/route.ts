@@ -12,10 +12,9 @@ export const runtime = 'nodejs';
 // POST /api/admin/portal/recall/recovery/[campaignId]  { action }
 //
 // APROBAR es la decisión de escribir a clientes reales del profesional, así
-// que exige un operador identificable: con la clave de API heredada no hay
-// nadie a quien atribuirla, y `approvedByOperatorId` es precisamente el
-// registro de quién fue. Se niega con 403 en vez de aprobar a nombre de
-// nadie.
+// que exige un operador identificable: `approvedByOperatorId` es
+// precisamente el registro de quién fue. Si el Operator de la sesión ya no
+// existe, se niega con 403 en vez de aprobar a nombre de nadie.
 //
 // CANCELAR no lo exige: parar un envío nunca le escribe a nadie, y bloquear
 // una cancelación por un problema de atribución sería poner la barrera en

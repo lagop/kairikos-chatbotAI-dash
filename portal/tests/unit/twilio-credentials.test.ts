@@ -295,17 +295,6 @@ describe('saveTwilioRegulatoryIds', () => {
     );
   });
 
-  it('accepts a null operatorId (legacy-key caller) without touching the actorOperatorId FK', async () => {
-    upsert.mockResolvedValue(EMPTY_ROW);
-    const { saveTwilioRegulatoryIds } = await import('@/lib/twilio-credentials');
-
-    await saveTwilioRegulatoryIds('BU1', 'AD1', { operatorId: null, operatorEmail: null });
-
-    expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ actorOperatorId: null }) }),
-    );
-  });
-
   it('invalidates the resolution cache', async () => {
     upsert.mockResolvedValue(EMPTY_ROW);
     process.env.TWILIO_ACCOUNT_SID = 'AC_env';

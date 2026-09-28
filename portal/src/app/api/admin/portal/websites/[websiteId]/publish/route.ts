@@ -27,13 +27,11 @@ export async function POST(req: NextRequest, { params }: { params: { websiteId: 
   if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
 
   const operator =
-    auth.operatorId === 'legacy'
-      ? null
-      : await prisma.operator.findUnique({ where: { id: auth.operatorId }, select: { email: true } });
+    await prisma.operator.findUnique({ where: { id: auth.operatorId }, select: { email: true } });
 
   const result = await publishWebsite(prisma, params.websiteId, {
     type: 'operator',
-    operatorId: auth.operatorId === 'legacy' ? null : auth.operatorId,
+    operatorId: auth.operatorId,
     email: operator?.email ?? null,
   });
 

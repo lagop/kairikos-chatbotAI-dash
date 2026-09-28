@@ -235,9 +235,6 @@ export async function PATCH(
   if (!auth.ok) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (auth.operatorId === 'legacy') {
-    return errorResponse('forbidden', 403, 'legacy key auth cannot approve steps');
-  }
 
   if (!isDatabaseConfigured) {
     return NextResponse.json({ error: 'database_not_configured' }, { status: 503 });

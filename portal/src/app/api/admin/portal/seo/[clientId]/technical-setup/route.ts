@@ -71,15 +71,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { clientId: 
     return NextResponse.json({ error: 'not_found', detail: 'el cliente aun no ha empezado el onboarding' }, { status: 404 });
   }
 
-  // 'legacy' is the placeholder id authenticateAdminRequest returns for
-  // the KAIA_OPERATOR_API_KEY header path — not a real Operator row.
-  // Looking it up would throw (Operator.id is @db.Uuid). Same fix as the
-  // Google Places integrations route.
-  const isLegacyAuth = auth.operatorId === 'legacy';
-  const operator = isLegacyAuth
-    ? null
-    : await prisma.operator.findUnique({ where: { id: auth.operatorId }, select: { email: true } });
-  const actorOperatorId = isLegacyAuth ? null : auth.operatorId;
+  const operator = await prisma.operator.findUnique({ where: { id: auth.operatorId }, select: { email: true } });
+  const actorOperatorId = auth.operatorId;
   const actorEmail = operator?.email ?? null;
 
   const nextWordpressUrl = body.data.wordpressUrl ?? existing.wordpressUrl;

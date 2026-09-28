@@ -34,16 +34,9 @@ export async function POST(req: NextRequest) {
   }
   const { bundleSid, addressSid } = body.data;
 
-  // The legacy x-kaia-operator-key path's 'legacy' sentinel is not a
-  // real Operator row id — passing it straight through would fail the
-  // audit insert's actorOperatorId FK (a Uuid column) and, since that
-  // insert shares a transaction with the actual save, roll back the
-  // whole thing. null is the correct "no real operator identity" value.
-  const operatorId = auth.operatorId === 'legacy' ? null : auth.operatorId;
+  const { operatorId } = auth;
   try {
-    const operator = operatorId
-      ? await prisma.operator.findUnique({ where: { id: operatorId }, select: { email: true } })
-      : null;
+    const operator = await prisma.operator.findUnique({ where: { id: operatorId }, select: { email: true } });
     await saveTwilioRegulatoryIds(bundleSid, addressSid, {
       operatorId,
       operatorEmail: operator?.email ?? null,

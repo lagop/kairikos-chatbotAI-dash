@@ -53,9 +53,6 @@ export async function resolveClientTarget(clientProductId?: string | null): Prom
 export async function resolveOperatorTarget(req: NextRequest, subscriptionId: string): Promise<SettingsTarget | Response> {
   const auth = await authenticateAdminRequest(req);
   if (!auth.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  if (auth.operatorId === 'legacy') {
-    return NextResponse.json({ error: 'operator_session_required' }, { status: 403 });
-  }
   if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
   if (!/^[0-9a-f-]{36}$/i.test(subscriptionId)) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 

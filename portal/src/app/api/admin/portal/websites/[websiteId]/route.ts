@@ -52,9 +52,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { websiteId:
   if (!website) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
   const operator =
-    auth.operatorId === 'legacy'
-      ? null
-      : await prisma.operator.findUnique({ where: { id: auth.operatorId }, select: { email: true } });
+    await prisma.operator.findUnique({ where: { id: auth.operatorId }, select: { email: true } });
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -81,7 +79,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { websiteId:
           before: { businessName: website.businessName, themeKey: website.themeKey, copy: website.copy },
           after: body.data as unknown as object,
           actorType: 'operator',
-          actorOperatorId: auth.operatorId === 'legacy' ? null : auth.operatorId,
+          actorOperatorId: auth.operatorId,
           actorEmail: operator?.email ?? null,
         },
       });

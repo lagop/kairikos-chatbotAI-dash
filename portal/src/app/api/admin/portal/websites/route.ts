@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'business_name_required' }, { status: 400 });
   }
 
-  const operator = auth.operatorId === 'legacy' ? null : await prisma.operator.findUnique({
+  const operator = await prisma.operator.findUnique({
     where: { id: auth.operatorId },
     select: { email: true },
   });
@@ -139,7 +139,7 @@ export async function POST(req: NextRequest) {
           action: 'created',
           after: { fromLeadId: body.data.fromLeadId ?? null, themeKey: row.themeKey },
           actorType: 'operator',
-          actorOperatorId: auth.operatorId === 'legacy' ? null : auth.operatorId,
+          actorOperatorId: auth.operatorId,
           actorEmail: operator?.email ?? null,
         },
       });

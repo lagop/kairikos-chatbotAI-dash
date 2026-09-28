@@ -56,12 +56,7 @@ export async function getTwilioCredentialStatus(): Promise<TwilioCredentialStatu
 }
 
 export interface CredentialActor {
-  // null for the legacy x-kaia-operator-key path (its 'legacy' sentinel
-  // is not a real Operator row id, so not a valid value for the
-  // actorOperatorId FK — see the regulatory-ids route, the one caller
-  // that can actually reach this with a legacy-authenticated request;
-  // saveTwilioCredential's caller is step-up-gated and never sees it).
-  operatorId: string | null;
+  operatorId: string;
   operatorEmail: string | null;
 }
 

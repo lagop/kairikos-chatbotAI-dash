@@ -6,8 +6,8 @@
 // permiso, no de cálculo:
 //
 //   1. APROBAR Y CONFIRMAR UNA IMPORTACIÓN EXIGEN UN OPERADOR IDENTIFICABLE.
-//      Con la clave de API heredada (operatorId 'legacy') no hay nadie a
-//      quien atribuir la decisión de escribir a clientes reales.
+//      Si el Operator de la sesión ya no existe, no hay nadie a quien
+//      atribuir la decisión de escribir a clientes reales.
 //   2. EL CLIENTE SALE DE LA SUSCRIPCIÓN, nunca del cuerpo.
 //   3. EL TEXTO DE LA DECLARACIÓN LO PONE EL SERVIDOR.
 //   4. SIN LA CASILLA DE "EL CLIENTE ACEPTÓ", NO SE IMPORTA.
@@ -59,7 +59,6 @@ import { IMPORT_DECLARATION_V1 } from '@/lib/contact-import';
 const SUB_ID = '11111111-1111-1111-1111-111111111111';
 const CAMPAIGN_ID = '22222222-2222-2222-2222-222222222222';
 const AUTH_REAL = { ok: true, sessionId: 's1', operatorId: 'op_1' };
-const AUTH_LEGACY = { ok: true, sessionId: 'legacy', operatorId: 'legacy' };
 const CSV = 'Nombre;Teléfono;Fecha;Importe\nGarcía;651234567;03/04/2023;340,00';
 
 const req = (body: unknown) => ({ json: async () => body }) as unknown as NextRequest;
@@ -121,13 +120,13 @@ describe('POST .../[subscriptionId]/import — confirmar la importación', () =>
     expect(mockState.commitImport).not.toHaveBeenCalled();
   });
 
-  it('NO importa con la clave de API heredada: la importación tiene que quedar firmada', async () => {
-    mockState.authenticateAdminRequest.mockResolvedValue(AUTH_LEGACY);
+  it('NO importa si el operador de la sesión ya no existe: la importación tiene que quedar firmada', async () => {
+    mockState.operatorFindUnique.mockResolvedValue(null);
     const { POST } = await load();
     const res = await POST(req({ csv: CSV, clientAccepted: true }), { params: { subscriptionId: SUB_ID } });
     expect(res.status).toBe(403);
     expect(mockState.commitImport).not.toHaveBeenCalled();
-    expect(mockState.operatorFindUnique).not.toHaveBeenCalled();
+    expect(await res.json()).toEqual({ error: 'operator_not_found' });
   });
 
   it('404 si la suscripción no existe, sin tocar nada', async () => {
@@ -163,13 +162,6 @@ describe('POST .../[subscriptionId]/import/preview — vista previa', () => {
     expect(json.declaration).toBe(IMPORT_DECLARATION_V1);
     expect(json.quality.totalRows).toBe(1);
     expect(mockState.commitImport).not.toHaveBeenCalled();
-  });
-
-  it('funciona también con la clave heredada: mirar no compromete a nada', async () => {
-    mockState.authenticateAdminRequest.mockResolvedValue(AUTH_LEGACY);
-    const { POST } = await import('@/app/api/admin/portal/recall/[subscriptionId]/import/preview/route');
-    const res = await POST(req({ csv: CSV }), { params: { subscriptionId: SUB_ID } });
-    expect(res.status).toBe(200);
   });
 });
 
@@ -227,17 +219,17 @@ describe('POST /api/admin/portal/recall/recovery/[campaignId] — aprobar o canc
   });
 
   // LA REGLA DE ESTA RUTA.
-  it('NO aprueba con la clave de API heredada: no hay nadie a quien atribuir la decisión de escribir a clientes', async () => {
-    mockState.authenticateAdminRequest.mockResolvedValue(AUTH_LEGACY);
+  it('NO aprueba si el operador de la sesión ya no existe: no hay nadie a quien atribuir la decisión de escribir a clientes', async () => {
+    mockState.operatorFindUnique.mockResolvedValue(null);
     const { POST } = await load();
     const res = await POST(req({ action: 'approve' }), { params: { campaignId: CAMPAIGN_ID } });
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: 'not_attributable' });
+    expect(await res.json()).toEqual({ error: 'operator_not_found' });
     expect(mockState.approveCampaign).not.toHaveBeenCalled();
   });
 
-  it('SÍ deja cancelar con la clave heredada: parar un envío nunca le escribe a nadie', async () => {
-    mockState.authenticateAdminRequest.mockResolvedValue(AUTH_LEGACY);
+  it('SÍ deja cancelar aunque el operador no se pueda atribuir: parar un envío nunca le escribe a nadie', async () => {
+    mockState.operatorFindUnique.mockResolvedValue(null);
     const { POST } = await load();
     const res = await POST(req({ action: 'cancel' }), { params: { campaignId: CAMPAIGN_ID } });
     expect(res.status).toBe(200);

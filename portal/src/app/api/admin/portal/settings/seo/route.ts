@@ -16,8 +16,8 @@ export const runtime = 'nodejs';
 // =============================================================================
 // SEO con IA — GET/POST /api/admin/portal/settings/seo
 //
-// Operator-only, same authenticateAdminRequest + isLegacyAuth guard as
-// every other new operator route this session. Currently a single
+// Operator-only, same authenticateAdminRequest guard as every other
+// operator route. Currently a single
 // field (contentGenerationMinIntervalDays) — see SeoSettings' own
 // schema comment on why this isn't a generic key-value settings API.
 // No TOTP step-up, unlike Stripe's credential routes — this is an
@@ -50,13 +50,10 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const isLegacyAuth = auth.operatorId === 'legacy';
-    const operator = isLegacyAuth
-      ? null
-      : await prisma.operator.findUnique({ where: { id: auth.operatorId }, select: { email: true } });
+    const operator = await prisma.operator.findUnique({ where: { id: auth.operatorId }, select: { email: true } });
     await updateContentGenerationMinIntervalDays(
       body.data.contentGenerationMinIntervalDays,
-      operator?.email ?? (isLegacyAuth ? 'legacy_operator' : null),
+      operator?.email ?? null,
     );
   } catch (err) {
     logError('seo_settings.save_failed', err, {});

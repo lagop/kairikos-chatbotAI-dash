@@ -79,7 +79,7 @@ describe('updateContentGenerationMinIntervalDays', () => {
     });
   });
 
-  it('accepts a null actor (e.g. the legacy operator-key auth path)', async () => {
+  it('accepts a null actor (the operator row could not be resolved to an email)', async () => {
     await updateContentGenerationMinIntervalDays(3, null);
     expect(mockState.seoSettingsUpsert).toHaveBeenCalledWith(
       expect.objectContaining({ create: expect.objectContaining({ updatedBy: null }) }),

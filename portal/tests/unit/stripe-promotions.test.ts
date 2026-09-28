@@ -306,14 +306,10 @@ describe('rutas /api/admin/portal/settings/promotions', () => {
     expect((await res.json()).codes).toHaveLength(1);
   });
 
-  it('DELETE desactiva sin TOTP, pero no con la clave de API heredada', async () => {
+  it('DELETE desactiva sin TOTP', async () => {
     const ok = await DELETE(req(), { params: { promotionCodeId: 'promo_1' } });
     expect(ok.status).toBe(200);
     expect(mockState.requireTotpStepUp).not.toHaveBeenCalled();
-
-    mockState.authenticateAdminRequest.mockResolvedValue({ ok: true, sessionId: null, operatorId: 'legacy' });
-    const legacy = await DELETE(req(), { params: { promotionCodeId: 'promo_1' } });
-    expect(legacy.status).toBe(403);
   });
 
   it('DELETE rechaza un id con forma rara sin llamar a Stripe', async () => {

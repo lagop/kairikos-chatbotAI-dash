@@ -23,8 +23,8 @@ export const runtime = 'nodejs';
 //     (IMPORT_DECLARATION_V1): si viniera del cuerpo, lo que queda guardado
 //     como "lo que aceptó el cliente" sería lo que mandó el navegador.
 //
-//   · Importar sin un operador identificable. La clave de API heredada no
-//     vale: la importación queda firmada por quien la hizo.
+//   · Importar sin un operador identificable: la importación queda firmada
+//     por quien la hizo (ver resolveAttributableOperator).
 // =============================================================================
 
 const BodySchema = z.object({

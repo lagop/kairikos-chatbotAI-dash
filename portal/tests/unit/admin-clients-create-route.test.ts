@@ -124,14 +124,6 @@ describe('POST /api/admin/portal/clients — creating with products', () => {
     expect(mockState.sendEmail).not.toHaveBeenCalled();
   });
 
-  it("resolves the legacy operator to null for the ClientProduct actor, same as the existing client-products route", async () => {
-    mockState.authenticateAdminRequest.mockResolvedValueOnce({ ok: true, operatorId: 'legacy' });
-    const { POST } = await import('@/app/api/admin/portal/clients/route');
-    await POST(makeRequest({ email: 'a@b.com', name: 'A', companyName: 'B', products: [{ productId: PRODUCT_A, mode: 'active' }] }));
-
-    expect(mockState.activateClientProductForOperator).toHaveBeenCalledWith(expect.anything(), expect.anything(), { operatorId: null });
-  });
-
   it("creates a Stripe checkout link for mode='checkout_link' and emails it to the client", async () => {
     const { POST } = await import('@/app/api/admin/portal/clients/route');
     const res = await POST(

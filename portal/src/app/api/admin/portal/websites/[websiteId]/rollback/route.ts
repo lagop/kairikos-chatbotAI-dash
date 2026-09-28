@@ -29,13 +29,11 @@ export async function POST(req: NextRequest, { params }: { params: { websiteId: 
   if (!body.success) return NextResponse.json({ error: 'invalid_body' }, { status: 400 });
 
   const operator =
-    auth.operatorId === 'legacy'
-      ? null
-      : await prisma.operator.findUnique({ where: { id: auth.operatorId }, select: { email: true } });
+    await prisma.operator.findUnique({ where: { id: auth.operatorId }, select: { email: true } });
 
   const result = await rollbackWebsite(prisma, params.websiteId, body.data.version, {
     type: 'operator',
-    operatorId: auth.operatorId === 'legacy' ? null : auth.operatorId,
+    operatorId: auth.operatorId,
     email: operator?.email ?? null,
   });
 

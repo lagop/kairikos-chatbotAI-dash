@@ -300,17 +300,6 @@ describe('saveMetaConfigIds', () => {
     );
   });
 
-  it('accepts a null operatorId (legacy-key caller) without touching the actorOperatorId FK', async () => {
-    upsert.mockResolvedValue(EMPTY_ROW);
-    const { saveMetaConfigIds } = await import('@/lib/meta-credentials');
-
-    await saveMetaConfigIds('C1', 'CC1', { operatorId: null, operatorEmail: null });
-
-    expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ actorOperatorId: null }) }),
-    );
-  });
-
   it('invalidates the resolution cache', async () => {
     upsert.mockResolvedValue(EMPTY_ROW);
     process.env.META_APP_ID = 'app_env';

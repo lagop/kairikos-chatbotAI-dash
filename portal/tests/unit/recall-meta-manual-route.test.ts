@@ -51,11 +51,9 @@ beforeEach(() => {
 });
 
 describe('POST meta-manual', () => {
-  it('401 sin sesión y 403 con la clave heredada', async () => {
+  it('401 sin sesión', async () => {
     mockState.authenticateAdminRequest.mockResolvedValueOnce({ ok: false });
     expect((await POST(req(BODY), ctx)).status).toBe(401);
-    mockState.authenticateAdminRequest.mockResolvedValueOnce({ ok: true, sessionId: null, operatorId: 'legacy' });
-    expect((await POST(req(BODY), ctx)).status).toBe(403);
     expect(mockState.connectRecallWhatsappManually).not.toHaveBeenCalled();
   });
 
