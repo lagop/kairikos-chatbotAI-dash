@@ -1,24 +1,18 @@
 'use client';
 
-import { signIn } from 'next-auth/react';
 import { useId, useMemo, useState } from 'react';
 
 // =============================================================================
-// WP-31 — the actual public signup+checkout flow, chained client-side in
-// three calls after one submit:
-//   1. POST /api/public/self-serve-signup — creates ChatbotClient + User
-//      (password already set) + ChatbotClientUser.
-//   2. next-auth/react's signIn('portal-credentials', …) — the exact same
-//      call LoginForm.tsx already makes; reusing it here instead of
-//      minting a session server-side keeps there being exactly one path
-//      into a client session, not two that could drift.
-//   3. POST /api/portal/billing/checkout — the existing, unmodified
-//      self-serve checkout route (same one SelfServeProductCard.tsx
-//      calls from inside the portal) — redirects to Stripe.
-// A failure at any step surfaces inline; step 1 succeeding but step 2 or
-// 3 failing still leaves a real, usable account (email/password work at
-// /portal/login) — nothing here is rolled back on a later-step failure,
-// same as the rest of the checkout flow already behaves.
+// WP-31 — the public signup form.
+//
+// Revisión de seguridad del 22/09/2026 — verificar antes de pagar. Este
+// formulario ya solo hace el paso 1 (POST /api/public/self-serve-signup,
+// que crea la cuenta con la contraseña bloqueada y manda el enlace). Entrar
+// y pagar (o pedir presupuesto) ocurre después, en /portal/verify-email,
+// cuando el enlace demuestra que el buzón es de quien se registra — ver
+// continue-to-purchase.ts. La ruta contesta igual si el email ya tenía
+// cuenta, así que aquí tampoco hay un mensaje de "ya existe": en los dos
+// casos se pide revisar el correo.
 // =============================================================================
 
 export interface SignupTierOption {
@@ -55,9 +49,25 @@ function priceSummary(tier: SignupTierOption): string {
   return 'Precio a confirmar';
 }
 
-type Step = 'idle' | 'creating_account' | 'signing_in' | 'starting_checkout' | 'requesting_quote';
+type Step = 'idle' | 'creating_account' | 'check_email';
 
-export function SelfServeSignupForm({ tiers }: { tiers: SignupTierOption[] }) {
+export function SelfServeSignupForm({
+  tiers,
+  codigoInicial = '',
+  productoInicial,
+}: {
+  tiers: SignupTierOption[];
+  /** A7 — el código que venía en ?ref= del enlace del socio. Se resuelve en
+   *  el servidor y llega ya escrito: quien entra por el cartel de un almacén
+   *  no tiene que teclear nada, y quien no, ve el campo vacío y opcional. */
+  codigoInicial?: string;
+  /** WP-33 — el escalón que venía en ?producto= (y ?tier=) del enlace de
+   *  kairikos.com. Sin él, esta página preseleccionaba siempre el primero de
+   *  la lista, así que quien pulsaba «Empezar» en Reseñas llegaba con Chatbot
+   *  marcado. El servidor lo resuelve a un productId y comprueba que exista;
+   *  aquí solo se usa. */
+  productoInicial?: string;
+}) {
   const id = useId();
   const byCode = useMemo(() => {
     const map = new Map<string, SignupTierOption[]>();
@@ -69,17 +79,22 @@ export function SelfServeSignupForm({ tiers }: { tiers: SignupTierOption[] }) {
     return map;
   }, [tiers]);
 
-  const [selectedProductId, setSelectedProductId] = useState(tiers[0]?.productId ?? '');
+  const [selectedProductId, setSelectedProductId] = useState(
+    // El respaldo sigue siendo el primero: sin producto en la URL, o con uno
+    // que ya no está a la venta, la página funciona igual que antes.
+    productoInicial ?? tiers[0]?.productId ?? '',
+  );
   const [name, setName] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [tosAccepted, setTosAccepted] = useState(false);
   const [website, setWebsite] = useState(''); // honeypot — stays empty for real visitors
+  const [codigo, setCodigo] = useState(codigoInicial);
   const [step, setStep] = useState<Step>('idle');
   const [error, setError] = useState<string | null>(null);
 
-  const busy = step !== 'idle';
+  const busy = step === 'creating_account';
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -111,56 +126,28 @@ export function SelfServeSignupForm({ tiers }: { tiers: SignupTierOption[] }) {
       const signupRes = await fetch('/api/public/self-serve-signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, name, companyName, password, productId: selectedProductId, tosAccepted, website }),
+        body: JSON.stringify({
+          email,
+          name,
+          companyName,
+          password,
+          productId: selectedProductId,
+          tosAccepted,
+          website,
+          codigo: codigo.trim() || undefined,
+        }),
       });
       if (!signupRes.ok) {
         const detail = await signupRes.json().catch(() => null);
         setError(
-          signupRes.status === 409
-            ? 'Ya existe una cuenta con ese email. Inicia sesión en vez de crear una nueva.'
-            : signupRes.status === 429
-              ? 'Demasiados intentos. Espera unos minutos y vuelve a intentarlo.'
-              : `No se pudo crear la cuenta. ${detail?.error ?? signupRes.statusText}`,
+          signupRes.status === 429
+            ? 'Demasiados intentos. Espera unos minutos y vuelve a intentarlo.'
+            : `No se pudo crear la cuenta. ${detail?.error ?? signupRes.statusText}`,
         );
         setStep('idle');
         return;
       }
-
-      setStep('signing_in');
-      const signInResult = await signIn('portal-credentials', { email, password, redirect: false });
-      if (!signInResult || signInResult.error) {
-        setError('La cuenta se creó, pero no se pudo iniciar sesión automáticamente. Ve a /portal/login con tu email y contraseña.');
-        setStep('idle');
-        return;
-      }
-
-      const selectedTier = tiers.find((t) => t.productId === selectedProductId);
-      if (selectedTier?.requiresQuote) {
-        setStep('requesting_quote');
-        const quoteRes = await fetch('/api/portal/web-quote/request', { method: 'POST' });
-        if (!quoteRes.ok) {
-          setError('Tu cuenta ya está creada y puedes entrar en /portal. No se pudo enviar la solicitud — inténtalo de nuevo desde ahí.');
-          setStep('idle');
-          return;
-        }
-        const quoteData = (await quoteRes.json()) as { clientProductId: string };
-        window.location.href = `/portal/web/${quoteData.clientProductId}`;
-        return;
-      }
-
-      setStep('starting_checkout');
-      const checkoutRes = await fetch('/api/portal/billing/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId: selectedProductId }),
-      });
-      if (!checkoutRes.ok) {
-        setError('Tu cuenta ya está creada y puedes entrar en /portal. No se pudo iniciar el pago — inténtalo de nuevo desde "Añadir producto".');
-        setStep('idle');
-        return;
-      }
-      const data = (await checkoutRes.json()) as { url: string };
-      window.location.href = data.url;
+      setStep('check_email');
     } catch (err) {
       setError(`Error de red: ${err instanceof Error ? err.message : 'desconocido'}`);
       setStep('idle');
@@ -172,15 +159,25 @@ export function SelfServeSignupForm({ tiers }: { tiers: SignupTierOption[] }) {
   const buttonLabel =
     step === 'creating_account'
       ? 'Creando tu cuenta…'
-      : step === 'signing_in'
-        ? 'Entrando…'
-        : step === 'starting_checkout'
-          ? 'Redirigiendo a Stripe…'
-          : step === 'requesting_quote'
-            ? 'Enviando solicitud…'
-            : selectedRequiresQuote
-              ? 'Crear cuenta y solicitar presupuesto'
-              : 'Crear cuenta y contratar';
+      : selectedRequiresQuote
+        ? 'Crear cuenta y solicitar presupuesto'
+        : 'Crear cuenta y contratar';
+
+  if (step === 'check_email') {
+    return (
+      <div className="card space-y-3 text-center" role="status" data-testid="empezar-check-email">
+        <h2 className="text-lg font-semibold">Revisa tu correo</h2>
+        <p className="text-sm text-kairikos-muted">
+          Te hemos enviado un enlace a <strong className="text-kairikos-text">{email}</strong>. Púlsalo para activar tu
+          cuenta y {selectedRequiresQuote ? 'enviar tu solicitud de presupuesto' : 'completar el pago'}.
+        </p>
+        <p className="text-xs text-kairikos-muted">
+          ¿No te llega en unos minutos? Mira en spam. Si ya tenías una cuenta con este correo, te hemos escrito con
+          cómo entrar.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={onSubmit} className="card space-y-5" noValidate>
@@ -276,6 +273,26 @@ export function SelfServeSignupForm({ tiers }: { tiers: SignupTierOption[] }) {
           autoComplete="new-password"
           minLength={8}
           data-testid="password-input"
+        />
+      </div>
+
+      {/* A7 — opcional y el último campo, a propósito: preguntar "¿quién te
+          mandó?" antes del correo hace que parezca un requisito. El código no
+          se valida aquí ni puede romper el alta; si no existe, el servidor lo
+          apunta como no atribuido y la cuenta se crea igual. */}
+      <div>
+        <label htmlFor={`${id}-codigo`} className="label">
+          Código de socio o de recomendación <span className="text-kairikos-muted">(opcional)</span>
+        </label>
+        <input
+          id={`${id}-codigo`}
+          className="input font-mono uppercase"
+          value={codigo}
+          onChange={(e) => setCodigo(e.target.value)}
+          placeholder="Si alguien te recomendó Kairikos"
+          autoComplete="off"
+          maxLength={40}
+          data-testid="codigo-input"
         />
       </div>
 

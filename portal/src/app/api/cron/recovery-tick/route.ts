@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { sendApprovedCampaign } from '@/lib/recovery-campaigns';
 import { logError } from '@/lib/observability';
+import { isAuthorizedCronRequest } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -31,8 +32,7 @@ export const runtime = 'nodejs';
 const MAX_CAMPAIGNS_PER_TICK = 3;
 
 export async function GET(req: NextRequest) {
-  const auth = req.headers.get('authorization');
-  if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!isAuthorizedCronRequest(req)) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
   if (!isDatabaseConfigured) {

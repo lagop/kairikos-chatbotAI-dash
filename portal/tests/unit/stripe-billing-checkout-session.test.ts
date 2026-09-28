@@ -184,7 +184,9 @@ describe('createProductCheckoutSession — ClientProduct pre-creation', () => {
 
     expect(result.ok).toBe(true);
     expect(mockState.findFirstClientProduct).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { clientId: 'client_1', productId: RECURRING_PRODUCT.id } }),
+      expect.objectContaining({
+        where: { clientId: 'client_1', productId: RECURRING_PRODUCT.id, status: { in: ['cancelled'] } },
+      }),
     );
     expect(mockState.clientProductCreate).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ status: 'pending_payment' }) }),
@@ -290,15 +292,56 @@ describe('createProductCheckoutSession — Stripe failure rollback', () => {
     });
   });
 
-  it('reverts to the prior status (not cancelled) when the ClientProduct already existed before this attempt', async () => {
-    mockState.findFirstClientProduct.mockResolvedValueOnce({ id: 'cp_1', status: 'paused' });
+  it('restores the reused row exactly as it was (status and cancelledAt) when session creation throws', async () => {
+    const cancelledAt = new Date('2026-08-01T10:00:00Z');
+    mockState.findUniqueProduct.mockResolvedValueOnce({ ...RECURRING_PRODUCT, code: 'reviews' });
+    mockState.findFirstClientProduct.mockResolvedValueOnce({ id: 'cp_1', status: 'pending_payment', cancelledAt: null });
     mockState.checkoutSessionsCreate.mockRejectedValueOnce(new Error('stripe_down'));
-    mockState.clientProductUpdate.mockResolvedValueOnce({ id: 'cp_1', status: 'paused' });
+    mockState.clientProductUpdate.mockResolvedValueOnce({ id: 'cp_1', status: 'pending_payment' });
     const { createProductCheckoutSession } = await import('@/lib/stripe-billing');
     await createProductCheckoutSession({ clientId: 'client_1', productId: RECURRING_PRODUCT.id, actorId: ACTOR_ID });
 
-    expect(mockState.clientProductUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: 'paused', cancelledAt: null }) }),
+    expect(mockState.clientProductUpdate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ data: { status: 'pending_payment', cancelledAt: null } }),
     );
+
+    mockState.findFirstClientProduct.mockResolvedValueOnce({ id: 'cp_2', status: 'cancelled', cancelledAt });
+    mockState.checkoutSessionsCreate.mockRejectedValueOnce(new Error('stripe_down'));
+    await createProductCheckoutSession({ clientId: 'client_1', productId: RECURRING_PRODUCT.id, actorId: ACTOR_ID });
+    expect(mockState.clientProductUpdate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ data: { status: 'cancelled', cancelledAt } }),
+    );
+  });
+});
+
+// Revisión de seguridad 22/09/2026 — comprar una segunda línea reaprovechaba
+// la PRIMERA fila del producto aunque estuviera activa: la línea que el
+// cliente ya pagaba pasaba a pending_payment y, si abandonaba el pago, a
+// cancelled, con Stripe cobrándola igual.
+describe('createProductCheckoutSession — which ClientProduct row is reused', () => {
+  it('a multi-instance product only ever reuses a cancelled row, never a live or in-flight one', async () => {
+    const { createProductCheckoutSession } = await import('@/lib/stripe-billing');
+    await createProductCheckoutSession({ clientId: 'client_1', productId: RECURRING_PRODUCT.id, actorId: ACTOR_ID });
+    const { where } = mockState.findFirstClientProduct.mock.calls[0][0];
+    expect(where.status).toEqual({ in: ['cancelled'] });
+  });
+
+  it('a single-instance product may also reuse its own abandoned pending_payment row', async () => {
+    mockState.findUniqueProduct.mockResolvedValueOnce({ ...RECURRING_PRODUCT, code: 'reviews' });
+    const { createProductCheckoutSession } = await import('@/lib/stripe-billing');
+    await createProductCheckoutSession({ clientId: 'client_1', productId: RECURRING_PRODUCT.id, actorId: ACTOR_ID });
+    const { where } = mockState.findFirstClientProduct.mock.calls[0][0];
+    expect(where.status).toEqual({ in: ['cancelled', 'pending_payment'] });
+    expect(where.status.in).not.toContain('active');
+    expect(where.status.in).not.toContain('paused');
+    expect(where.status.in).not.toContain('past_due');
+  });
+
+  it('with an active line already in place, a new pending row is CREATED — the live one is never updated', async () => {
+    mockState.isProductContracted.mockResolvedValue(true);
+    const { createProductCheckoutSession } = await import('@/lib/stripe-billing');
+    await createProductCheckoutSession({ clientId: 'client_1', productId: RECURRING_PRODUCT.id, actorId: ACTOR_ID });
+    expect(mockState.clientProductCreate).toHaveBeenCalledTimes(1);
+    expect(mockState.clientProductUpdate).not.toHaveBeenCalled();
   });
 });

@@ -6,10 +6,12 @@ const OPERATOR_COOKIE = 'kairikos-portal-operator';
 
 export default function middleware(req: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
+  // Mismo cierre que isPortalDevMock() en portal-session.ts: en producción
+  // nunca se siembran las cookies del modo de pruebas, salvo en CI.
+  const devMockAllowed = process.env.NODE_ENV !== 'production' || process.env.ALLOW_PORTAL_DEV_MOCK === '1';
   const isDevMock =
-    !supabaseUrl ||
-    supabaseUrl.includes('YOUR-PROJECT') ||
-    supabaseUrl === 'https://invalid.supabase.co';
+    devMockAllowed &&
+    (!supabaseUrl || supabaseUrl.includes('YOUR-PROJECT') || supabaseUrl === 'https://invalid.supabase.co');
 
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set('x-pathname', req.nextUrl.pathname);

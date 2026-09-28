@@ -3,6 +3,7 @@ import * as crypto from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import { DEFAULT_TENANT_ID } from './tenant';
 import { ensurePrimaryClientSite } from './client-site';
+import { PENDING_SIGNUP_PREFIX, isPendingSignupHash } from './pending-signup';
 
 // =============================================================================
 // Alta pública de cliente (WP-31) — visitante sin cuenta ni sesión que se
@@ -13,6 +14,11 @@ import { ensurePrimaryClientSite } from './client-site';
 // separe "quien crea la cuenta" de "quien la usa" — el propio visitante
 // es ambos. El caller (la ruta) hashea la contraseña antes de llamar
 // aquí; esta función nunca ve la contraseña en claro.
+//
+// Revisión de seguridad del 22/09/2026: la contraseña nace BLOQUEADA
+// (prefijo PENDING_SIGNUP_PREFIX) y solo sirve para entrar cuando alguien
+// confirma el email desde su buzón — verifyEmailToken la desbloquea. Ver
+// lib/pending-signup.ts.
 // =============================================================================
 
 export interface CreateClientForSelfServeInput {
@@ -70,7 +76,7 @@ export async function createClientForSelfServe(
       data: {
         email: normalizedEmail,
         role: 'client',
-        passwordHash: input.passwordHash,
+        passwordHash: `${PENDING_SIGNUP_PREFIX}${input.passwordHash}`,
         passwordSetAt: new Date(),
       },
       select: { id: true },
@@ -93,17 +99,16 @@ export async function createClientForSelfServe(
 }
 
 /**
- * Mints a fresh EmailVerificationToken for `email`. Deliberately does
- * NOT gate login or checkout on this — payment itself (a real card
- * charge) is already a stronger anti-abuse signal than email ownership,
- * and requiring verification before checkout would add friction exactly
- * where this flow exists to remove it. What it DOES gate: nothing yet
- * at the code level — /api/public/verify-email marks
- * ChatbotClient.emailVerifiedAt, which today is purely informational
- * for the operator (an "email sin verificar" state to notice), not
- * enforced anywhere. Tightening that — e.g. requiring verification
- * before support requests or security-sensitive account changes — is a
- * deliberate follow-up, not an oversight.
+ * Mints a fresh EmailVerificationToken for `email`.
+ *
+ * Revisión de seguridad del 22/09/2026 — esto ya NO es informativo para
+ * las altas de autoservicio: hasta que se usa el token, su contraseña está
+ * bloqueada y no pueden entrar ni pagar (ver lib/pending-signup.ts). El
+ * argumento de antes —"el pago con tarjeta ya es mejor señal antiabuso que
+ * el email"— no cubría el caso real: quien registra el correo de OTRO
+ * negocio no necesita pagar para quedarse con la cuenta. Para las cuentas
+ * que crea un operador sigue siendo informativo: ahí la contraseña se fija
+ * desde un enlace que ya llega a ese buzón (setup-password).
  */
 export async function mintEmailVerificationToken(prisma: PrismaClient, email: string): Promise<string> {
   const normalizedEmail = email.toLowerCase().trim();
@@ -141,6 +146,22 @@ export async function verifyEmailToken(
     return { ok: false, error: 'invalid_or_expired_token' };
   }
 
+  // Desbloquea la contraseña del alta (si la hay) en la misma transacción
+  // que consume el token.
+  const user = await prisma.user.findUnique({
+    where: { email: normalizedEmail },
+    select: { id: true, passwordHash: true },
+  });
+  const unlock =
+    user && isPendingSignupHash(user.passwordHash)
+      ? [
+          prisma.user.update({
+            where: { id: user.id },
+            data: { passwordHash: user.passwordHash!.slice(PENDING_SIGNUP_PREFIX.length) },
+          }),
+        ]
+      : [];
+
   await prisma.$transaction([
     prisma.chatbotClient.updateMany({
       where: { email: normalizedEmail },
@@ -150,6 +171,7 @@ export async function verifyEmailToken(
       where: { id: record.id },
       data: { usedAt: new Date() },
     }),
+    ...unlock,
   ]);
 
   return { ok: true };

@@ -306,6 +306,12 @@ export interface WhatsAppTemplateSummary {
   status?: string;
   category?: string;
   rejected_reason?: string;
+  /** El contenido aprobado, tal y como lo guarda Meta. Se pide desde el
+   *  23/09/2026 para poder compararlo con el texto del código: hasta
+   *  entonces se sincronizaba nombre y estado, y nadie miraba el texto.
+   *  Tres plantillas llevaban semanas enviándose con los acentos rotos
+   *  ("Te llam?") sin que nada lo detectara. Ver findTemplateTextDrift. */
+  components?: Array<{ type?: string; text?: string }>;
 }
 
 /**
@@ -325,7 +331,7 @@ export function listMessageTemplates(
   const limit = opts.limit ?? 100;
   return callGraphApi<{ data?: WhatsAppTemplateSummary[] }>(
     accessToken,
-    `/${wabaId}/message_templates?fields=id,name,language,status,category,rejected_reason&limit=${limit}`,
+    `/${wabaId}/message_templates?fields=id,name,language,status,category,rejected_reason,components&limit=${limit}`,
     'GET',
   );
 }

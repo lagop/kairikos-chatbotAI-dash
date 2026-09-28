@@ -217,11 +217,10 @@ export async function updateDraftPricing(
  * never been touched — including the option to edit its price first via
  * updateDraftPricing before committing it live.
  *
- * Refuses when there are active subscribers: they are real clients
- * paying against the Stripe object this would unlink, and in practice
- * that should never happen for a TEST-mode object (nobody pays with a
- * test key) — this is the safety net for the case that assumption is
- * wrong.
+ * Refuses when the object being unlinked is a LIVE one and tiene
+ * suscriptores activos: ahí sí hay dinero real detrás. Si el objeto está
+ * en TEST, no lo frena nadie — la explicación larga, y el bloqueo real
+ * que la provocó, están justo encima de la comprobación.
  */
 export async function resetForModeMismatch(
   productId: string,
@@ -241,8 +240,26 @@ export async function resetForModeMismatch(
     return { ok: false, error: { kind: 'no_mode_mismatch' } };
   }
 
+  // El freno de los suscriptores activos solo tiene sentido en UNA de las dos
+  // direcciones del desajuste, y descubrirlo costó un bloqueo real.
+  //
+  // 24/09/2026: el escalón `seo` se quedó atascado aquí. Estaba creado en
+  // TEST, la credencial activa era LIVE, y había una Subscription en estado
+  // 'active' contra él — la de una prueba, hecha en su día con la clave de
+  // test. El comentario de esta función decía que eso "no debería pasar
+  // nunca, porque nadie paga con una clave de test", y es verdad: nadie
+  // pagaba. Pero la FILA existía igual, y el freno la contó como si fuera un
+  // cliente de verdad. Resultado: el único camino hacia adelante quedaba
+  // cerrado por proteger un cobro que no existe.
+  //
+  // La regla correcta mira qué objeto se va a desvincular:
+  //
+  // - Está en LIVE y la credencial activa es test → esas suscripciones SÍ son
+  //   dinero real. Se frena, como hasta ahora.
+  // - Está en TEST → ninguna suscripción contra él puede ser real, porque
+  //   para crearla hizo falta la clave de test. Se deja pasar.
   const activeSubscriptions = await countActiveSubscriptionsForProduct(productId);
-  if (activeSubscriptions > 0) {
+  if (product.stripePriceMode === 'live' && activeSubscriptions > 0) {
     return { ok: false, error: { kind: 'has_active_subscriptions', count: activeSubscriptions } };
   }
 

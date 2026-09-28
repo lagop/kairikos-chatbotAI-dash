@@ -10,6 +10,7 @@ import { PageHeading } from '@/components/portal/PageHeading';
 import { WebBriefForm, type WebBriefFormValues } from '@/components/portal/WebBriefForm';
 import { WebQuoteCard, type ClientWebQuoteData, type ClientWebQuoteInvoiceData } from '@/components/portal/WebQuoteCard';
 import { WebDeliveryCard } from '@/components/portal/WebDeliveryCard';
+import { WebsiteEditorCard, type WebsiteEditorData } from '@/components/portal/WebsiteEditorCard';
 import { buildDeliveryProgress, hasDeliveryTracking, type DeliveryProgress } from '@/lib/web-delivery';
 import { GOAL_LABELS, CONTENT_PROVIDED_BY_LABELS, type GOAL_OPTIONS, type CONTENT_PROVIDED_BY_OPTIONS } from '@/lib/web-brief-schema';
 
@@ -112,6 +113,23 @@ export default async function PortalWebProjectPage({
   }
 
   const brief = await prisma.webBrief.findUnique({ where: { clientProductId: webClientProduct.id } });
+  // Producto Web, Fase 1 — su web, cuando ya existe. Null mientras el
+  // proyecto está en brief o presupuesto: no hay nada que editar todavía.
+  const siteRow = await prisma.clientWebsite.findUnique({
+    where: { clientProductId: webClientProduct.id },
+  });
+  const website: WebsiteEditorData | null = siteRow
+    ? {
+        clientProductId: webClientProduct.id,
+        status: siteRow.status,
+        lastPublishedAt: siteRow.lastPublishedAt?.toISOString() ?? null,
+        phone: siteRow.phone,
+        address: siteRow.address,
+        city: siteRow.city,
+        copy: siteRow.copy as unknown as WebsiteEditorData['copy'],
+      }
+    : null;
+
   const wantsEdit = searchParams.edit === '1';
 
   if (brief?.status === 'submitted' && !wantsEdit) {
@@ -138,6 +156,7 @@ export default async function PortalWebProjectPage({
             deliveryAcceptedAt={delivery.deliveryAcceptedAt}
           />
         ) : null}
+        {website ? <WebsiteEditorCard data={website} /> : null}
         <div className="card space-y-4" data-testid="web-brief-summary">
           <SummaryRow label="Negocio" value={brief.businessName} />
           <SummaryRow label="Sector" value={brief.vertical} />

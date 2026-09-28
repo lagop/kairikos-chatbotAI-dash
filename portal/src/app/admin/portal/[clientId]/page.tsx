@@ -28,6 +28,7 @@ import {
 } from '@/components/admin/ChannelsOperatorPanel';
 import { getAllowedChannelsForClient } from '@/lib/channel-access';
 import { LeadsSummaryPanel, type LeadSummaryRow } from '@/components/admin/LeadsSummaryPanel';
+import { ClientWebsitePanel, type ClientWebsiteView } from '@/components/admin/ClientWebsitePanel';
 import { RecallOperatorPanel, type RecallPanelData } from '@/components/admin/RecallOperatorPanel';
 import { RecallContractSignButton } from '@/components/admin/RecallContractSignButton';
 import { SeoTechnicalSetupPanel, type SeoProfilePanelData, type SeoQueryOpportunity } from '@/components/admin/SeoTechnicalSetupPanel';
@@ -203,6 +204,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
   let tier = 'starter';
   let state = 'in-progress';
   let notes: string | null = null;
+  let isInternal = false;
   let goLiveAt: string | null = null;
   let conversationCount = 0;
   let timeline: OnboardingTimelineRow[] = [];
@@ -236,6 +238,11 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
   // tab bar itself is unchanged — there's still one "web" tab, the
   // multiplicity lives inside it.
   let webProjects: WebProjectEntry[] = [];
+  // Producto Web, Fase 1 — el sitio de cada proyecto y los prospectos de este
+  // cliente que ya tienen borrador, para poder crear el sitio a partir de la
+  // página que el negocio ya vio.
+  let websites: Record<string, ClientWebsiteView | null> = {};
+  let draftLeads: { id: string; name: string }[] = [];
   // WP: conexión de canales — Fase 5. Populated only when
   // productCode === CHATBOT_PRODUCT_CODE, so the read-only channels
   // panel (+ manual webhook-delivery retry) renders inside that
@@ -271,6 +278,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
           tier: true,
           state: true,
           notes: true,
+        isInternal: true,
           goLiveAt: true,
         },
       });
@@ -280,6 +288,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
         tier = client.tier;
         state = client.state;
         notes = client.notes;
+        isInternal = client.isInternal;
         goLiveAt = client.goLiveAt?.toISOString() ?? null;
         resolvedClientId = client.id;
         resolvedGoLiveAt = goLiveAt;
@@ -363,6 +372,16 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
           // asc, so `index` gives a stable fallback label when the
           // project's own brief has no businessName yet.
           const webCps = cpRows.filter((cp) => cp.product.code === 'web');
+          // Los prospectos con borrador: el camino normal es crear el sitio
+          // desde la página que el negocio ya vio, no desde cero.
+          draftLeads = (
+            await prisma.lead.findMany({
+              where: { clientId: client.id, webDraft: { isNot: null } },
+              orderBy: { createdAt: 'desc' },
+              take: 25,
+              select: { id: true, contactName: true },
+            })
+          ).map((l) => ({ id: l.id, name: l.contactName ?? 'Sin nombre' }));
           webProjects = await Promise.all(
             webCps.map(async (webCp, index) => {
               const [webQuoteRow, brief] = await Promise.all([
@@ -388,6 +407,28 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
                     }
                   : null;
               }
+              const site = await prisma.clientWebsite.findUnique({
+                where: { clientProductId: webCp.id },
+                include: { credential: { select: { host: true, username: true, remotePath: true, savedAt: true } } },
+              });
+              websites[webCp.id] = site
+                ? {
+                    id: site.id,
+                    businessName: site.businessName,
+                    status: site.status,
+                    themeKey: site.themeKey,
+                    lastPublishedAt: site.lastPublishedAt?.toISOString() ?? null,
+                    lastPublishError: site.lastPublishError,
+                    credential: site.credential
+                      ? {
+                          host: site.credential.host,
+                          username: site.credential.username,
+                          remotePath: site.credential.remotePath,
+                          savedAt: site.credential.savedAt.toISOString(),
+                        }
+                      : null,
+                  }
+                : null;
               return {
                 clientProductId: webCp.id,
                 label: brief?.businessName || `Proyecto ${index + 1} · desde ${webCp.subscribedAt.toISOString().slice(0, 10)}`,
@@ -458,11 +499,33 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
           }));
         }
 
-        if (productCode === 'leads') {
-          leads = await prisma.lead.findMany({
+        // 23/09/2026 — también con 'prospecting' seleccionado, no solo con
+        // 'leads'. Quien contrata prospección y no leads GENERA leads (el
+        // barrido los crea con source='outbound'), pero el operador no
+        // tenía dónde verlos: sin pestaña 'leads' esta sección no se
+        // pintaba, y con ella se ocultaba el enlace al informe comparativo
+        // (A1), que es exactamente para prospectos. Es el caso que ya
+        // reconoce hasLeadsInboxAccess (leads O prospecting) en
+        // client-product-access.ts; esta página no lo usaba.
+        if (productCode === 'leads' || productCode === 'prospecting') {
+          // A11 — se trae también si el prospecto ya tiene informe y
+          // borrador generados. No es adorno: abrir uno que NO existe gasta
+          // dinero (una búsqueda de Google, una generación de Sonnet) y el
+          // operador tiene derecho a saber cuál de los dos botones cuesta
+          // antes de pulsarlo.
+          const rows = await prisma.lead.findMany({
             where: { clientId: client.id },
             orderBy: [{ createdAt: 'desc' }],
+            include: {
+              webDraft: { select: { id: true } },
+              competitorSnapshot: { select: { id: true } },
+            },
           });
+          leads = rows.map((row) => ({
+            ...row,
+            hasWebDraft: row.webDraft !== null,
+            hasReport: row.competitorSnapshot !== null,
+          }));
         }
 
         if (productCode === 'recall') {
@@ -910,6 +973,7 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
           state,
           goLiveAt,
           notes,
+          isInternal,
         }}
       />
 
@@ -984,10 +1048,10 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
             </section>
           ) : null}
 
-          {productCode === 'leads' ? (
+          {productCode === 'leads' || productCode === 'prospecting' ? (
             <section className="card" aria-label="Leads del cliente" data-testid="client-leads-section">
               <header className="mb-4">
-                <h2 className="text-lg font-semibold">Leads</h2>
+                <h2 className="text-lg font-semibold">{productCode === 'prospecting' ? 'Prospectos encontrados' : 'Leads'}</h2>
                 <p className="mt-1 text-xs text-kairikos-muted">Solo lectura — el ciclo de vida de cada lead lo maneja el equipo del cliente.</p>
               </header>
               <LeadsSummaryPanel leads={leads} />
@@ -1065,6 +1129,19 @@ export default async function AdminClientDetailPage({ params, searchParams }: Pa
                     webQuote={project.webQuote}
                     invoice={project.invoice}
                   />
+                  <div className="card mt-3" data-testid="client-website-section">
+                    <header className="mb-3">
+                      <h3 className="text-base font-semibold">Su web</h3>
+                      <p className="mt-1 text-xs text-kairikos-muted">
+                        Se genera aquí y se publica por SFTP en el alojamiento del cliente. Guardar no publica.
+                      </p>
+                    </header>
+                    <ClientWebsitePanel
+                      clientProductId={project.clientProductId}
+                      website={websites[project.clientProductId] ?? null}
+                      draftLeads={draftLeads}
+                    />
+                  </div>
                 </section>
               ))}
             </div>

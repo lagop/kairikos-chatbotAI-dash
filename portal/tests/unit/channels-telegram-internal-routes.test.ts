@@ -72,7 +72,7 @@ function makeRequest(body: unknown, headers: Record<string, string> = {}) {
 }
 
 const VALID_KEY = 'test_portal_api_key';
-const activeConnection = { id: 'conn_1', clientId: 'c1', tenantId: 't1', status: 'active', botTokenCiphertext: Buffer.from('c'), botTokenIv: Buffer.from('i'), botTokenTag: Buffer.from('t') };
+const activeConnection = { id: '11111111-1111-4111-8111-111111111111', clientId: 'c1', tenantId: 't1', status: 'active', botTokenCiphertext: Buffer.from('c'), botTokenIv: Buffer.from('i'), botTokenTag: Buffer.from('t') };
 
 beforeEach(() => {
   mockState.isDatabaseConfigured = true;
@@ -95,7 +95,7 @@ afterEach(() => {
 describe('POST /api/internal/channels/telegram/context', () => {
   it('401s without a matching internal key', async () => {
     const { POST } = await import('@/app/api/internal/channels/telegram/context/route');
-    const res = await POST(makeRequest({ connectionId: 'conn_1' }));
+    const res = await POST(makeRequest({ connectionId: '11111111-1111-4111-8111-111111111111' }));
     expect(res.status).toBe(401);
     expect(mockState.telegramFindUnique).not.toHaveBeenCalled();
   });
@@ -103,21 +103,21 @@ describe('POST /api/internal/channels/telegram/context', () => {
   it('404s when the connectionId does not match any TelegramConnection', async () => {
     mockState.telegramFindUnique.mockResolvedValue(null);
     const { POST } = await import('@/app/api/internal/channels/telegram/context/route');
-    const res = await POST(makeRequest({ connectionId: 'conn_missing' }, { 'x-kairikos-internal-key': VALID_KEY }));
+    const res = await POST(makeRequest({ connectionId: '22222222-2222-4222-8222-222222222222' }, { 'x-kairikos-internal-key': VALID_KEY }));
     expect(res.status).toBe(404);
   });
 
   it('403s when the connection is not active', async () => {
     mockState.telegramFindUnique.mockResolvedValue({ ...activeConnection, status: 'revoked' });
     const { POST } = await import('@/app/api/internal/channels/telegram/context/route');
-    const res = await POST(makeRequest({ connectionId: 'conn_1' }, { 'x-kairikos-internal-key': VALID_KEY }));
+    const res = await POST(makeRequest({ connectionId: '11111111-1111-4111-8111-111111111111' }, { 'x-kairikos-internal-key': VALID_KEY }));
     expect(res.status).toBe(403);
   });
 
   it('returns the business context on success', async () => {
     mockState.telegramFindUnique.mockResolvedValue(activeConnection);
     const { POST } = await import('@/app/api/internal/channels/telegram/context/route');
-    const res = await POST(makeRequest({ connectionId: 'conn_1' }, { 'x-kairikos-internal-key': VALID_KEY }));
+    const res = await POST(makeRequest({ connectionId: '11111111-1111-4111-8111-111111111111' }, { 'x-kairikos-internal-key': VALID_KEY }));
     const body = await res.json();
     expect(res.status).toBe(200);
     expect(body.clientId).toBe('c1');
@@ -128,21 +128,21 @@ describe('POST /api/internal/channels/telegram/context', () => {
 describe('POST /api/internal/channels/telegram/send', () => {
   it('401s without a matching internal key', async () => {
     const { POST } = await import('@/app/api/internal/channels/telegram/send/route');
-    const res = await POST(makeRequest({ connectionId: 'conn_1', chatId: 1, text: 'hola' }));
+    const res = await POST(makeRequest({ connectionId: '11111111-1111-4111-8111-111111111111', chatId: 1, text: 'hola' }));
     expect(res.status).toBe(401);
   });
 
   it('404s when the connection does not exist', async () => {
     mockState.telegramFindUnique.mockResolvedValue(null);
     const { POST } = await import('@/app/api/internal/channels/telegram/send/route');
-    const res = await POST(makeRequest({ connectionId: 'conn_x', chatId: 1, text: 'hola' }, { 'x-kairikos-internal-key': VALID_KEY }));
+    const res = await POST(makeRequest({ connectionId: '44444444-4444-4444-8444-444444444444', chatId: 1, text: 'hola' }, { 'x-kairikos-internal-key': VALID_KEY }));
     expect(res.status).toBe(404);
   });
 
   it('decrypts the token and sends the message', async () => {
     mockState.telegramFindUnique.mockResolvedValue(activeConnection);
     const { POST } = await import('@/app/api/internal/channels/telegram/send/route');
-    const res = await POST(makeRequest({ connectionId: 'conn_1', chatId: 987, text: 'Hola, ¿en qué puedo ayudarte?' }, { 'x-kairikos-internal-key': VALID_KEY }));
+    const res = await POST(makeRequest({ connectionId: '11111111-1111-4111-8111-111111111111', chatId: 987, text: 'Hola, ¿en qué puedo ayudarte?' }, { 'x-kairikos-internal-key': VALID_KEY }));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual({ ok: true, messageId: 55 });
@@ -158,7 +158,7 @@ describe('POST /api/internal/channels/telegram/send', () => {
     mockState.telegramFindUnique.mockResolvedValue(activeConnection);
     mockState.sendMessage.mockResolvedValue({ ok: false, error: 'Forbidden: bot was blocked by the user' });
     const { POST } = await import('@/app/api/internal/channels/telegram/send/route');
-    const res = await POST(makeRequest({ connectionId: 'conn_1', chatId: 987, text: 'hola' }, { 'x-kairikos-internal-key': VALID_KEY }));
+    const res = await POST(makeRequest({ connectionId: '11111111-1111-4111-8111-111111111111', chatId: 987, text: 'hola' }, { 'x-kairikos-internal-key': VALID_KEY }));
     expect(res.status).toBe(502);
   });
 });
@@ -166,7 +166,7 @@ describe('POST /api/internal/channels/telegram/send', () => {
 describe('POST /api/internal/channels/telegram/message', () => {
   it('401s without a matching internal key', async () => {
     const { POST } = await import('@/app/api/internal/channels/telegram/message/route');
-    const res = await POST(makeRequest({ connectionId: 'conn_1', chatId: 1, role: 'user', content: 'hola' }));
+    const res = await POST(makeRequest({ connectionId: '11111111-1111-4111-8111-111111111111', chatId: 1, role: 'user', content: 'hola' }));
     expect(res.status).toBe(401);
   });
 
@@ -175,7 +175,7 @@ describe('POST /api/internal/channels/telegram/message', () => {
     mockState.conversationFindFirst.mockResolvedValue(null);
     const { POST } = await import('@/app/api/internal/channels/telegram/message/route');
     const res = await POST(
-      makeRequest({ connectionId: 'conn_1', chatId: 987, role: 'user', content: '¿Abrís el sábado?' }, { 'x-kairikos-internal-key': VALID_KEY }),
+      makeRequest({ connectionId: '11111111-1111-4111-8111-111111111111', chatId: 987, role: 'user', content: '¿Abrís el sábado?' }, { 'x-kairikos-internal-key': VALID_KEY }),
     );
     expect(res.status).toBe(200);
     expect(mockState.conversationCreate).toHaveBeenCalledWith(
@@ -200,7 +200,7 @@ describe('POST /api/internal/channels/telegram/message', () => {
     });
     const { POST } = await import('@/app/api/internal/channels/telegram/message/route');
     await POST(
-      makeRequest({ connectionId: 'conn_1', chatId: 987, role: 'assistant', content: 'Sí, abrimos.' }, { 'x-kairikos-internal-key': VALID_KEY }),
+      makeRequest({ connectionId: '11111111-1111-4111-8111-111111111111', chatId: 987, role: 'assistant', content: 'Sí, abrimos.' }, { 'x-kairikos-internal-key': VALID_KEY }),
     );
     expect(mockState.conversationCreate).not.toHaveBeenCalled();
     const call = mockState.conversationUpdate.mock.calls[0][0];
@@ -219,7 +219,7 @@ describe('POST /api/internal/channels/telegram/message', () => {
     });
     const { POST } = await import('@/app/api/internal/channels/telegram/message/route');
     await POST(
-      makeRequest({ connectionId: 'conn_1', chatId: 987, role: 'user', content: 'Hola de nuevo' }, { 'x-kairikos-internal-key': VALID_KEY }),
+      makeRequest({ connectionId: '11111111-1111-4111-8111-111111111111', chatId: 987, role: 'user', content: 'Hola de nuevo' }, { 'x-kairikos-internal-key': VALID_KEY }),
     );
     expect(mockState.conversationUpdate).not.toHaveBeenCalled();
     expect(mockState.conversationCreate).toHaveBeenCalled();
@@ -235,7 +235,23 @@ describe('POST /api/internal/channels/telegram/message', () => {
       transcript: [],
     });
     const { POST } = await import('@/app/api/internal/channels/telegram/message/route');
-    await POST(makeRequest({ connectionId: 'conn_1', chatId: 987, role: 'user', content: 'gracias' }, { 'x-kairikos-internal-key': VALID_KEY }));
+    await POST(makeRequest({ connectionId: '11111111-1111-4111-8111-111111111111', chatId: 987, role: 'user', content: 'gracias' }, { 'x-kairikos-internal-key': VALID_KEY }));
     expect(mockState.conversationUpdate.mock.calls[0][0].data.outcome).toBe('resolved');
+  });
+});
+
+// TelegramConnection.id es @db.Uuid: un connectionId que no es un UUID hacía
+// reventar a Prisma ("Error creating UUID") y la ruta devolvía 500. Visto el
+// 22/09/2026 probando desde n8n. Ver lib/telegram-connection-id.ts.
+describe('Telegram internal routes — connectionId que no es un UUID', () => {
+  it.each([
+    ['context', {}],
+    ['send', { chatId: 1, text: 'hola' }],
+    ['message', { chatId: 1, role: 'user', content: 'hola' }],
+  ])('%s responde 400 sin tocar la base de datos', async (route, extra) => {
+    const { POST } = await import(`@/app/api/internal/channels/telegram/${route}/route`);
+    const res = await POST(makeRequest({ connectionId: 'probe-sin-conexion', ...extra }, { 'x-kairikos-internal-key': VALID_KEY }));
+    expect(res.status).toBe(400);
+    expect(mockState.telegramFindUnique).not.toHaveBeenCalled();
   });
 });

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useStepUpFetch } from '@/components/portal/useStepUpFetch';
 
 // =============================================================================
 // /admin/portal/settings/integrations — the operator's own third-party API
@@ -66,6 +67,7 @@ function ApiKeyCard({
   initial: IntegrationCredentialStatus;
 }) {
   const router = useRouter();
+  const { stepUpFetch, stepUpModal } = useStepUpFetch();
   const [status, setStatus] = useState(initial);
   const [apiKey, setApiKey] = useState('');
   const [saving, setSaving] = useState(false);
@@ -78,7 +80,7 @@ function ApiKeyCard({
     if (!apiKey.trim()) return;
     setSaving(true);
     try {
-      const res = await fetch(endpoint, {
+      const res = await stepUpFetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ apiKey: apiKey.trim() }),
@@ -101,6 +103,7 @@ function ApiKeyCard({
 
   return (
     <section className="card space-y-4" aria-label={title} data-testid={`integration-${toolKey}-card`}>
+      {stepUpModal}
       <div className="flex items-center justify-between">
         <p className="font-semibold">{title}</p>
         <p className="text-sm text-kairikos-muted" data-testid={`integration-${toolKey}-status`}>
@@ -158,6 +161,7 @@ function OAuthClientCard({
   initial: IntegrationCredentialStatus;
 }) {
   const router = useRouter();
+  const { stepUpFetch, stepUpModal } = useStepUpFetch();
   const [status, setStatus] = useState(initial);
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
@@ -171,7 +175,7 @@ function OAuthClientCard({
     if (!clientId.trim() || !clientSecret.trim()) return;
     setSaving(true);
     try {
-      const res = await fetch(endpoint, {
+      const res = await stepUpFetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ clientId: clientId.trim(), clientSecret: clientSecret.trim() }),
@@ -201,6 +205,7 @@ function OAuthClientCard({
 
   return (
     <section className="card space-y-4" aria-label={title} data-testid={`integration-${toolKey}-card`}>
+      {stepUpModal}
       <div className="flex items-center justify-between">
         <p className="font-semibold">{title}</p>
         <p className="text-sm text-kairikos-muted" data-testid={`integration-${toolKey}-status`}>

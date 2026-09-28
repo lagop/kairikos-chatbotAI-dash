@@ -42,24 +42,67 @@ export const AUTO_APPROVE_REVIEWED_BY = 'system:auto_approve';
  *  dentro de su propia ventana. Ver seo-draft-auto-publish.ts. */
 export const AUTO_PUBLISH_REVIEWED_BY = 'system:auto_publish_client_timeout';
 
-export type AttemptPublishResult = { ok: true } | { ok: false; error: string };
+export type AttemptPublishResult =
+  | { ok: true }
+  | { ok: false; error: string }
+  // Otra petición ya se llevó este borrador (o ya no está en un estado
+  // publicable). No se tocó nada: ni WordPress ni la fila.
+  | { ok: false; error: 'not_publishable'; notClaimed: true };
+
+// Revisión de seguridad del 22/09/2026 — dos clics seguidos en "aprobar"
+// (o el cliente aprobando justo cuando pasa el barrido de publicación
+// automática) leían los dos 'pending_client_review' y los dos llamaban a
+// WordPress: el artículo salía DOS veces en la web del cliente. Ahora la
+// fila se reclama con un updateMany condicional antes de publicar, y solo
+// una petición gana.
+//
+// Mientras dura la llamada a WordPress el borrador está en 'publishing' y
+// `publishedAt` guarda cuándo EMPEZÓ el intento (al terminar bien se
+// sobrescribe con la hora real; si falla, vuelve a NULL). Así un intento
+// que murió a medias —un reinicio del contenedor en pleno deploy— no deja
+// el borrador colgado para siempre: pasado este margen, retry_publish lo
+// puede reclamar. Holgado a propósito: maxDuration de las rutas es 30 s.
+const STALE_PUBLISHING_MS = 10 * 60 * 1000;
 
 /**
  * Intenta publicar un borrador ya aprobado en WordPress. Nunca lanza:
  * cualquier fallo dvuelve `{ok:false}` y deja el borrador en
  * 'publish_failed' con el motivo, para que retry_publish pueda
  * reintentarlo sin tener que volver a aprobarlo.
+ *
+ * `fromStatus` es el estado desde el que el llamante tiene derecho a
+ * publicar ('pending_client_review' al aprobar, 'publish_failed' al
+ * reintentar); `claimData` se escribe en el mismo update que reclama la
+ * fila (quién aprobó y cuándo), para que ese registro y el reclamo no
+ * puedan separarse.
  */
 export async function attemptPublishDraft(
   prisma: PrismaClient,
   draftId: string,
   clientId: string,
+  options: { fromStatus: string; claimData?: Record<string, unknown> },
 ): Promise<AttemptPublishResult> {
+  const now = new Date();
+  const claimed = await prisma.seoContentDraft.updateMany({
+    where: {
+      id: draftId,
+      OR: [
+        { status: options.fromStatus },
+        { status: 'publishing', publishedAt: { lt: new Date(now.getTime() - STALE_PUBLISHING_MS) } },
+      ],
+    },
+    data: { ...options.claimData, status: 'publishing', publishedAt: now },
+  });
+  if (claimed.count === 0) {
+    return { ok: false, error: 'not_publishable', notClaimed: true };
+  }
+
   const draft = await prisma.seoContentDraft.findUnique({
     where: { id: draftId },
     select: { id: true, profileId: true, title: true, bodyHtml: true, metaDescription: true },
   });
   if (!draft || !draft.title || !draft.bodyHtml) {
+    await markPublishFailed(prisma, draftId, 'draft_incomplete');
     return { ok: false, error: 'draft_incomplete' };
   }
 
@@ -75,10 +118,7 @@ export async function attemptPublishDraft(
   });
 
   if (!hasWordPressCredentials(profile)) {
-    await prisma.seoContentDraft.update({
-      where: { id: draftId },
-      data: { status: 'publish_failed', publishError: 'missing_wordpress_credentials' },
-    });
+    await markPublishFailed(prisma, draftId, 'missing_wordpress_credentials');
     return { ok: false, error: 'missing_wordpress_credentials' };
   }
 
@@ -103,11 +143,15 @@ export async function attemptPublishDraft(
   }
 
   logError('seo_content_review.publish_failed', new Error(result.error), { clientId, draftId }, 'warn');
+  await markPublishFailed(prisma, draftId, result.error);
+  return { ok: false, error: result.error };
+}
+
+async function markPublishFailed(prisma: PrismaClient, draftId: string, error: string): Promise<void> {
   await prisma.seoContentDraft.update({
     where: { id: draftId },
-    data: { status: 'publish_failed', publishError: result.error.slice(0, 500) },
+    data: { status: 'publish_failed', publishError: error.slice(0, 500), publishedAt: null },
   });
-  return { ok: false, error: result.error };
 }
 
 export interface ApproveDraftResult {
@@ -144,25 +188,30 @@ export async function approveDraft(
 }
 
 export interface PublishAfterClientReviewResult {
-  status: 'published' | 'publish_failed';
+  // 'not_publishable': otra petición ya lo estaba publicando o ya no
+  // esperaba la revisión del cliente. No se hizo nada.
+  status: 'published' | 'publish_failed' | 'not_publishable';
   publishError?: string;
 }
 
 /**
  * El segundo "aprobar" — esta vez del cliente, o del barrido cuando el
  * cliente se queda callado pasada su ventana (AUTO_PUBLISH_REVIEWED_BY).
- * Deja constancia de quién decidió ANTES de intentar publicar, para que
- * quede registrado incluso si la llamada a WordPress falla.
+ * Deja constancia de quién decidió en el mismo update que reclama la
+ * fila, antes de llamar a WordPress, para que quede registrado incluso si
+ * la publicación falla.
  */
 export async function publishAfterClientReview(
   prisma: PrismaClient,
   params: { draftId: string; clientId: string; clientReviewedBy: string },
 ): Promise<PublishAfterClientReviewResult> {
-  await prisma.seoContentDraft.update({
-    where: { id: params.draftId },
-    data: { clientReviewedBy: params.clientReviewedBy, clientReviewedAt: new Date() },
+  const publishResult = await attemptPublishDraft(prisma, params.draftId, params.clientId, {
+    fromStatus: 'pending_client_review',
+    claimData: { clientReviewedBy: params.clientReviewedBy, clientReviewedAt: new Date() },
   });
-  const publishResult = await attemptPublishDraft(prisma, params.draftId, params.clientId);
+  if (!publishResult.ok && 'notClaimed' in publishResult) {
+    return { status: 'not_publishable' };
+  }
   return {
     status: publishResult.ok ? 'published' : 'publish_failed',
     publishError: publishResult.ok ? undefined : publishResult.error,

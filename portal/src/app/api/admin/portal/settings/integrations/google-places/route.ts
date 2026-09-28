@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateAdminRequest } from '@/lib/operator-session';
+import { requireTotpStepUp } from '@/lib/operator-totp-stepup';
 import {
   getIntegrationCredentialStatus,
   saveIntegrationCredential,
@@ -44,6 +45,9 @@ const BodySchema = z.object({ apiKey: z.string().trim().min(10) });
 export async function POST(req: NextRequest) {
   const auth = await authenticateAdminRequest(req);
   if (!auth.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  // Seguridad (22/09/2026): la clave de Google Places, que gasta dinero con cada búsqueda. Pide TOTP reciente, no solo sesión.
+  const stepUp = await requireTotpStepUp(req);
+  if (!stepUp.ok) return NextResponse.json({ error: stepUp.error }, { status: stepUp.status });
   if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
 
   const body = BodySchema.safeParse(await req.json().catch(() => null));

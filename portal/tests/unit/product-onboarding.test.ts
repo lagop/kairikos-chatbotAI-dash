@@ -10,7 +10,12 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { Prisma } from '@prisma/client';
-import { ensureSeoProfile, ensureProspectingCampaign, ensureLeadQualificationProfile } from '@/lib/product-onboarding';
+import {
+  ensureSeoProfile,
+  ensureProspectingCampaign,
+  ensureLeadQualificationProfile,
+  ensureConversationDigestSchedule,
+} from '@/lib/product-onboarding';
 
 function p2002(): Prisma.PrismaClientKnownRequestError {
   return new Prisma.PrismaClientKnownRequestError('unique constraint', { code: 'P2002', clientVersion: 'test' });
@@ -293,5 +298,69 @@ describe('ensureLeadQualificationProfile', () => {
     );
 
     expect(result).toEqual({ created: false, id: 'lqp_winner' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ensureConversationDigestSchedule — el único que nace ENCENDIDO (22/09/2026)
+// ---------------------------------------------------------------------------
+
+function makeDigestPrisma(existing: { id: string } | null = null) {
+  const findUnique = vi.fn().mockResolvedValue(existing);
+  const findUniqueOrThrow = vi.fn();
+  const create = vi.fn().mockResolvedValue({ id: 'digest_new' });
+  const prisma = {
+    conversationDigestSchedule: { findUnique, findUniqueOrThrow, create },
+  } as never;
+  return { prisma, findUnique, findUniqueOrThrow, create };
+}
+
+describe('ensureConversationDigestSchedule', () => {
+  it('crea el horario ya activo y con la cadencia de tres veces al día', async () => {
+    const { prisma, create } = makeDigestPrisma();
+
+    const result = await ensureConversationDigestSchedule(prisma, {
+      clientId: 'client_1',
+      clientProductId: 'cp_1',
+      tenantId: 'tenant_1',
+    });
+
+    expect(result).toEqual({ created: true, id: 'digest_new' });
+    expect(create).toHaveBeenCalledWith({
+      data: {
+        clientId: 'client_1',
+        clientProductId: 'cp_1',
+        tenantId: 'tenant_1',
+        enabled: true,
+        preset: 'morning_noon_evening',
+      },
+    });
+  });
+
+  it('no toca un horario que ya existe — ni siquiera para encenderlo', async () => {
+    const { prisma, create } = makeDigestPrisma({ id: 'digest_viejo' });
+
+    const result = await ensureConversationDigestSchedule(prisma, {
+      clientId: 'client_1',
+      clientProductId: 'cp_1',
+      tenantId: null,
+    });
+
+    expect(result).toEqual({ created: false, id: 'digest_viejo' });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('dos activaciones a la vez no duplican la fila', async () => {
+    const { prisma, create, findUniqueOrThrow } = makeDigestPrisma();
+    create.mockRejectedValue(p2002());
+    findUniqueOrThrow.mockResolvedValue({ id: 'digest_ganador' });
+
+    const result = await ensureConversationDigestSchedule(prisma, {
+      clientId: 'client_1',
+      clientProductId: 'cp_1',
+      tenantId: null,
+    });
+
+    expect(result).toEqual({ created: false, id: 'digest_ganador' });
   });
 });

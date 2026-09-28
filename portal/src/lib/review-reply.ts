@@ -2,7 +2,7 @@ import 'server-only';
 import type { GoogleBusinessConnection, GoogleReview } from '@prisma/client';
 import { prisma } from './prisma';
 import { getValidAccessToken, publishReviewReply } from './google-business';
-import { generateReviewReplyDraft } from './review-reply-ai';
+import { generateReviewReplyDraft, findReplyRisk } from './review-reply-ai';
 import { logError } from './observability';
 
 // =============================================================================
@@ -101,6 +101,20 @@ export async function autoReplyToUnansweredReviews(
         where: { id: review.id },
         data: { aiDraftReply: draftResult.draft, aiDraftGeneratedAt: new Date() },
       });
+
+      // Revisión de seguridad 22/09/2026 — una reseña puede intentar dictar
+      // la respuesta (ver findReplyRisk). Si la respuesta lleva algo que el
+      // modelo tenía prohibido escribir, se queda como borrador guardado
+      // arriba y espera a una persona, igual que con autoPublish apagado.
+      const risk = findReplyRisk(draftResult.draft);
+      if (risk) {
+        logError('review_reply.auto_publish_held', new Error(`reply_risk:${risk}`), {
+          route: 'lib/review-reply.ts',
+          connectionId: connection.id,
+          reviewId: review.id,
+        }, 'warn');
+        continue;
+      }
 
       const publishResult = await publishReplyToReview(connection, review, draftResult.draft, 'auto');
       if (publishResult.ok) {

@@ -30,7 +30,19 @@ export async function GET(req: NextRequest) {
   const authError = internalAuthFailureResponse(auth);
   if (authError) return authError;
 
-  return NextResponse.json({ ok: true });
+  // `revision` — el commit del que salió esta imagen (BUILD_REVISION, que
+  // el Dockerfile recibe como build-arg). Lo pregunta el paso de
+  // verificación de deploy.yml para confirmar que la versión desplegada
+  // es la que se acaba de construir: el 23/09/2026 un despliegue se
+  // marcó OK y la VPS siguió doce minutos con la anterior.
+  //
+  // Va en esta ruta, que ya exige PORTAL_API_KEY, y no en /api/health,
+  // que es pública: saber de qué commit corre un servidor es justo el
+  // tipo de dato que no se regala a quien no tiene que verlo.
+  //
+  // null cuando no se construyó con el build-arg (imagen local): honesto,
+  // y el verificador sabe distinguirlo de "otra versión".
+  return NextResponse.json({ ok: true, revision: process.env.BUILD_REVISION || null });
 }
 
 export function POST() {

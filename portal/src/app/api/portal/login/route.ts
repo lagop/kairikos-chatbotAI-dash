@@ -11,14 +11,14 @@
 // moved to NextAuth and the Prisma `nextAuthEmail` mapping (plan rev 3).
 
 import { NextResponse } from 'next/server';
+import { safeInternalPath } from '@/lib/safe-redirect';
 
 const NEXT_AUTH_SIGNIN_PATH = '/api/auth/signin/nodemailer';
 
 export async function POST(req: Request) {
   const form = await req.formData();
   const email = String(form.get('email') ?? '').trim().toLowerCase();
-  const next = String(form.get('next') ?? '/portal') || '/portal';
-  const callbackUrl = next.startsWith('/') ? next : '/portal';
+  const callbackUrl = safeInternalPath(form.get('next'), '/portal');
 
   if (!email || !email.includes('@')) {
     return NextResponse.redirect(new URL('/portal/login?error=email', req.url), 303);

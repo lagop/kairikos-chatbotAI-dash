@@ -115,48 +115,85 @@ model ChatbotClient {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  activities                     ChatbotActivity[]
-  conversations                  ChatbotConversation[]
-  users                          ChatbotClientUser[]
-  operatorNotifications          OperatorNotification[]
-  n8nExecutions                  N8nExecution[]
-  configSteps                    ChatbotConfigStep[]
-  intakeSubmissions              IntakeSubmission[]
-  supportRequests                SupportRequest[]
-  tenant                         Tenant?                         @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  clientProducts                 ClientProduct[]
-  chatbotUsages                  ChatbotUsage[]
-  clientSites                    ClientSite[]
-  productAudits                  ClientProductAudit[]
-  subscriptions                  Subscription[]
-  invoices                       Invoice[]
-  operatorActions                OperatorAction[]
-  googleBusinessConnections      GoogleBusinessConnection[]
+  activities                  ChatbotActivity[]
+  conversations               ChatbotConversation[]
+  users                       ChatbotClientUser[]
+  operatorNotifications       OperatorNotification[]
+  n8nExecutions               N8nExecution[]
+  configSteps                 ChatbotConfigStep[]
+  intakeSubmissions           IntakeSubmission[]
+  supportRequests             SupportRequest[]
+  tenant                      Tenant?                         @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  clientProducts              ClientProduct[]
+  chatbotUsages               ChatbotUsage[]
+  clientSites                 ClientSite[]
+  productAudits               ClientProductAudit[]
+  subscriptions               Subscription[]
+  invoices                    Invoice[]
+  operatorActions             OperatorAction[]
+  googleBusinessConnections   GoogleBusinessConnection[]
   // Fase 2 multi-instancia — dejan de ser 1:1. La conexion de Search Console
   // pertenece a UNA web, y un cliente puede tener varias. Ver el comentario
   // en GoogleSeoConnection.clientProductId.
-  googleSeoConnections           GoogleSeoConnection[]
-  googleAnalyticsConnections     GoogleAnalyticsConnection[]
-  googleReviews                  GoogleReview[]
-  reviewRequestCampaigns         ReviewRequestCampaign[]
-  webBriefs                      WebBrief[]
-  webQuotes                      WebQuote[]
-  chatWebEmbeds                  ChatWebEmbed[]
-  telegramConnections            TelegramConnection[]
-  metaChannelConnections         MetaChannelConnection[]
-  channelWebhookDeliveries       ChannelWebhookDelivery[]
-  conversationDigests            ConversationDigest[]
+  googleSeoConnections        GoogleSeoConnection[]
+  googleAnalyticsConnections  GoogleAnalyticsConnection[]
+  googleReviews               GoogleReview[]
+  reviewRequestCampaigns      ReviewRequestCampaign[]
+  webBriefs                   WebBrief[]
+  webQuotes                   WebQuote[]
+  chatWebEmbeds               ChatWebEmbed[]
+  telegramConnections         TelegramConnection[]
+  metaChannelConnections      MetaChannelConnection[]
+  channelWebhookDeliveries    ChannelWebhookDelivery[]
+  conversationDigests         ConversationDigest[]
   // Fase 4 multi-instancia — deja de ser 1:1: la cadencia del resumen es de
   // un chatbot, y un cliente puede tener varios.
-  conversationDigestSchedules    ConversationDigestSchedule[]
-  leads                          Lead[]
-  leadAudits                     LeadAudit[]
-  recallSubscriptions            RecallSubscription[]
-  recallSubscriptionAudits       RecallSubscriptionAudit[]
-  callEvents                     CallEvent[]
-  whatsappTemplates              WhatsappTemplate[]
-  prospectingCampaigns           ProspectingCampaign[]
-  prospectingCampaignAudits      ProspectingCampaignAudit[]
+  conversationDigestSchedules ConversationDigestSchedule[]
+  leads                       Lead[]
+  leadAudits                  LeadAudit[]
+  recallSubscriptions         RecallSubscription[]
+  recallSubscriptionAudits    RecallSubscriptionAudit[]
+  callEvents                  CallEvent[]
+  whatsappTemplates           WhatsappTemplate[]
+  prospectingCampaigns        ProspectingCampaign[]
+  prospectingCampaignAudits   ProspectingCampaignAudit[]
+  prospectingCompetitorSnaps  ProspectingCompetitorSnapshot[]
+  // A8 — cuándo entró por última vez alguien de este cliente al portal.
+  // Hasta ahora solo el Operator tenía lastLoginAt, así que "lleva un mes sin
+  // asomarse" —una de las tres señales de que alguien se va a ir— no se podía
+  // ni preguntar. Lo escribe el login del portal.
+  // A4 — cuándo se le mandó el último informe de valor. La cadencia la
+  // decide TypeScript con esta columna, no el scheduler: así el barrido se
+  // puede llamar cada cinco minutos sin que nadie reciba dos correos.
+  lastValueReportAt           DateTime?                       @map("last_value_report_at")
+  lastLoginAt                 DateTime?                       @map("last_login_at")
+  // A9 — cuentas nuestras: la de pruebas, las demos, un cliente interno.
+  // Existen para probar productos, así que tienen productos "activos" que
+  // nadie paga, y el MRR se calcula sobre lo contratado. Sin esta columna,
+  // /admin/portal/metricas enseñaba 900 € de ingresos recurrentes que no
+  // existen, y ese panel es justo el que se mira para decidir si el negocio
+  // va bien.
+  //
+  // Lo que apaga: el DINERO de A9 — ingresos recurrentes, clientes activos,
+  // bajas y multiproducto.
+  //
+  // Lo que NO apaga, y en los tres casos a propósito:
+  //   * El embudo de A9. La prospección de una cuenta nuestra es LA
+  //     prospección, la que hacemos para encontrar clientes; filtrarla
+  //     dejaría el embudo a cero el día que se marca esa cuenta.
+  //   * Las estadísticas de mercado (A10). Miden el mercado, no de quién era
+  //     la campaña: un negocio de Google tiene web o no la tiene, y eso no
+  //     cambia según quién lo haya buscado.
+  //   * Los correos (bienvenida, informe de valor, riesgo de baja). Una
+  //     cuenta interna es justamente donde se comprueba que salen y se leen
+  //     bien.
+  isInternal                  Boolean                         @default(false) @map("is_internal")
+
+  referralCodes                  ReferralCode[]                  @relation("ReferralCodeOwner")
+  referredBy                     ReferralAttribution?            @relation("ReferredClient")
+  prospectingWebDrafts           ProspectingWebDraft[]
+  clientWebsites                 ClientWebsite[]
+  clientWebsiteAudits            ClientWebsiteAudit[]
   seoProfiles                    SeoProfile[]
   seoProfileAudits               SeoProfileAudit[]
   seoContentDrafts               SeoContentDraft[]
@@ -572,6 +609,10 @@ model Tenant {
   pushSubscriptions              PushSubscription[]
   prospectingCampaigns           ProspectingCampaign[]
   prospectingCampaignAudits      ProspectingCampaignAudit[]
+  prospectingCompetitorSnaps     ProspectingCompetitorSnapshot[]
+  prospectingWebDrafts           ProspectingWebDraft[]
+  clientWebsites                 ClientWebsite[]
+  clientWebsiteAudits            ClientWebsiteAudit[]
   seoProfiles                    SeoProfile[]
   seoProfileAudits               SeoProfileAudit[]
   seoContentDrafts               SeoContentDraft[]
@@ -676,11 +717,15 @@ model Product {
   // true (no catalog price — createProductCheckoutSession already
   // rejects it with product_requires_quote regardless of this flag), and
   // 'recall' stays false until its own readiness gate clears (Meta
-  // template approval + the article 28 paperwork). No admin UI toggle
-  // yet (flip it with an UPDATE for now) — the migration backfills the
-  // launch values directly; a checkbox in
-  // /admin/portal/settings/billing is a deliberate fast-follow, not
-  // built in this pass.
+  // template approval + the article 28 paperwork).
+  //
+  // Se cambia desde la casilla «Autoservicio» de
+  // /admin/portal/settings/billing, con segundo factor, y cada cambio
+  // deja fila en StripeCatalogAudit. El fast-follow que este comentario
+  // anunciaba SÍ se construyó (commit fb9d589); la nota de que no existía
+  // sobrevivió hasta el 26/09/2026 y llegó a hacer que se recomendara un
+  // UPDATE a mano para algo que ya tenía interfaz. Un comentario que
+  // describe el pasado es tan caro como uno que miente.
   selfServeEligible      Boolean  @default(false) @map("self_serve_eligible")
   createdAt              DateTime @default(now()) @map("created_at")
 
@@ -736,17 +781,17 @@ model ClientProductAudit {
 // an `@@unique` here. See prisma/migrations/<this migration>/migration.sql.
 // =============================================================================
 model ClientProduct {
-  id              String    @id @default(uuid()) @db.Uuid
-  clientId        String    @map("client_id")
-  productId       String    @map("product_id") @db.Uuid
-  tenantId        String?   @map("tenant_id") @db.Uuid
+  id                 String    @id @default(uuid()) @db.Uuid
+  clientId           String    @map("client_id")
+  productId          String    @map("product_id") @db.Uuid
+  tenantId           String?   @map("tenant_id") @db.Uuid
   // Fase 1 multi-instancia — a QUÉ negocio/web del cliente pertenece esta
   // contratación. Nullable a propósito y para siempre: una contratación sin
   // sitio declarado resuelve al sitio primario del cliente
   // (resolveContractedInstance), que es lo que mantiene simple el alta de
   // operador y lo que permitió un backfill que no tuvo que acertar fila a
   // fila. Ver docs/plan-multi-instancia-fase-1.md.
-  clientSiteId    String?   @map("client_site_id") @db.Uuid
+  clientSiteId       String?   @map("client_site_id") @db.Uuid
   // 'pending_payment' | 'active' | 'paused' | 'cancelled' | 'past_due' |
   // 'quote_pending'. The last one is 'web'-specific (WP-XX): covers the
   // ENTIRE pre-payment stretch of the custom-quote flow — from the
@@ -757,12 +802,12 @@ model ClientProduct {
   // WebQuote.status carries the fine-grained state within this one
   // coarse value, same relationship 'pending_payment' already has to
   // the plain self-serve Stripe Checkout flow.
-  status          String    @default("active")
-  subscribedAt    DateTime  @default(now()) @map("subscribed_at")
-  cancelledAt     DateTime? @map("cancelled_at")
-  createdBy       String?   @map("created_by")
-  changedBy       String?   @map("changed_by")
-  changedAt       DateTime  @default(now()) @map("changed_at")
+  status             String    @default("active")
+  subscribedAt       DateTime  @default(now()) @map("subscribed_at")
+  cancelledAt        DateTime? @map("cancelled_at")
+  createdBy          String?   @map("created_by")
+  changedBy          String?   @map("changed_by")
+  changedAt          DateTime  @default(now()) @map("changed_at")
   // WP-14 — per-product onboarding lifecycle. `status` above is the
   // Stripe-mirroring billing state (active/cancelled/past_due);
   // `onboardingState` is a different axis entirely — where THIS
@@ -772,8 +817,12 @@ model ClientProduct {
   // ChatbotClient.state is kept as a mirror of the chatbot product's
   // onboardingState (n8n still reads it — see the migration's COMPAT
   // note) rather than removed.
-  onboardingState String    @default("in-progress") @map("onboarding_state")
-  goLiveAt        DateTime? @map("go_live_at")
+  onboardingState    String    @default("in-progress") @map("onboarding_state")
+  // A3 — cuántos correos de la secuencia de bienvenida se han mandado ya para
+  // esta unidad contratada. El estado vive aquí y no en una tabla nueva
+  // porque es un contador por contrato y no tiene vida propia.
+  onboardingDripStep Int       @default(0) @map("onboarding_drip_step")
+  goLiveAt           DateTime? @map("go_live_at")
 
   client                     ChatbotClient               @relation(fields: [clientId], references: [id], onDelete: Cascade)
   clientSite                 ClientSite?                 @relation(fields: [clientSiteId], references: [id], onDelete: SetNull)
@@ -781,6 +830,7 @@ model ClientProduct {
   tenant                     Tenant?                     @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   auditLogs                  ClientProductAudit[]
   subscription               Subscription?
+  website                    ClientWebsite?
   // WP-19 — one-time-purchase products (no recurring price) invoice
   // directly against the ClientProduct instead of through a Subscription
   // — see Invoice.clientProductId.
@@ -1018,7 +1068,8 @@ model StripeWebhookEvent {
   receivedAt       DateTime  @default(now()) @map("received_at")
   processedAt      DateTime? @map("processed_at")
   // 'pending' | 'processed' | 'failed'. failed means the handler
-  // threw; we keep the row so retry deliveries are still no-ops.
+  // threw; Stripe's re-delivery claims the row back and retries it
+  // (claimForRetry in stripe-webhook.ts). Only 'processed' is final.
   status           String    @default("pending")
   errorMessage     String?   @map("error_message")
   // 'subscription' | 'invoice' | 'ignored' — what the event mutated.
@@ -2897,7 +2948,11 @@ model ChannelWebhookDelivery {
   connectionId   String    @map("connection_id") @db.Uuid
   clientId       String    @map("client_id")
   payload        Json
-  // 'pending' | 'delivered' | 'failed'
+  // 'pending' | 'delivered' | 'failed' | 'skipped'
+  // 'skipped' = no hay puente configurado (N8N_CHANNEL_WEBHOOK_URL /
+  // _SECRET sin valor), así que no se intentó nada y no hay nada que
+  // reintentar: el rastro queda, pero no cuenta como fallo. Ver
+  // lib/channel-webhook.ts.
   status         String    @default("pending")
   attempts       Int       @default(0)
   lastAttemptAt  DateTime? @map("last_attempt_at")
@@ -3133,6 +3188,20 @@ model Lead {
   // porque volver a atascarse en el estado siguiente es una noticia nueva.
   staleAlertSentAt DateTime? @map("stale_alert_sent_at")
 
+  // A1 — lo que Google ya devolvía en el mismo Place Details que se paga
+  // por cada lead y hasta ahora se tiraba. Sin coordenadas no se puede
+  // buscar a los competidores de un negocio sin volver a geocodificar su
+  // dirección, que es otra llamada de pago. Null en los leads inbound y en
+  // los outbound anteriores a esta fase: el informe de esos tira de la
+  // búsqueda por nombre y zona, con menos precisión.
+  //
+  // primaryType es la categoría de Google ('plumber', 'dentist'), no el
+  // `searchCategory` que escribió el cliente: es la que sirve para buscar
+  // "otros como este" sin arrastrar las palabras sueltas de su búsqueda.
+  latitude    Float?  @map("latitude")
+  longitude   Float?  @map("longitude")
+  primaryType String? @map("primary_type")
+
   client       ChatbotClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant       Tenant?              @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   conversation ChatbotConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
@@ -3144,6 +3213,9 @@ model Lead {
   // clasificador creyó entender, y puede no ser un número.
   contactId String?  @map("contact_id") @db.Uuid
   contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  competitorSnapshot ProspectingCompetitorSnapshot?
+  webDraft           ProspectingWebDraft?
 
   @@unique([clientId, externalPlaceId])
   @@index([clientId, status])
@@ -3395,6 +3467,494 @@ model ProspectingCampaignAudit {
 }
 
 // =============================================================================
+// A1 — la foto de la zona de un prospecto en el momento en que se generó su
+// informe comparativo.
+//
+// Se guarda y no se recalcula cada vez por dos razones distintas, y las dos
+// importan: las llamadas a Google se pagan (una búsqueda Pro por informe),
+// y las estrellas de un negocio CAMBIAN. Un informe que se enseñó en una
+// llamada tiene que poder volver a abrirse tal y como se enseñó; si se
+// recalculara al vuelo, el comercial diría una cifra y el prospecto vería
+// otra al abrir el enlace media hora después.
+//
+// competitors y metrics van en JSON a propósito: son el resultado ya
+// cuajado de prospecting-report.ts, no datos que nadie vaya a consultar por
+// separado. Normalizarlos en tablas obligaría a migrar cada vez que el
+// informe enseñe un dato más.
+// =============================================================================
+model ProspectingCompetitorSnapshot {
+  id       String  @id @default(uuid()) @db.Uuid
+  // 1:1 con el lead — un prospecto tiene una foto de su zona, la última.
+  // Refrescarla sustituye la fila (upsert), no acumula historial: el
+  // informe viejo no interesa una vez caducado.
+  leadId   String  @unique @map("lead_id") @db.Uuid
+  clientId String  @map("client_id")
+  tenantId String? @map("tenant_id") @db.Uuid
+
+  // Las estrellas del propio prospecto en el momento de la foto. No salen
+  // de Place Details (ahí pertenecen al SKU más caro y se pagarían en cada
+  // lead del barrido) sino de la misma búsqueda que trajo a los
+  // competidores — ver SEARCH_WITH_RATINGS_FIELD_MASK en google-places.ts.
+  subjectRating      Float? @map("subject_rating")
+  subjectReviewCount Int?   @map("subject_review_count")
+
+  // CompetitorInput[] y CompetitorComparison de prospecting-report.ts.
+  competitors Json
+  metrics     Json
+
+  capturedAt DateTime @default(now()) @map("captured_at")
+
+  // Mismo motivo que en ProspectingWebDraft: el informe también se manda por
+  // WhatsApp a quien no tiene sesión.
+  shareToken String @unique @map("share_token")
+
+  lead   Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, capturedAt])
+  @@index([tenantId])
+}
+
+// =============================================================================
+// A11, capa 1 — el borrador de web de un prospecto.
+//
+// Se guarda y no se genera al vuelo en cada apertura por la misma razón que
+// el snapshot de competidores, más una: el texto lo escribe un modelo, y dos
+// generaciones seguidas NO dan lo mismo. El comercial enseña un borrador por
+// teléfono y el prospecto abre el enlace media hora después; tienen que ver
+// la misma página o la conversación se rompe.
+//
+// Guarda también el modelo con el que se escribió: cuando se cambie (hoy
+// Sonnet 5), sirve para saber qué borradores son de la tanda vieja sin
+// adivinarlo por la fecha.
+// =============================================================================
+/// La foto de una zona para el gancho público de /prospeccion/ en
+/// kairikos.com: cuántos negocios de un rubro no tienen web en una
+/// provincia.
+///
+/// Es una CACHÉ, no un registro: una fila por combinación, se reescribe al
+/// refrescarse y no guarda historial. Existe por dinero — cada fallo de caché
+/// es una búsqueda de pago en Google Places, y sin esto cada visitante
+/// costaría. Con ella, y siendo cerradas las dos listas (once rubros, cincuenta
+/// y dos provincias), el gasto máximo queda acotado a 572 búsquedas al mes
+/// aunque alguien las pida todas en bucle. Ver src/lib/prospeccion-zona.ts.
+model ProspeccionZonaCache {
+  id        String @id @default(uuid()) @db.Uuid
+  /// Clave de PUBLIC_SECTORS. Lista cerrada: es el freno, no una etiqueta.
+  rubro     String
+  /// De PROVINCIAS. Ídem.
+  provincia String
+
+  /// Cuántos de la muestra no tienen websiteUri en su ficha de Google.
+  sinWeb Int @map("sin_web")
+  /// El tamaño de la muestra. Se guarda y se enseña: «7 de 20» es verdad,
+  /// «el 35 %» invita a multiplicarlo por el censo de la provincia.
+  total  Int
+
+  /// Quién pagó esta búsqueda, en hash. Solo para el tope por IP; no
+  /// identifica a nadie y no se cruza con nada.
+  ipHash String @map("ip_hash")
+
+  /// Cuándo se miró. Decide la caducidad y se enseña al visitante, para no
+  /// aparentar que la cifra es de este instante.
+  miradoEl DateTime @default(now()) @map("mirado_el")
+
+  @@unique([rubro, provincia], name: "rubro_provincia")
+  @@index([miradoEl])
+}
+
+/// La caché del gancho público de /seo/: «dinos tu web y te decimos qué le
+/// falta». Ver lib/auditoria-publica.ts para el porqué de los topes.
+///
+/// Se guardan SEIS NÚMEROS y ni una palabra de la web ajena. Para decir «tu
+/// título son 78 caracteres» basta el 78, y almacenar el contenido de webs de
+/// terceros es una responsabilidad que no compensa a cambio de nada.
+model AuditoriaPublicaCache {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// La URL ya normalizada (ver normalizarUrl). Es la clave: sin normalizar,
+  /// «ejemplo.com» y «https://ejemplo.com/?utm_source=x» serían dos filas y
+  /// dos descargas de la misma página.
+  url String @unique
+
+  tieneTitulo      Boolean @map("tiene_titulo")
+  /// Caracteres, no el texto. 0 cuando no hay título.
+  largoTitulo      Int     @map("largo_titulo")
+  tieneDescripcion Boolean @map("tiene_descripcion")
+  largoDescripcion Int     @map("largo_descripcion")
+  h1               Int
+  imagenes         Int
+  imagenesSinAlt   Int     @map("imagenes_sin_alt")
+
+  /// Quién pidió esta auditoría, en hash. Solo para el tope por IP; no
+  /// identifica a nadie y no se cruza con nada.
+  ipHash String @map("ip_hash")
+
+  /// Cuándo se descargó. Decide la caducidad y se enseña al visitante.
+  miradoEl DateTime @default(now()) @map("mirado_el")
+
+  @@index([miradoEl])
+}
+
+model ProspectingWebDraft {
+  id       String  @id @default(uuid()) @db.Uuid
+  // 1:1 con el lead: un prospecto, un borrador, el último. Regenerar
+  // sustituye la fila (upsert) — el borrador viejo no interesa.
+  leadId   String  @unique @map("lead_id") @db.Uuid
+  clientId String  @map("client_id")
+  tenantId String? @map("tenant_id") @db.Uuid
+
+  // WebDraftCopy de web-draft-ai.ts: titular, subtítulo, descripción,
+  // servicios y cierre. En JSON porque es el resultado ya cuajado de una
+  // generación, no datos que nadie vaya a consultar por separado — y porque
+  // las capas 2-4 le añadirán campos sin migrar cada vez.
+  copy Json
+
+  // La plantilla y la paleta con las que se pintó. Hoy se derivan del sector;
+  // se guardan desde ya porque la capa 2 necesita saber qué combinación se ha
+  // usado para no repetirla entre competidores de la misma zona.
+  themeKey String @map("theme_key")
+
+  model       String
+  generatedAt DateTime @default(now()) @map("generated_at")
+
+  // El enlace que se le manda al prospecto por WhatsApp. Él no tiene sesión de
+  // operador —ni cuenta, ni nada— así que la única forma de que vea su
+  // borrador es una URL que valga por sí sola. 32 bytes aleatorios: adivinarla
+  // es imposible, y quien la tiene es porque se la mandaste tú.
+  //
+  // El enlace público solo LEE lo ya generado; generar sigue siendo del
+  // operador, y eso es lo que impide que alguien queme la cuenta de Anthropic
+  // recargando una página.
+  shareToken String @unique @map("share_token")
+
+  lead   Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, generatedAt])
+  @@index([tenantId])
+}
+
+// =============================================================================
+// Producto Web, Fase 1 — el sitio de un cliente, generado desde el portal y
+// publicado por SFTP en SU alojamiento.
+//
+// Por qué SFTP y no alojarlo nosotros, de momento: publicar en el servidor
+// del cliente evita construir dominios y certificados antes de saber si
+// hacen falta, no nos convierte en el único punto de fallo de webs ajenas, y
+// hace verdad lo que promete el contrato ("si te vas, tu web es tuya"), que
+// deja de ser una promesa porque los archivos ya están en su casa.
+//
+// Lo que se pierde a cambio, escrito aquí para que no parezca un descuido:
+// el control de la calidad. Si su alojamiento es lento o sin HTTPS, la web
+// que vendimos se ve lenta y con aviso de "no segura", y la queja llega a
+// nosotros igual. Alojarlo en infraestructura propia sigue siendo el destino
+// del plan estándar cuando haya webs suficientes para justificarlo.
+//
+// UNA FILA POR UNIDAD CONTRATADA (clientProductId), no por cliente: 'web' es
+// multi-instancia porque la segunda web cuesta dinero cada mes. Ver
+// MULTI_INSTANCE_PRODUCT_CODES en client-product-access.ts.
+// =============================================================================
+model ClientWebsite {
+  id              String  @id @default(uuid()) @db.Uuid
+  clientId        String  @map("client_id")
+  clientProductId String  @unique @map("client_product_id") @db.Uuid
+  tenantId        String? @map("tenant_id") @db.Uuid
+
+  businessName String  @map("business_name")
+  phone        String?
+  address      String?
+  city         String?
+  // Categoría de Google del negocio: decide plantilla y paleta.
+  primaryType  String? @map("primary_type")
+  // 'beauty-3': familia del sector + variante. Misma clave que el borrador,
+  // para que un sitio nacido de un borrador conserve su aspecto.
+  themeKey     String  @map("theme_key")
+
+  // WebDraftCopy: titular, subtítulo, descripción, servicios y cierre. El
+  // mismo objeto que el borrador, para que convertir uno en sitio sea copiar
+  // la fila y no rehacer el contenido.
+  copy Json
+
+  // 'draft' | 'published'. Texto libre con los valores documentados aquí,
+  // como el resto de columnas de estado del esquema.
+  status String @default("draft")
+
+  // Alojamiento: 'sftp' (en el servidor del cliente) o 'kairikos' (en el
+  // nuestro, servido desde /sitios/<slug>). Texto libre con los valores
+  // documentados aquí, como el resto de columnas de estado.
+  //
+  // El destino por defecto es el del cliente: es el que no nos convierte en
+  // el único punto de fallo de webs ajenas. El nuestro existe para quien no
+  // tiene alojamiento, que es justo el caso en el que no se puede vender de
+  // otra manera.
+  publishTarget String  @default("sftp") @map("publish_target")
+  // Solo para el alojamiento propio: la parte de la URL que lo identifica.
+  slug          String? @unique
+  // El dominio propio del cliente apuntando a nuestro servidor. La emisión
+  // del certificado la hace el proxy (Caddy) por su cuenta; aquí solo se
+  // guarda para saber qué sitio servir según la cabecera Host.
+  customDomain  String? @unique @map("custom_domain")
+
+  // El identificador con el que el formulario de SU web publicada envía a
+  // nuestra API. Va en el HTML que está en su servidor, así que es público
+  // por definición: por eso es aleatorio y no el id del sitio — que un
+  // tercero adivine este valor solo le permitiría mandar mensajes a ese
+  // negocio, nunca leer nada ni alcanzar a otro cliente.
+  formToken String @unique @map("form_token")
+
+  lastPublishedAt  DateTime? @map("last_published_at")
+  // El error de la última publicación fallida, para que el operador vea por
+  // qué no salió sin bucear en los logs. Se limpia al publicar bien.
+  lastPublishError String?   @map("last_publish_error")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  client        ChatbotClient             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientProduct ClientProduct             @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
+  tenant        Tenant?                   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  credential    WebsitePublishCredential?
+  releases      ClientWebsiteRelease[]
+  files         ClientWebsiteFile[]
+  auditLogs     ClientWebsiteAudit[]
+
+  @@index([clientId])
+  @@index([tenantId])
+}
+
+// Cada publicación guarda una copia del contenido con el que salió. Es lo que
+// permite volver atrás: restaurar una versión es copiar su contenido a la
+// fila viva y volver a publicar, no "deshacer" nada.
+//
+// Se guarda el CONTENIDO y no los archivos generados: el HTML se vuelve a
+// construir igual desde el mismo contenido, y guardar el binario de cada
+// publicación multiplicaría la base de datos por nada.
+model ClientWebsiteRelease {
+  id        String @id @default(uuid()) @db.Uuid
+  websiteId String @map("website_id") @db.Uuid
+  // 1, 2, 3… por sitio. Se enseña tal cual al operador ("volver a la v3").
+  version   Int
+
+  copy     Json
+  themeKey String @map("theme_key")
+
+  publishedAt DateTime @default(now()) @map("published_at")
+  // 'operator' | 'client' — quién publicó esta versión.
+  actorType   String   @map("actor_type")
+
+  website ClientWebsite @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@unique([websiteId, version])
+  @@index([websiteId, publishedAt])
+}
+
+// Los archivos del sitio cuando se aloja en nuestra infraestructura. Van en
+// la base de datos y no en disco a propósito: el contenedor se recrea en cada
+// despliegue y un volumen más es una cosa más que respaldar y que se puede
+// olvidar. Son dos archivos por sitio y unos 300 KB.
+model ClientWebsiteFile {
+  id        String @id @default(uuid()) @db.Uuid
+  websiteId String @map("website_id") @db.Uuid
+  // Ruta relativa: 'index.html', 'assets/portada.jpg'.
+  path      String
+
+  contentType String @map("content_type")
+  content     Bytes
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  website ClientWebsite @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@unique([websiteId, path])
+}
+
+// Auditoría de todo lo que se escribe en un sitio, append-only, como el resto
+// del esquema. actorType separa al cliente del operador porque aquí escriben
+// los dos: el cliente cambiando textos y el operador publicando.
+model ClientWebsiteAudit {
+  id        String  @id @default(uuid()) @db.Uuid
+  websiteId String  @map("website_id") @db.Uuid
+  clientId  String  @map("client_id")
+  tenantId  String? @map("tenant_id") @db.Uuid
+
+  // 'created' | 'content_updated' | 'credential_saved' | 'published' |
+  // 'publish_failed'
+  action String
+  before Json?
+  after  Json?
+
+  // 'client' | 'operator' | 'system'
+  actorType       String  @map("actor_type")
+  actorOperatorId String? @map("actor_operator_id") @db.Uuid
+  actorEmail      String? @map("actor_email")
+
+  changedAt DateTime @default(now()) @map("changed_at")
+
+  website ClientWebsite @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  client  ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  tenant  Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([websiteId, changedAt])
+  @@index([clientId, changedAt])
+  @@index([tenantId])
+}
+
+// La credencial de SFTP del alojamiento del cliente. Da control total sobre
+// su sitio, así que va cifrada con SU PROPIA clave (AES-256-GCM vía
+// operator-crypto.ts), nunca en el .env y nunca en la auditoría: allí se
+// guardan host, usuario y hasPassword, jamás la contraseña ni su ciphertext.
+//
+// Solo SFTP. FTP a secas manda usuario y contraseña en texto plano por la
+// red, y esto es la llave del sitio de un cliente.
+model WebsitePublishCredential {
+  id        String @id @default(uuid()) @db.Uuid
+  websiteId String @unique @map("website_id") @db.Uuid
+
+  host       String
+  port       Int    @default(22)
+  username   String
+  // Directorio remoto donde vive el sitio ('/public_html').
+  remotePath String @map("remote_path")
+
+  passwordCiphertext Bytes @map("password_ciphertext")
+  passwordIv         Bytes @map("password_iv")
+  passwordTag        Bytes @map("password_tag")
+
+  savedAt DateTime @default(now()) @map("saved_at")
+
+  website ClientWebsite @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+}
+
+// =============================================================================
+// A11, capa 3 — cada "Ver cómo quedaría mi web" pedido desde kairikos.com.
+//
+// Es a la vez el borrador que se le enseña al visitante y el LEAD que deja al
+// pedirlo: quien escribe el nombre de su negocio y su teléfono para ver su
+// web está diciendo que le interesa una web. Por eso se guarda el contacto,
+// y por eso esta tabla se mira todas las mañanas.
+//
+// La IP va hasheada con sal: sirve para contar (el tope por IP y día) y no
+// para identificar a nadie, que es exactamente lo que hace falta.
+// =============================================================================
+model PublicDraftRequest {
+  id    String @id @default(uuid()) @db.Uuid
+  // El testigo del enlace público del borrador, igual que en prospección.
+  token String @unique
+
+  ipHash String @map("ip_hash")
+
+  businessName String @map("business_name")
+  city         String
+  // Teléfono o email que dejó. Es el lead.
+  contact      String
+  sector       String
+  primaryType  String @map("primary_type")
+  themeKey     String @map("theme_key")
+
+  copy  Json
+  model String
+
+  // Cuándo se le contactó, si se hizo. Null es "pendiente de llamar", que es
+  // como se usa esta tabla en la práctica.
+  contactedAt DateTime? @map("contacted_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([ipHash, createdAt])
+}
+
+// =============================================================================
+// A5 — quien usó la calculadora de llamadas perdidas y dejó su contacto.
+//
+// La calculadora no pide contacto para dar el número: cobrarlo espanta a más
+// gente de la que captura. Quien lo deja después de ver la cifra es alguien a
+// quien el número le ha dolido, y eso es el mejor lead que hay.
+//
+// Se guarda lo que calculó, no solo que calculó: llamar diciendo "vi que
+// estimaste perder 14.000 € al año" es otra conversación.
+// =============================================================================
+model CalculatorLead {
+  id     String @id @default(uuid()) @db.Uuid
+  ipHash String @map("ip_hash")
+
+  sector       String
+  businessName String? @map("business_name")
+  city         String?
+  contact      String
+
+  missedCallsPerWeek   Int @map("missed_calls_per_week")
+  averageJobValueCents Int @map("average_job_value_cents")
+  annualLossCents      Int @map("annual_loss_cents")
+
+  contactedAt DateTime? @map("contacted_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([createdAt])
+}
+
+// =============================================================================
+// A7 — códigos de referido y de socio.
+//
+// Dos cosas distintas con la misma mecánica, y por eso una sola tabla con un
+// campo que las separa:
+//
+//   referral → un CLIENTE recomienda a otro. Los dos ganan un mes.
+//   partner  → un distribuidor, un gremio o una gestoría. Cobra comisión
+//              recurrente sobre lo que trae.
+//
+// El código NO da descuento por sí mismo: eso lo sigue haciendo Stripe con
+// sus cupones (stripe-promotions.ts). Esto responde a la única pregunta que
+// hoy no se puede responder: QUIÉN trajo a este cliente. Sin atribución, una
+// comisión es una discusión.
+// =============================================================================
+model ReferralCode {
+  id   String @id @default(uuid()) @db.Uuid
+  // Lo que se escribe en el formulario o se imprime en el cartel del
+  // distribuidor. En mayúsculas y sin ambigüedad visual: lo teclea gente.
+  code String @unique
+
+  // 'referral' | 'partner'
+  kind String
+
+  // El cliente que recomienda, cuando es un referido.
+  referrerClientId String? @map("referrer_client_id")
+  // El nombre del socio, cuando no es un cliente (un almacén, un gremio).
+  partnerName      String? @map("partner_name")
+  partnerEmail     String? @map("partner_email")
+
+  // Porcentaje de comisión recurrente, 0-100. Null en los referidos, que se
+  // pagan con un mes gratis y no con dinero.
+  commissionPercent Int? @map("commission_percent")
+
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  referrer     ChatbotClient?        @relation("ReferralCodeOwner", fields: [referrerClientId], references: [id], onDelete: SetNull)
+  attributions ReferralAttribution[]
+
+  @@index([kind, active])
+}
+
+// A quién trajo cada código. Append-only y una fila por cliente atribuido:
+// si alguien llega dos veces con dos códigos, gana el primero, que es el que
+// de verdad lo trajo.
+model ReferralAttribution {
+  id       String @id @default(uuid()) @db.Uuid
+  codeId   String @map("code_id") @db.Uuid
+  clientId String @unique @map("client_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  code   ReferralCode  @relation(fields: [codeId], references: [id], onDelete: Cascade)
+  client ChatbotClient @relation("ReferredClient", fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([codeId, createdAt])
+}
+
+// =============================================================================
 // SEO con IA (product code 'seo'). Satellite model, 1:1 with ClientProduct,
 // same shape as ProspectingCampaign/RecallSubscription. Onboarding is a
 // plain form, deliberately NOT the ChatbotConfigStep wizard engine — that
@@ -3636,7 +4196,9 @@ model SeoContentDraft {
   targetKeyword   String? @map("target_keyword")
   metaDescription String? @map("meta_description")
 
-  // 'pending_generation' | 'drafted' | 'rejected' | 'pending_client_review' | 'published' | 'publish_failed'
+  // 'pending_generation' | 'drafted' | 'rejected' | 'pending_client_review' | 'publishing' | 'published' | 'publish_failed'
+  // 'publishing' = reclamado para la llamada a WordPress; mientras dura,
+  // publishedAt guarda cuándo empezó el intento (ver attemptPublishDraft).
   status String @default("pending_generation")
 
   // What lib/seo-content-generation.ts sent n8n to write this draft from
@@ -3877,7 +4439,10 @@ model RecallSubscription {
   callEvents       CallEvent[]
   jobs             Job[]
   serviceQuotes    ServiceQuote[]
-  outboundMessages OutboundMessage[]
+  // Sin `outboundMessages OutboundMessage[]`: esa lista obligaba a Prisma
+  // a completar el otro extremo con una columna que nunca se migró y
+  // rompía el libro mayor entero. Ver el comentario en OutboundMessage.
+  // Los envíos de esta línea se consultan por `subscriptionId`.
   blockedNumbers   RecallBlockedNumber[]
   digests          RecallDigest[]
   usageMonths      RecallUsageMonth[]
@@ -4426,11 +4991,22 @@ model OutboundMessage {
   sentAt    DateTime @default(now()) @map("sent_at")
   createdAt DateTime @default(now()) @map("created_at")
 
-  client               ChatbotClient       @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant               Tenant?             @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  callEvent            CallEvent?          @relation(fields: [callEventId], references: [id], onDelete: SetNull)
-  RecallSubscription   RecallSubscription? @relation(fields: [recallSubscriptionId], references: [id])
-  recallSubscriptionId String?             @db.Uuid
+  client    ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant    Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  callEvent CallEvent?    @relation(fields: [callEventId], references: [id], onDelete: SetNull)
+  // NO hay relación declarada hacia RecallSubscription, y es a propósito.
+  // `subscriptionId` de arriba guarda ese id, pero como escalar suelto: el
+  // libro mayor lo comparten cuatro productos y solo las filas de recall
+  // lo llevan. Cuando alguien añadió `outboundMessages OutboundMessage[]`
+  // en RecallSubscription, `prisma format` completó el otro extremo solo,
+  // inventando `recallSubscriptionId` — un campo sin @map, sin comentario
+  // y, sobre todo, SIN MIGRACIÓN: la columna nunca existió en Postgres.
+  // El cliente de Prisma la incluía en cada INSERT y producción respondía
+  // "The column OutboundMessage.recallSubscriptionId does not exist", así
+  // que NINGÚN mensaje saliente llegó a apuntarse en el libro mayor.
+  // Visto el 23/09/2026 con una llamada real. Si algún día hace falta la
+  // relación de verdad, se declara sobre `subscriptionId` y se escribe su
+  // migración a mano (CLAUDE.md, trampa 3).
 
   /// "Qué mandó este cliente en este periodo", que es la consulta del
   /// informe de margen y la única que va a crecer sin límite.

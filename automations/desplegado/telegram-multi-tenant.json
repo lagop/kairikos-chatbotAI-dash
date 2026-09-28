@@ -39,7 +39,7 @@
         0
       ],
       "parameters": {
-        "jsCode": "const item = $input.first().json;\nconst body = item.body || {};\nconst query = item.query || {};\nconst connectionId = (query.connectionId || '').toString().trim();\nconst message = body.message || body.edited_message || null;\nconst text = message && typeof message.text === 'string' ? message.text.trim() : '';\nconst chatId = message && message.chat ? message.chat.id : null;\nconst errorCode = !connectionId ? 'missing_connection_id' : (!text || chatId === null ? 'not_a_text_message' : '');\nreturn [{ json: { _error: errorCode, connectionId, chatId, text } }];"
+        "jsCode": "const item = $input.first().json;\nconst body = item.body || {};\nconst query = item.query || {};\nconst connectionId = (query.connectionId || '').toString().trim();\n// Revisión de seguridad 22/09/2026: la cabecera con la que Telegram firma la\n// entrega (secret_token de setWebhook). El portal la comprueba en /reply.\nconst headers = item.headers || {};\nconst webhookSecret = (headers['x-telegram-bot-api-secret-token'] || '').toString();\nconst message = body.message || body.edited_message || null;\nconst text = message && typeof message.text === 'string' ? message.text.trim() : '';\nconst chatId = message && message.chat ? message.chat.id : null;\nconst errorCode = !connectionId ? 'missing_connection_id' : (!text || chatId === null ? 'not_a_text_message' : '');\nreturn [{ json: { _error: errorCode, connectionId, chatId, text, webhookSecret } }];"
       }
     },
     {
@@ -89,7 +89,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ connectionId: $json.connectionId, chatId: $json.chatId, text: $json.text }) }}",
+        "jsonBody": "={{ JSON.stringify({ connectionId: $json.connectionId, chatId: $json.chatId, text: $json.text, webhookSecret: $json.webhookSecret }) }}",
         "options": {
           "timeout": 30000,
           "response": {

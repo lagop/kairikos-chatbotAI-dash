@@ -1,4 +1,5 @@
 import 'server-only';
+import { notifyFromAddress } from './email-sender';
 
 // =============================================================================
 // KAIA-1177 (KAIA-1172 / AU-2) — wizard recovery email.
@@ -24,10 +25,7 @@ import 'server-only';
 //   portalUrl.
 // =============================================================================
 
-const FROM_ADDRESS =
-  process.env.OPERATOR_NOTIFY_FROM ??
-  process.env.AUTH_EMAIL_FROM ??
-  'Kairikos Ops <ops@kairikos.com>';
+const FROM_ADDRESS = notifyFromAddress();
 
 const PORTAL_BASE_URL = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://portal.kairikos.com';
 
@@ -159,8 +157,7 @@ export async function sendRecoveryEmail(
     clientProductId: input.clientProductId,
   });
 
-  const requireResend = (0, eval)('require') as NodeJS.Require;
-  const { Resend } = requireResend('resend') as typeof import('resend');
+  const { Resend } = await import('resend');
   const resend = new Resend(apiKey);
 
   try {

@@ -6,6 +6,7 @@ import { resolveClientFromSession } from '@/lib/portal-session';
 import { runIntent, isKnownIntent, type AssistantIntent } from '@/lib/assistant-catalogue';
 import { classifyQuestion, narrate, fallbackNarrative } from '@/lib/assistant-ai';
 import { logError } from '@/lib/observability';
+import { takeAiRequest, AI_RATE_LIMITED_RESPONSE } from '@/lib/ai-route-limits';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -64,6 +65,12 @@ export async function POST(req: NextRequest) {
   const body = BodySchema.safeParse(await req.json().catch(() => null));
   if (!body.success) {
     return NextResponse.json({ error: 'bad_request', details: body.error.flatten() }, { status: 400 });
+  }
+
+  // Cada pregunta llama al modelo (clasificar y/o narrar): cupo por cliente.
+  // Ver lib/ai-route-limits.ts (revisión de seguridad 22/09/2026).
+  if (!takeAiRequest('assistant', resolved.clientId)) {
+    return NextResponse.json(AI_RATE_LIMITED_RESPONSE, { status: 429 });
   }
 
   // --- Paso 2: qué quiere saber -------------------------------------------

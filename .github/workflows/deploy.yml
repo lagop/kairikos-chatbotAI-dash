@@ -27,6 +27,10 @@ on:
       - 'scripts/backup-postgres.sh'
       - 'scripts/scheduler.Dockerfile'
       - 'scripts/backup.Dockerfile'
+      # 23/09/2026 — cambiar un workflow no cambia nada en la VPS: el
+      # propio workflow se lee del repositorio en cada ejecución. Sin
+      # esta línea, tocar este archivo disparaba un despliegue.
+      - '.github/**'
   workflow_run:
     workflows: ['Build and push portal image', 'Build and push scheduler/backup images']
     types: [completed]
@@ -43,6 +47,35 @@ jobs:
     # el evento es realmente workflow_run.
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     steps:
+      # paths-ignore tiene un agujero que se ve poco: GitHub se salta el
+      # disparo solo si TODOS los archivos del commit están ignorados. Un
+      # commit que toca portal/** Y algo no ignorado —docker-compose.yml,
+      # por ejemplo— dispara igual, y lo hace EN PARALELO con la
+      # construcción de la imagen. Ese despliegue recrea el contenedor con
+      # la imagen ANTERIOR, porque la nueva todavía se está construyendo.
+      #
+      # Pasó el 23/09/2026 con el PR #243: a las 15:13:59 arrancaron a la
+      # vez la construcción y un despliegue por push; el contenedor se
+      # recreó con la versión de hacía dos horas.
+      #
+      # Esta guarda lo corta: si el commit toca algo que produce imagen,
+      # el despliegue por push se salta, porque ya viene otro detrás
+      # disparado por workflow_run —el que espera a que la imagen exista.
+      - name: ¿Este push produce imagen? Entonces espera al workflow_run
+        id: guard
+        if: ${{ github.event_name == 'push' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -u
+          ARCHIVOS=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}" --jq '.files[].filename' || true)
+          if printf '%s\n' "${ARCHIVOS}" | grep -qE '^(portal/|scripts/(scheduler|backup))'; then
+            echo "Este commit produce imagen nueva; el despliegue lo hará el workflow_run."
+            echo "saltar=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "saltar=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Checkout
         # En un workflow_run, github.sha/github.ref apuntan al ESTADO
         # ACTUAL de la rama del propio workflow, no necesariamente al
@@ -55,6 +88,7 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Deploy to Hostinger VPS
+        if: ${{ steps.guard.outputs.saltar != 'true' }}
         uses: hostinger/deploy-on-vps@v2
         with:
           api-key: ${{ secrets.HOSTINGER_API_KEY }}
@@ -89,6 +123,15 @@ jobs:
           #       misma cautela: si ya hay una clave de Stripe cifrada en
           #       esta VPS, tiene que ser la MISMA clave que se usó al
           #       guardarla, o deja de poder descifrarse.
+          #     WEBSITE_PUBLISH_CREDENTIAL_ENCRYPTION_KEY  openssl rand -hex 32 —
+          #       cifra la contraseña de SFTP del alojamiento de cada cliente,
+          #       con la que se publica su web. Si ya hay alguna guardada en
+          #       esta VPS, tiene que ser la MISMA clave.
+          #     INTEGRATION_CREDENTIAL_ENCRYPTION_KEY  openssl rand -hex 32 —
+          #       cifra las claves de terceros que pega el operador en
+          #       /admin/portal/settings/integrations (hoy: Google Places).
+          #       Si ya hay alguna guardada en esta VPS, tiene que ser la
+          #       MISMA clave, o deja de poder descifrarse.
           #     STRIPE_WEBHOOK_SECRET           el "Signing secret" (whsec_…)
           #       del endpoint configurado en Stripe → Developers → Webhooks
           #     WHISPER_API_KEY                de https://console.groq.com/keys
@@ -201,6 +244,17 @@ jobs:
             KAIRIKOS_CEO_EMAIL=${{ vars.KAIRIKOS_CEO_EMAIL }}
             META_CREDENTIAL_ENCRYPTION_KEY=${{ secrets.META_CREDENTIAL_ENCRYPTION_KEY }}
             TWILIO_CREDENTIAL_ENCRYPTION_KEY=${{ secrets.TWILIO_CREDENTIAL_ENCRYPTION_KEY }}
+            # 23/09/2026 — faltaba aquí desde que existe IntegrationCredential,
+            # y por eso guardar la clave de Google Places en
+            # /admin/portal/settings/integrations devolvía 500: sin esta
+            # variable, parseHexKey lanza y la ruta responde internal_error.
+            # Estaba correctamente puesta en docker-compose.yml, que es
+            # exactamente lo que hace que el fallo despiste: el despliegue de
+            # Hostinger reescribe el .env de la VPS entero desde ESTA lista,
+            # así que lo que no esté aquí no llega al contenedor.
+            INTEGRATION_CREDENTIAL_ENCRYPTION_KEY=${{ secrets.INTEGRATION_CREDENTIAL_ENCRYPTION_KEY }}
+            WEBSITE_PUBLISH_CREDENTIAL_ENCRYPTION_KEY=${{ secrets.WEBSITE_PUBLISH_CREDENTIAL_ENCRYPTION_KEY }}
+            PUBLIC_DRAFT_IP_SALT=${{ secrets.PUBLIC_DRAFT_IP_SALT }}
             TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }}
             TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }}
             TWILIO_BUNDLE_SID=${{ secrets.TWILIO_BUNDLE_SID }}
@@ -236,3 +290,85 @@ jobs:
             N8N_TELEGRAM_WEBHOOK_BASE_URL=https://n8n.srv1170607.hstgr.cloud/webhook/kairikos-telegram
             DEPLOY_MODE=dev-ip-port
             APP_PORT=3001
+
+      # ---------------------------------------------------------------
+      # Comprobar que el despliegue de verdad ocurrió (23/09/2026).
+      #
+      # El paso de arriba dura ~20 ms: lanza la petición a la API de
+      # Hostinger y da SUCCESS sin esperar a que la VPS haga nada. Ese día
+      # el PR #242 se desplegó "con éxito" y la VPS siguió doce minutos
+      # con la versión anterior — hasta que se relanzó el workflow a mano.
+      # Un despliegue en verde no significaba nada, y eso convierte
+      # cualquier prueba posterior en una mentira: se prueba un código que
+      # no está.
+      #
+      # Se pregunta a la propia aplicación qué commit corre
+      # (/api/internal/health-probe/ping devuelve `revision`, que viene
+      # del build-arg BUILD_REVISION). Autenticada con PORTAL_API_KEY,
+      # porque la versión desplegada no es dato público.
+      #
+      # Cinco minutos de margen: el despliegue observado tarda entre uno y
+      # dos, y un contenedor que arranca tiene su propia cuesta. Si en ese
+      # rato no coincide, el job FALLA — que es el punto: que se entere
+      # quien despliega y no el cliente.
+      - name: Verificar que la versión desplegada es esta
+        if: ${{ steps.guard.outputs.saltar != 'true' }}
+        env:
+          # Solo hay commit que exigir cuando este despliegue viene DETRÁS
+          # de una construcción de imagen. Un despliegue de infraestructura
+          # —docker-compose.yml, scripts/— no produce imagen: la que corre
+          # lleva, con toda la razón, el SHA del último commit que tocó el
+          # portal. Pedirle el SHA de ESTE commit era exigir algo imposible.
+          #
+          # Pasó el 23/09/2026 con el PR #245 (solo scripts/ y CLAUDE.md):
+          # el despliegue falló señalando un problema que no existía. Un
+          # verificador que da falsos negativos se ignora en dos semanas, y
+          # entonces deja de proteger del fallo de verdad.
+          #
+          # Vacío = no se exige versión; se comprueba que el portal está
+          # vivo, que es todo lo que un despliegue sin imagen puede prometer.
+          ESPERADA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || '' }}
+          PORTAL_URL: ${{ vars.NEXT_PUBLIC_PORTAL_URL }}
+          PORTAL_API_KEY: ${{ secrets.PORTAL_API_KEY }}
+        run: |
+          set -u
+          if [ -z "${PORTAL_API_KEY}" ] || [ -z "${PORTAL_URL}" ]; then
+            echo "::warning::Sin PORTAL_API_KEY o NEXT_PUBLIC_PORTAL_URL no se puede verificar; se omite."
+            exit 0
+          fi
+
+          if [ -z "${ESPERADA}" ]; then
+            echo "Despliegue sin imagen nueva: se comprueba que el portal sigue vivo."
+            for intento in $(seq 1 12); do
+              RESPUESTA=$(curl -sS --max-time 15 \
+                -H "x-kairikos-internal-key: ${PORTAL_API_KEY}" \
+                "${PORTAL_URL}/api/internal/health-probe/ping" || true)
+              case "${RESPUESTA}" in
+                *'"ok":true'*)
+                  CORRIENDO=$(printf '%s' "${RESPUESTA}" | sed -n 's/.*"revision":"\([^"]*\)".*/\1/p')
+                  echo "✅ El portal responde (corre ${CORRIENDO:-versión desconocida})"
+                  exit 0
+                  ;;
+              esac
+              echo "intento ${intento}/12 — el portal todavía no contesta"
+              sleep 10
+            done
+            echo "::error::El portal no contesta dos minutos después del despliegue. Algo se quedó por el camino."
+            exit 1
+          fi
+
+          echo "Esperando a que ${PORTAL_URL} responda con ${ESPERADA}"
+          for intento in $(seq 1 30); do
+            RESPUESTA=$(curl -sS --max-time 15 \
+              -H "x-kairikos-internal-key: ${PORTAL_API_KEY}" \
+              "${PORTAL_URL}/api/internal/health-probe/ping" || true)
+            DESPLEGADA=$(printf '%s' "${RESPUESTA}" | sed -n 's/.*"revision":"\([^"]*\)".*/\1/p')
+            if [ "${DESPLEGADA}" = "${ESPERADA}" ]; then
+              echo "✅ En producción corre ${DESPLEGADA} (intento ${intento})"
+              exit 0
+            fi
+            echo "intento ${intento}/30 — en producción: ${DESPLEGADA:-sin respuesta}"
+            sleep 10
+          done
+          echo "::error::La VPS sigue sin servir ${ESPERADA} cinco minutos después. El despliegue de Hostinger dio OK pero no se aplicó: relanza este workflow y comprueba la VPS."
+          exit 1

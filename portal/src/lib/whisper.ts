@@ -1,5 +1,6 @@
 import 'server-only';
 import { logError } from './observability';
+import { isTwilioRecordingUrl } from './twilio-recording-url';
 
 // =============================================================================
 // WP-XX — client for the self-hosted Whisper service.
@@ -133,6 +134,12 @@ export async function transcribeRecording(
 ): Promise<TranscriptionResult> {
   if (!isWhisperConfigured()) {
     return { ok: false, error: 'whisper_not_configured', retryable: true };
+  }
+  // Las credenciales de la cuenta de Twilio van en esta petición: solo se
+  // manda a Twilio. Ver lib/twilio-recording-url.ts.
+  if (!isTwilioRecordingUrl(recordingUrl)) {
+    logError('whisper.recording_url_rejected', new Error('not_a_twilio_recording_url'), {}, 'warn');
+    return { ok: false, error: 'recording_url_not_twilio', retryable: false };
   }
 
   const timeoutMs = opts.timeoutMs ?? 60_000;

@@ -186,6 +186,13 @@ export async function runProspectingSearch(
             contactName: details.data.name,
             contactPhone: details.data.phoneNumber,
             website: details.data.websiteUri,
+            // A1 — coordenadas y categoría de Google, que este mismo Place
+            // Details ya devolvía y se tiraban. Son campos Essentials: no
+            // encarecen ni un céntimo esta llamada, y sin ellos el informe
+            // comparativo tendría que volver a geocodificar el negocio.
+            latitude: details.data.latitude,
+            longitude: details.data.longitude,
+            primaryType: details.data.primaryType,
             summary: details.data.formattedAddress
               ? `Negocio encontrado en ${details.data.formattedAddress}.`
               : null,

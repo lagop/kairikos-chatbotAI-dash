@@ -129,6 +129,7 @@ describe('createWebQuoteInvoice', () => {
         days_until_due: 14,
         auto_advance: false,
       }),
+      undefined,
     );
     const itemCall = mockState.invoiceItemsCreate.mock.calls[0][0];
     expect(itemCall).toEqual({
@@ -140,7 +141,23 @@ describe('createWebQuoteInvoice', () => {
     });
     expect(itemCall.price).toBeUndefined();
     expect(itemCall.product).toBeUndefined();
-    expect(mockState.invoicesFinalize).toHaveBeenCalledWith('in_draft_1');
+    expect(mockState.invoicesFinalize).toHaveBeenCalledWith('in_draft_1', {}, undefined);
+  });
+
+  // Revisión de seguridad 22/09/2026 — aceptar dos veces seguidas (o aceptar
+  // mientras un operador genera la factura) creaba dos facturas en Stripe.
+  it('passes a per-step idempotency key to each of the three Stripe calls', async () => {
+    await createWebQuoteInvoice({
+      stripeCustomerId: 'cus_1',
+      amountCents: 99900,
+      currency: 'eur',
+      description: 'Sitio web',
+      metadata: {},
+      idempotencyKey: 'web_quote_invoice:wq_1:full',
+    });
+    expect(mockState.invoicesCreate.mock.calls[0][1]).toEqual({ idempotencyKey: 'web_quote_invoice:wq_1:full:draft' });
+    expect(mockState.invoiceItemsCreate.mock.calls[0][1]).toEqual({ idempotencyKey: 'web_quote_invoice:wq_1:full:item' });
+    expect(mockState.invoicesFinalize).toHaveBeenCalledWith('in_draft_1', {}, { idempotencyKey: 'web_quote_invoice:wq_1:full:finalize' });
   });
 });
 

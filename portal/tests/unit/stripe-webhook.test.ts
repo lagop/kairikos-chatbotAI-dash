@@ -23,6 +23,7 @@ const mockState = vi.hoisted(() => ({
   constructEvent: vi.fn(),
   webhookEventCreate: vi.fn(),
   webhookEventUpdate: vi.fn(),
+  webhookEventUpdateMany: vi.fn(),
   syncSubscriptionFromStripe: vi.fn(),
   syncInvoiceFromStripe: vi.fn(),
   deleteSubscriptionFromStripe: vi.fn(),
@@ -45,6 +46,7 @@ vi.mock('@/lib/prisma', () => ({
     stripeWebhookEvent: {
       create: (...args: unknown[]) => mockState.webhookEventCreate(...args),
       update: (...args: unknown[]) => mockState.webhookEventUpdate(...args),
+      updateMany: (...args: unknown[]) => mockState.webhookEventUpdateMany(...args),
     },
   },
 }));
@@ -215,6 +217,7 @@ beforeEach(() => {
   mockState.constructEvent.mockReset();
   mockState.webhookEventCreate.mockReset().mockResolvedValue({ eventId: 'evt_test_1' });
   mockState.webhookEventUpdate.mockReset().mockResolvedValue({});
+  mockState.webhookEventUpdateMany.mockReset().mockResolvedValue({ count: 0 });
   mockState.syncSubscriptionFromStripe.mockReset().mockResolvedValue(undefined);
   mockState.syncInvoiceFromStripe.mockReset().mockResolvedValue(undefined);
   mockState.deleteSubscriptionFromStripe.mockReset().mockResolvedValue(undefined);
@@ -283,6 +286,38 @@ describe('handleStripeEvent — idempotency', () => {
     expect(result.statusCode).toBe(200);
     expect(result.body.status).toBe('duplicate');
     expect(mockState.syncSubscriptionFromStripe).not.toHaveBeenCalled();
+  });
+
+  // Revisión de seguridad 22/09/2026 — a failed first attempt answered 500
+  // ("Stripe, retry") but the retry hit the 'failed' row and was swallowed
+  // as a duplicate, so a paying client was never activated.
+  it('reprocesses a re-delivery of a failed event (the row is claimed back)', async () => {
+    mockState.constructEvent.mockReturnValue(RECORDED_SUBSCRIPTION_CREATED);
+    mockState.webhookEventCreate.mockRejectedValueOnce({ code: 'P2002' });
+    mockState.webhookEventUpdateMany.mockResolvedValueOnce({ count: 1 });
+    const result = await handleStripeEvent(RAW_BODY, SIG_HEADER);
+    expect(result.statusCode).toBe(200);
+    expect(result.body.status).toBe('ok');
+    expect(mockState.syncSubscriptionFromStripe).toHaveBeenCalledTimes(1);
+    const where = mockState.webhookEventUpdateMany.mock.calls[0][0].where;
+    expect(where.eventId).toBe('evt_sub_created_1');
+    expect(where.OR).toEqual(
+      expect.arrayContaining([{ status: 'failed' }, expect.objectContaining({ status: 'pending' })]),
+    );
+    expect(mockState.webhookEventUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'processed' }) }),
+    );
+  });
+
+  it('never reclaims a processed event, nor a pending one that is still fresh', async () => {
+    mockState.constructEvent.mockReturnValue(RECORDED_SUBSCRIPTION_CREATED);
+    mockState.webhookEventCreate.mockRejectedValueOnce({ code: 'P2002' });
+    await handleStripeEvent(RAW_BODY, SIG_HEADER);
+    const { OR } = mockState.webhookEventUpdateMany.mock.calls[0][0].where;
+    expect(OR.some((c: { status: string }) => c.status === 'processed')).toBe(false);
+    const pending = OR.find((c: { status: string }) => c.status === 'pending');
+    const cutoff = pending.receivedAt.lt as Date;
+    expect(Date.now() - cutoff.getTime()).toBeGreaterThanOrEqual(10 * 60 * 1000 - 1000);
   });
 });
 

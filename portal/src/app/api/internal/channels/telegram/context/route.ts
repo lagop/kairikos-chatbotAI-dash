@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
+import { telegramConnectionIdSchema } from '@/lib/telegram-connection-id';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveChatbotForChannel } from '@/lib/client-product-access';
 import { authenticateInternalRequest, internalAuthFailureResponse } from '@/lib/internal-auth';
@@ -19,7 +20,7 @@ export const runtime = 'nodejs';
 // per-connection webhook URL itself is what disambiguates the client.
 // =============================================================================
 
-const BodySchema = z.object({ connectionId: z.string().trim().min(1) });
+const BodySchema = z.object({ connectionId: telegramConnectionIdSchema });
 
 export async function POST(req: NextRequest) {
   const auth = authenticateInternalRequest(req);
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
 
   const body = BodySchema.safeParse(await req.json().catch(() => null));
   if (!body.success) {
-    return NextResponse.json({ error: 'bad_request', detail: 'connectionId is required' }, { status: 400 });
+    return NextResponse.json({ error: 'bad_request', detail: 'connectionId must be a uuid' }, { status: 400 });
   }
 
   const connection = await prisma.telegramConnection.findUnique({ where: { id: body.data.connectionId } });

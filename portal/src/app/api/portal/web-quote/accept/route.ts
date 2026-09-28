@@ -69,11 +69,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'not_sent' }, { status: 409 });
   }
 
+  // El `status: 'sent'` va en el WHERE, no solo en la comprobación de
+  // arriba (revisión de seguridad 22/09/2026): con un doble clic, las dos
+  // peticiones pasaban la lectura antes de que ninguna escribiera, las dos
+  // aceptaban y las dos disparaban la factura. Ahora solo una gana; la
+  // otra recibe el mismo 409 que si hubiera llegado tarde.
   const updated = await prisma.$transaction(async (tx) => {
-    const row = await tx.webQuote.update({
-      where: { id: webQuote.id },
+    const claimed = await tx.webQuote.updateMany({
+      where: { id: webQuote.id, status: 'sent' },
       data: { status: 'accepted', acceptedAt: new Date() },
     });
+    if (claimed.count === 0) return null;
+    const row = await tx.webQuote.findUniqueOrThrow({ where: { id: webQuote.id } });
     await tx.webQuoteAudit.create({
       data: {
         webQuoteId: row.id,
@@ -86,6 +93,9 @@ export async function POST(req: NextRequest) {
     });
     return row;
   });
+  if (!updated) {
+    return NextResponse.json({ error: 'not_sent' }, { status: 409 });
+  }
 
   const invoiceResult = await generateWebQuoteInvoice(prisma, updated.id, {
     type: 'system',

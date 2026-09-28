@@ -257,3 +257,16 @@ describe('authConfig.callbacks.session', () => {
     expect(result.user).toMatchObject({ clientId: 'cid1', role: 'client' });
   });
 });
+
+// Revisión de seguridad del 22/09/2026 — un alta de autoservicio no puede
+// entrar (ni, por tanto, pagar) hasta confirmar el email. Ver
+// src/lib/pending-signup.ts.
+describe('authConfig.providers[0].authorize — self-serve signup pending verification', () => {
+  it('rejects a pending signup even with the right password, without checking it', async () => {
+    findUnique.mockResolvedValueOnce({ id: KNOWN_USER_ID, role: 'client', passwordHash: 'pending:argon2hash' });
+    const authorize = getAuthorize();
+    const result = await authorize(buildCredentials(KNOWN_EMAIL, CORRECT_PASSWORD));
+    expect(result).toBeNull();
+    expect(verifyPassword).not.toHaveBeenCalled();
+  });
+});

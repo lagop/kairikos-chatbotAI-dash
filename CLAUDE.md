@@ -11,6 +11,7 @@ fallar en silencio, no con un error.
 portal/            La aplicación entera (Next.js + Prisma). Casi todo el trabajo ocurre aquí.
 automations/       Workflows de n8n como código: un generador TS por workflow.
 scripts/           scheduler.sh — el que de verdad dispara los crons en producción.
+                   vps-disk-cleanup.sh — corre por cron EN la VPS (04:30), no aquí.
 docker-compose.yml Producción. Cada variable de entorno debe estar listada aquí explícitamente.
 ```
 
@@ -33,10 +34,10 @@ npm test                            # ¡ojo! esto es Playwright (e2e), no los un
 
 Los tests unitarios viven en `portal/tests/unit/**/*.test.ts` y corren en Node, sin DOM.
 
-## Tres trampas que fallan en silencio
+## Cinco trampas que fallan en silencio
 
-Estas tres no dan error: simplemente el código no se ejecuta nunca. Son la causa habitual
-de "lo implementé y no pasa nada".
+Estas cinco no dan error: el código no se ejecuta nunca, o se ejecuta y no llega a
+ninguna parte. Son la causa habitual de "lo implementé y no pasa nada".
 
 ### 1. Un cron nuevo no corre si no se añade a `scripts/scheduler.sh`
 
@@ -104,6 +105,64 @@ la última del registro (hoy 7.x), que ya no soporta `url = env(...)` en el data
 con un error que no señala la causa real. E instala `openssl` a propósito — sin él, el motor
 nativo de Prisma falla al arrancar con un `Schema engine error:` completamente vacío.
 
+### 4. Un correo que "se manda" en local puede no salir nunca de producción
+
+Entre agosto y el 22/09/2026 **ningún email del portal salió de producción** salvo los de
+`auth-email.ts`. Ni presupuestos, ni avisos de leads, ni notificaciones al operador, ni
+alertas de reseñas, ni campañas de reseñas, ni recuperación del wizard, ni resúmenes de
+conversaciones. En local todos funcionaban. Dos causas encadenadas, y ninguna de las dos
+rompe nada visible: el envío devuelve `{ok:false}`, el llamante lo registra con `logError`
+en nivel `warn` —porque el email es best-effort por diseño— y la ruta responde con éxito.
+
+1. **Cargar el SDK con `(0, eval)('require')`.** Funciona en local (Node, CommonJS) y no en
+   el bundle de producción de Next, donde `require` no existe: cada envío moría con
+   `require is not defined`. El patrón nació en el primer módulo que mandó correos y se
+   copió a los seis siguientes. Hoy todos usan `await import('resend')`, que sigue siendo
+   perezoso y sí existe en el bundle. Hay un test (`email-resend-loading.test.ts`) que
+   impide que vuelva al copiar de un módulo hermano.
+
+2. **`process.env.X ?? process.env.Y` con una variable vacía.** `??` solo salta cuando la
+   variable **no existe**, y `docker-compose.yml` declara todas las del bloque
+   `environment:` aunque el `.env` de la VPS las tenga vacías. `OPERATOR_NOTIFY_FROM`
+   existía valiendo `''`, ganaba el `??`, y todos los envíos salían con el remitente en
+   blanco. Resend lo rechaza con **`The domain is invalid`**, un mensaje que apunta al DNS
+   del dominio y no tiene nada que ver — el informe de pendientes llevaba semanas pidiendo
+   "verificar el dominio en Resend" por esa pista falsa. El remitente se resuelve ahora en
+   `lib/email-sender.ts`, donde vacío o con espacios cuenta como ausente.
+
+La regla general, que vale más allá del correo: **en este stack, una variable de entorno
+declarada y vacía no es lo mismo que ausente, y `??` no las distingue.** Usa `||`, o un
+helper que descarte las vacías. Y como la suite mockea el envío, una suite verde no dice
+nada sobre si el correo sale: eso solo se sabe mandando uno de verdad desde producción y
+mirando los logs.
+
+### 5. Un despliegue en verde no significa que el código esté en producción
+
+El paso `hostinger/deploy-on-vps` dura ~20 ms: lanza la petición a su API y da SUCCESS sin
+esperar a que la VPS descargue nada. El 23/09/2026 el disco de la VPS estaba **al 100%** —
+359 MB libres de 96 GB—, cada `docker pull` moría con `no space left on device` y los
+despliegues seguían saliendo verdes. Se pasaron horas probando código que no estaba
+desplegado, y el síntoma nunca fue "disco lleno": fue "esto que acabo de arreglar sigue
+fallando".
+
+Tres defensas, ya puestas:
+
+- `deploy.yml` termina preguntando a la propia aplicación qué commit corre
+  (`/api/internal/health-probe/ping` devuelve `revision`, que viene del build-arg
+  `BUILD_REVISION`) y **falla el job** si no coincide en cinco minutos.
+- Una guarda salta el despliegue por `push` cuando el commit produce imagen: `paths-ignore`
+  solo omite el disparo si **todos** los archivos del commit están ignorados, así que un
+  commit mixto disparaba un despliegue en paralelo con la construcción y recreaba el
+  contenedor con la imagen anterior.
+- `scripts/vps-disk-cleanup.sh`, por cron en la VPS a las 04:30, borra caché de
+  construcción e imágenes sin etiqueta cuando el disco pasa del 75%. Cada despliegue deja
+  ~1,5 GB. **Nunca toca volúmenes ni imágenes con etiqueta** — en esa máquina hay imágenes
+  construidas en local que no están en ningún registro. Log en
+  `/var/log/kairikos-disk-cleanup.log`.
+
+Y la regla que queda: cuando algo desplegado no se comporta como el código que acabas de
+escribir, **comprueba primero qué versión corre de verdad**, antes de dudar del código.
+
 ## Fronteras de la arquitectura
 
 **El portal decide, n8n interpreta plataformas externas.** n8n no tiene acceso de lectura a
@@ -122,16 +181,24 @@ en la cabecera `x-kairikos-internal-key`, y todo sale por webhooks salientes
 > falta el permiso. Si tocas canales, mira antes `automations/desplegado/` —que es lo que
 > de verdad corre— y `docs/plan-motor-chatbot.md`.
 >
-> Y hay un prerrequisito que invalida cualquier prueba mientras falte: `PORTAL_API_URL` y
-> `PORTAL_API_KEY` **no están definidas en los contenedores de n8n**, así que ninguna llamada
-> de n8n al portal ha funcionado nunca. Ver el README de `automations/desplegado/`.
+> Hasta el 22/09/2026 `PORTAL_API_URL` y `PORTAL_API_KEY` **no estaban en los contenedores
+> de n8n**, así que ninguna llamada de n8n al portal funcionó antes de esa fecha. Ya están, en
+> `/root/.env` + `/root/docker-compose.yml` de la VPS — un Compose aparte que el deploy del
+> portal no toca. **La clave queda duplicada**: si rotas `PORTAL_API_KEY`, cámbiala también
+> ahí y recrea n8n, o los canales enmudecen sin error. Ver el README de `automations/desplegado/`.
 >
 > **Incidente de seguridad encontrado y resuelto el 20/09/2026**: el flujo de WhatsApp tenía
 > la `PORTAL_API_KEY` real escrita en texto plano (corregido para usar `$env`, como el resto
 > de flujos). La clave **ya se rotó** — el valor viejo, que llegó a estar en el historial de
-> git de una rama ya empujada, quedó inútil. `META_APP_SECRET` y el verify token de ese mismo
-> flujo siguen hardcodeados y sin rotar — no se pueden tocar sin pasar por el panel de Meta.
-> Ver el README de `automations/desplegado/` y `docs/plan-motor-chatbot.md`.
+> git de una rama ya empujada, quedó inútil.
+>
+> `META_APP_SECRET` y los dos verify tokens estuvieron hardcodeados hasta el 24/09/2026; hoy
+> los flujos los leen de `$env` (`META_APP_SECRET`, `META_VERIFY_TOKEN_WHATSAPP`,
+> `META_VERIFY_TOKEN_MULTITENANT`, en `/root/.env` y en los dos servicios de n8n). **En n8n
+> Community no existen las _Variables_** —eso es de pago— pero las variables de entorno sí, y
+> un nodo Code las lee con `N8N_BLOCK_ENV_ACCESS_IN_NODE=false`; se comprobó con una sonda
+> antes de tocar los flujos. El secreto **sigue sin rotar**: eso solo se hace desde el panel
+> de Meta. Ver el README de `automations/desplegado/` y `docs/plan-motor-chatbot.md`.
 >
 > **Dos bugs reales aparecieron al revisar los canales que sí llegaban a producción**: el
 > widget web nunca funcionó porque `N8N_WEBCHAT_URL` faltaba en `deploy.yml` (ver la trampa de
@@ -313,4 +380,11 @@ Dos restricciones descubiertas en la instancia real: los nodos Code **no pueden 
 3. **Los tests unitarios mockean Prisma**, así que una suite verde no dice nada sobre el
    esquema. Si tocaste el modelo de datos, compruébalo contra el Postgres real.
 4. Si añadiste un cron, ¿está en `scheduler.sh`? Si añadiste una variable, ¿está en
-   `docker-compose.yml`?
+   `docker-compose.yml`? ¿Y en `deploy.yml`?
+5. Si lo que hiciste sale del servidor —un email, una llamada a una plataforma externa, un
+   webhook—, **pruébalo contra producción después de desplegar**. Esa clase de código
+   degrada con gracia a propósito: cuando falla no rompe nada, solo deja un `warn` que nadie
+   lee. Los tres fallos encontrados el 22/09/2026 (el widget apuntando a `0.0.0.0:3000`,
+   el SDK de email sin cargar y el remitente vacío) llevaban semanas o meses en producción
+   con la suite en verde, y los tres aparecieron en los diez minutos siguientes a probar de
+   verdad.

@@ -3,6 +3,7 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { syncAllDueConnections } from '@/lib/google-review-sync';
 import { sweepReviewRequestsFromLeads } from '@/lib/review-requests-from-leads';
 import { logError } from '@/lib/observability';
+import { isAuthorizedCronRequest } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -28,11 +29,6 @@ export const maxDuration = 60;
  * lista no se ejecuta jamás, sin dar error). Aislado en su try/catch: un
  * fallo invitando no puede dejar sin sincronizar las reseñas de todos.
  */
-function isAuthorizedCronRequest(req: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  return req.headers.get('authorization') === `Bearer ${secret}`;
-}
 
 export async function GET(req: NextRequest) {
   if (!isAuthorizedCronRequest(req)) {

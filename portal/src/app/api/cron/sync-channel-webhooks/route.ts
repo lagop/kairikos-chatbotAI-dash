@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { isDatabaseConfigured } from '@/lib/prisma';
 import { retryPendingChannelWebhooks } from '@/lib/channel-webhook';
+import { isAuthorizedCronRequest } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -18,11 +19,6 @@ export const maxDuration = 60;
  * channel-webhook.ts) — a delivery past MAX_ATTEMPTS sits `failed` for
  * an operator to retry manually from /admin/portal/[clientId] instead.
  */
-function isAuthorizedCronRequest(req: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  return req.headers.get('authorization') === `Bearer ${secret}`;
-}
 
 export async function GET(req: NextRequest) {
   if (!isAuthorizedCronRequest(req)) {

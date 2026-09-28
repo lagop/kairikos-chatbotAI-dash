@@ -19,6 +19,17 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// Seguridad (22/09/2026): estas rutas piden TOTP reciente. Aquí se da por
+// verificado; el rechazo sin él se prueba en stepup-gated-admin-routes.test.ts.
+const stepUpState = vi.hoisted(() => ({ requireTotpStepUp: vi.fn() }));
+vi.mock('@/lib/operator-totp-stepup', () => ({
+  requireTotpStepUp: (...a: unknown[]) => stepUpState.requireTotpStepUp(...a),
+}));
+beforeEach(() => {
+  stepUpState.requireTotpStepUp.mockReset().mockResolvedValue({ ok: true, operatorId: 'op_1', sessionId: 's1' });
+});
+
+
 const authenticateAdminRequest = vi.fn();
 const findFirstClientUser = vi.fn();
 const userUpdate = vi.fn();
@@ -148,5 +159,19 @@ describe('POST /api/admin/portal/clients/[id]/password — 403 without a real ad
       where: { id: 'user_1' },
       data: { passwordHash: 'argon2$hashed', passwordSetAt: expect.any(Date) },
     });
+  });
+});
+
+describe('TOTP reciente (seguridad, 22/09/2026)', () => {
+  it('sin TOTP reciente no deja poner la contraseña de un cliente: 403 totp_step_up_required', async () => {
+    stepUpState.requireTotpStepUp.mockResolvedValueOnce({ ok: false, status: 403, error: 'totp_step_up_required' });
+    authenticateAdminRequest.mockResolvedValueOnce({ ok: true, sessionId: 's1', operatorId: 'op_1' });
+    const { POST } = await import('@/app/api/admin/portal/clients/[id]/password/route');
+    const res = await POST(
+      { headers: new Headers(), json: async () => ({ email: 'client@example.com', password: 'correct horse battery staple' }) } as never,
+      { params: { id: 'client_1' } },
+    );
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toBe('totp_step_up_required');
   });
 });

@@ -22,11 +22,9 @@
 // =============================================================================
 
 import 'server-only';
+import { notifyFromAddress } from './email-sender';
 
-const FROM_ADDRESS =
-  process.env.OPERATOR_NOTIFY_FROM ??
-  process.env.AUTH_EMAIL_FROM ??
-  'Kairikos Ops <ops@kairikos.com>';
+const FROM_ADDRESS = notifyFromAddress();
 
 // KAIA-1177 (KAIA-1172 / AU-2): the two review-overdue kinds extend the
 // original three. They share the same Resend dispatch path and the same
@@ -52,7 +50,12 @@ export type NotificationKind =
   | 'usage-spike'
   // 2026-09-15 — Meta invalidó el token de un negocio. Ver
   // renderConnectionLost.
-  | 'connection-lost';
+  | 'connection-lost'
+  // A8/A6 (24/09/2026) — el barrido de salud de clientes: quién está a punto
+  // de irse y a quién conviene ofrecerle algo. Kind propio y no 'stuck'
+  // porque el dedupe es por (cliente, kind, día) y compartir kind haría que
+  // un aviso silenciara al otro ese día.
+  | 'churn-risk';
 
 export const ALLOWED_KINDS: ReadonlySet<NotificationKind> = new Set([
   'stuck',
@@ -64,6 +67,7 @@ export const ALLOWED_KINDS: ReadonlySet<NotificationKind> = new Set([
   'go-live-ready',
   'usage-spike',
   'connection-lost',
+  'churn-risk',
 ]);
 
 // Severity → NotificationKind. Used by review-overdue/fire so the route
@@ -121,8 +125,7 @@ export async function sendOperatorNotification(
   // Same dynamic-require trick as auth-email.ts to keep the SDK out of
   // the Edge bundle. Webpack's static analyser can't follow the computed
   // specifier, so it leaves the import as a runtime resolution.
-  const requireResend = (0, eval)('require') as NodeJS.Require;
-  const { Resend } = requireResend('resend') as typeof import('resend');
+  const { Resend } = await import('resend');
   const resend = new Resend(apiKey);
 
   try {

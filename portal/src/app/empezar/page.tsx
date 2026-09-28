@@ -3,6 +3,7 @@ import { SelfServeSignupForm, type SignupTierOption } from '@/components/public/
 import { ThemeToggle } from '@/components/portal/ThemeToggle';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { PRODUCT_CODES, PRODUCT_CATALOGS, type ProductCode } from '@/lib/catalogs';
+import { tierLabel } from '@/lib/public-catalog';
 
 // =============================================================================
 // /empezar (WP-31) — public, no session required. A visitor creates their
@@ -17,19 +18,12 @@ import { PRODUCT_CODES, PRODUCT_CATALOGS, type ProductCode } from '@/lib/catalog
 // of its own.
 // =============================================================================
 
-// Same small display-label map as /portal/productos's tierLabel() —
-// duplicated rather than shared, it's a 6-line formatting helper, not
-// business logic that would cost anything if the two copies drift.
-const TIER_DISPLAY: Record<string, string> = {
-  standard: 'Estándar',
-  solo: 'Autónomo',
-  team: 'Equipo',
-  business: 'Empresa',
-};
-
-function tierLabel(tier: string): string {
-  return TIER_DISPLAY[tier] ?? tier.charAt(0).toUpperCase() + tier.slice(1);
-}
+// Los nombres de escalón salen de lib/public-catalog. Estuvieron duplicados
+// aquí y en /portal/productos, con la nota de que duplicarlos no costaba nada
+// «porque es formato, no lógica de negocio». Era cierto mientras los dos
+// sitios fueran pantallas internas. Desde el 26/09/2026 los mismos nombres se
+// publican en kairikos.com a través de /api/public/catalogo, y una tercera
+// copia habría sido la que se queda atrás.
 
 function isProductCode(value: string): value is ProductCode {
   return (PRODUCT_CODES as readonly string[]).includes(value);
@@ -37,7 +31,35 @@ function isProductCode(value: string): value is ProductCode {
 
 export const dynamic = 'force-dynamic';
 
-export default async function EmpezarPage() {
+// A7 — el enlace que reparte un socio es /empezar?ref=SALTOKI-ADEF2. Se lee
+// aquí, en el servidor, y baja ya escrito al formulario: el visitante no
+// teclea nada y el socio no depende de que nadie recuerde su código. No se
+// valida en esta página a propósito — un código inventado en la URL no puede
+// impedir que alguien se dé de alta; eso lo decide el alta, no la portada.
+export default async function EmpezarPage({
+  searchParams,
+}: {
+  searchParams?: { ref?: string | string[]; producto?: string | string[]; tier?: string | string[] };
+}) {
+  const refParam = searchParams?.ref;
+  const codigoInicial = (Array.isArray(refParam) ? refParam[0] : refParam)?.trim().slice(0, 40) ?? '';
+
+  // WP-33 — qué producto traía quien llega desde kairikos.com.
+  //
+  // Los botones «Empezar» de /servicios/ y /planes/ mandaban aquí SIN decir
+  // qué producto había pulsado el visitante, así que esta página preseleccionaba
+  // siempre el primero de la lista —Chatbot IA— y quien venía a contratar
+  // Reseñas se encontraba con otra cosa marcada. Un fallo silencioso de los
+  // caros: no da error, no se ve en los logs, y lo que se pierde es la venta
+  // de alguien que ya había dicho que sí.
+  //
+  // 'producto' es el código; 'tier' es opcional, porque /servicios/ vende el
+  // producto entero y /planes/ vende un escalón concreto. Sin tier, gana el
+  // más barato — que es el primero, porque la consulta ordena por precio.
+  const unParam = (v?: string | string[]) => (Array.isArray(v) ? v[0] : v)?.trim().toLowerCase() ?? '';
+  const productoPedido = unParam(searchParams?.producto).slice(0, 40);
+  const tierPedido = unParam(searchParams?.tier).slice(0, 40);
+
   if (!isDatabaseConfigured) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-16 sm:px-6">
@@ -95,6 +117,15 @@ export default async function EmpezarPage() {
     });
   }
 
+  // Se resuelve aquí, con `tiers` ya completo: un código que no exista o un
+  // escalón que no le corresponda devuelven undefined y el formulario se
+  // comporta como siempre. Nadie escribe estas URLs a mano, pero llegan
+  // recortadas de un WhatsApp más a menudo de lo que parece.
+  const productoInicial = productoPedido
+    ? (tiers.find((t) => t.code === productoPedido && (!tierPedido || t.tier === tierPedido))
+        ?? tiers.find((t) => t.code === productoPedido))?.productId
+    : undefined;
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
       <div className="mb-4 flex justify-end">
@@ -111,7 +142,7 @@ export default async function EmpezarPage() {
       {tiers.length === 0 ? (
         <EmptyState title="Sin productos disponibles" description="Ahora mismo no hay ningún producto en autoservicio. Escríbenos a hola@kairikos.com." />
       ) : (
-        <SelfServeSignupForm tiers={tiers} />
+        <SelfServeSignupForm tiers={tiers} codigoInicial={codigoInicial} productoInicial={productoInicial} />
       )}
 
       <p className="mt-8 text-center text-xs text-kairikos-muted">

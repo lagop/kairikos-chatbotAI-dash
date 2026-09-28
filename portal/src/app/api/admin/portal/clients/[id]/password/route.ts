@@ -5,6 +5,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateAdminRequest } from '@/lib/operator-session';
+import { requireTotpStepUp } from '@/lib/operator-totp-stepup';
+import { clientIpFromHeaders } from '@/lib/client-ip';
 import { hashPassword, InMemoryRateLimiter } from '@/lib/operator-crypto';
 
 const SetPasswordSchema = z.object({
@@ -26,9 +28,12 @@ export async function POST(
   if (!auth.ok) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
+  // Seguridad (22/09/2026): poner la contraseña de un cliente es entrar en
+  // su cuenta. Pide TOTP reciente, no solo sesión.
+  const stepUp = await requireTotpStepUp(req);
+  if (!stepUp.ok) return NextResponse.json({ error: stepUp.error }, { status: stepUp.status });
 
-  const forwardedFor = req.headers.get('x-forwarded-for') ?? null;
-  const ip = forwardedFor?.split(',')[0]?.trim() ?? '127.0.0.1';
+  const ip = clientIpFromHeaders(req.headers);
   if (!ipRateLimiter.check(`admin-password:${ip}`, 20)) {
     return NextResponse.json({ error: 'too_many_requests' }, { status: 429 });
   }

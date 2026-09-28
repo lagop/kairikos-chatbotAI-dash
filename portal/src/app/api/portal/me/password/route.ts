@@ -34,6 +34,7 @@ import { resolveClientFromSession, isPortalDevMock } from '@/lib/portal-session'
 import { getSession } from '@/lib/session';
 import { hashPassword, verifyPassword, InMemoryRateLimiter } from '@/lib/operator-crypto';
 import { DEV_MOCK_CLIENT_BY_EMAIL } from '@/lib/portal-data';
+import { clientIpFromHeaders } from '@/lib/client-ip';
 
 const ChangePasswordSchema = z
   .object({
@@ -64,10 +65,9 @@ function getDevMockPassword(email: string): string {
   return DEV_MOCK_INITIAL_PASSWORD;
 }
 
+// La IP que pone el proxy, no la primera de X-Forwarded-For (ver client-ip.ts).
 function clientIp(req: NextRequest): string {
-  const forwardedFor = req.headers.get('x-forwarded-for');
-  const ip = forwardedFor?.split(',')[0]?.trim();
-  return ip || '127.0.0.1';
+  return clientIpFromHeaders(req.headers);
 }
 
 export async function POST(req: NextRequest) {

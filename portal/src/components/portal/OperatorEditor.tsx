@@ -2,6 +2,7 @@
 
 import { useState, useTransition, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import { useStepUpFetch } from '@/components/portal/useStepUpFetch';
 import { TIER_LABEL } from '@/lib/billing-tier';
 
 export interface OperatorEditorInitial {
@@ -11,6 +12,9 @@ export interface OperatorEditorInitial {
   state: 'pending' | 'in-progress' | 'live' | 'paused' | 'cancelled' | string;
   goLiveAt: string | null;
   notes: string | null;
+  /** A9/A10 — cuenta nuestra: se cae de las métricas y de las
+   *  estadísticas de mercado, pero sigue recibiendo los correos. */
+  isInternal: boolean;
 }
 
 export interface OperatorEditorProps {
@@ -25,7 +29,7 @@ interface ToastState {
   message: string;
 }
 
-type FieldKey = 'companyName' | 'email' | 'tier' | 'state' | 'goLiveAt' | 'notes';
+type FieldKey = 'companyName' | 'email' | 'tier' | 'state' | 'goLiveAt' | 'notes' | 'isInternal';
 
 // Labels come from the shared TIER_LABEL (billing-tier.ts) rather than
 // being hardcoded here a second time — this exact duplication is what
@@ -52,6 +56,8 @@ type PendingConfirm =
 
 export function OperatorEditor({ clientId, initial }: OperatorEditorProps) {
   const router = useRouter();
+  // Cambiar el email pide TOTP reciente (ver la ruta PATCH): el hook abre el modal.
+  const { stepUpFetch, stepUpModal } = useStepUpFetch();
   const [isPending, startTransition] = useTransition();
   const [toast, setToast] = useState<ToastState | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
@@ -66,6 +72,7 @@ export function OperatorEditor({ clientId, initial }: OperatorEditorProps) {
     initial.goLiveAt ? initial.goLiveAt.slice(0, 10) : '',
   );
   const [notes, setNotes] = useState<string>(initial.notes ?? '');
+  const [isInternal, setIsInternal] = useState<boolean>(initial.isInternal);
 
   const showToast = (next: ToastState) => {
     setToast(next);
@@ -85,7 +92,7 @@ export function OperatorEditor({ clientId, initial }: OperatorEditorProps) {
   ): Promise<void> {
     setBusyField(field);
     try {
-      const res = await fetch(`/api/admin/portal/clients/${encodeURIComponent(clientId)}`, {
+      const res = await stepUpFetch(`/api/admin/portal/clients/${encodeURIComponent(clientId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -173,6 +180,21 @@ export function OperatorEditor({ clientId, initial }: OperatorEditorProps) {
     void sendPatch('notes', { notes: next || null }, 'Notas internas guardadas.');
   };
 
+  // Sin botón de guardar: el interruptor ES la acción. Un checkbox con su
+  // propio "Guardar" al lado es la forma más fiable de que alguien lo marque,
+  // se vaya, y semanas después no entienda por qué el panel de métricas
+  // sigue contando su cuenta de pruebas.
+  const onToggleInternal = (next: boolean) => {
+    setIsInternal(next);
+    void sendPatch(
+      'isInternal',
+      { isInternal: next },
+      next
+        ? 'Cuenta interna: deja de contar en métricas y estadísticas.'
+        : 'Cuenta normal: vuelve a contar en métricas y estadísticas.',
+    );
+  };
+
   const cancelConfirm = () => {
     if (pendingConfirm?.field === 'email') {
       setEmail(initial.email);
@@ -207,6 +229,7 @@ export function OperatorEditor({ clientId, initial }: OperatorEditorProps) {
       aria-label="Editar datos del cliente"
       data-testid="operator-editor"
     >
+      {stepUpModal}
       <header className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Editar</h2>
         <span className="text-xs text-kairikos-muted">
@@ -368,6 +391,27 @@ export function OperatorEditor({ clientId, initial }: OperatorEditorProps) {
             </button>
           </div>
         </form>
+
+        <div className="md:col-span-2">
+          <label className="flex items-start gap-3 rounded-lg border border-kairikos-border p-3">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={isInternal}
+              onChange={(e) => onToggleInternal(e.target.checked)}
+              disabled={busyField === 'isInternal' || isPending}
+              data-testid="operator-edit-is-internal"
+            />
+            <span className="text-sm">
+              <span className="font-medium">Cuenta interna</span>
+              <span className="block text-xs text-kairikos-muted">
+                Nuestra: la de pruebas, una demo, un cliente interno. Sus productos activos dejan de contar como
+                ingresos recurrentes, clientes y bajas en las métricas del negocio. Lo demás sigue igual: su
+                prospección cuenta en el embudo y en las estadísticas de mercado, y los correos le siguen llegando.
+              </span>
+            </span>
+          </label>
+        </div>
 
         <form onSubmit={onSubmitNotes} className="space-y-2 md:col-span-2" data-testid="operator-edit-form-notes">
           <label htmlFor="operator-edit-notes" className="label">

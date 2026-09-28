@@ -9,31 +9,63 @@ Regla: cuando se cambie un flujo en n8n, se vuelve a exportar aquí. Si esta
 carpeta y la instancia se separan, esta carpeta miente y vuelve a empezar el
 problema.
 
-## EL HALLAZGO QUE MANDA SOBRE TODO LO DEMÁS
+## n8n → portal: `PORTAL_API_URL` / `PORTAL_API_KEY` — RESUELTO el 22/09/2026
 
-**n8n nunca ha podido hablar con el portal.** `PORTAL_API_URL` y
-`PORTAL_API_KEY` **no están definidas** en los contenedores `root-n8n-1` ni
-`root-n8n-worker-1` (comprobado con `printenv` el 20/09/2026). Cada nodo que
-llama a `{{ $env.PORTAL_API_URL }}/api/internal/...` construye una URL vacía y
-revienta con *"Invalid URL"*.
+**Hasta el 22/09/2026 n8n nunca pudo hablar con el portal.** `PORTAL_API_URL` y
+`PORTAL_API_KEY` no estaban definidas en `root-n8n-1` ni `root-n8n-worker-1`
+(comprobado con `printenv` el 20/09/2026): cada nodo que llama a
+`{{ $env.PORTAL_API_URL }}/api/internal/...` construía una URL vacía y reventaba
+con *"Invalid URL"*. Por eso producción tenía **0 conversaciones, 0 chatbots
+activos, 0 widgets y 0 hitos**: el chatbot no respondía mal, no respondía.
 
-Eso explica lo que la base de datos ya decía y nadie había atado: en producción
-hay **0 conversaciones, 0 chatbots activos, 0 widgets y 0 hitos**. El chatbot
-no es que respondiera mal — es que **nunca ha respondido**.
+Cómo quedó, para quien tenga que tocarlo:
 
-Lo que hace falta, y no se puede hacer desde aquí porque toca infraestructura
-compartida y un secreto:
+- n8n **no** se despliega con el pipeline de Hostinger del portal. Vive en
+  `/root/docker-compose.yml` de la VPS (proyecto Compose `root`) con su propio
+  `/root/.env`. Ningún deploy del portal lo reescribe.
+- Las dos variables están en `/root/.env`
+  (`PORTAL_API_URL=https://portal.kairikos.cloud`) y listadas en el bloque
+  `environment:` de **los dos** servicios, `n8n` y `n8n-worker` — en modo
+  `queue` los nodos se ejecutan en el worker, así que ponerla solo en `n8n` no
+  sirve.
+- Comprobado desde dentro del worker: sin cabecera, 401; con la clave y una
+  conexión que no existe, 404 (`not_found`) — la autenticación pasa.
 
-1. Añadir al servicio de n8n en su `docker-compose.yml` de la VPS:
-   `PORTAL_API_URL=https://portal.kairikos.cloud` y `PORTAL_API_KEY=<el mismo
-   valor que el portal>`.
-2. Reiniciar `root-n8n-1` y `root-n8n-worker-1`. **Ojo**: en esa instancia
-   viven también automatizaciones ajenas a Kairikos, así que el reinicio las
-   corta un momento.
-3. Volver a lanzar la prueba del widget o del bot de Telegram.
+**`PORTAL_API_KEY` está duplicada.** Si se rota en el portal (secreto de GitHub
+→ `deploy.yml`), hay que cambiarla también en `/root/.env` y recrear n8n, o
+todos los canales que pasan por n8n dejan de contestar sin error visible:
 
-Hasta entonces, cualquier cambio en estos flujos es teoría: el portal no
-recibe nada.
+```bash
+cd /root && docker compose up -d --no-deps --pull never n8n n8n-worker
+```
+
+`--pull never` es a propósito: la imagen no lleva tag, y sin él una recreación
+puede actualizar n8n de versión de paso. Recrear corta ~1 minuto las
+automatizaciones ajenas a Kairikos que viven en la misma instancia.
+
+## Secreto del webhook de Telegram — APLICADO el 22/09/2026
+
+`telegram-multi-tenant.json` (reexportado, versión `b78b7014` en la instancia)
+lleva el cambio de la revisión de seguridad del 22/09/2026:
+
+- El portal registra el webhook con `secret_token`, y Telegram manda en cada
+  entrega la cabecera `X-Telegram-Bot-Api-Secret-Token`.
+- `Extract Input` la lee (`item.headers['x-telegram-bot-api-secret-token']`) y
+  el nodo `POST …/telegram/reply` la reenvía como `webhookSecret`.
+- `/api/internal/channels/telegram/reply` contesta **401** si falta o no
+  coincide. Antes bastaba con conocer el `connectionId` de la URL para meter
+  mensajes y gastar crédito de IA.
+
+Se subió por la API (`PUT /workflows/SpbahgfJqf5FA56o`) aplicando solo esos
+dos cambios sobre la versión viva, que coincidía con esta exportación. Una
+entrega de prueba con un `connectionId` falso confirmó que `Extract Input`
+produce `webhookSecret`; la llamada al portal falló con *Invalid URL* — el
+hallazgo de arriba, que sigue sin resolver.
+
+Queda: cada bot conectado **antes** del deploy del portal del 22/09 tiene el
+webhook registrado sin secreto y hay que desconectarlo y volver a conectarlo
+desde el portal. Según la auditoría del 20/09 no había tráfico real por este
+canal, pero conviene mirar la tabla `TelegramConnection`.
 
 ## Los siete flujos
 
@@ -157,15 +189,38 @@ Aplicado el mismo día:
   modo automático al intentar leer el `.env` de producción — "Production
   Reads"). Hasta que se rote, el valor expuesto en el historial de git sigue
   siendo válido.
-- `META_APP_SECRET` y el verify token de Meta **también están hardcodeados**
-  en este flujo (nodos `Verify Signature` y `Check Verify Token`) y no se
-  pudieron verificar contra el `.env` porque no viven ahí — probablemente en
-  Postgres, cifrados, vía el patrón de credencial de operador. No se tocaron:
-  no hay forma de rotarlos sin pasar por el panel de Meta, y cambiarlos aquí a
-  ciegas rompería una verificación de firma que hoy funciona. **También deben
-  rotarse desde el panel de Meta cuando puedas.** El export de este archivo
-  los sustituye por `META-APP-SECRET-REDACTED.ejemplo` y
-  `META-VERIFY-TOKEN-REDACTED.ejemplo` — nunca el valor real.
+- `META_APP_SECRET` y los verify tokens **ya no están hardcodeados**
+  (24/09/2026). Estaban en texto plano dentro de `Verify Signature` y
+  `Check Verify Token` de los dos flujos de Meta, así que rotar el secreto
+  obligaba a editar nodos a mano y el valor nuevo volvía a quedar a la vista
+  de cualquiera con acceso a n8n.
+
+  Ahora los flujos leen tres variables de entorno, puestas en `/root/.env` de
+  la VPS y listadas en los servicios `n8n` y `n8n-worker`:
+
+  | variable | dónde se usa |
+  |---|---|
+  | `META_APP_SECRET` | la firma HMAC, en los dos flujos |
+  | `META_VERIFY_TOKEN_WHATSAPP` | `meta-whatsapp-inbound` |
+  | `META_VERIFY_TOKEN_MULTITENANT` | `meta-multi-tenant` |
+
+  Los verify tokens son **distintos** en cada flujo; no son intercambiables.
+
+  **Lo que no existe en n8n Community son las _Variables_** (función de pago).
+  Las variables de entorno sí funcionan, y estos flujos ya las usaban en otros
+  nodos. Se comprobó con una sonda antes de tocar nada: un nodo Code lee
+  `$env.META_APP_SECRET` sin problema con
+  `N8N_BLOCK_ENV_ACCESS_IN_NODE=false`, aunque esa variable no esté en la
+  lista de `N8N_UNRESTRICTED_ENV_VARS`.
+
+  Comprobado después contra la instancia real: el saludo de verificación
+  devuelve el reto con el token bueno y 403 con uno falso, y una entrega
+  firmada se acepta mientras que una con firma inventada da 403.
+
+  **Sigue pendiente rotar el secreto desde el panel de Meta** — eso no lo
+  arregla esto. Pero ahora rotar es cambiar un valor en `/root/.env`, otro en
+  el portal (`/admin/portal/settings/meta`) y el secreto de GitHub, sin tocar
+  ningún flujo.
 - La rama del chatbot dejó de llamar solo a `.../whatsapp/message` (que
   guarda el turno pero no contesta ni envía nada) y ahora sigue el mismo
   patrón que Telegram: `POST .../whatsapp/reply` → si hay `reply`, `POST
@@ -241,8 +296,9 @@ ejecución terminaba "con éxito" sin llamar a nada. Cincuenta ejecuciones
 seguidas en verde sin efecto ninguno.
 
 Se reescribieron las 20 referencias de cada uno a nombres. A partir de ahora sí
-recorren el flujo — y, mientras falte `PORTAL_API_URL`, fallarán de forma
-visible en vez de mentir en verde. Eso es una mejora, no un empeoramiento.
+recorren el flujo — y, mientras faltó `PORTAL_API_URL` (hasta el 22/09/2026),
+fallaban de forma visible en vez de mentir en verde. Eso fue una mejora, no un
+empeoramiento.
 
 ## Fase 2b y el clasificador de leads único — 20/09/2026
 

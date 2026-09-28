@@ -30,6 +30,7 @@ const mockState = vi.hoisted(() => ({
   isNumberBlocked: vi.fn(),
   notifyOwnerInBackground: vi.fn(),
   resolveActiveTwilioCredentials: vi.fn(),
+  transcribeCallEventInBackground: vi.fn(),
 }));
 
 vi.mock('@/lib/twilio-credentials', () => ({
@@ -55,6 +56,14 @@ vi.mock('@/lib/recall-messaging', () => ({
   notifyOwnerInBackground: (...a: unknown[]) => mockState.notifyOwnerInBackground(...a),
 }));
 
+vi.mock('@/lib/recall-transcription', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/recall-transcription')>('@/lib/recall-transcription');
+  return {
+    ...actual,
+    transcribeCallEventInBackground: (...a: unknown[]) => mockState.transcribeCallEventInBackground(...a),
+  };
+});
+
 vi.mock('@/lib/prisma', () => ({
   isDatabaseConfigured: true,
   prisma: {
@@ -79,6 +88,12 @@ beforeEach(() => {
   mockState.isNumberBlocked.mockResolvedValue(false);
   mockState.verifyForwardingFromCall.mockResolvedValue(undefined);
   mockState.resolveActiveTwilioCredentials.mockResolvedValue({ accountSid: 'AC1', authToken: AUTH_TOKEN });
+  // El aviso al dueño va encadenado DENTRO de la transcripción: el mock
+  // ejecuta ese encadenado, o los tests de la notificación dejarían de
+  // probar nada sin avisar.
+  mockState.transcribeCallEventInBackground.mockReset().mockImplementation(
+    (_prisma: unknown, _id: unknown, _auth: unknown, onDone?: () => void) => onDone?.(),
+  );
 });
 
 describe('POST /api/webhooks/twilio/voice', () => {
@@ -290,6 +305,44 @@ describe('POST /api/webhooks/twilio/recording', () => {
     // seconds. The CALLER's message is deliberately not sent here — it
     // owes a 90-second pause, and the sweep is what serves it.
     expect(mockState.notifyOwnerInBackground).toHaveBeenCalledWith(expect.anything(), 'ce_1');
+  });
+
+  // El SID salía de TWILIO_ACCOUNT_SID y el token de la fila cifrada en
+  // Postgres. En la VPS esa variable está vacía —las credenciales de
+  // Twilio se gestionan por pantalla—, así que la descarga de la grabación
+  // iba sin autenticación y Twilio devolvía 401. Lo tapaba el barrido del
+  // cron, que sí resuelve las dos mitades juntas: la transcripción salía
+  // igual, con hasta cinco minutos de retraso. Visto con una llamada real
+  // el 23/09/2026.
+  it('descarga la grabación con las DOS mitades de la misma credencial', async () => {
+    delete process.env.TWILIO_ACCOUNT_SID;
+    mockState.resolveActiveTwilioCredentials.mockResolvedValue({ accountSid: 'AC_de_la_bd', authToken: AUTH_TOKEN });
+    mockState.attachRecording.mockResolvedValue({ ok: true, callEventId: 'ce_1' });
+
+    await post(makeRequest(PATH, REC));
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(mockState.transcribeCallEventInBackground).toHaveBeenCalledWith(
+      expect.anything(),
+      'ce_1',
+      { accountSid: 'AC_de_la_bd', authToken: AUTH_TOKEN },
+      expect.any(Function),
+    );
+  });
+
+  it('sin SID en la credencial, transcribe sin autenticación en vez de romper', async () => {
+    mockState.resolveActiveTwilioCredentials.mockResolvedValue({ accountSid: null, authToken: AUTH_TOKEN });
+    mockState.attachRecording.mockResolvedValue({ ok: true, callEventId: 'ce_1' });
+
+    await post(makeRequest(PATH, REC));
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(mockState.transcribeCallEventInBackground).toHaveBeenCalledWith(
+      expect.anything(),
+      'ce_1',
+      undefined,
+      expect.any(Function),
+    );
   });
 
   it('treats an unparseable duration as unknown rather than zero', async () => {

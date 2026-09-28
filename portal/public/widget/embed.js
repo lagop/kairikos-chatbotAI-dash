@@ -44,6 +44,9 @@
     open: false,
     sending: false,
     history: [],
+    // Una sola vez por conversación: si el bot deriva tres veces, pedir
+    // tres veces el teléfono es acoso, no insistencia.
+    contactAsked: false,
   };
 
   function el(tag, attrs, children) {
@@ -88,7 +91,18 @@
       'resize:none;font-family:inherit;}' +
       '.kw-send{border:none;border-radius:10px;padding:0 14px;color:#fff;font-size:13px;cursor:pointer;font-weight:600;}' +
       '.kw-send:disabled{opacity:.5;cursor:default;}' +
-      '.kw-typing{font-size:12px;color:#888;padding:0 12px 6px;}'
+      '.kw-typing{font-size:12px;color:#888;padding:0 12px 6px;}' +
+      // El formulario de contacto: aparece dentro del hilo, cuando el bot
+      // deriva. Ver askContact en /api/public/channels/web/message.
+      '.kw-contact{align-self:stretch;background:#fff;border:1px solid #d8d8dd;border-radius:12px;' +
+      'padding:10px;display:flex;flex-direction:column;gap:6px;}' +
+      '.kw-contact-title{font-size:12px;color:#333;line-height:1.4;}' +
+      '.kw-contact-input{border:1px solid #d8d8dd;border-radius:8px;padding:7px 9px;font-size:13px;' +
+      'font-family:inherit;}' +
+      '.kw-contact-send{border:none;border-radius:8px;padding:8px 10px;color:#fff;font-size:13px;' +
+      'cursor:pointer;font-weight:600;}' +
+      '.kw-contact-send:disabled{opacity:.5;cursor:default;}' +
+      '.kw-contact-error{font-size:12px;color:#b3261e;}'
     );
   }
 
@@ -151,6 +165,82 @@
       messages.scrollTop = messages.scrollHeight;
     }
 
+    // Pide un teléfono o un correo, una sola vez por conversación. Sale
+    // cuando el bot deriva: por este canal nadie puede contestarle al
+    // visitante, así que sin esto "te paso con alguien del equipo" es una
+    // promesa vacía. Ver /api/public/channels/web/contact.
+    function appendContactForm() {
+      if (STATE.contactAsked) return;
+      STATE.contactAsked = true;
+
+      var title = el('div', {
+        class: 'kw-contact-title',
+        text: 'Déjame tu teléfono o tu correo y el equipo te contesta.',
+      });
+      var nameInput = el('input', { class: 'kw-contact-input', type: 'text', placeholder: 'Tu nombre (opcional)' });
+      var contactInput = el('input', { class: 'kw-contact-input', type: 'text', placeholder: 'Teléfono o correo' });
+      var error = el('div', { class: 'kw-contact-error', style: 'display:none;' });
+      var submit = el('button', {
+        class: 'kw-contact-send',
+        type: 'button',
+        style: 'background:' + config.primaryColor + ';',
+        text: 'Enviar mis datos',
+      });
+      var form = el('div', { class: 'kw-contact' }, [title, nameInput, contactInput, error, submit]);
+
+      function send() {
+        var value = (contactInput.value || '').trim();
+        if (value.length < 3) {
+          error.textContent = 'Escribe un teléfono o un correo.';
+          error.style.display = 'block';
+          return;
+        }
+        error.style.display = 'none';
+        submit.disabled = true;
+        fetch(portalOrigin + '/api/public/channels/web/contact', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            publicToken: publicToken,
+            sessionId: sessionId,
+            name: (nameInput.value || '').trim(),
+            contact: value,
+          }),
+        })
+          .then(function (res) {
+            return res.json().catch(function () {
+              return null;
+            });
+          })
+          .then(function (json) {
+            if (json && json.success) {
+              form.remove();
+              appendMessage('bot', 'Gracias. El equipo te escribirá en cuanto pueda.');
+            } else {
+              error.textContent = 'No he podido guardarlo. Inténtalo otra vez.';
+              error.style.display = 'block';
+              submit.disabled = false;
+            }
+          })
+          .catch(function () {
+            error.textContent = 'No he podido guardarlo. Inténtalo otra vez.';
+            error.style.display = 'block';
+            submit.disabled = false;
+          });
+      }
+
+      submit.addEventListener('click', send);
+      contactInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          send();
+        }
+      });
+
+      messages.appendChild(form);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
     function setTyping(isTyping) {
       typing.style.display = isTyping ? 'block' : 'none';
     }
@@ -181,6 +271,7 @@
         .then(function (json) {
           var reply = json && json.data && json.data.reply;
           appendMessage('bot', reply || 'Lo siento, no he podido procesar tu mensaje. Inténtalo de nuevo en un momento.');
+          if (json && json.data && json.data.askContact) appendContactForm();
         })
         .catch(function () {
           appendMessage('bot', 'Lo siento, hubo un problema de conexión. Inténtalo de nuevo en un momento.');

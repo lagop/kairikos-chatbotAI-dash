@@ -127,15 +127,21 @@ describe('deliverChannelEvent', () => {
     });
   });
 
-  it('marks the row failed without calling fetch when the bridge is unconfigured', async () => {
+  // Sin puente configurado la fila queda 'skipped', no 'failed': no hay
+  // nada que reintentar ni que enseñarle al operador. Ver el comentario en
+  // deliverChannelEvent — hoy no existe ningún flujo de n8n escuchando.
+  it('marks the row skipped without calling fetch when the bridge is unconfigured', async () => {
     delete process.env.N8N_CHANNEL_WEBHOOK_URL;
     mockState.deliveryCreate.mockResolvedValue({ id: 'dlv_4' });
 
     const result = await deliverChannelEvent(baseEvent);
 
     expect(mockState.fetch).not.toHaveBeenCalled();
-    expect(result.ok).toBe(false);
-    expect(result.error).toContain('not_configured');
+    expect(mockState.deliveryUpdate).toHaveBeenCalledWith({
+      where: { id: 'dlv_4' },
+      data: expect.objectContaining({ status: 'skipped' }),
+    });
+    expect(result).toEqual({ ok: false, deliveryId: 'dlv_4', status: 'skipped', error: 'not_configured' });
   });
 });
 
@@ -145,6 +151,24 @@ describe('retryChannelWebhookDelivery', () => {
     const result = await retryChannelWebhookDelivery('missing');
     expect(result).toEqual({ ok: false, deliveryId: 'missing', status: 'failed', error: 'delivery_not_found' });
     expect(mockState.fetch).not.toHaveBeenCalled();
+  });
+
+  it('does not touch the row, nor spend an attempt, when the bridge is unconfigured', async () => {
+    delete process.env.N8N_CHANNEL_WEBHOOK_URL;
+    mockState.deliveryFindUnique.mockResolvedValue({
+      id: 'dlv_9',
+      connectionType: 'telegram',
+      connectionId: 'conn_9',
+      clientId: 'client_9',
+      payload: {},
+      attempts: 4,
+    });
+
+    const result = await retryChannelWebhookDelivery('dlv_9');
+
+    expect(mockState.fetch).not.toHaveBeenCalled();
+    expect(mockState.deliveryUpdate).not.toHaveBeenCalled();
+    expect(result).toEqual({ ok: false, deliveryId: 'dlv_9', status: 'skipped', error: 'not_configured' });
   });
 
   it('increments attempts and flips to delivered on success', async () => {

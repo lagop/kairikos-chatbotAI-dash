@@ -1,4 +1,5 @@
 import 'server-only';
+import { notifyFromAddress } from './email-sender';
 import type { PrismaClient } from '@prisma/client';
 import { logError } from './observability';
 
@@ -21,8 +22,7 @@ import { logError } from './observability';
 //     sería la peor primera impresión posible.
 // =============================================================================
 
-const FROM_ADDRESS =
-  process.env.OPERATOR_NOTIFY_FROM ?? process.env.AUTH_EMAIL_FROM ?? 'Kairikos Ops <ops@kairikos.com>';
+const FROM_ADDRESS = notifyFromAddress();
 const PORTAL_BASE_URL = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://portal.kairikos.com';
 const PORTAL_REVIEWS_URL = `${PORTAL_BASE_URL}/portal/resenas`;
 
@@ -109,8 +109,7 @@ export async function sendNegativeReviewAlert(
     return { ok: true, skipped: true, reason: 'no_api_key' };
   }
 
-  const requireResend = (0, eval)('require') as NodeJS.Require;
-  const { Resend } = requireResend('resend') as typeof import('resend');
+  const { Resend } = await import('resend');
   const resend = new Resend(apiKey);
 
   try {

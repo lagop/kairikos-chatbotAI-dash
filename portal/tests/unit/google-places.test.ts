@@ -94,6 +94,48 @@ describe('searchPlaces', () => {
     });
   });
 
+  // A1 — el interruptor de coste. rating/userRatingCount suben esta
+  // llamada de Essentials a Pro, así que el barrido semanal NO debe
+  // pedirlos: si alguien los mete en la máscara por defecto, el gasto de
+  // cada campaña sube en silencio y esto es lo que lo detecta.
+  it('only asks Google for ratings when includeRatings is set', async () => {
+    mockState.fetch.mockResolvedValueOnce(jsonResponse({ places: [] }));
+    await searchPlaces({ textQuery: 'fontaneros' });
+    expect(mockState.fetch.mock.calls[0][1].headers['X-Goog-FieldMask']).not.toContain('places.rating');
+
+    mockState.fetch.mockResolvedValueOnce(jsonResponse({ places: [] }));
+    await searchPlaces({ textQuery: 'fontaneros', includeRatings: true });
+    const mask = mockState.fetch.mock.calls[1][1].headers['X-Goog-FieldMask'];
+    expect(mask).toContain('places.rating');
+    expect(mask).toContain('places.userRatingCount');
+  });
+
+  it('maps rating, review count and coordinates when Google sends them', async () => {
+    mockState.fetch.mockResolvedValueOnce(
+      jsonResponse({
+        places: [
+          {
+            id: 'place_1',
+            displayName: { text: 'Fontanería Ejemplo' },
+            rating: 4.6,
+            userRatingCount: 132,
+            location: { latitude: 38.2699, longitude: -0.7126 },
+          },
+        ],
+      }),
+    );
+    const result = await searchPlaces({ textQuery: 'fontaneros', includeRatings: true });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.results[0]).toMatchObject({
+        rating: 4.6,
+        userRatingCount: 132,
+        latitude: 38.2699,
+        longitude: -0.7126,
+      });
+    }
+  });
+
   it('forwards pageToken when given', async () => {
     mockState.fetch.mockResolvedValueOnce(jsonResponse({ places: [] }));
     await searchPlaces({ textQuery: 'x', pageToken: 'token_abc' });
@@ -127,6 +169,12 @@ describe('searchPlaces', () => {
             formattedAddress: 'Calle Mayor 1, Las Palmas',
             websiteUri: 'https://ferreteriacentral.example',
             types: ['hardware_store', 'store'],
+            latitude: null,
+            longitude: null,
+            // A1 — null porque esta búsqueda NO pidió estrellas: solo
+            // llegan con includeRatings, que sube el SKU a Pro.
+            rating: null,
+            userRatingCount: null,
           },
         ],
         nextPageToken: 'next_page_abc',
@@ -199,6 +247,10 @@ describe('getPlaceDetails', () => {
         phoneNumber: '+34922334455',
         primaryType: 'hardware_store',
         businessStatus: 'OPERATIONAL',
+        // A1 — location viaja en el mismo Details, que ya era Enterprise
+        // por el teléfono: pedirla no encarece la llamada.
+        latitude: null,
+        longitude: null,
       },
     });
   });
@@ -229,6 +281,8 @@ describe('getPlaceDetails', () => {
         phoneNumber: null,
         primaryType: null,
         businessStatus: null,
+        latitude: null,
+        longitude: null,
       },
     });
   });

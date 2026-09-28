@@ -3,6 +3,7 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { sweepDueConversationsForClassification } from '@/lib/lead-classification-sweep';
 import { sweepStaleLeadAlerts } from '@/lib/lead-stale-alerts';
 import { logError } from '@/lib/observability';
+import { isAuthorizedCronRequest } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -21,11 +22,6 @@ export const maxDuration = 60;
  * cadence never causes duplicate classification or runaway cost — a
  * missed tick just means a conversation's lead lands later.
  */
-function isAuthorizedCronRequest(req: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  return req.headers.get('authorization') === `Bearer ${secret}`;
-}
 
 export async function GET(req: NextRequest) {
   if (!isAuthorizedCronRequest(req)) {

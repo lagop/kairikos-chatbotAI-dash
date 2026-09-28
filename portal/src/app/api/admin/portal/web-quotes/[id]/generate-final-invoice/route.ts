@@ -68,6 +68,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         kairikos_product_code: 'web',
         kairikos_invoice_role: 'final',
       },
+      // Un doble clic no factura dos veces el saldo — ver createWebQuoteInvoice.
+      idempotencyKey: `web_quote_invoice:${webQuote.id}:final`,
     });
     await syncInvoiceFromStripe(invoice);
 

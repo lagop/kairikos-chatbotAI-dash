@@ -2,6 +2,7 @@ import 'server-only';
 import type { PrismaClient } from '@prisma/client';
 import { decryptMetaToken } from './meta-business';
 import { listMessageTemplates, isAccessTokenError } from './whatsapp-api';
+import { findTemplateTextDrift, allRecallTemplateDefinitions } from './recall-templates';
 import {
   renderStuck,
   renderConnectionLost,
@@ -55,6 +56,10 @@ export interface TemplateSyncResult {
   connections: number;
   templates: number;
   failed: number;
+  /** Plantillas cuyo texto en Meta no coincide con el del código. Se
+   *  cuentan aparte de `failed`: el sync fue bien, lo que falla es el
+   *  contenido aprobado. */
+  drifted: number;
 }
 
 /**
@@ -83,7 +88,7 @@ export async function syncTemplateStatuses(
     },
   });
 
-  const result: TemplateSyncResult = { connections: connections.length, templates: 0, failed: 0 };
+  const result: TemplateSyncResult = { connections: connections.length, templates: 0, failed: 0, drifted: 0 };
 
   for (const connection of connections) {
     try {
@@ -109,6 +114,22 @@ export async function syncTemplateStatuses(
           .catch(() => null);
         result.failed += 1;
         continue;
+      }
+
+      // El texto aprobado en Meta es el que de verdad reciben las
+      // personas; el del código es solo lo que pedimos. Cuando no
+      // coinciden manda Meta, así que esto avisa en vez de callar. Ver
+      // findTemplateTextDrift — nació de tres plantillas que llevaban
+      // semanas enviándose con los acentos rotos.
+      const drifts = findTemplateTextDrift(listed.data.data ?? [], allRecallTemplateDefinitions());
+      for (const drift of drifts) {
+        result.drifted += 1;
+        logError(
+          'whatsapp_health.template_text_drift',
+          new Error(`template_text_drift:${drift.name}`),
+          { connectionId: connection.id, template: drift.name, esperado: drift.expected, enMeta: drift.actual },
+          'warn',
+        );
       }
 
       for (const template of listed.data.data ?? []) {

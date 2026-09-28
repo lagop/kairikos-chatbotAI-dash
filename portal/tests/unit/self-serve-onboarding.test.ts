@@ -23,6 +23,8 @@ const mockState = vi.hoisted(() => ({
   updateEmailVerificationToken: vi.fn(),
   updateManyChatbotClient: vi.fn(),
   transactionArray: vi.fn(),
+  findUniqueUser: vi.fn(),
+  updateUser: vi.fn(),
 }));
 
 const mockTx = {
@@ -39,6 +41,10 @@ const mockPrisma = {
   chatbotClient: {
     findUnique: (...args: unknown[]) => mockState.findUniqueChatbotClient(...args),
     updateMany: (...args: unknown[]) => mockState.updateManyChatbotClient(...args),
+  },
+  user: {
+    findUnique: (...args: unknown[]) => mockState.findUniqueUser(...args),
+    update: (...args: unknown[]) => mockState.updateUser(...args),
   },
   emailVerificationToken: {
     updateMany: (...args: unknown[]) => mockState.updateManyEmailVerificationToken(...args),
@@ -59,10 +65,12 @@ beforeEach(() => {
   mockState.updateEmailVerificationToken.mockReset().mockResolvedValue({});
   mockState.updateManyChatbotClient.mockReset().mockResolvedValue({ count: 1 });
   mockState.transactionArray.mockReset().mockResolvedValue([]);
+  mockState.findUniqueUser.mockReset().mockResolvedValue(null);
+  mockState.updateUser.mockReset().mockReturnValue({ __op: 'user.update' });
 });
 
 describe('createClientForSelfServe', () => {
-  it('creates ChatbotClient (tosAcceptedAt stamped) + User (password already set) + ChatbotClientUser', async () => {
+  it('creates ChatbotClient (tosAcceptedAt stamped) + User (password LOCKED until the email is verified) + ChatbotClientUser', async () => {
     const { createClientForSelfServe } = await import('@/lib/self-serve-onboarding');
     const result = await createClientForSelfServe(mockPrisma, {
       email: '  Aurora@Example.com  ',
@@ -79,7 +87,8 @@ describe('createClientForSelfServe', () => {
     );
     expect(mockState.createUser).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ email: 'aurora@example.com', passwordHash: 'argon2id$hashed', role: 'client' }),
+        // Revisión de seguridad 22/09/2026 — ver lib/pending-signup.ts.
+        data: expect.objectContaining({ email: 'aurora@example.com', passwordHash: 'pending:argon2id$hashed', role: 'client' }),
       }),
     );
   });
@@ -130,5 +139,23 @@ describe('verifyEmailToken', () => {
 
     expect(result).toEqual({ ok: true });
     expect(mockState.transactionArray).toHaveBeenCalledTimes(1);
+  });
+
+  it('unlocks a pending self-serve password in the same transaction that burns the token', async () => {
+    mockState.findFirstEmailVerificationToken.mockResolvedValueOnce({ id: 'evt_1' });
+    mockState.findUniqueUser.mockResolvedValueOnce({ id: 'user_1', passwordHash: 'pending:argon2id$hashed' });
+    const { verifyEmailToken } = await import('@/lib/self-serve-onboarding');
+    await verifyEmailToken(mockPrisma, { email: 'aurora@example.com', token: 'a'.repeat(64) });
+
+    expect(mockState.updateUser).toHaveBeenCalledWith({ where: { id: 'user_1' }, data: { passwordHash: 'argon2id$hashed' } });
+    expect(mockState.transactionArray.mock.calls[0][0]).toContainEqual({ __op: 'user.update' });
+  });
+
+  it('leaves a normal (operator-created) password untouched', async () => {
+    mockState.findFirstEmailVerificationToken.mockResolvedValueOnce({ id: 'evt_1' });
+    mockState.findUniqueUser.mockResolvedValueOnce({ id: 'user_1', passwordHash: 'argon2id$hashed' });
+    const { verifyEmailToken } = await import('@/lib/self-serve-onboarding');
+    await verifyEmailToken(mockPrisma, { email: 'aurora@example.com', token: 'a'.repeat(64) });
+    expect(mockState.updateUser).not.toHaveBeenCalled();
   });
 });

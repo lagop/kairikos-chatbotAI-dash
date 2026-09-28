@@ -109,6 +109,12 @@ typed (see `STAGING.md`), so `NODE_ENV`/`VERCEL_ENV` can't distinguish
 `operator-dev` case. Needs a decision from whoever knows if anything
 external still calls this before restricting it.
 
+**Resuelto el 22/09/2026 (revisión de seguridad): la ruta se borró.** El
+portal ya no corre en Vercel sino en la VPS, `QA_SEED_TOKEN` no está en
+`docker-compose.yml` (en producción la ruta solo podía contestar 422) y nada
+la llamaba: `apply-to-staging.sh` y `STAGING.md` ejecutan el script
+directamente con `npx tsx scripts/seed-test-passwords.ts`, que sigue ahí.
+
 ## Related
 
 - [WP-00 hotfix](../portal/src/lib/api-auth.ts) — the original finding.
