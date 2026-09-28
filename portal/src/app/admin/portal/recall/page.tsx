@@ -6,6 +6,46 @@ import { PageHeading } from '@/components/portal/PageHeading';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { listRecallQueue, isStuck, stuckThresholdDays, type RecallQueueRow } from '@/lib/recall';
+import { templateApprovalByConnection, type TemplateApprovalSummary } from '@/lib/recall-templates';
+
+const TEMPLATE_STATUS_LABEL: Record<string, string> = {
+  REJECTED: 'rechazada',
+  PAUSED: 'pausada por Meta',
+  DISABLED: 'desactivada por Meta',
+  SUBMIT_FAILED: 'no se pudo enviar',
+};
+
+/** Cuántas plantillas tiene aprobadas, cuál falta y por qué. Solo lectura:
+ *  el dato lo sincroniza el cron cada ~5 minutos desde Meta. */
+function TemplateApproval({ summary }: { summary: TemplateApprovalSummary }) {
+  const { required, optional, requiredNotSubmitted, problems } = summary;
+  const done = required.approved === required.total;
+  return (
+    <div className="space-y-1 border-t border-kairikos-border pt-3 text-xs" data-testid="recall-queue-templates">
+      <p>
+        <span className={done ? 'text-kairikos-success' : 'text-kairikos-text'} data-testid="recall-queue-templates-required">
+          Plantillas obligatorias: {required.approved}/{required.total} aprobadas
+        </span>
+        <span className="text-kairikos-muted">
+          {required.pending > 0 ? ` · ${required.pending} en revisión` : ''}
+          {requiredNotSubmitted.length > 0 ? ` · ${requiredNotSubmitted.length} sin enviar` : ''}
+          {` · opcionales ${optional.approved}/${optional.total}`}
+        </span>
+      </p>
+      {problems.length > 0 ? (
+        <ul className="space-y-0.5 text-kairikos-danger" data-testid="recall-queue-templates-problems">
+          {problems.map((p) => (
+            <li key={p.name}>
+              <span className="font-mono">{p.name}</span> {TEMPLATE_STATUS_LABEL[p.status] ?? p.status}
+              {p.required ? ' (obligatoria: para el alta)' : ''}
+              {p.reason ? ` — ${p.reason}` : ''}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -58,7 +98,7 @@ function daysSince(date: Date): number {
   return Math.floor((Date.now() - date.getTime()) / (24 * 60 * 60 * 1000));
 }
 
-function RecallQueueCard({ row }: { row: RecallQueueRow }) {
+function RecallQueueCard({ row, templates }: { row: RecallQueueRow; templates: TemplateApprovalSummary | null }) {
   const stuck = isStuck(row.status, row.since);
   const threshold = stuckThresholdDays(row.status);
   return (
@@ -99,6 +139,8 @@ function RecallQueueCard({ row }: { row: RecallQueueRow }) {
           Ver cliente →
         </Link>
       </div>
+
+      {templates ? <TemplateApproval summary={templates} /> : null}
     </li>
   );
 }
@@ -110,8 +152,13 @@ export default async function AdminRecallQueuePage() {
   }
 
   let rows: RecallQueueRow[] = [];
+  let templates = new Map<string, TemplateApprovalSummary>();
   if (isDatabaseConfigured) {
     rows = await listRecallQueue(prisma);
+    templates = await templateApprovalByConnection(
+      prisma,
+      rows.map((r) => r.metaConnectionId).filter((id): id is string => id !== null),
+    );
   }
 
   // Sorted so the ones needing a call today come first; the query already
@@ -160,7 +207,11 @@ export default async function AdminRecallQueuePage() {
       ) : (
         <ul className="space-y-4" data-testid="recall-queue-list">
           {sorted.map((row) => (
-            <RecallQueueCard key={row.subscriptionId} row={row} />
+            <RecallQueueCard
+              key={row.subscriptionId}
+              row={row}
+              templates={row.metaConnectionId ? (templates.get(row.metaConnectionId) ?? null) : null}
+            />
           ))}
         </ul>
       )}

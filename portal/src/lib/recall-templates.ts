@@ -362,6 +362,99 @@ export async function submitAllRecallTemplates(
 
 const REQUIRED_TEMPLATE_NAMES = RECALL_TEMPLATE_DEFINITIONS.map((def) => def.name);
 
+// =============================================================================
+// 28/09/2026 — cuántas plantillas tiene aprobadas cada cliente, para la cola
+// de altas (/admin/portal/recall).
+//
+// El alta se queda en «number_assigned» hasta que Meta aprueba TODAS las
+// obligatorias (advanceSubscriptionsWithApprovedTemplates), y hasta hoy el
+// operador no tenía forma de ver cuál faltaba ni por qué la habían
+// rechazado: el dato estaba en WhatsappTemplate, sincronizado cada ~5
+// minutos, pero ninguna pantalla lo leía. Es lo único que se rescató de la
+// PR #149, que se cerró sin mergear: hacía editables los textos manteniendo
+// el nombre, y eso no cambia lo que se envía (en WhatsApp viaja el cuerpo
+// aprobado). Esto solo LEE.
+//
+// Las obligatorias son EXACTAMENTE las que decide el avance del alta
+// (REQUIRED_TEMPLATE_NAMES): si el resumen contara otras, diría «8/8» a un
+// cliente parado, o «7/8» a uno que ya avanzó. Las filas de nombres que el
+// código ya no define (una v1 sustituida por su v2) no cuentan.
+//
+// No enseña el desvío de texto (findTemplateTextDrift): ese se calcula al
+// sincronizar y no se guarda por plantilla. Si hace falta aquí, hay que
+// guardarlo primero.
+// =============================================================================
+
+/** Estados de Meta (y el nuestro, SUBMIT_FAILED) que piden que alguien mire. */
+const TEMPLATE_PROBLEM_STATUSES = new Set(['REJECTED', 'PAUSED', 'DISABLED', 'SUBMIT_FAILED']);
+
+export interface TemplateApprovalSummary {
+  required: { approved: number; pending: number; total: number };
+  optional: { approved: number; total: number };
+  /** Obligatorias que todavía no se han enviado a Meta (sin fila). */
+  requiredNotSubmitted: string[];
+  problems: Array<{ name: string; status: string; reason: string | null; required: boolean }>;
+}
+
+/** Pura, para probarla sin base de datos. */
+export function summarizeTemplateApproval(
+  rows: ReadonlyArray<{ name: string; status: string; rejectedReason: string | null }>,
+  names: { required: readonly string[]; optional: readonly string[] },
+): TemplateApprovalSummary {
+  const byName = new Map(rows.map((r) => [r.name, r]));
+  const required = new Set(names.required);
+  const known = [...names.required, ...names.optional];
+
+  const count = (list: readonly string[], status: string) =>
+    list.filter((n) => byName.get(n)?.status === status).length;
+
+  return {
+    required: {
+      approved: count(names.required, 'APPROVED'),
+      pending: count(names.required, 'PENDING'),
+      total: names.required.length,
+    },
+    optional: { approved: count(names.optional, 'APPROVED'), total: names.optional.length },
+    requiredNotSubmitted: names.required.filter((n) => !byName.has(n)),
+    problems: known
+      .map((n) => byName.get(n))
+      .filter((r): r is NonNullable<typeof r> => r !== undefined && TEMPLATE_PROBLEM_STATUSES.has(r.status))
+      .map((r) => ({ name: r.name, status: r.status, reason: r.rejectedReason, required: required.has(r.name) }))
+      // Las que paran el alta, primero.
+      .sort((a, b) => Number(b.required) - Number(a.required)),
+  };
+}
+
+/** Un resumen por conexión de WhatsApp, con UNA consulta para toda la cola. */
+export async function templateApprovalByConnection(
+  prisma: PrismaClient,
+  connectionIds: readonly string[],
+): Promise<Map<string, TemplateApprovalSummary>> {
+  const result = new Map<string, TemplateApprovalSummary>();
+  if (connectionIds.length === 0) return result;
+
+  const requiredSet = new Set(REQUIRED_TEMPLATE_NAMES);
+  const optional = allRecallTemplateDefinitions()
+    .map((d) => d.name)
+    .filter((n) => !requiredSet.has(n));
+
+  const rows = await prisma.whatsappTemplate.findMany({
+    where: { connectionId: { in: [...connectionIds] } },
+    select: { connectionId: true, name: true, status: true, rejectedReason: true },
+  });
+
+  for (const id of connectionIds) {
+    result.set(
+      id,
+      summarizeTemplateApproval(
+        rows.filter((r) => r.connectionId === id),
+        { required: REQUIRED_TEMPLATE_NAMES, optional },
+      ),
+    );
+  }
+  return result;
+}
+
 export type ForwardingInstructionsOutcome = 'sent' | 'failed' | 'skipped';
 
 /**

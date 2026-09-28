@@ -51,6 +51,8 @@ import {
   allRecallTemplateDefinitions,
   RECALL_TEMPLATE_DEFINITIONS,
   RECALL_OPTIONAL_TEMPLATE_DEFINITIONS,
+  summarizeTemplateApproval,
+  templateApprovalByConnection,
 } from '@/lib/recall-templates';
 // Sin mockear a propósito: el test compara contra el texto REAL que se va
 // a enviar. Un doble aquí comprobaría que dos constantes falsas coinciden.
@@ -732,5 +734,90 @@ describe('ensureRecallTemplatesSubmitted', () => {
 
     expect(mockState.createMessageTemplate).toHaveBeenCalledTimes(20);
     expect(result.submitted).toBe(20);
+  });
+});
+
+// =============================================================================
+// 28/09/2026 — el resumen de aprobaciones de la cola de altas.
+// =============================================================================
+
+describe('summarizeTemplateApproval', () => {
+  const names = { required: ['a', 'b', 'c'], optional: ['x', 'y'] };
+
+  it('cuenta aprobadas, en revisión y sin enviar entre las obligatorias', () => {
+    const s = summarizeTemplateApproval(
+      [
+        { name: 'a', status: 'APPROVED', rejectedReason: null },
+        { name: 'b', status: 'PENDING', rejectedReason: null },
+        { name: 'x', status: 'APPROVED', rejectedReason: null },
+      ],
+      names,
+    );
+    expect(s.required).toEqual({ approved: 1, pending: 1, total: 3 });
+    expect(s.requiredNotSubmitted).toEqual(['c']);
+    expect(s.optional).toEqual({ approved: 1, total: 2 });
+    expect(s.problems).toEqual([]);
+  });
+
+  it('lista los problemas con su motivo, las obligatorias primero', () => {
+    const s = summarizeTemplateApproval(
+      [
+        { name: 'y', status: 'REJECTED', rejectedReason: 'INVALID_FORMAT' },
+        { name: 'b', status: 'SUBMIT_FAILED', rejectedReason: 'Invalid parameter' },
+        { name: 'c', status: 'PAUSED', rejectedReason: null },
+      ],
+      names,
+    );
+    expect(s.problems).toEqual([
+      { name: 'b', status: 'SUBMIT_FAILED', reason: 'Invalid parameter', required: true },
+      { name: 'c', status: 'PAUSED', reason: null, required: true },
+      { name: 'y', status: 'REJECTED', reason: 'INVALID_FORMAT', required: false },
+    ]);
+  });
+
+  // Una v1 sustituida por su v2 sigue en el espejo; no puede sumar ni alarmar.
+  it('ignora las plantillas que el código ya no define', () => {
+    const s = summarizeTemplateApproval(
+      [
+        { name: 'recall_caller_open_viejo', status: 'APPROVED', rejectedReason: null },
+        { name: 'otra_vieja', status: 'REJECTED', rejectedReason: 'x' },
+      ],
+      names,
+    );
+    expect(s.required.approved).toBe(0);
+    expect(s.optional.approved).toBe(0);
+    expect(s.problems).toEqual([]);
+  });
+});
+
+describe('templateApprovalByConnection', () => {
+  it('sin conexiones no consulta nada', async () => {
+    const map = await templateApprovalByConnection(prisma, []);
+    expect(map.size).toBe(0);
+    expect(state.whatsappTemplateFindMany).not.toHaveBeenCalled();
+  });
+
+  it('una sola consulta para toda la cola, y un resumen por conexión aunque no tenga filas', async () => {
+    state.whatsappTemplateFindMany.mockResolvedValue(
+      RECALL_TEMPLATE_DEFINITIONS.map((d) => ({ connectionId: 'conn_1', name: d.name, status: 'APPROVED', rejectedReason: null })),
+    );
+    const map = await templateApprovalByConnection(prisma, ['conn_1', 'conn_2']);
+
+    expect(state.whatsappTemplateFindMany).toHaveBeenCalledTimes(1);
+    expect(state.whatsappTemplateFindMany.mock.calls[0][0].where).toEqual({ connectionId: { in: ['conn_1', 'conn_2'] } });
+    expect(map.get('conn_2')?.required.approved).toBe(0);
+    expect(map.get('conn_2')?.requiredNotSubmitted).toHaveLength(RECALL_TEMPLATE_DEFINITIONS.length);
+  });
+
+  // Las obligatorias del resumen son las MISMAS que deciden si el alta
+  // avanza: si difirieran, el resumen diría «completo» a un alta parada.
+  it('las obligatorias son exactamente las que hacen avanzar el alta', async () => {
+    state.whatsappTemplateFindMany.mockResolvedValue(
+      RECALL_TEMPLATE_DEFINITIONS.map((d) => ({ connectionId: 'conn_1', name: d.name, status: 'APPROVED', rejectedReason: null })),
+    );
+    const s = (await templateApprovalByConnection(prisma, ['conn_1'])).get('conn_1');
+    expect(s?.required).toEqual({ approved: RECALL_TEMPLATE_DEFINITIONS.length, pending: 0, total: RECALL_TEMPLATE_DEFINITIONS.length });
+    // Y las opcionales son todo lo demás que se envía a la WABA.
+    expect(s?.optional.total).toBe(allRecallTemplateDefinitions().length - RECALL_TEMPLATE_DEFINITIONS.length);
   });
 });
