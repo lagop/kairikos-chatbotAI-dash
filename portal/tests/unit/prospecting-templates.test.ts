@@ -40,13 +40,10 @@ vi.mock('@/lib/recall-messaging', () => ({
   metaSenderFor: (...a: unknown[]) => mockState.metaSenderFor(...a),
 }));
 
-vi.mock('@/lib/prospecting-contact', () => ({
-  PROSPECTING_TEMPLATES: {
-    firstContact: { name: 'prospecting_first_contact', languageCode: 'es' },
-    followUp1: { name: 'prospecting_follow_up_1', languageCode: 'es' },
-    followUp2: { name: 'prospecting_follow_up_2', languageCode: 'es' },
-  },
-}));
+// prospecting-contact NO se mockea: este archivo comprueba los nombres que
+// se someten a Meta, y un mock que los repitiera a mano los congelaría. Así
+// pasó con el primer mensaje: se renombró a _v2 y este test seguía en verde
+// comprobando el nombre viejo contra la copia del mock.
 
 vi.mock('@/lib/observability', () => ({
   logError: (...a: unknown[]) => mockState.logError(...a),
@@ -102,7 +99,7 @@ describe('PROSPECTING_TEMPLATE_DEFINITIONS', () => {
   it('defines exactly the 3 templates the product actually sends, all Spanish MARKETING — not UTILITY, this is cold outreach with no existing relationship', () => {
     expect(PROSPECTING_TEMPLATE_DEFINITIONS).toHaveLength(3);
     const names = PROSPECTING_TEMPLATE_DEFINITIONS.map((t) => t.name);
-    expect(names).toEqual(['prospecting_first_contact', 'prospecting_follow_up_1', 'prospecting_follow_up_2']);
+    expect(names).toEqual(['prospecting_first_contact_v2', 'prospecting_follow_up_1', 'prospecting_follow_up_2']);
     for (const def of PROSPECTING_TEMPLATE_DEFINITIONS) {
       expect(def.languageCode).toBe('es');
       expect(def.category).toBe('MARKETING');
@@ -175,14 +172,14 @@ describe('submitAllProspectingTemplates', () => {
 describe('missingProspectingTemplateDefinitions', () => {
   it('las 3 faltan si el espejo está vacío', () => {
     expect(missingProspectingTemplateDefinitions(new Set()).map((t) => t.name)).toEqual([
-      'prospecting_first_contact',
+      'prospecting_first_contact_v2',
       'prospecting_follow_up_1',
       'prospecting_follow_up_2',
     ]);
   });
 
   it('no repite lo que ya está en el espejo', () => {
-    const names = missingProspectingTemplateDefinitions(new Set(['prospecting_first_contact'])).map((t) => t.name);
+    const names = missingProspectingTemplateDefinitions(new Set(['prospecting_first_contact_v2'])).map((t) => t.name);
     expect(names).toEqual(['prospecting_follow_up_1', 'prospecting_follow_up_2']);
   });
 });
@@ -221,7 +218,7 @@ describe('ensureProspectingTemplatesSubmitted', () => {
 
     expect(result).toEqual({ connections: 1, submitted: 3, failed: 0 });
     expect(mockState.createMessageTemplate.mock.calls.map((c) => c[2].name)).toEqual([
-      'prospecting_first_contact',
+      'prospecting_first_contact_v2',
       'prospecting_follow_up_1',
       'prospecting_follow_up_2',
     ]);
@@ -232,7 +229,7 @@ describe('ensureProspectingTemplatesSubmitted', () => {
         create: expect.objectContaining({
           clientId: 'client_1',
           connectionId: 'conn_1',
-          name: 'prospecting_first_contact',
+          name: 'prospecting_first_contact_v2',
           metaTemplateId: 'tpl_1',
           status: 'PENDING',
           lastCheckedAt: now,
@@ -243,13 +240,27 @@ describe('ensureProspectingTemplatesSubmitted', () => {
 
   it('no reenvía nada que ya esté en el espejo', async () => {
     state.templateFindMany.mockResolvedValue([
-      { name: 'prospecting_first_contact', status: 'PENDING', lastCheckedAt: new Date() },
+      { name: 'prospecting_first_contact_v2', status: 'PENDING', lastCheckedAt: new Date() },
       { name: 'prospecting_follow_up_1', status: 'APPROVED', lastCheckedAt: new Date() },
       { name: 'prospecting_follow_up_2', status: 'PENDING', lastCheckedAt: new Date() },
     ]);
     const result = await ensureProspectingTemplatesSubmitted(prisma);
     expect(result).toEqual({ connections: 1, submitted: 0, failed: 0 });
     expect(mockState.createMessageTemplate).not.toHaveBeenCalled();
+  });
+
+  // El renombrado del 28/09/2026: una WABA que ya tenía la v1 aprobada tiene
+  // que recibir la v2 — si el espejo la diera por cubierta, el envío pediría
+  // una plantilla que Meta no tiene (132001) y no saldría ni un mensaje.
+  it('una WABA con la v1 del primer mensaje recibe la v2: son plantillas distintas', async () => {
+    state.templateFindMany.mockResolvedValue([
+      { name: 'prospecting_first_contact', status: 'APPROVED', lastCheckedAt: new Date() },
+      { name: 'prospecting_follow_up_1', status: 'APPROVED', lastCheckedAt: new Date() },
+      { name: 'prospecting_follow_up_2', status: 'APPROVED', lastCheckedAt: new Date() },
+    ]);
+    const result = await ensureProspectingTemplatesSubmitted(prisma);
+    expect(result).toEqual({ connections: 1, submitted: 1, failed: 0 });
+    expect(mockState.createMessageTemplate.mock.calls.map((c) => c[2].name)).toEqual(['prospecting_first_contact_v2']);
   });
 
   it('un rechazo al crear queda como SUBMIT_FAILED con el motivo', async () => {

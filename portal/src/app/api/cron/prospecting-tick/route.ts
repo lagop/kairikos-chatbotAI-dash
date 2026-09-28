@@ -88,6 +88,7 @@ export async function GET(req: NextRequest) {
       consentAcknowledgedAt: true,
       consentVersion: true,
       autoContactPausedAt: true,
+      presentacion: true,
     },
   });
 

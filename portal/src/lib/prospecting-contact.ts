@@ -3,6 +3,7 @@ import type { PrismaClient } from '@prisma/client';
 import { sendTemplate, getPhoneNumberInfo } from './whatsapp-api';
 import { metaSenderFor } from './recall-messaging';
 import { logError } from './observability';
+import { MAX_CONTACTOS_POR_DIA, normalizarPresentacion, nombreRemitente, SEGUIMIENTOS } from './prospecting-presentacion';
 
 // =============================================================================
 // Prospección con IA, Fase C — the highest-risk piece of this product:
@@ -33,8 +34,14 @@ import { logError } from './observability';
 /** Bumping this string is how a future change to the consent copy in
  *  ProspectingProfileCard.tsx invalidates old consent automatically —
  *  the send gate below compares this against the stored consentVersion,
- *  not just checking consentAcknowledgedAt is non-null. */
-export const PROSPECTING_CONSENT_VERSION = 'v1';
+ *  not just checking consentAcknowledgedAt is non-null.
+ *
+ *  v2 (28/09/2026): cambió el primer mensaje —ver prospecting-presentacion.ts—
+ *  y el consentimiento pasó a ENSEÑARLO. Con la v1 el cliente autorizaba que
+ *  se escribiera en su nombre sin haber visto nunca qué se escribía. Ese día
+ *  ninguna campaña tenía el consentimiento dado, así que subir la versión no
+ *  le quitó el permiso a nadie. */
+export const PROSPECTING_CONSENT_VERSION = 'v2';
 
 /**
  * The template Meta has to approve for this product. Same contract as
@@ -44,7 +51,12 @@ export const PROSPECTING_CONSENT_VERSION = 'v1';
  * business name (who is reaching out).
  */
 export const PROSPECTING_TEMPLATES = {
-  firstContact: { name: 'prospecting_first_contact', languageCode: 'es' },
+  // v2 desde el 28/09/2026: el texto vive en prospecting-presentacion.ts.
+  // Nombre nuevo porque la v1 ya estaba aprobada en Meta, y en WhatsApp viaja
+  // el cuerpo aprobado — cambiar el texto con el mismo nombre no cambia lo que
+  // se envía. La v1 NO se conserva como respaldo de envío (a diferencia de
+  // recall): lo que había que dejar de enviar era justo su texto.
+  firstContact: { name: 'prospecting_first_contact_v2', languageCode: 'es' },
   // Fase 3.3 — los dos toques de seguimiento. Mismos dos parámetros que el
   // primero a propósito: un único contrato que revisar al enviarlos a
   // aprobación, y una sola forma de equivocarse en vez de tres.
@@ -79,8 +91,8 @@ export interface ProspectingSequenceStep {
  */
 export const PROSPECTING_SEQUENCE: readonly ProspectingSequenceStep[] = Object.freeze([
   { step: 1, template: PROSPECTING_TEMPLATES.firstContact, delayDays: 0 },
-  { step: 2, template: PROSPECTING_TEMPLATES.followUp1, delayDays: 3 },
-  { step: 3, template: PROSPECTING_TEMPLATES.followUp2, delayDays: 7 },
+  { step: 2, template: PROSPECTING_TEMPLATES.followUp1, delayDays: SEGUIMIENTOS[0].diasDespues },
+  { step: 3, template: PROSPECTING_TEMPLATES.followUp2, delayDays: SEGUIMIENTOS[1].diasDespues },
 ]);
 
 export const MAX_SEQUENCE_TOUCHES = PROSPECTING_SEQUENCE.length;
@@ -96,7 +108,7 @@ export function nextSequenceStep(followUpCount: number): ProspectingSequenceStep
  *  messages in one day is exactly the pattern that gets a number reported
  *  and its quality rating tanked, which is the one failure mode this
  *  entire phase exists to avoid triggering. */
-export const MAX_AUTO_CONTACTS_PER_DAY = 20;
+export const MAX_AUTO_CONTACTS_PER_DAY = MAX_CONTACTOS_POR_DIA;
 
 /** Give up on a permanently-failing number after this many attempts —
  *  same value and reasoning as recall-messaging.ts's MAX_NOTIFY_ATTEMPTS:
@@ -120,6 +132,9 @@ export interface ProspectingContactCampaignInput {
   consentAcknowledgedAt: Date | null;
   consentVersion: string | null;
   autoContactPausedAt: Date | null;
+  /** «Nos dedicamos a …» — el {{3}} del primer mensaje. Sin ella, el primer
+   *  mensaje no se envía (los seguimientos sí: no la usan). */
+  presentacion: string | null;
 }
 
 export type RunProspectingContactResult =
@@ -221,7 +236,7 @@ export async function runProspectingContact(
     where: { id: campaign.clientId },
     select: { name: true, companyName: true },
   });
-  const businessName = client?.companyName ?? client?.name ?? '';
+  const businessName = nombreRemitente(client);
 
   // Los seguimientos van ANTES que los primeros contactos dentro del cupo
   // diario. Terminar una secuencia empezada vale más que empezar otra: al
@@ -254,8 +269,16 @@ export async function runProspectingContact(
     take: remaining,
   });
 
+  // Sin presentación no sale ningún PRIMER mensaje: quedaría «Nos dedicamos
+  // a  y creemos que…», en nombre del cliente y a un desconocido. Se
+  // normaliza otra vez aquí aunque la ruta ya la guarde normalizada: es la
+  // última puerta antes de WhatsApp, y un valor viejo o escrito por otro
+  // camino no puede colarse. Los seguimientos siguen: no la usan, y dejarlos
+  // a medias rompería una cadencia ya empezada.
+  const presentacion = normalizarPresentacion(campaign.presentacion);
+
   const firstContacts =
-    followUps.length >= remaining
+    followUps.length >= remaining || !presentacion
       ? []
       : await prisma.lead.findMany({
           where: {
@@ -285,9 +308,19 @@ export async function runProspectingContact(
       continue;
     }
 
+    // El primer toque lleva tres parámetros; los seguimientos, dos. Un
+    // parámetro de más o de menos no lo rechaza Meta al revisar la plantilla:
+    // lo rechaza al ENVIAR (132000), mensaje a mensaje. Por eso hay un test
+    // que compara el número de parámetros de cada escalón con los {{n}} de su
+    // texto.
+    const bodyParams =
+      step.step === 1
+        ? [lead.contactName ?? 'equipo', businessName, presentacion ?? '']
+        : [lead.contactName ?? 'equipo', businessName];
+
     const result = await sendTemplate(sender.token, sender.phoneNumberId, phone, {
       ...step.template,
-      bodyParams: [lead.contactName ?? 'equipo', businessName],
+      bodyParams,
     });
 
     if (result.ok) {

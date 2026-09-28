@@ -2,6 +2,15 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import {
+  MAX_CONTACTOS_POR_DIA as MAX_POR_DIA,
+  normalizarPresentacion,
+  PRESENTACION_MAX,
+  primerMensaje,
+  PROSPECTO_DE_EJEMPLO,
+  rellenarPlantilla,
+  SEGUIMIENTOS,
+} from '@/lib/prospecting-presentacion';
 
 // =============================================================================
 // Prospección con IA, Fase A — the client's own target-profile settings:
@@ -16,6 +25,8 @@ const ERROR_LABEL: Record<string, string> = {
   forbidden: 'Este producto no está disponible en tu cuenta ahora mismo.',
   internal_error: 'Algo falló al guardar. Si persiste, contacta con el equipo técnico.',
   not_found: 'Guarda tu perfil de búsqueda antes de activar el contacto automático.',
+  presentacion_demasiado_larga: `A qué te dedicas tiene que caber en ${PRESENTACION_MAX} caracteres.`,
+  falta_presentacion: 'Escribe a qué te dedicas antes de autorizar: sin eso el primer mensaje no se puede enviar.',
 };
 
 export interface ProspectingProfile {
@@ -27,7 +38,12 @@ export interface ProspectingProfile {
   businessDescription: string | null;
   idealCustomer: string | null;
   exclusions: string | null;
-  // Fase C
+  // «Nos dedicamos a …», el {{3}} del primer mensaje (28/09/2026).
+  presentacion: string | null;
+  // Fase C. Solo llega con valor si el consentimiento es de la versión
+  // VIGENTE — lo decide la página, que puede leer PROSPECTING_CONSENT_VERSION.
+  // Uno de una versión anterior no deja enviar nada, y enseñarlo aquí como
+  // «activo» sería mentirle al cliente.
   consentAcknowledgedAt: Date | null;
   autoContactPausedAt: Date | null;
 }
@@ -47,7 +63,14 @@ const SUGGEST_NOTE: Record<string, string> = {
   crawl_failed: 'No pudimos leer tu web — lo hemos hecho con lo que nos has contado.',
 };
 
-export function ProspectingProfileCard({ profile }: { profile: ProspectingProfile | null }) {
+export function ProspectingProfileCard({
+  profile,
+  businessName,
+}: {
+  profile: ProspectingProfile | null;
+  /** El nombre con el que firman los mensajes: nombreRemitente(), el mismo que usa el envío. */
+  businessName: string;
+}) {
   const router = useRouter();
   const [category, setCategory] = useState(profile?.category ?? '');
   const [locationQuery, setLocationQuery] = useState(profile?.locationQuery ?? '');
@@ -56,6 +79,7 @@ export function ProspectingProfileCard({ profile }: { profile: ProspectingProfil
   const [businessDescription, setBusinessDescription] = useState(profile?.businessDescription ?? '');
   const [idealCustomer, setIdealCustomer] = useState(profile?.idealCustomer ?? '');
   const [exclusions, setExclusions] = useState(profile?.exclusions ?? '');
+  const [presentacion, setPresentacion] = useState(profile?.presentacion ?? '');
   const [suggesting, setSuggesting] = useState(false);
   const [suggestion, setSuggestion] = useState<Suggestion | null>(null);
   const [suggestNote, setSuggestNote] = useState<string | null>(null);
@@ -69,6 +93,23 @@ export function ProspectingProfileCard({ profile }: { profile: ProspectingProfil
   const [autoPaused, setAutoPaused] = useState(Boolean(profile?.autoContactPausedAt));
 
   const configured = Boolean(profile?.category && profile?.locationQuery);
+
+  // La vista previa sale de la MISMA función que prepara el parámetro antes
+  // de enviarlo, así que enseña lo que de verdad se mandaría — con el «nos
+  // dedicamos a» repetido ya quitado, sin el punto final, etc.
+  const presentacionLista = normalizarPresentacion(presentacion);
+  const presentacionLarga = (presentacionLista?.length ?? 0) > PRESENTACION_MAX;
+  const presentacionGuardada = normalizarPresentacion(profile?.presentacion);
+  const presentacionSinGuardar = presentacionLista !== presentacionGuardada;
+  const mensajes = presentacionLista
+    ? [
+        { cuando: 'El primer día', texto: primerMensaje({ prospecto: PROSPECTO_DE_EJEMPLO, negocio: businessName, presentacion: presentacionLista }) },
+        ...SEGUIMIENTOS.map((s, i) => ({
+          cuando: `${s.diasDespues} días después${i === 0 ? ', si no ha contestado' : ', si sigue sin contestar'}`,
+          texto: rellenarPlantilla(s.texto, [PROSPECTO_DE_EJEMPLO, businessName]),
+        })),
+      ]
+    : [];
 
   /** Pide una propuesta y la enseña. No guarda nada: el cliente elige. */
   async function suggest() {
@@ -104,12 +145,18 @@ export function ProspectingProfileCard({ profile }: { profile: ProspectingProfil
     }
   }
 
-  async function save() {
+  /** Guarda el formulario entero. Devuelve si salió bien, para que autorizar
+   *  pueda guardar antes la presentación que el cliente está viendo. */
+  async function save(): Promise<boolean> {
     setError(null);
     setSaved(false);
     if (!category.trim() || !locationQuery.trim()) {
       setError(ERROR_LABEL.invalid_body);
-      return;
+      return false;
+    }
+    if (presentacionLarga) {
+      setError(ERROR_LABEL.presentacion_demasiado_larga);
+      return false;
     }
     setSaving(true);
     try {
@@ -123,18 +170,21 @@ export function ProspectingProfileCard({ profile }: { profile: ProspectingProfil
           businessDescription: businessDescription.trim(),
           idealCustomer: idealCustomer.trim(),
           exclusions: exclusions.trim(),
+          presentacion: presentacion.trim(),
           radiusMeters: Math.min(Math.max(radiusKm, 1), 50) * 1000,
         }),
       });
       if (!res.ok) {
         const detail = await res.json().catch(() => null);
         setError(ERROR_LABEL[detail?.error] ?? 'No se pudo guardar.');
-        return;
+        return false;
       }
       setSaved(true);
       router.refresh();
+      return true;
     } catch (err) {
       setError(`Error de red: ${err instanceof Error ? err.message : 'desconocido'}`);
+      return false;
     } finally {
       setSaving(false);
     }
@@ -144,6 +194,14 @@ export function ProspectingProfileCard({ profile }: { profile: ProspectingProfil
     setConsentError(null);
     setConsentBusy(true);
     try {
+      // Se autoriza lo que se VE. Si la presentación del campo no es la
+      // guardada, se guarda antes; si eso falla, no se autoriza nada — la
+      // ruta de consentimiento miraría la versión vieja, y el cliente habría
+      // dado permiso para un mensaje distinto del que tenía delante.
+      if (next && presentacionSinGuardar && !(await save())) {
+        setConsentError('No se pudo guardar tu presentación, así que no hemos activado nada.');
+        return;
+      }
       const res = await fetch('/api/portal/prospecting/campaign/consent', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -346,7 +404,69 @@ export function ProspectingProfileCard({ profile }: { profile: ProspectingProfil
       ) : null}
 
       {configured ? (
-        <div className="border-t border-kairikos-border pt-4" data-testid="prospecting-consent-section">
+        <div className="space-y-4 border-t border-kairikos-border pt-4" data-testid="prospecting-consent-section">
+          <div className="space-y-2">
+            <label className="block space-y-1 text-sm">
+              <span className="text-xs font-medium text-kairikos-muted">
+                ¿A qué te dedicas? Completa la frase «Nos dedicamos a…»
+              </span>
+              <input
+                type="text"
+                className="input w-full"
+                placeholder="p. ej. reformas de baños y cocinas para comunidades"
+                value={presentacion}
+                onChange={(e) => setPresentacion(e.target.value)}
+                data-testid="prospecting-presentacion"
+              />
+            </label>
+            <p
+              className={`text-xs ${presentacionLarga ? 'text-kairikos-danger' : 'text-kairikos-muted'}`}
+              data-testid="prospecting-presentacion-count"
+            >
+              {presentacionLista?.length ?? 0} / {PRESENTACION_MAX}
+              {presentacionLarga ? ' — acórtala: va dentro de una frase que se lee en el móvil.' : ''}
+            </p>
+
+            {mensajes.length > 0 ? (
+              <div className="space-y-2" data-testid="prospecting-message-preview">
+                <p className="text-xs font-medium text-kairikos-muted">
+                  Esto es lo que recibiría, por ejemplo, «{PROSPECTO_DE_EJEMPLO}»:
+                </p>
+                {mensajes.map((m) => (
+                  <div key={m.cuando} className="space-y-1">
+                    <p className="text-xs text-kairikos-muted">{m.cuando}</p>
+                    <p
+                      className="rounded-xl border border-kairikos-border bg-kairikos-surface p-3 text-sm"
+                      data-testid="prospecting-message-preview-item"
+                    >
+                      {m.texto}
+                    </p>
+                  </div>
+                ))}
+                <p className="text-xs text-kairikos-muted">
+                  El nombre del prospecto cambia en cada mensaje; lo demás sale tal cual. En cuanto contesta, no le
+                  escribimos más: la conversación es tuya.
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-kairikos-muted" data-testid="prospecting-message-preview-empty">
+                Escribe a qué te dedicas y aquí verás el mensaje exacto que enviaríamos en tu nombre.
+              </p>
+            )}
+
+            {consentGiven && presentacionSinGuardar ? (
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={save}
+                disabled={saving || presentacionLarga || !presentacionLista}
+                data-testid="prospecting-presentacion-save"
+              >
+                {saving ? 'Guardando…' : 'Guardar el mensaje nuevo'}
+              </button>
+            ) : null}
+          </div>
+
           {autoPaused ? (
             <div className="space-y-2">
               <p className="text-sm text-kairikos-danger" data-testid="prospecting-auto-paused-banner">
@@ -357,7 +477,7 @@ export function ProspectingProfileCard({ profile }: { profile: ProspectingProfil
                 type="button"
                 className="btn-primary"
                 onClick={() => toggleConsent(true)}
-                disabled={consentBusy}
+                disabled={consentBusy || saving || !presentacionLista || presentacionLarga}
                 data-testid="prospecting-consent-resume"
               >
                 {consentBusy ? 'Reanudando…' : 'Reanudar contacto automático'}
@@ -380,15 +500,19 @@ export function ProspectingProfileCard({ profile }: { profile: ProspectingProfil
             </div>
           ) : (
             <div className="space-y-2">
-              <p className="text-sm text-kairikos-muted">
-                Con tu autorización, contactamos automáticamente por WhatsApp a cada prospecto nuevo desde tu propio
-                número. Eres responsable de este contacto.
+              {/* Este texto es lo que se autoriza. Si cambia, sube
+                  PROSPECTING_CONSENT_VERSION (prospecting-contact.ts): el
+                  permiso dado con un texto no vale para otro. */}
+              <p className="text-sm text-kairikos-muted" data-testid="prospecting-consent-copy">
+                Con tu autorización, escribimos por WhatsApp, desde tu propio número y con tu nombre, a cada prospecto
+                nuevo: los mensajes de arriba, como mucho tres, y hasta {MAX_POR_DIA} al día en total. Eres responsable
+                de este contacto.
               </p>
               <button
                 type="button"
                 className="btn-primary"
                 onClick={() => toggleConsent(true)}
-                disabled={consentBusy}
+                disabled={consentBusy || saving || !presentacionLista || presentacionLarga}
                 data-testid="prospecting-consent-give"
               >
                 {consentBusy ? 'Activando…' : 'Autorizar contacto automático'}

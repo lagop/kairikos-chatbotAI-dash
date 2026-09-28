@@ -81,6 +81,7 @@ function campaign(over: Partial<ProspectingContactCampaignInput> = {}): Prospect
     consentAcknowledgedAt: NOW,
     consentVersion: PROSPECTING_CONSENT_VERSION,
     autoContactPausedAt: null,
+    presentacion: 'reformas de baños y cocinas para comunidades',
     ...over,
   };
 }
@@ -239,7 +240,10 @@ describe('runProspectingContact — sending', () => {
       'tok',
       'phone_id_1',
       '+34600000001',
-      expect.objectContaining({ name: 'prospecting_first_contact', bodyParams: ['Ferretería Central', 'Peluquería Aurora'] }),
+      expect.objectContaining({
+        name: 'prospecting_first_contact_v2',
+        bodyParams: ['Ferretería Central', 'Peluquería Aurora', 'reformas de baños y cocinas para comunidades'],
+      }),
     );
     expect(state.leadUpdate).toHaveBeenCalledWith({
       where: { id: 'lead_1' },
@@ -266,7 +270,9 @@ describe('runProspectingContact — sending', () => {
       'tok',
       'phone_id_1',
       '+34600000001',
-      expect.objectContaining({ bodyParams: ['equipo', 'Peluquería Aurora'] }),
+      expect.objectContaining({
+        bodyParams: ['equipo', 'Peluquería Aurora', 'reformas de baños y cocinas para comunidades'],
+      }),
     );
   });
 
@@ -282,6 +288,59 @@ describe('runProspectingContact — sending', () => {
     });
     expect(state.leadAuditCreate).not.toHaveBeenCalled();
     expect(result).toEqual({ ok: true, sent: 0, followedUp: 0, failed: 1, capReached: false });
+  });
+
+  // ---------------------------------------------------------------------------
+  // 28/09/2026 — la presentación (el {{3}} del primer mensaje).
+  // ---------------------------------------------------------------------------
+
+  it.each([null, '', '   ', 'Nos dedicamos a...'])(
+    'sin presentación (%j) no sale ningún primer mensaje: quedaría «Nos dedicamos a  y…»',
+    async (presentacion) => {
+      mockLeads({ firstContacts: [lead()] });
+      const result = await runProspectingContact(prisma, campaign({ presentacion }), NOW);
+      expect(mockState.sendTemplate).not.toHaveBeenCalled();
+      expect(result).toEqual({ ok: true, sent: 0, followedUp: 0, failed: 0, capReached: false });
+    },
+  );
+
+  it('sin presentación los SEGUIMIENTOS siguen: no la usan, y cortar una cadencia empezada es peor', async () => {
+    mockLeads({ followUps: [lead({ id: 'seguimiento_1', followUpCount: 1, lastAutoContactAt: new Date('2026-09-01') })] });
+    await runProspectingContact(prisma, campaign({ presentacion: null }), NOW);
+    expect(mockState.sendTemplate).toHaveBeenCalledWith(
+      'tok',
+      'phone_id_1',
+      '+34600000001',
+      expect.objectContaining({ name: 'prospecting_follow_up_1', bodyParams: ['Ferretería Central', 'Peluquería Aurora'] }),
+    );
+  });
+
+  it('la presentación se normaliza en la última puerta, aunque llegue sucia por otro camino', async () => {
+    mockLeads({ firstContacts: [lead()] });
+    await runProspectingContact(
+      prisma,
+      campaign({ presentacion: '  Nos dedicamos a las reformas\nde baños.  ' }),
+      NOW,
+    );
+    expect(mockState.sendTemplate).toHaveBeenCalledWith(
+      'tok',
+      'phone_id_1',
+      '+34600000001',
+      expect.objectContaining({ bodyParams: ['Ferretería Central', 'Peluquería Aurora', 'las reformas de baños'] }),
+    );
+  });
+
+  // La trampa 4 de CLAUDE.md: `??` no salta con un string vacío.
+  it('un companyName guardado vacío no deja el mensaje sin firma: cae al nombre', async () => {
+    state.clientFindUnique.mockResolvedValue({ name: 'Aurora Owner', companyName: '   ' });
+    mockLeads({ firstContacts: [lead()] });
+    await runProspectingContact(prisma, campaign(), NOW);
+    expect(mockState.sendTemplate).toHaveBeenCalledWith(
+      'tok',
+      'phone_id_1',
+      '+34600000001',
+      expect.objectContaining({ bodyParams: expect.arrayContaining(['Aurora Owner']) }),
+    );
   });
 
   it('processes multiple leads independently — one failure does not stop the next send', async () => {
@@ -304,7 +363,7 @@ describe('runProspectingContact — sending', () => {
 
 describe('nextSequenceStep', () => {
   it('el primer toque de un lead sin contactar es el primer contacto', () => {
-    expect(nextSequenceStep(0)).toMatchObject({ step: 1, template: { name: 'prospecting_first_contact' } });
+    expect(nextSequenceStep(0)).toMatchObject({ step: 1, template: { name: 'prospecting_first_contact_v2' } });
   });
 
   it('avanza por la cadencia toque a toque', () => {
