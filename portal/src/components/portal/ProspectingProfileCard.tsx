@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   MAX_CONTACTOS_POR_DIA as MAX_POR_DIA,
   normalizarPresentacion,
+  parametrosDelPaso,
   PRESENTACION_MAX,
   primerMensaje,
   PROSPECTO_DE_EJEMPLO,
@@ -106,7 +107,12 @@ export function ProspectingProfileCard({
         { cuando: 'El primer día', texto: primerMensaje({ prospecto: PROSPECTO_DE_EJEMPLO, negocio: businessName, presentacion: presentacionLista }) },
         ...SEGUIMIENTOS.map((s, i) => ({
           cuando: `${s.diasDespues} días después${i === 0 ? ', si no ha contestado' : ', si sigue sin contestar'}`,
-          texto: rellenarPlantilla(s.texto, [PROSPECTO_DE_EJEMPLO, businessName]),
+          // Los mismos parámetros que el envío para ese paso (i + 2: el 1 es
+          // el primer mensaje), para que la vista previa no enseñe un {{3}}.
+          texto: rellenarPlantilla(
+            s.texto,
+            parametrosDelPaso(i + 2, { prospecto: PROSPECTO_DE_EJEMPLO, negocio: businessName, presentacion: presentacionLista }),
+          ),
         })),
       ]
     : [];

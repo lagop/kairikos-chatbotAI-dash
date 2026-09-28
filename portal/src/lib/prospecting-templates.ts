@@ -67,7 +67,7 @@ export const PROSPECTING_TEMPLATE_DEFINITIONS: readonly ProspectingTemplateDefin
     ...PROSPECTING_TEMPLATES.followUp1,
     category: 'MARKETING',
     bodyText: SEGUIMIENTOS[0].texto,
-    bodyExamples: ['Ferretería Central', 'Reformas Orly'],
+    bodyExamples: ['Fincas Ribera', 'Reformas Orly', 'reformas de baños y cocinas para comunidades'],
   },
   {
     ...PROSPECTING_TEMPLATES.followUp2,

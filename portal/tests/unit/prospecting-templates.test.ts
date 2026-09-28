@@ -49,6 +49,7 @@ vi.mock('@/lib/observability', () => ({
   logError: (...a: unknown[]) => mockState.logError(...a),
 }));
 
+import { PROSPECTING_TEMPLATES } from '@/lib/prospecting-contact';
 import {
   PROSPECTING_TEMPLATE_DEFINITIONS,
   submitAllProspectingTemplates,
@@ -99,7 +100,7 @@ describe('PROSPECTING_TEMPLATE_DEFINITIONS', () => {
   it('defines exactly the 3 templates the product actually sends, all Spanish MARKETING — not UTILITY, this is cold outreach with no existing relationship', () => {
     expect(PROSPECTING_TEMPLATE_DEFINITIONS).toHaveLength(3);
     const names = PROSPECTING_TEMPLATE_DEFINITIONS.map((t) => t.name);
-    expect(names).toEqual(['prospecting_first_contact_v2', 'prospecting_follow_up_1', 'prospecting_follow_up_2']);
+    expect(names).toEqual(['prospecting_first_contact_v2', 'prospecting_follow_up_1_v2', 'prospecting_follow_up_2']);
     for (const def of PROSPECTING_TEMPLATE_DEFINITIONS) {
       expect(def.languageCode).toBe('es');
       expect(def.category).toBe('MARKETING');
@@ -119,9 +120,22 @@ describe('PROSPECTING_TEMPLATE_DEFINITIONS', () => {
     }
   });
 
-  it('the two follow-ups offer an explicit way to stop hearing from us — no quick-reply button exists yet, so this is the content substitute', () => {
-    const followUp1 = PROSPECTING_TEMPLATE_DEFINITIONS.find((t) => t.name === 'prospecting_follow_up_1');
-    expect(followUp1?.bodyText).toContain('no volvemos a escribirte');
+  it('the first follow-up says how to stop hearing from us — no quick-reply button exists yet, so this is the content substitute', () => {
+    const followUp1 = PROSPECTING_TEMPLATE_DEFINITIONS.find((t) => t.name === 'prospecting_follow_up_1_v2');
+    expect(followUp1?.bodyText).toContain('dínoslo');
+  });
+
+  // La v1 del primer seguimiento prometía «no volvemos a escribirte» y el
+  // paso siguiente volvía a escribir. Solo el ÚLTIMO mensaje puede despedirse.
+  it('ningún mensaje antes del último promete no volver a escribir si el prospecto calla', () => {
+    const porNombre = new Map(PROSPECTING_TEMPLATE_DEFINITIONS.map((d) => [d.name, d.bodyText]));
+    const antesDelUltimo = [PROSPECTING_TEMPLATES.firstContact, PROSPECTING_TEMPLATES.followUp1].map(
+      (t) => porNombre.get(t.name) ?? '',
+    );
+    for (const texto of antesDelUltimo) {
+      expect(texto).not.toMatch(/no volvemos a escribirte|última vez/i);
+    }
+    expect(porNombre.get(PROSPECTING_TEMPLATES.followUp2.name)).toMatch(/última vez/i);
   });
 });
 
@@ -173,14 +187,14 @@ describe('missingProspectingTemplateDefinitions', () => {
   it('las 3 faltan si el espejo está vacío', () => {
     expect(missingProspectingTemplateDefinitions(new Set()).map((t) => t.name)).toEqual([
       'prospecting_first_contact_v2',
-      'prospecting_follow_up_1',
+      'prospecting_follow_up_1_v2',
       'prospecting_follow_up_2',
     ]);
   });
 
   it('no repite lo que ya está en el espejo', () => {
     const names = missingProspectingTemplateDefinitions(new Set(['prospecting_first_contact_v2'])).map((t) => t.name);
-    expect(names).toEqual(['prospecting_follow_up_1', 'prospecting_follow_up_2']);
+    expect(names).toEqual(['prospecting_follow_up_1_v2', 'prospecting_follow_up_2']);
   });
 });
 
@@ -219,7 +233,7 @@ describe('ensureProspectingTemplatesSubmitted', () => {
     expect(result).toEqual({ connections: 1, submitted: 3, failed: 0 });
     expect(mockState.createMessageTemplate.mock.calls.map((c) => c[2].name)).toEqual([
       'prospecting_first_contact_v2',
-      'prospecting_follow_up_1',
+      'prospecting_follow_up_1_v2',
       'prospecting_follow_up_2',
     ]);
     expect(mockState.createMessageTemplate.mock.calls[0][0]).toBe('tok');
@@ -241,7 +255,7 @@ describe('ensureProspectingTemplatesSubmitted', () => {
   it('no reenvía nada que ya esté en el espejo', async () => {
     state.templateFindMany.mockResolvedValue([
       { name: 'prospecting_first_contact_v2', status: 'PENDING', lastCheckedAt: new Date() },
-      { name: 'prospecting_follow_up_1', status: 'APPROVED', lastCheckedAt: new Date() },
+      { name: 'prospecting_follow_up_1_v2', status: 'APPROVED', lastCheckedAt: new Date() },
       { name: 'prospecting_follow_up_2', status: 'PENDING', lastCheckedAt: new Date() },
     ]);
     const result = await ensureProspectingTemplatesSubmitted(prisma);
@@ -249,23 +263,26 @@ describe('ensureProspectingTemplatesSubmitted', () => {
     expect(mockState.createMessageTemplate).not.toHaveBeenCalled();
   });
 
-  // El renombrado del 28/09/2026: una WABA que ya tenía la v1 aprobada tiene
-  // que recibir la v2 — si el espejo la diera por cubierta, el envío pediría
-  // una plantilla que Meta no tiene (132001) y no saldría ni un mensaje.
-  it('una WABA con la v1 del primer mensaje recibe la v2: son plantillas distintas', async () => {
+  // Los renombrados del 28/09/2026: una WABA que ya tenía las v1 aprobadas
+  // tiene que recibir las v2 — si el espejo las diera por cubiertas, el envío
+  // pediría plantillas que Meta no tiene (132001) y no saldría ni un mensaje.
+  it('una WABA con las v1 recibe las v2: son plantillas distintas', async () => {
     state.templateFindMany.mockResolvedValue([
       { name: 'prospecting_first_contact', status: 'APPROVED', lastCheckedAt: new Date() },
       { name: 'prospecting_follow_up_1', status: 'APPROVED', lastCheckedAt: new Date() },
       { name: 'prospecting_follow_up_2', status: 'APPROVED', lastCheckedAt: new Date() },
     ]);
     const result = await ensureProspectingTemplatesSubmitted(prisma);
-    expect(result).toEqual({ connections: 1, submitted: 1, failed: 0 });
-    expect(mockState.createMessageTemplate.mock.calls.map((c) => c[2].name)).toEqual(['prospecting_first_contact_v2']);
+    expect(result).toEqual({ connections: 1, submitted: 2, failed: 0 });
+    expect(mockState.createMessageTemplate.mock.calls.map((c) => c[2].name)).toEqual([
+      'prospecting_first_contact_v2',
+      'prospecting_follow_up_1_v2',
+    ]);
   });
 
   it('un rechazo al crear queda como SUBMIT_FAILED con el motivo', async () => {
     mockState.createMessageTemplate.mockImplementation((_t, _w, spec) =>
-      spec.name === 'prospecting_follow_up_1'
+      spec.name === 'prospecting_follow_up_1_v2'
         ? Promise.resolve({ ok: false, error: 'Invalid parameter' })
         : Promise.resolve({ ok: true, data: { status: 'PENDING' } }),
     );
@@ -275,13 +292,13 @@ describe('ensureProspectingTemplatesSubmitted', () => {
     expect(result).toEqual({ connections: 1, submitted: 2, failed: 1 });
     expect(state.templateUpsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        create: expect.objectContaining({ name: 'prospecting_follow_up_1', status: 'SUBMIT_FAILED', rejectedReason: 'Invalid parameter' }),
+        create: expect.objectContaining({ name: 'prospecting_follow_up_1_v2', status: 'SUBMIT_FAILED', rejectedReason: 'Invalid parameter' }),
       }),
     );
     expect(mockState.logError).toHaveBeenCalledWith(
       'prospecting_templates.ensure_submit_failed',
       expect.any(Error),
-      expect.objectContaining({ connectionId: 'conn_1', template: 'prospecting_follow_up_1' }),
+      expect.objectContaining({ connectionId: 'conn_1', template: 'prospecting_follow_up_1_v2' }),
       'warn',
     );
   });

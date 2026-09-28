@@ -12,6 +12,8 @@ import {
   MAX_CONTACTOS_POR_DIA,
   nombreRemitente,
   normalizarPresentacion,
+  parametrosDelPaso,
+  pasoUsaPresentacion,
   PRESENTACION_MAX,
   PRIMER_CONTACTO_TEXTO,
   primerMensaje,
@@ -24,9 +26,11 @@ import { MAX_AUTO_CONTACTS_PER_DAY, PROSPECTING_SEQUENCE } from '@/lib/prospecti
 const variables = (texto: string) => [...new Set(texto.match(/\{\{\d+\}\}/g) ?? [])];
 
 describe('el texto de prospecting_first_contact_v2', () => {
-  it('no empieza ni termina en una variable (Meta, error_subcode 2388299)', () => {
-    expect(PRIMER_CONTACTO_TEXTO.trim().startsWith('{{')).toBe(false);
-    expect(PRIMER_CONTACTO_TEXTO.trim().endsWith('}}')).toBe(false);
+  it('no empieza ni termina en una variable (Meta, error_subcode 2388299) — ni él ni los seguimientos', () => {
+    for (const texto of [PRIMER_CONTACTO_TEXTO, ...SEGUIMIENTOS.map((s) => s.texto)]) {
+      expect(texto.trim().startsWith('{{')).toBe(false);
+      expect(texto.trim().endsWith('}}')).toBe(false);
+    }
   });
 
   // 2388293: demasiadas variables para el largo del texto. Meta no publica
@@ -72,9 +76,31 @@ describe('los seguimientos compartidos', () => {
 // toque y 2 para los seguimientos; esto comprueba que es lo que pide el texto
 // de cada escalón.
 describe('parámetros por escalón', () => {
+  it('parametrosDelPaso da tantos como variables tiene el texto de ese paso', () => {
+    const p = { prospecto: 'Fincas Ribera', negocio: 'Reformas Orly', presentacion: 'reformas de baños' };
+    expect(parametrosDelPaso(1, p)).toEqual(['Fincas Ribera', 'Reformas Orly', 'reformas de baños']);
+    expect(parametrosDelPaso(2, p)).toEqual(['Fincas Ribera', 'Reformas Orly', 'reformas de baños']);
+    expect(parametrosDelPaso(3, p)).toEqual(['Fincas Ribera', 'Reformas Orly']);
+  });
+
+  it('pasoUsaPresentacion sale del texto, no de una lista aparte', () => {
+    expect([1, 2, 3].map(pasoUsaPresentacion)).toEqual([true, true, false]);
+  });
+
+  it('el primer seguimiento se lee bien con un sustantivo y con un verbo', () => {
+    for (const presentacion of ['las reformas de baños', 'reparar calderas']) {
+      const texto = rellenarPlantilla(
+        SEGUIMIENTOS[0].texto,
+        parametrosDelPaso(2, { prospecto: 'Fincas Ribera', negocio: 'Reformas Orly', presentacion }),
+      );
+      expect(texto).toContain(`nos dedicamos a ${presentacion}. `);
+      expect(texto).not.toMatch(/\{\{/);
+    }
+  });
+
   it('cada escalón de la secuencia pide tantos parámetros como arma el envío', () => {
     const porEscalon = new Map(PROSPECTING_TEMPLATE_DEFINITIONS.map((d) => [d.name, variables(d.bodyText).length]));
-    expect(PROSPECTING_SEQUENCE.map((s) => porEscalon.get(s.template.name))).toEqual([3, 2, 2]);
+    expect(PROSPECTING_SEQUENCE.map((s) => porEscalon.get(s.template.name))).toEqual([3, 3, 2]);
   });
 });
 
