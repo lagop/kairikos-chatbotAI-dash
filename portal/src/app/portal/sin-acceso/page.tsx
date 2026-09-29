@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { supportWhatsappUrl } from '@/lib/portal-data';
 
 export const metadata: Metadata = {
   title: 'Acceso no disponible',
@@ -20,7 +21,7 @@ export default function SinAccesoPage() {
         </p>
         <div className="mt-6 flex flex-col items-center justify-center gap-2 sm:flex-row">
           <a
-            href="https://wa.me/34600000000?text=Hola%2C%20acabo%20de%20contratar%20el%20chatbot%20pero%20no%20tengo%20acceso%20al%20portal"
+            href={supportWhatsappUrl('Hola, acabo de contratar el chatbot pero no tengo acceso al portal')}
             className="btn-primary"
           >
             Hablar con el equipo
