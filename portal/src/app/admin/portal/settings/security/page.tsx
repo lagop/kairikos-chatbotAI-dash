@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { PageHeading } from '@/components/portal/PageHeading';
+import { EncryptionKeyStatusTable } from '@/components/portal/EncryptionKeyStatusTable';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,6 +64,7 @@ export default async function AdminSecuritySettingsPage() {
           {remaining <= 2 ? ' Quedan pocos: cuando se acaben, solo la app del móvil te dejará entrar.' : ''}
         </p>
       </div>
+      <EncryptionKeyStatusTable />
     </div>
   );
 }

@@ -127,6 +127,10 @@ jobs:
           #       cifra la contraseña de SFTP del alojamiento de cada cliente,
           #       con la que se publica su web. Si ya hay alguna guardada en
           #       esta VPS, tiene que ser la MISMA clave.
+          #     GOOGLE_SEO_TOKEN_ENCRYPTION_KEY  openssl rand -hex 32 — Search Console.
+          #     GOOGLE_GA4_TOKEN_ENCRYPTION_KEY  openssl rand -hex 32 — GA4, distinta
+          #       de la anterior. Las dos: la MISMA clave para siempre una vez
+          #       haya conexiones guardadas.
           #     INTEGRATION_CREDENTIAL_ENCRYPTION_KEY  openssl rand -hex 32 —
           #       cifra las claves de terceros que pega el operador en
           #       /admin/portal/settings/integrations (hoy: Google Places).
@@ -232,6 +236,16 @@ jobs:
             # ROTA una vez haya conexiones: los refresh tokens cifrados con
             # la anterior dejarían de poder leerse.
             GOOGLE_TOKEN_ENCRYPTION_KEY=${{ secrets.GOOGLE_TOKEN_ENCRYPTION_KEY }}
+            # Search Console y GA4 (SEO). Estaban en docker-compose.yml y en
+            # .env.example desde que se construyeron, pero NUNCA aquí, así que
+            # llegaban vacías y ninguno de los dos podía conectarse en
+            # producción (visto el 28/09/2026, con 0 conexiones guardadas: se
+            # podían crear nuevas sin dejar nada sin leer). Una clave distinta
+            # para cada uno, y la misma cautela que la de arriba: no se rotan
+            # una vez haya conexiones. deploy-env-wiring.test.ts comprueba que
+            # toda clave que lee el código está aquí.
+            GOOGLE_SEO_TOKEN_ENCRYPTION_KEY=${{ secrets.GOOGLE_SEO_TOKEN_ENCRYPTION_KEY }}
+            GOOGLE_GA4_TOKEN_ENCRYPTION_KEY=${{ secrets.GOOGLE_GA4_TOKEN_ENCRYPTION_KEY }}
             # A quién le llegan las alertas de operador: altas atascadas,
             # tokens a punto de caducar, conexión de WhatsApp perdida,
             # consumo anómalo. Hasta el 2026-09-15 no estaba aquí, así que
