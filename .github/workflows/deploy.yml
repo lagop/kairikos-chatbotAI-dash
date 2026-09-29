@@ -201,6 +201,18 @@ jobs:
             POSTGRES_USER=${{ vars.POSTGRES_USER }}
             POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
             POSTGRES_DB=${{ vars.POSTGRES_DB }}
+            # Copia externa cifrada de la base de datos (29/09/2026), ver
+            # scripts/backup-postgres.sh. La clave pública de age y el destino
+            # no son secretos (vars); las claves de acceso sí (secrets). Sin
+            # ellas la copia externa se salta y lo dice en el log del
+            # contenedor de backup: la local sigue funcionando.
+            BACKUP_AGE_RECIPIENT=${{ vars.BACKUP_AGE_RECIPIENT }}
+            BACKUP_OFFSITE_PROVIDER=${{ vars.BACKUP_OFFSITE_PROVIDER }}
+            BACKUP_OFFSITE_ENDPOINT=${{ vars.BACKUP_OFFSITE_ENDPOINT }}
+            BACKUP_OFFSITE_REGION=${{ vars.BACKUP_OFFSITE_REGION }}
+            BACKUP_OFFSITE_BUCKET=${{ vars.BACKUP_OFFSITE_BUCKET }}
+            BACKUP_OFFSITE_ACCESS_KEY_ID=${{ secrets.BACKUP_OFFSITE_ACCESS_KEY_ID }}
+            BACKUP_OFFSITE_SECRET_ACCESS_KEY=${{ secrets.BACKUP_OFFSITE_SECRET_ACCESS_KEY }}
             AUTH_SECRET=${{ secrets.AUTH_SECRET }}
             AUTH_EMAIL_FROM=Kairikos Portal <contacto@kairikos.com>
             AUTH_SUPPORT_EMAIL=contacto@kairikos.com

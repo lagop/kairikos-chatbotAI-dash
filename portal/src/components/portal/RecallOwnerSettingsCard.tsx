@@ -335,9 +335,16 @@ export function RecallOwnerSettingsCard({
         </p>
         <p className="rounded-xl border border-kairikos-border bg-kairikos-surface2 px-3 py-2 text-sm">
           <span className="font-medium">Ejemplo:</span> «Hola, has llamado a Fontanería Ruiz. Ahora no puedo atenderte.
-          Deja tu mensaje después de la señal: mi asistente me lo pasará y te llamo en cuanto pueda.»
+          Deja tu mensaje después de la señal: mi asistente lo grabará y me lo pasará por escrito, y te escribiremos
+          por WhatsApp. Si no quieres mensajes, responde BAJA.»
+          {/* 29/09/2026 — las tres cosas que la ley pide decir antes de
+              grabar a alguien (LOPDGDD art. 11 y Reglamento de IA art. 50).
+              La locución por defecto las dice todas: ver defaultGreetingText
+              en lib/recall-calls.ts. */}
           <span className="mt-1 block text-xs text-kairikos-muted">
-            Menciona que un asistente toma el recado: quien llama tiene derecho a saberlo.
+            Di que te atiende un asistente, que el mensaje se graba y se pasa a texto, y cómo pedir que no le
+            escribáis: quien llama tiene derecho a saberlo antes de dejar su mensaje. Si tienes web con política de
+            privacidad, puedes añadir dónde consultarla.
           </span>
         </p>
 
