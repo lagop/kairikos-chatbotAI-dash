@@ -3240,7 +3240,9 @@ model LeadAudit {
   // (Fase C — automatic first WhatsApp contact, actorId 'system:prospecting')
   // | 'followed_up_auto' (Fase 3.3 — un toque de seguimiento; el número de
   // toque va en Lead.followUpCount) | 'replied' (Fase 3.3 — el prospecto
-  // escribió y la secuencia se corta)
+  // escribió y la secuencia se corta) | 'minimized_opposition' (el prospecto
+  // se opuso y se vació todo salvo lo que impide volver a escribirle,
+  // actorId 'system:retention' — src/lib/retention-purge.ts)
   action       String
   statusBefore String?  @map("status_before")
   statusAfter  String?  @map("status_after")
