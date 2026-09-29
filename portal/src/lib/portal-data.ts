@@ -124,9 +124,17 @@ const MOCK_BILLING: BillingSummary = {
 // documents it) but nothing in src/ actually read it — wired through
 // infra, never consumed. Real number: +34 624 51 44 25.
 const SUPPORT_WHATSAPP_BASE_URL = process.env.AUTH_SUPPORT_WHATSAPP || 'https://wa.me/34624514425';
+
+/** El WhatsApp del equipo con un mensaje ya escrito. Lo usa también
+ *  /portal/sin-acceso, que el 29/09/2026 seguía teniendo escrito a mano el
+ *  número de relleno que este archivo ya había corregido en agosto: la
+ *  corrección se hizo aquí y no llegó a la otra copia. */
+export function supportWhatsappUrl(message: string): string {
+  return `${SUPPORT_WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`;
+}
 const MOCK_SUPPORT: SupportLink = {
   label: 'Hablar con el equipo',
-  href: `${SUPPORT_WHATSAPP_BASE_URL}?text=${encodeURIComponent('Hola, necesito ayuda con mi portal Kairikos')}`,
+  href: supportWhatsappUrl('Hola, necesito ayuda con mi portal Kairikos'),
   description: 'Te respondemos por WhatsApp en horario laboral (L–V, 9:00–18:00 CET).',
 };
 
