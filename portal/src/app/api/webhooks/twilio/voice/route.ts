@@ -114,6 +114,7 @@ export async function POST(req: NextRequest) {
       buildRecordTwiml({
         greetingUrl: target.hasGreeting ? `${base}/api/webhooks/twilio/greeting/${target.subscriptionId}` : null,
         recordingCallbackUrl: `${base}/api/webhooks/twilio/recording`,
+        businessName: target.businessName,
       }),
     );
   } catch (err) {

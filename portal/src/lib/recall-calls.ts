@@ -59,6 +59,50 @@ export interface TwimlOptions {
   /** Seconds. Long enough for a real problem description, short enough
    *  that a pocket-dial does not bill us for five minutes. */
   maxLengthSeconds?: number;
+  /** El nombre del negocio, para la locución por defecto. Sin él (la
+   *  resolución falló), la locución informa igual, sin nombrarlo. */
+  businessName?: string | null;
+}
+
+/**
+ * La locución por defecto: lo que oye quien llama cuando el dueño no ha
+ * grabado la suya.
+ *
+ * 29/09/2026 — hasta hoy decía solo «Deja tu mensaje después de la señal»,
+ * sin ninguna información sobre sus datos. Pero en ese momento se recogen:
+ * su voz se graba (en Twilio, 30 días), se transcribe (Groq) y a esa persona
+ * se le escribe después por WhatsApp. El artículo 11 de la LOPDGDD pide, en
+ * el momento de la recogida, una primera capa de información: quién trata
+ * los datos, para qué, cómo ejercer los derechos y dónde saber más. Esto es
+ * esa primera capa, dicha en llano y en unos 20 segundos:
+ *
+ *   quién          «has llamado a <negocio>»
+ *   que es una IA  «te atiende su contestador automático» (transparencia:
+ *                  Reglamento de IA, art. 50)
+ *   para qué       grabar y transcribir para devolver la llamada y escribir
+ *                  por WhatsApp
+ *   oposición      «si no quieres mensajes, responde BAJA», que es lo que
+ *                  de verdad procesa el sistema (recall-optout.ts)
+ *   dónde saber más  preguntar al propio negocio
+ *
+ * El texto recomendado es el mismo que el del Anexo I del contrato de encargo
+ * del tratamiento; si uno cambia, que cambie el otro. En tercera persona a
+ * propósito: la voz sintética nunca se hace pasar por el dueño.
+ */
+export function defaultGreetingText(businessName?: string | null): string {
+  const negocio = businessName?.trim() || null;
+  const saludo = negocio
+    ? `Hola, has llamado a ${negocio}. Te atiende su contestador automático: ahora no pueden ponerse.`
+    : 'Hola. Te atiende un contestador automático: ahora no pueden ponerse.';
+  return [
+    saludo,
+    'Deja tu mensaje después de la señal.',
+    'Lo grabaremos y lo transcribiremos para devolverte la llamada y escribirte por WhatsApp.',
+    'Si no quieres recibir mensajes, responde BAJA.',
+    negocio
+      ? `Para saber más sobre cómo se tratan tus datos, pregunta a ${negocio}.`
+      : 'Para saber más sobre cómo se tratan tus datos, pregunta al negocio al que has llamado.',
+  ].join(' ');
 }
 
 /**
@@ -78,7 +122,7 @@ export function buildRecordTwiml(opts: TwimlOptions): string {
   const maxLength = opts.maxLengthSeconds ?? 120;
   const intro = opts.greetingUrl
     ? `<Play>${escapeXml(opts.greetingUrl)}</Play>`
-    : `<Say language="es-ES">Gracias por llamar. En este momento no podemos atenderte. Deja tu mensaje después de la señal y te llamamos en cuanto podamos.</Say>`;
+    : `<Say language="es-ES">${escapeXml(defaultGreetingText(opts.businessName))}</Say>`;
 
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
@@ -127,6 +171,8 @@ export interface ResolvedCallTarget {
   tenantId: string | null;
   virtualNumberId: string;
   hasGreeting: boolean;
+  /** Cómo se llama el negocio, para la locución por defecto. */
+  businessName: string | null;
   /** The subscription's status AT RESOLUTION TIME — the caller uses this
    *  to decide whether this call is also the one that verifies forwarding
    *  (see verifyForwardingFromCall). */
@@ -155,6 +201,7 @@ export async function resolveCallTarget(
           tenantId: true,
           status: true,
           greetingAudio: true,
+          client: { select: { name: true, companyName: true } },
         },
       },
     },
@@ -169,6 +216,8 @@ export async function resolveCallTarget(
     tenantId: sub.tenantId,
     virtualNumberId: number.id,
     hasGreeting: sub.greetingAudio !== null,
+    // `||`, no `??`: un companyName guardado vacío (CLAUDE.md, trampa 4).
+    businessName: sub.client?.companyName?.trim() || sub.client?.name?.trim() || null,
     subscriptionStatus: sub.status,
   };
 }

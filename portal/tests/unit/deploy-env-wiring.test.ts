@@ -48,3 +48,34 @@ describe('las variables del pack recall llegan al contenedor en cada despliegue'
     expect(repo('.github/workflows/deploy.yml'), 'deploy.yml').toContain(`${name}=\${{ ${source}.${name} }}`);
   });
 });
+
+// =============================================================================
+// La copia externa cifrada de la base de datos (29/09/2026). Las usa el
+// contenedor backup, no la app, pero la trampa es la misma: si no están en
+// deploy.yml, el .env de la VPS se reescribe sin ellas en cada despliegue y la
+// copia externa se queda desactivada sin que nadie lo note.
+// =============================================================================
+
+const COPIA_EXTERNA: ReadonlyArray<[string, 'secrets' | 'vars']> = [
+  ['BACKUP_AGE_RECIPIENT', 'vars'],
+  ['BACKUP_OFFSITE_PROVIDER', 'vars'],
+  ['BACKUP_OFFSITE_ENDPOINT', 'vars'],
+  ['BACKUP_OFFSITE_REGION', 'vars'],
+  ['BACKUP_OFFSITE_BUCKET', 'vars'],
+  ['BACKUP_OFFSITE_ACCESS_KEY_ID', 'secrets'],
+  ['BACKUP_OFFSITE_SECRET_ACCESS_KEY', 'secrets'],
+];
+
+describe('la copia externa de la base de datos', () => {
+  it.each(COPIA_EXTERNA)('%s está en .env.example, docker-compose.yml y deploy.yml', (name, source) => {
+    expect(portal('.env.example'), '.env.example').toMatch(new RegExp(`^${name}=`, 'm'));
+    expect(repo('docker-compose.yml'), 'docker-compose.yml').toContain(`${name}:`);
+    expect(repo('.github/workflows/deploy.yml'), 'deploy.yml').toContain(`${name}=\${{ ${source}.${name} }}`);
+  });
+
+  it('la clave PRIVADA de age no se cablea en ningún sitio: solo vive fuera de línea', () => {
+    for (const f of [repo('docker-compose.yml'), repo('.github/workflows/deploy.yml'), portal('.env.example')]) {
+      expect(f).not.toMatch(/AGE_SECRET_KEY|BACKUP_AGE_IDENTITY|AGE-SECRET-KEY-/);
+    }
+  });
+});

@@ -7,6 +7,7 @@ import type { PrismaClient } from '@prisma/client';
 import {
   isWithheldCaller,
   buildRecordTwiml,
+  defaultGreetingText,
   buildUnavailableTwiml,
   resolveCallTarget,
   recordIncomingCall,
@@ -86,8 +87,39 @@ describe('buildRecordTwiml', () => {
     const xml = buildRecordTwiml({ greetingUrl: null, recordingCallbackUrl: 'https://portal.example.com/rec' });
     expect(xml).toContain('<Say language="es-ES">');
     // The fallback must not impersonate: no first-person business identity.
-    expect(xml).toContain('Gracias por llamar');
+    expect(xml).toContain('contestador automático');
+    expect(xml).not.toMatch(/\b(soy|puedo|te llamo)\b/i);
     expect(xml).not.toContain('<Play>');
+  });
+
+  // 29/09/2026 — la primera capa de información (LOPDGDD art. 11) antes de
+  // grabar: quién, que es automático, para qué, cómo oponerse y dónde saber más.
+  it('la locución por defecto informa antes de grabar, con el nombre del negocio', () => {
+    const texto = defaultGreetingText('Fontanería Ruiz');
+    expect(texto).toContain('has llamado a Fontanería Ruiz');
+    expect(texto).toContain('contestador automático');
+    expect(texto).toContain('Lo grabaremos y lo transcribiremos');
+    expect(texto).toContain('WhatsApp');
+    expect(texto).toContain('responde BAJA');
+    expect(texto).toContain('pregunta a Fontanería Ruiz');
+  });
+
+  it('sin nombre del negocio informa igual, sin inventarlo', () => {
+    const texto = defaultGreetingText(null);
+    expect(texto).not.toContain('null');
+    expect(texto).toContain('Lo grabaremos y lo transcribiremos');
+    expect(texto).toContain('pregunta al negocio al que has llamado');
+    expect(defaultGreetingText('   ')).toBe(texto);
+  });
+
+  it('el nombre del negocio se escapa: no puede inyectar TwiML', () => {
+    const xml = buildRecordTwiml({
+      greetingUrl: null,
+      recordingCallbackUrl: 'x',
+      businessName: 'Pepe & Hijos</Say><Dial>+34600000001</Dial><Say>',
+    });
+    expect(xml).not.toContain('<Dial>');
+    expect(xml).toContain('Pepe &amp; Hijos');
   });
 
   it('records with a recording callback and then hangs up', () => {
@@ -136,6 +168,7 @@ describe('resolveCallTarget', () => {
       tenantId: 'tenant_1',
       status: 'active',
       greetingAudio: Buffer.from('audio'),
+      client: { name: 'Juan Ruiz', companyName: 'Fontanería Ruiz' },
     },
   };
 
@@ -147,8 +180,17 @@ describe('resolveCallTarget', () => {
       tenantId: 'tenant_1',
       virtualNumberId: 'vn_1',
       hasGreeting: true,
+      businessName: 'Fontanería Ruiz',
       subscriptionStatus: 'active',
     });
+  });
+
+  it('un companyName vacío cae al nombre del titular (trampa 4)', async () => {
+    state.virtualNumberFindUnique.mockResolvedValue({
+      ...ASSIGNED,
+      subscription: { ...ASSIGNED.subscription, client: { name: 'Juan Ruiz', companyName: '  ' } },
+    });
+    expect((await resolveCallTarget(prisma, '+34910000001'))?.businessName).toBe('Juan Ruiz');
   });
 
   it.each(['forwarding_pending', 'forwarding_verified'])(
