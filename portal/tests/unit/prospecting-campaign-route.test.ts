@@ -19,6 +19,9 @@ const mockState = vi.hoisted(() => ({
   campaignCreate: vi.fn(),
   campaignUpdate: vi.fn(),
   campaignAuditCreate: vi.fn(),
+  searchDeleteMany: vi.fn(),
+  searchUpdate: vi.fn(),
+  searchCreateMany: vi.fn(),
   logError: vi.fn(),
 }));
 
@@ -28,6 +31,11 @@ const mockTx = {
     update: (...a: unknown[]) => mockState.campaignUpdate(...a),
   },
   prospectingCampaignAudit: { create: (...a: unknown[]) => mockState.campaignAuditCreate(...a) },
+  prospectingSearch: {
+    deleteMany: (...a: unknown[]) => mockState.searchDeleteMany(...a),
+    update: (...a: unknown[]) => mockState.searchUpdate(...a),
+    createMany: (...a: unknown[]) => mockState.searchCreateMany(...a),
+  },
 };
 
 vi.mock('@/lib/session', () => ({
@@ -38,9 +46,9 @@ vi.mock('@/lib/portal-session', () => ({
   resolveClientFromSession: (...a: unknown[]) => mockState.resolveClientFromSession(...a),
 }));
 
-vi.mock('@/lib/prospecting', () => ({
-  TIER_LEAD_CAP: { solo: 100, team: 300, business: 800 },
-}));
+// @/lib/prospecting NO se mockea: la ruta usa sus funciones puras
+// (normalizeSearches, diffSearches) y sus topes, y un mock que los copiara a
+// mano comprobaría la copia, no lo que corre.
 
 vi.mock('@/lib/observability', () => ({
   logError: (...a: unknown[]) => mockState.logError(...a),
@@ -80,10 +88,13 @@ beforeEach(() => {
     Promise.resolve({ id: 'camp_1', category: 'x', locationQuery: 'y', radiusMeters: 10000, ...data }),
   );
   mockState.campaignAuditCreate.mockReset();
+  mockState.searchDeleteMany.mockReset().mockResolvedValue({ count: 0 });
+  mockState.searchUpdate.mockReset().mockResolvedValue({});
+  mockState.searchCreateMany.mockReset().mockResolvedValue({ count: 0 });
   mockState.logError.mockReset();
 });
 
-const VALID_BODY = { category: 'ferretería', locationQuery: 'Las Palmas de Gran Canaria', radiusMeters: 15000 };
+const VALID_BODY = { searches: [{ category: 'ferretería', locationQuery: 'Las Palmas de Gran Canaria' }] };
 
 describe('PATCH /api/portal/prospecting/campaign', () => {
   it('401s without a client session', async () => {
@@ -93,7 +104,7 @@ describe('PATCH /api/portal/prospecting/campaign', () => {
   });
 
   it('400s on a malformed body', async () => {
-    const res = await PATCH(makeRequest({ category: '' }));
+    const res = await PATCH(makeRequest({ searches: 'no-es-una-lista' }));
     expect(res.status).toBe(400);
   });
 
@@ -112,9 +123,7 @@ describe('PATCH /api/portal/prospecting/campaign', () => {
         data: expect.objectContaining({
           clientId: 'client_1',
           clientProductId: 'cp_1',
-          category: 'ferretería',
-          locationQuery: 'Las Palmas de Gran Canaria',
-          radiusMeters: 15000,
+          searches: { create: [{ category: 'ferretería', locationQuery: 'Las Palmas de Gran Canaria' }] },
           monthlyLeadCap: 300, // tier 'team'
         }),
       }),
@@ -136,24 +145,25 @@ describe('PATCH /api/portal/prospecting/campaign', () => {
   it('updates the existing campaign on a subsequent save, never creates a second one', async () => {
     mockState.campaignFindUnique.mockResolvedValue({
       id: 'camp_1',
-      category: 'panadería',
-      locationQuery: 'Tenerife',
-      radiusMeters: 10000,
+      presentacion: null,
+      searches: [{ id: 's_1', category: 'panadería', locationQuery: 'Tenerife' }],
     });
     const res = await PATCH(makeRequest(VALID_BODY));
     expect(res.status).toBe(200);
-    expect(mockState.campaignUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'camp_1' },
-        data: expect.objectContaining({ category: 'ferretería', locationQuery: 'Las Palmas de Gran Canaria' }),
-      }),
-    );
+    expect(mockState.searchDeleteMany).toHaveBeenCalledWith({ where: { id: { in: ['s_1'] }, campaignId: 'camp_1' } });
+    expect(mockState.searchCreateMany).toHaveBeenCalledWith({
+      data: [{ campaignId: 'camp_1', category: 'ferretería', locationQuery: 'Las Palmas de Gran Canaria' }],
+    });
+    expect(mockState.campaignUpdate).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'camp_1' } }));
     expect(mockState.campaignCreate).not.toHaveBeenCalled();
     expect(mockState.campaignAuditCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           action: 'profile_updated',
-          before: { category: 'panadería', locationQuery: 'Tenerife', radiusMeters: 10000 },
+          before: { searches: [{ category: 'panadería', locationQuery: 'Tenerife' }], presentacion: null },
+          after: expect.objectContaining({
+            searches: [{ category: 'ferretería', locationQuery: 'Las Palmas de Gran Canaria' }],
+          }),
         }),
       }),
     );
@@ -180,9 +190,7 @@ describe('PATCH /api/portal/prospecting/campaign', () => {
   it('una presentación vaciada se guarda como null, no como «»', async () => {
     mockState.campaignFindUnique.mockResolvedValue({
       id: 'camp_1',
-      category: 'panadería',
-      locationQuery: 'Tenerife',
-      radiusMeters: 10000,
+      searches: [{ id: 's_1', category: 'panadería', locationQuery: 'Tenerife' }],
       presentacion: 'pan de masa madre',
     });
     await PATCH(makeRequest({ ...VALID_BODY, presentacion: '  ' }));
@@ -194,9 +202,7 @@ describe('PATCH /api/portal/prospecting/campaign', () => {
   it('sin el campo en el cuerpo no toca la presentación guardada', async () => {
     mockState.campaignFindUnique.mockResolvedValue({
       id: 'camp_1',
-      category: 'panadería',
-      locationQuery: 'Tenerife',
-      radiusMeters: 10000,
+      searches: [{ id: 's_1', category: 'panadería', locationQuery: 'Tenerife' }],
       presentacion: 'pan de masa madre',
     });
     await PATCH(makeRequest(VALID_BODY));
@@ -209,9 +215,7 @@ describe('PATCH /api/portal/prospecting/campaign', () => {
   it('audita la presentación de antes y la de después', async () => {
     mockState.campaignFindUnique.mockResolvedValue({
       id: 'camp_1',
-      category: 'panadería',
-      locationQuery: 'Tenerife',
-      radiusMeters: 10000,
+      searches: [{ id: 's_1', category: 'panadería', locationQuery: 'Tenerife' }],
       presentacion: 'pan de masa madre',
     });
     await PATCH(makeRequest({ ...VALID_BODY, presentacion: 'pan y bollería para hostelería' }));
@@ -221,6 +225,71 @@ describe('PATCH /api/portal/prospecting/campaign', () => {
           before: expect.objectContaining({ presentacion: 'pan de masa madre' }),
           after: expect.objectContaining({ presentacion: 'pan y bollería para hostelería' }),
         }),
+      }),
+    );
+  });
+
+  // ---------------------------------------------------------------------------
+  // 29/09/2026 — varias búsquedas.
+  // ---------------------------------------------------------------------------
+
+  it('guardar sin cambiar una búsqueda no la borra ni la recrea: conserva su lastRunAt', async () => {
+    mockState.campaignFindUnique.mockResolvedValue({
+      id: 'camp_1',
+      presentacion: null,
+      searches: [{ id: 's_1', category: 'ferretería', locationQuery: 'Las Palmas de Gran Canaria' }],
+    });
+    await PATCH(
+      makeRequest({
+        searches: [
+          { category: 'ferretería', locationQuery: 'Las Palmas de Gran Canaria' },
+          { category: 'pinturas', locationQuery: 'Telde' },
+        ],
+      }),
+    );
+    expect(mockState.searchDeleteMany).not.toHaveBeenCalled();
+    expect(mockState.searchCreateMany).toHaveBeenCalledWith({
+      data: [{ campaignId: 'camp_1', category: 'pinturas', locationQuery: 'Telde' }],
+    });
+  });
+
+  it('quita las repetidas y las vacías antes de guardar', async () => {
+    await PATCH(
+      makeRequest({
+        searches: [
+          { category: 'ferretería', locationQuery: 'Telde' },
+          { category: ' Ferretería ', locationQuery: 'telde' },
+          { category: '', locationQuery: '' },
+        ],
+      }),
+    );
+    expect(mockState.campaignCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ searches: { create: [{ category: 'ferretería', locationQuery: 'Telde' }] } }),
+      }),
+    );
+  });
+
+  it('sin ninguna búsqueda completa, 400', async () => {
+    const res = await PATCH(makeRequest({ searches: [{ category: 'ferretería', locationQuery: '  ' }] }));
+    expect(res.status).toBe(400);
+    expect(mockState.campaignCreate).not.toHaveBeenCalled();
+  });
+
+  it('más búsquedas de las permitidas: 400 con su propio código', async () => {
+    const searches = Array.from({ length: 11 }, (_, i) => ({ category: `rubro ${i}`, locationQuery: 'Madrid' }));
+    const res = await PATCH(makeRequest({ searches }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'demasiadas_busquedas', max: 10 });
+  });
+
+  // Una pestaña abierta con la versión anterior del portal durante el despliegue.
+  it('sigue aceptando el formato de antes: un rubro y una zona sueltos', async () => {
+    const res = await PATCH(makeRequest({ category: 'ferretería', locationQuery: 'Telde', radiusMeters: 15000 }));
+    expect(res.status).toBe(200);
+    expect(mockState.campaignCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ searches: { create: [{ category: 'ferretería', locationQuery: 'Telde' }] } }),
       }),
     );
   });

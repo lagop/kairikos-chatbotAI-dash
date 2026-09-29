@@ -3369,10 +3369,13 @@ model ProspectingCampaign {
   clientProductId String  @unique @map("client_product_id") @db.Uuid
   tenantId        String? @map("tenant_id") @db.Uuid
 
-  // What the client is looking for. `category` maps loosely to Google
-  // Places `type` values (e.g. 'hair_care', 'restaurant') — validated at
-  // the lib layer, not the DB, same posture as every other free-string
-  // status column in this schema.
+  // OBSOLETAS desde el 29/09/2026: lo que busca el cliente vive ahora en
+  // ProspectingSearch, una fila por combinación de rubro y zona. Se quedan
+  // en la tabla solo para que el contenedor anterior siga funcionando entre
+  // la migración y el despliegue (la migración copió su valor a la primera
+  // búsqueda); el código nuevo no las lee ni las escribe. radiusMeters nunca
+  // llegó a Google: el barrido manda solo «rubro en zona» y Text Search
+  // geocodifica la zona él mismo. Se pueden borrar en una migración aparte.
   category      String?
   locationQuery String? @map("location_query")
   radiusMeters  Int?    @default(10000) @map("radius_meters")
@@ -3442,10 +3445,42 @@ model ProspectingCampaign {
   clientProduct ClientProduct              @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
   tenant        Tenant?                    @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   auditLogs     ProspectingCampaignAudit[]
+  searches      ProspectingSearch[]
 
   @@index([clientId])
   @@index([tenantId])
   @@index([status])
+}
+
+/// Una combinación de rubro y zona de una campaña de prospección (29/09/2026).
+///
+/// Antes cada campaña tenía un solo rubro y una sola zona, y el barrido
+/// semanal pedía una sola página de 20 resultados: la segunda semana volvían
+/// los mismos 20 y no salía nada nuevo. Un instalador que trabaja para
+/// comunidades, hoteles y oficinas, o en tres municipios, tenía que elegir.
+///
+/// Todas las búsquedas de una campaña comparten SU tope mensual
+/// (monthlyLeadCap): una búsqueda más no cuesta fichas de más, solo reparte
+/// las mismas. Es lo que CLAUDE.md llama «la segunda unidad no nos cuesta
+/// nada recurrente → un contrato con tope por tarifa». El número de
+/// búsquedas tiene su propio techo (MAX_SEARCHES_PER_CAMPAIGN) porque cada
+/// búsqueda sí gasta llamadas de Text Search, que son baratas pero no
+/// gratis — ver docs/costes-y-topes.md.
+model ProspectingSearch {
+  id            String    @id @default(uuid()) @db.Uuid
+  campaignId    String    @map("campaign_id") @db.Uuid
+  category      String
+  locationQuery String    @map("location_query")
+  /// Cuándo la atendió el barrido por última vez. El barrido empieza por la
+  /// que lleva más tiempo sin atender, para que el tope del mes no se lo
+  /// coma siempre la primera de la lista.
+  lastRunAt     DateTime? @map("last_run_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  campaign ProspectingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, category, locationQuery])
+  @@index([campaignId])
 }
 
 model ProspectingCampaignAudit {

@@ -18,7 +18,9 @@ riesgo de vender por debajo de coste.
 | Formulario de las webs publicadas | 20 envíos por hora y sitio | `MAX_SUBMISSIONS_PER_HOUR` (`website-form.ts`) | Un bot llenando la bandeja del cliente |
 | Informe comparativo | Bajo demanda + caché de 30 días | `SNAPSHOT_TTL_DAYS` (`prospecting-competitors.ts`) | Cada informe son varias búsquedas de pago en Google |
 | Informe comparativo | 3 competidores por informe | `MAX_COMPETITORS` | Cada competidor es una consulta más |
-| Prospección, leads por campaña | 100 / 300 / 800 según tarifa | `TIER_LEAD_CAP` (`prospecting.ts`) | Es lo que ata el coste de Places a la tarifa cobrada |
+| Prospección, leads por campaña | 100 / 300 / 800 según tarifa | `TIER_LEAD_CAP` (`prospecting.ts`) | Es lo que ata el coste de Places a la tarifa cobrada. Todas las búsquedas de la campaña lo comparten |
+| Prospección, búsquedas por campaña | 10, igual en todas las tarifas | `MAX_SEARCHES_PER_CAMPAIGN` (`prospecting.ts`) | Cada búsqueda gasta llamadas de Text Search en cada barrido semanal |
+| Prospección, páginas por búsqueda | 3 por barrido, y solo si hacen falta | `MAX_PAGES_PER_SEARCH` | En el peor caso, unas 130 llamadas de Text Search al mes por campaña, frente a 10.000 gratis |
 | Calculadora pública | **sin tope, a propósito** | — | Solo multiplica: no llama a ningún modelo ni a Google |
 
 Si añades algo que llame a un modelo o a una API de pago, **el tope es parte de

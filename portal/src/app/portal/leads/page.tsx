@@ -207,9 +207,8 @@ export default async function PortalLeadsPage({
     ? await prisma.prospectingCampaign.findFirst({
         where: { clientId: resolved.clientId },
         select: {
-          category: true,
-          locationQuery: true,
-          radiusMeters: true,
+          // Varias búsquedas desde el 29/09/2026 (ProspectingSearch).
+          searches: { select: { category: true, locationQuery: true }, orderBy: { createdAt: 'asc' } },
           clientWebsite: true,
           businessDescription: true,
           idealCustomer: true,

@@ -4,7 +4,13 @@ import { Prisma } from '@prisma/client';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
-import { TIER_LEAD_CAP } from '@/lib/prospecting';
+import {
+  TIER_LEAD_CAP,
+  MAX_SEARCHES_PER_CAMPAIGN,
+  normalizeSearches,
+  diffSearches,
+  type SearchSpec,
+} from '@/lib/prospecting';
 import { logError } from '@/lib/observability';
 import { normalizarPresentacion, PRESENTACION_MAX } from '@/lib/prospecting-presentacion';
 
@@ -26,14 +32,29 @@ export const runtime = 'nodejs';
 // contracted tier. The lazy `create` below stays as the fallback for a
 // row that predates that hook, or the rare case where the hook's own
 // write failed silently — this PATCH must keep working either way.
+//
+// 29/09/2026 — varias búsquedas. El cliente manda la lista entera de
+// combinaciones de rubro y zona (`searches`) y la ruta la deja así en
+// ProspectingSearch, conservando las que siguen (ver diffSearches). El radio
+// desaparece: nunca llegó a Google.
 // =============================================================================
 
 const OPTIONAL_TEXT = z.string().trim().max(2000).nullish();
 
+const SEARCH = z.object({
+  category: z.string().max(200),
+  locationQuery: z.string().max(200),
+});
+
 const BodySchema = z.object({
-  category: z.string().trim().min(1).max(200),
-  locationQuery: z.string().trim().min(1).max(200),
-  radiusMeters: z.number().int().min(500).max(50000).optional(),
+  // Holgura sobre el máximo para que la ruta, y no zod, diga «demasiadas»
+  // con su propio código, después de quitar las vacías y las repetidas.
+  searches: z.array(SEARCH).max(MAX_SEARCHES_PER_CAMPAIGN * 2).optional(),
+  // El formato de antes del 29/09/2026: un solo rubro y una sola zona. Se
+  // sigue aceptando para una pestaña abierta con la versión anterior del
+  // portal durante el despliegue; se puede quitar pasados unos días.
+  category: z.string().max(200).optional(),
+  locationQuery: z.string().max(200).optional(),
   // Fase A — el contexto del negocio del cliente, con el que se le sugieren
   // rubros y zonas (ver prospecting-brief-ai.ts). Opcional: quien ya sabe a
   // quién buscar sigue guardando solo rubro y zona, como hasta ahora.
@@ -77,6 +98,19 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'invalid_body', details: body.error.flatten() }, { status: 400 });
   }
 
+  const requested: SearchSpec[] =
+    body.data.searches ??
+    (body.data.category !== undefined && body.data.locationQuery !== undefined
+      ? [{ category: body.data.category, locationQuery: body.data.locationQuery }]
+      : []);
+  const searches = normalizeSearches(requested);
+  if (searches.length === 0) {
+    return NextResponse.json({ error: 'invalid_body' }, { status: 400 });
+  }
+  if (searches.length > MAX_SEARCHES_PER_CAMPAIGN) {
+    return NextResponse.json({ error: 'demasiadas_busquedas', max: MAX_SEARCHES_PER_CAMPAIGN }, { status: 400 });
+  }
+
   // La presentación se normaliza al guardar —la misma función que la última
   // puerta antes de WhatsApp— y lo que no cabe se RECHAZA en vez de cortarse:
   // una frase partida a la mitad, dentro de un mensaje con el nombre del
@@ -99,8 +133,15 @@ export async function PATCH(req: NextRequest) {
 
   const existing = await prisma.prospectingCampaign.findUnique({
     where: { clientProductId: clientProduct.id },
-    select: { id: true, category: true, locationQuery: true, radiusMeters: true, presentacion: true },
+    select: {
+      id: true,
+      presentacion: true,
+      searches: { select: { id: true, category: true, locationQuery: true }, orderBy: { createdAt: 'asc' } },
+    },
   });
+
+  const listForAudit = (list: readonly SearchSpec[]) =>
+    list.map((x) => ({ category: x.category, locationQuery: x.locationQuery }));
 
   let campaign;
   try {
@@ -110,18 +151,28 @@ export async function PATCH(req: NextRequest) {
       // desconocido. Si alguien pregunta «¿quién escribió esto en mi nombre?»,
       // la respuesta tiene que estar aquí.
       const before = {
-        category: existing.category,
-        locationQuery: existing.locationQuery,
-        radiusMeters: existing.radiusMeters,
+        searches: listForAudit(existing.searches),
         presentacion: existing.presentacion,
       };
+      const diff = diffSearches(existing.searches, searches);
       campaign = await prisma.$transaction(async (tx) => {
+        if (diff.deleteIds.length > 0) {
+          await tx.prospectingSearch.deleteMany({ where: { id: { in: diff.deleteIds }, campaignId: existing.id } });
+        }
+        for (const row of diff.update) {
+          await tx.prospectingSearch.update({
+            where: { id: row.id },
+            data: { category: row.category, locationQuery: row.locationQuery },
+          });
+        }
+        if (diff.create.length > 0) {
+          await tx.prospectingSearch.createMany({
+            data: diff.create.map((x) => ({ campaignId: existing.id, ...x })),
+          });
+        }
         const updated = await tx.prospectingCampaign.update({
           where: { id: existing.id },
           data: {
-            category: body.data.category,
-            locationQuery: body.data.locationQuery,
-            ...(body.data.radiusMeters !== undefined ? { radiusMeters: body.data.radiusMeters } : {}),
             ...briefFields(body.data),
             ...(presentacion !== undefined ? { presentacion } : {}),
           },
@@ -133,12 +184,7 @@ export async function PATCH(req: NextRequest) {
             tenantId: clientProduct.tenantId,
             action: 'profile_updated',
             before,
-            after: {
-              category: updated.category,
-              locationQuery: updated.locationQuery,
-              radiusMeters: updated.radiusMeters,
-              presentacion: updated.presentacion,
-            },
+            after: { searches: listForAudit(searches), presentacion: updated.presentacion },
             actorId: `client:${resolved.clientId}`,
           },
         });
@@ -151,9 +197,7 @@ export async function PATCH(req: NextRequest) {
             clientId: resolved.clientId,
             clientProductId: clientProduct.id,
             tenantId: clientProduct.tenantId,
-            category: body.data.category,
-            locationQuery: body.data.locationQuery,
-            ...(body.data.radiusMeters !== undefined ? { radiusMeters: body.data.radiusMeters } : {}),
+            searches: { create: searches },
             ...briefFields(body.data),
             ...(presentacion !== undefined ? { presentacion } : {}),
             monthlyLeadCap: TIER_LEAD_CAP[clientProduct.product.tier] ?? TIER_LEAD_CAP.solo,
@@ -166,12 +210,7 @@ export async function PATCH(req: NextRequest) {
             tenantId: clientProduct.tenantId,
             action: 'created',
             before: Prisma.JsonNull,
-            after: {
-              category: created.category,
-              locationQuery: created.locationQuery,
-              radiusMeters: created.radiusMeters,
-              presentacion: created.presentacion,
-            },
+            after: { searches: listForAudit(searches), presentacion: created.presentacion },
             actorId: `client:${resolved.clientId}`,
           },
         });
@@ -183,8 +222,5 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'internal_error' }, { status: 500 });
   }
 
-  return NextResponse.json({
-    ok: true,
-    campaign: { category: campaign.category, locationQuery: campaign.locationQuery, radiusMeters: campaign.radiusMeters },
-  });
+  return NextResponse.json({ ok: true, campaign: { id: campaign.id, searches } });
 }

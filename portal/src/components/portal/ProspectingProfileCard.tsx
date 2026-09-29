@@ -23,6 +23,8 @@ import {
 
 const ERROR_LABEL: Record<string, string> = {
   invalid_body: 'Revisa los datos — falta el rubro o la zona.',
+  busqueda_a_medias: 'Cada búsqueda necesita un rubro y una zona. Completa o quita la que está a medias.',
+  demasiadas_busquedas: 'Puedes tener hasta 10 búsquedas a la vez.',
   forbidden: 'Este producto no está disponible en tu cuenta ahora mismo.',
   internal_error: 'Algo falló al guardar. Si persiste, contacta con el equipo técnico.',
   not_found: 'Guarda tu perfil de búsqueda antes de activar el contacto automático.',
@@ -30,10 +32,23 @@ const ERROR_LABEL: Record<string, string> = {
   falta_presentacion: 'Escribe a qué te dedicas antes de autorizar: sin eso el primer mensaje no se puede enviar.',
 };
 
+/** Hasta cuántas búsquedas deja añadir el formulario. Repite
+ *  MAX_SEARCHES_PER_CAMPAIGN de lib/prospecting.ts, que es server-only: la
+ *  convención del repositorio es repetir la comprobación en el componente,
+ *  nunca importar el lib. La ruta vuelve a comprobarlo. */
+const MAX_BUSQUEDAS = 10;
+
+interface SearchRow {
+  category: string;
+  locationQuery: string;
+}
+
+const EMPTY_ROW: SearchRow = { category: '', locationQuery: '' };
+
 export interface ProspectingProfile {
-  category: string | null;
-  locationQuery: string | null;
-  radiusMeters: number | null;
+  // Varias combinaciones de rubro y zona desde el 29/09/2026. El radio se
+  // fue: nunca llegó a Google.
+  searches: SearchRow[];
   // Fase A (2026-09-18) — el contexto del negocio del cliente.
   clientWebsite: string | null;
   businessDescription: string | null;
@@ -73,9 +88,9 @@ export function ProspectingProfileCard({
   businessName: string;
 }) {
   const router = useRouter();
-  const [category, setCategory] = useState(profile?.category ?? '');
-  const [locationQuery, setLocationQuery] = useState(profile?.locationQuery ?? '');
-  const [radiusKm, setRadiusKm] = useState(Math.round((profile?.radiusMeters ?? 10000) / 1000));
+  const [searches, setSearches] = useState<SearchRow[]>(
+    profile?.searches.length ? profile.searches.map((x) => ({ ...x })) : [{ ...EMPTY_ROW }],
+  );
   const [clientWebsite, setClientWebsite] = useState(profile?.clientWebsite ?? '');
   const [businessDescription, setBusinessDescription] = useState(profile?.businessDescription ?? '');
   const [idealCustomer, setIdealCustomer] = useState(profile?.idealCustomer ?? '');
@@ -93,7 +108,26 @@ export function ProspectingProfileCard({
   const [consentGiven, setConsentGiven] = useState(Boolean(profile?.consentAcknowledgedAt));
   const [autoPaused, setAutoPaused] = useState(Boolean(profile?.autoContactPausedAt));
 
-  const configured = Boolean(profile?.category && profile?.locationQuery);
+  const configured = (profile?.searches.length ?? 0) > 0;
+
+  function updateRow(index: number, field: keyof SearchRow, value: string) {
+    setSearches((rows) => rows.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
+  }
+
+  function removeRow(index: number) {
+    setSearches((rows) => (rows.length === 1 ? [{ ...EMPTY_ROW }] : rows.filter((_, i) => i !== index)));
+  }
+
+  /** Una sugerencia de la IA va al primer hueco libre de ese campo, o a una
+   *  búsqueda nueva. Nunca pisa lo que el cliente ya escribió. */
+  function applySuggestion(field: keyof SearchRow, value: string) {
+    setSearches((rows) => {
+      const free = rows.findIndex((row) => !row[field].trim());
+      if (free >= 0) return rows.map((row, i) => (i === free ? { ...row, [field]: value } : row));
+      if (rows.length >= MAX_BUSQUEDAS) return rows;
+      return [...rows, { ...EMPTY_ROW, [field]: value }];
+    });
+  }
 
   // La vista previa sale de la MISMA función que prepara el parámetro antes
   // de enviarlo, así que enseña lo que de verdad se mandaría — con el «nos
@@ -156,7 +190,12 @@ export function ProspectingProfileCard({
   async function save(): Promise<boolean> {
     setError(null);
     setSaved(false);
-    if (!category.trim() || !locationQuery.trim()) {
+    const filled = searches.filter((row) => row.category.trim() || row.locationQuery.trim());
+    if (filled.some((row) => !row.category.trim() || !row.locationQuery.trim())) {
+      setError(ERROR_LABEL.busqueda_a_medias);
+      return false;
+    }
+    if (filled.length === 0) {
       setError(ERROR_LABEL.invalid_body);
       return false;
     }
@@ -170,14 +209,12 @@ export function ProspectingProfileCard({
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          category: category.trim(),
-          locationQuery: locationQuery.trim(),
+          searches: filled.map((row) => ({ category: row.category.trim(), locationQuery: row.locationQuery.trim() })),
           clientWebsite: clientWebsite.trim(),
           businessDescription: businessDescription.trim(),
           idealCustomer: idealCustomer.trim(),
           exclusions: exclusions.trim(),
           presentacion: presentacion.trim(),
-          radiusMeters: Math.min(Math.max(radiusKm, 1), 50) * 1000,
         }),
       });
       if (!res.ok) {
@@ -185,6 +222,11 @@ export function ProspectingProfileCard({
         setError(ERROR_LABEL[detail?.error] ?? 'No se pudo guardar.');
         return false;
       }
+      // Lo que quedó guardado de verdad: sin las repetidas ni las vacías, que
+      // la ruta descarta. Si no, el formulario seguiría enseñando una fila
+      // que no existe.
+      const body = (await res.json().catch(() => null)) as { campaign?: { searches?: SearchRow[] } } | null;
+      if (body?.campaign?.searches?.length) setSearches(body.campaign.searches.map((row) => ({ ...row })));
       setSaved(true);
       router.refresh();
       return true;
@@ -234,8 +276,8 @@ export function ProspectingProfileCard({
         <p className="text-sm font-semibold">¿A quién buscamos?</p>
         <p className="text-xs text-kairikos-muted">
           {configured
-            ? 'Cambia el rubro o la zona cuando quieras — el siguiente barrido usará el perfil nuevo.'
-            : 'Dinos qué tipo de negocio y en qué zona, y empezamos a buscarte prospectos.'}
+            ? 'Añade, cambia o quita búsquedas cuando quieras: el siguiente barrido usa las nuevas. Todas comparten los prospectos de tu tarifa.'
+            : 'Dinos qué tipo de negocio y en qué zona, y empezamos a buscarte prospectos. Puedes añadir varias combinaciones.'}
         </p>
       </div>
 
@@ -320,7 +362,7 @@ export function ProspectingProfileCard({
                       key={item}
                       type="button"
                       className="btn-ghost text-xs"
-                      onClick={() => setCategory(item)}
+                      onClick={() => applySuggestion('category', item)}
                       data-testid="prospecting-brief-category-option"
                     >
                       {item}
@@ -336,7 +378,7 @@ export function ProspectingProfileCard({
                       key={item}
                       type="button"
                       className="btn-ghost text-xs"
-                      onClick={() => setLocationQuery(item)}
+                      onClick={() => applySuggestion('locationQuery', item)}
                       data-testid="prospecting-brief-location-option"
                     >
                       {item}
@@ -345,57 +387,78 @@ export function ProspectingProfileCard({
                 </div>
               ) : null}
               <p className="text-xs text-kairikos-muted">
-                Pulsa uno para ponerlo abajo, revísalo y guarda. Puedes cambiarlo cuando quieras.
+                Pulsa uno para ponerlo abajo: va al primer hueco libre o a una búsqueda nueva. Revísalo y guarda.
               </p>
             </div>
           ) : null}
         </div>
       </details>
 
-      <div className="flex flex-wrap items-end gap-4">
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-xs font-medium text-kairikos-muted">Rubro</span>
-          <input
-            type="text"
-            className="input"
-            placeholder="p. ej. peluquerías"
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            data-testid="prospecting-profile-category"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-xs font-medium text-kairikos-muted">Zona</span>
-          <input
-            type="text"
-            className="input"
-            placeholder="p. ej. Las Palmas de Gran Canaria"
-            value={locationQuery}
-            onChange={(e) => setLocationQuery(e.target.value)}
-            data-testid="prospecting-profile-location"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-xs font-medium text-kairikos-muted">Radio (km)</span>
-          <input
-            type="number"
-            min={1}
-            max={50}
-            className="input w-20"
-            value={radiusKm}
-            onChange={(e) => setRadiusKm(Number(e.target.value) || 1)}
-            data-testid="prospecting-profile-radius"
-          />
-        </label>
-        <button
-          type="button"
-          className="btn-primary"
-          onClick={save}
-          disabled={saving}
-          data-testid="prospecting-profile-save"
-        >
-          {saving ? 'Guardando…' : 'Guardar'}
-        </button>
+      <div className="space-y-3" data-testid="prospecting-searches">
+        {searches.map((row, index) => (
+          <div
+            key={index}
+            className="flex flex-wrap items-end gap-3 rounded-xl border border-kairikos-border p-3 sm:rounded-none sm:border-0 sm:p-0"
+            data-testid="prospecting-search-row"
+          >
+            <label className="flex min-w-0 basis-full flex-col gap-1 text-sm sm:flex-1 sm:basis-0">
+              <span className="text-xs font-medium text-kairikos-muted">Rubro</span>
+              <input
+                type="text"
+                className="input w-full"
+                placeholder="p. ej. administradores de fincas"
+                value={row.category}
+                onChange={(e) => updateRow(index, 'category', e.target.value)}
+                data-testid="prospecting-search-category"
+              />
+            </label>
+            <label className="flex min-w-0 basis-full flex-col gap-1 text-sm sm:flex-1 sm:basis-0">
+              <span className="text-xs font-medium text-kairikos-muted">Zona</span>
+              <input
+                type="text"
+                className="input w-full"
+                placeholder="p. ej. Las Palmas de Gran Canaria"
+                value={row.locationQuery}
+                onChange={(e) => updateRow(index, 'locationQuery', e.target.value)}
+                data-testid="prospecting-search-location"
+              />
+            </label>
+            {searches.length > 1 || row.category || row.locationQuery ? (
+              <button
+                type="button"
+                className="btn-ghost text-xs"
+                onClick={() => removeRow(index)}
+                aria-label={`Quitar la búsqueda ${index + 1}`}
+                data-testid="prospecting-search-remove"
+              >
+                Quitar
+              </button>
+            ) : null}
+          </div>
+        ))}
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            className="btn-ghost"
+            onClick={() => setSearches((rows) => [...rows, { ...EMPTY_ROW }])}
+            disabled={searches.length >= MAX_BUSQUEDAS}
+            data-testid="prospecting-search-add"
+          >
+            + Añadir búsqueda
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={save}
+            disabled={saving}
+            data-testid="prospecting-profile-save"
+          >
+            {saving ? 'Guardando…' : 'Guardar'}
+          </button>
+          {searches.length >= MAX_BUSQUEDAS ? (
+            <span className="text-xs text-kairikos-muted">Hasta {MAX_BUSQUEDAS} búsquedas a la vez.</span>
+          ) : null}
+        </div>
       </div>
 
       {error ? (
