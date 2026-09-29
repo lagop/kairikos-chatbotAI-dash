@@ -12,6 +12,11 @@ import { useRouter } from 'next/navigation';
 // (server-only) — the same string comparisons are replicated inline
 // here, same split WebQuoteEditor.tsx already uses for web-quotes.ts's
 // predicates.
+//
+// «No quiere que le contactemos» (29/09/2026): registra la oposición que
+// llega por teléfono o por correo. canRegisterOptOut de lead-opt-out.ts,
+// repetido inline por la misma razón. Pide confirmación porque no se deshace
+// desde el portal — ver la cabecera de lead-opt-out.ts.
 // =============================================================================
 
 type LeadStatus = 'nuevo' | 'contactado' | 'convertido' | 'descartado';
@@ -19,11 +24,18 @@ type LeadStatus = 'nuevo' | 'contactado' | 'convertido' | 'descartado';
 export interface LeadStatusControlsProps {
   leadId: string;
   status: LeadStatus;
+  source: string;
+  optedOut: boolean;
 }
 
-export function LeadStatusControls({ leadId, status }: LeadStatusControlsProps) {
+const OPT_OUT_CONFIRM =
+  'Vas a registrar que este negocio no quiere que le contactemos.\n\n' +
+  'Dejaremos de escribirle, también a los otros locales con su mismo teléfono, ' +
+  'y no aparecerá el botón para escribirle. Esto no se puede deshacer desde el portal.';
+
+export function LeadStatusControls({ leadId, status, source, optedOut }: LeadStatusControlsProps) {
   const router = useRouter();
-  const [busy, setBusy] = useState<'contactado' | 'convertido' | 'descartado' | null>(null);
+  const [busy, setBusy] = useState<'contactado' | 'convertido' | 'descartado' | 'oposicion' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function transition(target: 'contactado' | 'convertido' | 'descartado') {
@@ -48,11 +60,31 @@ export function LeadStatusControls({ leadId, status }: LeadStatusControlsProps) 
     }
   }
 
+  async function registerOptOut() {
+    if (!window.confirm(OPT_OUT_CONFIRM)) return;
+    setBusy('oposicion');
+    setError(null);
+    try {
+      const res = await fetch(`/api/portal/leads/${leadId}/opt-out`, { method: 'POST' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setError(`No se pudo registrar. ${data?.detail ?? data?.error ?? res.statusText}`);
+        return;
+      }
+      router.refresh();
+    } catch (err) {
+      setError(`Error de red: ${err instanceof Error ? err.message : 'desconocido'}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const canOptOut = source === 'outbound' && !optedOut && status !== 'convertido';
   const canMarkContacted = status === 'nuevo';
   const canMarkConverted = status === 'contactado';
   const canDiscard = status === 'nuevo' || status === 'contactado';
 
-  if (!canMarkContacted && !canMarkConverted && !canDiscard) {
+  if (!canMarkContacted && !canMarkConverted && !canDiscard && !canOptOut) {
     return null;
   }
 
@@ -95,6 +127,18 @@ export function LeadStatusControls({ leadId, status }: LeadStatusControlsProps) 
             data-testid="lead-discard"
           >
             {busy === 'descartado' ? 'Guardando…' : 'Descartar'}
+          </button>
+        ) : null}
+        {canOptOut ? (
+          <button
+            type="button"
+            className="btn-ghost text-kairikos-danger"
+            onClick={registerOptOut}
+            disabled={busy !== null}
+            data-testid="lead-opt-out"
+            title="Para cuando lo pide por teléfono o por correo. Si lo pide respondiendo por WhatsApp, se registra solo."
+          >
+            {busy === 'oposicion' ? 'Guardando…' : 'No quiere que le contactemos'}
           </button>
         ) : null}
       </div>

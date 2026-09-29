@@ -38,11 +38,10 @@ import type { PrismaClient, Prisma } from '@prisma/client';
 // SIN plazo, porque su única finalidad es cumplir la oposición: por eso el
 // borrado a tres años se salta esos leads.
 //
-// «Se opuso» es hoy lo que marca prospecting-replies.ts cuando el prospecto
-// contesta pidiendo la baja: status 'descartado' Y repliedAt. Un descarte a
-// mano del operador NO cuenta —puede ser «no encaja», no «no me escribas»—.
-// Si alguien se opone por teléfono o por correo, hoy no hay botón para
-// registrarlo: es la limitación conocida de la otra mitad.
+// «Se opuso» es Lead.optedOutAt: lo marca prospecting-replies.ts cuando el
+// prospecto contesta pidiendo la baja, y el botón del portal
+// (lead-opt-out.ts) cuando lo pide por teléfono o por correo. Un descarte a
+// secas NO cuenta —puede ser «no encaja», no «no me escribas»—.
 //
 // Idempotente, como exige el scheduler, que lo llama cada cinco minutos: cada
 // paso busca solo lo que aún le queda por hacer, así que la segunda llamada
@@ -94,7 +93,7 @@ function lastContactBefore(cutoff: Date) {
 }
 
 /** El prospecto pidió que no se le escriba más. Ver la cabecera. */
-const OPPOSED: Prisma.LeadWhereInput = { status: 'descartado', repliedAt: { not: null } };
+const OPPOSED: Prisma.LeadWhereInput = { optedOutAt: { not: null } };
 
 const OWN_PROSPECT: Prisma.LeadWhereInput = {
   source: 'outbound',
@@ -105,7 +104,8 @@ const OWN_PROSPECT: Prisma.LeadWhereInput = {
  * Lo que queda de un prospecto que se opuso, y por qué cada cosa:
  *   - contactPhone: prospecting-contact.ts bloquea por teléfono.
  *   - externalPlaceId: la ingesta deduplica por él; sin él vuelve a entrar.
- *   - status, repliedAt, discardedAt: son la propia marca de oposición.
+ *   - status, optedOutAt, repliedAt, discardedAt: la marca de oposición y
+ *     lo que la acompaña.
  *   - searchCategory, searchLocation, primaryType: el rubro y la zona de la
  *     búsqueda, que no identifican a nadie.
  * Todo lo demás se vacía.

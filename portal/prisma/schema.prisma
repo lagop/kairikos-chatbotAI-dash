@@ -3152,6 +3152,19 @@ model Lead {
   // WhatsApp. El estado NO cambia a 'convertido' al responder — responder
   // no es comprar, y decidir eso es del comercial del cliente.
   repliedAt         DateTime? @map("replied_at")
+  // El prospecto pidió que no se le contacte más (29/09/2026). Es la marca
+  // de OPOSICIÓN, distinta de 'descartado' a secas, que puede ser solo «no
+  // encaja». La ponen tres sitios, y los tres la leen de aquí:
+  //   - markProspectReplied, cuando la respuesta por WhatsApp es una baja;
+  //   - registerLeadOptOut (lead-opt-out.ts), el botón del portal para la
+  //     que llega por teléfono o por correo;
+  //   - el bloqueo por teléfono de prospecting-contact.ts, al otro local de
+  //     quien ya se opuso: es la misma persona.
+  // La lee el borrado por plazo (retention-purge.ts), que en las cuentas
+  // internas deja al lead en el mínimo que impide volver a escribirle.
+  // Antes de esta columna la oposición se deducía de 'descartado' +
+  // repliedAt; la migración rellenó esos casos.
+  optedOutAt        DateTime? @map("opted_out_at")
 
   // Fase 3.4 — qué búsqueda encontró a este prospecto, congelado en el
   // momento del hallazgo. La campaña solo guarda su rubro y zona ACTUALES,
@@ -3242,7 +3255,8 @@ model LeadAudit {
   // toque va en Lead.followUpCount) | 'replied' (Fase 3.3 — el prospecto
   // escribió y la secuencia se corta) | 'minimized_opposition' (el prospecto
   // se opuso y se vació todo salvo lo que impide volver a escribirle,
-  // actorId 'system:retention' — src/lib/retention-purge.ts)
+  // actorId 'system:retention' — src/lib/retention-purge.ts) | 'opted_out'
+  // (se registró que no quiere que se le contacte — src/lib/lead-opt-out.ts)
   action       String
   statusBefore String?  @map("status_before")
   statusAfter  String?  @map("status_after")

@@ -48,7 +48,7 @@ const THREE_YEARS_AGO = new Date('2026-10-01T12:00:00.000Z');
 type Where = Record<string, unknown>;
 const findManyWheres = () => m.lead.findMany.mock.calls.map((c) => (c[0] as { where: Where }).where);
 /** El where de la búsqueda de oposición y el de la de plazo, por su contenido. */
-const minimizeWhere = () => findManyWheres().find((w) => JSON.stringify(w).includes('repliedAt') && !JSON.stringify(w).includes('NOT'))!;
+const minimizeWhere = () => findManyWheres().find((w) => JSON.stringify(w).includes('optedOutAt') && !JSON.stringify(w).includes('NOT'))!;
 const expireWhere = () => findManyWheres().find((w) => JSON.stringify(w).includes('NOT'))!;
 
 beforeEach(() => {
@@ -102,13 +102,13 @@ describe('prospección propia', () => {
     await runRetentionPurge(prisma, NOW);
     const and = expireWhere().AND as Where[];
     expect(and).toContainEqual({ createdAt: { lt: THREE_YEARS_AGO } });
-    expect(and).toContainEqual({ NOT: { status: 'descartado', repliedAt: { not: null } } });
+    expect(and).toContainEqual({ NOT: { optedOutAt: { not: null } } });
   });
 
   it('minimiza al que se opuso, sin esperar al plazo', async () => {
     await runRetentionPurge(prisma, NOW);
     const and = minimizeWhere().AND as Where[];
-    expect(and).toContainEqual({ status: 'descartado', repliedAt: { not: null } });
+    expect(and).toContainEqual({ optedOutAt: { not: null } });
     expect(JSON.stringify(and)).not.toContain('createdAt');
   });
 
@@ -126,6 +126,7 @@ describe('prospección propia', () => {
     expect(data).not.toHaveProperty('externalPlaceId');
     expect(data).not.toHaveProperty('status');
     expect(data).not.toHaveProperty('repliedAt');
+    expect(data).not.toHaveProperty('optedOutAt');
     expect(data).toMatchObject({ contactName: null, contactEmail: null, website: null, summary: null });
     expect(m.prospectingCompetitorSnapshot.deleteMany).toHaveBeenCalledWith({ where: { leadId: { in: ['l1'] } } });
     expect(m.prospectingWebDraft.deleteMany).toHaveBeenCalledWith({ where: { leadId: { in: ['l1'] } } });

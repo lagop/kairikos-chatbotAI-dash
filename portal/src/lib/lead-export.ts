@@ -41,6 +41,8 @@ export const LEAD_EXPORT_COLUMNS: ReadonlyArray<{ header: string; key: string }>
   { header: 'Contactado', key: 'contactedAt' },
   { header: 'Respondió', key: 'repliedAt' },
   { header: 'Convertido', key: 'convertedAt' },
+  // Quien exporta a su CRM tiene que saber a quién no llamar desde allí.
+  { header: 'No quiere contacto', key: 'optedOutAt' },
 ]);
 
 /**
@@ -113,6 +115,7 @@ export async function loadLeadsForExport(
       contactedAt: true,
       repliedAt: true,
       convertedAt: true,
+      optedOutAt: true,
     },
   });
 }
