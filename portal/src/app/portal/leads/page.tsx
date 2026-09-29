@@ -443,6 +443,7 @@ function LeadRow({
     channel: string | null;
     source: string;
     createdAt: Date;
+    optedOutAt: Date | null;
   };
 }) {
   const contactParts = [lead.contactName, lead.contactPhone, lead.contactEmail].filter(Boolean);
@@ -473,6 +474,15 @@ function LeadRow({
               Prioridad {lead.score}
             </span>
           ) : null}
+          {lead.optedOutAt ? (
+            <span
+              className="pill-danger"
+              data-testid="lead-opted-out"
+              title="Pidió que no se le contacte. No le escribimos más, ni a los otros locales con su mismo teléfono."
+            >
+              No quiere contacto
+            </span>
+          ) : null}
           <span className={STATUS_PILL[lead.status] ?? 'pill-muted'} data-testid="lead-status-pill">
             {STATUS_LABEL[lead.status] ?? lead.status}
           </span>
@@ -484,10 +494,14 @@ function LeadRow({
           Por qué esta prioridad: {lead.scoreReason}
         </p>
       ) : null}
-      {lead.source === 'outbound' ? <OutreachLinks lead={lead} businessName={businessName} /> : null}
+      {/* A quien se opuso no se le ofrece escribirle: el botón de WhatsApp
+          con el texto ya escrito es justo lo que pidió que no pase. */}
+      {lead.source === 'outbound' && !lead.optedOutAt ? <OutreachLinks lead={lead} businessName={businessName} /> : null}
       <LeadStatusControls
         leadId={lead.id}
         status={lead.status as 'nuevo' | 'contactado' | 'convertido' | 'descartado'}
+        source={lead.source}
+        optedOut={lead.optedOutAt !== null}
       />
     </div>
   );

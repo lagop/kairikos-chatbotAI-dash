@@ -126,7 +126,9 @@ export async function markProspectReplied(
         await tx.lead.update({
           where: { id: lead.id },
           data: descarta
-            ? { repliedAt: now, status: 'descartado', discardedAt: now }
+            ? // optedOutAt: la baja es una oposición, no solo un descarte
+              // (ver Lead.optedOutAt y lead-opt-out.ts).
+              { repliedAt: now, status: 'descartado', discardedAt: now, optedOutAt: now }
             : { repliedAt: now },
         });
         await tx.leadAudit.create({

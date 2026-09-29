@@ -339,7 +339,7 @@ export async function runProspectingContact(
             contactPhone: { not: null },
             OR: [{ followUpCount: { gt: 0 } }, { repliedAt: { not: null } }, { status: 'descartado' }],
           },
-          select: { id: true, contactPhone: true, status: true, repliedAt: true },
+          select: { id: true, contactPhone: true, optedOutAt: true },
         });
   // Los teléfonos que ya reciben algo en ESTA pasada: dos locales nuevos con
   // el mismo número en el mismo barrido no reciben dos primeros mensajes.
@@ -362,14 +362,17 @@ export async function runProspectingContact(
       }
       const blocker = blockers.find((b) => b.id !== lead.id && phonesMatch(b.contactPhone, phone));
       if (blocker) {
-        const saidNo = blocker.status === 'descartado' && blocker.repliedAt !== null;
+        // Se opuso por WhatsApp o lo registró el cliente a mano (Lead.optedOutAt).
+        const saidNo = blocker.optedOutAt !== null;
         await prisma.$transaction(async (tx) => {
           await tx.lead.update({
             where: { id: lead.id },
             data: {
               autoContactAttempts: MAX_AUTO_CONTACT_ATTEMPTS,
               autoContactError: saidNo ? 'mismo_telefono_rechazo_el_contacto' : 'mismo_telefono_ya_contactado',
-              ...(saidNo ? { status: 'descartado', discardedAt: now } : {}),
+              // Mismo teléfono que quien se opuso: es la misma persona, así
+              // que hereda también la marca de oposición.
+              ...(saidNo ? { status: 'descartado', discardedAt: now, optedOutAt: now } : {}),
             },
           });
           if (saidNo) {

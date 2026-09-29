@@ -170,6 +170,8 @@ describe('markProspectReplied — descartar cuando dicen que no', () => {
     const update = state.leadUpdate.mock.calls[0][0];
     expect(update.data.status).toBe('descartado');
     expect(update.data.discardedAt).toBeInstanceOf(Date);
+    // Una baja es una oposición: lleva la marca, no solo el descarte.
+    expect(update.data.optedOutAt).toBeInstanceOf(Date);
   });
 
   it('"no puedo el martes, mejor el miércoles" NO descarta a quien pide que le llamen', async () => {
@@ -182,6 +184,7 @@ describe('markProspectReplied — descartar cuando dicen que no', () => {
       message: 'no puedo el martes, mejor llamadme el miercoles',
     });
     expect(state.leadUpdate.mock.calls[0][0].data.status).toBeUndefined();
+    expect(state.leadUpdate.mock.calls[0][0].data.optedOutAt).toBeUndefined();
   });
 
   it('sin texto se comporta como siempre: solo corta la secuencia', async () => {
