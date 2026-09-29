@@ -37,6 +37,7 @@ const state = {
   leadCreate: vi.fn(),
   leadAuditCreate: vi.fn(),
   campaignUpdate: vi.fn(),
+  searchUpdate: vi.fn(),
 };
 
 const mockTx = {
@@ -48,6 +49,7 @@ const prisma = {
   $transaction: (fn: (tx: typeof mockTx) => unknown) => fn(mockTx),
   lead: { findMany: (...a: unknown[]) => state.leadFindMany(...a) },
   prospectingCampaign: { update: (...a: unknown[]) => state.campaignUpdate(...a) },
+  prospectingSearch: { update: (...a: unknown[]) => state.searchUpdate(...a) },
 } as unknown as PrismaClient;
 
 const NOW = new Date('2026-09-15T10:00:00.000Z');
@@ -57,8 +59,7 @@ function campaign(over: Partial<ProspectingCampaignInput> = {}): ProspectingCamp
     id: 'campaign_1',
     clientId: 'client_1',
     tenantId: 't1',
-    category: 'ferretería',
-    locationQuery: 'Las Palmas de Gran Canaria',
+    searches: [{ id: 'search_1', category: 'ferretería', locationQuery: 'Las Palmas de Gran Canaria', lastRunAt: null }],
     leadsFoundThisMonth: 0,
     monthlyLeadCap: 100,
     usageResetAt: new Date('2026-09-01T00:00:00.000Z'),
@@ -96,6 +97,7 @@ beforeEach(() => {
     Promise.resolve({ id: 'lead_new', ...data }),
   );
   state.campaignUpdate.mockResolvedValue({});
+  state.searchUpdate.mockResolvedValue({});
 });
 
 describe('runProspectingSearch — gates before ever calling Places', () => {
@@ -106,8 +108,8 @@ describe('runProspectingSearch — gates before ever calling Places', () => {
     expect(mockState.searchPlaces).not.toHaveBeenCalled();
   });
 
-  it('campaign_not_ready when the client has not filled in category/locationQuery yet', async () => {
-    const result = await runProspectingSearch(prisma, campaign({ category: null }), NOW);
+  it('campaign_not_ready when the client has not saved any search yet', async () => {
+    const result = await runProspectingSearch(prisma, campaign({ searches: [] }), NOW);
     expect(result).toEqual({ ok: false, error: 'campaign_not_ready' });
     expect(mockState.searchPlaces).not.toHaveBeenCalled();
   });
@@ -120,7 +122,15 @@ describe('runProspectingSearch — monthly cap', () => {
       campaign({ leadsFoundThisMonth: 100, monthlyLeadCap: 100, alertedAt: null }),
       NOW,
     );
-    expect(result).toEqual({ ok: true, created: 0, skippedDuplicate: 0, skippedClosed: 0, detailsCallsMade: 0, capReached: true });
+    expect(result).toEqual({
+      ok: true,
+      created: 0,
+      skippedDuplicate: 0,
+      skippedClosed: 0,
+      detailsCallsMade: 0,
+      capReached: true,
+      searchesRun: 0,
+    });
     expect(mockState.searchPlaces).not.toHaveBeenCalled();
     expect(state.campaignUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ alertedAt: NOW }) }),
@@ -281,6 +291,7 @@ describe('runProspectingSearch — Lead creation', () => {
     const result = await runProspectingSearch(prisma, campaign(), NOW);
     expect(result).toEqual({ ok: false, error: 'search_failed' });
     expect(state.campaignUpdate).not.toHaveBeenCalled();
+    expect(state.searchUpdate).not.toHaveBeenCalled();
   });
 });
 
@@ -302,3 +313,4 @@ describe('TIER_LEAD_CAP', () => {
     expect(TIER_LEAD_CAP).toEqual({ solo: 100, team: 300, business: 800 });
   });
 });
+

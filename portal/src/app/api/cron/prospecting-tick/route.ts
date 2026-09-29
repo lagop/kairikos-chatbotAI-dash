@@ -72,13 +72,14 @@ export async function GET(req: NextRequest) {
   const now = new Date();
 
   const campaigns = await prisma.prospectingCampaign.findMany({
-    where: { status: 'active', category: { not: null }, locationQuery: { not: null } },
+    // Desde el 29/09/2026 lo que se busca vive en ProspectingSearch, varias
+    // por campaña. Una campaña sin ninguna no tiene nada que barrer.
+    where: { status: 'active', searches: { some: {} } },
     select: {
       id: true,
       clientId: true,
       tenantId: true,
-      category: true,
-      locationQuery: true,
+      searches: { select: { id: true, category: true, locationQuery: true, lastRunAt: true } },
       leadsFoundThisMonth: true,
       monthlyLeadCap: true,
       usageResetAt: true,
@@ -118,7 +119,9 @@ export async function GET(req: NextRequest) {
           if (client) {
             const emailResult = await sendProspectingBatchEmail({
               to: client.email,
-              businessName: client.companyName ?? client.name,
+              // `||` y no `??`: un companyName vacío dejaba el correo sin
+              // nombre (CLAUDE.md, trampa 4).
+              businessName: client.companyName?.trim() || client.name,
               count: result.created,
             });
             if (!emailResult.ok) {

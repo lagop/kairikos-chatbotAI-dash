@@ -69,8 +69,8 @@ async function get(req: NextRequest) {
   return GET(req);
 }
 
-const CAMPAIGN_A = { id: 'camp_a', clientId: 'client_a', tenantId: null, category: 'ferretería', locationQuery: 'Las Palmas', leadsFoundThisMonth: 0, monthlyLeadCap: 100, usageResetAt: new Date(), alertedAt: null, lastRunAt: null };
-const CAMPAIGN_B = { id: 'camp_b', clientId: 'client_b', tenantId: null, category: 'panadería', locationQuery: 'Tenerife', leadsFoundThisMonth: 0, monthlyLeadCap: 100, usageResetAt: new Date(), alertedAt: null, lastRunAt: new Date() };
+const CAMPAIGN_A = { id: 'camp_a', clientId: 'client_a', tenantId: null, searches: [{ id: 's_a', category: 'ferretería', locationQuery: 'Las Palmas', lastRunAt: null }], leadsFoundThisMonth: 0, monthlyLeadCap: 100, usageResetAt: new Date(), alertedAt: null, lastRunAt: null };
+const CAMPAIGN_B = { id: 'camp_b', clientId: 'client_b', tenantId: null, searches: [{ id: 's_b', category: 'panadería', locationQuery: 'Tenerife', lastRunAt: null }], leadsFoundThisMonth: 0, monthlyLeadCap: 100, usageResetAt: new Date(), alertedAt: null, lastRunAt: new Date() };
 
 beforeEach(() => {
   process.env.CRON_SECRET = SECRET;
@@ -103,11 +103,11 @@ describe('GET /api/cron/prospecting-tick', () => {
     expect(res.status).toBe(401);
   });
 
-  it('only queries active campaigns with a filled-in profile', async () => {
+  it('only queries active campaigns with at least one search', async () => {
     await get(makeRequest());
     expect(mockState.campaignFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { status: 'active', category: { not: null }, locationQuery: { not: null } },
+        where: { status: 'active', searches: { some: {} } },
       }),
     );
   });
