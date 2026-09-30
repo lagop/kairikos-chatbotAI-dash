@@ -8,6 +8,7 @@
 // session (which never set a NextAuth cookie in the first place, so we
 // clear our own `kairikos-portal-dev-session` marker explicitly).
 
+import { publicOrigin } from '@/lib/public-origin';
 import { NextResponse, type NextRequest } from 'next/server';
 import { signOut } from '../../../../../auth';
 import { getSession } from '@/lib/session';
@@ -74,7 +75,7 @@ export async function POST(req: NextRequest) {
   // empieza por "/" y era una redirección abierta (revisión 22/09/2026).
   const target = safeInternalPath(returnTo, role === 'operator' ? ADMIN_LOGIN : PORTAL_LOGIN);
 
-  const res = NextResponse.redirect(new URL(target, req.url), 303);
+  const res = NextResponse.redirect(new URL(target, publicOrigin(req)), 303);
   clearAuthCookies(res);
   return res;
 }

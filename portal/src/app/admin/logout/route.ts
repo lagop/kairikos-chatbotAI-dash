@@ -25,6 +25,7 @@
 // KAIA-12227 — clearing both cookies is what makes the unauthenticated
 // contract hold after a logout.
 
+import { publicOrigin } from '@/lib/public-origin';
 import { NextResponse, type NextRequest } from 'next/server';
 import { getSessionCookieId, revokeSession, clearSessionCookie } from '@/lib/operator-session';
 import { signOut } from '../../../../auth';
@@ -45,7 +46,7 @@ async function logout(req: NextRequest) {
     // the login page. Same defense-in-depth pattern used by
     // `src/app/api/portal/logout/route.ts:39`.
   }
-  const res = NextResponse.redirect(new URL('/admin/login', req.url), 303);
+  const res = NextResponse.redirect(new URL('/admin/login', publicOrigin(req)), 303);
   const cookie = clearSessionCookie();
   res.cookies.set(cookie.name, cookie.value, cookie.options);
   return res;

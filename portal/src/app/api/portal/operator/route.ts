@@ -1,3 +1,4 @@
+import { publicOrigin } from '@/lib/public-origin';
 import { getOperatorAlertRecipients } from '@/lib/operator-alert-settings';
 import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
@@ -30,11 +31,11 @@ export async function POST(req: NextRequest) {
 async function handleOperatorViewToggle(req: NextRequest): Promise<NextResponse> {
   const form = await req.formData();
   const mode = String(form.get('mode') ?? '');
-  // safeInternalPath: con new URL(return_to, req.url), un return_to absoluto
+  // safeInternalPath: con new URL(return_to, publicOrigin(req)), un return_to absoluto
   // (https://otro-sitio) redirigía fuera, sin autenticación — redirección
   // abierta encontrada en la revisión de seguridad del 30/09/2026.
   const target = safeInternalPath(form.get('return_to'), '/admin/portal/clients');
-  const res = NextResponse.redirect(new URL(target, req.url), 303);
+  const res = NextResponse.redirect(new URL(target, publicOrigin(req)), 303);
   if (mode === 'enable') {
     res.cookies.set(OPERATOR_COOKIE, '1', {
       httpOnly: true,

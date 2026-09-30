@@ -1,3 +1,4 @@
+import { publicOrigin } from '@/lib/public-origin';
 import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getLocationAllowance } from '@/lib/review-locations';
@@ -55,7 +56,7 @@ export async function GET(req: NextRequest) {
   const returnTo = RETURN_TARGETS[req.cookies.get(OAUTH_RETURN_COOKIE)?.value ?? ''] ?? RETURN_TARGETS.resenas;
 
   const redirectTo = (path: string) => {
-    const res = NextResponse.redirect(new URL(path, req.url));
+    const res = NextResponse.redirect(new URL(path, publicOrigin(req)));
     res.cookies.set(OAUTH_STATE_COOKIE, '', { path: '/api/portal/google-business/oauth', maxAge: 0 });
     res.cookies.set(OAUTH_RETURN_COOKIE, '', { path: '/api/portal/google-business/oauth', maxAge: 0 });
     return res;

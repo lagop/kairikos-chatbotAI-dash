@@ -1,3 +1,4 @@
+import { publicOrigin } from '@/lib/public-origin';
 import { NextResponse, type NextRequest } from 'next/server';
 import * as crypto from 'node:crypto';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
@@ -24,14 +25,14 @@ export const runtime = 'nodejs';
 export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session.hasClientAccess) {
-    return NextResponse.redirect(new URL('/portal/login?next=/portal/seo', req.url));
+    return NextResponse.redirect(new URL('/portal/login?next=/portal/seo', publicOrigin(req)));
   }
   const resolved = await resolveClientFromSession();
   if (!resolved) {
-    return NextResponse.redirect(new URL('/portal/login?next=/portal/seo', req.url));
+    return NextResponse.redirect(new URL('/portal/login?next=/portal/seo', publicOrigin(req)));
   }
   if (resolved.source !== 'database' || !isDatabaseConfigured) {
-    return NextResponse.redirect(new URL('/portal/seo?ga_connect_error=not_available_in_dev_mode', req.url));
+    return NextResponse.redirect(new URL('/portal/seo?ga_connect_error=not_available_in_dev_mode', publicOrigin(req)));
   }
   // Fase 2 multi-instancia — ver el mismo bloque en seo/oauth/start.
   const instance = await resolveContractedInstance(prisma, {
@@ -40,10 +41,10 @@ export async function GET(req: NextRequest) {
     clientProductId: req.nextUrl.searchParams.get('clientProductId'),
   });
   if (!instance) {
-    return NextResponse.redirect(new URL('/portal/seo?ga_connect_error=forbidden', req.url));
+    return NextResponse.redirect(new URL('/portal/seo?ga_connect_error=forbidden', publicOrigin(req)));
   }
   if (!(await isAnalyticsOAuthConfigured())) {
-    return NextResponse.redirect(new URL('/portal/seo?ga_connect_error=not_configured', req.url));
+    return NextResponse.redirect(new URL('/portal/seo?ga_connect_error=not_configured', publicOrigin(req)));
   }
 
   const nonce = crypto.randomBytes(32).toString('hex');
