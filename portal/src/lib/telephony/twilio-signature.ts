@@ -64,7 +64,9 @@ export function verifyTwilioSignature(
  * rejecting every real webhook.
  */
 export function resolveWebhookUrl(req: { url: string; headers: Headers }, path: string): string {
-  const configured = process.env.TWILIO_WEBHOOK_BASE_URL ?? process.env.NEXT_PUBLIC_PORTAL_URL;
+  // || y no ??: docker-compose declara las dos aunque estén vacías, y una
+  // vacía ganaba al ?? sin llevar a ningún sitio (trampa 4 de CLAUDE.md).
+  const configured = process.env.TWILIO_WEBHOOK_BASE_URL?.trim() || process.env.NEXT_PUBLIC_PORTAL_URL?.trim();
   if (configured) {
     return `${configured.replace(/\/+$/, '')}${path}`;
   }

@@ -1,3 +1,4 @@
+import { publicOrigin } from '@/lib/public-origin';
 import { NextResponse, type NextRequest } from 'next/server';
 import * as crypto from 'node:crypto';
 import { isDatabaseConfigured } from '@/lib/prisma';
@@ -47,21 +48,21 @@ export async function GET(req: NextRequest) {
 
   const session = await getSession();
   if (!session.hasClientAccess) {
-    return NextResponse.redirect(new URL(`/portal/login?next=${returnTo}`, req.url));
+    return NextResponse.redirect(new URL(`/portal/login?next=${returnTo}`, publicOrigin(req)));
   }
   const resolved = await resolveClientFromSession();
   if (!resolved) {
-    return NextResponse.redirect(new URL(`/portal/login?next=${returnTo}`, req.url));
+    return NextResponse.redirect(new URL(`/portal/login?next=${returnTo}`, publicOrigin(req)));
   }
   if (resolved.source !== 'database' || !isDatabaseConfigured) {
-    return NextResponse.redirect(new URL(`${returnTo}?connect_error=not_available_in_dev_mode`, req.url));
+    return NextResponse.redirect(new URL(`${returnTo}?connect_error=not_available_in_dev_mode`, publicOrigin(req)));
   }
   const hasAccess = await hasGoogleBusinessConnectAccess(resolved.clientId);
   if (!hasAccess) {
-    return NextResponse.redirect(new URL(`${returnTo}?connect_error=forbidden`, req.url));
+    return NextResponse.redirect(new URL(`${returnTo}?connect_error=forbidden`, publicOrigin(req)));
   }
   if (!(await isGoogleBusinessOAuthConfigured())) {
-    return NextResponse.redirect(new URL(`${returnTo}?connect_error=not_configured`, req.url));
+    return NextResponse.redirect(new URL(`${returnTo}?connect_error=not_configured`, publicOrigin(req)));
   }
 
   const state = crypto.randomBytes(32).toString('hex');

@@ -18,14 +18,21 @@ import 'server-only';
 // Orden: la variable pública primero, que es la única que sabe el dominio de
 // verdad; si no está, las cabeceras del proxy; y como último recurso el
 // origin de la petición, que al menos sirve en desarrollo.
+//
+// 30/09/2026 — se usa ya también en TODAS las redirecciones que se construían
+// con new URL(ruta, req.url): cerrar sesión (portal y panel), la vista de
+// operador y los inicios y retornos de OAuth de Google y WordPress. En
+// producción todas mandaban al navegador a https://0.0.0.0:3000/..., que no
+// abre: cerrar sesión acababa en un error del navegador y conectar Google o
+// WordPress no volvía nunca al portal.
 // =============================================================================
 
-export function publicOrigin(req: Request): string {
+export function publicOrigin(req: { url: string; headers?: Headers }): string {
   const configured = process.env.NEXT_PUBLIC_PORTAL_URL?.trim();
   if (configured) return configured.replace(/\/+$/, '');
 
-  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host');
-  const proto = req.headers.get('x-forwarded-proto') ?? 'https';
+  const host = req.headers?.get('x-forwarded-host') ?? req.headers?.get('host');
+  const proto = req.headers?.get('x-forwarded-proto') ?? 'https';
   if (host && !host.startsWith('0.0.0.0') && !host.startsWith('127.0.0.1')) {
     return `${proto}://${host}`;
   }

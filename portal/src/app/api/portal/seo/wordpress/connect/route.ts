@@ -1,3 +1,4 @@
+import { publicOrigin } from '@/lib/public-origin';
 import { NextResponse, type NextRequest } from 'next/server';
 import * as crypto from 'node:crypto';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
@@ -28,14 +29,14 @@ export const runtime = 'nodejs';
 export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session.hasClientAccess) {
-    return NextResponse.redirect(new URL('/portal/login?next=/portal/seo', req.url));
+    return NextResponse.redirect(new URL('/portal/login?next=/portal/seo', publicOrigin(req)));
   }
   const resolved = await resolveClientFromSession();
   if (!resolved) {
-    return NextResponse.redirect(new URL('/portal/login?next=/portal/seo', req.url));
+    return NextResponse.redirect(new URL('/portal/login?next=/portal/seo', publicOrigin(req)));
   }
   if (resolved.source !== 'database' || !isDatabaseConfigured) {
-    return NextResponse.redirect(new URL('/portal/seo?wp_connect_error=not_available_in_dev_mode', req.url));
+    return NextResponse.redirect(new URL('/portal/seo?wp_connect_error=not_available_in_dev_mode', publicOrigin(req)));
   }
   // Fase 2 multi-instancia — WordPress se conecta a UNA web. El id llega por
   // query desde el enlace de su página.
@@ -45,7 +46,7 @@ export async function GET(req: NextRequest) {
     clientProductId: req.nextUrl.searchParams.get('clientProductId'),
   });
   if (!instance) {
-    return NextResponse.redirect(new URL('/portal/seo?wp_connect_error=forbidden', req.url));
+    return NextResponse.redirect(new URL('/portal/seo?wp_connect_error=forbidden', publicOrigin(req)));
   }
 
   const profile = await prisma.seoProfile.findUnique({
@@ -53,23 +54,23 @@ export async function GET(req: NextRequest) {
     select: { siteUrl: true, cmsType: true },
   });
   if (!profile?.siteUrl) {
-    return NextResponse.redirect(new URL('/portal/seo?wp_connect_error=no_site_url', req.url));
+    return NextResponse.redirect(new URL('/portal/seo?wp_connect_error=no_site_url', publicOrigin(req)));
   }
   if (profile.cmsType !== 'wordpress') {
-    return NextResponse.redirect(new URL('/portal/seo?wp_connect_error=not_wordpress', req.url));
+    return NextResponse.redirect(new URL('/portal/seo?wp_connect_error=not_wordpress', publicOrigin(req)));
   }
 
   const state = crypto.randomBytes(32).toString('hex');
-  const successUrl = new URL('/api/portal/seo/wordpress/callback', req.url);
+  const successUrl = new URL('/api/portal/seo/wordpress/callback', publicOrigin(req));
   successUrl.searchParams.set('state', state);
-  const rejectUrl = new URL('/portal/seo?wp_connect_error=wordpress_rejected', req.url);
+  const rejectUrl = new URL('/portal/seo?wp_connect_error=wordpress_rejected', publicOrigin(req));
 
   const authorizeUrl = buildAuthorizeApplicationUrl(profile.siteUrl, {
     successUrl: successUrl.toString(),
     rejectUrl: rejectUrl.toString(),
   });
   if (!authorizeUrl) {
-    return NextResponse.redirect(new URL('/portal/seo?wp_connect_error=invalid_site_url', req.url));
+    return NextResponse.redirect(new URL('/portal/seo?wp_connect_error=invalid_site_url', publicOrigin(req)));
   }
 
   const res = NextResponse.redirect(authorizeUrl);

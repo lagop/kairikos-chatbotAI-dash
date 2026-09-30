@@ -165,13 +165,35 @@ describe('rutas de salir y de vista de operador', () => {
     expect('GET' in admin).toBe(false);
   });
 
-  it('la vista de operador no redirige fuera con un return_to absoluto', async () => {
-    const { POST } = await import('@/app/api/portal/operator/route');
-    const form = new FormData();
-    form.set('mode', 'disable');
-    form.set('return_to', 'https://sitio-malicioso.example/robar');
-    const req = new Request('https://portal.kairikos.cloud/api/portal/operator', { method: 'POST', body: form });
-    const res = await POST(req as never);
-    expect(res.headers.get('location')).toBe('https://portal.kairikos.cloud/admin/portal/clients');
+  // Dentro del contenedor, req.url es https://0.0.0.0:3000/...: es la
+  // petición tal como la ve Next detrás de Traefik. Las redirecciones tienen
+  // que salir al dominio público (NEXT_PUBLIC_PORTAL_URL), no a esa dirección,
+  // que el navegador no puede abrir (30/09/2026).
+  describe('con la petición tal como llega dentro del contenedor', () => {
+    const original = process.env.NEXT_PUBLIC_PORTAL_URL;
+    beforeEach(() => {
+      process.env.NEXT_PUBLIC_PORTAL_URL = 'https://portal.kairikos.cloud';
+    });
+    afterEach(() => {
+      if (original === undefined) delete process.env.NEXT_PUBLIC_PORTAL_URL;
+      else process.env.NEXT_PUBLIC_PORTAL_URL = original;
+    });
+
+    it('la vista de operador no redirige fuera con un return_to absoluto, ni a 0.0.0.0', async () => {
+      const { POST } = await import('@/app/api/portal/operator/route');
+      const form = new FormData();
+      form.set('mode', 'disable');
+      form.set('return_to', 'https://sitio-malicioso.example/robar');
+      const req = new Request('https://0.0.0.0:3000/api/portal/operator', { method: 'POST', body: form });
+      const res = await POST(req as never);
+      expect(res.headers.get('location')).toBe('https://portal.kairikos.cloud/admin/portal/clients');
+    });
+
+    it('cerrar sesión lleva al login del dominio público, no a 0.0.0.0', async () => {
+      const { POST } = await import('@/app/api/portal/logout/route');
+      const req = new Request('https://0.0.0.0:3000/api/portal/logout', { method: 'POST', body: new FormData() });
+      const res = await POST(req as never);
+      expect(res.headers.get('location')).toBe('https://portal.kairikos.cloud/portal/login');
+    });
   });
 });

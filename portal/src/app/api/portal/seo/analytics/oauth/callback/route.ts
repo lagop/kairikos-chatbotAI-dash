@@ -1,3 +1,4 @@
+import { publicOrigin } from '@/lib/public-origin';
 import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest) {
   const cookieState = req.cookies.get(OAUTH_STATE_COOKIE)?.value ?? null;
 
   const redirectTo = (path: string) => {
-    const res = NextResponse.redirect(new URL(path, req.url));
+    const res = NextResponse.redirect(new URL(path, publicOrigin(req)));
     res.cookies.set(OAUTH_STATE_COOKIE, '', { path: '/api/portal/seo/analytics/oauth', maxAge: 0 });
     return res;
   };
