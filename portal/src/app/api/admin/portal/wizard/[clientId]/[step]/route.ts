@@ -82,8 +82,9 @@ function errorResponse(error: string, status: number, detail?: string) {
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { clientId: string; step: string } },
+  props: { params: Promise<{ clientId: string; step: string }> }
 ) {
+  const params = await props.params;
   const auth = await authenticateAdminRequest(req);
   if (!auth.ok) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
@@ -229,8 +230,9 @@ export async function GET(
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { clientId: string; step: string } },
+  props: { params: Promise<{ clientId: string; step: string }> }
 ) {
+  const params = await props.params;
   const auth = await authenticateAdminRequest(req);
   if (!auth.ok) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });

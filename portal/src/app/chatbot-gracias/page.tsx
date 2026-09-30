@@ -38,11 +38,12 @@ function firstParam(value: string | string[] | undefined): string | null {
   return value ?? null;
 }
 
-export default function ChatbotGraciasPage({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}) {
+export default async function ChatbotGraciasPage(
+  props: {
+    searchParams: Promise<SearchParams>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const ref = firstParam(searchParams.ref);
   const intakeId = firstParam(searchParams.intake_id);
 

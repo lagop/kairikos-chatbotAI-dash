@@ -27,8 +27,9 @@ export const runtime = 'nodejs';
  */
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { slug: string; path?: string[] } },
+  props: { params: Promise<{ slug: string; path?: string[] }> }
 ) {
+  const params = await props.params;
   if (!isDatabaseConfigured) {
     return new NextResponse('No disponible.', { status: 503, headers: { 'content-type': 'text/plain; charset=utf-8' } });
   }

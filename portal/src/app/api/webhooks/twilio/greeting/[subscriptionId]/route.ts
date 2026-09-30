@@ -26,7 +26,8 @@ export const runtime = 'nodejs';
  * phone and expects the next caller to hear the new one. Twilio caches
  * media aggressively unless told otherwise.
  */
-export async function GET(_req: NextRequest, { params }: { params: { subscriptionId: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ subscriptionId: string }> }) {
+  const params = await props.params;
   if (!isDatabaseConfigured) return new Response('service_unavailable', { status: 503 });
 
   const subscription = await prisma.recallSubscription

@@ -18,7 +18,8 @@ export const runtime = 'nodejs';
  * Solo LEE lo ya generado. Recargar no vuelve a llamar al modelo, así que un
  * enlace compartido no cuesta dinero por mucho que corra.
  */
-export async function GET(_req: NextRequest, { params }: { params: { token: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   if (!isShareToken(params.token)) {
     return new NextResponse('Enlace no válido.', {
       status: 404,

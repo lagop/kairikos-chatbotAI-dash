@@ -62,10 +62,10 @@ function hostOf(url: string): string {
 
 async function resolveInboundOrigin(): Promise<string> {
   try {
-    // `headers()` is sync inside the App Router request scope. If it throws
+    // `headers()` is async since Next 15. If it throws
     // (e.g. background work, RSC outside a request context), return ''.
     const { headers } = await import('next/headers');
-    const h = headers();
+    const h = await headers();
     const host = h.get('x-forwarded-host') ?? h.get('host') ?? '';
     if (!host) return '';
     const proto = h.get('x-forwarded-proto') ?? 'https';
@@ -107,7 +107,7 @@ export async function loadClientProfileViaPortalApi(): Promise<ClientProfile | n
   let cookieHeader = '';
   try {
     const { cookies } = await import('next/headers');
-    const all = cookies().getAll() as Array<{ name: string; value: string }>;
+    const all = (await cookies()).getAll() as Array<{ name: string; value: string }>;
     cookieHeader = all
       .map((c) => `${c.name}=${c.value}`)
       .join('; ');

@@ -43,11 +43,12 @@ function isProductCode(value: string): value is ProductCode {
   return (PRODUCT_CODES as readonly string[]).includes(value);
 }
 
-export default async function PortalProductsPage({
-  searchParams,
-}: {
-  searchParams: { checkout?: string };
-}) {
+export default async function PortalProductsPage(
+  props: {
+    searchParams: Promise<{ checkout?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   await requirePortalSession();
   const resolved = await resolveClientFromSession();
   if (!resolved) {

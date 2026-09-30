@@ -44,10 +44,11 @@ export const metadata: Metadata = {
 const TRIGGERS: readonly RecoveryTrigger[] = ['open_quote', 'service_anniversary', 'dormant'];
 
 interface Params {
-  params: { subscriptionId: string };
+  params: Promise<{ subscriptionId: string }>;
 }
 
-export default async function RecallRecoveryPage({ params }: Params) {
+export default async function RecallRecoveryPage(props: Params) {
+  const params = await props.params;
   const session = await getSession();
   if (!session.isOperator) {
     redirect(`/portal/login?next=/admin/portal/recall/${params.subscriptionId}/recuperacion`);

@@ -56,7 +56,8 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS });
 }
 
-export async function POST(req: NextRequest, { params }: { params: { formToken: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ formToken: string }> }) {
+  const params = await props.params;
   if (!isFormToken(params.formToken)) {
     return NextResponse.json({ error: 'not_found' }, { status: 404, headers: CORS });
   }

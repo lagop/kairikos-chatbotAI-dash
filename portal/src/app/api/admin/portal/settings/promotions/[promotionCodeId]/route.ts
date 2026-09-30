@@ -17,7 +17,8 @@ export const runtime = 'nodejs';
 // una sesión de operador real, para que quede quién lo hizo.
 // =============================================================================
 
-export async function DELETE(req: NextRequest, { params }: { params: { promotionCodeId: string } }) {
+export async function DELETE(req: NextRequest, props: { params: Promise<{ promotionCodeId: string }> }) {
+  const params = await props.params;
   const auth = await authenticateAdminRequest(req);
   if (!auth.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   if (!/^promo_[A-Za-z0-9]+$/.test(params.promotionCodeId)) {

@@ -18,10 +18,10 @@ import { withChatbot } from '@/lib/wizard-url';
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
-  params: { clientId: string };
+  params: Promise<{ clientId: string }>;
   /** clientProductId — Fase 4 multi-instancia: de qué chatbot, cuando el
    *  cliente tiene varios. */
-  searchParams: { product?: string; clientProductId?: string };
+  searchParams: Promise<{ product?: string; clientProductId?: string }>;
 }
 
 const BLOCK_LABEL: Record<string, string> = {
@@ -63,7 +63,8 @@ function formatRelative(iso: string | null): string {
   return `hace ${days} d`;
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata(props: PageProps): Promise<Metadata> {
+  const params = await props.params;
   return {
     title: `Wizard · Operador`,
     description:
@@ -73,7 +74,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function AdminClientWizardPage({ params, searchParams }: PageProps) {
+export default async function AdminClientWizardPage(props: PageProps) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const session = await getSession();
   if (!session.isOperator) {
     redirect('/portal/sin-acceso');

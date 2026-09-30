@@ -118,8 +118,9 @@ function resolveProduct(product: string): { ok: true } | { ok: false; response: 
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { product: string; step: string } },
+  props: { params: Promise<{ product: string; step: string }> }
 ) {
+  const params = await props.params;
   const session = await getSession();
   if (!session.hasClientAccess) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
@@ -283,8 +284,9 @@ export async function GET(
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { product: string; step: string } },
+  props: { params: Promise<{ product: string; step: string }> }
 ) {
+  const params = await props.params;
   const session = await getSession();
   if (!session.hasClientAccess) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });

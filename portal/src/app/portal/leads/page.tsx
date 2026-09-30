@@ -56,11 +56,12 @@ function tierLabel(tier: string): string {
   return tier === 'standard' ? 'Estándar' : tier.charAt(0).toUpperCase() + tier.slice(1);
 }
 
-export default async function PortalLeadsPage({
-  searchParams,
-}: {
-  searchParams?: { estado?: string; orden?: string };
-}) {
+export default async function PortalLeadsPage(
+  props: {
+    searchParams?: Promise<{ estado?: string; orden?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   await requirePortalSession();
   const resolved = await resolveClientFromSession();
   if (!resolved) {

@@ -16,7 +16,8 @@ export const runtime = 'nodejs';
  * es una transición más — toca también a los otros locales con el mismo
  * teléfono y no se deshace desde el portal.
  */
-export async function POST(_req: Request, { params }: { params: { id: string } }) {
+export async function POST(_req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getSession();
   if (!session.hasClientAccess) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });

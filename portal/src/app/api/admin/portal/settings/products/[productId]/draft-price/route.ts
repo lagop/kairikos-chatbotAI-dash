@@ -29,7 +29,8 @@ const BodySchema = z.object({
  * it is still setting what a client will be charged, even though no
  * Stripe object exists yet to reflect that back.
  */
-export async function POST(req: NextRequest, { params }: { params: { productId: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ productId: string }> }) {
+  const params = await props.params;
   const auth = await authenticateAdminRequest(req);
   if (!auth.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });

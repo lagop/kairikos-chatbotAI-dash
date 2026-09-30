@@ -34,7 +34,8 @@ const BodySchema = z
     message: 'at least one field must be provided',
   });
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = authenticateInternalRequest(req);
   const authError = internalAuthFailureResponse(auth);
   if (authError) return authError;

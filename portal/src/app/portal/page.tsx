@@ -43,11 +43,12 @@ export const metadata: Metadata = {
 // multi-product grid degrades to "one card" instead of a page redesign,
 // per the WP-17 AC that multi-product must not penalize that case.
 // =============================================================================
-export default async function PortalHome({
-  searchParams,
-}: {
-  searchParams: { checkout?: string };
-}) {
+export default async function PortalHome(
+  props: {
+    searchParams: Promise<{ checkout?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   let session;
   try {
     session = await getSession();

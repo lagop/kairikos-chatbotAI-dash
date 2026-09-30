@@ -27,11 +27,12 @@ export const metadata: Metadata = {
 // tenga que revisarlo. Cuelga de la sección Chatbot en la navegación.
 // =============================================================================
 
-export default async function ChatbotKnowledgePage({
-  searchParams,
-}: {
-  searchParams: { clientProductId?: string };
-}) {
+export default async function ChatbotKnowledgePage(
+  props: {
+    searchParams: Promise<{ clientProductId?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   await requirePortalSession();
 
   if (!isDatabaseConfigured) {

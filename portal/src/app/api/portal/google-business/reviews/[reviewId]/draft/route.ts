@@ -14,7 +14,8 @@ export const runtime = 'nodejs';
  * Generates (or regenerates) an AI draft reply and stores it on the
  * review row. This alone never publishes anything — see .../publish.
  */
-export async function POST(_req: NextRequest, { params }: { params: { reviewId: string } }) {
+export async function POST(_req: NextRequest, props: { params: Promise<{ reviewId: string }> }) {
+  const params = await props.params;
   const session = await getSession();
   if (!session.hasClientAccess) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });

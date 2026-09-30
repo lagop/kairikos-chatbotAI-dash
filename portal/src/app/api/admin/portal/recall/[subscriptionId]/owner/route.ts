@@ -9,8 +9,9 @@ export const runtime = 'nodejs';
  * PATCH /api/admin/portal/recall/[subscriptionId]/owner — el operador guarda
  * el WhatsApp del dueño cuando el alta se hace por teléfono.
  */
-export async function PATCH(req: NextRequest, { params }: { params: { subscriptionId: string } }) {
-  const target = await resolveOperatorTarget(req, params.subscriptionId);
-  if (target instanceof Response) return target;
-  return handleOwnerWhatsappPatch(req, target);
+export async function PATCH(req: NextRequest, props: { params: Promise<{ subscriptionId: string }> }) {
+ const params = await props.params;
+ const target = await resolveOperatorTarget(req, params.subscriptionId);
+ if (target instanceof Response) return target;
+ return handleOwnerWhatsappPatch(req, target);
 }

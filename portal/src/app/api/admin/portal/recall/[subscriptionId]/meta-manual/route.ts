@@ -37,7 +37,8 @@ const ERROR_STATUS: Record<string, number> = {
   persist_failed: 500,
 };
 
-export async function POST(req: NextRequest, { params }: { params: { subscriptionId: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ subscriptionId: string }> }) {
+  const params = await props.params;
   const auth = await authenticateAdminRequest(req);
   if (!auth.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });

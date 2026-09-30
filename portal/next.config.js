@@ -3,6 +3,10 @@ const path = require('path');
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
+  // Next 15 deduce la raíz del proyecto buscando lockfiles hacia arriba; si
+  // encuentra uno fuera de portal/, la salida standalone cambia de forma y el
+  // Dockerfile (que copia .next/standalone/server.js) deja de encontrarla.
+  outputFileTracingRoot: path.join(__dirname),
   reactStrictMode: true,
   // Revisión de seguridad 22/09/2026 — el portal no usa next/image, pero el
   // endpoint /_next/image existe igual y es donde se concentran varios avisos
@@ -42,29 +46,27 @@ const nextConfig = {
     };
     return config;
   },
-  experimental: {
-    // KAIA-2858 — `@node-rs/argon2` ships a N-API `.node` binary in a
-    // platform-specific sub-package (`@node-rs/argon2-linux-x64-gnu`).
-    // Without this entry, webpack tries to parse the `.node` file as JS
-    // and the build fails with "Module parse failed: Unexpected character".
-    // Listing it as external makes Next.js leave it as a runtime require()
-    // so Vercel's Lambda resolves the N-API binary from node_modules at
-    // cold start.
-    //
-    // Producto Web, Fase 1 — ssh2 (bajo ssh2-sftp-client, con el que se
-    // publica la web del cliente) tiene exactamente el mismo problema: trae
-    // sshcrypto.node y el build muere con el mismo mensaje. Va en ESTA lista
-    // y no en un segundo bloque 'experimental', que pisaría este entero.
-    // Encontrado en CI, no en local: 'next dev' no empaqueta el servidor
-    // igual que 'next build'.
-    serverComponentsExternalPackages: [
-      'resend',
-      '@node-rs/argon2',
-      '@node-rs/argon2-linux-x64-gnu',
-      'ssh2',
-      'ssh2-sftp-client',
-    ],
-  },
+  // KAIA-2858 — `@node-rs/argon2` ships a N-API `.node` binary in a
+  // platform-specific sub-package (`@node-rs/argon2-linux-x64-gnu`).
+  // Without this entry, webpack tries to parse the `.node` file as JS
+  // and the build fails with "Module parse failed: Unexpected character".
+  // Listing it as external makes Next.js leave it as a runtime require()
+  // so the N-API binary resolves from node_modules at runtime.
+  //
+  // Producto Web, Fase 1 — ssh2 (bajo ssh2-sftp-client, con el que se
+  // publica la web del cliente) tiene exactamente el mismo problema: trae
+  // sshcrypto.node y el build muere con el mismo mensaje. Encontrado en CI,
+  // no en local: 'next dev' no empaqueta el servidor igual que 'next build'.
+  //
+  // Next 15 (30/09/2026) sacó la opción de `experimental` y la renombró:
+  // serverComponentsExternalPackages → serverExternalPackages.
+  serverExternalPackages: [
+    'resend',
+    '@node-rs/argon2',
+    '@node-rs/argon2-linux-x64-gnu',
+    'ssh2',
+    'ssh2-sftp-client',
+  ],
   async redirects() {
     return [
       {

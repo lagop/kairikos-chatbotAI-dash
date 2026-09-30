@@ -71,11 +71,12 @@ function lastUserMessage(transcript: unknown): string | null {
   return null;
 }
 
-export default async function ConversationsPage({
-  searchParams,
-}: {
-  searchParams: { page?: string; client?: string; clientProductId?: string };
-}) {
+export default async function ConversationsPage(
+  props: {
+    searchParams: Promise<{ page?: string; client?: string; clientProductId?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const session = await requirePortalSession();
   assertSameClient(session, searchParams.client ?? null);
   const conversations = await listConversations(session.accessToken ?? '');

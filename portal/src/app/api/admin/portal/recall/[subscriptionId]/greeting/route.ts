@@ -10,21 +10,24 @@ export const runtime = 'nodejs';
  * locución de un cliente, para cuando el dueño la manda por otro canal y la
  * sube el operador.
  */
-type Ctx = { params: { subscriptionId: string } };
+type Ctx = { params: Promise<{ subscriptionId: string }> };
 
-export async function GET(req: NextRequest, { params }: Ctx) {
+export async function GET(req: NextRequest, props: Ctx) {
+  const params = await props.params;
   const target = await resolveOperatorTarget(req, params.subscriptionId);
   if (target instanceof Response) return target;
   return handleGreetingGet(target);
 }
 
-export async function PUT(req: NextRequest, { params }: Ctx) {
+export async function PUT(req: NextRequest, props: Ctx) {
+  const params = await props.params;
   const target = await resolveOperatorTarget(req, params.subscriptionId);
   if (target instanceof Response) return target;
   return handleGreetingPut(req, target);
 }
 
-export async function DELETE(req: NextRequest, { params }: Ctx) {
+export async function DELETE(req: NextRequest, props: Ctx) {
+  const params = await props.params;
   const target = await resolveOperatorTarget(req, params.subscriptionId);
   if (target instanceof Response) return target;
   return handleGreetingDelete(target);

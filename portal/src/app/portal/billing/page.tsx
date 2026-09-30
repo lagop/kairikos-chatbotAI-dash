@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { formatPriceEUR, getBilling } from '@/lib/portal-data';
 import { assertSameClient, requirePortalSession } from '@/lib/session';
@@ -13,11 +14,12 @@ export const metadata: Metadata = {
 
 const DATE_FMT = new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
 
-export default async function BillingPage({
-  searchParams,
-}: {
-  searchParams: { client?: string };
-}) {
+export default async function BillingPage(
+  props: {
+    searchParams: Promise<{ client?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const session = await requirePortalSession();
   assertSameClient(session, searchParams.client ?? null);
   const billing = await getBilling(session.accessToken ?? '');
@@ -86,9 +88,9 @@ export default async function BillingPage({
         </p>
         <p className="mt-3">
           ¿Necesitas ayuda con tu factura?{' '}
-          <a className="text-kairikos-accent2 hover:underline" href="/portal/support">
+          <Link className="text-kairikos-accent2 hover:underline" href="/portal/support">
             Escríbenos
-          </a>
+          </Link>
           .
         </p>
       </section>

@@ -28,11 +28,12 @@ export const metadata: Metadata = {
 // /portal/conversations.
 // =============================================================================
 
-export default async function PortalCanalesPage({
-  searchParams,
-}: {
-  searchParams: { clientProductId?: string };
-}) {
+export default async function PortalCanalesPage(
+  props: {
+    searchParams: Promise<{ clientProductId?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   await requirePortalSession();
   const resolved = await resolveClientFromSession();
   let selection: PortalChatbotSelection = { chatbots: [], selected: null };

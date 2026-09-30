@@ -23,7 +23,8 @@ export const runtime = 'nodejs';
  * Nada aquí depende del token para nada más que encontrar la fila: no hay
  * sesión que suplantar ni datos de otro cliente que alcanzar.
  */
-export async function GET(_req: NextRequest, { params }: { params: { token: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   if (!isShareToken(params.token)) {
     return new NextResponse('Enlace no válido.', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
   }

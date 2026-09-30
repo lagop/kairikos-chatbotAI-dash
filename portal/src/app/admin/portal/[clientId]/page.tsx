@@ -46,8 +46,8 @@ import { ChatbotPicker } from '@/components/portal/ChatbotPicker';
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
-  params: { clientId: string };
-  searchParams: { tab?: string; product?: string; clientProductId?: string };
+  params: Promise<{ clientId: string }>;
+  searchParams: Promise<{ tab?: string; product?: string; clientProductId?: string }>;
 }
 
 // WP-XX — one entry per 'web' ClientProduct row (see WebProjects fetch
@@ -79,7 +79,8 @@ const DATE_FORMAT = new Intl.DateTimeFormat('es-ES', {
   minute: '2-digit',
 });
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata(props: PageProps): Promise<Metadata> {
+  const params = await props.params;
   return {
     title: `Cliente ${params.clientId.slice(0, 8)} · Operador`,
     description: 'Ficha de operador de un cliente concreto: estado del portal y controles de edición.',
@@ -192,7 +193,9 @@ function FlowHistoryTimeline({ entries }: { entries: FlowActivityEntry[] }) {
   );
 }
 
-export default async function AdminClientDetailPage({ params, searchParams }: PageProps) {
+export default async function AdminClientDetailPage(props: PageProps) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const session = await getSession();
   if (!session.isOperator) {
     redirect(`/portal/login?next=/admin/portal/${encodeURIComponent(params.clientId)}`);

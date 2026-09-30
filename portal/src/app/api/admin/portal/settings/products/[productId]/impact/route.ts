@@ -14,14 +14,15 @@ export const runtime = 'nodejs';
  * understands that these subscribers keep their current price. No TOTP
  * step-up required — this doesn't mutate anything.
  */
-export async function GET(req: NextRequest, { params }: { params: { productId: string } }) {
-  const auth = await authenticateAdminRequest(req);
-  if (!auth.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
+export async function GET(req: NextRequest, props: { params: Promise<{ productId: string }> }) {
+ const params = await props.params;
+ const auth = await authenticateAdminRequest(req);
+ if (!auth.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+ if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
 
-  const product = await prisma.product.findUnique({ where: { id: params.productId }, select: { id: true } });
-  if (!product) return NextResponse.json({ error: 'product_not_found' }, { status: 404 });
+ const product = await prisma.product.findUnique({ where: { id: params.productId }, select: { id: true } });
+ if (!product) return NextResponse.json({ error: 'product_not_found' }, { status: 404 });
 
-  const activeSubscriptions = await countActiveSubscriptionsForProduct(params.productId);
-  return NextResponse.json({ activeSubscriptions });
+ const activeSubscriptions = await countActiveSubscriptionsForProduct(params.productId);
+ return NextResponse.json({ activeSubscriptions });
 }

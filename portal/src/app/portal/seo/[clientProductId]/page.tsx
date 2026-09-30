@@ -12,12 +12,13 @@ export const dynamic = 'force-dynamic';
 // enseña la ficha de venta en vez de datos ajenos.
 // =============================================================================
 
-export default async function PortalSeoInstancePage({
-  params,
-  searchParams,
-}: {
-  params: { clientProductId: string };
-  searchParams?: Record<string, string | undefined>;
-}) {
+export default async function PortalSeoInstancePage(
+  props: {
+    params: Promise<{ clientProductId: string }>;
+    searchParams?: Promise<Record<string, string | undefined>>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   return <SeoPageBody clientProductId={params.clientProductId} searchParams={searchParams} />;
 }

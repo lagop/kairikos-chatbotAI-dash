@@ -31,11 +31,12 @@ import { PageHeading } from '@/components/portal/PageHeading';
 
 export const dynamic = 'force-dynamic';
 
-export default async function WizardIndexPage({
-  searchParams,
-}: {
-  searchParams: { step?: string; clientProductId?: string };
-}) {
+export default async function WizardIndexPage(
+  props: {
+    searchParams: Promise<{ step?: string; clientProductId?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const resolved = await resolveClientFromSession();
   if (!resolved) {
     redirect('/portal/login?next=/portal/wizard');

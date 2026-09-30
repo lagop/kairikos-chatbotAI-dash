@@ -1,4 +1,5 @@
 import { EmptyState } from '@/components/portal/EmptyState';
+import Link from 'next/link';
 import { SelfServeSignupForm, type SignupTierOption } from '@/components/public/SelfServeSignupForm';
 import { ThemeToggle } from '@/components/portal/ThemeToggle';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
@@ -36,11 +37,12 @@ export const dynamic = 'force-dynamic';
 // teclea nada y el socio no depende de que nadie recuerde su código. No se
 // valida en esta página a propósito — un código inventado en la URL no puede
 // impedir que alguien se dé de alta; eso lo decide el alta, no la portada.
-export default async function EmpezarPage({
-  searchParams,
-}: {
-  searchParams?: { ref?: string | string[]; producto?: string | string[]; tier?: string | string[] };
-}) {
+export default async function EmpezarPage(
+  props: {
+    searchParams?: Promise<{ ref?: string | string[]; producto?: string | string[]; tier?: string | string[] }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const refParam = searchParams?.ref;
   const codigoInicial = (Array.isArray(refParam) ? refParam[0] : refParam)?.trim().slice(0, 40) ?? '';
 
@@ -147,9 +149,9 @@ export default async function EmpezarPage({
 
       <p className="mt-8 text-center text-xs text-kairikos-muted">
         ¿Ya tienes cuenta?{' '}
-        <a className="underline" href="/portal/login">
+        <Link className="underline" href="/portal/login">
           Inicia sesión
-        </a>
+        </Link>
         .
       </p>
     </div>

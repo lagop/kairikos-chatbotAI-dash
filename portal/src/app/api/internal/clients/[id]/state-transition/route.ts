@@ -74,13 +74,13 @@ interface ParsedStateTransitionRequest {
 
 export async function POST(
   req: NextRequest,
-  ctx: { params: { id: string } },
+  ctx: { params: Promise<{ id: string }> },
 ) {
   const auth = authenticateActivityKeyRequest(req);
   const authError = activityKeyAuthFailureResponse(auth);
   if (authError) return authError;
 
-  const idParam = ctx?.params?.id;
+  const idParam = (await ctx?.params)?.id;
   if (typeof idParam !== 'string' || !CUID_RE.test(idParam)) {
     return NextResponse.json(
       { error: 'invalid_id', detail: 'id must be a ChatbotClient cuid' },

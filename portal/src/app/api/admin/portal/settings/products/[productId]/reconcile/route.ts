@@ -22,7 +22,8 @@ const BodySchema = z.object({
  * ONLY persists them to Prisma — it never calls Stripe again. Still
  * requires a fresh TOTP step-up since it mutates the catalog.
  */
-export async function POST(req: NextRequest, { params }: { params: { productId: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ productId: string }> }) {
+  const params = await props.params;
   const auth = await authenticateAdminRequest(req);
   if (!auth.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });

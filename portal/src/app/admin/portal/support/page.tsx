@@ -91,11 +91,12 @@ function SupportRequestCard({ request }: { request: SupportRequestRow }) {
   );
 }
 
-export default async function AdminSupportInboxPage({
-  searchParams,
-}: {
-  searchParams: { filter?: string };
-}) {
+export default async function AdminSupportInboxPage(
+  props: {
+    searchParams: Promise<{ filter?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const session = await getSession();
   if (!session.isOperator) {
     redirect('/portal/login?next=/admin/portal/support');

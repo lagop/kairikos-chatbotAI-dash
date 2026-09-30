@@ -21,11 +21,12 @@ const MILESTONE_LABEL: Record<string, 'T+0' | 'T+3' | 'T+7' | 'T+14'> = {
   t_plus_14: 'T+14',
 };
 
-export default async function OnboardingPage({
-  searchParams,
-}: {
-  searchParams: { client?: string };
-}) {
+export default async function OnboardingPage(
+  props: {
+    searchParams: Promise<{ client?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const session = await requirePortalSession();
   assertSameClient(session, searchParams.client ?? null);
   const rows = await getOnboardingFor(session.accessToken ?? '', searchParams.client ?? null);

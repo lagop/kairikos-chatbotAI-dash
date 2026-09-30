@@ -38,7 +38,8 @@ const BodySchema = z.object({
  * para cada cosa, y un titular de 400 caracteres rompe la portada en el
  * móvil de quien lo lea.
  */
-export async function PATCH(req: NextRequest, { params }: { params: { websiteId: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ websiteId: string }> }) {
+  const params = await props.params;
   const auth = await authenticateAdminRequest(req);
   if (!auth.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
