@@ -4,6 +4,7 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { hashIp } from '@/lib/public-draft-request';
 import { queVendes, LARGO_MAXIMO } from '@/lib/que-vendes-publico';
 import { logError } from '@/lib/observability';
+import { clientIpFromHeaders } from '@/lib/client-ip';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -56,10 +57,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'demasiado_corto' }, { status: 400, headers: CORS });
   }
 
-  const ip =
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    req.headers.get('x-real-ip') ||
-    'desconocida';
+  // La IP que ve el proxy, no la primera de X-Forwarded-For, que la escribe
+  // quien llama: cambiándola en cada petición se saltaba el tope por IP
+  // (revisión de seguridad del 30/09/2026). Ver client-ip.ts.
+  const ip = clientIpFromHeaders(req.headers);
 
   try {
     const r = await queVendes(prisma, {

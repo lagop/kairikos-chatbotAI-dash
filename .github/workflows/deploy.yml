@@ -116,6 +116,8 @@ jobs:
           #     CHANNEL_CREDENTIAL_ENCRYPTION_KEY  openssl rand -hex 32
           #     OPERATOR_TOTP_ENCRYPTION_KEY       openssl rand -hex 32
           #     CRON_SECRET                        openssl rand -hex 32
+          #     LEAD_WEBHOOK_ENCRYPTION_KEY        openssl rand -hex 32 —
+          #       cifra la URL y el secreto del webhook de leads al CRM.
           #     SEO_CMS_CREDENTIAL_ENCRYPTION_KEY  openssl rand -hex 32 —
           #       si ya hay contraseñas de WordPress cifradas en esta VPS,
           #       tiene que ser la MISMA clave que se usó entonces.
@@ -225,6 +227,7 @@ jobs:
             OPERATOR_TOTP_ENCRYPTION_KEY=${{ secrets.OPERATOR_TOTP_ENCRYPTION_KEY }}
             CRON_SECRET=${{ secrets.CRON_SECRET }}
             SEO_CMS_CREDENTIAL_ENCRYPTION_KEY=${{ secrets.SEO_CMS_CREDENTIAL_ENCRYPTION_KEY }}
+            LEAD_WEBHOOK_ENCRYPTION_KEY=${{ secrets.LEAD_WEBHOOK_ENCRYPTION_KEY }}
             STRIPE_CREDENTIAL_ENCRYPTION_KEY=${{ secrets.STRIPE_CREDENTIAL_ENCRYPTION_KEY }}
             STRIPE_WEBHOOK_SECRET=${{ secrets.STRIPE_WEBHOOK_SECRET }}
             WHISPER_API_KEY=${{ secrets.WHISPER_API_KEY }}

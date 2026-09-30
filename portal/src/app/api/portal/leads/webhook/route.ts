@@ -7,6 +7,7 @@ import { hasLeadsInboxAccess } from '@/lib/leads';
 import { generateWebhookSecret } from '@/lib/lead-webhook';
 import { isCrawlableUrl } from '@/lib/chatbot-knowledge-crawl';
 import { logError } from '@/lib/observability';
+import { decryptLeadWebhook, encryptLeadWebhook, isLeadWebhookCryptoConfigured } from '@/lib/lead-webhook-crypto';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -62,6 +63,12 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: 'invalid_url' }, { status: 400 });
   }
 
+  // Sin la clave de cifrado no se guarda nada en claro: mejor un 503 que la
+  // URL con su token en la base de datos (ver lead-webhook-crypto.ts).
+  if (!isLeadWebhookCryptoConfigured()) {
+    return NextResponse.json({ error: 'not_configured' }, { status: 503 });
+  }
+
   try {
     const client = await prisma.chatbotClient.findUnique({
       where: { id: resolved.clientId },
@@ -71,31 +78,37 @@ export async function PUT(req: NextRequest) {
 
     // El secreto se conserva salvo que lo pida: cambiar de URL no debe
     // romperle la comprobación de firma que ya tenía montada.
-    const secret = existing && !body.data.rotateSecret ? existing.secret : generateWebhookSecret();
-    const isNewSecret = !existing || Boolean(body.data.rotateSecret);
+    const previous = existing ? decryptLeadWebhook(existing) : null;
+    // Si el anterior no se puede descifrar (se guardó sin cifrar, o con otra
+    // clave), se genera uno nuevo y se le enseña: es el mismo caso que
+    // «lo he perdido».
+    const secret = previous && !body.data.rotateSecret ? previous.secret : generateWebhookSecret();
+    const isNewSecret = !previous || Boolean(body.data.rotateSecret);
+    const cifrado = encryptLeadWebhook(url, secret);
 
     const saved = await prisma.leadWebhook.upsert({
       where: { clientId: resolved.clientId },
       create: {
         clientId: resolved.clientId,
         tenantId: client?.tenantId ?? null,
-        url,
-        secret,
+        ...cifrado,
         enabled: body.data.enabled ?? true,
       },
       update: {
-        url,
-        secret,
+        ...cifrado,
+        // Las columnas en claro de antes del cifrado, vacías.
+        url: null,
+        secret: null,
         enabled: body.data.enabled ?? true,
         // La URL cambió: el último error se refiere a la anterior.
-        ...(existing && existing.url !== url ? { lastDeliveryError: null } : {}),
+        ...(previous?.url !== url ? { lastDeliveryError: null } : {}),
       },
-      select: { url: true, enabled: true },
+      select: { enabled: true },
     });
 
     return NextResponse.json({
       ok: true,
-      url: saved.url,
+      url,
       enabled: saved.enabled,
       // Solo cuando es nuevo. Un secreto que se puede volver a leer con un
       // GET deja de ser un secreto en cuanto alguien enseña la pantalla.

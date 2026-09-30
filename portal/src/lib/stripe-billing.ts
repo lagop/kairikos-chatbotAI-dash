@@ -157,20 +157,85 @@ export async function syncSubscriptionFromStripe(s: Stripe.Subscription): Promis
       metadata: s.metadata as Prisma.InputJsonValue,
     },
   });
+
+  if (SUBSCRIPTION_ENDED_STATUSES.has(s.status)) {
+    await retireClientProductForEndedSubscription(clientProduct.id);
+  }
+}
+
+/**
+ * Los estados de Stripe en los que la suscripción ya no se va a cobrar.
+ * 'past_due' NO está: Stripe sigue reintentando el cobro, y cortar el
+ * servicio al primer fallo de tarjeta sería castigar a quien solo tiene la
+ * tarjeta caducada. Cuando se agotan los reintentos, Stripe la pasa a
+ * 'canceled' o a 'unpaid' (según la configuración de la cuenta), y ahí sí.
+ */
+export const SUBSCRIPTION_ENDED_STATUSES: ReadonlySet<string> = new Set(['canceled', 'unpaid', 'incomplete_expired']);
+
+/**
+ * Apaga el producto cuando su suscripción de Stripe se ha terminado.
+ *
+ * Revisión de seguridad del 30/09/2026: hasta hoy, cancelar en Stripe solo
+ * marcaba la fila Subscription como cancelada; el ClientProduct seguía
+ * 'active', y el acceso (isProductContracted) mira ESE estado. Un cliente
+ * que se daba de baja seguía usando el producto gratis, indefinidamente, y
+ * nada lo avisaba.
+ *
+ * Hace lo mismo que la baja del operador (PATCH
+ * /api/admin/portal/client-products/[id]): estado, fecha y una fila de
+ * auditoría 'retire', con 'system:stripe' como autor. Idempotente: un
+ * producto ya cancelado no se toca, así que los reintentos del webhook no
+ * duplican la auditoría.
+ */
+export async function retireClientProductForEndedSubscription(clientProductId: string): Promise<boolean> {
+  return prisma.$transaction(async (tx) => {
+    const cp = await tx.clientProduct.findUnique({
+      where: { id: clientProductId },
+      select: { id: true, clientId: true, productId: true, tenantId: true, status: true },
+    });
+    if (!cp || cp.status === 'cancelled') return false;
+    const now = new Date();
+    await tx.clientProduct.update({
+      where: { id: cp.id },
+      data: { status: 'cancelled', cancelledAt: now, changedBy: 'system:stripe', changedAt: now },
+    });
+    await tx.clientProductAudit.create({
+      data: {
+        clientProductId: cp.id,
+        clientId: cp.clientId,
+        productId: cp.productId,
+        tenantId: cp.tenantId,
+        action: 'retire',
+        statusBefore: cp.status,
+        statusAfter: 'cancelled',
+        actorId: 'system:stripe',
+      },
+    });
+    return true;
+  });
 }
 
 /**
  * Delete a Subscription row when the Stripe subscription is removed
  * permanently (canceled + deleted). Soft delete is the safer default —
  * we leave the row for audit unless the caller asks for hard delete.
+ *
+ * Y apaga el producto (ver retireClientProductForEndedSubscription). Si la
+ * fila Subscription no existe todavía, se busca el producto por el metadato
+ * que el alta guarda en Stripe, que es el mismo vínculo que usa la sync.
  */
-export async function deleteSubscriptionFromStripe(stripeId: string): Promise<void> {
-  await prisma.subscription
+export async function deleteSubscriptionFromStripe(stripeId: string, metadataClientProductId?: string | null): Promise<void> {
+  const row = await prisma.subscription
     .update({
       where: { stripeId },
       data: { status: 'canceled', canceledAt: new Date() },
+      select: { clientProductId: true },
     })
     .catch(() => null);
+  const clientProductId = row?.clientProductId ?? metadataClientProductId ?? null;
+  if (clientProductId) {
+    await retireClientProductForEndedSubscription(clientProductId);
+  }
 }
 
 // ---------------------------------------------------------------------------

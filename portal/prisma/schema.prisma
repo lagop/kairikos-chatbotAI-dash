@@ -523,18 +523,24 @@ model ChatbotClientUser {
 // Both ChatbotClientUser and Operator link to User via userId.
 // =============================================================================
 model User {
-  id            String    @id @default(cuid())
+  id             String    @id @default(cuid())
   // 'client' | 'operator'. Determines which auth provider accepts this user.
-  role          String    @default("client")
-  email         String    @unique
+  role           String    @default("client")
+  email          String    @unique
   // argon2id hash of the password. NULL until the user sets a password via
   // the setup-password flow. '__must_reset__' is the backfill marker for
   // existing ChatbotClientUser rows that had NULL passwordHash — these users
   // cannot authenticate until they complete setup-password.
-  passwordHash  String?
-  passwordSetAt DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  passwordHash   String?
+  passwordSetAt  DateTime?
+  // Revisión de seguridad del 30/09/2026 — la versión de las sesiones del
+  // cliente. El JWT lleva la que había al entrar; cerrar sesión la sube, y
+  // todo token con la anterior deja de valer en la siguiente petición (el
+  // callback jwt de auth.ts ya consulta esta fila). Antes, cerrar sesión solo
+  // borraba la cookie: una copia robada seguía valiendo hasta 30 días.
+  sessionVersion Int       @default(0) @map("session_version")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   chatbotClientUsers ChatbotClientUser[]
   profile            Profile?
@@ -2916,11 +2922,24 @@ model LeadWebhook {
   tenantId String? @map("tenant_id") @db.Uuid
 
   /// A dónde se entrega. Muchos CRM y automatizadores (Zapier, Make, n8n)
-  /// dan una URL que ya lleva su token dentro, así que esta columna es en
-  /// la práctica tan sensible como el secreto de al lado.
-  url    String
+  /// dan una URL que ya lleva su token dentro, así que es en la práctica tan
+  /// sensible como el secreto. Por eso, desde el 30/09/2026 (revisión de
+  /// seguridad), las dos van cifradas con su propia clave,
+  /// LEAD_WEBHOOK_ENCRYPTION_KEY (lead-webhook-crypto.ts), igual que el
+  /// resto de credenciales de este esquema.
+  urlCiphertext    Bytes?  @map("url_ciphertext")
+  urlIv            Bytes?  @map("url_iv")
+  urlTag           Bytes?  @map("url_tag")
   /// Se firma cada entrega con él en la cabecera x-kairikos-signature.
-  secret String
+  secretCiphertext Bytes?  @map("secret_ciphertext")
+  secretIv         Bytes?  @map("secret_iv")
+  secretTag        Bytes?  @map("secret_tag")
+  /// OBSOLETAS: la URL y el secreto en claro, de antes del cifrado. Ya no se
+  /// escriben ni se leen; se quedan nulas y opcionales para que el
+  /// contenedor anterior no rompiera entre la migración y el despliegue.
+  /// Borrarlas en una migración posterior.
+  url              String?
+  secret           String?
 
   enabled Boolean @default(true)
 

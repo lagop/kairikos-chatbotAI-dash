@@ -3,6 +3,7 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { PrismaClient, Prisma } from '@prisma/client';
 import { logError } from './observability';
 import { safeFetch, BlockedUrlError } from './safe-fetch';
+import { decryptLeadWebhook } from './lead-webhook-crypto';
 
 // =============================================================================
 // Fase 4 — entrega de leads al CRM del cliente.
@@ -158,7 +159,10 @@ export async function deliverLeadToCrm(
 
     const payload = buildLeadPayload(lead);
     const body = JSON.stringify(payload);
-    const result = await attempt(hook.url, hook.secret, body);
+    // Cifrados desde el 30/09/2026 (lead-webhook-crypto.ts). Sin la clave, o
+    // con otra, la entrega queda como fallida y la recoge el reintento.
+    const plain = decryptLeadWebhook(hook);
+    const result = plain ? await attempt(plain.url, plain.secret, body) : { ok: false as const, error: 'webhook_undecryptable' };
 
     await prisma.channelWebhookDelivery.create({
       data: {
@@ -216,7 +220,8 @@ export async function retryLeadCrmDelivery(
   }
 
   const body = JSON.stringify(delivery.payload);
-  const result = await attempt(hook.url, hook.secret, body);
+  const plain = decryptLeadWebhook(hook);
+  const result = plain ? await attempt(plain.url, plain.secret, body) : { ok: false as const, error: 'webhook_undecryptable' };
 
   await prisma.channelWebhookDelivery.update({
     where: { id: delivery.id },

@@ -32,6 +32,11 @@ const PORTAL_BASE_URL = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://portal.ka
 // KAIA-1177: lastStepKey 1..11 only. Step 12 (Integraciones) is v1.1 and
 // is out of scope. The wizard-abandoned/fire route validates the key
 // before invoking this module.
+/** Horas sin tocar el asistente para darlo por abandonado. Lo usan el
+ *  barrido (…/wizard-abandoned/scan) y, para volver a comprobarlo antes de
+ *  mandar el correo, el disparo (…/wizard-abandoned/fire). */
+export const WIZARD_ABANDONED_WINDOW_HOURS = 48;
+
 export const WIZARD_STEP_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'] as const;
 export type WizardStepKey = (typeof WIZARD_STEP_KEYS)[number];
 

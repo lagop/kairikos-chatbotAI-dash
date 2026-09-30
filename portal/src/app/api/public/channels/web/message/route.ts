@@ -4,6 +4,7 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveChatbotForChannel } from '@/lib/client-product-access';
 import { replyToIncomingMessage } from '@/lib/chatbot-conversation';
 import { InMemoryRateLimiter } from '@/lib/operator-crypto';
+import { clientIpFromHeaders } from '@/lib/client-ip';
 import { isReservedSessionId } from '@/lib/conversation-session-id';
 
 export const dynamic = 'force-dynamic';
@@ -59,6 +60,16 @@ const BodySchema = z.object({
 const chatRateLimiter = new InMemoryRateLimiter(60 * 1000);
 const CHAT_MAX_POR_MINUTO = 20;
 
+// Y por visitante (revisión de seguridad del 30/09/2026). El de arriba cuenta
+// por widget: acota lo que gastamos, pero un solo script a 20/min puede
+// agotar el cupo MENSUAL de mensajes del cliente en un día y dejarle el bot
+// callado el resto del mes (chatbot-usage.ts). Por IP y widget, con holgura
+// para una oficina que comparte IP: 10 por minuto y 60 por hora.
+const ipMinuteLimiter = new InMemoryRateLimiter(60 * 1000);
+const ipHourLimiter = new InMemoryRateLimiter(60 * 60 * 1000);
+const IP_MAX_POR_MINUTO = 10;
+const IP_MAX_POR_HORA = 60;
+
 const CONTACT_INTENT_RE =
   /(cita|presupuesto|contacto|llamar|llamame|reuni[oó]n|hablar|contratar|me interesa|quiero|necesito|reservar|agendar|disponibilidad|horario|email|correo|tel[eé]fono|whatsapp)/i;
 
@@ -103,7 +114,12 @@ export async function POST(req: NextRequest) {
   }
   const { publicToken, sessionId, message } = body.data;
 
-  if (!chatRateLimiter.check(`widget-chat:${publicToken}`, CHAT_MAX_POR_MINUTO)) {
+  const ipKey = `${publicToken}:${clientIpFromHeaders(req.headers)}`;
+  if (
+    !ipMinuteLimiter.check(ipKey, IP_MAX_POR_MINUTO) ||
+    !ipHourLimiter.check(ipKey, IP_MAX_POR_HORA) ||
+    !chatRateLimiter.check(`widget-chat:${publicToken}`, CHAT_MAX_POR_MINUTO)
+  ) {
     return NextResponse.json(
       { success: false, data: { sessionId, reply: null, mode: 'unavailable', error: 'too_many_requests' } },
       { status: 429, headers: CORS_HEADERS },

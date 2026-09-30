@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { handleWebsiteFormSubmission, isFormToken } from '@/lib/website-form';
 import { logError } from '@/lib/observability';
+import { clientIpFromHeaders } from '@/lib/client-ip';
+import { InMemoryRateLimiter } from '@/lib/operator-crypto';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -23,6 +25,14 @@ export const runtime = 'nodejs';
 // público sin tope es un bot dejando cien basuras en la bandeja del cliente
 // en un minuto, y con ellas la sensación de que el producto no sirve.
 // =============================================================================
+
+/**
+ * Envíos por visitante y formulario (revisión del 30/09/2026). El tope por
+ * web (20/hora) protege al cliente; este impide que UNA IP se coma ese cupo
+ * entero y deje el formulario cerrado para los visitantes de verdad.
+ */
+const ipLimiter = new InMemoryRateLimiter(15 * 60 * 1000);
+const MAX_POR_IP = 5;
 
 const BodySchema = z.object({
   name: z.string().trim().max(200).default(''),
@@ -57,6 +67,10 @@ export async function POST(req: NextRequest, { params }: { params: { formToken: 
   const body = BodySchema.safeParse(await req.json().catch(() => null));
   if (!body.success) {
     return NextResponse.json({ error: 'invalid' }, { status: 400, headers: CORS });
+  }
+
+  if (!ipLimiter.check(`${params.formToken}:${clientIpFromHeaders(req.headers)}`, MAX_POR_IP)) {
+    return NextResponse.json({ error: 'rate_limited' }, { status: 429, headers: CORS });
   }
 
   try {

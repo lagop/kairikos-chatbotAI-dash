@@ -34,6 +34,7 @@ const ERROR_LABEL: Record<string, string> = {
   invalid_body: 'Falta la dirección a la que enviar.',
   forbidden: 'Tu cuenta no tiene acceso al buzón de leads.',
   save_failed: 'No se pudo guardar. Si persiste, escríbenos.',
+  not_configured: 'El envío a tu CRM no está disponible ahora mismo. Escríbenos y lo activamos.',
   delete_failed: 'No se pudo quitar. Si persiste, escríbenos.',
 };
 

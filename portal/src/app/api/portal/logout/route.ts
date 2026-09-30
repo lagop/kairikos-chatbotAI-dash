@@ -12,6 +12,9 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { signOut } from '../../../../../auth';
 import { getSession } from '@/lib/session';
 import { safeInternalPath } from '@/lib/safe-redirect';
+import { prisma, isDatabaseConfigured } from '@/lib/prisma';
+import { revokeClientSessions } from '@/lib/client-sessions';
+import { logError } from '@/lib/observability';
 
 const PORTAL_LOGIN = '/portal/login';
 const ADMIN_LOGIN = '/admin/login';
@@ -41,11 +44,23 @@ export async function POST(req: NextRequest) {
   const returnTo = (form?.get('return_to') as string | null) ?? null;
 
   let role: 'operator' | 'client' = 'client';
+  let clientEmail: string | null = null;
   try {
     const session = await getSession();
     if (session.isOperator) role = 'operator';
+    else clientEmail = session.email;
   } catch {
     role = 'client';
+  }
+
+  // Revisión de seguridad del 30/09/2026: borrar la cookie no basta, una
+  // copia del token seguía valiendo. Esto lo invalida en el servidor (ver
+  // client-sessions.ts). Si falla, el cierre sigue adelante: el usuario tiene
+  // que salir igualmente, y el fallo queda registrado.
+  if (clientEmail && isDatabaseConfigured) {
+    await revokeClientSessions(prisma, clientEmail).catch((err) =>
+      logError('portal_logout.revoke_failed', err, { route: 'api/portal/logout' }, 'error'),
+    );
   }
 
   try {
@@ -64,9 +79,9 @@ export async function POST(req: NextRequest) {
   return res;
 }
 
-export async function GET(req: NextRequest) {
-  return POST(req);
-}
+// Sin GET (30/09/2026): un <img src="/api/portal/logout"> en cualquier web
+// cerraba la sesión de quien la visitara. Todos los botones de salir son
+// formularios POST (UserMenu, perfil).
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
