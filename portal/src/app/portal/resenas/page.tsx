@@ -149,7 +149,7 @@ function StarRating({ value }: { value: number }) {
 const DATE_FORMAT = new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
 
 interface PageProps {
-  searchParams: { connected?: string; connect_error?: string; local?: string };
+  searchParams: Promise<{ connected?: string; connect_error?: string; local?: string }>;
 }
 
 const CONNECT_ERROR_LABEL: Record<string, string> = {
@@ -167,7 +167,8 @@ const CONNECT_ERROR_LABEL: Record<string, string> = {
   forbidden: 'Este producto no está incluido en tu plan.',
 };
 
-export default async function PortalResenasPage({ searchParams }: PageProps) {
+export default async function PortalResenasPage(props: PageProps) {
+  const searchParams = await props.searchParams;
   await requirePortalSession();
   const resolved = await resolveClientFromSession();
   if (!resolved) {

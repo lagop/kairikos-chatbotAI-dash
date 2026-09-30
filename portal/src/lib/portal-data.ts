@@ -180,7 +180,7 @@ async function portalFetch<T>(path: string, accessToken: string): Promise<T | nu
     if (typeof window === 'undefined') {
       try {
         const { cookies } = await import('next/headers');
-        const all = cookies().getAll();
+        const all = (await cookies()).getAll();
         if (all.length > 0) {
           headers.cookie = all.map((c) => `${c.name}=${c.value}`).join('; ');
         }

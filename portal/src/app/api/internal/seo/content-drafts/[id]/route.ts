@@ -28,7 +28,8 @@ const BodySchema = z.object({
   metaDescription: z.string().trim().min(1).max(500).optional(),
 });
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = authenticateInternalRequest(req);
   const authError = internalAuthFailureResponse(auth);
   if (authError) return authError;

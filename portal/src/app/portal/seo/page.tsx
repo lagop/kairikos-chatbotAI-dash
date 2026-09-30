@@ -22,11 +22,12 @@ export const dynamic = 'force-dynamic';
 // Mismo reparto que /portal/web, que lleva así desde septiembre de 2026.
 // =============================================================================
 
-export default async function PortalSeoIndexPage({
-  searchParams,
-}: {
-  searchParams?: Record<string, string | undefined>;
-}) {
+export default async function PortalSeoIndexPage(
+  props: {
+    searchParams?: Promise<Record<string, string | undefined>>;
+  }
+) {
+  const searchParams = await props.searchParams;
   await requirePortalSession();
   const resolved = await resolveClientFromSession();
   if (!resolved) redirect('/portal/login?next=/portal/seo');

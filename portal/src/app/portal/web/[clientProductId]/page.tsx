@@ -33,13 +33,14 @@ function jsonToStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
 }
 
-export default async function PortalWebProjectPage({
-  params,
-  searchParams,
-}: {
-  params: { clientProductId: string };
-  searchParams: { edit?: string };
-}) {
+export default async function PortalWebProjectPage(
+  props: {
+    params: Promise<{ clientProductId: string }>;
+    searchParams: Promise<{ edit?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   await requirePortalSession();
   const resolved = await resolveClientFromSession();
   if (!resolved) {

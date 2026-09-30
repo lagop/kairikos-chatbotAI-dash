@@ -21,7 +21,8 @@ export const runtime = 'nodejs';
  * 500, so the lookup is wrapped in try/catch rather than letting a
  * transient DB outage surface as a crash.
  */
-export async function GET(_req: NextRequest, { params }: { params: { requestId: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ requestId: string }> }) {
+  const params = await props.params;
   const fallback = 'https://www.google.com';
   if (!isDatabaseConfigured) {
     return NextResponse.redirect(fallback);

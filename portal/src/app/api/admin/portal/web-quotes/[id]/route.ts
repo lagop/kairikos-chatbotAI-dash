@@ -24,7 +24,8 @@ const BodySchema = z.object({
  * No TOTP — editing doesn't commit anything by itself; re-sending after
  * an edit (POST .../send) is the compromising step and requires it.
  */
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await authenticateAdminRequest(req);
   if (!auth.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });

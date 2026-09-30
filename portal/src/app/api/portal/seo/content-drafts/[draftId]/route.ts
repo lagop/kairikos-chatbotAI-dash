@@ -27,7 +27,8 @@ const BodySchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('reject'), rejectionReason: z.string().trim().min(1).max(1000) }),
 ]);
 
-export async function PATCH(req: NextRequest, { params }: { params: { draftId: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ draftId: string }> }) {
+  const params = await props.params;
   const session = await getSession();
   if (!session.hasClientAccess) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });

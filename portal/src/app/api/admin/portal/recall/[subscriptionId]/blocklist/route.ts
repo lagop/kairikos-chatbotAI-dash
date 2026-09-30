@@ -15,7 +15,7 @@ const BodySchema = z.object({
 const DeleteSchema = z.object({ number: z.string().min(6).max(32) });
 
 interface Params {
-  params: { subscriptionId: string };
+  params: Promise<{ subscriptionId: string }>;
 }
 
 /**
@@ -31,7 +31,8 @@ interface Params {
  * list that stored what was typed would look right in the panel and match
  * nothing at all.
  */
-export async function GET(req: NextRequest, { params }: Params) {
+export async function GET(req: NextRequest, props: Params) {
+  const params = await props.params;
   const auth = await authenticateAdminRequest(req);
   if (!auth.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
@@ -40,7 +41,8 @@ export async function GET(req: NextRequest, { params }: Params) {
   return NextResponse.json({ ok: true, numbers });
 }
 
-export async function POST(req: NextRequest, { params }: Params) {
+export async function POST(req: NextRequest, props: Params) {
+  const params = await props.params;
   const auth = await authenticateAdminRequest(req);
   if (!auth.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
@@ -65,7 +67,8 @@ export async function POST(req: NextRequest, { params }: Params) {
   return NextResponse.json({ ok: true, id: result.id, e164: result.e164 });
 }
 
-export async function DELETE(req: NextRequest, { params }: Params) {
+export async function DELETE(req: NextRequest, props: Params) {
+  const params = await props.params;
   const auth = await authenticateAdminRequest(req);
   if (!auth.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });

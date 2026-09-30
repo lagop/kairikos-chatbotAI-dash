@@ -50,7 +50,8 @@ async function resolveWebsite(clientProductId: string) {
   return website ? { website, clientId: resolved.clientId } : null;
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { clientProductId: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ clientProductId: string }> }) {
+  const params = await props.params;
   if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
 
   const found = await resolveWebsite(params.clientProductId);

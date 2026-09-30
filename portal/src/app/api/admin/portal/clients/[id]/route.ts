@@ -396,10 +396,8 @@ async function shouldSkipSetupEmail(
   return recent !== null;
 }
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!isDatabaseConfigured) {
     return jsonError(503, 'service_unavailable', 'DATABASE_URL is not configured');
   }

@@ -28,7 +28,8 @@ function number(param: string | null): number | undefined {
  * comercial ajusta la cifra hablando ("¿cuántas llamadas se te escapan?") y
  * manda el enlace ya con SU número: /informe/<token>?llamadas=5&encargo=800.
  */
-export async function GET(req: NextRequest, { params }: { params: { token: string } }) {
+export async function GET(req: NextRequest, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   if (!isShareToken(params.token)) {
     return new NextResponse('Enlace no válido.', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
   }

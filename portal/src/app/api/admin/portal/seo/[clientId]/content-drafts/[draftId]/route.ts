@@ -47,7 +47,11 @@ const BodySchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('retry_publish') }),
 ]);
 
-export async function PATCH(req: NextRequest, { params }: { params: { clientId: string; draftId: string } }) {
+export async function PATCH(
+  req: NextRequest,
+  props: { params: Promise<{ clientId: string; draftId: string }> }
+) {
+  const params = await props.params;
   const auth = await authenticateAdminRequest(req);
   if (!auth.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });

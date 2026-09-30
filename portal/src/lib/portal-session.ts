@@ -100,7 +100,7 @@ export async function resolveClientFromSession(): Promise<ResolvedClient | null>
   // Dev fallback: trust an explicit dev-email cookie set by Playwright /
   // local tools. If absent, fall back to the mock client so the UI is
   // always demoable.
-  const devEmail = cookies().get('kairikos-portal-dev-email')?.value;
+  const devEmail = (await cookies()).get('kairikos-portal-dev-email')?.value;
   if (devEmail) {
     return resolveFromSupabaseEmail(devEmail);
   }

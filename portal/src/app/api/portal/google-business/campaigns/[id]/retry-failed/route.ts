@@ -13,7 +13,8 @@ export const runtime = 'nodejs';
  * — retryFailedRequests never touches a 'sent' row, so this can be
  * clicked repeatedly without risking a duplicate invitation.
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getSession();
   if (!session.hasClientAccess) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });

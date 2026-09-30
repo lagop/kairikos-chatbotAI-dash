@@ -12,14 +12,15 @@ import { PRODUCT_CODES, getProductCatalog } from '@/lib/catalogs';
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
-  params: { clientId: string; step: string };
+  params: Promise<{ clientId: string; step: string }>;
   /** clientProductId — Fase 4 multi-instancia, solo con varios chatbots. */
-  searchParams: { product?: string; clientProductId?: string };
+  searchParams: Promise<{ product?: string; clientProductId?: string }>;
 }
 
 const STEP_KEY_RE = /^[a-z0-9_-]{1,64}$/i;
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata(props: PageProps): Promise<Metadata> {
+  const params = await props.params;
   let stepNumber: ReturnType<typeof parseStepNumber> | null = null;
   try {
     stepNumber = parseStepNumber(params.step);
@@ -46,7 +47,9 @@ function isKnownStep(step: string): boolean {
   return WIZARD_STEP_NUMBERS.some((n) => String(n) === step);
 }
 
-export default async function AdminClientWizardStepPage({ params, searchParams }: PageProps) {
+export default async function AdminClientWizardStepPage(props: PageProps) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const session = await getSession();
   if (!session.isOperator) {
     redirect('/portal/sin-acceso');

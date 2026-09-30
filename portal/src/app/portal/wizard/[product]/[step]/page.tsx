@@ -36,13 +36,14 @@ import { getDevMockClientById } from '@/lib/portal-data';
 // =============================================================================
 
 interface PageProps {
-  params: { product: string; step: string };
+  params: Promise<{ product: string; step: string }>;
   /** Fase 4 multi-instancia — de qué chatbot es el asistente. Solo llega
    *  cuando el cliente tiene varios; ver lib/wizard-url.ts. */
-  searchParams?: { clientProductId?: string };
+  searchParams?: Promise<{ clientProductId?: string }>;
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata(props: PageProps): Promise<Metadata> {
+  const params = await props.params;
   if (params.product !== CHATBOT_PRODUCT_CODE) {
     return {
       title: 'Configurar producto · Kairikos',
@@ -66,7 +67,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function WizardStepPage({ params, searchParams }: PageProps) {
+export default async function WizardStepPage(props: PageProps) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   // Se propaga el que llegó, no se inventa: sin él (un solo chatbot) los
   // enlaces siguen sin él y las URLs son las de siempre.
   const incomingChatbotId = searchParams?.clientProductId ?? null;

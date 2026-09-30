@@ -17,14 +17,15 @@ import { withChatbot } from '@/lib/wizard-url';
 
 export const dynamic = 'force-dynamic';
 
-export default async function WizardProductIndexPage({
-  params,
-  searchParams,
-}: {
-  params: { product: string };
-  /** clientProductId: Fase 4 multi-instancia, solo con varios chatbots. */
-  searchParams: { step?: string; clientProductId?: string };
-}) {
+export default async function WizardProductIndexPage(
+  props: {
+    params: Promise<{ product: string }>;
+    /** clientProductId: Fase 4 multi-instancia, solo con varios chatbots. */
+    searchParams: Promise<{ step?: string; clientProductId?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const resolved = await resolveClientFromSession();
   if (!resolved) {
     redirect(`/portal/login?next=${encodeURIComponent(`/portal/wizard/${params.product}`)}`);

@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     return jsonError(404, 'unknown_dev_mock_user', `No hay un cliente dev-mock para ${email}.`);
   }
 
-  const jar = cookies();
+  const jar = await cookies();
   const cookieOptions = {
     httpOnly: true,
     sameSite: 'lax' as const,
@@ -88,7 +88,7 @@ export async function DELETE() {
   if (!isPortalDevMock()) {
     return jsonError(404, 'not_found', 'Dev-mock session is only available in dev-mock environments.');
   }
-  const jar = cookies();
+  const jar = await cookies();
   jar.delete(DEV_SESSION_ACTIVE_COOKIE);
   jar.delete(DEV_SESSION_COOKIE);
   jar.delete(DEV_EMAIL_COOKIE);

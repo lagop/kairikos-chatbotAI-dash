@@ -26,7 +26,7 @@ export const metadata: Metadata = {
 };
 
 interface PageProps {
-  searchParams: { filter?: string };
+  searchParams: Promise<{ filter?: string }>;
 }
 
 const N8N_STATUS_PILL: Record<'success' | 'failed' | 'unknown', string> = {
@@ -53,7 +53,8 @@ function formatRelative(iso: string | null): string {
   return `hace ${days} d`;
 }
 
-export default async function AdminFlowsPage({ searchParams }: PageProps) {
+export default async function AdminFlowsPage(props: PageProps) {
+  const searchParams = await props.searchParams;
   const session = await getSession();
   if (!session.isOperator) {
     redirect('/portal/login?next=/admin/portal/flows');

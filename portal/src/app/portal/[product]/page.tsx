@@ -38,7 +38,8 @@ function isProductCode(value: string): value is ProductCode {
   return (PRODUCT_CODES as readonly string[]).includes(value);
 }
 
-export async function generateMetadata({ params }: { params: { product: string } }): Promise<Metadata> {
+export async function generateMetadata(props: { params: Promise<{ product: string }> }): Promise<Metadata> {
+  const params = await props.params;
   const label = isProductCode(params.product) ? PRODUCT_CATALOGS[params.product].label : 'Producto';
   return {
     title: `${label} · Portal Kairikos`,
@@ -46,7 +47,8 @@ export async function generateMetadata({ params }: { params: { product: string }
   };
 }
 
-export default async function PortalProductPage({ params }: { params: { product: string } }) {
+export default async function PortalProductPage(props: { params: Promise<{ product: string }> }) {
+  const params = await props.params;
   const canonical = CANONICAL_HREF[params.product];
   if (canonical) {
     redirect(canonical);

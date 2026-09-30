@@ -1,6 +1,6 @@
 import 'server-only';
 import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
+import { redirect, unstable_rethrow } from 'next/navigation';
 import { auth } from '../../auth';
 import { prisma } from './prisma';
 import { MOCK_CLIENT, MOCK_SECONDARY_CLIENT } from './portal-data';
@@ -15,7 +15,7 @@ const TOUCH_EVERY_MS = 5 * 60_000;
 async function resolveOperatorFromCookie(): Promise<ValidOperatorSession | null> {
   let sessionId: string | undefined;
   try {
-    sessionId = cookies().get(SESSION_COOKIE_NAME)?.value;
+    sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
   } catch {
     return null;
   }
@@ -101,6 +101,10 @@ export async function getSession(): Promise<PortalSession> {
   try {
     session = await auth();
   } catch (err) {
+    // Next 15: auth() lee cabeceras, y al construir, Next lanza un error
+    // especial para marcar la ruta como dinámica. Tragárselo aquí podía dejar
+    // una página con sesión generada como estática; se vuelve a lanzar.
+    unstable_rethrow(err);
     console.error('[getSession] auth() failed:', err);
     session = null;
   }
@@ -119,7 +123,7 @@ export async function getSession(): Promise<PortalSession> {
       // so the layout redirects to /portal/login — restoring the
       // unauth → 307 contract and the back-nav protection that the QA
       // verdict flagged as missing.
-      const hasActiveDevSession = Boolean(cookies().get(DEV_SESSION_ACTIVE_COOKIE)?.value);
+      const hasActiveDevSession = Boolean((await cookies()).get(DEV_SESSION_ACTIVE_COOKIE)?.value);
       if (hasActiveDevSession) {
         return resolveDevMockSession();
       }
@@ -203,8 +207,8 @@ export function assertSameClient(session: PortalSession, requestedSlug: string |
   }
 }
 
-export function setSessionCookieMarker(value: string) {
-  cookies().set('kairikos-portal-session', value, {
+export async function setSessionCookieMarker(value: string) {
+  (await cookies()).set('kairikos-portal-session', value, {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',

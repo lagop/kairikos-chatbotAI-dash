@@ -39,10 +39,8 @@ function isProductCode(value: string): value is ProductCode {
 
 const CLIENT_ID_RE = /^[a-z0-9_-]{1,64}$/i;
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { clientId: string } },
-) {
+export async function GET(req: NextRequest, props: { params: Promise<{ clientId: string }> }) {
+  const params = await props.params;
   const auth = await authenticateAdminRequest(req);
   if (!auth.ok) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });

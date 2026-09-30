@@ -102,6 +102,9 @@ export function LeadExportCard({ webhook }: { webhook: LeadWebhookState | null }
         <p className="mt-0.5 text-xs text-kairikos-muted">
           Un archivo CSV con todos tus leads, listo para abrir en Excel.
         </p>
+        {/* Es la descarga de un CSV desde una ruta de API, no una página:
+            <Link> intentaría navegar en el cliente. */}
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
         <a
           href="/api/portal/leads/export"
           className="mt-2 inline-block text-sm text-kairikos-accent2 hover:underline"

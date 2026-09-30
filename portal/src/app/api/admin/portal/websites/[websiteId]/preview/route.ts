@@ -24,7 +24,8 @@ export const runtime = 'nodejs';
  * —que en el sitio publicado viaja como assets/portada.jpg— no se ve. Es
  * aceptable: lo que se revisa aquí son los textos.
  */
-export async function GET(req: NextRequest, { params }: { params: { websiteId: string } }) {
+export async function GET(req: NextRequest, props: { params: Promise<{ websiteId: string }> }) {
+  const params = await props.params;
   const auth = await authenticateAdminRequest(req);
   if (!auth.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });

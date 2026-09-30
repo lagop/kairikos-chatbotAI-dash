@@ -10,7 +10,7 @@ export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 export const isBackendConfigured = Boolean(PORTAL_API_BASE_URL);
 
 export async function createSupabaseServerClient() {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   return createServerClient(SUPABASE_URL || 'https://invalid.supabase.co', SUPABASE_ANON_KEY || 'invalid', {
     cookies: {
       get(name: string) {

@@ -11,12 +11,13 @@ export const dynamic = 'force-dynamic';
 // enseñar los recados de un desconocido.
 // =============================================================================
 
-export default async function PortalLlamadasLinePage({
-  params,
-  searchParams,
-}: {
-  params: { clientProductId: string };
-  searchParams?: { mes?: string; p?: string; connected?: string; connect_error?: string };
-}) {
+export default async function PortalLlamadasLinePage(
+  props: {
+    params: Promise<{ clientProductId: string }>;
+    searchParams?: Promise<{ mes?: string; p?: string; connected?: string; connect_error?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   return <LlamadasPageBody clientProductId={params.clientProductId} searchParams={searchParams} />;
 }

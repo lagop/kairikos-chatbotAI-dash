@@ -193,11 +193,12 @@ function loadMockRows(stepKeys: readonly string[]): ClientFunnelRow[] {
   return [mk(MOCK_CLIENT, 1, 11), mk(MOCK_SECONDARY_CLIENT, 5, 3)];
 }
 
-export default async function AdminWizardFunnelPage({
-  searchParams,
-}: {
-  searchParams: { product?: string };
-}) {
+export default async function AdminWizardFunnelPage(
+  props: {
+    searchParams: Promise<{ product?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const session = await getSession();
   if (!session.isOperator) {
     redirect('/portal/sin-acceso');

@@ -10,7 +10,7 @@ import { HandoffReplyPanel } from '@/components/portal/HandoffReplyPanel';
 import { handoffState, isHandoffChannel, type HandoffState } from '@/lib/chatbot-handoff';
 
 interface PageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 const DATE_FMT = new Intl.DateTimeFormat('es-ES', {
@@ -28,7 +28,8 @@ const OUTCOME_LABEL: Record<string, string> = {
   abandoned: 'Abandonada',
 };
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata(props: PageProps): Promise<Metadata> {
+  const params = await props.params;
   return {
     title: `Conversación ${params.id}`,
     description: 'Detalle y transcripción de la conversación con tu chatbot Kairikos.',
@@ -53,7 +54,8 @@ function agentTurnTimes(transcript: unknown): Set<string> {
   return times;
 }
 
-export default async function ConversationDetailPage({ params }: PageProps) {
+export default async function ConversationDetailPage(props: PageProps) {
+  const params = await props.params;
   const session = await requirePortalSession();
   const conversation = await getConversation(session.accessToken ?? '', params.id);
   if (!conversation) notFound();

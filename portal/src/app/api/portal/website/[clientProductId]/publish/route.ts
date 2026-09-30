@@ -18,7 +18,8 @@ export const maxDuration = 60;
  * operador, está cifrada y no se selecciona desde aquí. Publicar usa la que
  * haya guardada, o falla diciendo que falta.
  */
-export async function POST(_req: NextRequest, { params }: { params: { clientProductId: string } }) {
+export async function POST(_req: NextRequest, props: { params: Promise<{ clientProductId: string }> }) {
+  const params = await props.params;
   if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
 
   const resolved = await resolveClientFromSession();

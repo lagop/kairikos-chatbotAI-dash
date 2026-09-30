@@ -21,7 +21,8 @@ const BodySchema = z.object({ comment: z.string().trim().min(1).max(4000) });
  * for the sync-triggered auto-publish path, which never calls this
  * route).
  */
-export async function POST(req: NextRequest, { params }: { params: { reviewId: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ reviewId: string }> }) {
+  const params = await props.params;
   const session = await getSession();
   if (!session.hasClientAccess) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });

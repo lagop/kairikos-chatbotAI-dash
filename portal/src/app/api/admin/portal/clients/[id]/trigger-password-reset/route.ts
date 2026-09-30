@@ -47,10 +47,8 @@ async function sendResetEmail(params: { to: string; resetUrl: string }): Promise
   });
 }
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!isDatabaseConfigured) {
     return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
   }

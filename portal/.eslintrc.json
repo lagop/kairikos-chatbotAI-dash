@@ -1,3 +1,11 @@
 {
-  "extends": "next/core-web-vitals"
+  "extends": "next/core-web-vitals",
+  "rules": {
+    // Next 15 (30/09/2026) aplica esta regla también a app/; con Next 14 solo
+    // miraba pages/, que este proyecto no usa. Hay ~17 <a> entre páginas,
+    // sobre todo en los flujos de entrada y contraseña, donde una carga
+    // completa es lo que se quiere tras cambiar la sesión. Pasarlos a <Link>
+    // cambiaría la navegación en una migración que no debe cambiar nada.
+    "@next/next/no-html-link-for-pages": "off"
+  }
 }

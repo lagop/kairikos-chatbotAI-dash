@@ -33,13 +33,13 @@ function number(param: string | null): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
-export async function GET(req: NextRequest, ctx: { params: { leadId: string } }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ leadId: string }> }) {
   const auth = await authenticateAdminRequest(req);
   if (!auth.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
 
   const lead = await prisma.lead.findUnique({
-    where: { id: ctx.params.leadId },
+    where: { id: (await ctx.params).leadId },
     select: {
       id: true,
       clientId: true,

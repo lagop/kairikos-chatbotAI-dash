@@ -24,10 +24,8 @@ import { isProductContracted, resolveContractedInstance } from '@/lib/client-pro
 // Auth: cliente session via resolveClientFromSession.
 // =============================================================================
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { product: string } },
-) {
+export async function GET(req: NextRequest, props: { params: Promise<{ product: string }> }) {
+  const params = await props.params;
   const session = await getSession();
   if (!session.hasClientAccess) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });

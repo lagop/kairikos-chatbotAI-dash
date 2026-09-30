@@ -22,10 +22,8 @@ interface FlowDetailResponse {
   activity: FlowActivityEntry[];
 }
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await authenticateAdminRequest(req);
   if (!auth.ok) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });

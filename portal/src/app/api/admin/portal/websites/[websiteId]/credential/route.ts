@@ -30,7 +30,8 @@ const BodySchema = z.object({
  * La contraseña no vuelve nunca: el GET de estado enseña host, usuario y
  * ruta, y si hay contraseña guardada, no cuál.
  */
-export async function PUT(req: NextRequest, { params }: { params: { websiteId: string } }) {
+export async function PUT(req: NextRequest, props: { params: Promise<{ websiteId: string }> }) {
+  const params = await props.params;
   const auth = await authenticateAdminRequest(req);
   if (!auth.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const stepUp = await requireTotpStepUp(req);

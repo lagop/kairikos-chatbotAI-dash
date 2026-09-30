@@ -31,7 +31,8 @@ const AUDIT_ACTION: Record<'contactado' | 'convertido' | 'descartado', string> =
  * no revelar existencia) -> transición ilegal (409) -> $transaction
  * (update + LeadAudit).
  */
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getSession();
   if (!session.hasClientAccess) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });

@@ -16,11 +16,12 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function AdminClientsPage({
-  searchParams,
-}: {
-  searchParams: { search?: string };
-}) {
+export default async function AdminClientsPage(
+  props: {
+    searchParams: Promise<{ search?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const session = await getSession();
   if (!session.isOperator) {
     redirect('/portal/login?next=/admin/portal/clients');
