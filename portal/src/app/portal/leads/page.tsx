@@ -27,6 +27,7 @@ import { loadProspectingMetrics } from '@/lib/prospecting-metrics';
 import { LeadExportCard, type LeadWebhookState } from '@/components/portal/LeadExportCard';
 import { LeadsQualificationCard } from '@/components/portal/LeadsQualificationCard';
 import { suggestLeadQualificationFields } from '@/lib/cross-product-prefill';
+import { decryptLeadWebhook } from '@/lib/lead-webhook-crypto';
 
 export const dynamic = 'force-dynamic';
 
@@ -243,11 +244,23 @@ export default async function PortalLeadsPage({
   // exige hasLeads o hasProspecting.
   const webhookRow = await prisma.leadWebhook.findUnique({
     where: { clientId: resolved.clientId },
-    select: { url: true, enabled: true, lastDeliveryAt: true, lastDeliveryError: true },
+    select: {
+      urlCiphertext: true,
+      urlIv: true,
+      urlTag: true,
+      secretCiphertext: true,
+      secretIv: true,
+      secretTag: true,
+      enabled: true,
+      lastDeliveryAt: true,
+      lastDeliveryError: true,
+    },
   });
   const webhook: LeadWebhookState | null = webhookRow
     ? {
-        url: webhookRow.url,
+        // Cifrada desde el 30/09/2026. Si no se puede descifrar, la tarjeta
+        // enseña el campo vacío y el cliente la vuelve a guardar.
+        url: decryptLeadWebhook(webhookRow)?.url ?? '',
         enabled: webhookRow.enabled,
         lastDeliveryAt: webhookRow.lastDeliveryAt?.toISOString() ?? null,
         lastDeliveryError: webhookRow.lastDeliveryError,

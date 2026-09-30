@@ -1,18 +1,35 @@
 // KAIA-2103 — Request a password reset for a client user.
 // Generates a time-limited single-use token and sends the reset link via email.
+//
+// Revisión de seguridad del 30/09/2026 — dos agujeros que la versión del
+// operador (api/operator/forgot-password) ya tenía cerrados y esta no:
+//   - Sin límite de intentos. Cada llamada invalida el token anterior y manda
+//     un correo: con un bucle se bombardeaba el buzón de un cliente y se
+//     gastaba la cuota de Resend. Ahora, 20 por IP y 5 por correo cada 15 min.
+//   - Revelaba si el correo existe: respondía 500 «email_send_failed» solo
+//     cuando la cuenta existía y el envío fallaba. Ahora siempre {ok:true}; el
+//     fallo se registra, que es donde tiene que verse.
 
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { sendEmail, buildPasswordResetHtml } from '@/lib/auth-email';
 import * as crypto from 'node:crypto';
+import { InMemoryRateLimiter } from '@/lib/operator-crypto';
+import { clientIpFromHeaders } from '@/lib/client-ip';
+import { logError } from '@/lib/observability';
+
+const ipRateLimiter = new InMemoryRateLimiter(15 * 60 * 1000);
+const emailRateLimiter = new InMemoryRateLimiter(15 * 60 * 1000);
 
 const ForgotPasswordSchema = z.object({
   email: z.string().email(),
 });
 
 const TOKEN_EXPIRY_HOURS = 2;
-const PORTAL_BASE_URL = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'http://localhost:3001';
+// `||` y no `??`: una variable declarada y vacía dejaría el enlace del correo
+// sin dominio (trampa 4 de CLAUDE.md).
+const PORTAL_BASE_URL = process.env.NEXT_PUBLIC_PORTAL_URL || 'https://portal.kairikos.cloud';
 
 function generateToken(): { raw: string; hash: string } {
   const raw = crypto.randomBytes(32).toString('hex');
@@ -50,6 +67,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
   }
 
+  if (!ipRateLimiter.check(`ip:${clientIpFromHeaders(req.headers)}`, 20)) {
+    return NextResponse.json({ error: 'too_many_requests' }, { status: 429 });
+  }
+
   let body: unknown = null;
   try {
     body = await req.json();
@@ -64,6 +85,12 @@ export async function POST(req: NextRequest) {
 
   const { email } = parsed.data;
   const normalizedEmail = email.toLowerCase().trim();
+
+  // Mismo 429 exista o no la cuenta: el límite va por el correo que se pide,
+  // no por el que hay en la base de datos.
+  if (!emailRateLimiter.check(`email:${normalizedEmail}`, 5)) {
+    return NextResponse.json({ error: 'too_many_requests' }, { status: 429 });
+  }
 
   const clientUser = await prisma.chatbotClientUser.findUnique({
     where: { nextAuthEmail: normalizedEmail },
@@ -102,8 +129,8 @@ export async function POST(req: NextRequest) {
   try {
     await sendResetEmail({ to: normalizedEmail, resetUrl });
   } catch (err) {
-    console.error('[forgot-password] email send failed:', err);
-    return NextResponse.json({ error: 'email_send_failed' }, { status: 500 });
+    // Sin el correo en el registro: el fallo es del envío, no de la persona.
+    logError('forgot_password.email_failed', err, { route: 'api/portal/forgot-password' }, 'error');
   }
 
   return NextResponse.json({ ok: true });

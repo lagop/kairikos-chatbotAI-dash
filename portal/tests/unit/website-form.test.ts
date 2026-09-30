@@ -147,3 +147,25 @@ describe('handleWebsiteFormSubmission', () => {
     expect(mockState.createLead.mock.calls[0][0].data.summary).toContain('Contacto desde su web');
   });
 });
+
+// Revisión de seguridad del 30/09/2026: el tope de 20/hora contaba filas Lead,
+// y por el camino del correo no se crea ninguna. Con el testigo público de una
+// web cualquiera se podía inundar el correo del cliente.
+describe('handleWebsiteFormSubmission — tope del camino por correo', () => {
+  it('sin bandeja, deja de mandar correos al pasar el tope por hora de esa web', async () => {
+    mockState.hasLeadsInbox.mockResolvedValue(false);
+    mockState.findWebsite.mockResolvedValue({
+      id: 'w-tope-correo',
+      clientId: 'client-9',
+      tenantId: null,
+      businessName: 'Otra web',
+      client: { email: 'otro@negocio.es', name: 'Otra web' },
+    });
+    const resultados = [];
+    for (let i = 0; i < 25; i++) {
+      resultados.push(await handleWebsiteFormSubmission(prisma, 'token', SUBMISSION));
+    }
+    expect(mockState.sendEmail).toHaveBeenCalledTimes(20);
+    expect(resultados.slice(20).every((r) => !r.ok && r.error === 'rate_limited')).toBe(true);
+  });
+});

@@ -125,6 +125,9 @@ services:
       # y nunca llegó al contenedor — el mismo hueco que tuvo
       # GOOGLE_PLACES_API_KEY. Generar con: openssl rand -hex 32
       SEO_CMS_CREDENTIAL_ENCRYPTION_KEY: ${SEO_CMS_CREDENTIAL_ENCRYPTION_KEY}
+      # Cifra la URL y el secreto del webhook de leads (lead-webhook-crypto.ts).
+      # Sin ella, el webhook no se puede configurar. openssl rand -hex 32
+      LEAD_WEBHOOK_ENCRYPTION_KEY: ${LEAD_WEBHOOK_ENCRYPTION_KEY:-}
       GOOGLE_GA4_OAUTH_CLIENT_ID: ${GOOGLE_GA4_OAUTH_CLIENT_ID:-}
       GOOGLE_GA4_OAUTH_CLIENT_SECRET: ${GOOGLE_GA4_OAUTH_CLIENT_SECRET:-}
       GOOGLE_GA4_OAUTH_REDIRECT_URI: ${GOOGLE_GA4_OAUTH_REDIRECT_URI:-}

@@ -5,6 +5,7 @@ import {
   authenticateInternalRequest,
   internalAuthFailureResponse,
 } from '@/lib/internal-auth';
+import { WIZARD_ABANDONED_WINDOW_HOURS } from '@/lib/wizard-recovery-email';
 
 // =============================================================================
 // POST /api/internal/wizard-abandoned/scan
@@ -40,7 +41,8 @@ import {
 // does not block this route from shipping.
 // =============================================================================
 
-const WIZARD_ABANDONED_WINDOW_HOURS = 48;
+// WIZARD_ABANDONED_WINDOW_HOURS vive en wizard-recovery-email.ts: el disparo
+// también lo necesita para volver a comprobar antes de mandar el correo.
 const WIZARD_ABANDONED_DEDUP_DAYS = 7;
 
 interface ScanCandidate {

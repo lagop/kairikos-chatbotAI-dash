@@ -4,6 +4,7 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { createPublicDraft, PUBLIC_SECTORS } from '@/lib/public-draft-request';
 import { publicOrigin } from '@/lib/public-origin';
 import { logError } from '@/lib/observability';
+import { clientIpFromHeaders } from '@/lib/client-ip';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -73,10 +74,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'invalid' }, { status: 400, headers: CORS });
   }
 
-  // La IP real viene del proxy. Sin cabecera, cadena vacía: el tope por IP
-  // deja de discriminar pero el GLOBAL sigue en pie, que es el que de verdad
-  // acota el gasto.
-  const ip = (req.headers.get('x-forwarded-for') ?? '').split(',')[0].trim();
+  // La IP que ve el proxy (client-ip.ts). Hasta el 30/09/2026 se leía la
+  // primera entrada de X-Forwarded-For, que escribe quien llama: el tope por
+  // IP no frenaba a nadie y un script podía agotar el global del día.
+  const ip = clientIpFromHeaders(req.headers);
 
   try {
     const result = await createPublicDraft(prisma, { ...body.data, ip });

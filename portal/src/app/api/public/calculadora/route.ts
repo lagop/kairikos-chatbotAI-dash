@@ -4,6 +4,7 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { estimateMissedCallValue, defaultAssumptionsFor } from '@/lib/prospecting-report';
 import { PUBLIC_SECTORS, hashIp } from '@/lib/public-draft-request';
 import { logError } from '@/lib/observability';
+import { clientIpFromHeaders } from '@/lib/client-ip';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -27,6 +28,10 @@ export const runtime = 'nodejs';
 // defensa — los valores se recortan antes de multiplicar, porque aquí los
 // escribe un desconocido en un formulario público.
 // =============================================================================
+
+/** Contactos guardados por IP y hora. Una persona de verdad deja uno. */
+const CALCULADORA_MAX_CONTACTOS_POR_IP = 5;
+const CALCULADORA_VENTANA_MS = 60 * 60 * 1000;
 
 const CORS = {
   'access-control-allow-origin': '*',
@@ -78,19 +83,27 @@ export async function POST(req: NextRequest) {
   // buscar y ya está hecho.
   if (body.data.contacto && isDatabaseConfigured) {
     try {
-      const ip = (req.headers.get('x-forwarded-for') ?? '').split(',')[0].trim();
-      await prisma.calculatorLead.create({
-        data: {
-          ipHash: hashIp(ip),
-          sector: body.data.sector.slice(0, 40),
-          businessName: body.data.negocio?.slice(0, 200) ?? null,
-          city: body.data.ciudad?.slice(0, 120) ?? null,
-          contact: body.data.contacto.slice(0, 200),
-          missedCallsPerWeek: estimate.assumptions.missedCallsPerWeek,
-          averageJobValueCents: Math.round(estimate.assumptions.averageJobValue * 100),
-          annualLossCents: estimate.annualLostRevenue * 100,
-        },
+      const ip = clientIpFromHeaders(req.headers);
+      // Tope por IP para lo que se GUARDA (revisión del 30/09/2026): sin él,
+      // un script podía llenar la tabla de contactos falsos. El cálculo se
+      // sigue devolviendo; lo que deja de hacerse es guardar.
+      const recientes = await prisma.calculatorLead.count({
+        where: { ipHash: hashIp(ip), createdAt: { gte: new Date(Date.now() - CALCULADORA_VENTANA_MS) } },
       });
+      if (recientes < CALCULADORA_MAX_CONTACTOS_POR_IP) {
+        await prisma.calculatorLead.create({
+          data: {
+            ipHash: hashIp(ip),
+            sector: body.data.sector.slice(0, 40),
+            businessName: body.data.negocio?.slice(0, 200) ?? null,
+            city: body.data.ciudad?.slice(0, 120) ?? null,
+            contact: body.data.contacto.slice(0, 200),
+            missedCallsPerWeek: estimate.assumptions.missedCallsPerWeek,
+            averageJobValueCents: Math.round(estimate.assumptions.averageJobValue * 100),
+            annualLossCents: estimate.annualLostRevenue * 100,
+          },
+        });
+      }
     } catch (err) {
       logError('calculadora.lead_failed', err, { route: 'api/public/calculadora' }, 'warn');
     }

@@ -65,6 +65,14 @@ interface ParsedFireRequest {
   operatorTimezone: string;
 }
 
+// LIMITACIÓN CONOCIDA Y ACEPTADA (revisión de seguridad del 30/09/2026): el
+// clientId llega en el cuerpo, que CLAUDE.md prohíbe para las rutas que
+// escriben en nombre de un cliente. Aquí no es ese caso: el clientId lo
+// saca el propio portal (sus barridos) y n8n solo lo reenvía, y el efecto es
+// interno: solo avisa al OPERADOR, y ya exige que el paso (stepId) sea de ese cliente.
+// El control es la PORTAL_API_KEY; si se filtra, se rota (en el portal y en
+// el .env de n8n). La única de estas rutas cuyo efecto llega al cliente,
+// wizard-abandoned/fire, vuelve a comprobar la condición antes de actuar.
 export async function POST(req: NextRequest) {
   const auth = authenticateInternalRequest(req);
   const authError = internalAuthFailureResponse(auth);

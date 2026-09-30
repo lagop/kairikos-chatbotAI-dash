@@ -79,3 +79,13 @@ describe('la copia externa de la base de datos', () => {
     }
   });
 });
+
+// 30/09/2026 — la clave que cifra la URL y el secreto del webhook de leads
+// (lead-webhook-crypto.ts). Es un secreto: tiene que venir de `secrets.`.
+describe('LEAD_WEBHOOK_ENCRYPTION_KEY llega al contenedor', () => {
+  it('está en .env.example, docker-compose.yml y deploy.yml, como secreto', () => {
+    expect(portal('.env.example')).toMatch(/^LEAD_WEBHOOK_ENCRYPTION_KEY=/m);
+    expect(repo('docker-compose.yml')).toContain('LEAD_WEBHOOK_ENCRYPTION_KEY:');
+    expect(repo('.github/workflows/deploy.yml')).toContain('LEAD_WEBHOOK_ENCRYPTION_KEY=${{ secrets.LEAD_WEBHOOK_ENCRYPTION_KEY }}');
+  });
+});

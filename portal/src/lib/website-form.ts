@@ -4,6 +4,7 @@ import type { PrismaClient } from '@prisma/client';
 import { hasLeadsInboxAccess } from './leads';
 import { sendNewLeadEmail } from './leads-email';
 import { logError } from './observability';
+import { InMemoryRateLimiter } from './operator-crypto';
 
 // =============================================================================
 // Producto Web, Fase 1 — el formulario de contacto de la web publicada.
@@ -31,6 +32,19 @@ import { logError } from './observability';
  *  un minuto y le hace desconfiar del producto entero. Veinte es más de lo
  *  que recibe una pyme en un día bueno. */
 export const MAX_SUBMISSIONS_PER_HOUR = 20;
+
+/**
+ * El tope del camino por CORREO (revisión de seguridad del 30/09/2026).
+ *
+ * El de arriba cuenta filas Lead, y cuando el cliente no tiene bandeja no se
+ * crea ninguna: el mensaje sale por correo. Así que ese tope nunca saltaba, y
+ * con el testigo público de una web cualquiera se podía inundar el correo del
+ * cliente y gastar la cuota de Resend. Este cuenta envíos por web en memoria:
+ * se reinicia si se reinicia el contenedor, que es aceptable para un tope
+ * que solo tiene que frenar una ráfaga (mismo criterio que los demás
+ * limitadores en memoria, ver operator-crypto.ts).
+ */
+const emailSubmissionLimiter = new InMemoryRateLimiter(60 * 60 * 1000);
 
 export function createFormToken(): string {
   return randomBytes(24).toString('hex');
@@ -124,6 +138,9 @@ export async function handleWebsiteFormSubmission(
   // Sin bandeja contratada: correo y punto. El envío es best-effort por
   // diseño (ver CLAUDE.md), así que un fallo se registra y NO se le devuelve
   // al visitante como error — desde su lado, el mensaje salió.
+  if (!emailSubmissionLimiter.check(`web:${website.id}`, MAX_SUBMISSIONS_PER_HOUR)) {
+    return { ok: false, error: 'rate_limited' };
+  }
   const sent = await sendNewLeadEmail({
     to: website.client.email,
     businessName: website.client.name ?? website.businessName,

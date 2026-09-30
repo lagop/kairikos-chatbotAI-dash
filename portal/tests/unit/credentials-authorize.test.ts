@@ -94,7 +94,7 @@ describe('authConfig.providers[0].authorize (Credentials)', () => {
     expect(result).toBeNull();
     expect(findUnique).toHaveBeenCalledWith({
       where: { email: 'unknown@example.com' },
-      select: { id: true, role: true, passwordHash: true },
+      select: { id: true, role: true, passwordHash: true, sessionVersion: true },
     });
   });
 
@@ -107,7 +107,7 @@ describe('authConfig.providers[0].authorize (Credentials)', () => {
   });
 
   it('returns null for wrong password', async () => {
-    findUnique.mockResolvedValueOnce({ id: KNOWN_USER_ID, role: 'client', passwordHash: 'argon2hash' });
+    findUnique.mockResolvedValueOnce({ id: KNOWN_USER_ID, role: 'client', passwordHash: 'argon2hash', sessionVersion: 0 });
     verifyPassword.mockResolvedValueOnce(false);
     const authorize = getAuthorize();
     const result = await authorize(buildCredentials(KNOWN_EMAIL, WRONG_PASSWORD));
@@ -116,7 +116,7 @@ describe('authConfig.providers[0].authorize (Credentials)', () => {
   });
 
   it('returns user object for correct credentials', async () => {
-    findUnique.mockResolvedValueOnce({ id: KNOWN_USER_ID, role: 'client', passwordHash: 'argon2hash' });
+    findUnique.mockResolvedValueOnce({ id: KNOWN_USER_ID, role: 'client', passwordHash: 'argon2hash', sessionVersion: 0 });
     verifyPassword.mockResolvedValueOnce(true);
     findUniqueClientUser.mockResolvedValueOnce({ clientId: KNOWN_CLIENT_ID });
     const authorize = getAuthorize();
@@ -127,6 +127,7 @@ describe('authConfig.providers[0].authorize (Credentials)', () => {
       clientId: KNOWN_CLIENT_ID,
       role: 'client',
       pwf: passwordFingerprint('argon2hash'),
+      sv: 0,
     });
     expect(findUniqueClientUser).toHaveBeenCalledWith({
       where: { userId: KNOWN_USER_ID },
@@ -135,26 +136,26 @@ describe('authConfig.providers[0].authorize (Credentials)', () => {
   });
 
   it('normalises email to lower-case before lookup', async () => {
-    findUnique.mockResolvedValueOnce({ id: KNOWN_USER_ID, role: 'client', passwordHash: 'argon2hash' });
+    findUnique.mockResolvedValueOnce({ id: KNOWN_USER_ID, role: 'client', passwordHash: 'argon2hash', sessionVersion: 0 });
     verifyPassword.mockResolvedValueOnce(true);
     findUniqueClientUser.mockResolvedValueOnce({ clientId: KNOWN_CLIENT_ID });
     const authorize = getAuthorize();
     await authorize(buildCredentials('AURORA@EXAMPLE.COM', CORRECT_PASSWORD));
     expect(findUnique).toHaveBeenCalledWith({
       where: { email: KNOWN_EMAIL },
-      select: { id: true, role: true, passwordHash: true },
+      select: { id: true, role: true, passwordHash: true, sessionVersion: true },
     });
   });
 
   it('trims whitespace from email before lookup', async () => {
-    findUnique.mockResolvedValueOnce({ id: KNOWN_USER_ID, role: 'client', passwordHash: 'argon2hash' });
+    findUnique.mockResolvedValueOnce({ id: KNOWN_USER_ID, role: 'client', passwordHash: 'argon2hash', sessionVersion: 0 });
     verifyPassword.mockResolvedValueOnce(true);
     findUniqueClientUser.mockResolvedValueOnce({ clientId: KNOWN_CLIENT_ID });
     const authorize = getAuthorize();
     await authorize(buildCredentials(`  ${KNOWN_EMAIL}  `, CORRECT_PASSWORD));
     expect(findUnique).toHaveBeenCalledWith({
       where: { email: KNOWN_EMAIL },
-      select: { id: true, role: true, passwordHash: true },
+      select: { id: true, role: true, passwordHash: true, sessionVersion: true },
     });
   });
 });
@@ -162,7 +163,7 @@ describe('authConfig.providers[0].authorize (Credentials)', () => {
 // Seguridad (22/09/2026): el endpoint de NextAuth no limitaba intentos.
 describe('authorize — límite de intentos', () => {
   it('deja de comprobar contraseñas tras 10 intentos seguidos al mismo email', async () => {
-    findUnique.mockResolvedValue({ id: KNOWN_USER_ID, role: 'client', passwordHash: 'argon2hash' });
+    findUnique.mockResolvedValue({ id: KNOWN_USER_ID, role: 'client', passwordHash: 'argon2hash', sessionVersion: 0 });
     verifyPassword.mockResolvedValue(false);
     const authorize = getAuthorize();
     for (let i = 0; i < 12; i++) {
@@ -195,10 +196,10 @@ describe('authConfig.callbacks.jwt', () => {
   it('embeds clientId and role from user into token', async () => {
     const jwt = authConfig.callbacks?.jwt;
     expect(jwt).toBeTypeOf('function');
-    findUnique.mockResolvedValueOnce({ passwordHash: 'argon2hash' });
+    findUnique.mockResolvedValueOnce({ passwordHash: 'argon2hash', sessionVersion: 0 });
     const token = await jwt!({
       token: { sub: 'u1' },
-      user: { id: 'u1', email: 'a@b.com', clientId: 'cid1', role: 'client', pwf: passwordFingerprint('argon2hash') } as never,
+      user: { id: 'u1', email: 'a@b.com', clientId: 'cid1', role: 'client', pwf: passwordFingerprint('argon2hash'), sv: 0 } as never,
     } as never);
     expect(token).toMatchObject({ clientId: 'cid1', role: 'client' });
   });
@@ -233,9 +234,25 @@ describe('authConfig.callbacks.jwt', () => {
 
   it('con la misma contraseña, el token sigue valiendo', async () => {
     const jwt = authConfig.callbacks?.jwt;
-    findUnique.mockResolvedValueOnce({ passwordHash: 'argon2hash' });
-    const token = { sub: 'u1', role: 'client', pwf: passwordFingerprint('argon2hash') };
+    findUnique.mockResolvedValueOnce({ passwordHash: 'argon2hash', sessionVersion: 0 });
+    const token = { sub: 'u1', role: 'client', pwf: passwordFingerprint('argon2hash'), sv: 0 };
     expect(await jwt!({ token, user: undefined } as never)).toEqual(token);
+  });
+
+  // Revisión de seguridad del 30/09/2026: cerrar sesión borraba la cookie y
+  // nada más; una copia del token seguía valiendo 30 días.
+  it('cerrar sesión cierra las sesiones abiertas: la versión ya no coincide', async () => {
+    const jwt = authConfig.callbacks?.jwt;
+    findUnique.mockResolvedValueOnce({ passwordHash: 'argon2hash', sessionVersion: 1 });
+    const token = { sub: 'u1', role: 'client', pwf: passwordFingerprint('argon2hash'), sv: 0 };
+    expect(await jwt!({ token, user: undefined } as never)).toBeNull();
+  });
+
+  it('un token de antes de la versión de sesión cae una vez', async () => {
+    const jwt = authConfig.callbacks?.jwt;
+    findUnique.mockResolvedValueOnce({ passwordHash: 'argon2hash', sessionVersion: 0 });
+    const token = { sub: 'u1', role: 'client', pwf: passwordFingerprint('argon2hash') };
+    expect(await jwt!({ token, user: undefined } as never)).toBeNull();
   });
 
   it('un JWT de operador (entrada retirada) ya no abre nada', async () => {

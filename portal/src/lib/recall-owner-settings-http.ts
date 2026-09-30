@@ -60,12 +60,13 @@ export async function handleGreetingPut(req: NextRequest, target: SettingsTarget
   const declared = Number(req.headers.get('content-length') ?? '0');
   if (declared > MAX_GREETING_BYTES) return NextResponse.json({ error: 'too_large' }, { status: 413 });
 
-  let bytes: Uint8Array;
-  try {
-    bytes = new Uint8Array(await req.arrayBuffer());
-  } catch {
-    return NextResponse.json({ error: 'invalid_body' }, { status: 400 });
-  }
+  // Leído a trozos y con tope (revisión de seguridad del 30/09/2026): sin
+  // Content-Length (una petición «chunked»), arrayBuffer() se tragaba el
+  // cuerpo entero en memoria antes de mirar el tamaño.
+  const leido = await readBodyWithLimit(req, MAX_GREETING_BYTES);
+  if (leido === 'too_large') return NextResponse.json({ error: 'too_large' }, { status: 413 });
+  if (leido === 'invalid') return NextResponse.json({ error: 'invalid_body' }, { status: 400 });
+  const bytes = leido;
   try {
     const result = await setGreeting(prisma, { ...target, bytes });
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: VALIDATION_STATUS[result.error] ?? 400 });
@@ -74,6 +75,35 @@ export async function handleGreetingPut(req: NextRequest, target: SettingsTarget
     logError('recall_owner_settings.greeting_put_failed', err, { subscriptionId: target.subscriptionId });
     return NextResponse.json({ error: 'internal_error' }, { status: 500 });
   }
+}
+
+/** El cuerpo de la petición, cortando en cuanto pasa de `max` bytes. */
+async function readBodyWithLimit(req: NextRequest, max: number): Promise<Uint8Array | 'too_large' | 'invalid'> {
+  if (!req.body) return new Uint8Array(0);
+  const reader = req.body.getReader();
+  const trozos: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > max) {
+        await reader.cancel().catch(() => undefined);
+        return 'too_large';
+      }
+      trozos.push(value);
+    }
+  } catch {
+    return 'invalid';
+  }
+  const out = new Uint8Array(total);
+  let pos = 0;
+  for (const t of trozos) {
+    out.set(t, pos);
+    pos += t.byteLength;
+  }
+  return out;
 }
 
 export async function handleGreetingDelete(target: SettingsTarget): Promise<Response> {

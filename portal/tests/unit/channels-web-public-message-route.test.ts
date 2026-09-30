@@ -36,8 +36,12 @@ vi.mock('@/lib/chatbot-conversation', () => ({
   replyToIncomingMessage: (...a: unknown[]) => mockState.replyToIncomingMessage(...a),
 }));
 
+let ipSeq = 0;
 function makeRequest(body: unknown) {
-  return { json: async () => body } as unknown as NextRequest;
+  // Una IP distinta por petición: el tope por visitante (30/09/2026) vive en
+  // el módulo y se acumularía entre tests. El que prueba ese tope usa la suya.
+  ipSeq += 1;
+  return { json: async () => body, headers: new Headers({ 'x-real-ip': `203.0.113.${ipSeq % 250}` }) } as unknown as NextRequest;
 }
 
 const VALID_BODY = { publicToken: 'wgt_1', sessionId: 'web-abc123', message: 'hola' };

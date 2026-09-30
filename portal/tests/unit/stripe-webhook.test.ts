@@ -338,7 +338,9 @@ describe('handleStripeEvent — dispatch by recorded event type', () => {
     mockState.constructEvent.mockReturnValue(RECORDED_SUBSCRIPTION_DELETED);
     const result = await handleStripeEvent(RAW_BODY, SIG_HEADER);
     expect(result.statusCode).toBe(200);
-    expect(mockState.deleteSubscriptionFromStripe).toHaveBeenCalledWith('sub_chatbot_1');
+    // Con el metadato del producto: si la fila Subscription no existe aún, es
+    // el vínculo para apagar el producto igualmente (30/09/2026).
+    expect(mockState.deleteSubscriptionFromStripe.mock.calls[0][0]).toBe('sub_chatbot_1');
   });
 
   it('invoice.paid (subscription-linked, recurring product) → syncInvoiceFromStripe', async () => {

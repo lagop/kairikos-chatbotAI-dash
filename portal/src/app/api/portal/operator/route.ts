@@ -8,6 +8,7 @@ import {
   utcDayKey,
 } from '@/lib/operator-notify';
 import { createSupportRequest } from '@/lib/support-requests';
+import { safeInternalPath } from '@/lib/safe-redirect';
 
 const OPERATOR_COOKIE = 'kairikos-portal-operator';
 const HELP_REQUEST_KIND = 'help-request';
@@ -29,7 +30,10 @@ export async function POST(req: NextRequest) {
 async function handleOperatorViewToggle(req: NextRequest): Promise<NextResponse> {
   const form = await req.formData();
   const mode = String(form.get('mode') ?? '');
-  const target = String(form.get('return_to') ?? '/admin/portal/clients');
+  // safeInternalPath: con new URL(return_to, req.url), un return_to absoluto
+  // (https://otro-sitio) redirigía fuera, sin autenticación — redirección
+  // abierta encontrada en la revisión de seguridad del 30/09/2026.
+  const target = safeInternalPath(form.get('return_to'), '/admin/portal/clients');
   const res = NextResponse.redirect(new URL(target, req.url), 303);
   if (mode === 'enable') {
     res.cookies.set(OPERATOR_COOKIE, '1', {

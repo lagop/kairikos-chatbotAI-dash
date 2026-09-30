@@ -24,7 +24,13 @@ const mockState = vi.hoisted(() => ({
 vi.mock('@/lib/observability', () => ({ logError: (...a: unknown[]) => mockState.logError(...a) }));
 
 vi.mock('@/lib/prisma', () => ({
-  prisma: { calculatorLead: { create: (...a: unknown[]) => mockState.createCalculatorLead(...a) } },
+  prisma: {
+    calculatorLead: {
+      create: (...a: unknown[]) => mockState.createCalculatorLead(...a),
+      // Tope por IP de lo que se guarda (30/09/2026): 0 recientes, se guarda.
+      count: async () => 0,
+    },
+  },
   isDatabaseConfigured: true,
 }));
 

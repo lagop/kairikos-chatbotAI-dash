@@ -7,6 +7,7 @@ import {
   internalAuthFailureResponse,
 } from '@/lib/internal-auth';
 import {
+  WIZARD_ABANDONED_WINDOW_HOURS,
   WIZARD_STEP_KEYS,
   buildRecoveryEmail,
   isWizardStepKey,
@@ -117,6 +118,20 @@ export async function POST(req: NextRequest) {
   if (!instance) {
     return NextResponse.json(
       { error: 'chatbot_instance_not_resolved', detail: 'unknown clientProductId, or several chatbots and none given' },
+      { status: 409 },
+    );
+  }
+
+  // Revisión de seguridad del 30/09/2026 — el clientId viene en el cuerpo, de
+  // n8n. Es la única de las rutas internas que lo aceptan cuyo efecto sale
+  // hacia el CLIENTE (un correo), así que no se fía de que el barrido tuviera
+  // razón: vuelve a comprobar aquí, con el mismo criterio que el barrido, que
+  // el asistente de ESTE chatbot sigue parado. Con la PORTAL_API_KEY filtrada,
+  // lo más que se puede provocar es el correo que el barrido habría mandado
+  // igualmente.
+  if (!(await wizardSigueAbandonado(client.state, instance.clientProductId))) {
+    return NextResponse.json(
+      { error: 'not_abandoned', detail: 'the wizard is not stalled for this chatbot (re-checked server-side)' },
       { status: 409 },
     );
   }
@@ -292,6 +307,28 @@ export async function POST(req: NextRequest) {
 
 export function GET() {
   return NextResponse.json({ error: 'method_not_allowed' }, { status: 405 });
+}
+
+/**
+ * El mismo criterio que scanWizardAbandoned (…/scan/route.ts): el cliente
+ * sigue en el asistente, el último borrador de este chatbot tiene más de
+ * WIZARD_ABANDONED_WINDOW_HOURS y no hay un envío posterior.
+ */
+async function wizardSigueAbandonado(state: string | null, clientProductId: string): Promise<boolean> {
+  if (state !== 'in-progress' && state !== 'go-live-pending') return false;
+  const ultimoBorrador = await prisma.chatbotConfigStep.findFirst({
+    where: { clientProductId, productCode: CHATBOT_PRODUCT_CODE, status: 'draft' },
+    orderBy: { updatedAt: 'desc' },
+    select: { updatedAt: true },
+  });
+  if (!ultimoBorrador) return false;
+  const limite = new Date(Date.now() - WIZARD_ABANDONED_WINDOW_HOURS * 60 * 60 * 1000);
+  if (ultimoBorrador.updatedAt >= limite) return false;
+  const envioPosterior = await prisma.chatbotConfigStep.findFirst({
+    where: { clientProductId, productCode: CHATBOT_PRODUCT_CODE, submittedAt: { gt: ultimoBorrador.updatedAt } },
+    select: { id: true },
+  });
+  return !envioPosterior;
 }
 
 export const dynamic = 'force-dynamic';

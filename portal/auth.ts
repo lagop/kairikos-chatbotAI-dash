@@ -32,11 +32,18 @@ const ipAttempts = new InMemoryRateLimiter(15 * 60_000);
 const MAX_ATTEMPTS_PER_EMAIL = 10;
 const MAX_ATTEMPTS_PER_IP = 30;
 
+/**
+ * Cuánto vive una sesión de cliente sin volver a entrar (30/09/2026). Era el
+ * valor por defecto de NextAuth, 30 días. Con 7 días y renovación diaria, quien
+ * usa el portal no nota nada y un token olvidado deja de valer en una semana.
+ */
+export const CLIENT_SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
+
 function buildAuthConfig(): NextAuthConfig {
   const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
   return {
     secret: authSecret,
-    session: { strategy: 'jwt' },
+    session: { strategy: 'jwt', maxAge: CLIENT_SESSION_MAX_AGE_SECONDS, updateAge: 24 * 60 * 60 },
     trustHost: true,
     pages: {
       signIn: '/portal/login',
@@ -63,7 +70,7 @@ function buildAuthConfig(): NextAuthConfig {
           // Look up the User row for this client user
           const user = await prisma.user.findUnique({
             where: { email },
-            select: { id: true, role: true, passwordHash: true },
+            select: { id: true, role: true, passwordHash: true, sessionVersion: true },
           });
 
           if (!user || user.role !== 'client' || !user.passwordHash) {
@@ -107,6 +114,7 @@ function buildAuthConfig(): NextAuthConfig {
             clientId: clientUser?.clientId ?? null,
             role: 'client',
             pwf: passwordFingerprint(user.passwordHash),
+            sv: user.sessionVersion,
           };
         },
       }),
@@ -122,6 +130,8 @@ function buildAuthConfig(): NextAuthConfig {
           }
           const pwf = (user as { pwf?: string }).pwf;
           if (pwf) token.pwf = pwf;
+          const sv = (user as { sv?: number }).sv;
+          if (typeof sv === 'number') token.sv = sv;
         }
 
         // Un JWT de operador es de antes del 22/09/2026: esa entrada ya no
@@ -135,11 +145,15 @@ function buildAuthConfig(): NextAuthConfig {
         if (token.sub) {
           const row = await prisma.user.findUnique({
             where: { id: token.sub },
-            select: { passwordHash: true },
+            select: { passwordHash: true, sessionVersion: true },
           });
           const current = row?.passwordHash;
           if (!current || current === '__must_reset__' || typeof token.pwf !== 'string') return null;
           if (passwordFingerprint(current) !== token.pwf) return null;
+          // Cerrar sesión sube la versión (revokeClientSessions): los tokens
+          // emitidos antes dejan de valer. Los anteriores al 30/09/2026 no la
+          // llevan y caen una vez, igual que pasó con la huella.
+          if (typeof token.sv !== 'number' || token.sv !== row?.sessionVersion) return null;
         }
         return token;
       },

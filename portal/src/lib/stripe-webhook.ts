@@ -192,7 +192,7 @@ async function dispatch(event: Stripe.Event): Promise<string> {
     }
     case 'customer.subscription.deleted': {
       const sub = event.data.object as Stripe.Subscription;
-      await deleteSubscriptionFromStripe(sub.id);
+      await deleteSubscriptionFromStripe(sub.id, (sub.metadata?.kairikos_client_product_id as string | undefined) ?? null);
       return 'subscription';
     }
     // WP-XX — 'invoice.paid' additionally activates the ClientProduct

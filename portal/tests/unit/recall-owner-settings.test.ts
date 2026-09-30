@@ -115,6 +115,8 @@ function bytesReq(bytes: Uint8Array, headers: Record<string, string> = {}, clien
   const url = reqUrl(clientProductId);
   return {
     arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    // La ruta lee el cuerpo a trozos y con tope desde el 30/09/2026.
+    body: new Blob([bytes]).stream(),
     headers: new Headers(headers),
     url: url.toString(),
     nextUrl: url,

@@ -55,6 +55,5 @@ export async function POST(req: NextRequest) {
   return logout(req);
 }
 
-export async function GET(req: NextRequest) {
-  return logout(req);
-}
+// Sin GET (30/09/2026): cerrar sesión por GET deja que cualquier web la
+// cierre con un <img>. El botón del panel es un formulario POST.
