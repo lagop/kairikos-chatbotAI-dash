@@ -30,6 +30,10 @@ export const metadata: Metadata = {
   openGraph: { title: TITLE, description: DESCRIPTION, type: 'website', locale: 'es_ES', siteName: 'Kairikos' },
   twitter: { card: 'summary_large_image', title: TITLE, description: DESCRIPTION },
   alternates: { canonical: '/calculadora' },
+  // El layout raíz pone noindex en todo el portal. La calculadora es la
+  // excepción: es un gancho enlazado desde kairikos.com y tiene que poder
+  // encontrarse en Google (30/09/2026; hasta hoy era invisible).
+  robots: { index: true, follow: true },
 };
 
 export const dynamic = 'force-dynamic';

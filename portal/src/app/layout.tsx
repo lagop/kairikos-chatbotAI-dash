@@ -1,8 +1,9 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import { portalBaseUrl } from '@/lib/portal-base-url';
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://portal.kairikos.com'),
+  metadataBase: new URL(portalBaseUrl()),
   title: {
     default: 'Portal Kairikos',
     template: '%s · Portal Kairikos',
