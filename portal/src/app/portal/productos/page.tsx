@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { LEADS_INCLUDED_CHATBOT_TIERS } from '@/lib/lead-entitlement';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { PageHeading } from '@/components/portal/PageHeading';
@@ -74,13 +75,23 @@ export default async function PortalProductsPage(
       status: true,
       productId: true,
       subscribedAt: true,
-      product: { select: { code: true } },
+      product: { select: { code: true, tier: true } },
       webBrief: { select: { businessName: true } },
     },
   });
   const contractedCodes = new Set(
     clientProducts.filter((cp) => cp.status === 'active' || cp.status === 'paused').map((cp) => cp.product.code),
   );
+  // Plan de precios del 01/10/2026 — Chatbot Premium incluye la captación:
+  // no se le ofrece comprarla aparte (el checkout lo rechazaría igual con
+  // included_in_plan).
+  if (
+    clientProducts.some(
+      (cp) => cp.status === 'active' && cp.product.code === 'chatbot' && LEADS_INCLUDED_CHATBOT_TIERS.includes(cp.product.tier),
+    )
+  ) {
+    contractedCodes.add('leads');
+  }
   const pendingByCode = new Map(
     clientProducts.filter((cp) => cp.status === 'pending_payment').map((cp) => [cp.product.code, cp.productId]),
   );

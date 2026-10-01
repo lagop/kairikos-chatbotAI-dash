@@ -62,7 +62,9 @@ interface ClientSnapshot {
   id: string;
   name: string | null;
   lastLoginAt: Date | null;
-  products: { code: string; status: string; subscriptionStatus: string | null }[];
+  // tier opcional: solo lo mira la regla de captación (Chatbot Premium la
+  // incluye desde el plan de precios del 01/10/2026).
+  products: { code: string; tier?: string; status: string; subscriptionStatus: string | null }[];
   callsLast14: number;
   callsTotal: number;
   reviewsTotal: number;
@@ -155,7 +157,9 @@ export function detectUpsells(client: ClientSnapshot): UpsellRow[] {
   }
 
   // muchos leads entrando → leads, para no perderlos por el camino.
-  if (!activos.has('leads') && !activos.has('prospecting') && client.leadsLast14 >= 10) {
+  // Chatbot Premium ya la lleva incluida (plan de precios del 01/10/2026).
+  const premium = client.products.some((p) => p.status === 'active' && p.code === 'chatbot' && p.tier === 'premium');
+  if (!activos.has('leads') && !activos.has('prospecting') && !premium && client.leadsLast14 >= 10) {
     rows.push({
       clientId: client.id,
       clientName: nombre,
@@ -185,7 +189,7 @@ export async function sweepClientHealth(
       clientProducts: {
         select: {
           status: true,
-          product: { select: { code: true } },
+          product: { select: { code: true, tier: true } },
           subscription: { select: { status: true } },
         },
       },
@@ -209,6 +213,7 @@ export async function sweepClientHealth(
       lastLoginAt: client.lastLoginAt,
       products: client.clientProducts.map((cp) => ({
         code: cp.product.code,
+        tier: cp.product.tier,
         status: cp.status,
         subscriptionStatus: cp.subscription?.status ?? null,
       })),

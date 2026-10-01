@@ -2,6 +2,7 @@ import 'server-only';
 import type { PrismaClient } from '@prisma/client';
 import { classifyConversationForLead, type ClassifiedExample } from './lead-classification-ai';
 import { ingestClassifiedLead, LEADS_CLASSIFICATION_MONTHLY_CAP } from './leads';
+import { findLeadsEntitlement, LEADS_ENTITLEMENT_WHERE } from './lead-entitlement';
 import { logError } from './observability';
 
 // =============================================================================
@@ -88,10 +89,7 @@ async function resolveCapState(
     return { classificationsThisMonth: existing.classificationsThisMonth };
   }
 
-  const clientProduct = await prisma.clientProduct.findFirst({
-    where: { clientId, status: 'active', product: { code: 'leads' } },
-    select: { id: true, tenantId: true },
-  });
+  const clientProduct = await findLeadsEntitlement(prisma, clientId);
   if (!clientProduct) return null;
 
   const created = await prisma.leadQualificationProfile.create({
@@ -152,7 +150,8 @@ export async function sweepDueConversationsForClassification(
   const conversations = await prisma.chatbotConversation.findMany({
     where: {
       leadsClassifiedAt: null,
-      client: { clientProducts: { some: { status: 'active', product: { code: 'leads' } } } },
+      // El complemento o un Chatbot Premium (plan de precios del 01/10/2026).
+      client: { clientProducts: { some: LEADS_ENTITLEMENT_WHERE } },
       OR: [
         { outcome: { not: null } },
         { startedAt: { lt: new Date(Date.now() - CONVERSATION_STALE_HOURS * 60 * 60 * 1000) } },

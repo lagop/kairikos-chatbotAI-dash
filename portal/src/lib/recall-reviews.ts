@@ -22,6 +22,7 @@ import {
   type WhatsAppSenderCredentials,
 } from './review-request-campaign';
 import { logError } from './observability';
+import { RECALL_WITH_EXTRAS_WHERE } from './recall';
 
 // =============================================================================
 // WP-XX (Fase 10) — the review half, over WhatsApp.
@@ -116,7 +117,8 @@ export async function sendDailyDigests(
   const result: DigestSweepResult = { scanned: 0, sent: 0, skippedNoCalls: 0, failed: 0 };
 
   const subscriptions = (await prisma.recallSubscription.findMany({
-    where: { status: 'active', ownerWhatsapp: { not: null } },
+    // Esencial no lleva resumen diario (plan de precios del 01/10/2026).
+    where: { status: 'active', ownerWhatsapp: { not: null }, ...RECALL_WITH_EXTRAS_WHERE },
     take: opts.limit ?? 50,
     select: SUBSCRIPTION_SELECT,
   })) as DigestSubscription[];

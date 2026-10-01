@@ -49,10 +49,12 @@ describe('PRODUCT_CATALOG', () => {
       expect(p.stripeRecurringPriceId).toBeTruthy();
     }
 
+    // Plan de precios del 01/10/2026: Basic deja de cobrar alta. El id del
+    // precio de alta sigue en la fila (es de Stripe, y quien ya pagó la
+    // tuvo); el checkout no lo usa con setupFeeCents a 0.
     const basic = reviews.find((p) => p.tier === 'basic')!;
     expect(basic.priceCents).toBe(9900);
-    expect(basic.setupFeeCents).toBe(9900);
-    expect(basic.stripeSetupPriceId).toBeTruthy();
+    expect(basic.setupFeeCents).toBe(0);
 
     const pro = reviews.find((p) => p.tier === 'pro')!;
     expect(pro.priceCents).toBe(14900);
@@ -71,15 +73,17 @@ describe('PRODUCT_CATALOG', () => {
     expect(reviews.some((p) => p.tier === 'enterprise')).toBe(false);
   });
 
-  it('recall (missed-call recovery) has three tiers priced by business size, each with its own Stripe price ids', () => {
+  it('recall (missed-call recovery) has four tiers priced by business size, each with its own Stripe price ids', () => {
     const recall = PRODUCT_CATALOG.filter((p) => p.code === 'recall');
-    expect(recall.map((p) => p.tier).sort()).toEqual(['business', 'solo', 'team']);
+    expect(recall.map((p) => p.tier).sort()).toEqual(['business', 'essential', 'solo', 'team']);
 
     // Priced by business size, not by included minutes — see the seed
-    // comment. Monotonically increasing on both axes.
-    const bySize = ['solo', 'team', 'business'].map((t) => recall.find((p) => p.tier === t)!);
-    expect(bySize.map((p) => p.priceCents)).toEqual([14900, 24900, 39900]);
-    expect(bySize.map((p) => p.setupFeeCents)).toEqual([29000, 39000, 49000]);
+    // comment. Plan de precios del 01/10/2026: Esencial debajo de Autónomo,
+    // y las altas bajan. Creciente en la cuota; la alta de Esencial y
+    // Autónomo es la misma (lo que cuesta poner en marcha una línea).
+    const bySize = ['essential', 'solo', 'team', 'business'].map((t) => recall.find((p) => p.tier === t)!);
+    expect(bySize.map((p) => p.priceCents)).toEqual([7900, 12900, 24900, 39900]);
+    expect(bySize.map((p) => p.setupFeeCents)).toEqual([9900, 9900, 19000, 29000]);
 
     for (const p of recall) {
       // Product.stripeRecurringPriceId is @unique — a copied placeholder
@@ -129,7 +133,7 @@ describe('PRODUCT_CATALOG', () => {
     // tiers at /admin/portal/settings/billing. See that route's own
     // tests (stripe-catalog.test.ts) for the placeholder-id lifecycle.
     const recall = PRODUCT_CATALOG.filter((p) => p.code === 'recall');
-    expect(recall).toHaveLength(3);
+    expect(recall).toHaveLength(4);
     expect(recall.every((p) => p.isActive)).toBe(true);
   });
 

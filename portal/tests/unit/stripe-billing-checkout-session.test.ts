@@ -142,6 +142,26 @@ describe('createProductCheckoutSession — guards', () => {
     expect(mockState.checkoutSessionsCreate).not.toHaveBeenCalled();
   });
 
+  // Plan de precios del 01/10/2026 — Chatbot Premium ya incluye la captación.
+  it('rechaza con included_in_plan la captación a quien tiene Chatbot Premium', async () => {
+    mockState.findUniqueProduct.mockResolvedValueOnce({ ...RECURRING_PRODUCT, code: 'leads' });
+    mockState.isProductContracted.mockImplementation((_p: unknown, _c: unknown, code: string) =>
+      Promise.resolve(code === 'chatbot'),
+    );
+    mockState.findFirstClientProduct.mockImplementation(async (args: { where: { product?: { code?: string } } }) =>
+      args.where.product?.code === 'chatbot' ? { id: 'cp_premium' } : null,
+    );
+    const { createProductCheckoutSession } = await import('@/lib/stripe-billing');
+    const result = await createProductCheckoutSession({ clientId: 'client_1', productId: RECURRING_PRODUCT.id, actorId: ACTOR_ID });
+    expect(result).toEqual({ ok: false, error: 'included_in_plan' });
+    expect(mockState.findFirstClientProduct).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ product: { code: 'chatbot', tier: { in: ['premium'] } } }),
+      }),
+    );
+    expect(mockState.checkoutSessionsCreate).not.toHaveBeenCalled();
+  });
+
   it('allows leads checkout when the client already has chatbot active', async () => {
     mockState.findUniqueProduct.mockResolvedValueOnce({ ...RECURRING_PRODUCT, code: 'leads' });
     mockState.isProductContracted.mockImplementation((_p: unknown, _c: unknown, code: string) =>

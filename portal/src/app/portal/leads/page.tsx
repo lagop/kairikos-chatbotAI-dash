@@ -12,6 +12,7 @@ import {
   type LeadStatusFilter,
   type LeadSortOption,
 } from '@/lib/leads';
+import { hasLeadsProduct } from '@/lib/lead-entitlement';
 import { isProductContracted } from '@/lib/client-product-access';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { EmptyState } from '@/components/portal/EmptyState';
@@ -195,7 +196,8 @@ export default async function PortalLeadsPage(
           : [{ createdAt: 'desc' }],
     }),
     isProductContracted(prisma, resolved.clientId, 'prospecting'),
-    isProductContracted(prisma, resolved.clientId, 'leads'),
+    // Plan de precios del 01/10/2026 — incluida en Chatbot Premium.
+    hasLeadsProduct(prisma, resolved.clientId),
     // Fase D — el nombre con el que el cliente se presenta en los mensajes
     // que escribe él mismo a un prospecto (ver lead-contact-links.ts).
     prisma.chatbotClient.findUnique({ where: { id: resolved.clientId }, select: { name: true, companyName: true } }),

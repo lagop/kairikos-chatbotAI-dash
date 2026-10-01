@@ -1,6 +1,7 @@
 import 'server-only';
 import type { PrismaClient } from '@prisma/client';
 import { isProductContracted } from './client-product-access';
+import { hasLeadsProduct } from './lead-entitlement';
 import { sendNewLeadEmail } from './leads-email';
 import { deliverLeadToCrm } from './lead-webhook';
 import { logError } from './observability';
@@ -27,7 +28,7 @@ import { logError } from './observability';
  */
 export async function hasLeadsInboxAccess(prisma: PrismaClient, clientId: string): Promise<boolean> {
   const [hasLeads, hasProspecting] = await Promise.all([
-    isProductContracted(prisma, clientId, 'leads'),
+    hasLeadsProduct(prisma, clientId),
     isProductContracted(prisma, clientId, 'prospecting'),
   ]);
   return hasLeads || hasProspecting;
@@ -213,15 +214,15 @@ export async function ingestClassifiedLead(
     return row;
   });
 
-  // Best-effort, never blocks the caller. Gated on 'leads' specifically:
+  // Best-effort, never blocks the caller. Gated on the leads entitlement
+  // (the 'leads' add-on or a Chatbot Premium, plan de precios 01/10/2026):
   // a Lead can exist for a client without that product (recall's
   // phone-sourced leads reuse this same model), and those clients
   // already get told about a missed call over WhatsApp by recall's own
   // messaging engine, so a second, unrelated "captación" email would be
   // redundant, not additive.
   try {
-    const hasLeadsProduct = await isProductContracted(prisma, created.clientId, 'leads');
-    if (hasLeadsProduct) {
+    if (await hasLeadsProduct(prisma, created.clientId)) {
       const [client, qualification] = await Promise.all([
         prisma.chatbotClient.findUnique({
           where: { id: created.clientId },

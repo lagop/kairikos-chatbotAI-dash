@@ -77,26 +77,31 @@ export interface ProductCatalogEntry {
   features?: Record<string, unknown>;
 }
 
+// Plan de precios del 01/10/2026 (documento del plan de marketing) — los
+// importes de abajo son los de ese plan. En producción los cambia «Cambiar
+// precio» de /admin/portal/settings/billing, que crea el precio en Stripe; este
+// archivo solo los repite para que un entorno nuevo nazca igual.
 export const PRODUCT_CATALOG: ProductCatalogEntry[] = [
   // Chatbot — three tiers, unchanged monthly prices, now with the setup
   // fee kairikos.com actually charges (previously unmodeled: Product had
   // no setupFeeCents column before WP-12). €299–€499 range → using €399
   // as the single per-tier figure until Sales confirms a per-tier split.
   {
-    code: 'chatbot', tier: 'starter', name: 'Chatbot IA — Starter',
-    priceCents: 9900, setupFeeCents: 39900, currency: 'EUR', isActive: true,
+    code: 'chatbot', tier: 'starter', name: 'Chatbot IA — Web',
+    priceCents: 7900, setupFeeCents: 14900, currency: 'EUR', isActive: true,
     stripeRecurringPriceId: 'price_starter', stripeSetupPriceId: null,
     features: { channels: ['web'] },
   },
   {
     code: 'chatbot', tier: 'pro', name: 'Chatbot IA — Pro',
-    priceCents: 24900, setupFeeCents: 39900, currency: 'EUR', isActive: true,
+    priceCents: 17900, setupFeeCents: 14900, currency: 'EUR', isActive: true,
     stripeRecurringPriceId: 'price_pro', stripeSetupPriceId: null,
     features: { channels: ['web', 'telegram', 'whatsapp'] },
   },
   {
+    // Incluye la captación (LEADS_INCLUDED_CHATBOT_TIERS en lib/leads.ts).
     code: 'chatbot', tier: 'premium', name: 'Chatbot IA — Premium',
-    priceCents: 49900, setupFeeCents: 39900, currency: 'EUR', isActive: true,
+    priceCents: 34900, setupFeeCents: 29900, currency: 'EUR', isActive: true,
     stripeRecurringPriceId: 'price_premium', stripeSetupPriceId: null,
     features: { channels: ['web', 'telegram', 'whatsapp', 'messenger', 'instagram'] },
   },
@@ -114,8 +119,9 @@ export const PRODUCT_CATALOG: ProductCatalogEntry[] = [
   // Product.code is a free-form DB column, not FK-constrained), so this
   // is a same-PR rename, not a migration.
   {
+    // Complemento de Chatbot Web y Pro desde el 01/10/2026; Premium la incluye.
     code: 'leads', tier: 'standard', name: 'Sistema IA de captación',
-    priceCents: 14900, setupFeeCents: 49900, currency: 'EUR', isActive: true,
+    priceCents: 4900, setupFeeCents: 0, currency: 'EUR', isActive: true,
     stripeRecurringPriceId: null, stripeSetupPriceId: null,
   },
   // SEO — monthly only, no setup fee. Placeholder Stripe price id, same
@@ -156,7 +162,7 @@ export const PRODUCT_CATALOG: ProductCatalogEntry[] = [
   //     we refund the last month" guarantee
   {
     code: 'reviews', tier: 'basic', name: 'Reseñas en Google — Basic',
-    priceCents: 9900, setupFeeCents: 9900, currency: 'EUR', isActive: true,
+    priceCents: 9900, setupFeeCents: 0, currency: 'EUR', isActive: true,
     stripeRecurringPriceId: 'price_reviews_basic', stripeSetupPriceId: 'price_reviews_basic_setup',
   },
   {
@@ -208,19 +214,26 @@ export const PRODUCT_CATALOG: ProductCatalogEntry[] = [
   // Product row; running this seed again afterwards would only
   // overwrite isActive/name/price fields (see the upsert below), not the
   // Stripe ids, which the create-only branch never touches on update.
+  // Esencial: sin franjas, resumen diario ni informe mensual
+  // (RECALL_ESSENTIAL_TIERS en lib/recall.ts).
+  {
+    code: 'recall', tier: 'essential', name: 'Recuperación de llamadas — Esencial',
+    priceCents: 7900, setupFeeCents: 9900, currency: 'EUR', isActive: true,
+    stripeRecurringPriceId: 'price_recall_essential', stripeSetupPriceId: 'price_recall_essential_setup',
+  },
   {
     code: 'recall', tier: 'solo', name: 'Recuperación de llamadas — Autónomo',
-    priceCents: 14900, setupFeeCents: 29000, currency: 'EUR', isActive: true,
+    priceCents: 12900, setupFeeCents: 9900, currency: 'EUR', isActive: true,
     stripeRecurringPriceId: 'price_recall_solo', stripeSetupPriceId: 'price_recall_solo_setup',
   },
   {
     code: 'recall', tier: 'team', name: 'Recuperación de llamadas — Equipo',
-    priceCents: 24900, setupFeeCents: 39000, currency: 'EUR', isActive: true,
+    priceCents: 24900, setupFeeCents: 19000, currency: 'EUR', isActive: true,
     stripeRecurringPriceId: 'price_recall_team', stripeSetupPriceId: 'price_recall_team_setup',
   },
   {
     code: 'recall', tier: 'business', name: 'Recuperación de llamadas — Empresa',
-    priceCents: 39900, setupFeeCents: 49000, currency: 'EUR', isActive: true,
+    priceCents: 39900, setupFeeCents: 29000, currency: 'EUR', isActive: true,
     stripeRecurringPriceId: 'price_recall_business', stripeSetupPriceId: 'price_recall_business_setup',
   },
   // Fase A de "Prospección con IA" — investigación activa de leads

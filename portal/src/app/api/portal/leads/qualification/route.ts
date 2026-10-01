@@ -5,6 +5,7 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { logError } from '@/lib/observability';
+import { findLeadsEntitlement } from '@/lib/lead-entitlement';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -59,16 +60,19 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'invalid_body', details: body.error.flatten() }, { status: 400 });
   }
 
-  const clientProduct = await prisma.clientProduct.findFirst({
-    where: { clientId: resolved.clientId, status: 'active', product: { code: 'leads' } },
-    select: { id: true, tenantId: true },
-  });
+  // El complemento 'leads' o un Chatbot Premium (plan de precios del
+  // 01/10/2026). Ver findLeadsEntitlement.
+  const clientProduct = await findLeadsEntitlement(prisma, resolved.clientId);
   if (!clientProduct) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
   const existing = await prisma.leadQualificationProfile.findUnique({
-    where: { clientProductId: clientProduct.id },
+    // Por cliente, no por contratación: el perfil es uno por cliente
+    // (clientId es único) y puede colgar del complemento que tenía antes de
+    // pasar a Premium. Buscarlo por la contratación de hoy no lo encontraría
+    // y el create chocaría con el único de clientId.
+    where: { clientId: resolved.clientId },
     select: { id: true, perfilClienteIdeal: true, senalesDescarte: true, emailAviso: true },
   });
 

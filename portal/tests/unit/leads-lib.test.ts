@@ -13,6 +13,13 @@ const mockState = vi.hoisted(() => ({ isProductContracted: vi.fn() }));
 vi.mock('@/lib/client-product-access', () => ({
   isProductContracted: (...a: unknown[]) => mockState.isProductContracted(...a),
 }));
+// Desde el plan de precios del 01/10/2026 «tiene captación» es el complemento
+// O Chatbot Premium (lib/lead-entitlement.ts, con sus propios tests). Aquí se
+// reduce a la pregunta de siempre para que estos tests sigan hablando de la
+// bandeja, no de esa regla.
+vi.mock('@/lib/lead-entitlement', () => ({
+  hasLeadsProduct: (p: unknown, c: unknown) => mockState.isProductContracted(p, c, 'leads'),
+}));
 
 import {
   canDiscard,

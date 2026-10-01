@@ -19,10 +19,15 @@ import { getBillingForClient } from './stripe-billing';
 // finishes loading.
 import { resolveClientFromSession } from './portal-session';
 
+// Limitación conocida: es la tarifa de catálogo, no la de la suscripción. Desde
+// el plan de precios del 01/10/2026 quien contrató antes sigue pagando su precio
+// en Stripe (79/179/349 ahora; antes 99/249/499), y esta cifra no lo sabe. El
+// importe que de verdad se cobra es nextInvoiceAmountCents, que sí viene de
+// Stripe.
 const TIER_PRICE_CENTS: Record<BillingSummary['tier'], number> = {
-  starter: 9900,
-  pro: 24900,
-  premium: 49900,
+  starter: 7900,
+  pro: 17900,
+  premium: 34900,
 };
 
 export const MOCK_CLIENT: ChatbotClient = {

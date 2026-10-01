@@ -19,9 +19,9 @@ import type { ChatbotMessageCaps } from '@/lib/chatbot-settings';
 const COST_PER_MESSAGE_EUR = 0.005;
 
 const TIERS: ReadonlyArray<{ key: keyof ChatbotMessageCaps; label: string; priceEur: number }> = [
-  { key: 'starter', label: 'Starter', priceEur: 99 },
-  { key: 'pro', label: 'Pro', priceEur: 249 },
-  { key: 'premium', label: 'Premium', priceEur: 499 },
+  { key: 'starter', label: 'Web', priceEur: 79 },
+  { key: 'pro', label: 'Pro', priceEur: 179 },
+  { key: 'premium', label: 'Premium', priceEur: 349 },
 ];
 
 const MIN = 100;

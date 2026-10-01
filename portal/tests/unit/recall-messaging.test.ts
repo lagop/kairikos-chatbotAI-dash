@@ -269,6 +269,37 @@ describe('notifyCaller — what it says', () => {
     expect(list).not.toMatch(/[\n\t]/);
   });
 
+  // Plan de precios del 01/10/2026 — Esencial no lleva franjas: con el
+  // negocio cerrado recibe el mensaje de cerrado de siempre, con su hora.
+  it('Llamadas Esencial no ofrece elegir hora, aunque haya huecos', async () => {
+    const night = new Date('2026-07-07T21:40:00.000Z');
+    await run(
+      {
+        startedAt: new Date(night.getTime() - 5 * 60 * 1000),
+        subscription: { clientProduct: { product: { tier: 'essential' } } },
+      },
+      night,
+    );
+
+    const template = mockState.sendTemplate.mock.calls[0][3];
+    expect(template.name).toBe(RECALL_TEMPLATES.callerClosedWithNotice.name);
+    expect(template.bodyParams[0]).toBe('Fontanería Aurora');
+    // Ni se consultan los huecos ya comprometidos: no hay nada que ofrecer.
+    expect(state.callFindMany).not.toHaveBeenCalled();
+  });
+
+  it('Autónomo sí los ofrece', async () => {
+    const night = new Date('2026-07-07T21:40:00.000Z');
+    await run(
+      {
+        startedAt: new Date(night.getTime() - 5 * 60 * 1000),
+        subscription: { clientProduct: { product: { tier: 'solo' } } },
+      },
+      night,
+    );
+    expect(mockState.sendTemplate.mock.calls[0][3].name).toBe(RECALL_TEMPLATES.callerSlotsWithNotice.name);
+  });
+
   it('still promises a time when there are no slots to offer', async () => {
     // Un negocio con horario tan estrecho que no salen dos opciones
     // separadas: el mensaje de siempre sigue siendo el correcto.

@@ -76,7 +76,9 @@ export function SelfServeProductCard(props: SelfServeProductCardProps) {
       });
       if (!res.ok) {
         const detail = await res.json().catch(() => null);
-        if (res.status === 409) {
+        if (detail?.error === 'included_in_plan') {
+          setError('Tu plan de chatbot ya incluye Captación con IA: no tienes que contratarla aparte.');
+        } else if (res.status === 409) {
           setError('Ya tienes este producto contratado.');
         } else if (detail?.error === 'requires_chatbot') {
           setError('Necesitas el chatbot activo antes de contratar Captación con IA.');
