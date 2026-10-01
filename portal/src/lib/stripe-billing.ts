@@ -10,6 +10,7 @@ import {
 } from './product-onboarding';
 import { isProductContracted, isMultiInstanceProduct } from './client-product-access';
 import { assignSiteToNewContract } from './client-site';
+import { LEADS_INCLUDED_CHATBOT_TIERS } from './lead-entitlement';
 import type { Prisma } from '@prisma/client';
 import type Stripe from 'stripe';
 
@@ -1074,6 +1075,7 @@ export type CheckoutSessionError =
   | 'product_not_found'
   | 'product_requires_quote'
   | 'requires_chatbot'
+  | 'included_in_plan'
   | 'client_has_no_tenant'
   | 'already_contracted'
   | 'product_price_id_missing'
@@ -1130,6 +1132,14 @@ export async function createProductCheckoutSession(params: {
   if (product.code === 'leads') {
     const hasChatbot = await isProductContracted(prisma, clientId, 'chatbot');
     if (!hasChatbot) return { ok: false, error: 'requires_chatbot' };
+    // Plan de precios del 01/10/2026 — Chatbot Premium ya la incluye.
+    // Cobrarla aparte sería cobrar dos veces lo mismo, y el cliente no
+    // tendría forma de saberlo hasta ver la factura.
+    const premium = await prisma.clientProduct.findFirst({
+      where: { clientId, status: 'active', product: { code: 'chatbot', tier: { in: [...LEADS_INCLUDED_CHATBOT_TIERS] } } },
+      select: { id: true },
+    });
+    if (premium) return { ok: false, error: 'included_in_plan' };
   }
 
   const client = await prisma.chatbotClient.findUnique({ where: { id: clientId }, select: { id: true, tenantId: true } });

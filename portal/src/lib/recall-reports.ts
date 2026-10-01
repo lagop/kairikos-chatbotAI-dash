@@ -9,6 +9,7 @@ import {
 } from './operator-notify';
 import { getOperatorAlertRecipients } from './operator-alert-settings';
 import { logError } from './observability';
+import { RECALL_WITH_EXTRAS_WHERE } from './recall';
 
 // =============================================================================
 // WP-XX (Fase 11) — the monthly report, and what it is measured from.
@@ -324,7 +325,10 @@ export async function sendMonthlyReports(
   const result: ReportSweepResult = { scanned: 0, sent: 0, skippedEmpty: 0, failed: 0 };
 
   const subscriptions = await prisma.recallSubscription.findMany({
-    where: { status: 'active', ownerWhatsapp: { not: null } },
+    // Esencial no lleva informe mensual (plan de precios del 01/10/2026).
+    // El contador de consumo de rollUpUsage sí las recorre todas: vigilar
+    // un desvío mal puesto no depende de lo que el cliente pague.
+    where: { status: 'active', ownerWhatsapp: { not: null }, ...RECALL_WITH_EXTRAS_WHERE },
     take: opts.limit ?? 50,
     select: {
       id: true,

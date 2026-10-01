@@ -14,7 +14,8 @@
 // a Chatbot plan saw their own plan mislabeled as a "Web" plan on
 // /portal/perfil, /portal/billing, and every admin view listed above.
 export const TIER_LABEL: Record<string, string> = {
-  starter: 'Chatbot Starter',
+  // Plan de precios del 01/10/2026 — el escalón se llama por lo que hace.
+  starter: 'Chatbot Web',
   pro: 'Chatbot Pro',
   premium: 'Chatbot Premium',
 };

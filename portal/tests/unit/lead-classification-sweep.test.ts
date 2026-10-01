@@ -100,7 +100,15 @@ describe('sweepDueConversationsForClassification', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           leadsClassifiedAt: null,
-          client: { clientProducts: { some: { status: 'active', product: { code: 'leads' } } } },
+          // El complemento o Chatbot Premium (plan de precios del 01/10/2026).
+          client: {
+            clientProducts: {
+              some: {
+                status: 'active',
+                OR: [{ product: { code: 'leads' } }, { product: { code: 'chatbot', tier: { in: ['premium'] } } }],
+              },
+            },
+          },
         }),
       }),
     );

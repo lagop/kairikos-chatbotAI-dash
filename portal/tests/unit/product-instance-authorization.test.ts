@@ -42,9 +42,11 @@ const stripComments = (code: string) =>
   code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 const WRITES = /export async function (POST|PATCH|PUT|DELETE)\b/;
-/** Resolver la contratación por cliente, de las dos formas que existen. */
+/** Resolver la contratación por cliente, de las dos formas que existen. Los
+ *  helpers de captación cuentan igual: desde el 01/10/2026 resuelven por
+ *  cliente entre el complemento y Chatbot Premium. */
 const BY_CLIENT =
-  /isProductContracted\(|hasLeadsInboxAccess\(|hasGoogleBusinessConnectAccess\(|(prisma|tx)\.clientProduct\.findFirst/;
+  /isProductContracted\(|hasLeadsInboxAccess\(|hasLeadsProduct\(|findLeadsEntitlement\(|hasGoogleBusinessConnectAccess\(|(prisma|tx)\.clientProduct\.findFirst/;
 
 /**
  * Fase 4 multi-instancia — una ruta que RESUELVE la instancia está convertida

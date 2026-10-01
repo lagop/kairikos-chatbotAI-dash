@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { tierLabel } from '@/lib/public-catalog';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { requirePortalSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
@@ -118,13 +119,6 @@ const CALLBACK_FORMAT = new Intl.DateTimeFormat('es-ES', {
   minute: '2-digit',
 });
 
-/** Tier codes are English across the catalogue; 'recall' uses
- *  solo/team/business. Same small local map /portal/productos keeps. */
-const TIER_LABEL: Record<string, string> = {
-  solo: 'Autónomo',
-  team: 'Equipo',
-  business: 'Empresa',
-};
 
 function notifyLabel(call: RecallCallSummary): string {
   if (call.callerNotifyChannel) {
@@ -311,7 +305,9 @@ export async function LlamadasPageBody({
       tiers = products.map((p) => ({
         productId: p.id,
         tier: p.tier,
-        tierLabel: TIER_LABEL[p.tier] ?? p.tier,
+        // Del mapa compartido con /planes: la copia local que había aquí
+        // se habría quedado sin «Esencial» (plan de precios del 01/10/2026).
+        tierLabel: tierLabel(p.tier),
         priceCents: p.priceCents,
         setupFeeCents: p.setupFeeCents,
         currency: p.currency,

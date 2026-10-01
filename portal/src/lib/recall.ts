@@ -1,5 +1,5 @@
 import 'server-only';
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 
 // =============================================================================
 // WP-XX — transition rules for the 'recall' product (missed-call recovery
@@ -306,3 +306,36 @@ function enteredCurrentStateAt(row: {
       return row.createdAt;
   }
 }
+
+// =============================================================================
+// Plan de precios del 01/10/2026 — el escalón Esencial.
+//
+// Esencial (79 €/mes) coge la llamada, manda el recado transcrito al dueño
+// por WhatsApp y escribe a quien llamó. Lo que lo separa de Autónomo son
+// tres cosas, y son exactamente las que se cortan aquí:
+//
+//   - las franjas para que quien llamó elija cuándo le devuelven la llamada;
+//   - el resumen diario (que es también por donde se piden las reseñas);
+//   - el informe mensual.
+//
+// Se decide por Product.tier y no por una columna nueva en la suscripción:
+// el escalón es lo que el cliente paga, y cambiarlo en Stripe ya mueve el
+// ClientProduct a la fila de Product que toca. Una segunda columna sería una
+// segunda verdad que alguien acabaría olvidando actualizar.
+// =============================================================================
+
+/** Escalones sin franjas de devolución, resumen diario ni informe mensual. */
+export const RECALL_ESSENTIAL_TIERS: readonly string[] = ['essential'];
+
+/** Si este escalón lleva franjas, resumen diario e informe mensual. Un
+ *  escalón que no se conoce los lleva: equivocarse dando de más a quien ya
+ *  paga es mejor que quitarle algo por un nombre mal escrito. */
+export function recallTierIncludesExtras(tier: string | null | undefined): boolean {
+  return !RECALL_ESSENTIAL_TIERS.includes(tier ?? '');
+}
+
+/** El filtro de Prisma equivalente, para los barridos que recorren
+ *  suscripciones: así las de Esencial ni se leen. */
+export const RECALL_WITH_EXTRAS_WHERE: Prisma.RecallSubscriptionWhereInput = {
+  clientProduct: { product: { tier: { notIn: [...RECALL_ESSENTIAL_TIERS] } } },
+};

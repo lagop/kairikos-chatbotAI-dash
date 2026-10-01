@@ -42,10 +42,14 @@ import { PRODUCT_CATALOGS, PRODUCT_CODES, type ProductCode } from '@/lib/catalog
  */
 export const TIER_LABELS: Readonly<Record<string, string>> = Object.freeze({
   standard: 'Estándar',
+  // Plan de precios del 01/10/2026: Llamadas Esencial, y el Starter del
+  // chatbot pasa a llamarse por lo que hace (solo la web). El código del
+  // escalón no cambia: lo llevan Stripe, las suscripciones y el asistente.
+  essential: 'Esencial',
   solo: 'Autónomo',
   team: 'Equipo',
   business: 'Empresa',
-  starter: 'Starter',
+  starter: 'Web',
   pro: 'Pro',
   premium: 'Premium',
   basic: 'Basic',

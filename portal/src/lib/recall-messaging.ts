@@ -25,6 +25,7 @@ import { recordLegalBasis } from './contacts';
 import { sendPushToClient } from './push-notifications';
 import { summarise } from './recall-transcription';
 import { logError } from './observability';
+import { recallTierIncludesExtras } from './recall';
 
 // =============================================================================
 // WP-XX (Fase 9) — the messaging engine.
@@ -257,6 +258,8 @@ interface CallRow {
       accessTokenTag: Buffer;
     } | null;
     client: { name: string; companyName: string | null };
+    // Plan de precios del 01/10/2026 — Esencial no ofrece franjas.
+    clientProduct: { product: { tier: string } };
   };
 }
 
@@ -300,6 +303,7 @@ const CALL_SELECT = {
         },
       },
       client: { select: { name: true, companyName: true } },
+      clientProduct: { select: { product: { select: { tier: true } } } },
     },
   },
 } as const;
@@ -550,7 +554,11 @@ export async function notifyCaller(
       // (132001), isRetryableWhatsAppError lo trata como definitivo y quien
       // llamó se quedaba SIN NINGÚN mensaje — lo contrario de lo que decía
       // el comentario de RECALL_TEMPLATES.callerSlots.
-      const slotsChoice = open ? null : chooseCallerTemplate('slots', approved);
+      //
+      // Esencial (plan de precios del 01/10/2026) no lleva franjas: recibe
+      // el mensaje de siempre, abierto o cerrado, como si no las hubiera.
+      const offersSlots = recallTierIncludesExtras(call.subscription.clientProduct?.product?.tier);
+      const slotsChoice = open || !offersSlots ? null : chooseCallerTemplate('slots', approved);
       const slots = slotsChoice ? await offerableSlots(prisma, call, hours, now) : [];
       const useSlots = slotsChoice !== null && slots.length >= MIN_OFFERED_SLOTS;
 

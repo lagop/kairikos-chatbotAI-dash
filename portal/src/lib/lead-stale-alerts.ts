@@ -1,6 +1,7 @@
 import 'server-only';
 import type { PrismaClient } from '@prisma/client';
 import { isStuck, stuckThresholdDays } from './leads';
+import { LEADS_ENTITLEMENT_WHERE } from './lead-entitlement';
 import { sendStaleLeadEmail } from './leads-email';
 import { logError } from './observability';
 
@@ -65,7 +66,8 @@ export async function sweepStaleLeadAlerts(
     where: {
       status: { in: ['nuevo', 'contactado'] },
       staleAlertSentAt: null,
-      client: { clientProducts: { some: { status: 'active', product: { code: 'leads' } } } },
+      // El complemento o un Chatbot Premium (plan de precios del 01/10/2026).
+      client: { clientProducts: { some: LEADS_ENTITLEMENT_WHERE } },
     },
     orderBy: { createdAt: 'asc' },
     take: ALERT_BATCH_SIZE,

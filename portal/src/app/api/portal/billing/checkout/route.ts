@@ -55,6 +55,7 @@ const ERROR_STATUS: Record<CheckoutSessionError, number> = {
   product_not_found: 404,
   product_requires_quote: 400,
   requires_chatbot: 400,
+  included_in_plan: 409,
   client_has_no_tenant: 503,
   already_contracted: 409,
   product_price_id_missing: 404,

@@ -44,6 +44,12 @@ vi.mock('@/lib/prisma', () => ({
 vi.mock('@/lib/client-product-access', () => ({
   isProductContracted: (...args: unknown[]) => mockState.isProductContracted(...args),
 }));
+// «Tiene captación» (complemento O Chatbot Premium, desde el 01/10/2026) se
+// reduce aquí a la pregunta de siempre; la regla tiene sus propios tests en
+// lead-entitlement.test.ts.
+vi.mock('@/lib/lead-entitlement', () => ({
+  hasLeadsProduct: (p: unknown, c: unknown) => mockState.isProductContracted(p, c, 'leads'),
+}));
 
 vi.mock('@/lib/leads-email', () => ({
   sendNewLeadEmail: (...args: unknown[]) => mockState.sendNewLeadEmail(...args),
