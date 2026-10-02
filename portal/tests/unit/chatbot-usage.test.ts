@@ -34,6 +34,8 @@ function makePrisma(row: Record<string, unknown> | null) {
     findUnique: vi.fn().mockResolvedValue(row),
     create: vi.fn().mockResolvedValue({}),
     update: vi.fn().mockResolvedValue({ messagesThisMonth: ((row?.messagesThisMonth as number) ?? 0) + 1 }),
+    // Packs de uso (01/10/2026): el descuento del pack y la marca del aviso.
+    updateMany: vi.fn().mockResolvedValue({ count: 1 }),
   };
   return { prisma: { chatbotUsage: usage } as never, usage };
 }
@@ -92,8 +94,64 @@ describe('consumeMessageAllowance', () => {
       allowed: false,
       used: DEFAULT_MESSAGE_CAPS.starter,
       cap: DEFAULT_MESSAGE_CAPS.starter,
+      // Primera vez este mes sin saldo: el llamante avisa al cliente.
+      alertNow: true,
     });
     expect(usage.update).not.toHaveBeenCalled();
+    expect(usage.updateMany).toHaveBeenCalledWith({
+      where: { id: 'u1', capAlertedAt: null },
+      data: { capAlertedAt: NOW },
+    });
+  });
+
+  // Packs de uso (01/10/2026).
+  it('en el tope con pack, contesta y descuenta UNA unidad del pack, condicionado a que quede', async () => {
+    const { prisma, usage } = makePrisma({
+      id: 'u1',
+      messagesThisMonth: DEFAULT_MESSAGE_CAPS.starter,
+      usageResetAt: NOW,
+      capOverride: null,
+      packMessagesRemaining: 3,
+      capAlertedAt: null,
+    });
+    await expect(consumeMessageAllowance(prisma, input, NOW)).resolves.toEqual({
+      allowed: true,
+      used: DEFAULT_MESSAGE_CAPS.starter + 1,
+      cap: DEFAULT_MESSAGE_CAPS.starter,
+      fromPack: true,
+    });
+    expect(usage.updateMany).toHaveBeenCalledWith({
+      where: { id: 'u1', packMessagesRemaining: { gt: 0 } },
+      data: { packMessagesRemaining: { decrement: 1 }, messagesThisMonth: { increment: 1 } },
+    });
+  });
+
+  it('si otro mensaje se llevó la última unidad del pack, niega en vez de pasarse', async () => {
+    const { prisma, usage } = makePrisma({
+      id: 'u1',
+      messagesThisMonth: DEFAULT_MESSAGE_CAPS.starter,
+      usageResetAt: NOW,
+      capOverride: null,
+      packMessagesRemaining: 1,
+      capAlertedAt: null,
+    });
+    usage.updateMany.mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ count: 1 });
+    const res = await consumeMessageAllowance(prisma, input, NOW);
+    expect(res.allowed).toBe(false);
+  });
+
+  it('el aviso es uno por mes: si ya se avisó, no vuelve a pedirlo', async () => {
+    const { prisma, usage } = makePrisma({
+      id: 'u1',
+      messagesThisMonth: DEFAULT_MESSAGE_CAPS.starter,
+      usageResetAt: NOW,
+      capOverride: null,
+      packMessagesRemaining: 0,
+      capAlertedAt: NOW,
+    });
+    const res = await consumeMessageAllowance(prisma, input, NOW);
+    expect(res).toEqual(expect.objectContaining({ allowed: false, alertNow: false }));
+    expect(usage.updateMany).not.toHaveBeenCalled();
   });
 
   it('un mes nuevo reinicia el contador sin cron', async () => {
@@ -108,8 +166,9 @@ describe('consumeMessageAllowance', () => {
       used: 1,
       cap: DEFAULT_MESSAGE_CAPS.starter,
     });
+    // El mes nuevo también rearma el aviso de tope.
     expect(usage.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { messagesThisMonth: 1, usageResetAt: NOW } }),
+      expect.objectContaining({ data: { messagesThisMonth: 1, usageResetAt: NOW, capAlertedAt: null } }),
     );
   });
 
@@ -121,7 +180,9 @@ describe('consumeMessageAllowance', () => {
 
   it('el tope del operador manda sobre el de la tarifa', async () => {
     const { prisma } = makePrisma({ id: 'u1', messagesThisMonth: 10, usageResetAt: NOW, capOverride: 10 });
-    await expect(consumeMessageAllowance(prisma, input, NOW)).resolves.toEqual({ allowed: false, used: 10, cap: 10 });
+    await expect(consumeMessageAllowance(prisma, input, NOW)).resolves.toEqual(
+      expect.objectContaining({ allowed: false, used: 10, cap: 10 }),
+    );
   });
 
   it('usa los topes que el operador guardó, no los del código', async () => {
@@ -131,7 +192,9 @@ describe('consumeMessageAllowance', () => {
       monthlyMessageCapPremium: 9,
     });
     const { prisma } = makePrisma({ id: 'u1', messagesThisMonth: 7, usageResetAt: NOW, capOverride: null });
-    await expect(consumeMessageAllowance(prisma, input, NOW)).resolves.toEqual({ allowed: false, used: 7, cap: 7 });
+    await expect(consumeMessageAllowance(prisma, input, NOW)).resolves.toEqual(
+      expect.objectContaining({ allowed: false, used: 7, cap: 7 }),
+    );
   });
 
   it('si el contador falla, el mensaje pasa: un fallo nuestro no deja mudo al bot', async () => {
@@ -151,15 +214,37 @@ describe('readMessageUsage', () => {
     await expect(readMessageUsage(prisma, 'cp_a', 'pro', NOW)).resolves.toEqual({
       used: 0,
       cap: DEFAULT_MESSAGE_CAPS.pro,
+      packRemaining: 0,
     });
   });
 
   it('una fila del mes pasado cuenta como cero, sin escribir nada', async () => {
-    const { prisma, usage } = makePrisma({ messagesThisMonth: 500, usageResetAt: MES_ANTERIOR, capOverride: null });
+    const { prisma, usage } = makePrisma({
+      messagesThisMonth: 500,
+      usageResetAt: MES_ANTERIOR,
+      capOverride: null,
+      packMessagesRemaining: 40,
+    });
     await expect(readMessageUsage(prisma, 'cp_a', 'starter', NOW)).resolves.toEqual({
       used: 0,
       cap: DEFAULT_MESSAGE_CAPS.starter,
+      // El pack no caduca con el mes.
+      packRemaining: 40,
     });
     expect(usage.update).not.toHaveBeenCalled();
+  });
+
+  it('lo gastado con pack no se enseña como «más del tope»', async () => {
+    const { prisma } = makePrisma({
+      messagesThisMonth: DEFAULT_MESSAGE_CAPS.starter + 120,
+      usageResetAt: NOW,
+      capOverride: null,
+      packMessagesRemaining: 1880,
+    });
+    await expect(readMessageUsage(prisma, 'cp_a', 'starter', NOW)).resolves.toEqual({
+      used: DEFAULT_MESSAGE_CAPS.starter,
+      cap: DEFAULT_MESSAGE_CAPS.starter,
+      packRemaining: 1880,
+    });
   });
 });

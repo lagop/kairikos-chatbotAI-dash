@@ -101,6 +101,10 @@ export async function createSetupFeeWaiverCode(
   if (!product) return { ok: false, error: 'product_not_found' };
   if (!product.stripeProductId) return { ok: false, error: 'not_bootstrapped' };
   if (product.setupFeeCents <= 0 || !product.stripeSetupPriceId) return { ok: false, error: 'no_setup_fee' };
+  // Un pack de uso se cobra entero como «alta» (01/10/2026): anularla sería
+  // regalarlo. El panel ya no lo ofrece; esto lo impide aunque llegue la
+  // petición a mano.
+  if (product.kind !== 'plan') return { ok: false, error: 'no_setup_fee' };
 
   const stripe = await getStripe();
   const metadata = {

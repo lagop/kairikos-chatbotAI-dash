@@ -7,6 +7,7 @@ import { botShouldReply } from './chatbot-handoff';
 import { sendHandoffAlertEmail } from './handoff-alert-email';
 import { logError } from './observability';
 import { consumeMessageAllowance } from './chatbot-usage';
+import { notifyChatbotCapReached } from './chatbot-cap-email';
 import { isReservedSessionId } from './conversation-session-id';
 
 // =============================================================================
@@ -276,6 +277,15 @@ export async function replyToIncomingMessage(
         { clientId: input.clientId, clientProductId: input.instance.clientProductId, used: allowance.used, cap: allowance.cap },
         'warn',
       );
+      // Plan de precios del 01/10/2026: la primera vez del mes sin saldo, se
+      // avisa al cliente. Sin await: el turno no espera a un correo.
+      if (allowance.alertNow) {
+        void notifyChatbotCapReached(prisma, {
+          clientId: input.clientId,
+          clientProductId: input.instance.clientProductId,
+          cap: allowance.cap,
+        });
+      }
       return { ok: true, skipped: true, reason: 'monthly_cap_reached', conversationId };
     }
   }

@@ -68,6 +68,8 @@ export interface ProductCatalogEntry {
   isActive: boolean;
   stripeRecurringPriceId: string | null;
   stripeSetupPriceId: string | null;
+  /** 'plan' (por defecto) | 'pack' — ver Product.kind. */
+  kind?: 'plan' | 'pack';
   // Free-form per-tier feature data (schema.prisma's Product.features —
   // present since WP-12 but never populated until now). First real use:
   // { channels: string[] } — which chatbot channels (WP: conexión de
@@ -260,6 +262,20 @@ export const PRODUCT_CATALOG: ProductCatalogEntry[] = [
     priceCents: 34900, setupFeeCents: 9900, currency: 'EUR', isActive: true,
     stripeRecurringPriceId: 'price_prospecting_business', stripeSetupPriceId: 'price_prospecting_business_setup',
   },
+  // Plan de precios del 01/10/2026 — los packs de uso. Pago único (la «alta»)
+  // y kind 'pack': no son contrataciones, se compran desde la tarjeta del
+  // chatbot o de prospección (lib/usage-packs.ts). Lo que da cada uno vive en
+  // usage-pack-catalog.ts; aquí solo el precio.
+  {
+    code: 'pack_chatbot_messages', tier: 'standard', name: 'Pack de +2.000 mensajes del chatbot',
+    priceCents: 0, setupFeeCents: 2900, currency: 'EUR', isActive: true, kind: 'pack',
+    stripeRecurringPriceId: null, stripeSetupPriceId: 'price_pack_chatbot_messages',
+  },
+  {
+    code: 'pack_prospecting_leads', tier: 'standard', name: 'Pack de +100 negocios de prospección',
+    priceCents: 0, setupFeeCents: 3900, currency: 'EUR', isActive: true, kind: 'pack',
+    stripeRecurringPriceId: null, stripeSetupPriceId: 'price_pack_prospecting_leads',
+  },
 ];
 
 async function seedProductCatalog(): Promise<void> {
@@ -272,6 +288,7 @@ async function seedProductCatalog(): Promise<void> {
         setupFeeCents: p.setupFeeCents,
         currency: p.currency,
         isActive: p.isActive,
+        kind: p.kind ?? 'plan',
         features: p.features ?? {},
       },
       create: {
@@ -284,6 +301,7 @@ async function seedProductCatalog(): Promise<void> {
         isActive: p.isActive,
         stripeRecurringPriceId: p.stripeRecurringPriceId,
         stripeSetupPriceId: p.stripeSetupPriceId,
+        kind: p.kind ?? 'plan',
         features: p.features ?? {},
       },
     });

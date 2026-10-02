@@ -181,6 +181,27 @@ describe('runProspectingSearch — monthly cap', () => {
       expect(result.capReached).toBe(true);
     }
   });
+
+  // Packs de uso (01/10/2026): el pack amplía el margen y lo que se gasta por
+  // encima del cupo se descuenta de él.
+  it('con pack, sigue más allá del cupo y descuenta del pack solo lo que pasa de él', async () => {
+    mockState.searchPlaces.mockResolvedValue({
+      ok: true,
+      data: { results: [place('p1'), place('p2'), place('p3')], nextPageToken: null },
+    });
+    mockState.getPlaceDetails.mockImplementation((id: string) => Promise.resolve(details(id)));
+
+    const result = await runProspectingSearch(
+      prisma,
+      campaign({ leadsFoundThisMonth: 99, monthlyLeadCap: 100, packLeadsRemaining: 50 }),
+      NOW,
+    );
+    expect(mockState.getPlaceDetails).toHaveBeenCalledTimes(3);
+    if (result.ok) expect(result.capReached).toBe(false);
+    const data = state.campaignUpdate.mock.calls.at(-1)[0].data;
+    expect(data.leadsFoundThisMonth).toBe(102);
+    expect(data.packLeadsRemaining).toEqual({ decrement: 2 });
+  });
 });
 
 describe('runProspectingSearch — dedup', () => {

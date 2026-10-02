@@ -1,4 +1,8 @@
 import type { Metadata } from 'next';
+import { UsageMeterCard } from '@/components/portal/UsageMeterCard';
+import { readMessageUsage } from '@/lib/chatbot-usage';
+import { getUsagePackOffer } from '@/lib/usage-packs';
+import { USAGE_PACKS } from '@/lib/usage-pack-catalog';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { requirePortalSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
@@ -12,6 +16,10 @@ import { resolvePortalChatbot, chatbotParamFor, type PortalChatbotSelection } fr
 import { ChatbotPicker } from '@/components/portal/ChatbotPicker';
 
 export const dynamic = 'force-dynamic';
+
+function formatEuros(cents: number, currency: string): string {
+  return new Intl.NumberFormat('es-ES', { style: 'currency', currency, maximumFractionDigits: 0 }).format(cents / 100);
+}
 
 export const metadata: Metadata = {
   title: 'Canales',
@@ -30,7 +38,7 @@ export const metadata: Metadata = {
 
 export default async function PortalCanalesPage(
   props: {
-    searchParams: Promise<{ clientProductId?: string }>;
+    searchParams: Promise<{ clientProductId?: string; pack?: string }>;
   }
 ) {
   const searchParams = await props.searchParams;
@@ -42,6 +50,9 @@ export default async function PortalCanalesPage(
   let telegramConnection: TelegramConnectionSummary | null = null;
   let metaConnections: MetaConnectionSummary[] = [];
   let webEmbed: WebEmbedSummary | null = null;
+  // Packs de uso (01/10/2026): el consumo del mes de ESTE chatbot.
+  let usage: { used: number; cap: number; packRemaining: number } | null = null;
+  let packOffer: Awaited<ReturnType<typeof getUsagePackOffer>> = null;
 
   if (isDatabaseConfigured && resolved?.source === 'database') {
     // Fase 4 multi-instancia — cada chatbot tiene sus canales: su bot de
@@ -77,6 +88,12 @@ export default async function PortalCanalesPage(
           })
         : null,
     ]);
+    if (chatbotId && selection.selected) {
+      [usage, packOffer] = await Promise.all([
+        readMessageUsage(prisma, chatbotId, selection.selected.tier),
+        getUsagePackOffer('pack_chatbot_messages'),
+      ]);
+    }
     telegramConnection = telegramRow
       ? {
           status: telegramRow.status as TelegramConnectionSummary['status'],
@@ -118,6 +135,27 @@ export default async function PortalCanalesPage(
         basePath="/portal/canales"
         description="Cada chatbot tiene sus propios canales: lo que conectes aquí responde con el que tienes seleccionado."
       />
+      {usage ? (
+        <UsageMeterCard
+          key={`usage-${chatbotKey}`}
+          title="Mensajes contestados"
+          unit="mensajes"
+          used={usage.used}
+          cap={usage.cap}
+          packRemaining={usage.packRemaining}
+          clientProductId={selection.selected?.clientProductId ?? null}
+          packReturn={searchParams.pack ?? null}
+          offer={
+            packOffer
+              ? {
+                  packCode: 'pack_chatbot_messages',
+                  label: USAGE_PACKS.pack_chatbot_messages.label,
+                  price: formatEuros(packOffer.priceCents, packOffer.currency),
+                }
+              : null
+          }
+        />
+      ) : null}
       {/* key por chatbot: cambiar de chatbot es una navegación suave, y sin
           esto las tarjetas conservarían el estado (color, token a medio
           escribir) del chatbot anterior. */}

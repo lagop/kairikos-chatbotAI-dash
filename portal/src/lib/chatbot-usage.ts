@@ -22,6 +22,16 @@ import { getChatbotMessageCaps, capForTier } from './chatbot-settings';
 // propósito —el mismo criterio que el contador de prospección—: el tope
 // protege de un bucle o un abuso de miles de mensajes, y pasarse por uno no
 // cambia nada de lo que el tope existe para evitar.
+//
+// Packs de uso (plan de precios del 01/10/2026): cuando se acaba el cupo del
+// mes, el bot sigue contestando con cargo a packMessagesRemaining, que no
+// caduca. Ese descuento SÍ es atómico (updateMany condicionado a que quede
+// saldo): es dinero que el cliente pagó, y dos mensajes a la vez no pueden
+// gastar la misma unidad.
+//
+// Y cuando no queda nada, se avisa: hasta esta fecha el bot se callaba sin
+// que nadie se enterase. Un aviso por mes (capAlertedAt), que lo devuelve
+// alertNow para que el llamante mande el correo.
 // =============================================================================
 
 export interface ChatbotAllowanceInput {
@@ -32,8 +42,10 @@ export interface ChatbotAllowanceInput {
 }
 
 export type ChatbotAllowance =
-  | { allowed: true; used: number; cap: number }
-  | { allowed: false; used: number; cap: number };
+  | { allowed: true; used: number; cap: number; fromPack?: boolean }
+  /** alertNow: es la PRIMERA vez este mes que se topa sin saldo, y el
+   *  llamante debe avisar al cliente. Las siguientes llegan en false. */
+  | { allowed: false; used: number; cap: number; alertNow?: boolean };
 
 /** UTC, no la zona del cliente: esto es una cuota de coste, no un informe. */
 function isNewCalendarMonth(usageResetAt: Date, now: Date): boolean {
@@ -58,7 +70,14 @@ export async function consumeMessageAllowance(
     const caps = await getChatbotMessageCaps();
     const existing = await prisma.chatbotUsage.findUnique({
       where: { clientProductId: input.clientProductId },
-      select: { id: true, messagesThisMonth: true, usageResetAt: true, capOverride: true },
+      select: {
+        id: true,
+        messagesThisMonth: true,
+        usageResetAt: true,
+        capOverride: true,
+        packMessagesRemaining: true,
+        capAlertedAt: true,
+      },
     });
 
     const cap = existing?.capOverride ?? capForTier(input.tier, caps);
@@ -79,13 +98,30 @@ export async function consumeMessageAllowance(
     if (isNewCalendarMonth(existing.usageResetAt, now)) {
       await prisma.chatbotUsage.update({
         where: { id: existing.id },
-        data: { messagesThisMonth: 1, usageResetAt: now },
+        data: { messagesThisMonth: 1, usageResetAt: now, capAlertedAt: null },
       });
       return { allowed: true, used: 1, cap };
     }
 
     if (existing.messagesThisMonth >= cap) {
-      return { allowed: false, used: existing.messagesThisMonth, cap };
+      // Cupo del mes gastado: tira del pack si queda.
+      if ((existing.packMessagesRemaining ?? 0) > 0) {
+        const fromPack = await prisma.chatbotUsage.updateMany({
+          where: { id: existing.id, packMessagesRemaining: { gt: 0 } },
+          data: { packMessagesRemaining: { decrement: 1 }, messagesThisMonth: { increment: 1 } },
+        });
+        if (fromPack.count > 0) {
+          return { allowed: true, used: existing.messagesThisMonth + 1, cap, fromPack: true };
+        }
+      }
+      // Sin saldo. Se marca el aviso solo si nadie lo marcó antes este mes.
+      const alert = existing.capAlertedAt
+        ? { count: 0 }
+        : await prisma.chatbotUsage.updateMany({
+            where: { id: existing.id, capAlertedAt: null },
+            data: { capAlertedAt: now },
+          });
+      return { allowed: false, used: existing.messagesThisMonth, cap, alertNow: alert.count > 0 };
     }
 
     const updated = await prisma.chatbotUsage.update({
@@ -100,19 +136,22 @@ export async function consumeMessageAllowance(
   }
 }
 
-/** Lo consumido hasta ahora, para enseñarlo. No toca el contador. */
+/** Lo consumido hasta ahora, para enseñarlo. No toca el contador.
+ *  packRemaining: mensajes de packs comprados que quedan (no caducan). */
 export async function readMessageUsage(
   prisma: PrismaClient,
   clientProductId: string,
   tier: string | null,
   now: Date = new Date(),
-): Promise<{ used: number; cap: number }> {
+): Promise<{ used: number; cap: number; packRemaining: number }> {
   const caps = await getChatbotMessageCaps();
   const row = await prisma.chatbotUsage.findUnique({
     where: { clientProductId },
-    select: { messagesThisMonth: true, usageResetAt: true, capOverride: true },
+    select: { messagesThisMonth: true, usageResetAt: true, capOverride: true, packMessagesRemaining: true },
   });
   const cap = row?.capOverride ?? capForTier(tier, caps);
-  if (!row || isNewCalendarMonth(row.usageResetAt, now)) return { used: 0, cap };
-  return { used: row.messagesThisMonth, cap };
+  const packRemaining = row?.packMessagesRemaining ?? 0;
+  if (!row || isNewCalendarMonth(row.usageResetAt, now)) return { used: 0, cap, packRemaining };
+  // Lo que pasó del cupo se pagó con pack: el mes enseña el cupo, no más.
+  return { used: Math.min(row.messagesThisMonth, cap), cap, packRemaining };
 }

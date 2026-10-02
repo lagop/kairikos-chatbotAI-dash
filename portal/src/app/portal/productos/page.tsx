@@ -122,7 +122,7 @@ export default async function PortalProductsPage(
   // never trust the tile being hidden as the only thing stopping a
   // direct POST.
   const allProducts = await prisma.product.findMany({
-    where: { isActive: true, selfServeEligible: true },
+    where: { isActive: true, selfServeEligible: true, kind: 'plan' },
     orderBy: [{ code: 'asc' }, { priceCents: 'asc' }],
     select: { id: true, code: true, tier: true, priceCents: true, setupFeeCents: true, currency: true, stripeAnnualPriceId: true },
   });

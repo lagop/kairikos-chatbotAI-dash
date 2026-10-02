@@ -316,7 +316,8 @@ export default async function AdminClientDetailPage(props: PageProps) {
             orderBy: { subscribedAt: 'asc' },
           }),
           prisma.product.findMany({
-            where: { isActive: true },
+            // kind 'plan': los packs de uso no son contrataciones (01/10/2026).
+            where: { isActive: true, kind: 'plan' },
             orderBy: [{ code: 'asc' }, { tier: 'asc' }],
           }),
         ]);
