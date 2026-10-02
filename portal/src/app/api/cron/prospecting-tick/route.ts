@@ -82,6 +82,7 @@ export async function GET(req: NextRequest) {
       searches: { select: { id: true, category: true, locationQuery: true, lastRunAt: true } },
       leadsFoundThisMonth: true,
       monthlyLeadCap: true,
+      packLeadsRemaining: true,
       usageResetAt: true,
       alertedAt: true,
       lastRunAt: true,

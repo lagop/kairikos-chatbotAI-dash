@@ -11,8 +11,19 @@ import { PRODUCT_CATALOG } from '../../prisma/seed';
 
 describe('PRODUCT_CATALOG', () => {
   it('has exactly seven distinct product codes', () => {
-    const codes = new Set(PRODUCT_CATALOG.map((p) => p.code));
+    // Los siete que se contratan. Los packs de uso (kind 'pack', 01/10/2026)
+    // son filas del catálogo pero no productos: se comprueban abajo.
+    const codes = new Set(PRODUCT_CATALOG.filter((p) => (p.kind ?? 'plan') === 'plan').map((p) => p.code));
     expect(codes).toEqual(new Set(['chatbot', 'web', 'leads', 'seo', 'reviews', 'recall', 'prospecting']));
+  });
+
+  it('los packs de uso: pago único, sin autoservicio genérico, con su precio del plan', () => {
+    const packs = PRODUCT_CATALOG.filter((p) => p.kind === 'pack');
+    expect(packs.map((p) => [p.code, p.priceCents, p.setupFeeCents])).toEqual([
+      ['pack_chatbot_messages', 0, 2900],
+      ['pack_prospecting_leads', 0, 3900],
+    ]);
+    for (const p of packs) expect(p.stripeSetupPriceId).toBeTruthy();
   });
 
   it('every (code, tier) pair is unique — matches the Product.@@unique([code, tier]) constraint', () => {

@@ -8,7 +8,8 @@ export async function GET(req: NextRequest) {
   if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
 
   const rows = await prisma.product.findMany({
-    where: { isActive: true },
+    // kind 'plan': los packs de uso no son contrataciones (01/10/2026).
+    where: { isActive: true, kind: 'plan' },
     // WP-12 — group by product first, then cheapest tier first within it,
     // now that a single price-ascending sort would interleave rows from
     // different products.

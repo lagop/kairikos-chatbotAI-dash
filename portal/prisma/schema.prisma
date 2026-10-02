@@ -724,6 +724,14 @@ model Product {
   currency               String   @default("EUR")
   features               Json     @default("{}")
   isActive               Boolean  @default(true) @map("is_active")
+  // Plan de precios del 01/10/2026 — qué clase de cosa se vende con esta fila:
+  //   'plan'  un producto que se contrata (los siete de siempre). El único que
+  //           sale en la web, en /empezar y en las altas de operador.
+  //   'pack'  saldo de uso de una sola vez (+2.000 mensajes, +100 negocios).
+  //           No es una contratación: se compra cuantas veces haga falta y va
+  //           a UsagePackPurchase, nunca a ClientProduct (lib/usage-packs.ts).
+  // Texto libre con los valores en este comentario, como el resto de estados.
+  kind                   String   @default("plan")
   // WP-31 — whether a visitor can buy this tier from the public signup
   // page (/empezar) without an operator creating the account first. Kept
   // as a flag rather than a hardcoded product-code list so a tier can be
@@ -3467,6 +3475,9 @@ model ProspectingCampaign {
   monthlyLeadCap      Int       @map("monthly_lead_cap")
   usageResetAt        DateTime  @default(now()) @map("usage_reset_at")
   alertedAt           DateTime? @map("alerted_at")
+  // Packs de uso (01/10/2026): negocios comprados que aún no se han gastado.
+  // Mismo criterio que ChatbotUsage.packMessagesRemaining: no caducan.
+  packLeadsRemaining  Int       @default(0) @map("pack_leads_remaining")
 
   // Prospección con IA, Fase C — first automatic WhatsApp contact stays
   // off until the client explicitly opts in here; nothing sends without
@@ -4395,15 +4406,23 @@ model ChatbotSettings {
 // el tope de todos; null significa "el de su tarifa".
 // =============================================================================
 model ChatbotUsage {
-  id                String   @id @default(uuid()) @db.Uuid
-  clientProductId   String   @unique @map("client_product_id") @db.Uuid
-  clientId          String   @map("client_id")
-  tenantId          String?  @map("tenant_id") @db.Uuid
-  messagesThisMonth Int      @default(0) @map("messages_this_month")
-  usageResetAt      DateTime @default(now()) @map("usage_reset_at")
-  capOverride       Int?     @map("cap_override")
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  id                    String    @id @default(uuid()) @db.Uuid
+  clientProductId       String    @unique @map("client_product_id") @db.Uuid
+  clientId              String    @map("client_id")
+  tenantId              String?   @map("tenant_id") @db.Uuid
+  messagesThisMonth     Int       @default(0) @map("messages_this_month")
+  usageResetAt          DateTime  @default(now()) @map("usage_reset_at")
+  capOverride           Int?      @map("cap_override")
+  // Packs de uso (01/10/2026): mensajes comprados que aún no se han gastado.
+  // No caducan con el mes: se gastan cuando se acaba el cupo del mes, y lo
+  // que sobra sigue para el siguiente. Un pack que caducase el día 1 sería
+  // castigar a quien lo compra el 28.
+  packMessagesRemaining Int       @default(0) @map("pack_messages_remaining")
+  // Cuándo se avisó al cliente de que el bot llegó al tope este mes. Uno por
+  // mes: el bot se callaba sin que nadie se enterase.
+  capAlertedAt          DateTime? @map("cap_alerted_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
 
   clientProduct ClientProduct @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
   client        ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
@@ -5629,4 +5648,39 @@ model PushSubscription {
   @@index([clientId])
   @@index([userEmail])
   @@index([tenantId])
+}
+
+// =============================================================================
+// Plan de precios del 01/10/2026 — cada compra de un pack de uso.
+//
+// No es una ClientProduct a propósito: el índice único parcial de
+// ClientProduct impide dos contrataciones del mismo producto, y un pack se
+// compra todas las veces que haga falta. Tampoco tiene relaciones: es un
+// apunte contable, y sobrevive aunque desaparezca lo que lo compró.
+//
+// status: 'pending' (checkout abierto) | 'credited' (saldo sumado) |
+// 'expired' (pago abandonado). El abono es idempotente por
+// stripeCheckoutSessionId: un webhook repetido no suma dos veces.
+// =============================================================================
+model UsagePackPurchase {
+  id                      String    @id @default(uuid()) @db.Uuid
+  clientId                String    @map("client_id")
+  tenantId                String?   @map("tenant_id") @db.Uuid
+  productId               String    @map("product_id") @db.Uuid
+  // 'pack_chatbot_messages' | 'pack_prospecting_leads' (USAGE_PACKS).
+  packCode                String    @map("pack_code")
+  // La contratación que recibe el saldo: el chatbot concreto (puede haber
+  // varios) o la campaña de prospección del cliente.
+  targetClientProductId   String    @map("target_client_product_id") @db.Uuid
+  units                   Int
+  amountCents             Int       @map("amount_cents")
+  currency                String    @default("EUR")
+  status                  String    @default("pending")
+  stripeCheckoutSessionId String?   @unique @map("stripe_checkout_session_id")
+  creditedAt              DateTime? @map("credited_at")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+
+  @@index([clientId])
+  @@index([targetClientProductId])
 }

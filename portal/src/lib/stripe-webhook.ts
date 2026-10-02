@@ -11,6 +11,7 @@ import {
   expireClientProductFromCheckout,
   activateClientProductFromWebQuotePayment,
 } from './stripe-billing';
+import { creditUsagePackFromCheckout, expireUsagePackFromCheckout } from './usage-packs';
 import { logError } from './observability';
 import { notifyOperatorOfExecutionFailure } from './operator-notify';
 
@@ -228,11 +229,16 @@ async function dispatch(event: Stripe.Event): Promise<string> {
     case 'checkout.session.completed': {
       const session = event.data.object as Stripe.Checkout.Session;
       await activateClientProductFromCheckout(session);
+      // Packs de uso (01/10/2026): una sesión es de un pack O de una
+      // contratación, nunca de las dos; cada función ignora la que no es suya
+      // por los metadatos.
+      await creditUsagePackFromCheckout(session);
       return 'checkout_session';
     }
     case 'checkout.session.expired': {
       const session = event.data.object as Stripe.Checkout.Session;
       await expireClientProductFromCheckout(session);
+      await expireUsagePackFromCheckout(session);
       return 'checkout_session';
     }
     default:

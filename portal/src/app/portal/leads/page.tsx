@@ -1,4 +1,7 @@
 import type { Metadata } from 'next';
+import { UsageMeterCard } from '@/components/portal/UsageMeterCard';
+import { getUsagePackOffer } from '@/lib/usage-packs';
+import { USAGE_PACKS } from '@/lib/usage-pack-catalog';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
@@ -59,7 +62,7 @@ function tierLabel(tier: string): string {
 
 export default async function PortalLeadsPage(
   props: {
-    searchParams?: Promise<{ estado?: string; orden?: string }>;
+    searchParams?: Promise<{ estado?: string; orden?: string; pack?: string }>;
   }
 ) {
   const searchParams = await props.searchParams;
@@ -244,6 +247,32 @@ export default async function PortalLeadsPage(
   // y esta agregación le saldría vacía siempre.
   const prospectingMetrics = hasProspecting ? await loadProspectingMetrics(prisma, resolved.clientId) : null;
 
+  // Packs de uso (01/10/2026): cuántos negocios lleva este mes y cuántos le
+  // quedan de packs. Consulta aparte para no mezclar el consumo con el perfil
+  // que se edita en su tarjeta.
+  const [prospectingUsage, prospectingPackOffer] = hasProspecting
+    ? await Promise.all([
+        prisma.prospectingCampaign.findFirst({
+          where: { clientId: resolved.clientId },
+          select: {
+            clientProductId: true,
+            leadsFoundThisMonth: true,
+            monthlyLeadCap: true,
+            usageResetAt: true,
+            packLeadsRemaining: true,
+          },
+        }),
+        getUsagePackOffer('pack_prospecting_leads'),
+      ])
+    : [null, null];
+  const now = new Date();
+  const prospectingUsedThisMonth =
+    prospectingUsage &&
+    prospectingUsage.usageResetAt.getUTCFullYear() === now.getUTCFullYear() &&
+    prospectingUsage.usageResetAt.getUTCMonth() === now.getUTCMonth()
+      ? Math.min(prospectingUsage.leadsFoundThisMonth, prospectingUsage.monthlyLeadCap)
+      : 0;
+
   // Fase 4 — la salida hacia fuera. Quien ve el buzón puede llevárselo,
   // así que no lleva su propia comprobación de producto: llegar aquí ya
   // exige hasLeads o hasProspecting.
@@ -299,6 +328,30 @@ export default async function PortalLeadsPage(
       {hasLeads ? <LeadsQualificationCard profile={leadsQualificationProfile} prefill={leadsPrefill} /> : null}
       {hasProspecting ? <ProspectingProfileCard profile={prospectingProfile} businessName={nombreRemitente(client)} /> : null}
       {prospectingMetrics ? <ProspectingMetricsCard metrics={prospectingMetrics} /> : null}
+      {prospectingUsage ? (
+        <UsageMeterCard
+          title="Negocios encontrados"
+          unit="negocios"
+          used={prospectingUsedThisMonth}
+          cap={prospectingUsage.monthlyLeadCap}
+          packRemaining={prospectingUsage.packLeadsRemaining}
+          clientProductId={prospectingUsage.clientProductId}
+          packReturn={searchParams?.pack ?? null}
+          offer={
+            prospectingPackOffer
+              ? {
+                  packCode: 'pack_prospecting_leads',
+                  label: USAGE_PACKS.pack_prospecting_leads.label,
+                  price: new Intl.NumberFormat('es-ES', {
+                    style: 'currency',
+                    currency: prospectingPackOffer.currency,
+                    maximumFractionDigits: 0,
+                  }).format(prospectingPackOffer.priceCents / 100),
+                }
+              : null
+          }
+        />
+      ) : null}
 
       <LeadExportCard webhook={webhook} />
 

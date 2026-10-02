@@ -62,6 +62,18 @@ export interface ProspectingCampaignInput {
   monthlyLeadCap: number;
   usageResetAt: Date;
   alertedAt: Date | null;
+  /** Packs de uso (01/10/2026): negocios comprados sin gastar. Opcional para
+   *  que un llamante que no lo pide siga funcionando como antes. */
+  packLeadsRemaining?: number;
+}
+
+/**
+ * Cuánto se descuenta del pack tras una pasada: solo lo que se gastó POR
+ * ENCIMA del cupo del mes. Pura, para poder probar las fronteras (una pasada
+ * que empieza dentro del cupo y termina fuera).
+ */
+export function packLeadsConsumed(before: number, after: number, cap: number): number {
+  return Math.max(0, after - cap) - Math.max(0, before - cap);
 }
 
 export type RunProspectingSearchResult =
@@ -129,7 +141,9 @@ export async function runProspectingSearch(
     alertedAt = null;
   }
 
-  const remaining = campaign.monthlyLeadCap - leadsFoundThisMonth;
+  // El cupo del mes más lo que quede de packs comprados (que no caducan).
+  const packLeft = campaign.packLeadsRemaining ?? 0;
+  const remaining = campaign.monthlyLeadCap - leadsFoundThisMonth + packLeft;
   if (remaining <= 0) {
     // Warn once per cap breach (alertedAt), same pattern as
     // RecallUsageMonth.alertedAt in recall-reports.ts's rollUpUsage —
@@ -249,11 +263,15 @@ export async function runProspectingSearch(
   }
 
   const newLeadsFoundThisMonth = leadsFoundThisMonth + detailsCallsMade;
-  const capReached = newLeadsFoundThisMonth >= campaign.monthlyLeadCap;
+  // Lo gastado por encima del cupo sale del pack. Nunca por debajo de cero:
+  // el reparto de arriba ya no deja pasar de cupo + pack.
+  const spentFromPack = Math.min(packLeft, packLeadsConsumed(leadsFoundThisMonth, newLeadsFoundThisMonth, campaign.monthlyLeadCap));
+  const capReached = newLeadsFoundThisMonth >= campaign.monthlyLeadCap && packLeft - spentFromPack <= 0;
   await prisma.prospectingCampaign.update({
     where: { id: campaign.id },
     data: {
       leadsFoundThisMonth: newLeadsFoundThisMonth,
+      ...(spentFromPack > 0 ? { packLeadsRemaining: { decrement: spentFromPack } } : {}),
       usageResetAt,
       lastRunAt: now,
       // Newly reached this run → stamp it. Already past it from a prior

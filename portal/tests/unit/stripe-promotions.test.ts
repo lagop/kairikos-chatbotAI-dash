@@ -79,6 +79,7 @@ const PRODUCT = {
   setupFeeCents: 39900,
   stripeProductId: 'prod_chatbot_starter',
   stripeSetupPriceId: 'price_setup_starter',
+  kind: 'plan',
 };
 const ACTOR = { operatorId: 'op_1', operatorEmail: 'op@kairikos.com' };
 const NOW = new Date('2026-09-16T10:00:00Z');
@@ -184,6 +185,8 @@ describe('createSetupFeeWaiverCode', () => {
 
   it.each([
     ['un producto sin alta', { ...PRODUCT, setupFeeCents: 0, stripeSetupPriceId: null }, 'no_setup_fee'],
+    // Packs de uso (01/10/2026): su «alta» es el pack entero; anularla lo regalaría.
+    ['un pack de uso', { ...PRODUCT, kind: 'pack' }, 'no_setup_fee'],
     ['un producto sin precios en Stripe', { ...PRODUCT, stripeProductId: null }, 'not_bootstrapped'],
     ['un producto que no existe', null, 'product_not_found'],
   ])('rechaza %s sin tocar Stripe', async (_label, product, error) => {

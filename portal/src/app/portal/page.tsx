@@ -81,7 +81,7 @@ export default async function PortalHome(
   if (isDatabaseConfigured && resolved.source === 'database') {
     try {
       const contractedCodes = new Set<string>(data.products.map((p) => p.productCode));
-      const allActiveProducts = await prisma.product.findMany({ where: { isActive: true }, select: { code: true } });
+      const allActiveProducts = await prisma.product.findMany({ where: { isActive: true, kind: 'plan' }, select: { code: true } });
       // Bug found 2026-08-22 via manual QA: 'web' kept appearing here as
       // "available" for a client who had already requested a quote
       // (ClientProduct.status: 'quote_pending') — data.products only

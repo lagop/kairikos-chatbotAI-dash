@@ -176,7 +176,9 @@ export async function loadPublicCatalog(
   now: Date = new Date(),
 ): Promise<PublicCatalog> {
   const rows = await prisma.product.findMany({
-    where: { isActive: true },
+    // Solo lo que se contrata: los packs de uso (kind 'pack', 01/10/2026) se
+    // compran desde su propia tarjeta en el portal, no desde la web.
+    where: { isActive: true, kind: 'plan' },
     orderBy: [{ code: 'asc' }, { priceCents: 'asc' }],
     select: {
       code: true,

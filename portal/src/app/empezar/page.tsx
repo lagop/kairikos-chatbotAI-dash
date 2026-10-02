@@ -74,7 +74,7 @@ export default async function EmpezarPage(
   }
 
   const products = await prisma.product.findMany({
-    where: { isActive: true, selfServeEligible: true },
+    where: { isActive: true, selfServeEligible: true, kind: 'plan' },
     orderBy: [{ code: 'asc' }, { priceCents: 'asc' }],
     select: { id: true, code: true, tier: true, priceCents: true, setupFeeCents: true, currency: true },
   });

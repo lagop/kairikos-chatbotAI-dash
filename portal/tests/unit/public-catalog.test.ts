@@ -183,7 +183,8 @@ describe('loadPublicCatalog', () => {
       select: Record<string, boolean>;
     };
 
-    expect(args.where).toEqual({ isActive: true });
+    // Solo planes: los packs de uso (kind 'pack', 01/10/2026) no se venden en la web.
+    expect(args.where).toEqual({ isActive: true, kind: 'plan' });
 
     // Esta es la única defensa: la ruta no autentica a propósito, porque lo
     // que devuelve ya está en /planes/. Ampliar el select es lo que la

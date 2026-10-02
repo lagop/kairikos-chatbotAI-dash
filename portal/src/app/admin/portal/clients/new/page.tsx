@@ -39,7 +39,8 @@ export default async function NewClientPage() {
   // presupuesto (POST /api/portal/web-quote/request) — mismo criterio
   // que ProductAssignment.tsx en la ficha de un cliente existente.
   const rows = await prisma.product.findMany({
-    where: { isActive: true, code: { not: 'web' } },
+    // kind 'plan': los packs de uso no son contrataciones (01/10/2026).
+    where: { isActive: true, kind: 'plan', code: { not: 'web' } },
     orderBy: [{ code: 'asc' }, { tier: 'asc' }],
   });
   const products: CreatableProduct[] = rows.map((p) => ({

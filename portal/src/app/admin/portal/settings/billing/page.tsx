@@ -45,6 +45,7 @@ export default async function AdminBillingSettingsPage() {
         stripeRecurringPriceId: true,
         stripeSetupPriceId: true,
         stripeAnnualPriceId: true,
+        kind: true,
         stripePriceMode: true,
         selfServeEligible: true,
       },
@@ -60,7 +61,8 @@ export default async function AdminBillingSettingsPage() {
   // Solo los tiers con alta real en Stripe: los demás no tienen nada que
   // un código pueda anular (ver stripe-promotions.ts).
   const waivableProducts = productRows
-    .filter((p) => p.isActive && p.stripeProductId && p.stripeSetupPriceId && p.setupFeeCents > 0)
+    // Solo planes: un código que anulara la «alta» de un pack lo regalaría.
+    .filter((p) => p.isActive && p.kind === 'plan' && p.stripeProductId && p.stripeSetupPriceId && p.setupFeeCents > 0)
     .map((p) => ({ id: p.id, name: p.name, setupFeeCents: p.setupFeeCents, currency: p.currency }));
 
   return (
