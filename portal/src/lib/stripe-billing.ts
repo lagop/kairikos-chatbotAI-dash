@@ -11,6 +11,7 @@ import {
 import { isProductContracted, isMultiInstanceProduct } from './client-product-access';
 import { assignSiteToNewContract } from './client-site';
 import { LEADS_INCLUDED_CHATBOT_TIERS } from './lead-entitlement';
+import { monthlyEquivalentCents, type BillingInterval } from './annual-billing';
 import type { Prisma } from '@prisma/client';
 import type Stripe from 'stripe';
 
@@ -117,6 +118,9 @@ export async function syncSubscriptionFromStripe(s: Stripe.Subscription): Promis
   const priceId = item?.price?.id ?? null;
   const amountCents = item?.price?.unit_amount ?? null;
   const currency = item?.price?.currency ?? 'eur';
+  // Pago anual (01/10/2026): amountCents es el importe del PERIODO. Sin el
+  // intervalo al lado, el MRR contaría un año entero como un mes.
+  const billingInterval = item?.price?.recurring?.interval === 'year' ? 'year' : 'month';
 
   // WP-19 — ClientProduct.tenantId is still nullable pre-WP-09-for-
   // ClientProduct (see that column's own comment). `?? ''` used to
@@ -143,6 +147,7 @@ export async function syncSubscriptionFromStripe(s: Stripe.Subscription): Promis
       cancelAtPeriodEnd: Boolean(s.cancel_at_period_end),
       canceledAt: toDate(s.canceled_at ?? null),
       amountCents,
+      billingInterval,
       currency,
       metadata: s.metadata as Prisma.InputJsonValue,
     },
@@ -154,6 +159,7 @@ export async function syncSubscriptionFromStripe(s: Stripe.Subscription): Promis
       canceledAt: toDate(s.canceled_at ?? null),
       stripePriceId: priceId,
       amountCents,
+      billingInterval,
       currency,
       metadata: s.metadata as Prisma.InputJsonValue,
     },
@@ -1005,7 +1011,8 @@ export async function getOwnerBillingOverview(): Promise<OwnerBillingOverview> {
     // product's code, so two different products can share a tier string.
     const key = s.clientProduct.productId;
     const { code, tier, name } = s.clientProduct.product;
-    const amount = s.amountCents ?? s.clientProduct.product.priceCents;
+    const amount =
+      s.amountCents !== null ? monthlyEquivalentCents(s.amountCents, s.billingInterval) : s.clientProduct.product.priceCents;
     if (!mrrByProductCents[key]) {
       mrrByProductCents[key] = { productCode: code, productName: name, tier, mrrCents: 0, activeSubscriptions: 0 };
     }
@@ -1076,6 +1083,7 @@ export type CheckoutSessionError =
   | 'product_requires_quote'
   | 'requires_chatbot'
   | 'included_in_plan'
+  | 'annual_price_missing'
   | 'client_has_no_tenant'
   | 'already_contracted'
   | 'product_price_id_missing'
@@ -1110,8 +1118,12 @@ export async function createProductCheckoutSession(params: {
   clientId: string;
   productId: string;
   actorId: string;
+  /** Plan de precios del 01/10/2026: 'annual' cobra el año (10 meses) y sin
+   *  alta. Ausente = mensual, que es lo que hacía siempre. */
+  billing?: BillingInterval;
 }): Promise<CreateCheckoutSessionResult> {
   const { clientId, productId, actorId } = params;
+  const billing: BillingInterval = params.billing ?? 'monthly';
 
   if (!(await isStripeConfigured())) {
     return { ok: false, error: 'stripe_not_configured' };
@@ -1167,7 +1179,15 @@ export async function createProductCheckoutSession(params: {
   if (isOneTimeOnly && product.setupFeeCents === 0) {
     return { ok: false, error: 'product_price_id_missing', productId: product.id };
   }
-  if (product.setupFeeCents > 0 && !product.stripeSetupPriceId) {
+  // Pago anual: solo existe donde hay cuota mensual y el operador ya creó el
+  // precio anual en Stripe. Se comprueba ANTES de crear la fila pendiente, igual
+  // que los otros precios que faltan, para no dejar nada a medias.
+  const isAnnual = billing === 'annual';
+  if (isAnnual && (isOneTimeOnly || !product.stripeAnnualPriceId)) {
+    return { ok: false, error: 'annual_price_missing', productId: product.id };
+  }
+  // Con el anual no hay alta que cobrar, así que no hace falta su precio.
+  if (!isAnnual && product.setupFeeCents > 0 && !product.stripeSetupPriceId) {
     return { ok: false, error: 'product_setup_price_id_missing', productId: product.id };
   }
 
@@ -1229,6 +1249,7 @@ export async function createProductCheckoutSession(params: {
     kairikos_client_product_id: cp.id,
     kairikos_product_code: product.code,
     kairikos_product_tier: product.tier,
+    kairikos_billing_interval: billing,
   };
 
   try {
@@ -1246,10 +1267,14 @@ export async function createProductCheckoutSession(params: {
       : await stripe.checkout.sessions.create({
           mode: 'subscription',
           customer: customerId,
-          line_items: [
-            { price: product.stripeRecurringPriceId!, quantity: 1 },
-            ...(product.stripeSetupPriceId ? [{ price: product.stripeSetupPriceId, quantity: 1 }] : []),
-          ],
+          // Anual: el precio del año y nada más. Quien paga el año no paga
+          // alta (plan de precios del 01/10/2026, lib/annual-billing.ts).
+          line_items: isAnnual
+            ? [{ price: product.stripeAnnualPriceId!, quantity: 1 }]
+            : [
+                { price: product.stripeRecurringPriceId!, quantity: 1 },
+                ...(product.stripeSetupPriceId ? [{ price: product.stripeSetupPriceId, quantity: 1 }] : []),
+              ],
           subscription_data: { metadata },
           // 2026-09-16 — muestra la casilla de código promocional en el pago.
           // Los códigos que anulan el alta de un tier se crean desde

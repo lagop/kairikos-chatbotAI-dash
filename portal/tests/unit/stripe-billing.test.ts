@@ -163,6 +163,29 @@ describe('syncSubscriptionFromStripe — tenantId guard (WP-19 bug fix)', () => 
     );
   });
 
+  // Pago anual (01/10/2026): sin el intervalo, el MRR contaría el año como un mes.
+  it('guarda el intervalo: year para una anual, month para el resto', async () => {
+    const cp = { id: 'cp_1', clientId: 'client_1', tenantId: 'tenant_1', client: { stripeCustomerId: 'cus_1' } };
+    mockState.findUniqueClientProduct.mockResolvedValueOnce(cp);
+    await syncSubscriptionFromStripe(
+      makeStripeSubscription({
+        items: { data: [{ price: { id: 'price_y', unit_amount: 249000, currency: 'eur', recurring: { interval: 'year' } } }] },
+      } as never),
+    );
+    expect(mockState.subscriptionUpsert).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ billingInterval: 'year', amountCents: 249000 }),
+        update: expect.objectContaining({ billingInterval: 'year' }),
+      }),
+    );
+
+    mockState.findUniqueClientProduct.mockResolvedValueOnce(cp);
+    await syncSubscriptionFromStripe(makeStripeSubscription());
+    expect(mockState.subscriptionUpsert).toHaveBeenLastCalledWith(
+      expect.objectContaining({ create: expect.objectContaining({ billingInterval: 'month' }) }),
+    );
+  });
+
   it('throws when the Stripe subscription has no kairikos_client_product_id metadata', async () => {
     await expect(
       syncSubscriptionFromStripe(makeStripeSubscription({ metadata: {} })),

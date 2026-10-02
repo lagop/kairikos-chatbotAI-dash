@@ -12,6 +12,9 @@ const BodySchema = z.object({
   stripeProductId: z.string().min(1),
   stripeRecurringPriceId: z.string().min(1).nullish(),
   stripeSetupPriceId: z.string().min(1).nullish(),
+  // Pago anual (01/10/2026). Ausente = no tocarlo: los fallos parciales
+  // anteriores no lo traen.
+  stripeAnnualPriceId: z.string().min(1).nullish(),
 });
 
 /**
@@ -48,6 +51,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ productI
       stripeProductId: body.data.stripeProductId,
       stripeRecurringPriceId: body.data.stripeRecurringPriceId ?? null,
       stripeSetupPriceId: body.data.stripeSetupPriceId ?? null,
+      ...(body.data.stripeAnnualPriceId !== undefined ? { stripeAnnualPriceId: body.data.stripeAnnualPriceId } : {}),
     },
     actor,
   );

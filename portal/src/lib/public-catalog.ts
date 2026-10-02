@@ -1,6 +1,7 @@
 import 'server-only';
 
 import type { PrismaClient } from '@prisma/client';
+import { annualPriceCents } from './annual-billing';
 import { PRODUCT_CATALOGS, PRODUCT_CODES, type ProductCode } from '@/lib/catalogs';
 
 // =============================================================================
@@ -76,6 +77,13 @@ export interface PublicCatalogTier {
    * que la web tampoco debe tener su propia lista de cuáles son.
    */
   selfServe: boolean;
+  /**
+   * Plan de precios del 01/10/2026 — lo que cuesta el año pagado de una vez
+   * (12 meses por el precio de 10, sin alta), en céntimos. Null mientras el
+   * escalón no tenga precio anual creado en Stripe: la web no debe anunciar un
+   * pago que el portal todavía no sabe cobrar.
+   */
+  annualPriceCents: number | null;
 }
 
 export interface PublicCatalogProduct {
@@ -114,6 +122,7 @@ type ProductRow = {
   setupFeeCents: number;
   currency: string;
   selfServeEligible: boolean;
+  stripeAnnualPriceId?: string | null;
 };
 
 /** Agrupa filas de Product en la forma que se publica. Pura, para poder testearla. */
@@ -129,6 +138,7 @@ export function buildPublicCatalog(rows: ProductRow[], generatedAt: Date): Publi
       setupFeeCents: row.setupFeeCents,
       currency: row.currency,
       selfServe: row.selfServeEligible,
+      annualPriceCents: row.stripeAnnualPriceId && row.priceCents > 0 ? annualPriceCents(row.priceCents) : null,
     });
     porCodigo.set(row.code, tiers);
   }
@@ -175,6 +185,7 @@ export async function loadPublicCatalog(
       setupFeeCents: true,
       currency: true,
       selfServeEligible: true,
+      stripeAnnualPriceId: true,
     },
   });
 

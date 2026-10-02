@@ -697,6 +697,14 @@ model Product {
   // Stripe one-time-price id for the setup fee. NULL when setupFeeCents
   // is 0, or when the fee hasn't been provisioned on Stripe yet.
   stripeSetupPriceId     String?  @map("stripe_setup_price_id")
+  // Plan de precios del 01/10/2026 — el pago anual: 12 meses por el precio de
+  // 10 (ANNUAL_MONTHS_CHARGED en lib/annual-billing.ts) y sin cuota de alta.
+  // Es un segundo Price recurrente (interval: year) bajo el mismo Stripe
+  // Product. NULL hasta que el operador lo crea («Crear precio anual» en
+  // /admin/portal/settings/billing) o en el Bootstrap de un escalón nuevo.
+  // El importe no se guarda aparte: es siempre priceCents × 10, y «Cambiar
+  // precio» rehace los dos a la vez para que no puedan separarse.
+  stripeAnnualPriceId    String?  @unique @map("stripe_annual_price_id")
   // 'test' | 'live' | NULL — which Stripe mode stripeProductId/
   // stripeRecurringPriceId/stripeSetupPriceId were created under. There
   // is no reliable, documented way to infer test-vs-live from a Stripe
@@ -958,8 +966,12 @@ model Subscription {
   currentPeriodEnd   DateTime? @map("current_period_end")
   cancelAtPeriodEnd  Boolean   @default(false) @map("cancel_at_period_end")
   canceledAt         DateTime? @map("canceled_at")
-  // Currency minor units (9900 = 99€).
+  // Currency minor units (9900 = 99€). Lo que se cobra por PERIODO: en una
+  // suscripción anual es el importe del año. Para el MRR, monthlyEquivalentCents.
   amountCents        Int?      @map("amount_cents")
+  // 'month' | 'year' — price.recurring.interval de Stripe (pago anual desde el
+  // 01/10/2026). Todas las anteriores son mensuales.
+  billingInterval    String    @default("month") @map("billing_interval")
   currency           String    @default("eur")
   // Latest Stripe subscription snapshot. NOT source of truth.
   metadata           Json      @default("{}")

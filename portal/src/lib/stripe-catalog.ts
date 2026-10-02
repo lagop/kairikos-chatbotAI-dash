@@ -4,6 +4,7 @@ import { prisma } from './prisma';
 import { getStripe } from './stripe';
 import { resolveActiveStripeSecret } from './stripe-credentials';
 import { logError } from './observability';
+import { annualPriceCents } from './annual-billing';
 
 export interface CatalogActor {
   operatorId: string;
@@ -21,11 +22,16 @@ export type CatalogMutationError =
   // Refuses to null out the pointer to a Stripe object real clients are
   // actively paying against.
   | { kind: 'has_active_subscriptions'; count: number }
+  // Pago anual: el escalón no tiene cuota mensual (la web), o ya tiene su
+  // precio anual y crear otro lo duplicaría.
+  | { kind: 'annual_not_applicable' }
+  | { kind: 'annual_already_exists' }
   | {
       kind: 'partial_failure';
       stripeProductId: string;
       stripeRecurringPriceId: string | null;
       stripeSetupPriceId: string | null;
+      stripeAnnualPriceId?: string | null;
     };
 
 export type CatalogMutationResult =
@@ -41,6 +47,28 @@ function auditSnapshot(product: Product, mode: string | null) {
     priceCents: product.priceCents,
     setupFeeCents: product.setupFeeCents,
   };
+}
+
+/**
+ * El Price anual de un escalón: recurrente con interval 'year' e importe
+ * priceCents × ANNUAL_MONTHS_CHARGED (lib/annual-billing.ts). Sin Price de
+ * alta asociado: quien paga el año no paga alta, y eso lo decide el checkout
+ * al no añadir esa línea.
+ */
+async function createAnnualPrice(
+  stripe: Awaited<ReturnType<typeof getStripe>>,
+  stripeProductId: string,
+  product: Pick<Product, 'id' | 'currency'>,
+  monthlyCents: number,
+): Promise<string> {
+  const price = await stripe.prices.create({
+    product: stripeProductId,
+    currency: product.currency.toLowerCase(),
+    unit_amount: annualPriceCents(monthlyCents),
+    recurring: { interval: 'year' },
+    metadata: { kairikos_product_id: product.id, kairikos_billing_interval: 'annual' },
+  });
+  return price.id;
 }
 
 /**
@@ -89,6 +117,11 @@ export async function bootstrapStripeProductForTier(
     });
     setupPriceId = setupPrice.id;
   }
+  // Pago anual (01/10/2026): todo escalón con cuota mensual nace también con
+  // su precio anual. El último de los tres, para que un fallo aquí deje los
+  // otros dos creados y recuperables con «Recuperar», como antes.
+  const annualPriceId =
+    product.priceCents > 0 ? await createAnnualPrice(stripe, stripeProduct.id, product, product.priceCents) : null;
 
   try {
     const before = auditSnapshot(product, null);
@@ -99,6 +132,7 @@ export async function bootstrapStripeProductForTier(
           stripeProductId: stripeProduct.id,
           stripeRecurringPriceId: recurringPriceId,
           stripeSetupPriceId: setupPriceId,
+          stripeAnnualPriceId: annualPriceId,
           stripePriceMode: resolved?.mode ?? null,
         },
       }),
@@ -111,6 +145,7 @@ export async function bootstrapStripeProductForTier(
             stripeProductId: stripeProduct.id,
             stripeRecurringPriceId: recurringPriceId,
             stripeSetupPriceId: setupPriceId,
+            stripeAnnualPriceId: annualPriceId,
             stripePriceMode: resolved?.mode ?? null,
             priceCents: product.priceCents,
             setupFeeCents: product.setupFeeCents,
@@ -131,11 +166,13 @@ export async function bootstrapStripeProductForTier(
       stripeProductId: stripeProduct.id,
       stripeRecurringPriceId: recurringPriceId,
       stripeSetupPriceId: setupPriceId,
+      stripeAnnualPriceId: annualPriceId,
     });
     return {
       ok: false,
       error: {
         kind: 'partial_failure',
+        stripeAnnualPriceId: annualPriceId,
         stripeProductId: stripeProduct.id,
         stripeRecurringPriceId: recurringPriceId,
         stripeSetupPriceId: setupPriceId,
@@ -271,6 +308,7 @@ export async function resetForModeMismatch(
         stripeProductId: null,
         stripeRecurringPriceId: null,
         stripeSetupPriceId: null,
+        stripeAnnualPriceId: null,
         stripePriceMode: null,
       },
     }),
@@ -351,6 +389,16 @@ export async function repriceStripeTier(
     }
   }
 
+  // Pago anual (01/10/2026): el año se rehace siempre con la mensualidad
+  // nueva. Dejar el anual viejo vivo haría que «12 por el precio de 10»
+  // dejara de ser verdad en el primer cambio de precio. Si el escalón aún no
+  // tenía anual, se le crea: cambiar el precio es buen momento para ponerlo
+  // al día.
+  const newAnnualPriceId =
+    input.newPriceCents > 0
+      ? await createAnnualPrice(stripe, product.stripeProductId, product, input.newPriceCents)
+      : null;
+
   // Best-effort archive of the superseded price(s) — a failure here is
   // cosmetic (the old Price stays `active: true` in Stripe but nothing
   // references it anymore locally) and must never block the reprice
@@ -359,7 +407,7 @@ export async function repriceStripeTier(
   const oldSetupPriceId = setupFeeChanging || (input.newSetupFeeCents === 0 && product.stripeSetupPriceId)
     ? product.stripeSetupPriceId
     : null;
-  for (const oldId of [oldRecurringPriceId, oldSetupPriceId]) {
+  for (const oldId of [oldRecurringPriceId, oldSetupPriceId, product.stripeAnnualPriceId]) {
     if (!oldId) continue;
     await stripe.prices.update(oldId, { active: false }).catch(async (err) => {
       logError('stripe-catalog.price_archive_failed', err, { productId: product.id, stripePriceId: oldId });
@@ -386,6 +434,7 @@ export async function repriceStripeTier(
         setupFeeCents: nextSetupFeeCents,
         stripeRecurringPriceId: newRecurringPrice.id,
         stripeSetupPriceId: newSetupPriceId,
+        stripeAnnualPriceId: newAnnualPriceId,
         stripePriceMode: resolved?.mode ?? product.stripePriceMode,
       },
     });
@@ -406,6 +455,7 @@ export async function repriceStripeTier(
           stripeProductId: product.stripeProductId,
           stripeRecurringPriceId: newRecurringPrice.id,
           stripeSetupPriceId: newSetupPriceId,
+          stripeAnnualPriceId: newAnnualPriceId,
           stripePriceMode: resolved?.mode ?? product.stripePriceMode,
           priceCents: input.newPriceCents,
           setupFeeCents: nextSetupFeeCents,
@@ -422,6 +472,7 @@ export async function repriceStripeTier(
       stripeProductId: product.stripeProductId,
       stripeRecurringPriceId: newRecurringPrice.id,
       stripeSetupPriceId: newSetupPriceId,
+      stripeAnnualPriceId: newAnnualPriceId,
     });
     return {
       ok: false,
@@ -430,6 +481,7 @@ export async function repriceStripeTier(
         stripeProductId: product.stripeProductId,
         stripeRecurringPriceId: newRecurringPrice.id,
         stripeSetupPriceId: newSetupPriceId,
+        stripeAnnualPriceId: newAnnualPriceId,
       },
     };
   }
@@ -439,6 +491,8 @@ export interface ReconcileStripeIds {
   stripeProductId: string;
   stripeRecurringPriceId: string | null;
   stripeSetupPriceId: string | null;
+  /** Opcional: los fallos parciales anteriores al pago anual no lo traen. */
+  stripeAnnualPriceId?: string | null;
 }
 
 /**
@@ -461,6 +515,7 @@ export async function reconcileStripeProductForTier(
       stripeProductId: stripeIds.stripeProductId,
       stripeRecurringPriceId: stripeIds.stripeRecurringPriceId,
       stripeSetupPriceId: stripeIds.stripeSetupPriceId,
+      ...(stripeIds.stripeAnnualPriceId !== undefined ? { stripeAnnualPriceId: stripeIds.stripeAnnualPriceId } : {}),
     },
   });
   await prisma.stripeCatalogAudit.create({
@@ -474,6 +529,70 @@ export async function reconcileStripeProductForTier(
     },
   });
   return { ok: true, product: updated };
+}
+
+/**
+ * Crea el precio anual de un escalón que ya está en Stripe y todavía no lo
+ * tiene — los que se crearon antes del 01/10/2026. Los nuevos lo traen del
+ * Bootstrap, y «Cambiar precio» lo rehace junto a la mensualidad.
+ *
+ * Nunca toca el precio mensual ni a nadie que ya pague: es un Price más bajo
+ * el mismo Stripe Product.
+ */
+export async function createAnnualPriceForTier(
+  productId: string,
+  actor: CatalogActor,
+): Promise<CatalogMutationResult> {
+  const product = await prisma.product.findUniqueOrThrow({ where: { id: productId } });
+  if (!product.stripeProductId) {
+    return { ok: false, error: { kind: 'not_bootstrapped_yet' } };
+  }
+  if (product.priceCents <= 0) {
+    return { ok: false, error: { kind: 'annual_not_applicable' } };
+  }
+  if (product.stripeAnnualPriceId) {
+    return { ok: false, error: { kind: 'annual_already_exists' } };
+  }
+
+  const stripe = await getStripe();
+  const annualPriceId = await createAnnualPrice(stripe, product.stripeProductId, product, product.priceCents);
+
+  try {
+    const before = auditSnapshot(product, product.stripePriceMode);
+    // Condicionado a que siga sin anual: dos clics seguidos no pueden dejar
+    // dos precios anuales apuntados.
+    const updateResult = await prisma.product.updateMany({
+      where: { id: product.id, stripeAnnualPriceId: null, priceCents: product.priceCents },
+      data: { stripeAnnualPriceId: annualPriceId },
+    });
+    if (updateResult.count === 0) {
+      throw new Error('concurrent_modification_after_stripe_write');
+    }
+    await prisma.stripeCatalogAudit.create({
+      data: {
+        productId: product.id,
+        action: 'annual_price_created',
+        before,
+        after: { stripeAnnualPriceId: annualPriceId, annualPriceCents: annualPriceCents(product.priceCents) },
+        actorOperatorId: actor.operatorId,
+        actorEmail: actor.operatorEmail,
+      },
+    });
+    const updated = await prisma.product.findUniqueOrThrow({ where: { id: product.id } });
+    return { ok: true, product: updated };
+  } catch (err) {
+    logError('stripe-catalog.annual_partial_failure', err, { productId: product.id, stripeAnnualPriceId: annualPriceId });
+    return {
+      ok: false,
+      error: {
+        kind: 'partial_failure',
+        stripeProductId: product.stripeProductId,
+        stripeRecurringPriceId: product.stripeRecurringPriceId,
+        stripeSetupPriceId: product.stripeSetupPriceId,
+        stripeAnnualPriceId: annualPriceId,
+      },
+    };
+  }
 }
 
 /** How many clients are actively subscribed to this tier right now —

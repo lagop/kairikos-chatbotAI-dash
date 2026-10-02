@@ -44,6 +44,7 @@ export default async function AdminBillingSettingsPage() {
         stripeProductId: true,
         stripeRecurringPriceId: true,
         stripeSetupPriceId: true,
+        stripeAnnualPriceId: true,
         stripePriceMode: true,
         selfServeEligible: true,
       },

@@ -8,7 +8,8 @@ import { createProductCheckoutSession, type CheckoutSessionError } from '@/lib/s
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const BodySchema = z.object({ productId: z.string().uuid() });
+// billing: pago anual (plan de precios del 01/10/2026). Ausente = mensual.
+const BodySchema = z.object({ productId: z.string().uuid(), billing: z.enum(['monthly', 'annual']).optional() });
 
 /**
  * WP-30 — client-facing self-serve checkout. Distinct from the operator
@@ -20,7 +21,7 @@ const BodySchema = z.object({ productId: z.string().uuid() });
  * band" (operator flow) rather than through Stripe's hosted page.
  *
  *   POST /api/portal/billing/checkout
- *   body: { productId: UUID }
+ *   body: { productId: UUID, billing?: 'monthly' | 'annual' }
  *   200 { url: string }  — redirect the browser here
  *   400 { error: 'product_not_self_serve_eligible' } — the tier exists and
  *        is on sale, but not to a client buying it themselves; an operator
@@ -56,6 +57,7 @@ const ERROR_STATUS: Record<CheckoutSessionError, number> = {
   product_requires_quote: 400,
   requires_chatbot: 400,
   included_in_plan: 409,
+  annual_price_missing: 400,
   client_has_no_tenant: 503,
   already_contracted: 409,
   product_price_id_missing: 404,
@@ -104,6 +106,7 @@ export async function POST(req: NextRequest) {
   const result = await createProductCheckoutSession({
     clientId: resolved.clientId,
     productId: body.data.productId,
+    billing: body.data.billing,
     actorId: `client:${resolved.clientId}`,
   });
 

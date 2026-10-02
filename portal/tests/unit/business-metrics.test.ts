@@ -108,6 +108,21 @@ describe('loadBusinessMetrics — de dónde sale el MRR', () => {
     expect(metrics.mrrTotalCents).toBe(9900);
   });
 
+  // Pago anual (01/10/2026): Stripe cobra el año entero de una vez.
+  it('una anual suma su doceava parte, no el año entero', async () => {
+    const { prisma } = fakePrisma({
+      activos: [
+        {
+          clientId: 'c1',
+          product: PRODUCTO,
+          subscription: { amountCents: 149000, status: 'active', billingInterval: 'year' },
+        },
+      ],
+    });
+    const metrics = await loadBusinessMetrics(prisma);
+    expect(metrics.mrrTotalCents).toBe(12417);
+  });
+
   it('sin suscripción cae a la tarifa del catálogo', async () => {
     const { prisma } = fakePrisma({ activos: [{ clientId: 'c1', product: PRODUCTO, subscription: null }] });
     const metrics = await loadBusinessMetrics(prisma);

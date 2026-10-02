@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { annualPriceCents, annualSavingsCents, type BillingInterval } from '@/lib/annual-billing';
 
 // =============================================================================
 // WP-30 — self-serve "add a product" card for /portal/productos. Two
@@ -23,6 +24,9 @@ export interface SelfServeTierOption {
   priceCents: number;
   setupFeeCents: number;
   currency: string;
+  /** Plan de precios del 01/10/2026: el escalón tiene precio anual en Stripe
+   *  (12 meses por el precio de 10, sin alta). Ausente = solo mensual. */
+  annualAvailable?: boolean;
 }
 
 interface SelfServeProductCardBaseProps {
@@ -55,15 +59,30 @@ function priceSummary(tier: SelfServeTierOption): string {
   return 'Precio a confirmar';
 }
 
+function annualSummary(tier: SelfServeTierOption): string {
+  const year = formatPrice(annualPriceCents(tier.priceCents), tier.currency);
+  return `${year}/año, sin alta`;
+}
+
+/** Lo que se ahorra pagando el año: las dos mensualidades y, si la hay, el alta. */
+function annualSavingsLabel(tier: SelfServeTierOption): string {
+  return formatPrice(annualSavingsCents(tier.priceCents) + tier.setupFeeCents, tier.currency);
+}
+
 export function SelfServeProductCard(props: SelfServeProductCardProps) {
   const initialTierId = props.status === 'available' ? props.tiers[0]?.productId ?? '' : '';
   const [selectedProductId, setSelectedProductId] = useState<string>(
     props.status === 'available' ? initialTierId : props.productId,
   );
+  const [billing, setBilling] = useState<BillingInterval>('monthly');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const selectedTier = props.status === 'available' ? props.tiers.find((t) => t.productId === selectedProductId) : null;
+  // El anual solo se ofrece si el escalón elegido lo tiene; al cambiar a uno
+  // que no, se vuelve a mensual en vez de mandar una petición que fallaría.
+  const annualOffered = Boolean(selectedTier?.annualAvailable);
+  const effectiveBilling: BillingInterval = annualOffered ? billing : 'monthly';
 
   async function startCheckout() {
     setBusy(true);
@@ -72,7 +91,7 @@ export function SelfServeProductCard(props: SelfServeProductCardProps) {
       const res = await fetch('/api/portal/billing/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId: selectedProductId }),
+        body: JSON.stringify({ productId: selectedProductId, billing: effectiveBilling }),
       });
       if (!res.ok) {
         const detail = await res.json().catch(() => null);
@@ -80,6 +99,8 @@ export function SelfServeProductCard(props: SelfServeProductCardProps) {
           setError('Tu plan de chatbot ya incluye Captación con IA: no tienes que contratarla aparte.');
         } else if (res.status === 409) {
           setError('Ya tienes este producto contratado.');
+        } else if (detail?.error === 'annual_price_missing') {
+          setError('El pago anual de este plan aún no está disponible. Puedes contratarlo al mes.');
         } else if (detail?.error === 'requires_chatbot') {
           setError('Necesitas el chatbot activo antes de contratar Captación con IA.');
         } else {
@@ -102,7 +123,7 @@ export function SelfServeProductCard(props: SelfServeProductCardProps) {
         <h2 className="text-lg font-semibold">{props.label}</h2>
         {props.status === 'available' && selectedTier ? (
           <p className="mt-1 text-sm text-kairikos-muted" data-testid="self-serve-product-price">
-            {priceSummary(selectedTier)}
+            {effectiveBilling === 'annual' ? annualSummary(selectedTier) : priceSummary(selectedTier)}
           </p>
         ) : null}
         {props.status === 'pending' ? (
@@ -125,6 +146,35 @@ export function SelfServeProductCard(props: SelfServeProductCardProps) {
             </option>
           ))}
         </select>
+      ) : null}
+
+      {props.status === 'available' && selectedTier && annualOffered ? (
+        <fieldset className="space-y-1.5" data-testid="self-serve-billing">
+          <legend className="sr-only">Forma de pago</legend>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="radio"
+              name={`billing-${props.code}`}
+              checked={effectiveBilling === 'monthly'}
+              onChange={() => setBilling('monthly')}
+              data-testid="self-serve-billing-monthly"
+            />
+            Mensual · {priceSummary(selectedTier)}
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="radio"
+              name={`billing-${props.code}`}
+              checked={effectiveBilling === 'annual'}
+              onChange={() => setBilling('annual')}
+              data-testid="self-serve-billing-annual"
+            />
+            <span>
+              Anual · {annualSummary(selectedTier)}{' '}
+              <span className="text-kairikos-accent2">(ahorras {annualSavingsLabel(selectedTier)})</span>
+            </span>
+          </label>
+        </fieldset>
       ) : null}
 
       {error ? (

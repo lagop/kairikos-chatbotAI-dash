@@ -278,6 +278,79 @@ describe('createProductCheckoutSession — session mode branching', () => {
     );
   });
 
+  // Plan de precios del 01/10/2026 — el pago anual.
+  it('anual: cobra solo el precio del año, sin la línea de alta, y lo deja en los metadatos', async () => {
+    mockState.findUniqueProduct.mockResolvedValueOnce({
+      ...RECURRING_PRODUCT,
+      stripeSetupPriceId: 'price_setup_1',
+      setupFeeCents: 9900,
+      stripeAnnualPriceId: 'price_annual_1',
+    });
+    const { createProductCheckoutSession } = await import('@/lib/stripe-billing');
+    const result = await createProductCheckoutSession({
+      clientId: 'client_1',
+      productId: RECURRING_PRODUCT.id,
+      actorId: ACTOR_ID,
+      billing: 'annual',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(mockState.checkoutSessionsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: 'subscription',
+        line_items: [{ price: 'price_annual_1', quantity: 1 }],
+        subscription_data: { metadata: expect.objectContaining({ kairikos_billing_interval: 'annual' }) },
+      }),
+    );
+  });
+
+  it('anual sin precio anual creado: lo rechaza ANTES de crear la fila pendiente', async () => {
+    mockState.findUniqueProduct.mockResolvedValueOnce({ ...RECURRING_PRODUCT, stripeAnnualPriceId: null });
+    const { createProductCheckoutSession } = await import('@/lib/stripe-billing');
+    const result = await createProductCheckoutSession({
+      clientId: 'client_1',
+      productId: RECURRING_PRODUCT.id,
+      actorId: ACTOR_ID,
+      billing: 'annual',
+    });
+
+    expect(result).toEqual({ ok: false, error: 'annual_price_missing', productId: RECURRING_PRODUCT.id });
+    expect(mockState.clientProductCreate).not.toHaveBeenCalled();
+    expect(mockState.checkoutSessionsCreate).not.toHaveBeenCalled();
+  });
+
+  it('anual de un pago único (la web): no existe', async () => {
+    mockState.findUniqueProduct.mockResolvedValueOnce({ ...ONE_TIME_PRODUCT, stripeAnnualPriceId: 'price_x' });
+    const { createProductCheckoutSession } = await import('@/lib/stripe-billing');
+    const result = await createProductCheckoutSession({
+      clientId: 'client_1',
+      productId: ONE_TIME_PRODUCT.id,
+      actorId: ACTOR_ID,
+      billing: 'annual',
+    });
+    expect(result).toEqual(expect.objectContaining({ ok: false, error: 'annual_price_missing' }));
+  });
+
+  it('sin billing sigue siendo mensual, con su alta', async () => {
+    mockState.findUniqueProduct.mockResolvedValueOnce({
+      ...RECURRING_PRODUCT,
+      stripeSetupPriceId: 'price_setup_1',
+      setupFeeCents: 9900,
+      stripeAnnualPriceId: 'price_annual_1',
+    });
+    const { createProductCheckoutSession } = await import('@/lib/stripe-billing');
+    await createProductCheckoutSession({ clientId: 'client_1', productId: RECURRING_PRODUCT.id, actorId: ACTOR_ID });
+    expect(mockState.checkoutSessionsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        line_items: [
+          { price: 'price_recurring_1', quantity: 1 },
+          { price: 'price_setup_1', quantity: 1 },
+        ],
+        metadata: expect.objectContaining({ kairikos_billing_interval: 'monthly' }),
+      }),
+    );
+  });
+
   it('creates a payment-mode session with invoice_creation enabled for a one-time-only product', async () => {
     mockState.findUniqueProduct.mockResolvedValueOnce(ONE_TIME_PRODUCT);
     const { createProductCheckoutSession } = await import('@/lib/stripe-billing');

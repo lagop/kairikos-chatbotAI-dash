@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { TotpStepUpModal } from './TotpStepUpModal';
+import { annualPriceCents } from '@/lib/annual-billing';
 
 type StripeMode = 'test' | 'live';
 
@@ -33,6 +34,8 @@ export interface ProductRow {
   stripeProductId: string | null;
   stripeRecurringPriceId: string | null;
   stripeSetupPriceId: string | null;
+  /** Pago anual (01/10/2026): el Price de 12 meses por el precio de 10. */
+  stripeAnnualPriceId: string | null;
   stripePriceMode: StripeMode | null;
   /** WP-31 — whether this tier shows up on /empezar, the public signup
    *  page. Independent of bootstrap status: a tier can be on Stripe
@@ -44,6 +47,7 @@ interface PartialFailure {
   stripeProductId: string;
   stripeRecurringPriceId: string | null;
   stripeSetupPriceId: string | null;
+  stripeAnnualPriceId?: string | null;
 }
 
 type ToastKind = 'success' | 'error';
@@ -58,6 +62,8 @@ const ERROR_LABEL: Record<string, string> = {
   credential_not_configured_for_mode: 'Primero guarda una clave para ese modo.',
   already_bootstrapped: 'Este tier ya está creado en Stripe.',
   not_bootstrapped_yet: 'Este tier todavía no está creado en Stripe.',
+  annual_already_exists: 'Este escalón ya tiene precio anual.',
+  annual_not_applicable: 'Este escalón no tiene cuota mensual: no hay pago anual que crear.',
   no_mode_mismatch: 'Ya coincide con el modo activo — nada que reiniciar.',
   concurrent_modification: 'El precio cambió mientras editabas — recarga la página.',
   service_unavailable: 'No disponible en este momento.',
@@ -241,6 +247,27 @@ export function StripeCatalogSettingsPanel({
         if (res.ok) {
           setProducts((rows) => rows.map((r) => (r.id === product.id ? { ...r, ...(body.product as object) } : r)));
           showToast({ kind: 'success', message: `${product.name}: creado en Stripe.` });
+        } else if (body.error === 'partial_failure') {
+          setPartialFailures((m) => ({ ...m, [product.id]: body as unknown as PartialFailure }));
+          showToast({ kind: 'error', message: 'Se creó en Stripe pero no se guardó aquí — usa "Recuperar".' });
+        } else {
+          showToast({ kind: 'error', message: errorLabel(body.error as string) });
+        }
+      },
+    );
+  }
+
+  // Pago anual (01/10/2026) — para los escalones que ya estaban en Stripe.
+  // Los nuevos lo traen del Bootstrap y «Cambiar precio» lo rehace solo.
+  async function createAnnualPrice(product: ProductRow) {
+    await requestWithStepUp(
+      `annual-${product.id}`,
+      () => fetch(`/api/admin/portal/settings/products/${product.id}/annual-price`, { method: 'POST' }),
+      async (res) => {
+        const body = await safeJson(res);
+        if (res.ok) {
+          setProducts((rows) => rows.map((r) => (r.id === product.id ? { ...r, ...(body.product as object) } : r)));
+          showToast({ kind: 'success', message: `${product.name}: precio anual creado.` });
         } else if (body.error === 'partial_failure') {
           setPartialFailures((m) => ({ ...m, [product.id]: body as unknown as PartialFailure }));
           showToast({ kind: 'error', message: 'Se creó en Stripe pero no se guardó aquí — usa "Recuperar".' });
@@ -642,6 +669,11 @@ export function StripeCatalogSettingsPanel({
                         {product.priceCents > 0 ? '/mes' : ''}
                         {product.setupFeeCents > 0 ? ` + ${formatPrice(product.setupFeeCents, product.currency)} de alta` : ''}
                       </p>
+                      {product.stripeAnnualPriceId && product.priceCents > 0 ? (
+                        <p className="text-xs text-kairikos-muted" data-testid={`stripe-annual-${product.id}`}>
+                          Anual: {formatPrice(annualPriceCents(product.priceCents), product.currency)}/año, sin alta
+                        </p>
+                      ) : null}
                     </div>
                     <div className="flex items-center gap-2">
                       <label
@@ -715,9 +747,23 @@ export function StripeCatalogSettingsPanel({
                             : `Recrear en ${credentials.activeMode}`}
                         </button>
                       ) : (
-                        <button type="button" className="btn-ghost" onClick={() => toggleReprice(product)}>
-                          {repriceOpenFor === product.id ? 'Cancelar' : 'Cambiar precio'}
-                        </button>
+                        <>
+                          {product.priceCents > 0 && !product.stripeAnnualPriceId ? (
+                            <button
+                              type="button"
+                              className="btn-ghost"
+                              disabled={busyKey === `annual-${product.id}`}
+                              onClick={() => createAnnualPrice(product)}
+                              data-testid={`stripe-annual-create-${product.id}`}
+                              title={`Crea en Stripe el pago anual: ${formatPrice(annualPriceCents(product.priceCents), product.currency)}/año, sin alta.`}
+                            >
+                              {busyKey === `annual-${product.id}` ? 'Creando…' : 'Crear precio anual'}
+                            </button>
+                          ) : null}
+                          <button type="button" className="btn-ghost" onClick={() => toggleReprice(product)}>
+                            {repriceOpenFor === product.id ? 'Cancelar' : 'Cambiar precio'}
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
