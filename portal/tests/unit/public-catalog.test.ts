@@ -141,6 +141,28 @@ describe('tierLabel', () => {
   });
 });
 
+describe('pago anual en el catálogo público', () => {
+  it('publica el importe del año (10 meses) solo si el escalón tiene precio anual', () => {
+    const cat = buildPublicCatalog(
+      [fila({ tier: 'starter', priceCents: 7900, stripeAnnualPriceId: 'price_a' }), fila({ tier: 'pro', priceCents: 17900 })],
+      AHORA,
+    );
+    const [web, pro] = cat.products[0].tiers;
+    expect(web.annualPriceCents).toBe(79000);
+    // Sin precio anual creado, la web no debe anunciar un pago que el portal
+    // no sabe cobrar.
+    expect(pro.annualPriceCents).toBeNull();
+  });
+
+  it('un pago único (la web) no tiene anual aunque alguien le pusiera el id', () => {
+    const cat = buildPublicCatalog(
+      [fila({ code: 'web', tier: 'standard', priceCents: 0, setupFeeCents: 79900, stripeAnnualPriceId: 'price_x' })],
+      AHORA,
+    );
+    expect(cat.products[0].tiers[0].annualPriceCents).toBeNull();
+  });
+});
+
 describe('loadPublicCatalog', () => {
   it('pide solo columnas públicas y solo productos activos', async () => {
     let capturado: Record<string, unknown> | null = null;
@@ -148,12 +170,12 @@ describe('loadPublicCatalog', () => {
       product: {
         findMany: async (args: Record<string, unknown>) => {
           capturado = args;
-          return [fila()];
+          return [fila({ stripeAnnualPriceId: 'price_secreto_anual' })];
         },
       },
     } as never;
 
-    await loadPublicCatalog(prisma, AHORA);
+    const salida = await loadPublicCatalog(prisma, AHORA);
 
     expect(capturado).not.toBeNull();
     const args = capturado as unknown as {
@@ -166,14 +188,22 @@ describe('loadPublicCatalog', () => {
     // Esta es la única defensa: la ruta no autentica a propósito, porque lo
     // que devuelve ya está en /planes/. Ampliar el select es lo que la
     // rompería, así que se fija la lista entera.
+    //
+    // stripeAnnualPriceId es la única excepción, y es deliberada (pago anual,
+    // 01/10/2026): se lee solo para saber SI el escalón tiene precio anual, y
+    // lo que se publica es el importe. Que el id no sale lo comprueba el
+    // final de este test, mirando la salida entera.
     expect(Object.keys(args.select).sort()).toEqual([
       'code',
       'currency',
       'priceCents',
       'selfServeEligible',
       'setupFeeCents',
+      'stripeAnnualPriceId',
       'tier',
     ]);
+    expect(JSON.stringify(salida)).not.toContain('price_secreto_anual');
+    expect(salida.products[0].tiers[0].annualPriceCents).toBe(99000);
 
     for (const prohibido of [
       'stripeProductId',

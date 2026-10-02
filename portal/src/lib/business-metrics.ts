@@ -1,5 +1,6 @@
 import 'server-only';
 import type { PrismaClient } from '@prisma/client';
+import { monthlyEquivalentCents } from './annual-billing';
 
 // =============================================================================
 // A9 — las métricas del negocio propio, no las de un cliente.
@@ -77,7 +78,7 @@ export async function loadBusinessMetrics(
         select: {
           clientId: true,
           product: { select: { code: true, tier: true, priceCents: true } },
-          subscription: { select: { amountCents: true, status: true } },
+          subscription: { select: { amountCents: true, status: true, billingInterval: true } },
         },
       }),
       prisma.clientProduct.count({
@@ -112,9 +113,12 @@ export async function loadBusinessMetrics(
     // Lo que de verdad se cobra manda sobre la tarifa. Una suscripción con
     // descuento o con un precio viejo factura lo suyo, no lo que diga hoy el
     // catálogo.
+    // Una anual cobra el año de una vez: al MRR va su doceava parte.
     const cents =
       (row.subscription && ['active', 'trialing', 'past_due'].includes(row.subscription.status)
-        ? row.subscription.amountCents
+        ? row.subscription.amountCents !== null
+          ? monthlyEquivalentCents(row.subscription.amountCents, row.subscription.billingInterval)
+          : null
         : row.product.priceCents) ?? 0;
     mrrTotalCents += cents;
 

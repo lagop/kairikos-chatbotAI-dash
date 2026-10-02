@@ -295,7 +295,7 @@ export async function LlamadasPageBody({
         prisma.product.findMany({
           where: { code: 'recall', isActive: true },
           orderBy: { priceCents: 'asc' },
-          select: { id: true, tier: true, priceCents: true, setupFeeCents: true, currency: true },
+          select: { id: true, tier: true, priceCents: true, setupFeeCents: true, currency: true, stripeAnnualPriceId: true },
         }),
         prisma.clientProduct.findFirst({
           where: { clientId: resolved.clientId, status: 'pending_payment', product: { code: 'recall' } },
@@ -311,6 +311,7 @@ export async function LlamadasPageBody({
         priceCents: p.priceCents,
         setupFeeCents: p.setupFeeCents,
         currency: p.currency,
+        annualAvailable: Boolean(p.stripeAnnualPriceId) && p.priceCents > 0,
       }));
       pendingProductId = pendingRow?.productId ?? null;
     }

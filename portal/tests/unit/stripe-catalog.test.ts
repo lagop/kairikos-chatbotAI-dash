@@ -60,6 +60,7 @@ import {
   updateDraftPricing,
   resetForModeMismatch,
   setSelfServeEligible,
+  createAnnualPriceForTier,
 } from '@/lib/stripe-catalog';
 
 const ACTOR = { operatorId: 'op_1', operatorEmail: 'lucia@kairikos.com' };
@@ -75,6 +76,7 @@ const UNBOOTSTRAPPED_PRODUCT = {
   stripeProductId: null,
   stripeRecurringPriceId: null,
   stripeSetupPriceId: null,
+  stripeAnnualPriceId: null,
   stripePriceMode: null,
 };
 
@@ -90,6 +92,12 @@ beforeEach(() => {
   Object.values(mockState).forEach((fn) => fn.mockReset && fn.mockReset());
   mockState.resolveActiveStripeSecret.mockResolvedValue({ mode: 'test', key: 'sk_test_x' });
   mockState.auditCreate.mockResolvedValue({});
+  // El precio anual (01/10/2026) se crea el ÚLTIMO, después de los que cada
+  // test encola con mockResolvedValueOnce; cuando la cola se acaba, responde
+  // esto.
+  mockState.pricesCreate.mockImplementation(async (args: { recurring?: { interval?: string } }) =>
+    args.recurring?.interval === 'year' ? { id: 'price_annual_new' } : { id: 'price_unexpected' },
+  );
 });
 
 describe('bootstrapStripeProductForTier', () => {
@@ -114,7 +122,14 @@ describe('bootstrapStripeProductForTier', () => {
       expect(result.product.stripeProductId).toBe('prod_stripe_new');
     }
     expect(mockState.productsCreate).toHaveBeenCalledTimes(1);
-    expect(mockState.pricesCreate).toHaveBeenCalledTimes(2);
+    // Mensual, alta y —pago anual, 01/10/2026— el año a precio de diez meses.
+    expect(mockState.pricesCreate).toHaveBeenCalledTimes(3);
+    expect(mockState.pricesCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ unit_amount: 99000, recurring: { interval: 'year' } }),
+    );
+    expect(mockState.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ stripeAnnualPriceId: 'price_annual_new' }) }),
+    );
     expect(mockState.auditCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ action: 'price_bootstrap_created', actorOperatorId: 'op_1' }),
@@ -162,6 +177,7 @@ describe('bootstrapStripeProductForTier', () => {
         stripeProductId: 'prod_stripe_orphan',
         stripeRecurringPriceId: 'price_recurring_orphan',
         stripeSetupPriceId: 'price_setup_orphan',
+        stripeAnnualPriceId: 'price_annual_new',
       },
     });
     expect(mockState.productsCreate).toHaveBeenCalledTimes(1);
@@ -376,6 +392,24 @@ describe('repriceStripeTier', () => {
     );
   });
 
+  // Pago anual (01/10/2026): el año va siempre atado a la mensualidad.
+  it('rehace el precio anual con la mensualidad nueva y archiva el anterior', async () => {
+    const withAnnual = { ...BOOTSTRAPPED_PRODUCT, stripeAnnualPriceId: 'price_old_annual' };
+    mockState.findUniqueOrThrow.mockResolvedValueOnce(withAnnual).mockResolvedValueOnce(withAnnual);
+    mockState.pricesCreate.mockResolvedValueOnce({ id: 'price_new' });
+    mockState.pricesUpdate.mockResolvedValue({});
+    mockState.updateMany.mockResolvedValueOnce({ count: 1 });
+
+    const result = await repriceStripeTier(REPRICE_INPUT, ACTOR);
+
+    expect(result.ok).toBe(true);
+    expect(mockState.pricesCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ product: 'prod_stripe_1', unit_amount: 129000, recurring: { interval: 'year' } }),
+    );
+    expect(mockState.updateMany.mock.calls[0][0].data.stripeAnnualPriceId).toBe('price_annual_new');
+    expect(mockState.pricesUpdate).toHaveBeenCalledWith('price_old_annual', { active: false });
+  });
+
   it('never calls stripe.subscriptions.update — existing subscribers keep their old price', async () => {
     // The mocked Stripe client has no `subscriptions` namespace at all;
     // if repriceStripeTier ever called it, this test would throw
@@ -454,6 +488,65 @@ describe('repriceStripeTier', () => {
     if (!result.ok) {
       expect(result.error.kind).toBe('partial_failure');
     }
+  });
+});
+
+describe('createAnnualPriceForTier', () => {
+  it('crea el anual (10 meses, interval year) de un escalón que ya estaba en Stripe', async () => {
+    mockState.findUniqueOrThrow
+      .mockResolvedValueOnce(BOOTSTRAPPED_PRODUCT)
+      .mockResolvedValueOnce({ ...BOOTSTRAPPED_PRODUCT, stripeAnnualPriceId: 'price_annual_new' });
+    mockState.updateMany.mockResolvedValueOnce({ count: 1 });
+
+    const result = await createAnnualPriceForTier('prod_reviews_basic', ACTOR);
+
+    expect(result.ok).toBe(true);
+    expect(mockState.pricesCreate).toHaveBeenCalledTimes(1);
+    expect(mockState.pricesCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ product: 'prod_stripe_1', unit_amount: 99000, recurring: { interval: 'year' } }),
+    );
+    // Condicionado a que siga sin anual y con el mismo precio: dos clics no
+    // dejan dos anuales, ni un anual de un precio que ya cambió.
+    expect(mockState.updateMany).toHaveBeenCalledWith({
+      where: { id: 'prod_reviews_basic', stripeAnnualPriceId: null, priceCents: 9900 },
+      data: { stripeAnnualPriceId: 'price_annual_new' },
+    });
+    // Nunca toca el precio mensual ni lo archiva.
+    expect(mockState.pricesUpdate).not.toHaveBeenCalled();
+    expect(mockState.auditCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: 'annual_price_created' }) }),
+    );
+  });
+
+  it('no crea un segundo anual', async () => {
+    mockState.findUniqueOrThrow.mockResolvedValueOnce({ ...BOOTSTRAPPED_PRODUCT, stripeAnnualPriceId: 'price_x' });
+    const result = await createAnnualPriceForTier('prod_reviews_basic', ACTOR);
+    expect(result).toEqual({ ok: false, error: { kind: 'annual_already_exists' } });
+    expect(mockState.pricesCreate).not.toHaveBeenCalled();
+  });
+
+  it('no hay anual sin cuota mensual (la web) ni sin estar en Stripe', async () => {
+    mockState.findUniqueOrThrow.mockResolvedValueOnce({ ...BOOTSTRAPPED_PRODUCT, priceCents: 0 });
+    await expect(createAnnualPriceForTier('prod_web', ACTOR)).resolves.toEqual({
+      ok: false,
+      error: { kind: 'annual_not_applicable' },
+    });
+    mockState.findUniqueOrThrow.mockResolvedValueOnce(UNBOOTSTRAPPED_PRODUCT);
+    await expect(createAnnualPriceForTier('prod_reviews_basic', ACTOR)).resolves.toEqual({
+      ok: false,
+      error: { kind: 'not_bootstrapped_yet' },
+    });
+    expect(mockState.pricesCreate).not.toHaveBeenCalled();
+  });
+
+  it('si otro clic ganó la carrera, devuelve el id creado para poder recuperarlo', async () => {
+    mockState.findUniqueOrThrow.mockResolvedValueOnce(BOOTSTRAPPED_PRODUCT);
+    mockState.updateMany.mockResolvedValueOnce({ count: 0 });
+    const result = await createAnnualPriceForTier('prod_reviews_basic', ACTOR);
+    expect(result).toEqual({
+      ok: false,
+      error: expect.objectContaining({ kind: 'partial_failure', stripeAnnualPriceId: 'price_annual_new' }),
+    });
   });
 });
 

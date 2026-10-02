@@ -1,6 +1,7 @@
 import 'server-only';
 import { randomBytes } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
+import { monthlyEquivalentCents } from './annual-billing';
 
 // =============================================================================
 // A7 — códigos de referido y de socio.
@@ -128,7 +129,7 @@ export async function loadCommissionReport(prisma: PrismaClient): Promise<Commis
             select: {
               clientProducts: {
                 where: { status: 'active' },
-                select: { product: { select: { priceCents: true } }, subscription: { select: { amountCents: true, status: true } } },
+                select: { product: { select: { priceCents: true } }, subscription: { select: { amountCents: true, status: true, billingInterval: true } } },
               },
             },
           },
@@ -150,7 +151,9 @@ export async function loadCommissionReport(prisma: PrismaClient): Promise<Commis
           (acc, cp) =>
             acc +
             ((cp.subscription && ['active', 'trialing', 'past_due'].includes(cp.subscription.status)
-              ? cp.subscription.amountCents
+              ? cp.subscription.amountCents !== null
+                ? monthlyEquivalentCents(cp.subscription.amountCents, cp.subscription.billingInterval)
+                : null
               : cp.product.priceCents) ?? 0),
           0,
         ),

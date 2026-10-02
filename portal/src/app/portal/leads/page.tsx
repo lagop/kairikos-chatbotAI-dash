@@ -84,7 +84,7 @@ export default async function PortalLeadsPage(
         prisma.product.findMany({
           where: { code: 'leads', isActive: true },
           orderBy: { priceCents: 'asc' },
-          select: { id: true, tier: true, priceCents: true, setupFeeCents: true, currency: true },
+          select: { id: true, tier: true, priceCents: true, setupFeeCents: true, currency: true, stripeAnnualPriceId: true },
         }),
         prisma.clientProduct.findFirst({
           where: { clientId: resolved.clientId, status: 'pending_payment', product: { code: 'leads' } },
@@ -98,7 +98,7 @@ export default async function PortalLeadsPage(
         prisma.product.findMany({
           where: { code: 'prospecting', isActive: true },
           orderBy: { priceCents: 'asc' },
-          select: { id: true, tier: true, priceCents: true, setupFeeCents: true, currency: true },
+          select: { id: true, tier: true, priceCents: true, setupFeeCents: true, currency: true, stripeAnnualPriceId: true },
         }),
         prisma.clientProduct.findFirst({
           where: { clientId: resolved.clientId, status: 'pending_payment', product: { code: 'prospecting' } },
@@ -112,6 +112,7 @@ export default async function PortalLeadsPage(
         priceCents: p.priceCents,
         setupFeeCents: p.setupFeeCents,
         currency: p.currency,
+        annualAvailable: Boolean(p.stripeAnnualPriceId) && p.priceCents > 0,
       }));
       leadsPendingProductId = leadsPendingRow?.productId ?? null;
       prospectingTiers = prospectingProducts.map((p) => ({
@@ -121,6 +122,7 @@ export default async function PortalLeadsPage(
         priceCents: p.priceCents,
         setupFeeCents: p.setupFeeCents,
         currency: p.currency,
+        annualAvailable: Boolean(p.stripeAnnualPriceId) && p.priceCents > 0,
       }));
       prospectingPendingProductId = prospectingPendingRow?.productId ?? null;
     }

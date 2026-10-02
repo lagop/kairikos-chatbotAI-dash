@@ -124,7 +124,7 @@ export default async function PortalProductsPage(
   const allProducts = await prisma.product.findMany({
     where: { isActive: true, selfServeEligible: true },
     orderBy: [{ code: 'asc' }, { priceCents: 'asc' }],
-    select: { id: true, code: true, tier: true, priceCents: true, setupFeeCents: true, currency: true },
+    select: { id: true, code: true, tier: true, priceCents: true, setupFeeCents: true, currency: true, stripeAnnualPriceId: true },
   });
   const tiersByCode = new Map<string, SelfServeTierOption[]>();
   for (const p of allProducts) {
@@ -136,6 +136,7 @@ export default async function PortalProductsPage(
       priceCents: p.priceCents,
       setupFeeCents: p.setupFeeCents,
       currency: p.currency,
+      annualAvailable: Boolean(p.stripeAnnualPriceId) && p.priceCents > 0,
     });
     tiersByCode.set(p.code, list);
   }
