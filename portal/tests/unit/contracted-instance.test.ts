@@ -113,12 +113,14 @@ describe('listContractedInstances', () => {
     expect(list.map((i) => i.clientSiteId)).toEqual(['site_1', 'site_2']);
   });
 
-  it('solo las activas, en orden estable', async () => {
+  it('solo las activas y solo planes, en orden estable', async () => {
     const { prisma, findMany } = makePrisma([]);
     await listContractedInstances(prisma, 'c1');
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { clientId: 'c1', status: 'active' },
+        // Un complemento (Cuidado de la web, 01/10/2026) no es un producto con
+        // asistente: quien llama da por hecho que el código está en el catálogo.
+        where: { clientId: 'c1', status: 'active', product: { kind: 'plan' } },
         orderBy: { subscribedAt: 'asc' },
       }),
     );

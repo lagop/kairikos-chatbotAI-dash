@@ -68,8 +68,8 @@ export interface ProductCatalogEntry {
   isActive: boolean;
   stripeRecurringPriceId: string | null;
   stripeSetupPriceId: string | null;
-  /** 'plan' (por defecto) | 'pack' — ver Product.kind. */
-  kind?: 'plan' | 'pack';
+  /** 'plan' (por defecto) | 'pack' | 'addon' — ver Product.kind. */
+  kind?: 'plan' | 'pack' | 'addon';
   // Free-form per-tier feature data (schema.prisma's Product.features —
   // present since WP-12 but never populated until now). First real use:
   // { channels: string[] } — which chatbot channels (WP: conexión de
@@ -261,6 +261,13 @@ export const PRODUCT_CATALOG: ProductCatalogEntry[] = [
     code: 'prospecting', tier: 'business', name: 'Prospección con IA — Empresa',
     priceCents: 34900, setupFeeCents: 9900, currency: 'EUR', isActive: true,
     stripeRecurringPriceId: 'price_prospecting_business', stripeSetupPriceId: 'price_prospecting_business_setup',
+  },
+  // Plan de precios del 01/10/2026 — Cuidado de la web: complemento con cuota
+  // (29 €/mes, 290 €/año), uno por web (lib/web-care.ts).
+  {
+    code: 'web_care', tier: 'standard', name: 'Cuidado de la web',
+    priceCents: 2900, setupFeeCents: 0, currency: 'EUR', isActive: true, kind: 'addon',
+    stripeRecurringPriceId: 'price_web_care', stripeSetupPriceId: null,
   },
   // Plan de precios del 01/10/2026 — los packs de uso. Pago único (la «alta»)
   // y kind 'pack': no son contrataciones, se compran desde la tarjeta del

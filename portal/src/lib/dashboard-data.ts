@@ -380,7 +380,9 @@ async function buildProductCard(clientId: string, cp: ClientProductRow): Promise
 
 async function buildRealProducts(clientId: string): Promise<ProductCardSummary[]> {
   const clientProducts = await prisma.clientProduct.findMany({
-    where: { clientId, status: { in: ['active', 'paused'] } },
+    // Solo planes: getProductCatalog lanza con un código que no es de los
+    // siete, y un complemento (Cuidado de la web) se enseña en su web.
+    where: { clientId, status: { in: ['active', 'paused'] }, product: { kind: 'plan' } },
     orderBy: { subscribedAt: 'asc' },
     select: {
       onboardingState: true,

@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import { WebCareCard } from '@/components/portal/WebCareCard';
+import { getWebCareState } from '@/lib/web-care';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
@@ -36,7 +38,7 @@ function jsonToStringArray(value: unknown): string[] {
 export default async function PortalWebProjectPage(
   props: {
     params: Promise<{ clientProductId: string }>;
-    searchParams: Promise<{ edit?: string }>;
+    searchParams: Promise<{ edit?: string; checkout?: string }>;
   }
 ) {
   const searchParams = await props.searchParams;
@@ -52,11 +54,17 @@ export default async function PortalWebProjectPage(
 
   const webClientProduct = await prisma.clientProduct.findFirst({
     where: { id: params.clientProductId, clientId: resolved.clientId, product: { code: 'web' } },
-    select: { id: true, status: true },
+    select: { id: true, status: true, clientSiteId: true },
   });
   if (!webClientProduct || !WEB_ACCESSIBLE_STATUSES.includes(webClientProduct.status)) {
     notFound();
   }
+
+  // Cuidado de la web (01/10/2026): solo con la web ya pagada.
+  const care =
+    webClientProduct.status === 'active'
+      ? await getWebCareState(prisma, resolved.clientId, webClientProduct.clientSiteId)
+      : null;
 
   // WebQuote Fase 4 — while the 'web' ClientProduct is still in
   // 'quote_pending' (pre-payment), show the quote status above the
@@ -158,6 +166,14 @@ export default async function PortalWebProjectPage(
           />
         ) : null}
         {website ? <WebsiteEditorCard data={website} /> : null}
+        {care ? (
+          <WebCareCard
+            webClientProductId={webClientProduct.id}
+            offer={care.offer}
+            contract={care.contract}
+            checkoutReturn={searchParams.checkout ?? null}
+          />
+        ) : null}
         <div className="card space-y-4" data-testid="web-brief-summary">
           <SummaryRow label="Negocio" value={brief.businessName} />
           <SummaryRow label="Sector" value={brief.vertical} />
