@@ -8,6 +8,8 @@
 
 export const ADDONS = {
   web_care: { appliesTo: 'web', label: 'Cuidado de la web' },
+  // Se enseña con SEO, como en el plan: es la otra mitad de aparecer en Google.
+  gbp_managed: { appliesTo: 'seo', label: 'Ficha de Google gestionada' },
 } as const;
 
 export type AddonCode = keyof typeof ADDONS;

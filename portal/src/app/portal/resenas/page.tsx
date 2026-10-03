@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import { GbpManagedCard } from '@/components/portal/GbpManagedCard';
+import { getGbpManagedView } from '@/lib/gbp-managed';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
@@ -149,7 +151,7 @@ function StarRating({ value }: { value: number }) {
 const DATE_FORMAT = new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
 
 interface PageProps {
-  searchParams: Promise<{ connected?: string; connect_error?: string; local?: string }>;
+  searchParams: Promise<{ connected?: string; connect_error?: string; local?: string; checkout?: string }>;
 }
 
 const CONNECT_ERROR_LABEL: Record<string, string> = {
@@ -206,6 +208,13 @@ export default async function PortalResenasPage(props: PageProps) {
           take: 50,
         })
       : [];
+
+  // Ficha de Google gestionada (01/10/2026): la de la ficha que se mira.
+  const gbpManaged = await getGbpManagedView(
+    prisma,
+    resolved.clientId,
+    connection && connection.status === 'active' ? connection : null,
+  );
 
   const connectionStatus: ConnectionStatus = connection
     ? (connection.status as ConnectionStatus)
@@ -290,6 +299,18 @@ export default async function PortalResenasPage(props: PageProps) {
       />
 
       {reputation ? <ReputationPanel summary={reputation} /> : null}
+
+      <GbpManagedCard
+        key={`gbp-managed-${connection?.id ?? 'none'}`}
+        connectionId={connection && connection.status === 'active' ? connection.id : null}
+        from="resenas"
+        offer={gbpManaged.offer}
+        managed={gbpManaged.managed}
+        draft={gbpManaged.draft}
+        lastPublished={gbpManaged.lastPublished}
+        lastFailed={gbpManaged.lastFailed}
+        checkoutReturn={searchParams.checkout ?? null}
+      />
 
       {connectionStatus === 'active' ? (
         <section className="space-y-3" aria-label="Lista de reseñas" data-testid="google-reviews-list">

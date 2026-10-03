@@ -269,6 +269,13 @@ export const PRODUCT_CATALOG: ProductCatalogEntry[] = [
     priceCents: 2900, setupFeeCents: 0, currency: 'EUR', isActive: true, kind: 'addon',
     stripeRecurringPriceId: 'price_web_care', stripeSetupPriceId: null,
   },
+  // Plan de precios del 01/10/2026 — Ficha de Google gestionada: complemento
+  // (49 €/mes, 490 €/año), una por ficha (lib/gbp-managed.ts).
+  {
+    code: 'gbp_managed', tier: 'standard', name: 'Ficha de Google gestionada',
+    priceCents: 4900, setupFeeCents: 0, currency: 'EUR', isActive: true, kind: 'addon',
+    stripeRecurringPriceId: 'price_gbp_managed', stripeSetupPriceId: null,
+  },
   // Plan de precios del 01/10/2026 — los packs de uso. Pago único (la «alta»)
   // y kind 'pack': no son contrataciones, se compran desde la tarjeta del
   // chatbot o de prospección (lib/usage-packs.ts). Lo que da cada uno vive en

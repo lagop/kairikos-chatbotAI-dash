@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import { GbpManagedCard } from '@/components/portal/GbpManagedCard';
+import { getGbpManagedView } from '@/lib/gbp-managed';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
@@ -208,6 +210,10 @@ export async function SeoPageBody({
 
   // Fase 3.1 — las palabras que el cliente persigue y cómo van.
   const keywordTrends = profile ? await buildKeywordTrends(prisma, resolved.clientId) : [];
+  // Ficha de Google gestionada (01/10/2026): el plan la vende junto a SEO —
+  // es la otra mitad de aparecer en Google. Aquí solo la oferta; lo de cada
+  // ficha se lleva en /portal/resenas.
+  const gbpManaged = await getGbpManagedView(prisma, resolved.clientId, null);
 
   // Fase 3.2 — señales crudas del audit → qué hacer, en su idioma.
   const audit = profile ? parseAuditResult(profile.lastAuditResult) : null;
@@ -288,6 +294,18 @@ export async function SeoPageBody({
     <div className="space-y-6">
       <PageHeading eyebrow="Portal" title="SEO con IA" description="Cuéntanos de tu negocio para empezar." />
       <SeoProfileCard profile={profile} clientProductId={instance.clientProductId} />
+      {!gbpManaged.managed && gbpManaged.offer ? (
+        <GbpManagedCard
+          connectionId={null}
+          from="seo"
+          offer={gbpManaged.offer}
+          managed={false}
+          draft={null}
+          lastPublished={null}
+          lastFailed={null}
+          checkoutReturn={null}
+        />
+      ) : null}
 
       {profile?.cmsType === 'wordpress' ? (
         <section className="card space-y-3" aria-label="Conexión con WordPress" data-testid="seo-wordpress-card">

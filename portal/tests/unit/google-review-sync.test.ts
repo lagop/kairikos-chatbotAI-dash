@@ -253,6 +253,15 @@ describe('syncReviewsForConnection — WP-22c auto-reply hook', () => {
     expect(mockState.autoReplyToUnansweredReviews).not.toHaveBeenCalled();
   });
 
+  // Plan de precios del 01/10/2026 — con la Ficha de Google gestionada las
+  // respuestas van incluidas, aunque el cliente no haya activado el interruptor.
+  it('también responde en una ficha con la Ficha gestionada, aunque autoPublishReplies esté apagado', async () => {
+    mockState.fetch.mockResolvedValueOnce(jsonResponse({ reviews: [] }));
+    const connection = baseConnection({ autoPublishReplies: false, managedClientProductId: 'cp_managed_1' } as never);
+    await syncReviewsForConnection(connection);
+    expect(mockState.autoReplyToUnansweredReviews).toHaveBeenCalled();
+  });
+
   it('calls autoReplyToUnansweredReviews with the resolved business name after a successful sync', async () => {
     mockState.fetch.mockResolvedValueOnce(jsonResponse({ reviews: [] }));
     mockState.findUniqueClient.mockResolvedValueOnce({ companyName: 'Clínica Orly', name: 'Orly' });

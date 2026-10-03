@@ -1093,7 +1093,10 @@ export type CheckoutSessionError =
   | 'stripe_error';
 
 export type CreateCheckoutSessionResult =
-  | { ok: true; url: string }
+  /** clientProductId: la contratación pendiente que activará el pago. La usa
+   *  quien tiene que atarla a algo antes de que llegue el webhook (la ficha
+   *  de la Ficha gestionada, 01/10/2026). */
+  | { ok: true; url: string; clientProductId?: string }
   | { ok: false; error: CheckoutSessionError; productId?: string };
 
 /**
@@ -1313,7 +1316,7 @@ export async function createProductCheckoutSession(params: {
     if (!session.url) {
       throw new Error('stripe_checkout_session_missing_url');
     }
-    return { ok: true, url: session.url };
+    return { ok: true, url: session.url, clientProductId: cp.id };
   } catch (err) {
     // La Checkout Session nunca se abrió — revertir la fila pendiente en
     // vez de dejar un ClientProduct atascado en 'pending_payment' sin

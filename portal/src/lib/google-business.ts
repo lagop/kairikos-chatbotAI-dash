@@ -59,11 +59,14 @@ export const OAUTH_RETURN_COOKIE = 'gb_oauth_return';
  *  screen to get it from — this is that flow's single access check,
  *  mirroring hasLeadsInboxAccess's "either product unlocks it" shape. */
 export async function hasGoogleBusinessConnectAccess(clientId: string): Promise<boolean> {
-  const [hasReviews, hasRecall] = await Promise.all([
+  // + la Ficha de Google gestionada (01/10/2026): sin conectar la ficha no
+  // hay nada que gestionar, y quien la compra puede no tener Reseñas.
+  const [hasReviews, hasRecall, hasManaged] = await Promise.all([
     isProductContracted(prisma, clientId, 'reviews'),
     isProductContracted(prisma, clientId, 'recall'),
+    isProductContracted(prisma, clientId, 'gbp_managed'),
   ]);
-  return hasReviews || hasRecall;
+  return hasReviews || hasRecall || hasManaged;
 }
 
 export async function isGoogleBusinessOAuthConfigured(): Promise<boolean> {
