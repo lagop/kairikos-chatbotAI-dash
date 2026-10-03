@@ -731,8 +731,9 @@ model Product {
   //           No es una contratación: se compra cuantas veces haga falta y va
   //           a UsagePackPurchase, nunca a ClientProduct (lib/usage-packs.ts).
   //   'addon' un complemento con cuota que se contrata colgando de otra
-  //           contratación (Cuidado de la web, por web). Es una ClientProduct,
-  //           pero no tiene asistente ni pantalla propia (lib/web-care.ts).
+  //           contratación (Cuidado de la web, por web; Ficha de Google
+  //           gestionada, por ficha). Es una ClientProduct, pero no tiene
+  //           asistente ni pantalla propia (lib/web-care.ts, lib/gbp-managed.ts).
   // Texto libre con los valores en este comentario, como el resto de estados.
   kind                   String   @default("plan")
   // WP-31 — whether a visitor can buy this tier from the public signup
@@ -1771,6 +1772,11 @@ model GoogleBusinessConnection {
   autoRequestFromLeads          Boolean   @default(false) @map("auto_request_from_leads")
   autoRequestFromLeadsChangedBy String?   @map("auto_request_from_leads_changed_by")
   autoRequestFromLeadsChangedAt DateTime? @map("auto_request_from_leads_changed_at")
+  // Plan de precios del 01/10/2026 — la Ficha de Google gestionada que cubre
+  // ESTA ficha (va por ficha: 49 €/mes cada una). Apunta a la ClientProduct
+  // 'gbp_managed'; está gestionada mientras esa contratación esté activa, así
+  // que una baja no necesita tocar esta fila. Ver lib/gbp-managed.ts.
+  managedClientProductId        String?   @unique @map("managed_client_product_id") @db.Uuid
 
   client              ChatbotClient           @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant              Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
@@ -5686,4 +5692,41 @@ model UsagePackPurchase {
 
   @@index([clientId])
   @@index([targetClientProductId])
+}
+
+// =============================================================================
+// Plan de precios del 01/10/2026 — las publicaciones semanales de la Ficha de
+// Google gestionada (lib/gbp-managed.ts).
+//
+// Mismo trato que los artículos SEO: la IA escribe el borrador y se publica
+// solo pasado un plazo (publishAfter) salvo que el cliente lo descarte o lo
+// publique antes. Editarlo no lo publica: solo cambia lo que saldrá.
+//
+// status: 'drafted' | 'publishing' (reclamado para publicar: que el cron y el
+// botón del cliente a la vez no lo publiquen dos veces) | 'published' |
+// 'rejected' | 'publish_failed'.
+// =============================================================================
+model GbpPost {
+  id              String    @id @default(uuid()) @db.Uuid
+  clientId        String    @map("client_id")
+  tenantId        String?   @map("tenant_id") @db.Uuid
+  connectionId    String    @map("connection_id") @db.Uuid
+  clientProductId String    @map("client_product_id") @db.Uuid
+  status          String    @default("drafted")
+  summary         String
+  generatedAt     DateTime  @default(now()) @map("generated_at")
+  publishAfter    DateTime  @map("publish_after")
+  editedAt        DateTime? @map("edited_at")
+  // 'auto' | 'client:<clientId>' — quién lo dio por bueno.
+  publishedBy     String?   @map("published_by")
+  publishedAt     DateTime? @map("published_at")
+  // El nombre del LocalPost en Google (accounts/../locations/../localPosts/..).
+  googlePostName  String?   @map("google_post_name")
+  lastError       String?   @map("last_error")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([connectionId, generatedAt])
+  @@index([status, publishAfter])
+  @@index([clientId])
 }

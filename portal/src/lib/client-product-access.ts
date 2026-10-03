@@ -215,7 +215,9 @@ export async function listContractedInstances(
 
 // 'web_care' (Cuidado de la web, 01/10/2026, 20261003120000_cuidado_de_la_web):
 // uno por web, por el mismo criterio — el alojamiento de cada web es un coste.
-export const MULTI_INSTANCE_PRODUCT_CODES = ['web', 'seo', 'recall', 'chatbot', 'web_care'] as const;
+// 'gbp_managed' (Ficha de Google gestionada, 20261003130000_ficha_gestionada):
+// una por ficha de Google — cada ficha son sus publicaciones y sus respuestas.
+export const MULTI_INSTANCE_PRODUCT_CODES = ['web', 'seo', 'recall', 'chatbot', 'web_care', 'gbp_managed'] as const;
 
 export function isMultiInstanceProduct(productCode: string): boolean {
   return (MULTI_INSTANCE_PRODUCT_CODES as readonly string[]).includes(productCode);

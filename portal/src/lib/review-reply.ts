@@ -4,6 +4,7 @@ import { prisma } from './prisma';
 import { getValidAccessToken, publishReviewReply } from './google-business';
 import { generateReviewReplyDraft, findReplyRisk } from './review-reply-ai';
 import { logError } from './observability';
+import { isConnectionManaged } from './gbp-managed';
 
 // =============================================================================
 // WP-22c — orchestrates publishing a reply (human-approved or automatic)
@@ -78,7 +79,13 @@ export async function autoReplyToUnansweredReviews(
   connection: GoogleBusinessConnection,
   businessName: string,
 ): Promise<{ drafted: number; published: number }> {
-  if (!connection.autoPublishReplies) return { drafted: 0, published: 0 };
+  // Con la Ficha de Google gestionada contratada para esta ficha (01/10/2026),
+  // las respuestas son parte de lo que se paga: se trata como si el cliente
+  // hubiera activado la publicación automática. La retención por riesgo de
+  // abajo vale igual.
+  if (!connection.autoPublishReplies && !(await isConnectionManaged(prisma, connection))) {
+    return { drafted: 0, published: 0 };
+  }
 
   const candidates = await prisma.googleReview.findMany({
     where: { connectionId: connection.id, replyComment: null, aiDraftReply: null },

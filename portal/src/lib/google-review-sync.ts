@@ -161,7 +161,12 @@ export async function syncReviewsForConnection(
     // WP-22c — a no-op unless the client opted into autoPublishReplies;
     // isolated so a failure here never turns a successful review sync
     // into a reported failure.
-    if (connection.autoPublishReplies) {
+    //
+    // Plan de precios del 01/10/2026 — o si la ficha tiene la Ficha de Google
+    // gestionada: las respuestas van incluidas. Aquí basta con que tenga el
+    // enlace; si la contratación sigue activa lo decide la propia función
+    // (isConnectionManaged), que es la que publica.
+    if (connection.autoPublishReplies || connection.managedClientProductId) {
       try {
         const client = await prisma.chatbotClient.findUnique({
           where: { id: connection.clientId },
