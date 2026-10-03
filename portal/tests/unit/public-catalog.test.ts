@@ -141,6 +141,27 @@ describe('tierLabel', () => {
   });
 });
 
+describe('packs de productos en el catálogo público', () => {
+  it('publica el Pack Oficio con su precio solo si están sus dos piezas', () => {
+    const filas = [
+      fila({ code: 'recall', tier: 'solo', priceCents: 12900, setupFeeCents: 9900 }),
+      fila({ code: 'reviews', tier: 'basic', priceCents: 9900, setupFeeCents: 0 }),
+    ];
+    const cat = buildPublicCatalog(filas, AHORA);
+    expect(cat.packs).toEqual([
+      {
+        code: 'oficio',
+        label: 'Pack Oficio',
+        components: ['Llamadas Autónomo', 'Reseñas Basic'],
+        monthlyCents: 19900,
+        separateMonthlyCents: 22800,
+        oneTimeCents: 0,
+      },
+    ]);
+    expect(buildPublicCatalog([filas[1]], AHORA).packs).toEqual([]);
+  });
+});
+
 describe('complementos en el catálogo público', () => {
   it('Cuidado de la web cuelga de la web, no sale como producto suelto', () => {
     const cat = buildPublicCatalog(

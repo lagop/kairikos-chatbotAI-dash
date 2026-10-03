@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import { PackCouponsPanel } from '@/components/portal/PackCouponsPanel';
+import { listPackCoupons } from '@/lib/pack-discounts';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
@@ -57,6 +59,8 @@ export default async function AdminBillingSettingsPage() {
   function narrowMode(value: string | null): 'test' | 'live' | null {
     return value === 'test' || value === 'live' ? value : null;
   }
+  // Plan de precios del 01/10/2026 — los cupones de los packs de productos.
+  const packCoupons = await listPackCoupons(prisma);
   const products = productRows.map((p) => ({ ...p, stripePriceMode: narrowMode(p.stripePriceMode) }));
   // Solo los tiers con alta real en Stripe: los demás no tienen nada que
   // un código pueda anular (ver stripe-promotions.ts).
@@ -79,6 +83,7 @@ export default async function AdminBillingSettingsPage() {
       />
       <StripeCatalogSettingsPanel initialCredentials={credentials} initialProducts={products} />
       {credentials.activeMode ? <PromotionCodesPanel products={waivableProducts} /> : null}
+      {credentials.activeMode ? <PackCouponsPanel coupons={packCoupons} /> : null}
     </div>
   );
 }
