@@ -19,12 +19,16 @@ export interface CreatableProduct {
   name: string;
   priceCents: number;
   currency: string;
+  /** Pago anual (01/10/2026): el escalón tiene precio anual en Stripe. */
+  annualAvailable?: boolean;
 }
 
 interface ProductLine {
   key: number;
   productId: string;
   mode: 'active' | 'checkout_link';
+  /** Solo cuenta con 'checkout_link' y si el escalón tiene anual. */
+  billing: 'monthly' | 'annual';
 }
 
 function formatPrice(cents: number, currency: string): string {
@@ -43,7 +47,10 @@ export function NewClientForm({ products }: { products: CreatableProduct[] }) {
   const [error, setError] = useState<string | null>(null);
 
   function addLine() {
-    setLines((prev) => [...prev, { key: nextLineKey++, productId: products[0]?.id ?? '', mode: 'checkout_link' }]);
+    setLines((prev) => [
+      ...prev,
+      { key: nextLineKey++, productId: products[0]?.id ?? '', mode: 'checkout_link', billing: 'monthly' },
+    ]);
   }
 
   function updateLine(key: number, patch: Partial<ProductLine>) {
@@ -76,7 +83,15 @@ export function NewClientForm({ products }: { products: CreatableProduct[] }) {
           email,
           name,
           companyName,
-          products: lines.filter((l) => l.productId).map((l) => ({ productId: l.productId, mode: l.mode })),
+          products: lines
+            .filter((l) => l.productId)
+            .map((l) => {
+              const annual =
+                l.mode === 'checkout_link' &&
+                l.billing === 'annual' &&
+                Boolean(products.find((p) => p.id === l.productId)?.annualAvailable);
+              return { productId: l.productId, mode: l.mode, billing: annual ? 'annual' : 'monthly' };
+            }),
         }),
       });
       const data = await res.json().catch(() => null);
@@ -178,6 +193,17 @@ export function NewClientForm({ products }: { products: CreatableProduct[] }) {
                   <option value="checkout_link">Enviar enlace de pago</option>
                   <option value="active">Activo ahora (ya pagado)</option>
                 </select>
+                {line.mode === 'checkout_link' && products.find((p) => p.id === line.productId)?.annualAvailable ? (
+                  <select
+                    className="input w-auto"
+                    value={line.billing}
+                    onChange={(e) => updateLine(line.key, { billing: e.target.value as ProductLine['billing'] })}
+                    aria-label="Forma de pago"
+                  >
+                    <option value="monthly">Mensual</option>
+                    <option value="annual">Anual · 12 meses por 10, sin alta</option>
+                  </select>
+                ) : null}
                 <button type="button" className="btn-ghost" onClick={() => removeLine(line.key)}>
                   Quitar
                 </button>

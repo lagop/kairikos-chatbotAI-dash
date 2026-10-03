@@ -5,6 +5,7 @@ import { isDatabaseConfigured, prisma } from '@/lib/prisma';
 import { authenticateAdminRequest } from '@/lib/operator-session';
 import { getStripe, isStripeConfigured } from '@/lib/stripe';
 import { ensureCustomerForTenant, createOneTimeInvoice, syncInvoiceFromStripe, toDate } from '@/lib/stripe-billing';
+import { annualPriceCents } from '@/lib/annual-billing';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -15,6 +16,9 @@ const BodySchema = z.object({
   // client to (Checkout Session). When present, redirect the operator
   // straight into Stripe's hosted checkout.
   returnUrl: z.string().url().optional(),
+  // Pago anual (01/10/2026): el precio anual del escalón (12 meses por 10) y
+  // sin alta. Ausente = mensual, que es lo que hacía siempre.
+  billing: z.enum(['monthly', 'annual']).optional(),
 });
 
 /**
@@ -147,13 +151,20 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const annual = body.data.billing === 'annual';
+  if (annual && !cp.product.stripeAnnualPriceId) {
+    return NextResponse.json({ error: 'annual_price_missing' }, { status: 400 });
+  }
+  const priceId = annual ? cp.product.stripeAnnualPriceId! : cp.product.stripeRecurringPriceId!;
+
   const stripe = await getStripe();
   const subscription = await stripe.subscriptions.create({
     customer: customerId,
-    items: [{ price: cp.product.stripeRecurringPriceId! }],
+    items: [{ price: priceId }],
     // WP-12 — a one-time setup fee bills as an invoice item attached to
     // the subscription's first invoice, alongside the recurring price.
-    ...(cp.product.stripeSetupPriceId
+    // Pago anual: sin alta.
+    ...(cp.product.stripeSetupPriceId && !annual
       ? { add_invoice_items: [{ price: cp.product.stripeSetupPriceId }] }
       : {}),
     // Payment is collected out-of-band for the operator flow; the
@@ -177,7 +188,7 @@ export async function POST(req: NextRequest) {
       clientProductId: cp.id,
       stripeId: subscription.id,
       stripeCustomerId: customerId,
-      stripePriceId: cp.product.stripeRecurringPriceId,
+      stripePriceId: priceId,
       status: subscription.status,
       // WP-19 — a fresh 'incomplete' subscription hasn't billed a
       // period yet, so Stripe leaves current_period_start/end
@@ -187,7 +198,8 @@ export async function POST(req: NextRequest) {
       currentPeriodStart: toDate((subscription as unknown as { current_period_start?: number }).current_period_start),
       currentPeriodEnd: toDate((subscription as unknown as { current_period_end?: number }).current_period_end),
       cancelAtPeriodEnd: Boolean(subscription.cancel_at_period_end),
-      amountCents: cp.product.priceCents,
+      amountCents: annual ? annualPriceCents(cp.product.priceCents) : cp.product.priceCents,
+      billingInterval: annual ? 'year' : 'month',
       currency: cp.product.currency,
       metadata: subscription.metadata as Prisma.InputJsonValue,
     },

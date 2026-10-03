@@ -50,6 +50,8 @@ export default async function NewClientPage() {
     name: (isProductCode(p.code) ? PRODUCT_CATALOGS[p.code].label : null) ?? p.name,
     priceCents: p.priceCents,
     currency: p.currency,
+    // Pago anual (01/10/2026): solo si el escalón tiene su precio anual en Stripe.
+    annualAvailable: Boolean(p.stripeAnnualPriceId) && p.priceCents > 0,
   }));
 
   return (
