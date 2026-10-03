@@ -3,6 +3,7 @@ import 'server-only';
 import type { PrismaClient } from '@prisma/client';
 import { annualPriceCents } from './annual-billing';
 import { ADDONS, isAddonCode } from './addon-catalog';
+import { COMBO_PACKS, packPricing, type ComboPackCode } from './combo-packs';
 import { PRODUCT_CATALOGS, PRODUCT_CODES, type ProductCode } from '@/lib/catalogs';
 
 // =============================================================================
@@ -108,10 +109,24 @@ export interface PublicCatalogProduct {
   addons: PublicCatalogAddon[];
 }
 
+/** Plan de precios del 01/10/2026 — un pack de productos con su precio,
+ *  calculado de los precios reales del catálogo (lib/combo-packs.ts). */
+export interface PublicCatalogPack {
+  code: string;
+  label: string;
+  /** Lo que lleva, tal como se enseña: «Llamadas Autónomo», «Reseñas Basic». */
+  components: string[];
+  monthlyCents: number;
+  separateMonthlyCents: number;
+  /** Pago único (la web), 0 si no lleva. */
+  oneTimeCents: number;
+}
+
 export interface PublicCatalog {
   /** ISO-8601. Para que quien lo consuma sepa de cuándo es lo que tiene. */
   generatedAt: string;
   products: PublicCatalogProduct[];
+  packs: PublicCatalogPack[];
 }
 
 function isProductCode(value: string): value is ProductCode {
@@ -203,7 +218,21 @@ export function buildPublicCatalog(rows: ProductRow[], generatedAt: Date): Publi
     products.push({ code, label: code, tiers: tiers.sort(porPrecio), addons: complementos.get(code) ?? [] });
   }
 
-  return { generatedAt: generatedAt.toISOString(), products };
+  // Los packs, con el precio que sale de lo que hay hoy en el catálogo. Un
+  // pack al que le falta una pieza (inactiva, aún no creada) no se publica.
+  const packs: PublicCatalogPack[] = [];
+  for (const code of Object.keys(COMBO_PACKS) as ComboPackCode[]) {
+    const pricing = packPricing(code, rows);
+    if (!pricing) continue;
+    packs.push({
+      code,
+      label: COMBO_PACKS[code].label,
+      components: COMBO_PACKS[code].components.map((c) => c.label),
+      ...pricing,
+    });
+  }
+
+  return { generatedAt: generatedAt.toISOString(), products, packs };
 }
 
 /** Lee el catálogo activo. Solo columnas públicas: ningún id de Stripe sale de aquí. */

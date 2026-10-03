@@ -24,7 +24,12 @@ const mockState = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/prisma', () => ({
-  prisma: { product: { findMany: (...a: unknown[]) => mockState.productFindMany(...a) } },
+  prisma: {
+    product: { findMany: (...a: unknown[]) => mockState.productFindMany(...a) },
+    // Los cupones de los packs de productos (01/10/2026): fuera del alcance de
+    // estos tests, que miran el catálogo.
+    packCoupon: { findMany: async () => [] },
+  },
 }));
 vi.mock('@/lib/session', () => ({ getSession: (...a: unknown[]) => mockState.getSession(...a) }));
 vi.mock('@/lib/stripe-credentials', () => ({

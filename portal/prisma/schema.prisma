@@ -984,6 +984,11 @@ model Subscription {
   // 'month' | 'year' — price.recurring.interval de Stripe (pago anual desde el
   // 01/10/2026). Todas las anteriores son mensuales.
   billingInterval    String    @default("month") @map("billing_interval")
+  // Plan de precios del 01/10/2026 — el pack de productos cuyo descuento lleva
+  // esta suscripción ('oficio' | 'presencia'), o null. Lo pone y lo quita
+  // lib/pack-discounts.ts; es el espejo de lo aplicado en Stripe.
+  packCode           String?   @map("pack_code")
+  packAppliedAt      DateTime? @map("pack_applied_at")
   currency           String    @default("eur")
   // Latest Stripe subscription snapshot. NOT source of truth.
   metadata           Json      @default("{}")
@@ -5729,4 +5734,26 @@ model GbpPost {
   @@index([connectionId, generatedAt])
   @@index([status, publishAfter])
   @@index([clientId])
+}
+
+// =============================================================================
+// Plan de precios del 01/10/2026 — los cupones de Stripe de los packs de
+// productos (Oficio, Presencia). Uno por pack y por intervalo de cobro: el
+// descuento de un pack es por mes, y en una suscripción anual tiene que ser el
+// de diez meses (lib/pack-discounts.ts). Los crea el operador desde el panel,
+// con segundo factor, como cualquier otro objeto de cobro.
+// =============================================================================
+model PackCoupon {
+  id             String   @id @default(uuid()) @db.Uuid
+  // 'oficio' | 'presencia' (COMBO_PACKS en lib/combo-packs.ts).
+  packCode       String   @map("pack_code")
+  // 'month' | 'year'.
+  interval       String
+  stripeCouponId String   @unique @map("stripe_coupon_id")
+  amountOffCents Int      @map("amount_off_cents")
+  // 'test' | 'live' — en qué modo de Stripe se creó.
+  stripeMode     String?  @map("stripe_mode")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([packCode, interval])
 }
