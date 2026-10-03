@@ -69,6 +69,9 @@ const CreateClientSchema = z.object({
       z.object({
         productId: z.string().uuid(),
         mode: z.enum(['active', 'checkout_link']),
+        // Pago anual (01/10/2026), solo con enlace de pago: 12 meses por el
+        // precio de 10 y sin alta. Ausente = mensual.
+        billing: z.enum(['monthly', 'annual']).optional(),
       }),
     )
     .max(20)
@@ -102,7 +105,7 @@ export async function POST(req: NextRequest) {
   const checkoutLinks: { productName: string; url: string }[] = [];
   const failed: { productId: string; mode: string; error: string }[] = [];
 
-  for (const { productId, mode } of products) {
+  for (const { productId, mode, billing } of products) {
     if (mode === 'active') {
       const result = await activateClientProductForOperator(prisma, { clientId, productId }, { operatorId: auth.operatorId });
       if (result.ok) {
@@ -114,7 +117,7 @@ export async function POST(req: NextRequest) {
     }
 
     // mode === 'checkout_link'
-    const result = await createProductCheckoutSession({ clientId, productId, actorId });
+    const result = await createProductCheckoutSession({ clientId, productId, actorId, billing });
     if (result.ok) {
       const product = await prisma.product.findUnique({ where: { id: productId }, select: { name: true } });
       checkoutLinks.push({ productName: product?.name ?? productId, url: result.url });

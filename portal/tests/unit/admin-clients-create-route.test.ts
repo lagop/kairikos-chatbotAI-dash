@@ -140,6 +140,26 @@ describe('POST /api/admin/portal/clients — creating with products', () => {
     );
   });
 
+  // Pago anual (01/10/2026): Llamadas se vende así, con enlace del operador.
+  it('pasa el pago anual al enlace de pago', async () => {
+    const { POST } = await import('@/app/api/admin/portal/clients/route');
+    const res = await POST(
+      makeRequest({
+        email: 'a@b.com',
+        name: 'A',
+        companyName: 'B',
+        products: [{ productId: PRODUCT_A, mode: 'checkout_link', billing: 'annual' }],
+      }),
+    );
+    expect(res.status).toBe(201);
+    expect(mockState.createProductCheckoutSession).toHaveBeenCalledWith({
+      clientId: 'client_1',
+      productId: PRODUCT_A,
+      actorId: 'operator:op_1',
+      billing: 'annual',
+    });
+  });
+
   it('handles a mix of active and checkout_link products in one request, and reports per-product failures without failing the whole request', async () => {
     mockState.activateClientProductForOperator.mockResolvedValueOnce({ ok: false, error: 'product_not_found' });
     const { POST } = await import('@/app/api/admin/portal/clients/route');

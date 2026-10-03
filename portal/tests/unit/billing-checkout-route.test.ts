@@ -154,6 +154,55 @@ describe('POST /api/admin/portal/billing/checkout — setup fee handling (WP-12)
     );
   });
 
+  // Pago anual (01/10/2026) desde el operador: Llamadas va por aquí.
+  it('anual: el precio del año, sin alta, y la suscripción apuntada como anual', async () => {
+    mockState.findUniqueClientProduct.mockResolvedValueOnce({
+      ...BASE_CLIENT_PRODUCT,
+      product: {
+        id: 'prod_1',
+        code: 'recall',
+        tier: 'solo',
+        stripeRecurringPriceId: 'price_recurring_1',
+        stripeAnnualPriceId: 'price_annual_1',
+        stripeSetupPriceId: 'price_setup_1',
+        setupFeeCents: 9900,
+        priceCents: 12900,
+        currency: 'EUR',
+      },
+    });
+
+    const { POST } = await import('@/app/api/admin/portal/billing/checkout/route');
+    const res = await POST(makeRequest({ clientProductId: '11111111-1111-1111-1111-111111111111', billing: 'annual' }));
+
+    expect(res.status).toBe(201);
+    const call = mockState.subscriptionsCreate.mock.calls[0][0];
+    expect(call.items).toEqual([{ price: 'price_annual_1' }]);
+    expect(call).not.toHaveProperty('add_invoice_items');
+  });
+
+  it('anual sin precio anual en Stripe: lo rechaza sin tocar Stripe', async () => {
+    mockState.findUniqueClientProduct.mockResolvedValueOnce({
+      ...BASE_CLIENT_PRODUCT,
+      product: {
+        id: 'prod_1',
+        code: 'recall',
+        tier: 'solo',
+        stripeRecurringPriceId: 'price_recurring_1',
+        stripeAnnualPriceId: null,
+        stripeSetupPriceId: null,
+        setupFeeCents: 0,
+        priceCents: 12900,
+        currency: 'EUR',
+      },
+    });
+
+    const { POST } = await import('@/app/api/admin/portal/billing/checkout/route');
+    const res = await POST(makeRequest({ clientProductId: '11111111-1111-1111-1111-111111111111', billing: 'annual' }));
+
+    expect(res.status).toBe(400);
+    expect(mockState.subscriptionsCreate).not.toHaveBeenCalled();
+  });
+
   it('omits add_invoice_items entirely for a product with no setup fee', async () => {
     mockState.findUniqueClientProduct.mockResolvedValueOnce({
       ...BASE_CLIENT_PRODUCT,
