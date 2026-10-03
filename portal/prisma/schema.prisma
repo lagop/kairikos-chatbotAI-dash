@@ -730,6 +730,9 @@ model Product {
   //   'pack'  saldo de uso de una sola vez (+2.000 mensajes, +100 negocios).
   //           No es una contratación: se compra cuantas veces haga falta y va
   //           a UsagePackPurchase, nunca a ClientProduct (lib/usage-packs.ts).
+  //   'addon' un complemento con cuota que se contrata colgando de otra
+  //           contratación (Cuidado de la web, por web). Es una ClientProduct,
+  //           pero no tiene asistente ni pantalla propia (lib/web-care.ts).
   // Texto libre con los valores en este comentario, como el resto de estados.
   kind                   String   @default("plan")
   // WP-31 — whether a visitor can buy this tier from the public signup

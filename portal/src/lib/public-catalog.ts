@@ -2,6 +2,7 @@ import 'server-only';
 
 import type { PrismaClient } from '@prisma/client';
 import { annualPriceCents } from './annual-billing';
+import { ADDONS, isAddonCode } from './addon-catalog';
 import { PRODUCT_CATALOGS, PRODUCT_CODES, type ProductCode } from '@/lib/catalogs';
 
 // =============================================================================
@@ -86,11 +87,25 @@ export interface PublicCatalogTier {
   annualPriceCents: number | null;
 }
 
+/** Plan de precios del 01/10/2026 — un complemento que se contrata encima
+ *  del producto (Cuidado de la web). */
+export interface PublicCatalogAddon {
+  code: string;
+  label: string;
+  /** Cuota mensual en céntimos. */
+  priceCents: number;
+  /** El año pagado de una vez, o null sin precio anual en Stripe. */
+  annualPriceCents: number | null;
+  currency: string;
+}
+
 export interface PublicCatalogProduct {
   code: string;
   /** 'Chatbot IA', 'Reseñas en Google'… del catálogo de producto del portal. */
   label: string;
   tiers: PublicCatalogTier[];
+  /** Los complementos de este producto. Vacío casi siempre. */
+  addons: PublicCatalogAddon[];
 }
 
 export interface PublicCatalog {
@@ -123,13 +138,33 @@ type ProductRow = {
   currency: string;
   selfServeEligible: boolean;
   stripeAnnualPriceId?: string | null;
+  /** 'plan' | 'addon'. Ausente = 'plan' (las filas de antes de la columna). */
+  kind?: string;
 };
 
 /** Agrupa filas de Product en la forma que se publica. Pura, para poder testearla. */
 export function buildPublicCatalog(rows: ProductRow[], generatedAt: Date): PublicCatalog {
   const porCodigo = new Map<string, PublicCatalogTier[]>();
+  const complementos = new Map<string, PublicCatalogAddon[]>();
 
   for (const row of rows) {
+    // Un complemento se publica colgando de su producto, no como uno más.
+    // Uno sin entrada en ADDONS no tiene dónde colgarse y no se publica: un
+    // complemento suelto en la web no se podría contratar desde ningún sitio.
+    if ((row.kind ?? 'plan') === 'addon') {
+      if (!isAddonCode(row.code)) continue;
+      const padre = ADDONS[row.code].appliesTo;
+      const lista = complementos.get(padre) ?? [];
+      lista.push({
+        code: row.code,
+        label: ADDONS[row.code].label,
+        priceCents: row.priceCents,
+        annualPriceCents: row.stripeAnnualPriceId && row.priceCents > 0 ? annualPriceCents(row.priceCents) : null,
+        currency: row.currency,
+      });
+      complementos.set(padre, lista);
+      continue;
+    }
     const tiers = porCodigo.get(row.code) ?? [];
     tiers.push({
       tier: row.tier,
@@ -155,6 +190,7 @@ export function buildPublicCatalog(rows: ProductRow[], generatedAt: Date): Publi
       code,
       label: PRODUCT_CATALOGS[code].label,
       tiers: tiers.sort(porPrecio),
+      addons: complementos.get(code) ?? [],
     });
   }
 
@@ -164,7 +200,7 @@ export function buildPublicCatalog(rows: ProductRow[], generatedAt: Date): Publi
   // nuevo nunca llegue a la web.
   for (const [code, tiers] of porCodigo) {
     if (isProductCode(code)) continue;
-    products.push({ code, label: code, tiers: tiers.sort(porPrecio) });
+    products.push({ code, label: code, tiers: tiers.sort(porPrecio), addons: complementos.get(code) ?? [] });
   }
 
   return { generatedAt: generatedAt.toISOString(), products };
@@ -176,9 +212,9 @@ export async function loadPublicCatalog(
   now: Date = new Date(),
 ): Promise<PublicCatalog> {
   const rows = await prisma.product.findMany({
-    // Solo lo que se contrata: los packs de uso (kind 'pack', 01/10/2026) se
+    // Planes y complementos. Los packs de uso (kind 'pack', 01/10/2026) se
     // compran desde su propia tarjeta en el portal, no desde la web.
-    where: { isActive: true, kind: 'plan' },
+    where: { isActive: true, kind: { in: ['plan', 'addon'] } },
     orderBy: [{ code: 'asc' }, { priceCents: 'asc' }],
     select: {
       code: true,
@@ -188,6 +224,7 @@ export async function loadPublicCatalog(
       currency: true,
       selfServeEligible: true,
       stripeAnnualPriceId: true,
+      kind: true,
     },
   });
 

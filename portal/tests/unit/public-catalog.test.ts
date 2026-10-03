@@ -141,6 +141,27 @@ describe('tierLabel', () => {
   });
 });
 
+describe('complementos en el catálogo público', () => {
+  it('Cuidado de la web cuelga de la web, no sale como producto suelto', () => {
+    const cat = buildPublicCatalog(
+      [
+        fila({ code: 'web', tier: 'standard', priceCents: 0, setupFeeCents: 79900 }),
+        fila({ code: 'web_care', tier: 'standard', priceCents: 2900, setupFeeCents: 0, kind: 'addon', stripeAnnualPriceId: 'price_a' }),
+      ],
+      AHORA,
+    );
+    expect(cat.products.map((p) => p.code)).toEqual(['web']);
+    expect(cat.products[0].addons).toEqual([
+      { code: 'web_care', label: 'Cuidado de la web', priceCents: 2900, annualPriceCents: 29000, currency: 'EUR' },
+    ]);
+  });
+
+  it('un complemento que nadie sabe dónde colgar no se publica', () => {
+    const cat = buildPublicCatalog([fila(), fila({ code: 'addon_misterioso', kind: 'addon' })], AHORA);
+    expect(cat.products.map((p) => p.code)).toEqual(['chatbot']);
+  });
+});
+
 describe('pago anual en el catálogo público', () => {
   it('publica el importe del año (10 meses) solo si el escalón tiene precio anual', () => {
     const cat = buildPublicCatalog(
@@ -183,8 +204,9 @@ describe('loadPublicCatalog', () => {
       select: Record<string, boolean>;
     };
 
-    // Solo planes: los packs de uso (kind 'pack', 01/10/2026) no se venden en la web.
-    expect(args.where).toEqual({ isActive: true, kind: 'plan' });
+    // Planes y complementos; los packs de uso (kind 'pack', 01/10/2026) no
+    // se venden en la web.
+    expect(args.where).toEqual({ isActive: true, kind: { in: ['plan', 'addon'] } });
 
     // Esta es la única defensa: la ruta no autentica a propósito, porque lo
     // que devuelve ya está en /planes/. Ampliar el select es lo que la
@@ -197,6 +219,7 @@ describe('loadPublicCatalog', () => {
     expect(Object.keys(args.select).sort()).toEqual([
       'code',
       'currency',
+      'kind',
       'priceCents',
       'selfServeEligible',
       'setupFeeCents',

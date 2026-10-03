@@ -170,7 +170,8 @@ export async function sweepOnboardingDrip(
   now: Date = new Date(),
 ): Promise<DripSweepResult> {
   const rows = await prisma.clientProduct.findMany({
-    where: { status: 'active', onboardingDripStep: { lt: DRIP_STEPS.length } },
+    // Solo planes: la bienvenida es de un producto, no de un complemento.
+    where: { status: 'active', onboardingDripStep: { lt: DRIP_STEPS.length }, product: { kind: 'plan' } },
     select: {
       id: true,
       clientId: true,

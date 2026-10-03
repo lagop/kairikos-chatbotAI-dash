@@ -160,7 +160,10 @@ export async function listContractedInstances(
   clientId: string,
 ): Promise<ContractedInstance[]> {
   const rows = await prisma.clientProduct.findMany({
-    where: { clientId, status: 'active' },
+    // Solo planes: un complemento (Cuidado de la web, 01/10/2026) no es un
+    // producto con su asistente ni su pantalla, y quien llama aquí da por
+    // hecho que el código está en PRODUCT_CATALOGS.
+    where: { clientId, status: 'active', product: { kind: 'plan' } },
     select: {
       id: true,
       clientId: true,
@@ -210,7 +213,9 @@ export async function listContractedInstances(
 // Ver "Cuando un cliente quiere dos de algo" en CLAUDE.md.
 // =============================================================================
 
-export const MULTI_INSTANCE_PRODUCT_CODES = ['web', 'seo', 'recall', 'chatbot'] as const;
+// 'web_care' (Cuidado de la web, 01/10/2026, 20261003120000_cuidado_de_la_web):
+// uno por web, por el mismo criterio — el alojamiento de cada web es un coste.
+export const MULTI_INSTANCE_PRODUCT_CODES = ['web', 'seo', 'recall', 'chatbot', 'web_care'] as const;
 
 export function isMultiInstanceProduct(productCode: string): boolean {
   return (MULTI_INSTANCE_PRODUCT_CODES as readonly string[]).includes(productCode);

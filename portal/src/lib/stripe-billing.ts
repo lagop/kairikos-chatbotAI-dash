@@ -1121,6 +1121,12 @@ export async function createProductCheckoutSession(params: {
   /** Plan de precios del 01/10/2026: 'annual' cobra el año (10 meses) y sin
    *  alta. Ausente = mensual, que es lo que hacía siempre. */
   billing?: BillingInterval;
+  /** El negocio/web al que pertenece la contratación nueva. Lo pasa quien ya
+   *  sabe para qué web es (Cuidado de la web, 01/10/2026); sin él, la
+   *  activación la asigna como siempre (assignSiteToNewContract). */
+  clientSiteId?: string | null;
+  /** Adónde vuelve el navegador desde Stripe. Por defecto, al portal. */
+  returnPath?: string;
 }): Promise<CreateCheckoutSessionResult> {
   const { clientId, productId, actorId } = params;
   const billing: BillingInterval = params.billing ?? 'monthly';
@@ -1211,7 +1217,15 @@ export async function createProductCheckoutSession(params: {
     ? ['cancelled']
     : ['cancelled', 'pending_payment'];
   const existing = await prisma.clientProduct.findFirst({
-    where: { clientId, productId: product.id, status: { in: reusableStatuses } },
+    // Con sitio, solo se reaprovecha una fila de ESE sitio: la cancelada de
+    // otra web llevaría su sitio consigo y el contrato quedaría en la web
+    // equivocada.
+    where: {
+      clientId,
+      productId: product.id,
+      status: { in: reusableStatuses },
+      ...(params.clientSiteId ? { clientSiteId: params.clientSiteId } : {}),
+    },
     orderBy: { subscribedAt: 'desc' },
     select: { id: true, status: true, cancelledAt: true },
   });
@@ -1223,7 +1237,13 @@ export async function createProductCheckoutSession(params: {
           data: { status: 'pending_payment', cancelledAt: null },
         })
       : await tx.clientProduct.create({
-          data: { clientId, productId: product.id, tenantId: client.tenantId!, status: 'pending_payment' },
+          data: {
+            clientId,
+            productId: product.id,
+            tenantId: client.tenantId!,
+            status: 'pending_payment',
+            ...(params.clientSiteId ? { clientSiteId: params.clientSiteId } : {}),
+          },
         });
     await tx.clientProductAudit.create({
       data: {
@@ -1241,8 +1261,12 @@ export async function createProductCheckoutSession(params: {
   });
 
   const origin = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'http://localhost:3001';
-  const successUrl = `${origin}/portal?checkout=success`;
-  const cancelUrl = `${origin}/portal/productos?checkout=cancelled`;
+  const successUrl = params.returnPath
+    ? `${origin}${params.returnPath}?checkout=success`
+    : `${origin}/portal?checkout=success`;
+  const cancelUrl = params.returnPath
+    ? `${origin}${params.returnPath}?checkout=cancelled`
+    : `${origin}/portal/productos?checkout=cancelled`;
   const metadata = {
     kairikos_tenant_id: client.tenantId,
     kairikos_client_id: clientId,
