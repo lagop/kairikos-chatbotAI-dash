@@ -141,6 +141,20 @@ describe('tierLabel', () => {
   });
 });
 
+describe('packs de uso en el catálogo público', () => {
+  it('se publican aparte, con lo que dan y su precio; nunca como escalón ni producto', () => {
+    const cat = buildPublicCatalog(
+      [fila(), fila({ code: 'pack_chatbot_messages', tier: 'standard', priceCents: 0, setupFeeCents: 2900, kind: 'pack' })],
+      AHORA,
+    );
+    expect(cat.products.map((p) => p.code)).toEqual(['chatbot']);
+    expect(cat.products[0].tiers).toHaveLength(1);
+    expect(cat.usagePacks).toEqual([
+      { code: 'pack_chatbot_messages', appliesTo: 'chatbot', label: '+2.000 mensajes', units: 2000, priceCents: 2900, currency: 'EUR' },
+    ]);
+  });
+});
+
 describe('packs de productos en el catálogo público', () => {
   it('publica el Pack Oficio con su precio solo si están sus dos piezas', () => {
     const filas = [
@@ -227,7 +241,7 @@ describe('loadPublicCatalog', () => {
 
     // Planes y complementos; los packs de uso (kind 'pack', 01/10/2026) no
     // se venden en la web.
-    expect(args.where).toEqual({ isActive: true, kind: { in: ['plan', 'addon'] } });
+    expect(args.where).toEqual({ isActive: true, kind: { in: ['plan', 'addon', 'pack'] } });
 
     // Esta es la única defensa: la ruta no autentica a propósito, porque lo
     // que devuelve ya está en /planes/. Ampliar el select es lo que la
