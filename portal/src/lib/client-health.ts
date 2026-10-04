@@ -1,6 +1,6 @@
 import 'server-only';
 import type { PrismaClient } from '@prisma/client';
-import { sendOperatorNotification } from './operator-notify';
+import { claimDailyOperatorDigest, releaseDailyOperatorDigest, sendOperatorNotification, utcDayKey } from './operator-notify';
 import { getOperatorAlertRecipients } from './operator-alert-settings';
 import { logError } from './observability';
 
@@ -172,8 +172,10 @@ export function detectUpsells(client: ClientSnapshot): UpsellRow[] {
 }
 
 /** El barrido: reúne la foto de cada cliente, aplica las dos reglas y avisa
- *  al operador. Seguro de llamar cada tick — el dedupe por (cliente, kind,
- *  día) de sendOperatorNotification impide repetir el mismo aviso. */
+ *  al operador. Seguro de llamar cada tick: el aviso sale una vez al día
+ *  (claimDailyOperatorDigest). Hasta el 04/10/2026 este comentario decía que
+ *  lo impedía sendOperatorNotification, que no deduplica nada: con un cliente
+ *  en riesgo habría salido cada 5 minutos. */
 export async function sweepClientHealth(
   prisma: PrismaClient,
   now: Date = new Date(),
@@ -229,6 +231,10 @@ export async function sweepClientHealth(
 
   if (risks.length === 0 && upsells.length === 0) return { risks, upsells, notified: 0 };
 
+  const subject = `Salud de clientes: ${risks.length} en riesgo, ${upsells.length} para ofrecer`;
+  const claim = await claimDailyOperatorDigest(prisma, { kind: 'churn-risk', day: utcDayKey(now), subject });
+  if (!claim.claimed) return { risks, upsells, notified: 0 };
+
   const recipients = await getOperatorAlertRecipients();
   const lineas = [
     ...(risks.length > 0
@@ -245,7 +251,7 @@ export async function sweepClientHealth(
   const sent = await sendOperatorNotification({
     kind: 'churn-risk',
     to: recipients,
-    subject: `Salud de clientes: ${risks.length} en riesgo, ${upsells.length} para ofrecer`,
+    subject,
     text: lineas.join('\n'),
     html: `<pre style="font-family:system-ui,sans-serif">${lineas
       .map((l) => l.replace(/&/g, '&amp;').replace(/</g, '&lt;'))
@@ -253,6 +259,7 @@ export async function sweepClientHealth(
   });
   if (!sent.ok) {
     logError('client_health.notify_failed', new Error(sent.error), {}, 'warn');
+    await releaseDailyOperatorDigest(prisma, claim.id);
     return { risks, upsells, notified: 0 };
   }
 

@@ -22,7 +22,46 @@
 // =============================================================================
 
 import 'server-only';
+import type { PrismaClient } from '@prisma/client';
 import { notifyFromAddress } from './email-sender';
+
+// =============================================================================
+// 04/10/2026 — «ya se mandó hoy» para los resúmenes al operador que no son de
+// un cliente concreto (la salud de clientes, la lista de llamadas).
+//
+// sendOperatorNotification NO deduplica: solo envía. El dedupe por
+// (cliente, kind, día) vive en la ruta /api/internal/notify-operator, y el
+// barrido de salud de clientes creía tenerlo sin pasar por ella. Resultado: con
+// un solo cliente en riesgo, el mismo correo habría salido cada 5 minutos (288
+// al día). No llegó a pasar porque aún no había ninguno.
+//
+// Se apunta en OperatorNotification con clientId null. El índice único de esa
+// tabla no lo protege (Postgres trata los null como distintos), así que es
+// buscar y crear: dos pasadas del scheduler están a 5 minutos, no a la vez.
+// =============================================================================
+
+/** Reclama el envío de hoy. true = es tuyo, mándalo; false = ya se mandó. */
+export async function claimDailyOperatorDigest(
+  prisma: PrismaClient,
+  input: { kind: NotificationKind; day: string; subject: string },
+): Promise<{ claimed: true; id: string } | { claimed: false }> {
+  const existing = await prisma.operatorNotification.findFirst({
+    where: { clientId: null, kind: input.kind, day: input.day },
+    select: { id: true },
+  });
+  if (existing) return { claimed: false };
+  const row = await prisma.operatorNotification.create({
+    data: { kind: input.kind, day: input.day, subject: input.subject },
+    select: { id: true },
+  });
+  return { claimed: true, id: row.id };
+}
+
+/** Si el envío falló, suelta la reclamación para que la próxima pasada lo
+ *  reintente en vez de dar el día por cubierto. */
+export async function releaseDailyOperatorDigest(prisma: PrismaClient, id: string): Promise<void> {
+  await prisma.operatorNotification.delete({ where: { id } }).catch(() => {});
+}
 
 const FROM_ADDRESS = notifyFromAddress();
 
@@ -55,7 +94,10 @@ export type NotificationKind =
   // de irse y a quién conviene ofrecerle algo. Kind propio y no 'stuck'
   // porque el dedupe es por (cliente, kind, día) y compartir kind haría que
   // un aviso silenciara al otro ese día.
-  | 'churn-risk';
+  | 'churn-risk'
+  // 04/10/2026 — la lista diaria de prospectos a los que llamar
+  // (lib/daily-call-list.ts).
+  | 'daily-call-list';
 
 export const ALLOWED_KINDS: ReadonlySet<NotificationKind> = new Set([
   'stuck',
@@ -68,6 +110,7 @@ export const ALLOWED_KINDS: ReadonlySet<NotificationKind> = new Set([
   'usage-spike',
   'connection-lost',
   'churn-risk',
+  'daily-call-list',
 ]);
 
 // Severity → NotificationKind. Used by review-overdue/fire so the route
