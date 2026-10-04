@@ -4,6 +4,7 @@ import type { PrismaClient } from '@prisma/client';
 import { annualPriceCents } from './annual-billing';
 import { ADDONS, isAddonCode } from './addon-catalog';
 import { COMBO_PACKS, packPricing, type ComboPackCode } from './combo-packs';
+import { USAGE_PACKS, isUsagePackCode } from './usage-pack-catalog';
 import { PRODUCT_CATALOGS, PRODUCT_CODES, type ProductCode } from '@/lib/catalogs';
 
 // =============================================================================
@@ -109,6 +110,20 @@ export interface PublicCatalogProduct {
   addons: PublicCatalogAddon[];
 }
 
+/** Plan de precios del 01/10/2026 — un pack de uso: saldo de una sola vez
+ *  (+2.000 mensajes del chatbot, +100 negocios de prospección). */
+export interface PublicCatalogUsagePack {
+  code: string;
+  /** El producto que amplía: 'chatbot' | 'prospecting'. */
+  appliesTo: string;
+  /** «+2.000 mensajes». */
+  label: string;
+  units: number;
+  /** Pago único, en céntimos. */
+  priceCents: number;
+  currency: string;
+}
+
 /** Plan de precios del 01/10/2026 — un pack de productos con su precio,
  *  calculado de los precios reales del catálogo (lib/combo-packs.ts). */
 export interface PublicCatalogPack {
@@ -127,6 +142,7 @@ export interface PublicCatalog {
   generatedAt: string;
   products: PublicCatalogProduct[];
   packs: PublicCatalogPack[];
+  usagePacks: PublicCatalogUsagePack[];
 }
 
 function isProductCode(value: string): value is ProductCode {
@@ -161,8 +177,25 @@ type ProductRow = {
 export function buildPublicCatalog(rows: ProductRow[], generatedAt: Date): PublicCatalog {
   const porCodigo = new Map<string, PublicCatalogTier[]>();
   const complementos = new Map<string, PublicCatalogAddon[]>();
+  const usagePacks: PublicCatalogUsagePack[] = [];
 
   for (const row of rows) {
+    // Un pack de uso no es un escalón: se publica aparte, con lo que da. Uno
+    // que el código no conoce no se publica (no se sabría qué da).
+    if (row.kind === 'pack') {
+      if (isUsagePackCode(row.code) && row.setupFeeCents > 0) {
+        const pack = USAGE_PACKS[row.code];
+        usagePacks.push({
+          code: row.code,
+          appliesTo: pack.appliesTo,
+          label: pack.label,
+          units: pack.units,
+          priceCents: row.setupFeeCents,
+          currency: row.currency,
+        });
+      }
+      continue;
+    }
     // Un complemento se publica colgando de su producto, no como uno más.
     // Uno sin entrada en ADDONS no tiene dónde colgarse y no se publica: un
     // complemento suelto en la web no se podría contratar desde ningún sitio.
@@ -232,7 +265,8 @@ export function buildPublicCatalog(rows: ProductRow[], generatedAt: Date): Publi
     });
   }
 
-  return { generatedAt: generatedAt.toISOString(), products, packs };
+  usagePacks.sort((a, b) => a.code.localeCompare(b.code));
+  return { generatedAt: generatedAt.toISOString(), products, packs, usagePacks };
 }
 
 /** Lee el catálogo activo. Solo columnas públicas: ningún id de Stripe sale de aquí. */
@@ -241,9 +275,9 @@ export async function loadPublicCatalog(
   now: Date = new Date(),
 ): Promise<PublicCatalog> {
   const rows = await prisma.product.findMany({
-    // Planes y complementos. Los packs de uso (kind 'pack', 01/10/2026) se
-    // compran desde su propia tarjeta en el portal, no desde la web.
-    where: { isActive: true, kind: { in: ['plan', 'addon'] } },
+    // Planes, complementos y packs de uso. Los packs se compran desde su
+    // tarjeta en el portal, pero la web dice que existen y cuánto cuestan.
+    where: { isActive: true, kind: { in: ['plan', 'addon', 'pack'] } },
     orderBy: [{ code: 'asc' }, { priceCents: 'asc' }],
     select: {
       code: true,
