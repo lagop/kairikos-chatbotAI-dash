@@ -24,10 +24,11 @@ describe('ALLOWED_KINDS', () => {
   // 24/09/2026 — diez: 'churn-risk' es el barrido de salud de clientes (A8/A6).
   // Kind propio y no 'stuck' porque el dedupe es (cliente, kind, día) y
   // compartirlo haría que un aviso silenciara al otro ese día.
-  it('exposes the ten contract kinds (WP-11 added help-request and go-live-ready; Fase 11 usage-spike; connection-lost 2026-09-15; churn-risk 2026-09-24)', () => {
+  it('exposes the eleven contract kinds (WP-11 added help-request and go-live-ready; Fase 11 usage-spike; connection-lost 2026-09-15; churn-risk 2026-09-24; daily-call-list 2026-10-04)', () => {
     expect([...ALLOWED_KINDS].sort()).toEqual([
       'churn-risk',
       'connection-lost',
+      'daily-call-list',
       'escalation',
       'execution-failed',
       'go-live-ready',
