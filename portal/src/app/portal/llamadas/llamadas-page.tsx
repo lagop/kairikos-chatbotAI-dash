@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { CallReviewButton } from '@/components/portal/CallReviewButton';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { tierLabel } from '@/lib/public-catalog';
@@ -592,6 +593,12 @@ export async function LlamadasPageBody({
                 <p className="mt-2 flex flex-wrap gap-x-3 text-xs text-kairikos-muted">
                   <span>{OUTCOME_LABEL[call.outcome] ?? call.outcome}</span>
                   <span data-testid="recall-client-notify">{notifyLabel(call)}</span>
+                  {/* 05/10/2026 — pedir la reseña de esta llamada. Solo si hay
+                      número y la ficha de Google está conectada: sin ella
+                      no hay a qué reseña mandarle. */}
+                  {!call.withheld && call.fromNumber && view.googleConnection ? (
+                    <CallReviewButton callId={call.id} requestedAt={call.reviewRequestedAt?.toISOString() ?? null} />
+                  ) : null}
                 </p>
                 {/* Fase 3 — la devolución que esta persona eligió. Va en su
                     propia línea y destacada porque es lo único de esta

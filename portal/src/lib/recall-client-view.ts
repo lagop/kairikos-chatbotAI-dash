@@ -8,6 +8,7 @@ import {
   type MonthlyMetrics,
 } from './recall-reports';
 import { RECORDING_RETENTION_DAYS } from './recall-retention';
+import { reviewRecipientKey, reviewRequestedAtByNumber } from './recall-reviews';
 
 // =============================================================================
 // WP-XX — what a 'recall' client sees when they choose to log in.
@@ -55,6 +56,9 @@ export interface RecallCallSummary {
   /** Fase 3 — cuándo se ha comprometido devolverle la llamada, si eligió
    *  hueco. NULL si no se le ofrecieron opciones o no contestó. */
   callbackSlotAt: Date | null;
+  /** 05/10/2026 — cuándo se le pidió reseña a este número (por el botón o
+   *  por el resumen del día), en los últimos 180 días; null si no. */
+  reviewRequestedAt: Date | null;
 }
 
 export interface RecallMonthSummary {
@@ -313,6 +317,13 @@ export async function loadRecallClientView(
     },
   });
 
+  // Botón «Pedir reseña» (05/10/2026): a qué números ya se les pidió.
+  const requested = await reviewRequestedAtByNumber(
+    prisma,
+    subscription.clientId,
+    callRows.filter((c) => c.fromNumber && !c.withheld).map((c) => c.fromNumber as string),
+  );
+
   return {
     state: 'active',
     virtualNumber,
@@ -330,7 +341,13 @@ export async function loadRecallClientView(
         }
       : null,
     history: buildHistory(historyRows, localMonth, metrics),
-    calls: callRows,
+    calls: callRows.map((call) => ({
+      ...call,
+      reviewRequestedAt:
+        call.fromNumber && !call.withheld
+          ? (requested.get(reviewRecipientKey(call.fromNumber)) ?? null)
+          : null,
+    })),
     page,
     pageCount,
     totalCalls,
