@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import { withChatbot } from '@/lib/wizard-url';
 
@@ -13,6 +13,18 @@ import { withChatbot } from '@/lib/wizard-url';
 // propio portal (public/widget/embed.js), no hay dominio aparte que
 // configurar.
 // =============================================================================
+
+// 05/10/2026 — el origin se lee con useSyncExternalStore y no con
+// `typeof window` en el render: el servidor pintaba `src="/widget/embed.js"`
+// y el navegador `src="https://…/widget/embed.js"`, y React tiraba un error
+// de hidratación en /portal/canales y regeneraba la página entera en el
+// cliente. Así el servidor y la hidratación ven '' y el origin real llega en
+// el render siguiente. No se calcula en el servidor a propósito: detrás del
+// proxy el contenedor se ve a sí mismo como 0.0.0.0:3000 (ver
+// lib/public-origin.ts) y el origin del navegador es justo el que hay que pegar.
+const noopSubscribe = () => () => {};
+const browserOrigin = () => window.location.origin;
+const serverOrigin = () => '';
 
 export interface WebEmbedSummary {
   publicToken: string;
@@ -47,7 +59,7 @@ export function WebChannelCard({
   const [position, setPosition] = useState<'bottom-right' | 'bottom-left'>(embed?.position ?? 'bottom-right');
 
   const isActive = embed?.status === 'active';
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const origin = useSyncExternalStore(noopSubscribe, browserOrigin, serverOrigin);
   const snippet = embed
     ? `<script src="${origin}/widget/embed.js" data-space-token="${embed.publicToken}"></script>`
     : '';
