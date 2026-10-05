@@ -23,6 +23,7 @@ import {
 } from './review-request-campaign';
 import { logError } from './observability';
 import { RECALL_WITH_EXTRAS_WHERE } from './recall';
+import { isNumberBlocked } from './recall-blocklist';
 
 // =============================================================================
 // WP-XX (Fase 10) — the review half, over WhatsApp.
@@ -524,4 +525,94 @@ async function senderForClient(prisma: PrismaClient, clientId: string): Promise<
     },
   });
   return metaSenderFor(connection);
+}
+
+// ---------------------------------------------------------------------------
+// 05/10/2026 — pedir la reseña de UNA llamada, con un toque desde el portal
+// ---------------------------------------------------------------------------
+//
+// Llamadas Esencial no lleva el resumen del día, que es por donde se piden
+// las reseñas. Sin esto, el plan de entrada se quedaba sin lo que distingue a
+// Llamadas de cualquier contestador. Ahora cada llamada del portal tiene un
+// botón «Pedir reseña», en todos los escalones; Autónomo conserva lo que lo
+// hace más cómodo: el resumen que le llega solo por WhatsApp cada tarde.
+//
+// El dueño elige a quién: igual que en el resumen, solo se pide a quien él
+// dice que atendió. Nunca a todo el que llama (muchos no llegan a cliente).
+// Dos frenos que el resumen no necesitaba porque cada llamada sale una sola
+// vez en él: no se pide dos veces al mismo número en REVIEW_REQUEST_COOLDOWN_DAYS,
+// y nunca a un número bloqueado o que pidió la baja.
+
+export const REVIEW_REQUEST_COOLDOWN_DAYS = 180;
+
+export type CallReviewOutcome =
+  | 'sent'
+  | 'not_found'
+  | 'no_number'
+  | 'blocked'
+  | 'already_requested'
+  | 'no_google'
+  | 'failed';
+
+/** Normaliza un destinatario como lo guarda createCampaignWithRequests. */
+export function reviewRecipientKey(number: string): string {
+  return number.trim().toLowerCase();
+}
+
+export async function requestReviewForCall(
+  prisma: PrismaClient,
+  input: { clientId: string; callEventId: string },
+  now: Date = new Date(),
+): Promise<CallReviewOutcome> {
+  // La llamada se busca entre las del cliente de la sesión: un id ajeno no
+  // encuentra nada.
+  const call = await prisma.callEvent.findFirst({
+    where: { id: input.callEventId, clientId: input.clientId },
+    select: {
+      id: true,
+      subscriptionId: true,
+      fromNumber: true,
+      withheld: true,
+      subscription: { select: { status: true, googleConnectionId: true } },
+    },
+  });
+  if (!call || call.subscription.status !== 'active') return 'not_found';
+  if (call.withheld || !call.fromNumber) return 'no_number';
+  if (!call.subscription.googleConnectionId) return 'no_google';
+  if (await isNumberBlocked(prisma, call.subscriptionId, call.fromNumber)) return 'blocked';
+
+  const since = new Date(now.getTime() - REVIEW_REQUEST_COOLDOWN_DAYS * 24 * 60 * 60 * 1000);
+  const previous = await prisma.reviewRequest.findFirst({
+    where: {
+      recipient: reviewRecipientKey(call.fromNumber),
+      createdAt: { gte: since },
+      campaign: { clientId: input.clientId },
+    },
+    select: { id: true },
+  });
+  if (previous) return 'already_requested';
+
+  const campaignId = await requestReviewsFor(prisma, call.subscriptionId, [call.id]);
+  return campaignId ? 'sent' : 'failed';
+}
+
+/** Cuándo se pidió reseña a cada uno de estos números (en los últimos
+ *  REVIEW_REQUEST_COOLDOWN_DAYS), para pintar el botón como ya usado. */
+export async function reviewRequestedAtByNumber(
+  prisma: PrismaClient,
+  clientId: string,
+  numbers: readonly string[],
+  now: Date = new Date(),
+): Promise<Map<string, Date>> {
+  const keys = [...new Set(numbers.map(reviewRecipientKey))];
+  const out = new Map<string, Date>();
+  if (keys.length === 0) return out;
+  const since = new Date(now.getTime() - REVIEW_REQUEST_COOLDOWN_DAYS * 24 * 60 * 60 * 1000);
+  const rows = await prisma.reviewRequest.findMany({
+    where: { recipient: { in: keys }, createdAt: { gte: since }, campaign: { clientId } },
+    select: { recipient: true, createdAt: true },
+    orderBy: { createdAt: 'desc' },
+  });
+  for (const row of rows) if (!out.has(row.recipient)) out.set(row.recipient, row.createdAt);
+  return out;
 }

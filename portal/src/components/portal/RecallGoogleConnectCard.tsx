@@ -39,7 +39,8 @@ export function RecallGoogleConnectCard({ connection }: { connection: RecallGoog
       <div className="card space-y-1" data-testid="recall-google-connect-card" data-connected="true">
         <h3 className="text-sm font-semibold">Google Business conectado</h3>
         <p className="text-sm text-kairikos-muted">
-          {connection.locationName} — así podemos pedir la reseña cuando respondes al resumen de WhatsApp.
+          {connection.locationName} — ya puedes pedir reseña con «Pedir reseña» en cada llamada (y, desde el plan
+          Autónomo, respondiendo al resumen de WhatsApp).
         </p>
       </div>
     );
@@ -66,7 +67,8 @@ export function RecallGoogleConnectCard({ connection }: { connection: RecallGoog
       <div>
         <h3 className="text-sm font-semibold">Conectar Google Business</h3>
         <p className="mt-1 text-sm text-kairikos-muted">
-          Sin esto no podemos pedir la reseña en Google cuando respondes al resumen de WhatsApp.
+          Sin esto no podemos pedir reseña en Google a quien te llamó: ni desde cada llamada ni desde el resumen
+          de WhatsApp.
         </p>
       </div>
       <a href={OAUTH_START_HREF} className="btn-primary" data-testid="recall-google-connect-button">
