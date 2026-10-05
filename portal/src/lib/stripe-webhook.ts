@@ -188,6 +188,25 @@ async function dispatch(event: Stripe.Event): Promise<string> {
     case 'customer.subscription.resumed':
     case 'customer.subscription.trial_will_end': {
       const sub = event.data.object as Stripe.Subscription;
+      // 05/10/2026 — una suscripción sin kairikos_client_product_id no es del
+      // portal: los dos caminos que las crean (checkout del cliente y enlace
+      // de pago del operador) ponen siempre ese metadato. Antes llegaba a
+      // syncSubscriptionFromStripe, que lanza, y se contestaba 500: Stripe
+      // reintentaba durante días y un endpoint que falla de forma sostenida
+      // Stripe lo acaba desactivando — y con él, la activación de todos los
+      // pagos reales. Pasó el 28/09 con tres suscripciones del modo de prueba.
+      // Es el mismo trato que ya tienen las sesiones de checkout y las
+      // facturas sin el metadato: se ignoran. Queda un warn por si algún día
+      // una suscripción NUESTRA llega sin él.
+      if (!sub.metadata?.kairikos_client_product_id) {
+        logError(
+          'stripe.webhook_foreign_subscription',
+          new Error('subscription_without_kairikos_client_product_id'),
+          { route: 'POST /api/stripe/webhook', stripeEventId: event.id, stripeEventType: event.type, stripeSubscriptionId: sub.id },
+          'warn',
+        );
+        return 'ignored:foreign_subscription';
+      }
       await syncSubscriptionFromStripe(sub);
       return 'subscription';
     }

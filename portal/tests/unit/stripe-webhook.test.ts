@@ -408,6 +408,32 @@ describe('handleStripeEvent — dispatch by recorded event type', () => {
     );
   });
 
+  // 05/10/2026 — una suscripción sin el metadato no es del portal. Antes se
+  // contestaba 500 y Stripe reintentaba durante días (28/09, modo de prueba);
+  // un endpoint que falla de forma sostenida, Stripe lo desactiva.
+  it('una suscripción sin kairikos_client_product_id se ignora con 200, sin avisar al operador', async () => {
+    mockState.constructEvent.mockReturnValue({
+      id: 'evt_foreign_sub',
+      type: 'customer.subscription.updated',
+      data: { object: { id: 'sub_foreign', status: 'active', customer: 'cus_x', items: { data: [] }, metadata: {} } },
+    });
+    const result = await handleStripeEvent(RAW_BODY, SIG_HEADER);
+    expect(result.statusCode).toBe(200);
+    expect(mockState.syncSubscriptionFromStripe).not.toHaveBeenCalled();
+    expect(mockState.notifyOperatorOfExecutionFailure).not.toHaveBeenCalled();
+    expect(mockState.webhookEventUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'processed', appliedTo: 'ignored:foreign_subscription' }),
+      }),
+    );
+    expect(mockState.logError).toHaveBeenCalledWith(
+      'stripe.webhook_foreign_subscription',
+      expect.any(Error),
+      expect.objectContaining({ stripeSubscriptionId: 'sub_foreign' }),
+      'warn',
+    );
+  });
+
   it('an unhandled event type is recorded as ignored, no sync call fires', async () => {
     mockState.constructEvent.mockReturnValue({
       id: 'evt_charge_1',
