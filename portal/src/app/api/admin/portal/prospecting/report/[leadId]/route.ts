@@ -4,6 +4,8 @@ import { authenticateAdminRequest } from '@/lib/operator-session';
 import { captureCompetitorSnapshot } from '@/lib/prospecting-competitors';
 import { buildReportModel, type MissedCallAssumptions } from '@/lib/prospecting-report';
 import { renderProspectingReportHtml } from '@/lib/prospecting-report-html';
+import { reportShareUrl } from '@/lib/prospecting-share';
+import { publicOrigin } from '@/lib/public-origin';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -112,7 +114,22 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ leadId: str
     capturedAt: snapshot.data.capturedAt,
   });
 
-  return new NextResponse(renderProspectingReportHtml(model), {
+  // El enlace público lleva las mismas cifras que el operador acaba de ajustar
+  // con el negocio en la llamada: /informe/[token] lee los mismos tres
+  // parámetros y los sanea igual.
+  let shareUrl: string | null = null;
+  if (snapshot.data.shareToken) {
+    const query = new URLSearchParams();
+    for (const key of ['llamadas', 'encargo', 'cierre']) {
+      const value = url.searchParams.get(key);
+      if (value !== null && value.trim() !== '') query.set(key, value.trim());
+    }
+    const base = reportShareUrl(publicOrigin(req), snapshot.data.shareToken);
+    const qs = query.toString();
+    shareUrl = qs ? `${base}?${qs}` : base;
+  }
+
+  return new NextResponse(renderProspectingReportHtml(model, { shareUrl }), {
     status: 200,
     headers: {
       'content-type': 'text/html; charset=utf-8',

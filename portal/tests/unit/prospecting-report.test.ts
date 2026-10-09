@@ -28,6 +28,7 @@ import {
   type CompetitorInput,
 } from '@/lib/prospecting-report';
 import { selectCompetitors, buildCompetitorQuery } from '@/lib/prospecting-competitors';
+import { renderProspectingReportHtml } from '@/lib/prospecting-report-html';
 import type { PlaceSearchResult } from '@/lib/google-places';
 
 function competitor(over: Partial<CompetitorInput> = {}): CompetitorInput {
@@ -172,6 +173,20 @@ describe('ranking por reseñas', () => {
     });
     expect(m.findings.map((f) => f.kind)).toContain('review_leader');
     expect(m.findings.length).toBeGreaterThan(0);
+  });
+
+  // 09/10/2026 — el enlace para mandárselo, solo en la vista del operador.
+  it('la vista del operador enseña el enlace público; la página pública no', () => {
+    const m = buildReportModel({
+      subject: { ...subject, address: null, phone: null, website: null, category: 'peluquería', location: 'Las Palmas', primaryType: 'hair_salon' },
+      competitors: zone,
+      capturedAt: new Date('2026-09-23'),
+    });
+    const operador = renderProspectingReportHtml(m, { shareUrl: 'https://portal.kairikos.cloud/informe/abc?llamadas=5&x=<b>' });
+    expect(operador).toContain('Enlace para mandarle');
+    expect(operador).toContain('llamadas=5');
+    expect(operador).not.toContain('x=<b>');
+    expect(renderProspectingReportHtml(m)).not.toContain('Enlace para mandarle');
   });
 });
 
