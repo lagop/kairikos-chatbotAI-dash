@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockState = vi.hoisted(() => ({
   send: vi.fn(),
   recipients: vi.fn(),
+  googleConfigured: vi.fn(),
 }));
 
 vi.mock('@/lib/operator-notify', async (importOriginal) => {
@@ -18,6 +19,7 @@ vi.mock('@/lib/operator-notify', async (importOriginal) => {
 });
 vi.mock('@/lib/operator-alert-settings', () => ({ getOperatorAlertRecipients: () => mockState.recipients() }));
 vi.mock('@/lib/observability', () => ({ logError: vi.fn() }));
+vi.mock('@/lib/google-business', () => ({ isGoogleBusinessOAuthConfigured: () => mockState.googleConfigured() }));
 
 import { callHook, isCallListDue, loadCallList, renderCallList, sendDailyCallList, type CallListLead } from '@/lib/daily-call-list';
 import { sweepClientHealth } from '@/lib/client-health';
@@ -53,6 +55,7 @@ function makePrisma(opts: { existingClaim?: boolean; leads?: CallListLead[] } = 
 beforeEach(() => {
   mockState.send.mockReset().mockResolvedValue({ ok: true, messageId: 'm1' });
   mockState.recipients.mockReset().mockResolvedValue([{ email: 'ops@kairikos.com' }]);
+  mockState.googleConfigured.mockReset().mockResolvedValue(false);
 });
 
 describe('isCallListDue', () => {
@@ -86,6 +89,29 @@ describe('callHook', () => {
   });
   it('si no, la pregunta de las llamadas perdidas', () => {
     expect(callHook(LEAD())).toMatch(/llamadas pierde/);
+  });
+
+  // 09/10/2026 — el 73 % de los ganchos ofrecía Llamadas con precio, y no se
+  // puede activar. Lo que no está a la venta se ofrece como lista de espera.
+  const NADA_A_LA_VENTA = { reviews: false, recall: false };
+  it('sin Llamadas a la venta, la pregunta sigue pero se ofrece el informe y el piloto, sin precio', () => {
+    const hook = callHook(LEAD(), NADA_A_LA_VENTA);
+    expect(hook).toMatch(/llamadas pierde/);
+    expect(hook).toMatch(/piloto/);
+    expect(hook).not.toMatch(/€/);
+  });
+  it('sin Reseñas a la venta, pocas reseñas o nota baja abren con el informe y la lista de espera, sin precio', () => {
+    for (const snapshot of [
+      { subjectRating: 4.8, subjectReviewCount: 7, shareToken: null },
+      { subjectRating: 3.9, subjectReviewCount: 80, shareToken: null },
+    ]) {
+      const hook = callHook(LEAD({ competitorSnapshot: snapshot }), NADA_A_LA_VENTA);
+      expect(hook).toMatch(/lista de espera/);
+      expect(hook).not.toMatch(/€/);
+    }
+  });
+  it('la web sí está a la venta: su gancho no cambia', () => {
+    expect(callHook(LEAD({ website: null }), NADA_A_LA_VENTA)).toMatch(/799 €/);
   });
 });
 
@@ -138,6 +164,22 @@ describe('sendDailyCallList', () => {
       select: { id: true },
     });
     expect(mockState.send).toHaveBeenCalledWith(expect.objectContaining({ kind: 'daily-call-list' }));
+  });
+
+  it('el correo no vende Llamadas ni Reseñas mientras no se puedan activar', async () => {
+    await sendDailyCallList(makePrisma() as never, TUESDAY_10_MADRID);
+    const { text } = mockState.send.mock.calls[0][0] as { text: string };
+    expect(text).toMatch(/piloto/);
+    expect(text).not.toMatch(/desde 79 €/);
+  });
+
+  it('si la configuración de Google falla, no ofrece Reseñas', async () => {
+    mockState.googleConfigured.mockRejectedValue(new Error('db down'));
+    const lead = LEAD({ competitorSnapshot: { subjectRating: 4.8, subjectReviewCount: 7, shareToken: null } });
+    await sendDailyCallList(makePrisma({ leads: [lead] }) as never, TUESDAY_10_MADRID);
+    const { text } = mockState.send.mock.calls[0][0] as { text: string };
+    expect(text).toMatch(/lista de espera/);
+    expect(text).not.toMatch(/99 €/);
   });
 
   it('una segunda pasada el mismo día no manda nada', async () => {

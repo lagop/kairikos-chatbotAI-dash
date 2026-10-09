@@ -74,13 +74,22 @@ li { margin-bottom: 6px; }
   padding: 2px 10px; font-size: 12px; white-space: nowrap; }
 .assumptions { font-size: 12px; color: #5b6472; margin-top: 8px; }
 footer { max-width: 720px; margin: 16px auto 0; font-size: 11px; color: #7b8595; }
+.share { max-width: 720px; margin: 0 auto 12px; font-size: 13px; background: #fff8e6; border: 1px solid #f1d58a;
+  border-radius: 8px; padding: 10px 14px; word-break: break-all; }
 @media print {
   body { background: #fff; padding: 0; }
   .sheet { box-shadow: none; border-radius: 0; max-width: none; padding: 0; }
+  .share { display: none; }
 }
 `;
 
-export function renderProspectingReportHtml(model: ReportModel): string {
+/**
+ * `shareUrl` solo lo pasa la ruta del operador (09/10/2026): el borrador de web
+ * ya enseñaba «Enlace para mandarle» y el informe no, así que su enlace público
+ * solo aparecía en el correo de la lista del día siguiente, y no se podía
+ * mandar justo después de colgar. La página pública nunca lo lleva.
+ */
+export function renderProspectingReportHtml(model: ReportModel, opts: { shareUrl?: string | null } = {}): string {
   const { subject, comparison, competitors, estimate, findings, capturedAt } = model;
 
   // Tres casos distintos, y confundir los dos últimos es mentir: tiene
@@ -152,6 +161,7 @@ export function renderProspectingReportHtml(model: ReportModel): string {
 <style>${STYLES}</style>
 </head>
 <body>
+${opts.shareUrl ? `<div class="share">Enlace para mandarle: <code>${esc(opts.shareUrl)}</code><br>Lleva las cifras de esta página. Esta línea solo la ves tú.</div>` : ''}
 <main class="sheet">
   <h1>${esc(subject.name)}</h1>
   <p class="sub">${esc(subject.address ?? subject.location ?? '')}${

@@ -10,6 +10,7 @@ import { localDateFor, localMinutesFor } from './recall-digest';
 import { reportShareUrl } from './prospecting-share';
 import { portalBaseUrl } from './portal-base-url';
 import { logError } from './observability';
+import { isGoogleBusinessOAuthConfigured } from './google-business';
 
 // =============================================================================
 // 04/10/2026 — la lista diaria de llamadas.
@@ -57,25 +58,56 @@ export interface CallListLead {
 }
 
 /**
+ * Qué productos se pueden activar hoy, para que el gancho no ofrezca como
+ * vendible lo que todavía no se puede dar de alta.
+ *
+ * 09/10/2026 — con la lista de 194 prospectos de Kairikos, 141 ganchos (el
+ * 73 %) decían «abre con Llamadas (desde 79 €/mes)», y Llamadas no se puede
+ * activar hasta tener Meta Tech Provider, Twilio de pago y el contrato del
+ * art. 28. Los de Reseñas igual: sin cliente OAuth de Google no se puede
+ * conectar ninguna ficha. El guion de llamadas lo reconducía a lista de
+ * espera; ahora lo dice el propio correo.
+ */
+export interface CallHookOffers {
+  reviews: boolean;
+  recall: boolean;
+}
+
+/** Llamadas a la venta. No hay un dato del sistema que diga «lanzado»: es una
+ *  decisión (ver el plan, «Cuándo aparece recall en el escaparate»). El día
+ *  que se lance, a true. */
+export const RECALL_ON_SALE = false;
+
+const ALL_ON_SALE: CallHookOffers = { reviews: true, recall: true };
+
+/**
  * Con qué abrir la llamada, a partir de lo que se sabe del negocio. Pura.
  *
  * El orden importa: lo más visible para el propio negocio primero. Que no
  * tenga web lo sabe él; que tenga pocas reseñas frente a su competencia lo
  * enseña el informe; las llamadas que pierde es la pregunta que vale para
- * todos los demás.
+ * todos los demás. Lo que no se puede activar se ofrece como lista de
+ * espera, nunca con precio.
  */
-export function callHook(lead: CallListLead): string {
+export function callHook(lead: CallListLead, offers: CallHookOffers = ALL_ON_SALE): string {
   if (lead.repliedAt) return 'Te ha contestado por WhatsApp: llámale hoy, está esperando.';
   if (!lead.website) return 'No tiene web. Abre con la web (799 €, con dominio y alojamiento el primer año) y su ficha de Google.';
   const reviews = lead.competitorSnapshot?.subjectReviewCount ?? null;
   const rating = lead.competitorSnapshot?.subjectRating ?? null;
   if (reviews !== null && reviews < 20) {
-    return `Solo ${reviews} reseñas en Google. Abre con su informe frente a la competencia y Reseñas (99 €/mes, sin alta).`;
+    return offers.reviews
+      ? `Solo ${reviews} reseñas en Google. Abre con su informe frente a la competencia y Reseñas (99 €/mes, sin alta).`
+      : `Solo ${reviews} reseñas en Google. Abre con su informe frente a la competencia. Reseñas aún no se puede activar: si le interesa, apúntalo en la lista de espera.`;
   }
   if (rating !== null && rating < 4.3) {
-    return `Nota de ${rating.toFixed(1).replace('.', ',')} en Google. Abre con las reseñas: pedirlas y contestarlas.`;
+    const nota = rating.toFixed(1).replace('.', ',');
+    return offers.reviews
+      ? `Nota de ${nota} en Google. Abre con las reseñas: pedirlas y contestarlas.`
+      : `Nota de ${nota} en Google. Abre con su informe frente a la competencia. Reseñas aún no se puede activar: si le interesa, apúntalo en la lista de espera.`;
   }
-  return '¿Cuántas llamadas pierde cuando está en una obra? Abre con Llamadas (desde 79 €/mes).';
+  return offers.recall
+    ? '¿Cuántas llamadas pierde cuando está en una obra? Abre con Llamadas (desde 79 €/mes).'
+    : '¿Cuántas llamadas pierde cuando está en una obra? Ofrécele su informe. Llamadas aún no se puede activar: si le interesa, apúntalo como piloto, sin precio ni fecha.';
 }
 
 /** Los mejores prospectos de la cuenta interna que aún no se han llamado. */
@@ -123,6 +155,7 @@ export function renderCallList(
   leads: readonly CallListLead[],
   origin: string,
   day: string,
+  offers: CallHookOffers = ALL_ON_SALE,
 ): { subject: string; text: string; html: string } {
   const subject = `Llamadas de hoy (${day}): ${leads.length} negocio${leads.length === 1 ? '' : 's'}`;
   const inbox = `${origin}/portal/leads`;
@@ -130,7 +163,7 @@ export function renderCallList(
     const name = lead.contactName ?? 'Negocio sin nombre';
     const where = [lead.searchCategory, lead.searchLocation].filter(Boolean).join(' · ');
     const report = lead.competitorSnapshot?.shareToken ? reportShareUrl(origin, lead.competitorSnapshot.shareToken) : null;
-    return { i: i + 1, name, phone: lead.contactPhone ?? '', where, hook: callHook(lead), report, why: lead.scoreReason };
+    return { i: i + 1, name, phone: lead.contactPhone ?? '', where, hook: callHook(lead, offers), report, why: lead.scoreReason };
   });
 
   const text = [
@@ -192,7 +225,13 @@ export async function sendDailyCallList(prisma: PrismaClient, now: Date = new Da
   const leads = await loadCallList(prisma);
   if (leads.length === 0) return { sent: false, reason: 'empty' };
 
-  const rendered = renderCallList(leads, portalBaseUrl(), day);
+  const offers: CallHookOffers = {
+    // Ante la duda, no se ofrece: un gancho de lista de espera de más no cuesta
+    // nada; vender algo que no se puede activar, sí.
+    reviews: await isGoogleBusinessOAuthConfigured().catch(() => false),
+    recall: RECALL_ON_SALE,
+  };
+  const rendered = renderCallList(leads, portalBaseUrl(), day, offers);
   const res = await sendOperatorNotification({
     kind: 'daily-call-list',
     to: await getOperatorAlertRecipients(),
