@@ -5,6 +5,7 @@ import { getValidAccessToken, publishReviewReply } from './google-business';
 import { generateReviewReplyDraft, findReplyRisk } from './review-reply-ai';
 import { logError } from './observability';
 import { isConnectionManaged } from './gbp-managed';
+import { NEGATIVE_STAR_THRESHOLD } from './review-alerts';
 
 // =============================================================================
 // WP-22c — orchestrates publishing a reply (human-approved or automatic)
@@ -120,6 +121,21 @@ export async function autoReplyToUnansweredReviews(
           connectionId: connection.id,
           reviewId: review.id,
         }, 'warn');
+        continue;
+      }
+
+      // 15/10/2026 — las de 1 y 2 estrellas no se publican solas. Una
+      // respuesta desafortunada a una queja la ve todo el que mira la ficha,
+      // y con la Ficha gestionada (o la publicación automática) salía sin que
+      // nadie la leyera. Se quedan como borrador, guardado arriba, para
+      // aprobar con un clic en /portal/resenas. El umbral es el mismo que el
+      // del aviso inmediato de review-alerts.ts a propósito: así el cliente
+      // siempre recibe un correo de que tiene una pendiente. Las de 3 siguen
+      // automáticas porque no avisan («tibia, no urgente»): retenerlas las
+      // dejaría sin responder y sin que nadie lo supiera. Una negativa de más
+      // de 7 días (al conectar una ficha con histórico) no avisa, pero el
+      // borrador queda igualmente a la vista en el portal.
+      if (review.starRating <= NEGATIVE_STAR_THRESHOLD) {
         continue;
       }
 

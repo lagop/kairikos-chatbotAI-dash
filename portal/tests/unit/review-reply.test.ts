@@ -165,6 +165,38 @@ describe('autoReplyToUnansweredReviews', () => {
     expect(mockState.logError).toHaveBeenCalled();
   });
 
+  // 15/10/2026 — una queja (1-2 estrellas) no se contesta en público sin que
+  // una persona lea la respuesta: queda el borrador para aprobar con un clic.
+  it('deja como borrador, sin publicar, la respuesta a una reseña de 1 o 2 estrellas', async () => {
+    mockState.reviewFindMany.mockResolvedValueOnce([
+      { id: 'review_1', googleReviewId: 'x', reviewerName: null, starRating: 1, comment: 'Fatal' },
+      { id: 'review_2', googleReviewId: 'y', reviewerName: null, starRating: 2, comment: 'Regular tirando a mal' },
+    ]);
+    mockState.generateReviewReplyDraft
+      .mockResolvedValueOnce({ ok: true, draft: 'Sentimos mucho lo ocurrido.' })
+      .mockResolvedValueOnce({ ok: true, draft: 'Gracias por contarnos.' });
+
+    const result = await autoReplyToUnansweredReviews(baseConnection({ autoPublishReplies: true }), 'X');
+
+    expect(result).toEqual({ drafted: 2, published: 0 });
+    expect(mockState.reviewUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ aiDraftReply: 'Sentimos mucho lo ocurrido.' }) }),
+    );
+    expect(mockState.publishReviewReply).not.toHaveBeenCalled();
+  });
+
+  it('las de 3 estrellas o más se siguen publicando solas', async () => {
+    mockState.reviewFindMany.mockResolvedValueOnce([
+      { id: 'review_3', googleReviewId: 'z', reviewerName: null, starRating: 3, comment: 'Normal' },
+    ]);
+    mockState.generateReviewReplyDraft.mockResolvedValueOnce({ ok: true, draft: 'Gracias.' });
+
+    const result = await autoReplyToUnansweredReviews(baseConnection({ autoPublishReplies: true }), 'X');
+
+    expect(result).toEqual({ drafted: 1, published: 1 });
+    expect(mockState.publishReviewReply).toHaveBeenCalledWith('at_1', 'z', 'Gracias.');
+  });
+
   it('does not increment published when the publish step fails after a successful draft', async () => {
     mockState.reviewFindMany.mockResolvedValueOnce([
       { id: 'review_1', googleReviewId: 'x', reviewerName: null, starRating: 5, comment: null },

@@ -103,7 +103,8 @@ export function GbpManagedCard(props: GbpManagedCardProps) {
           <p className="text-sm font-semibold">Ficha de Google gestionada</p>
           <p className="mt-0.5 text-sm text-kairikos-muted">
             Una publicación a la semana en tu ficha y respuesta a cada reseña, sin que tengas que entrar. Te enseñamos cada
-            publicación antes y tienes dos días para cambiarla o descartarla.
+            publicación antes y tienes dos días para cambiarla o descartarla. Las respuestas a reseñas de 1 y 2 estrellas
+            te las dejamos preparadas para que las apruebes con un clic.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -131,7 +132,7 @@ export function GbpManagedCard(props: GbpManagedCardProps) {
         <p className="text-sm font-semibold">Ficha de Google gestionada</p>
         <p className="mt-0.5 text-sm text-kairikos-muted">
           {props.connectionId
-            ? 'Publicamos una vez por semana en tu ficha y respondemos a tus reseñas.'
+            ? 'Publicamos una vez por semana en tu ficha y respondemos a tus reseñas. Las de 1 y 2 estrellas te esperan en Reseñas para que apruebes la respuesta.'
             : 'Contratada. Conecta tu ficha de Google aquí arriba y empezamos.'}
         </p>
       </div>
