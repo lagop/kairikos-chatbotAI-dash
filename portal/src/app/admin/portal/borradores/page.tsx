@@ -39,9 +39,15 @@ export default async function PublicDraftsPage() {
   const session = await getSession();
   if (!session.isOperator) redirect('/admin/login');
 
-  const requests = isDatabaseConfigured
-    ? await prisma.publicDraftRequest.findMany({ orderBy: { createdAt: 'desc' }, take: 100 })
-    : [];
+  // 20/10/2026 — los contactos de la calculadora. Se guardaban desde el 24/09
+  // y no los enseñaba ninguna pantalla: el comentario de su ruta decía que
+  // venían a esta cola, pero esta cola solo leía los borradores.
+  const [requests, calculatorLeads] = isDatabaseConfigured
+    ? await Promise.all([
+        prisma.publicDraftRequest.findMany({ orderBy: { createdAt: 'desc' }, take: 100 }),
+        prisma.calculatorLead.findMany({ orderBy: { createdAt: 'desc' }, take: 100 }),
+      ])
+    : [[], []];
 
   return (
     <div className="space-y-6">
@@ -71,6 +77,7 @@ export default async function PublicDraftsPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <ConsentPill consentAt={row.marketingConsentAt} />
                   {row.contactedAt ? (
                     <span className="pill-success">Contactado</span>
                   ) : (
@@ -85,6 +92,64 @@ export default async function PublicDraftsPage() {
           ))}
         </ul>
       )}
+
+      <section className="space-y-2" aria-label="Contactos de la calculadora">
+        <h2 className="text-lg font-semibold">Contactos de la calculadora de llamadas</h2>
+        <p className="text-sm text-kairikos-muted">
+          Quien hizo la cuenta de cuánto pierde en llamadas y pidió que le contáramos cómo recuperarlas.
+        </p>
+        {calculatorLeads.length === 0 ? (
+          <EmptyState
+            title="Todavía no ha dejado nadie su contacto en la calculadora"
+            description="Cuando alguien lo haga en kairikos.com, aparecerá aquí y en el correo de las 8:30."
+          />
+        ) : (
+          <ul className="space-y-2" data-testid="calculator-leads-list">
+            {calculatorLeads.map((row) => (
+              <li key={row.id} className="card" data-testid="calculator-lead-row">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="text-xs uppercase tracking-wider text-kairikos-muted">
+                      {FECHA.format(row.createdAt)} · {PUBLIC_SECTORS[row.sector]?.label ?? row.sector}
+                    </p>
+                    <h3 className="mt-1 text-base font-semibold">{row.businessName ?? 'Sin nombre'}</h3>
+                    <p className="text-sm text-kairikos-muted">
+                      {row.city ? `${row.city} · ` : ''}
+                      {row.contact}
+                    </p>
+                    <p className="mt-1 text-sm">
+                      Pierde {row.missedCallsPerWeek} llamadas a la semana: unos{' '}
+                      {Math.round(row.annualLossCents / 100).toLocaleString('es-ES')} € al año.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <ConsentPill consentAt={row.marketingConsentAt} />
+                    {row.contactedAt ? (
+                      <span className="pill-success">Contactado</span>
+                    ) : (
+                      <span className="pill-warning">Por llamar</span>
+                    )}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
+  );
+}
+
+/** Si marcó la casilla de comunicaciones comerciales. Sin ella se le puede
+ *  llamar o mandarle lo que pidió, pero no escribirle con ofertas. */
+function ConsentPill({ consentAt }: { consentAt: Date | null }) {
+  return consentAt ? (
+    <span className="pill-success" title={`Aceptó el ${FECHA.format(consentAt)}`}>
+      Acepta ofertas
+    </span>
+  ) : (
+    <span className="pill" title="No marcó la casilla de comunicaciones comerciales">
+      Solo lo que pidió
+    </span>
   );
 }

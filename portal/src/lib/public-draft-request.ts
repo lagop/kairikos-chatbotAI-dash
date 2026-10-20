@@ -55,6 +55,8 @@ export interface PublicDraftInput {
   sector: string;
   /** El campo trampa: si viene relleno, es un bot. */
   website?: string;
+  /** Marcó la casilla de comunicaciones comerciales (20/10/2026). */
+  marketingConsent?: boolean;
   ip: string;
 }
 
@@ -138,6 +140,7 @@ export async function createPublicDraft(
       primaryType: sector.primaryType,
       copy: generated.copy as unknown as object,
       model: generated.model,
+      marketingConsentAt: input.marketingConsent === true ? now : null,
       createdAt: now,
     },
   });

@@ -41,7 +41,7 @@ const LEAD = (over: Partial<CallListLead> = {}): CallListLead => ({
   ...over,
 });
 
-function makePrisma(opts: { existingClaim?: boolean; leads?: CallListLead[] } = {}) {
+function makePrisma(opts: { existingClaim?: boolean; leads?: CallListLead[]; drafts?: unknown[]; calcs?: unknown[] } = {}) {
   return {
     operatorNotification: {
       findFirst: vi.fn().mockResolvedValue(opts.existingClaim ? { id: 'n0' } : null),
@@ -49,6 +49,8 @@ function makePrisma(opts: { existingClaim?: boolean; leads?: CallListLead[] } = 
       delete: vi.fn().mockResolvedValue({}),
     },
     lead: { findMany: vi.fn().mockResolvedValue(opts.leads ?? [LEAD()]) },
+    publicDraftRequest: { findMany: vi.fn().mockResolvedValue(opts.drafts ?? []) },
+    calculatorLead: { findMany: vi.fn().mockResolvedValue(opts.calcs ?? []) },
   };
 }
 
@@ -180,6 +182,40 @@ describe('sendDailyCallList', () => {
     const { text } = mockState.send.mock.calls[0][0] as { text: string };
     expect(text).toMatch(/lista de espera/);
     expect(text).not.toMatch(/99 €/);
+  });
+
+  // 20/10/2026 — los contactos que deja la gente en kairikos.com.
+  const DRAFT = { token: 'tk1', businessName: 'Fontanería Pérez', city: 'Telde', contact: '600 000 111', marketingConsentAt: new Date('2026-10-05T09:00:00Z'), createdAt: new Date('2026-10-05T09:00:00Z') };
+  const CALC = { businessName: null, city: null, contact: 'ana@example.com', marketingConsentAt: null, createdAt: new Date('2026-10-05T10:00:00Z') };
+
+  it('los contactos de la web van arriba, con su consentimiento a la vista', async () => {
+    await sendDailyCallList(makePrisma({ drafts: [DRAFT], calcs: [CALC] }) as never, TUESDAY_10_MADRID);
+    const { subject, text, html } = mockState.send.mock.calls[0][0] as { subject: string; text: string; html: string };
+    expect(subject).toBe('Llamadas de hoy (2026-10-06): 1 negocio y 2 contactos de la web');
+    expect(text.indexOf('TE HAN DEJADO SU CONTACTO EN LA WEB')).toBeLessThan(text.indexOf('negocios para llamar hoy'));
+    expect(text).toContain('Fontanería Pérez (Telde) — 600 000 111');
+    expect(text).toContain('Acepta que le escribamos con ofertas.');
+    expect(text).toContain('ana@example.com');
+    expect(text).toContain('No marcó la casilla');
+    expect(text).toContain('/mi-web/tk1');
+    expect(html).toContain('Te han dejado su contacto en la web');
+  });
+
+  it('solo los no contactados de los últimos 7 días', async () => {
+    const prisma = makePrisma();
+    await sendDailyCallList(prisma as never, TUESDAY_10_MADRID);
+    const since = new Date(TUESDAY_10_MADRID.getTime() - 7 * 24 * 60 * 60 * 1000);
+    for (const model of [prisma.publicDraftRequest, prisma.calculatorLead]) {
+      expect(model.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { contactedAt: null, createdAt: { gte: since } } }),
+      );
+    }
+  });
+
+  it('sin prospectos pero con contactos de la web, el correo sale igual', async () => {
+    await expect(
+      sendDailyCallList(makePrisma({ leads: [], calcs: [CALC] }) as never, TUESDAY_10_MADRID),
+    ).resolves.toEqual({ sent: true, leads: 0 });
   });
 
   it('una segunda pasada el mismo día no manda nada', async () => {

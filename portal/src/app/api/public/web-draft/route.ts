@@ -35,6 +35,10 @@ const BodySchema = z.object({
   city: z.string().trim().min(2).max(120),
   contact: z.string().trim().min(6).max(200),
   sector: z.string().trim().max(40),
+  /** 20/10/2026 — la casilla de comunicaciones comerciales, desmarcada por
+   *  defecto. El contacto obligatorio sirve para seguir la conversación sobre
+   *  SU borrador; escribirle con otras ofertas exige esto a true. */
+  consent: z.boolean().optional(),
   /** El campo trampa. Se llama 'website' porque es lo que un bot espera ver
    *  y rellenar; una persona no lo ve. */
   website: z.string().max(200).optional(),
@@ -80,7 +84,8 @@ export async function POST(req: NextRequest) {
   const ip = clientIpFromHeaders(req.headers);
 
   try {
-    const result = await createPublicDraft(prisma, { ...body.data, ip });
+    const { consent, ...draft } = body.data;
+    const result = await createPublicDraft(prisma, { ...draft, marketingConsent: consent === true, ip });
     if (!result.ok) {
       // Al visitante no se le explica cuál de los topes saltó: no puede
       // hacer nada con esa información y saberlo solo ayuda a quien intenta

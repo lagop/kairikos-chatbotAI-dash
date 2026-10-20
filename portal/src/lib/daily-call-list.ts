@@ -110,6 +110,83 @@ export function callHook(lead: CallListLead, offers: CallHookOffers = ALL_ON_SAL
     : '¿Cuántas llamadas pierde cuando está en una obra? Ofrécele su informe. Llamadas aún no se puede activar: si le interesa, apúntalo como piloto, sin precio ni fecha.';
 }
 
+/**
+ * 20/10/2026 — los contactos que deja la gente en kairikos.com: el borrador de
+ * web y la calculadora de llamadas. Los de la calculadora se guardaban y no los
+ * leía nadie (ni la cola de /admin/portal/borradores ni nada más). Van arriba
+ * del correo porque han llegado solos: son los más calientes de la lista.
+ *
+ * Salen mientras sigan sin contactar y tengan menos de WEB_CONTACT_DAYS días.
+ * No hay todavía un «marcar como contactado» para ellos (ver la página de
+ * borradores): el plazo es lo que evita que se repitan para siempre.
+ * `consent` dice si marcó la casilla de comunicaciones comerciales: sin ella,
+ * llamar o mandarle lo que pidió, pero no escribirle con ofertas.
+ */
+export interface WebContact {
+  source: 'borrador' | 'calculadora';
+  businessName: string | null;
+  city: string | null;
+  contact: string;
+  consent: boolean;
+  createdAt: Date;
+  /** El borrador que pidió, si es del formulario de borradores. */
+  draftUrl: string | null;
+}
+
+export const WEB_CONTACT_DAYS = 7;
+const WEB_CONTACT_LIMIT = 20;
+
+export async function loadWebContacts(prisma: PrismaClient, origin: string, now: Date = new Date()): Promise<WebContact[]> {
+  const since = new Date(now.getTime() - WEB_CONTACT_DAYS * 24 * 60 * 60 * 1000);
+  const where = { contactedAt: null, createdAt: { gte: since } };
+  const [drafts, calcs] = await Promise.all([
+    prisma.publicDraftRequest.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: WEB_CONTACT_LIMIT,
+      select: { token: true, businessName: true, city: true, contact: true, marketingConsentAt: true, createdAt: true },
+    }),
+    prisma.calculatorLead.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: WEB_CONTACT_LIMIT,
+      select: { businessName: true, city: true, contact: true, marketingConsentAt: true, createdAt: true },
+    }),
+  ]);
+  return [
+    ...drafts.map((d) => ({
+      source: 'borrador' as const,
+      businessName: d.businessName,
+      city: d.city,
+      contact: d.contact,
+      consent: d.marketingConsentAt !== null,
+      createdAt: d.createdAt,
+      draftUrl: `${origin}/mi-web/${d.token}`,
+    })),
+    ...calcs.map((c) => ({
+      source: 'calculadora' as const,
+      businessName: c.businessName,
+      city: c.city,
+      contact: c.contact,
+      consent: c.marketingConsentAt !== null,
+      createdAt: c.createdAt,
+      draftUrl: null,
+    })),
+  ]
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, WEB_CONTACT_LIMIT);
+}
+
+function webContactLabel(c: WebContact): string {
+  return c.source === 'borrador' ? 'Pidió su borrador de web' : 'Usó la calculadora de llamadas perdidas';
+}
+
+function consentLabel(c: WebContact): string {
+  return c.consent
+    ? 'Acepta que le escribamos con ofertas.'
+    : 'No marcó la casilla: llámale o mándale solo lo que pidió, sin ofertas por escrito.';
+}
+
 /** Los mejores prospectos de la cuenta interna que aún no se han llamado. */
 export async function loadCallList(prisma: PrismaClient, limit = CALL_LIST_SIZE): Promise<CallListLead[]> {
   return prisma.lead.findMany({
@@ -156,8 +233,12 @@ export function renderCallList(
   origin: string,
   day: string,
   offers: CallHookOffers = ALL_ON_SALE,
+  webContacts: readonly WebContact[] = [],
 ): { subject: string; text: string; html: string } {
-  const subject = `Llamadas de hoy (${day}): ${leads.length} negocio${leads.length === 1 ? '' : 's'}`;
+  const webPart = webContacts.length > 0
+    ? ` y ${webContacts.length} contacto${webContacts.length === 1 ? '' : 's'} de la web`
+    : '';
+  const subject = `Llamadas de hoy (${day}): ${leads.length} negocio${leads.length === 1 ? '' : 's'}${webPart}`;
   const inbox = `${origin}/portal/leads`;
   const lines = leads.map((lead, i) => {
     const name = lead.contactName ?? 'Negocio sin nombre';
@@ -166,7 +247,18 @@ export function renderCallList(
     return { i: i + 1, name, phone: lead.contactPhone ?? '', where, hook: callHook(lead, offers), report, why: lead.scoreReason };
   });
 
+  const webText = webContacts.length === 0 ? [] : [
+    'TE HAN DEJADO SU CONTACTO EN LA WEB — llámales primero:',
+    ...webContacts.flatMap((c, i) => [
+      `${i + 1}. ${c.businessName ?? 'Sin nombre'}${c.city ? ` (${c.city})` : ''} — ${c.contact}`,
+      `   ${webContactLabel(c)}. ${consentLabel(c)}`,
+      ...(c.draftUrl ? [`   Su borrador: ${c.draftUrl}`] : []),
+    ]),
+    '',
+  ];
+
   const text = [
+    ...webText,
     `${leads.length} negocios para llamar hoy, los mejores que siguen sin contactar.`,
     'Después de cada llamada, márcalo como contactado o descartado en la bandeja: así sale de la lista.',
     '',
@@ -200,6 +292,19 @@ export function renderCallList(
     <p style="margin: 0; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: #6b7280;">Kairikos Ops</p>
     <h1 style="margin: 4px 0 8px; font-size: 20px;">Llamadas de hoy</h1>
     <p style="margin: 0 0 12px; color: #374151;">Los mejores negocios que siguen sin contactar. Después de cada llamada, márcalo como contactado o descartado en la <a href="${escapeHtml(inbox)}" style="color: #111827;">bandeja</a>: así sale de la lista.</p>
+    ${webContacts.length === 0 ? '' : `<h2 style="margin: 16px 0 4px; font-size: 16px;">Te han dejado su contacto en la web</h2>
+    <p style="margin: 0 0 8px; color: #374151;">Han venido solos: llámales primero.</p>
+    <table style="width: 100%; border-collapse: collapse;">${webContacts
+      .map(
+        (c) => `<tr><td style="padding: 10px 0; border-bottom: 1px solid #e5e7eb; vertical-align: top;">
+    <p style="margin: 0; font-weight: 600;">${escapeHtml(c.businessName ?? 'Sin nombre')}${c.city ? ` <span style="color: #6b7280; font-weight: 400;">· ${escapeHtml(c.city)}</span>` : ''}</p>
+    <p style="margin: 2px 0 0;">${escapeHtml(c.contact)}</p>
+    <p style="margin: 6px 0 0;">${escapeHtml(webContactLabel(c))}. ${escapeHtml(consentLabel(c))}</p>
+    ${c.draftUrl ? `<p style="margin: 4px 0 0; font-size: 13px;"><a href="${escapeHtml(c.draftUrl)}" style="color: #111827;">Ver su borrador</a></p>` : ''}
+  </td></tr>`,
+      )
+      .join('\n')}</table>
+    <h2 style="margin: 20px 0 4px; font-size: 16px;">Prospectos</h2>`}
     <table style="width: 100%; border-collapse: collapse;">${rows}</table>
   </body>
 </html>`;
@@ -222,8 +327,9 @@ export async function sendDailyCallList(prisma: PrismaClient, now: Date = new Da
   const claim = await claimDailyOperatorDigest(prisma, { kind: 'daily-call-list', day, subject: `Llamadas de hoy (${day})` });
   if (!claim.claimed) return { sent: false, reason: 'already_sent' };
 
-  const leads = await loadCallList(prisma);
-  if (leads.length === 0) return { sent: false, reason: 'empty' };
+  const origin = portalBaseUrl();
+  const [leads, webContacts] = await Promise.all([loadCallList(prisma), loadWebContacts(prisma, origin, now)]);
+  if (leads.length === 0 && webContacts.length === 0) return { sent: false, reason: 'empty' };
 
   const offers: CallHookOffers = {
     // Ante la duda, no se ofrece: un gancho de lista de espera de más no cuesta
@@ -231,7 +337,7 @@ export async function sendDailyCallList(prisma: PrismaClient, now: Date = new Da
     reviews: await isGoogleBusinessOAuthConfigured().catch(() => false),
     recall: RECALL_ON_SALE,
   };
-  const rendered = renderCallList(leads, portalBaseUrl(), day, offers);
+  const rendered = renderCallList(leads, origin, day, offers, webContacts);
   const res = await sendOperatorNotification({
     kind: 'daily-call-list',
     to: await getOperatorAlertRecipients(),
