@@ -3996,8 +3996,13 @@ model PublicDraftRequest {
 
   // Cuándo se le contactó, si se hizo. Null es "pendiente de llamar", que es
   // como se usa esta tabla en la práctica.
-  contactedAt DateTime? @map("contacted_at")
-  createdAt   DateTime  @default(now()) @map("created_at")
+  contactedAt        DateTime? @map("contacted_at")
+  // 20/10/2026 — cuándo marcó «Quiero que Kairikos me escriba con ideas
+  // para mi negocio». Null = no lo marcó: se le puede llamar y mandarle lo que
+  // pidió, pero NO escribirle con fines comerciales por email o WhatsApp
+  // (art. 21 LSSI; la política de privacidad ya recoge esta finalidad).
+  marketingConsentAt DateTime? @map("marketing_consent_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
 
   @@index([createdAt])
   @@index([ipHash, createdAt])
@@ -4026,8 +4031,13 @@ model CalculatorLead {
   averageJobValueCents Int @map("average_job_value_cents")
   annualLossCents      Int @map("annual_loss_cents")
 
-  contactedAt DateTime? @map("contacted_at")
-  createdAt   DateTime  @default(now()) @map("created_at")
+  contactedAt        DateTime? @map("contacted_at")
+  // 20/10/2026 — cuándo marcó «Quiero que Kairikos me escriba con ideas
+  // para mi negocio». Null = no lo marcó: se le puede llamar y mandarle lo que
+  // pidió, pero NO escribirle con fines comerciales por email o WhatsApp
+  // (art. 21 LSSI; la política de privacidad ya recoge esta finalidad).
+  marketingConsentAt DateTime? @map("marketing_consent_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
 
   @@index([createdAt])
 }

@@ -51,6 +51,11 @@ const BodySchema = z.object({
   contacto: z.string().trim().max(200).optional(),
   negocio: z.string().trim().max(200).optional(),
   ciudad: z.string().trim().max(120).optional(),
+  /** 20/10/2026 — la casilla «Quiero que Kairikos me escriba con ideas para mi
+   *  negocio», desmarcada por defecto. Solo cuenta si viene a true: sin ella
+   *  se le puede llamar o mandarle su cálculo, pero no escribirle con fines
+   *  comerciales (art. 21 LSSI). */
+  consentimiento: z.boolean().optional(),
   /** Campo trampa, como en el formulario de borradores. */
   website: z.string().max(200).optional(),
 });
@@ -101,6 +106,7 @@ export async function POST(req: NextRequest) {
             missedCallsPerWeek: estimate.assumptions.missedCallsPerWeek,
             averageJobValueCents: Math.round(estimate.assumptions.averageJobValue * 100),
             annualLossCents: estimate.annualLostRevenue * 100,
+            marketingConsentAt: body.data.consentimiento === true ? new Date() : null,
           },
         });
       }

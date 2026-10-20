@@ -88,6 +88,15 @@ describe('POST /api/public/calculadora', () => {
     expect(data.ipHash).not.toContain('203.0.113.5');
   });
 
+  // 20/10/2026 — la casilla de comunicaciones comerciales (art. 21 LSSI).
+  it('el consentimiento solo se guarda si la casilla viene marcada', async () => {
+    const { POST } = await import('@/app/api/public/calculadora/route');
+    await POST(makeRequest({ sector: 'fontaneria', llamadasPerdidas: 5, contacto: '600123123' }));
+    await POST(makeRequest({ sector: 'fontaneria', llamadasPerdidas: 5, contacto: '600123124', consentimiento: true }));
+    expect(mockState.createCalculatorLead.mock.calls[0][0].data.marketingConsentAt).toBeNull();
+    expect(mockState.createCalculatorLead.mock.calls[1][0].data.marketingConsentAt).toBeInstanceOf(Date);
+  });
+
   it('si falla guardar el lead, el visitante ve su número igual', async () => {
     mockState.createCalculatorLead.mockRejectedValueOnce(new Error('db_down'));
     const { POST } = await import('@/app/api/public/calculadora/route');

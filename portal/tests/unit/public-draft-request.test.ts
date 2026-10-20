@@ -78,6 +78,15 @@ describe('createPublicDraft', () => {
     expect(mockState.create).toHaveBeenCalled();
   });
 
+  // 20/10/2026 — el contacto es para hablar de SU borrador; escribirle con
+  // ofertas exige la casilla marcada (art. 21 LSSI).
+  it('el consentimiento comercial solo se guarda si la casilla viene marcada', async () => {
+    await createPublicDraft(prisma, INPUT);
+    await createPublicDraft(prisma, { ...INPUT, marketingConsent: true });
+    expect(mockState.create.mock.calls[0][0].data.marketingConsentAt).toBeNull();
+    expect(mockState.create.mock.calls[1][0].data.marketingConsentAt).toBeInstanceOf(Date);
+  });
+
   it('el campo trampa se mira ANTES de gastar una consulta', async () => {
     const result = await createPublicDraft(prisma, { ...INPUT, website: 'http://spam.example' });
     expect(result).toEqual({ ok: false, error: 'invalid' });
