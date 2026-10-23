@@ -63,7 +63,7 @@ export default async function BillingPage(
         <div className="card">
           <p className="text-xs uppercase tracking-wider text-kairikos-muted">Cuota</p>
           <p className="mt-1 text-lg font-semibold">{formatPriceEUR(billing.monthlyFeeCents)}</p>
-          <p className="mt-1 text-xs text-kairikos-muted">IVA no incluido</p>
+          <p className="mt-1 text-xs text-kairikos-muted">Precio final, sin impuestos añadidos</p>
         </div>
         <div className="card" data-testid="invoice-info">
           <p className="text-xs uppercase tracking-wider text-kairikos-muted">Próxima factura</p>
