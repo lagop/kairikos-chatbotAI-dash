@@ -18,6 +18,7 @@ import { MILESTONE_LABEL } from './onboarding-constants';
 import { OnboardingOperatorControls } from './_client';
 import { PRODUCT_CODES, PRODUCT_CATALOGS, getProductCatalog, type ProductCode } from '@/lib/catalogs';
 import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
+import { tierLabel } from '@/lib/public-catalog';
 import { ProductAssignment, type AssignableProduct, type ClientProductRow } from '@/components/admin/ProductAssignment';
 import { WebQuoteEditor, type WebQuoteData, type WebQuoteInvoiceData } from '@/components/admin/WebQuoteEditor';
 import {
@@ -331,6 +332,13 @@ export default async function AdminClientDetailPage(props: PageProps) {
         // one-row-per-client rule, that POST always creates a FRESH row
         // instead of reviving the one the operator clicked, silently
         // orphaning it. Every other product code is unaffected.
+        // 24/10/2026 — con el escalón: «Chatbot IA (Pro)», no «Chatbot IA» a
+        // secas, que no decía cuál de los tres tenía contratado. El desplegable de
+        // abajo enseñaba el código interno, «(pro)», «(solo)», «(essential)»;
+        // ahora el mismo nombre que ve el cliente en /planes (tierLabel). Los
+        // productos de un solo escalón (Estándar) van sin paréntesis.
+        const withTier = (label: string, tier: string) =>
+          tier === 'standard' ? label : `${label} (${tierLabel(tier)})`;
         clientProducts = cpRows
           .filter((cp) => cp.product.code !== 'web')
           .map((cp) => ({
@@ -338,7 +346,10 @@ export default async function AdminClientDetailPage(props: PageProps) {
             productId: cp.productId,
             code: cp.product.code,
             tier: cp.product.tier,
-            name: (isProductCode(cp.product.code) ? PRODUCT_CATALOGS[cp.product.code].label : null) ?? cp.product.name,
+            name: withTier(
+              (isProductCode(cp.product.code) ? PRODUCT_CATALOGS[cp.product.code].label : null) ?? cp.product.name,
+              cp.product.tier,
+            ),
             status: cp.status,
             subscribedAt: cp.subscribedAt.toISOString(),
             cancelledAt: cp.cancelledAt?.toISOString() ?? null,
@@ -350,7 +361,7 @@ export default async function AdminClientDetailPage(props: PageProps) {
             id: p.id,
             code: p.code,
             tier: p.tier,
-            name: `${(isProductCode(p.code) ? PRODUCT_CATALOGS[p.code].label : null) ?? p.name} (${p.tier})`,
+            name: withTier((isProductCode(p.code) ? PRODUCT_CATALOGS[p.code].label : null) ?? p.name, p.tier),
             priceCents: p.priceCents,
             currency: p.currency,
           }));
