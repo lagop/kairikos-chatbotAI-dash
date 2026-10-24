@@ -219,6 +219,9 @@ function PayloadViewer({ payload, label }: { payload: unknown; label: string }) 
 export default function AdminConfigReview({ clientId, productCode = 'chatbot', clientProductId = null }: AdminConfigReviewProps) {
   const [steps, setSteps] = useState<StepListEntry[] | null>(null);
   const [stepDetails, setStepDetails] = useState<Map<string, StepDetailResponse>>(new Map());
+  // Pasos cuyo detalle no se pudo cargar: sin esto, un fallo de la petición
+  // dejaba la tarjeta en «Cargando detalles…» para siempre (24/10/2026).
+  const [failedDetails, setFailedDetails] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -266,19 +269,22 @@ export default function AdminConfigReview({ clientId, productCode = 'chatbot', c
       activeSteps.map((s) =>
         fetch(withChatbot(`/api/admin/portal/wizard/${encodeURIComponent(clientId)}/${s.key}?productCode=${encodeURIComponent(productCode)}`, clientProductId))
           .then(async (res) => {
-            if (!res.ok) return null;
+            if (!res.ok) return { key: s.key, detail: null };
             const detail: StepDetailResponse = await res.json();
             return { key: s.key, detail };
           })
-          .catch(() => null),
+          .catch(() => ({ key: s.key, detail: null })),
       ),
     ).then((results) => {
       if (cancelled) return;
       const map = new Map<string, StepDetailResponse>();
+      const failed = new Set<string>();
       for (const r of results) {
-        if (r) map.set(r.key, r.detail);
+        if (r.detail) map.set(r.key, r.detail);
+        else failed.add(r.key);
       }
       setStepDetails(map);
+      setFailedDetails(failed);
     });
 
     return () => { cancelled = true; };
@@ -681,6 +687,10 @@ export default function AdminConfigReview({ clientId, productCode = 'chatbot', c
                       </div>
                     )}
                   </div>
+                ) : failedDetails.has(step.key) ? (
+                  <p className="text-sm text-kairikos-danger" data-testid={`config-step-detail-error-${step.key}`}>
+                    No se han podido cargar los detalles de este paso. Recarga la página.
+                  </p>
                 ) : (
                   <p className="text-sm text-kairikos-muted">Cargando detalles…</p>
                 )}

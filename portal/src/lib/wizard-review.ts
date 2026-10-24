@@ -1012,7 +1012,12 @@ export async function getWizardStepReview(
       updatedAt: true,
     },
   });
-  if (versions.length === 0) return null;
+  // 24/10/2026 — un paso que el cliente todavía no ha guardado NO es un 404:
+  // es un paso vacío. Devolver null hacía que la ruta respondiera 404 y la
+  // tarjeta del operador se quedara en «Cargando detalles…» para siempre, sin
+  // llegar a su propio texto de «El cliente aún no ha guardado datos». null
+  // queda solo para un cliente que no existe.
+  if (versions.length === 0) return { client, versions, auditLogs: [] };
 
   const stepIds = versions.map((v) => v.id);
   const auditLogs = await prisma.chatbotConfigStepAudit.findMany({
