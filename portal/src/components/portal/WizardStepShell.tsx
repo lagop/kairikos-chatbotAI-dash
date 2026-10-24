@@ -197,7 +197,11 @@ export function WizardStepShell(props: WizardStepShellProps) {
         }
       />
 
-      <WizardBlockProgress steps={steps} currentStepNumber={stepNumber} />
+      <WizardBlockProgress
+        steps={steps}
+        currentStepNumber={stepNumber}
+        hrefForStep={(s) => withChatbot(`/portal/wizard/${productCode}/${s.key}`, clientProductId)}
+      />
 
       {toast ? (
         <div

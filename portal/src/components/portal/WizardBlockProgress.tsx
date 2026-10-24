@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 export type WizardBlock = 'identidad' | 'comportamiento' | 'activacion';
 
 export interface WizardBlockProgressStep {
@@ -43,9 +45,14 @@ function getBlockForStep(stepNumber: number): WizardBlock | null {
 export function WizardBlockProgress({
   steps,
   currentStepNumber,
+  hrefForStep,
 }: {
   steps: WizardBlockProgressStep[];
   currentStepNumber: number;
+  /** 24/10/2026 — con él, cada número o ✓ lleva a su paso: antes solo se
+   *  podía ir de uno en uno con «← anterior / siguiente →». Sin él (la vista
+   *  del operador), la tarjeta sigue siendo solo de lectura. */
+  hrefForStep?: (step: WizardBlockProgressStep) => string;
 }) {
   const currentBlock = getBlockForStep(currentStepNumber);
 
@@ -100,21 +107,39 @@ export function WizardBlockProgress({
                   {b.steps.map((s) => {
                     const isStepCurrent = s.number === currentStepNumber;
                     const isStepDone = !s.autoConfigured && s.visible;
-                    return (
+                    const label = `Paso ${s.number}: ${s.label}${isStepDone ? ' (completado)' : ''}`;
+                    const className = `inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${
+                      isStepCurrent
+                        ? 'bg-kairikos-accent text-white ring-2 ring-kairikos-accent/50'
+                        : isStepDone
+                          ? 'bg-kairikos-success/20 text-kairikos-success'
+                          : s.visible
+                            ? 'bg-kairikos-surface2 text-kairikos-muted'
+                            : 'bg-kairikos-border/20 text-kairikos-muted/40'
+                    }`;
+                    const content = isStepDone ? '✓' : s.number;
+                    // Los pasos ocultos para el plan no llevan enlace: su
+                    // página solo dice «se configura automáticamente».
+                    const href = hrefForStep && s.visible && !isStepCurrent ? hrefForStep(s) : null;
+                    return href ? (
+                      <Link
+                        key={s.key}
+                        href={href}
+                        aria-label={label}
+                        title={s.label}
+                        className={`${className} transition hover:ring-2 hover:ring-kairikos-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kairikos-accent`}
+                      >
+                        {content}
+                      </Link>
+                    ) : (
                       <span
                         key={s.key}
-                        aria-label={`Paso ${s.number}: ${s.label}${isStepDone ? ' (completado)' : ''}`}
-                        className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${
-                          isStepCurrent
-                            ? 'bg-kairikos-accent text-white ring-2 ring-kairikos-accent/50'
-                            : isStepDone
-                              ? 'bg-kairikos-success/20 text-kairikos-success'
-                              : s.visible
-                                ? 'bg-kairikos-surface2 text-kairikos-muted'
-                                : 'bg-kairikos-border/20 text-kairikos-muted/40'
-                        }`}
+                        aria-label={label}
+                        aria-current={isStepCurrent ? 'step' : undefined}
+                        title={s.label}
+                        className={className}
                       >
-                        {isStepDone ? '✓' : s.number}
+                        {content}
                       </span>
                     );
                   })}
