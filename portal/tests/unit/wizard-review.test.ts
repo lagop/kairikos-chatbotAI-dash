@@ -1050,7 +1050,9 @@ describe('getWizardStepReview', () => {
     expect(out).toBeNull();
   });
 
-  it('returns null when the client exists but no version has been saved', async () => {
+  // 24/10/2026 — un paso sin guardar es un paso vacío, no un 404: con null la
+  // tarjeta del operador se quedaba en «Cargando detalles…» para siempre.
+  it('devuelve el paso vacío (no null) cuando el cliente existe pero aún no guardó nada', async () => {
     mockState.chatbotClient.findUnique.mockResolvedValue({ id: 'c1', name: 'Acme' });
     mockState.chatbotConfigStep.findMany.mockResolvedValue([]);
     const out = await getWizardStepReview(
@@ -1063,7 +1065,8 @@ describe('getWizardStepReview', () => {
       'chatbot',
       '1',
     );
-    expect(out).toBeNull();
+    expect(out).toEqual({ client: { id: 'c1', name: 'Acme' }, versions: [], auditLogs: [] });
+    expect(mockState.chatbotConfigStepAudit.findMany).not.toHaveBeenCalled();
   });
 
   it('returns client + versions + audit when present', async () => {
