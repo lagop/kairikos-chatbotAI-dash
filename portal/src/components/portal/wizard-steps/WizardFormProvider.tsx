@@ -29,6 +29,7 @@ export function WizardFormProvider({
   onSubmit,
   isSubmitting,
   isSubmitted,
+  isApproved = false,
   children,
 }: {
   stepNumber: StepSchemaKey;
@@ -36,6 +37,7 @@ export function WizardFormProvider({
   onSubmit: (status: 'draft' | 'submitted', payload: Record<string, unknown>) => Promise<void> | void;
   isSubmitting: boolean;
   isSubmitted: boolean;
+  isApproved?: boolean;
   children: ReactNode;
 }) {
   const common = getCommon();
@@ -99,6 +101,7 @@ export function WizardFormProvider({
         onSubmit={handleSubmitClick}
         isSubmitting={isSubmitting}
         isSubmitted={isSubmitted}
+        isApproved={isApproved}
         firstError={errors[0]}
       />
     </FormContext.Provider>
@@ -110,12 +113,14 @@ function FormFooter({
   onSubmit,
   isSubmitting,
   isSubmitted,
+  isApproved = false,
   firstError,
 }: {
   stepNumber: StepSchemaKey;
   onSubmit: (status: 'draft' | 'submitted') => void;
   isSubmitting: boolean;
   isSubmitted: boolean;
+  isApproved?: boolean;
   firstError?: FieldError;
 }) {
   const step = getStep(stepNumber);
@@ -127,9 +132,25 @@ function FormFooter({
         </p>
       ) : null}
       <div className="flex flex-col gap-3 border-t border-kairikos-border pt-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* 24/10/2026 — un paso enviado se podía editar pero no reenviar:
+              los campos seguían abiertos, el autoguardado está apagado y no
+              había botón, así que lo corregido se perdía al salir sin aviso
+              (pasó con el paso 3 del propio chatbot de Kairikos). La API
+              siempre aceptó una versión nueva encima de una enviada o
+              aprobada (wizard-client.ts); el bloqueo era solo de esta
+              pantalla. Ahora se reenvía, y se revisa —y aprueba— la última. */}
           {isSubmitted ? (
-            <span className="pill-success">En revisión por el operador</span>
+            <>
+              <span className="pill-success">{isApproved ? 'Aprobado' : 'En revisión por el operador'}</span>
+              <Button
+                variant="primary"
+                onClick={() => onSubmit('submitted')}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? 'Enviando…' : 'Enviar los cambios para revisión'}
+              </Button>
+            </>
           ) : (
             <>
               <Button
@@ -150,9 +171,11 @@ function FormFooter({
           )}
         </div>
         <p className="text-xs text-kairikos-muted">
-          {isSubmitted
-            ? 'El operador revisará este paso en un plazo de 24h hábiles.'
-            : 'Puedes guardar un borrador y continuar después.'}
+          {isApproved
+            ? 'El bot usa esta versión. Si cambias algo, vuelve a enviarlo: hasta que se apruebe, el bot sigue con esta.'
+            : isSubmitted
+              ? 'El operador revisará este paso en un plazo de 24h hábiles. Si corriges algo, vuelve a enviarlo: se revisa la última versión.'
+              : 'Puedes guardar un borrador y continuar después.'}
         </p>
       </div>
     </div>
