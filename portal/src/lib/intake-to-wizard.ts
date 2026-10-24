@@ -74,7 +74,7 @@ export function mapVertical(sector: IntakePayload['sector']): Step1Input['vertic
   return SECTOR_TO_VERTICAL[sector] ?? 'otro';
 }
 
-const LANGUAGE_TO_WIZARD: Partial<Record<IntakePayload['language'][number], 'ES' | 'EN' | 'DE'>> = {
+const LANGUAGE_TO_WIZARD: Partial<Record<IntakePayload['language'][number], 'ES' | 'EN'>> = {
   español: 'ES',
   inglés: 'EN',
   // 'catalán' has no equivalent in the wizard's idiomas enum — dropped,
@@ -84,12 +84,12 @@ const LANGUAGE_TO_WIZARD: Partial<Record<IntakePayload['language'][number], 'ES'
   // defaulting to a language they didn't select.
 };
 
-export function mapLanguages(language: IntakePayload['language']): Array<'ES' | 'EN' | 'DE'> {
-  const mapped = language.map((l) => LANGUAGE_TO_WIZARD[l]).filter((v): v is 'ES' | 'EN' | 'DE' => v !== undefined);
+export function mapLanguages(language: IntakePayload['language']): Array<'ES' | 'EN'> {
+  const mapped = language.map((l) => LANGUAGE_TO_WIZARD[l]).filter((v): v is 'ES' | 'EN' => v !== undefined);
   return [...new Set(mapped)];
 }
 
-export function pickDefaultLanguage(idiomas: Array<'ES' | 'EN' | 'DE'>): 'ES' | 'EN' | 'DE' | undefined {
+export function pickDefaultLanguage(idiomas: Array<'ES' | 'EN'>): 'ES' | 'EN' | undefined {
   if (idiomas.includes('ES')) return 'ES';
   return idiomas[0];
 }

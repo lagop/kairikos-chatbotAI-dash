@@ -24,10 +24,11 @@ const VERTICALS: { value: string; label: string }[] = [
   { value: 'otro', label: 'Otro' },
 ];
 
+// 24/10/2026 — fuera el Alemán: ningún cliente lo tenía marcado y no lo
+// vendemos. Si vuelve, añadirlo también a step1Schema (wizard-schemas.ts).
 const IDIOMAS: { value: string; label: string }[] = [
   { value: 'ES', label: 'Español' },
   { value: 'EN', label: 'Inglés' },
-  { value: 'DE', label: 'Alemán' },
 ];
 
 export function Step1Perfil({ value, onChange }: Props) {

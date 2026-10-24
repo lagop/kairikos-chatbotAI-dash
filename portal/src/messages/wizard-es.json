@@ -92,12 +92,12 @@
         },
         "idiomas": {
           "label": "Idiomas del bot",
-          "helper": "En qué idiomas responde el bot",
+          "helper": "El bot contesta en el idioma en que le escriben si está marcado aquí; si no, en el principal. Tus textos van en el principal y el bot los traduce.",
           "placeholder": "Selecciona idiomas"
         },
         "idioma_por_defecto": {
           "label": "Idioma principal",
-          "helper": "El idioma principal"
+          "helper": "El de tus textos, y el que usa el bot si le escriben en un idioma no marcado"
         }
       }
     },
