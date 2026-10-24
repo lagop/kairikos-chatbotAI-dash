@@ -177,6 +177,7 @@ export function StepForm(props: StepFormProps) {
         onSubmit={handleSubmit}
         isSubmitting={!!props.isSubmitting}
         isSubmitted={isSubmitted}
+        isApproved={props.saved?.status === 'approved'}
       >
         <StepFields
           stepNumber={stepNumber}
