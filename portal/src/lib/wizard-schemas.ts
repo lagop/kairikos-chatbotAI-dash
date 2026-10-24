@@ -52,7 +52,7 @@ export const step1Schema = z.object({
     z.string().max(120).optional(),
   ),
   web: urlOpt,
-  idiomas: checkArray(['ES', 'EN', 'DE']),
+  idiomas: checkArray(['ES', 'EN']),
   idioma_por_defecto: z.string().min(1, 'required'),
 }).refine(
   (data) => data.idiomas.includes(data.idioma_por_defecto),

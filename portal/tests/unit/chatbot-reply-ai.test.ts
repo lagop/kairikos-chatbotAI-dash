@@ -181,6 +181,14 @@ describe('buildSystemPrompt — las reglas que protegen al negocio', () => {
     expect(prompt).toContain('tratamiento');
   });
 
+  it('contesta en el idioma del visitante si está entre los marcados', () => {
+    // La regla vieja («SIEMPRE en idioma_por_defecto») dejaba sin efecto la
+    // lista `idiomas` del paso 1.
+    const prompt = promptFor(makeConfig());
+    expect(prompt).toContain('`idiomas` del perfil');
+    expect(prompt).not.toContain('SIEMPRE en el idioma de `idioma_por_defecto`');
+  });
+
   it('exige consentimiento antes de pedir datos personales', () => {
     const prompt = promptFor(makeConfig());
     expect(prompt).toContain('texto_consentimiento');

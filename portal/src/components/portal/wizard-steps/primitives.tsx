@@ -182,9 +182,11 @@ export function CheckboxGroup({
   };
   return (
     <fieldset>
-      <legend className="mb-1.5 block text-sm font-medium text-kairikos-text">
-        {legend}
-      </legend>
+      {/* 24/10/2026 — solo para lectores de pantalla: los tres grupos de
+          casillas del asistente van dentro de un FieldRow, que ya pinta la
+          misma etiqueta encima, y se veía dos veces («Idiomas del bot» /
+          «Idiomas del bot»). RadioGroup no va en FieldRow y sí la enseña. */}
+      <legend className="sr-only">{legend}</legend>
       <div className="space-y-2">
         {options.map((o) => {
           const id = `${name}-${o.value}`;
