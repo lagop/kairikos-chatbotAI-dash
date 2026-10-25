@@ -4511,6 +4511,27 @@ model SeoSettings {
   updatedBy                        String?  @map("updated_by")
 }
 
+// =============================================================================
+// 25/10/2026 — cuántas webs se venden solas al mes, sin llamada, desde la
+// página del borrador («La quiero»).
+//
+// La web es trabajo humano de principio a fin (unas 4–6 h cada una), así que
+// vender sin tope por autoservicio es comprometer horas que no existen. El
+// tope lo decide el operador desde /admin/portal/settings/web; al llegar, el
+// botón del borrador vuelve a «Reservar una llamada» y nadie paga algo que no
+// se puede entregar a tiempo. Singleton con fila fija, mismo molde que
+// SeoSettings y ChatbotSettings (ver lib/web-self-serve.ts).
+// =============================================================================
+model WebSalesSettings {
+  id                  String   @id @db.Uuid
+  // 0 = la compra desde el borrador está apagada.
+  selfServeMonthlyCap Int      @default(4) @map("self_serve_monthly_cap")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  updatedBy           String?  @map("updated_by")
+
+  @@map("web_sales_settings")
+}
+
 // 2026-09-15 — a quién le llegan las alertas de operador. Singleton, mismo
 // molde que SeoSettings (ver lib/operator-alert-settings.ts).
 //

@@ -189,6 +189,27 @@ describe('createProductCheckoutSession — guards', () => {
     expect(mockState.checkoutSessionsCreate).not.toHaveBeenCalled();
   });
 
+  // 25/10/2026 — la excepción: comprada desde su borrador. Pago único y el
+  // borrador en la metadata, para que la activación cree el sitio con él.
+  it("cobra 'web' como pago único cuando viene de su borrador, con el borrador en la metadata", async () => {
+    mockState.findUniqueProduct.mockResolvedValueOnce({ ...ONE_TIME_PRODUCT, code: 'web' });
+    const { createProductCheckoutSession } = await import('@/lib/stripe-billing');
+    const token = 'd'.repeat(64);
+    const result = await createProductCheckoutSession({
+      clientId: 'client_1',
+      productId: ONE_TIME_PRODUCT.id,
+      actorId: ACTOR_ID,
+      webDraft: { kind: 'public', token },
+    });
+    expect(result.ok).toBe(true);
+    expect(mockState.checkoutSessionsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: 'payment',
+        metadata: expect.objectContaining({ kairikos_web_draft_kind: 'public', kairikos_web_draft_token: token }),
+      }),
+    );
+  });
+
   it('rejects with product_price_id_missing when a one-time-only product has neither recurring price nor setup fee provisioned', async () => {
     mockState.findUniqueProduct.mockResolvedValueOnce({ ...ONE_TIME_PRODUCT, stripeSetupPriceId: null, setupFeeCents: 0 });
     const { createProductCheckoutSession } = await import('@/lib/stripe-billing');

@@ -19,6 +19,11 @@ const mockState = vi.hoisted(() => ({
   getSession: vi.fn(),
   createProductCheckoutSession: vi.fn(),
   findUniqueProduct: vi.fn(),
+  getWebDraftPurchase: vi.fn(),
+}));
+
+vi.mock('@/lib/web-self-serve', () => ({
+  getWebDraftPurchase: (...args: unknown[]) => mockState.getWebDraftPurchase(...args),
 }));
 
 vi.mock('@/lib/portal-session', () => ({
@@ -53,6 +58,7 @@ beforeEach(() => {
   mockState.getSession.mockReset().mockResolvedValue({ hasClientAccess: true });
   mockState.createProductCheckoutSession.mockReset().mockResolvedValue({ ok: true, url: 'https://checkout.stripe.com/pay/cs_test_1' });
   mockState.findUniqueProduct.mockReset().mockResolvedValue({ selfServeEligible: true });
+  mockState.getWebDraftPurchase.mockReset();
 });
 
 describe('POST /api/portal/billing/checkout — auth and guards', () => {
@@ -159,5 +165,46 @@ describe('POST /api/portal/billing/checkout — self-serve eligibility gate', ()
     const res = await POST(makeRequest({ productId: PRODUCT_ID }));
     expect(res.status).toBe(200);
     expect(mockState.createProductCheckoutSession).toHaveBeenCalled();
+  });
+});
+
+// 25/10/2026 — 'web' desde su borrador («La quiero»). La ruta es la frontera:
+// sin hueco en el tope no se abre el pago, aunque la página dijera que sí.
+describe('POST /api/portal/billing/checkout — web desde su borrador', () => {
+  const TOKEN = 'a'.repeat(64);
+
+  it('abre el pago de una web no autoservicio si el borrador tiene hueco, y pasa el borrador a Stripe', async () => {
+    mockState.findUniqueProduct.mockResolvedValueOnce({ code: 'web', selfServeEligible: false });
+    mockState.getWebDraftPurchase.mockResolvedValueOnce({
+      available: true,
+      product: { id: PRODUCT_ID, setupFeeCents: 79900, currency: 'eur' },
+      seed: { kind: 'public', token: TOKEN },
+    });
+    const { POST } = await import('@/app/api/portal/billing/checkout/route');
+    const res = await POST(makeRequest({ productId: PRODUCT_ID, webDraftToken: TOKEN }));
+    expect(res.status).toBe(200);
+    expect(mockState.createProductCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({ webDraft: { kind: 'public', token: TOKEN } }),
+    );
+  });
+
+  it('409 web_self_serve_unavailable con el tope lleno: el pago no se abre', async () => {
+    mockState.findUniqueProduct.mockResolvedValueOnce({ code: 'web', selfServeEligible: false });
+    mockState.getWebDraftPurchase.mockResolvedValueOnce({ available: false, reason: 'sold_out' });
+    const { POST } = await import('@/app/api/portal/billing/checkout/route');
+    const res = await POST(makeRequest({ productId: PRODUCT_ID, webDraftToken: TOKEN }));
+    const body = await res.clone().json();
+    expect(res.status).toBe(409);
+    expect(body).toEqual({ error: 'web_self_serve_unavailable', reason: 'sold_out' });
+    expect(mockState.createProductCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it('sin borrador, la web sigue sin ser autoservicio', async () => {
+    mockState.findUniqueProduct.mockResolvedValueOnce({ code: 'web', selfServeEligible: false });
+    const { POST } = await import('@/app/api/portal/billing/checkout/route');
+    const res = await POST(makeRequest({ productId: PRODUCT_ID }));
+    expect(res.status).toBe(400);
+    expect(mockState.getWebDraftPurchase).not.toHaveBeenCalled();
+    expect(mockState.createProductCheckoutSession).not.toHaveBeenCalled();
   });
 });

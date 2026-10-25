@@ -5,6 +5,7 @@ import { ThemeToggle } from '@/components/portal/ThemeToggle';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { PRODUCT_CODES, PRODUCT_CATALOGS, type ProductCode } from '@/lib/catalogs';
 import { tierLabel } from '@/lib/public-catalog';
+import { getWebDraftPurchase } from '@/lib/web-self-serve';
 
 // =============================================================================
 // /empezar (WP-31) — public, no session required. A visitor creates their
@@ -39,7 +40,12 @@ export const dynamic = 'force-dynamic';
 // impedir que alguien se dé de alta; eso lo decide el alta, no la portada.
 export default async function EmpezarPage(
   props: {
-    searchParams?: Promise<{ ref?: string | string[]; producto?: string | string[]; tier?: string | string[] }>;
+    searchParams?: Promise<{
+      ref?: string | string[];
+      producto?: string | string[];
+      tier?: string | string[];
+      borrador?: string | string[];
+    }>;
   }
 ) {
   const searchParams = await props.searchParams;
@@ -61,6 +67,9 @@ export default async function EmpezarPage(
   const unParam = (v?: string | string[]) => (Array.isArray(v) ? v[0] : v)?.trim().toLowerCase() ?? '';
   const productoPedido = unParam(searchParams?.producto).slice(0, 40);
   const tierPedido = unParam(searchParams?.tier).slice(0, 40);
+  // El testigo distingue mayúsculas: no pasa por unParam, que las baja.
+  const borradorParam = searchParams?.borrador;
+  const borradorPedido = (Array.isArray(borradorParam) ? borradorParam[0] : borradorParam)?.trim().slice(0, 200) ?? '';
 
   if (!isDatabaseConfigured) {
     return (
@@ -117,6 +126,50 @@ export default async function EmpezarPage(
       currency: webProduct.currency,
       requiresQuote: true,
     });
+  }
+
+  // 25/10/2026 — «La quiero» desde el borrador. Con un borrador válido y
+  // hueco en el tope del mes, la web se ofrece a su precio de catálogo (799 €,
+  // pago único) y sola: quien llega de ahí ya ha elegido. Sin hueco, o con un
+  // testigo que no existe, la página queda exactamente como siempre —web por
+  // presupuesto—, sin explicar por qué: nadie llega aquí escribiendo la URL.
+  const webDraftPurchase =
+    productoPedido === 'web' && borradorPedido
+      ? await getWebDraftPurchase(prisma, borradorPedido, new Date()).catch(() => null)
+      : null;
+  if (webDraftPurchase?.available) {
+    const webTier = tiers.find((t) => t.code === 'web');
+    if (webTier) {
+      return (
+        <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
+          <div className="mb-4 flex justify-end">
+            <ThemeToggle />
+          </div>
+          <div className="mb-8 text-center">
+            <p className="text-xs font-semibold uppercase tracking-wider text-kairikos-accent2">Kairikos</p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight">Tu web, como la has visto</h1>
+            <p className="mt-3 text-sm text-kairikos-muted">
+              La web de <strong className="text-kairikos-text">{webDraftPurchase.seed.businessName}</strong> a partir de tu
+              borrador: pago único, con dominio y alojamiento el primer año incluidos. La repasamos contigo y la publicamos
+              unos días después de que des el visto bueno.
+            </p>
+          </div>
+          <SelfServeSignupForm
+            tiers={[{ ...webTier, requiresQuote: false }]}
+            codigoInicial={codigoInicial}
+            productoInicial={webTier.productId}
+            webDraftToken={webDraftPurchase.seed.token}
+          />
+          <p className="mt-8 text-center text-xs text-kairikos-muted">
+            ¿Ya tienes cuenta?{' '}
+            <Link className="underline" href="/portal/login">
+              Inicia sesión
+            </Link>
+            .
+          </p>
+        </div>
+      );
+    }
   }
 
   // Se resuelve aquí, con `tiers` ya completo: un código que no exista o un

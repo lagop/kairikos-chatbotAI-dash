@@ -16,6 +16,11 @@ const mockState = vi.hoisted(() => ({
   findUniqueUser: vi.fn(),
   logError: vi.fn(),
   attributeClient: vi.fn(),
+  getWebDraftPurchase: vi.fn(),
+}));
+
+vi.mock('@/lib/web-self-serve', () => ({
+  getWebDraftPurchase: (...args: unknown[]) => mockState.getWebDraftPurchase(...args),
 }));
 
 vi.mock('@/lib/referrals', () => ({
@@ -80,6 +85,7 @@ beforeEach(() => {
   mockState.findUniqueUser.mockReset().mockResolvedValue(null);
   mockState.logError.mockReset();
   mockState.attributeClient.mockReset().mockResolvedValue({ ok: true, codeId: 'code_1' });
+  mockState.getWebDraftPurchase.mockReset().mockResolvedValue({ available: false, reason: 'sold_out' });
 });
 
 describe('POST /api/public/self-serve-signup', () => {
@@ -130,6 +136,29 @@ describe('POST /api/public/self-serve-signup', () => {
     expect(mockState.sendVerifyEmail).toHaveBeenCalledWith(
       expect.objectContaining({ verifyUrl: expect.stringContaining(`product=${PRODUCT_ID}&quote=1`) }),
     );
+  });
+
+  // 25/10/2026 — «La quiero» desde el borrador: el enlace lleva al pago.
+  it('web desde su borrador con hueco: el enlace del correo lleva el borrador y no pide presupuesto', async () => {
+    const draftToken = 'c'.repeat(64);
+    mockState.findUniqueProduct.mockResolvedValueOnce({ id: PRODUCT_ID, code: 'web', isActive: true, selfServeEligible: false });
+    mockState.getWebDraftPurchase.mockResolvedValueOnce({ available: true });
+    const { POST } = await import('@/app/api/public/self-serve-signup/route');
+    const res = await POST(makeRequest({ ...VALID_BODY, borrador: draftToken }));
+    expect(res.status).toBe(202);
+    const { verifyUrl } = mockState.sendVerifyEmail.mock.calls[0][0];
+    expect(verifyUrl).toContain(`product=${PRODUCT_ID}&borrador=${draftToken}`);
+    expect(verifyUrl).not.toContain('quote=1');
+  });
+
+  it('web desde su borrador con el tope lleno: vuelve a presupuesto, sin perder el alta', async () => {
+    mockState.findUniqueProduct.mockResolvedValueOnce({ id: PRODUCT_ID, code: 'web', isActive: true, selfServeEligible: false });
+    const { POST } = await import('@/app/api/public/self-serve-signup/route');
+    const res = await POST(makeRequest({ ...VALID_BODY, borrador: 'c'.repeat(64) }));
+    expect(res.status).toBe(202);
+    const { verifyUrl } = mockState.sendVerifyEmail.mock.calls[0][0];
+    expect(verifyUrl).toContain('quote=1');
+    expect(verifyUrl).not.toContain('borrador=');
   });
 
   it('400s when the product is eligible but inactive', async () => {

@@ -21,6 +21,14 @@ const clientSiteMock = vi.hoisted(() => ({
 }));
 vi.mock('@/lib/client-site', () => clientSiteMock);
 
+// 25/10/2026 — la web comprada desde su borrador. Sus reglas tienen su propia
+// suite (web-self-serve.test.ts); aquí solo que la activación las llama.
+const webSelfServeMock = vi.hoisted(() => ({
+  resolveWebDraft: vi.fn(),
+  createClientWebsiteFromDraft: vi.fn(),
+}));
+vi.mock('@/lib/web-self-serve', () => webSelfServeMock);
+
 const mockState = vi.hoisted(() => ({
   findUniqueClientProduct: vi.fn(),
   findUniqueSubscription: vi.fn(),
@@ -354,6 +362,43 @@ describe('activateClientProductFromCheckout (WP-30)', () => {
       expect.anything(),
       expect.objectContaining({ productCode: 'chatbot' }),
     );
+  });
+
+  it('una web pagada desde su borrador nace con ese contenido', async () => {
+    const token = 'e'.repeat(64);
+    const seed = { kind: 'public', token, businessName: 'Fontanería Pérez' };
+    mockState.findUniqueClientProduct.mockResolvedValueOnce({
+      status: 'pending_payment',
+      clientId: 'client_1',
+      tenantId: 'tenant_1',
+      product: { code: 'web' },
+    });
+    webSelfServeMock.resolveWebDraft.mockResolvedValueOnce(seed);
+    webSelfServeMock.createClientWebsiteFromDraft.mockResolvedValueOnce({ ok: true, websiteId: 'w_1' });
+
+    await activateClientProductFromCheckout(
+      makeSession({ metadata: { kairikos_client_product_id: 'cp_1', kairikos_web_draft_token: token } }),
+    );
+
+    expect(webSelfServeMock.resolveWebDraft).toHaveBeenCalledWith(expect.anything(), token);
+    expect(webSelfServeMock.createClientWebsiteFromDraft).toHaveBeenCalledWith(expect.anything(), {
+      clientProductId: 'cp_1',
+      clientId: 'client_1',
+      tenantId: 'tenant_1',
+      seed,
+    });
+  });
+
+  it('una web sin borrador en la metadata no crea sitio (el operador lo hace como siempre)', async () => {
+    mockState.findUniqueClientProduct.mockResolvedValueOnce({
+      status: 'pending_payment',
+      clientId: 'client_1',
+      tenantId: 'tenant_1',
+      product: { code: 'web' },
+    });
+    webSelfServeMock.createClientWebsiteFromDraft.mockClear();
+    await activateClientProductFromCheckout(makeSession());
+    expect(webSelfServeMock.createClientWebsiteFromDraft).not.toHaveBeenCalled();
   });
 
   it('is a no-op when the session has no kairikos_client_product_id metadata (not ours)', async () => {

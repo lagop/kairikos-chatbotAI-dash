@@ -4,12 +4,18 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { getSession } from '@/lib/session';
 import { createProductCheckoutSession, type CheckoutSessionError } from '@/lib/stripe-billing';
+import { getWebDraftPurchase } from '@/lib/web-self-serve';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 // billing: pago anual (plan de precios del 01/10/2026). Ausente = mensual.
-const BodySchema = z.object({ productId: z.string().uuid(), billing: z.enum(['monthly', 'annual']).optional() });
+const BodySchema = z.object({
+  productId: z.string().uuid(),
+  billing: z.enum(['monthly', 'annual']).optional(),
+  /** 25/10/2026 — solo para 'web': el testigo del borrador desde el que se compra. */
+  webDraftToken: z.string().trim().min(1).max(200).optional(),
+});
 
 /**
  * WP-30 — client-facing self-serve checkout. Distinct from the operator
@@ -92,14 +98,27 @@ export async function POST(req: NextRequest) {
   // checkout_link flow) never call this route, so they're unaffected.
   const product = await prisma.product.findUnique({
     where: { id: body.data.productId },
-    select: { selfServeEligible: true },
+    select: { code: true, selfServeEligible: true },
   });
-  // A genuinely missing productId isn't handled here — that falls
-  // through to createProductCheckoutSession below, which already
-  // returns the correct product_not_found (404). Only short-circuit the
-  // case this route is actually responsible for: a real product that
-  // exists but isn't cleared for self-serve.
-  if (product && !product.selfServeEligible) {
+
+  // 25/10/2026 — 'web' no es de autoservicio (selfServeEligible=false, y así
+  // sigue en kairikos.com), salvo comprada desde su borrador. Esta ruta es la
+  // frontera de verdad: la página del borrador y /empezar solo deciden qué
+  // botón enseñar, y el tope del mes se vuelve a mirar aquí, justo antes de
+  // abrir el pago. Ver lib/web-self-serve.ts.
+  let webDraft: { kind: 'public' | 'prospecting'; token: string } | undefined;
+  if (product?.code === 'web' && body.data.webDraftToken) {
+    const purchase = await getWebDraftPurchase(prisma, body.data.webDraftToken, new Date());
+    if (!purchase.available) {
+      return NextResponse.json({ error: 'web_self_serve_unavailable', reason: purchase.reason }, { status: 409 });
+    }
+    webDraft = { kind: purchase.seed.kind, token: purchase.seed.token };
+  } else if (product && !product.selfServeEligible) {
+    // A genuinely missing productId isn't handled here — that falls
+    // through to createProductCheckoutSession below, which already
+    // returns the correct product_not_found (404). Only short-circuit the
+    // case this route is actually responsible for: a real product that
+    // exists but isn't cleared for self-serve.
     return NextResponse.json({ error: 'product_not_self_serve_eligible' }, { status: 400 });
   }
 
@@ -108,6 +127,7 @@ export async function POST(req: NextRequest) {
     productId: body.data.productId,
     billing: body.data.billing,
     actorId: `client:${resolved.clientId}`,
+    webDraft,
   });
 
   if (!result.ok) {

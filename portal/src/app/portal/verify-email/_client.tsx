@@ -21,6 +21,9 @@ export default function VerifyEmailForm() {
   const token = params.get('token') ?? '';
   const productId = params.get('product') ?? '';
   const requiresQuote = params.get('quote') === '1';
+  // 25/10/2026 — la web comprada desde su borrador: se paga en vez de pedir
+  // presupuesto (ver lib/web-self-serve.ts).
+  const webDraftToken = params.get('borrador') ?? undefined;
   const [status, setStatus] = useState<Status>('verifying');
   const [error, setError] = useState<string | null>(null);
 
@@ -74,7 +77,12 @@ export default function VerifyEmailForm() {
           </>
         ) : status === 'success' ? (
           productId ? (
-            <ContinueAfterVerify email={email} productId={productId} requiresQuote={requiresQuote} />
+            <ContinueAfterVerify
+              email={email}
+              productId={productId}
+              requiresQuote={requiresQuote && !webDraftToken}
+              webDraftToken={webDraftToken}
+            />
           ) : (
             <>
               <h1 className="mt-2 text-2xl font-semibold tracking-tight">Email confirmado</h1>
@@ -109,10 +117,12 @@ function ContinueAfterVerify({
   email,
   productId,
   requiresQuote,
+  webDraftToken,
 }: {
   email: string;
   productId: string;
   requiresQuote: boolean;
+  webDraftToken?: string;
 }) {
   const id = useId();
   const [password, setPassword] = useState('');
@@ -130,7 +140,7 @@ function ContinueAfterVerify({
         setBusy(false);
         return;
       }
-      const next = await continueToPurchase(productId, requiresQuote);
+      const next = await continueToPurchase(productId, requiresQuote, webDraftToken);
       if (!next.ok) {
         setError(next.message);
         setBusy(false);

@@ -137,6 +137,12 @@ const SUPPORT_WHATSAPP_BASE_URL = process.env.AUTH_SUPPORT_WHATSAPP || 'https://
 export function supportWhatsappUrl(message: string): string {
   return `${SUPPORT_WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`;
 }
+
+/** 25/10/2026 — reservar una demo de 20 minutos. Es el mismo enlace que
+ *  kairikos.com saca de WordPress (Ajustes → Generales); el portal no lo
+ *  necesitaba hasta que la página del borrador tuvo que ofrecerlo cuando se
+ *  agotan las webs del mes. Si se cambia allí, hay que cambiarlo aquí. */
+export const KAIRIKOS_DEMO_URL = 'https://cal.com/orlando-awayxy/20min';
 const MOCK_SUPPORT: SupportLink = {
   label: 'Hablar con el equipo',
   href: supportWhatsappUrl('Hola, necesito ayuda con mi portal Kairikos'),
