@@ -192,18 +192,29 @@ export interface WebDraftSubject {
   reviewCount: number | null;
 }
 
-/** La oferta con la que se cierra el borrador. Configurable porque el precio
- *  es una decisión comercial viva: hoy es la tarifa Express propuesta, y se
- *  cambia aquí sin tocar nada más. */
+/** La oferta con la que se cierra el borrador. Las páginas públicas la sacan
+ *  del catálogo (el precio de 'web'); esto es solo el respaldo.
+ *
+ *  25/10/2026 — decía «490 € y lista en 7 días»: la tarifa Express que el plan
+ *  propuso y nunca se aprobó, y un plazo que no promete ninguna otra página.
+ *  El catálogo cobra 799 €, y el plazo honesto es el de las preguntas
+ *  frecuentes: unos días desde el visto bueno. */
 export interface WebDraftOffer {
   priceLabel: string;
   daysLabel: string;
 }
 
 export const DEFAULT_WEB_DRAFT_OFFER: Readonly<WebDraftOffer> = Object.freeze({
-  priceLabel: '490 €',
-  daysLabel: '7 días',
+  priceLabel: '799 €, pago único',
+  daysLabel: 'unos días desde que das el visto bueno',
 });
+
+/** Qué puede hacer quien ve su borrador (25/10/2026): comprarla sin llamada
+ *  o, si este mes ya no quedan webs por autoservicio, reservar una llamada.
+ *  Ver lib/web-self-serve.ts. */
+export type WebDraftPurchaseCta =
+  | { kind: 'buy'; href: string; priceLabel: string }
+  | { kind: 'call'; href: string };
 
 function esc(value: string): string {
   return value
@@ -247,6 +258,9 @@ export function renderWebDraftHtml(params: {
    *  borrador no hay formulario, porque el negocio todavía no es cliente y
    *  sus visitantes no existen. */
   formAction?: string | null;
+  /** Solo las dos páginas públicas del borrador. Ni el sitio publicado ni la
+   *  vista del operador lo llevan. */
+  purchase?: WebDraftPurchaseCta | null;
 }): string {
   const { subject, copy, generatedAt } = params;
   const offer = params.offer ?? DEFAULT_WEB_DRAFT_OFFER;
@@ -339,6 +353,32 @@ export function renderWebDraftHtml(params: {
         '</script>',
       ].join(String.fromCharCode(10))
     : '';
+
+  // 25/10/2026 — «La quiero». Va en el color de la franja de Kairikos y no en
+  // el del negocio: es nuestra oferta, no una sección de su web, y no debe
+  // confundirse con ella. Con el tope del mes lleno, el mismo sitio ofrece una
+  // llamada: quien ha llegado hasta aquí no puede encontrarse sin salida.
+  const purchase = params.purchase ?? null;
+  const purchaseLink = !purchase
+    ? ''
+    : purchase.kind === 'buy'
+      ? `<a class="buy" href="${esc(purchase.href)}" data-kairikos="comprar">La quiero · ${esc(purchase.priceLabel)}</a>`
+      : `<a class="buy" href="${esc(purchase.href)}" target="_blank" rel="noopener" data-kairikos="llamada">Reservar una llamada</a>`;
+  const purchaseBlock = !purchase
+    ? ''
+    : purchase.kind === 'buy'
+      ? `<section class="offer" id="oferta"><div class="wrap">
+          <h2>¿Te gusta? Puede ser tuya</h2>
+          <p>Tu web publicada: ${esc(offer.priceLabel)}, con dominio y alojamiento el primer año incluidos.
+            La repasamos contigo y la publicamos unos días después de que des el visto bueno.</p>
+          ${purchaseLink}
+        </div></section>`
+      : `<section class="offer" id="oferta"><div class="wrap">
+          <h2>¿Te gusta?</h2>
+          <p>Este mes ya no nos quedan huecos para webs sin llamada. Reserva 20 minutos y la vemos juntos.</p>
+          ${purchaseLink}
+        </div></section>`;
+
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -446,6 +486,13 @@ footer .note { margin: 16px 0 0; padding-top: 14px; border-top: 1px solid #22293
 .banner code { color: #cfe0ff; font-size: 12px; word-break: break-all; }
 .banner .share { color: #9aa6b8; }
 .banner code { color: #cfe0ff; font-size: 12px; word-break: break-all; }
+.banner a.buy-link { color: #ffd166; font-weight: 600; white-space: nowrap; }
+.offer { background: #111827; color: #e5e9f0; text-align: center; }
+.offer h2 { color: #fff; margin-bottom: 10px; }
+.offer p { max-width: 36em; margin: 0 auto 26px; color: #c3cad6; }
+a.buy { display: inline-block; background: #ffd166; color: #111827; text-decoration: none; font-weight: 700;
+  padding: 15px 30px; border-radius: 999px; }
+a.buy:hover { background: #ffe09a; }
 @media (max-width: 640px) {
   .hero { min-height: 74vh; }
   section { padding: 52px 0; }
@@ -460,7 +507,8 @@ footer .note { margin: 16px 0 0; padding-top: 14px; border-top: 1px solid #22293
 <div class="banner"><div class="wrap">
   Propuesta de Kairikos para <strong>${esc(subject.businessName)}</strong> ·
   borrador con sus datos públicos de Google, todavía no publicado
-  ${params.shareUrl ? `<br><span class="share">Enlace para mandarle: <code>${esc(params.shareUrl)}</code></span>` : ''}
+  ${purchase?.kind === 'buy' ? `· <a class="buy-link" href="#oferta">La quiero</a>` : ''}
+  ${params.shareUrl ?`<br><span class="share">Enlace para mandarle: <code>${esc(params.shareUrl)}</code></span>` : ''}
 </div></div>
 
 <div class="hero">
@@ -492,6 +540,7 @@ ${formBlock}
   ${phoneText && phoneHref ? `<a class="tel" href="tel:${esc(phoneHref)}">${esc(phoneText)}</a>` : ''}
   ${callButton('Llamar ahora')}
 </div></section>
+${purchaseBlock}
 
 <footer><div class="wrap">
   <strong>${esc(subject.businessName)}</strong><br>

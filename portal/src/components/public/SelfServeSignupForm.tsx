@@ -45,7 +45,10 @@ function priceSummary(tier: SignupTierOption): string {
   const setup = tier.setupFeeCents > 0 ? `${formatPrice(tier.setupFeeCents, tier.currency)} de alta` : null;
   if (recurring && setup) return `${recurring} + ${setup}`;
   if (recurring) return recurring;
-  if (setup) return `${setup} · pago único`;
+  // Sin cuota no hay «alta» de nada: es el precio. Hoy solo la web desde su
+  // borrador (25/10/2026), y «799 € de alta · pago único» se leía como si
+  // detrás viniera una mensualidad.
+  if (setup) return `${formatPrice(tier.setupFeeCents, tier.currency)} · pago único`;
   return 'Precio a confirmar';
 }
 
@@ -55,6 +58,7 @@ export function SelfServeSignupForm({
   tiers,
   codigoInicial = '',
   productoInicial,
+  webDraftToken,
 }: {
   tiers: SignupTierOption[];
   /** A7 — el código que venía en ?ref= del enlace del socio. Se resuelve en
@@ -67,6 +71,9 @@ export function SelfServeSignupForm({
    *  marcado. El servidor lo resuelve a un productId y comprueba que exista;
    *  aquí solo se usa. */
   productoInicial?: string;
+  /** 25/10/2026 — la web comprada desde su borrador. Viaja con el alta para
+   *  que el enlace del correo lleve al pago y no al presupuesto. */
+  webDraftToken?: string;
 }) {
   const id = useId();
   const byCode = useMemo(() => {
@@ -135,6 +142,7 @@ export function SelfServeSignupForm({
           tosAccepted,
           website,
           codigo: codigo.trim() || undefined,
+          borrador: webDraftToken,
         }),
       });
       if (!signupRes.ok) {

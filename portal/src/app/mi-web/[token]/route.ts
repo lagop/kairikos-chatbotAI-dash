@@ -4,6 +4,8 @@ import { isShareToken } from '@/lib/prospecting-share';
 import { renderWebDraftHtml } from '@/lib/web-draft-html';
 import type { WebDraftCopy } from '@/lib/web-draft-ai';
 import { logError } from '@/lib/observability';
+import { getWebDraftPurchase, purchaseCtaFor } from '@/lib/web-self-serve';
+import { KAIRIKOS_DEMO_URL } from '@/lib/portal-data';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -42,7 +44,14 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ token: s
       });
     }
 
+    // 25/10/2026 — «La quiero»: comprarla sin llamada (lib/web-self-serve.ts).
+    // Si mirarlo falla, el borrador se enseña igual, sin el botón.
+    const purchase = await getWebDraftPurchase(prisma, params.token, new Date()).catch(() => null);
+    const { cta, offer } = purchaseCtaFor(purchase, params.token, KAIRIKOS_DEMO_URL);
+
     const html = renderWebDraftHtml({
+      purchase: cta,
+      offer,
       subject: {
         businessName: request.businessName,
         primaryType: request.primaryType,

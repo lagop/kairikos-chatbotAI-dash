@@ -7,6 +7,7 @@ import { sendVerifyEmail, sendAccountExistsEmail } from '@/lib/auth-email';
 import { logError } from '@/lib/observability';
 import { clientIpFromHeaders } from '@/lib/client-ip';
 import { attributeClient } from '@/lib/referrals';
+import { getWebDraftPurchase } from '@/lib/web-self-serve';
 
 // =============================================================================
 // POST /api/public/self-serve-signup — WP-31.
@@ -59,6 +60,10 @@ const SelfServeSignupSchema = z.object({
   // ninguna pantalla en la que quepa "¿quién te mandó?" sin que suene raro.
   // Opcional a propósito: un código mal escrito no puede impedir un alta.
   codigo: z.string().trim().max(40).optional(),
+  // 25/10/2026 — la web comprada desde su borrador («La quiero»). Con un
+  // borrador válido y hueco en el tope, el enlace del correo lleva al pago en
+  // vez de a la solicitud de presupuesto. Ver lib/web-self-serve.ts.
+  borrador: z.string().trim().max(200).optional(),
 });
 
 const ipRateLimiter = new InMemoryRateLimiter(15 * 60 * 1000);
@@ -78,7 +83,7 @@ export async function POST(req: NextRequest) {
   if (!body.success) {
     return NextResponse.json({ error: 'invalid_body', details: body.error.flatten() }, { status: 400 });
   }
-  const { email, name, companyName, password, productId, codigo } = body.data;
+  const { email, name, companyName, password, productId, codigo, borrador } = body.data;
 
   const product = await prisma.product.findUnique({
     where: { id: productId },
@@ -154,9 +159,20 @@ export async function POST(req: NextRequest) {
   // Sin este correo la cuenta no se puede usar, pero reintentar el alta no
   // ayuda (el email ya existe): quien no lo reciba entra por "he olvidado
   // mi contraseña", que también prueba que el buzón es suyo.
+  // Web desde su borrador: al pago. Si el tope se llenó entre la página y el
+  // alta, presupuesto como siempre — el checkout lo vuelve a mirar igual. Un
+  // fallo al mirarlo tampoco puede quedarse con el correo de activación.
+  const webDraftBuy =
+    product.code === 'web' && borrador
+      ? await getWebDraftPurchase(prisma, borrador, new Date())
+          .then((p) => p.available)
+          .catch(() => false)
+      : false;
   try {
     const token = await mintEmailVerificationToken(prisma, normalizedEmail);
-    const verifyUrl = `${origin}/portal/verify-email?email=${encodeURIComponent(normalizedEmail)}&token=${encodeURIComponent(token)}&product=${encodeURIComponent(productId)}${product.code === 'web' ? '&quote=1' : ''}`;
+    const tail =
+      product.code !== 'web' ? '' : webDraftBuy ? `&borrador=${encodeURIComponent(borrador!)}` : '&quote=1';
+    const verifyUrl = `${origin}/portal/verify-email?email=${encodeURIComponent(normalizedEmail)}&token=${encodeURIComponent(token)}&product=${encodeURIComponent(productId)}${tail}`;
     await sendVerifyEmail({ to: email, verifyUrl });
   } catch (err) {
     logError('self_serve_signup.verify_email_failed', err, { clientId: created.clientId }, 'error');

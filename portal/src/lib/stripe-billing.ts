@@ -12,6 +12,7 @@ import { isProductContracted, isMultiInstanceProduct } from './client-product-ac
 import { assignSiteToNewContract } from './client-site';
 import { LEADS_INCLUDED_CHATBOT_TIERS } from './lead-entitlement';
 import { monthlyEquivalentCents, type BillingInterval } from './annual-billing';
+import { logError } from './observability';
 import type { Prisma } from '@prisma/client';
 import type Stripe from 'stripe';
 
@@ -732,6 +733,25 @@ export async function activateClientProductFromCheckout(session: Stripe.Checkout
       { clientId: cp.clientId, clientProductId: cpId, tenantId: cp.tenantId },
     );
   }
+  // 25/10/2026 — una web comprada desde su borrador nace con ese contenido,
+  // para que nadie tenga que buscar qué vio el cliente antes de pagar. Import
+  // perezoso: web-self-serve arrastra la publicación por SFTP (ssh2), y este
+  // módulo lo cargan casi todas las rutas de facturación.
+  const draftToken = (session.metadata?.kairikos_web_draft_token ?? null) as string | null;
+  if (cp.product.code === 'web' && draftToken) {
+    const { resolveWebDraft, createClientWebsiteFromDraft } = await import('./web-self-serve');
+    const seed = await resolveWebDraft(prisma, draftToken);
+    if (seed) {
+      await createClientWebsiteFromDraft(prisma, {
+        clientProductId: cpId,
+        clientId: cp.clientId,
+        tenantId: cp.tenantId,
+        seed,
+      });
+    } else {
+      logError('web_self_serve.draft_gone_after_payment', new Error('draft_not_found'), { clientProductId: cpId }, 'warn');
+    }
+  }
 }
 
 /**
@@ -1130,6 +1150,11 @@ export async function createProductCheckoutSession(params: {
   clientSiteId?: string | null;
   /** Adónde vuelve el navegador desde Stripe. Por defecto, al portal. */
   returnPath?: string;
+  /** 25/10/2026 — 'web' a precio cerrado, comprada desde su borrador. Solo lo
+   *  pasa quien ya comprobó el borrador y el tope (getWebDraftPurchase en
+   *  lib/web-self-serve.ts); sin él, 'web' sigue yendo por presupuesto. Viaja
+   *  en la metadata para que la activación cree el sitio con ese contenido. */
+  webDraft?: { kind: 'public' | 'prospecting'; token: string };
 }): Promise<CreateCheckoutSessionResult> {
   const { clientId, productId, actorId } = params;
   const billing: BillingInterval = params.billing ?? 'monthly';
@@ -1144,8 +1169,9 @@ export async function createProductCheckoutSession(params: {
   }
   // 'web' no vende a precio fijo de catálogo — va por presupuesto
   // (POST /api/portal/web-quote/request). Ver el mismo rechazo en la
-  // ruta de autoservicio.
-  if (product.code === 'web') {
+  // ruta de autoservicio. La excepción (25/10/2026) es la compra desde su
+  // borrador, donde el cliente ya vio lo que compra: ver lib/web-self-serve.ts.
+  if (product.code === 'web' && !params.webDraft) {
     return { ok: false, error: 'product_requires_quote' };
   }
   // 'leads' clasifica ChatbotConversation — sin 'chatbot' activo nunca
@@ -1277,6 +1303,9 @@ export async function createProductCheckoutSession(params: {
     kairikos_product_code: product.code,
     kairikos_product_tier: product.tier,
     kairikos_billing_interval: billing,
+    ...(product.code === 'web' && params.webDraft
+      ? { kairikos_web_draft_kind: params.webDraft.kind, kairikos_web_draft_token: params.webDraft.token }
+      : {}),
   };
 
   try {
