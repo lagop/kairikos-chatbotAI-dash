@@ -6,6 +6,8 @@ import type { WebDraftCopy } from '@/lib/web-draft-ai';
 import { logError } from '@/lib/observability';
 import { getWebDraftPurchase, purchaseCtaFor } from '@/lib/web-self-serve';
 import { KAIRIKOS_DEMO_URL } from '@/lib/portal-data';
+import { getLiveDraftData } from '@/lib/web-draft-live';
+import { addressFromLeadSummary, withLiveData } from '@/lib/web-draft-subject';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -18,9 +20,14 @@ export const runtime = 'nodejs';
  * quien lo abre es el dueño de un negocio que no es cliente nuestro, no
  * tiene sesión y no va a crearse una cuenta para ver una propuesta.
  *
- * Solo LEE lo que el operador ya generó. No llama a Anthropic ni a Google
- * por mucho que se recargue: sin borrador guardado, 404. Esa es la línea que
- * hace que un enlace público no pueda costar dinero.
+ * Solo LEE lo que el operador ya generó. No llama a Anthropic por mucho que
+ * se recargue: sin borrador guardado, 404.
+ *
+ * A Google SÍ (26/10/2026): la valoración, el horario, las reseñas y la
+ * dirección no se pueden guardar (condiciones de Google Maps Platform) y se
+ * piden al servir la página — ver lib/web-draft-live.ts. Lo que cuesta queda
+ * acotado ahí: caché de una hora por negocio y tope diario entre todos los
+ * borradores. Pasado el tope, la página sale igual, sin esas secciones.
  *
  * Nada aquí depende del token para nada más que encontrar la fila: no hay
  * sesión que suplantar ni datos de otro cliente que alcanzar.
@@ -48,6 +55,7 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ token: s
             summary: true,
             primaryType: true,
             searchLocation: true,
+            externalPlaceId: true,
             competitorSnapshot: { select: { subjectRating: true, subjectReviewCount: true } },
           },
         },
@@ -68,19 +76,27 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ token: s
     const purchase = await getWebDraftPurchase(prisma, params.token, new Date()).catch(() => null);
     const { cta, offer } = purchaseCtaFor(purchase, params.token, KAIRIKOS_DEMO_URL);
 
-    const html = renderWebDraftHtml({
-      purchase: cta,
-      offer,
-      subject: {
+    const copy = draft.copy as unknown as WebDraftCopy;
+    const live = await getLiveDraftData(draft.lead.externalPlaceId);
+    const subject = withLiveData(
+      {
         businessName: draft.lead.contactName,
         primaryType: draft.lead.primaryType,
         city: draft.lead.searchLocation,
-        address: draft.lead.summary?.replace(/^Negocio encontrado en\s*/i, '').replace(/\.$/, '') ?? null,
+        address: addressFromLeadSummary(draft.lead.summary),
         phone: draft.lead.contactPhone,
         rating: draft.lead.competitorSnapshot?.subjectRating ?? null,
         reviewCount: draft.lead.competitorSnapshot?.subjectReviewCount ?? null,
       },
-      copy: draft.copy as unknown as WebDraftCopy,
+      live,
+      copy,
+    );
+
+    const html = renderWebDraftHtml({
+      purchase: cta,
+      offer,
+      subject,
+      copy,
       generatedAt: draft.generatedAt,
       themeKey: draft.themeKey,
     });

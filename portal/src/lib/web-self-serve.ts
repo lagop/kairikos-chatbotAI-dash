@@ -283,6 +283,18 @@ export function purchaseCtaFor(
  * Nunca lanza: corre después de cobrar, y un fallo aquí no puede deshacer un
  * pago. Si falla, queda un aviso y el operador crea el sitio a mano como
  * siempre.
+ *
+ * LIMITACIÓN ACEPTADA (26/10/2026): el borrador enseña valoración, horario,
+ * reseñas y la banda «Lo que repiten sus clientes» pidiéndolos a Google al
+ * servirlo, y nada de eso pasa al sitio creado aquí. No se puede: las
+ * condiciones de Google Maps Platform no dejan guardarlo, y el sitio
+ * publicado es HTML estático en otro servidor. El titular y los textos sí
+ * pasan (son de la IA, van en `copy`); las citas de la banda viajan como
+ * referencias y no se pintan sin la reseña delante. Las estrellas vuelven a
+ * la web si contrata Reseñas (website-integrations.ts); el horario lo pone el
+ * operador o el cliente al revisarla. Quien la compra ve en su web lo mismo
+ * que en el borrador MENOS esas secciones: se le dice en la llamada de
+ * repaso, que la oferta ya promete.
  */
 export async function createClientWebsiteFromDraft(
   prisma: PrismaClient,

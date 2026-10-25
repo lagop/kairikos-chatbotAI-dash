@@ -59,6 +59,9 @@ export interface WebsiteBuildInput {
  */
 export function stripDraftChrome(html: string): string {
   return html
+    // 26/10/2026 — lo marcado como solo-borrador en la plantilla: «imagen de
+    // muestra», «servicios orientativos». En su web publicada ya no lo son.
+    .replace(/<!--draft-only-->[\s\S]*?<!--\/draft-only-->/g, '')
     .replace(/<div class="banner">[\s\S]*?<\/div><\/div>\n?/, '')
     .replace(/\s*Borrador generado por Kairikos[\s\S]*?<\/p>/, '</p>')
     .replace(/<p class="note">\s*<\/p>/, '');
