@@ -4002,6 +4002,11 @@ model PublicDraftRequest {
   // pidió, pero NO escribirle con fines comerciales por email o WhatsApp
   // (art. 21 LSSI; la política de privacidad ya recoge esta finalidad).
   marketingConsentAt DateTime? @map("marketing_consent_at")
+  // 25/10/2026 — seguimiento por correo (lib/inbound-follow-up.ts). La baja
+  // de un clic pone unsubscribedAt y corta la secuencia de esta persona en las
+  // dos tablas; el testigo del enlace de baja nace con el primer correo.
+  unsubscribedAt     DateTime? @map("unsubscribed_at")
+  unsubscribeToken   String?   @unique @map("unsubscribe_token")
   createdAt          DateTime  @default(now()) @map("created_at")
 
   @@index([createdAt])
@@ -4037,9 +4042,39 @@ model CalculatorLead {
   // pidió, pero NO escribirle con fines comerciales por email o WhatsApp
   // (art. 21 LSSI; la política de privacidad ya recoge esta finalidad).
   marketingConsentAt DateTime? @map("marketing_consent_at")
+  // 25/10/2026 — seguimiento por correo (lib/inbound-follow-up.ts). La baja
+  // de un clic pone unsubscribedAt y corta la secuencia de esta persona en las
+  // dos tablas; el testigo del enlace de baja nace con el primer correo.
+  unsubscribedAt     DateTime? @map("unsubscribed_at")
+  unsubscribeToken   String?   @unique @map("unsubscribe_token")
   createdAt          DateTime  @default(now()) @map("created_at")
 
   @@index([createdAt])
+}
+
+// =============================================================================
+// 25/10/2026 — cada correo de seguimiento a un contacto entrante (borrador de
+// web o calculadora) con consentimiento comercial. Una fila por toque: la
+// clave única (source, source_id, step) es lo que hace idempotente el cron
+// —se reserva la fila ANTES de mandar— y lo que enseña /admin/portal/borradores.
+// source: "web_draft" | "calculator". step: "dia_0" | "dia_3" | "dia_7".
+// status: "sending" (reservado) | "sent" | "failed" | "skipped" (no tocaba:
+// otra petición más reciente de la misma persona, o un paso que el barrido
+// dejó atrás).
+// =============================================================================
+model InboundFollowUpEmail {
+  id        String    @id @default(uuid()) @db.Uuid
+  source    String
+  sourceId  String    @map("source_id") @db.Uuid
+  email     String
+  step      String
+  status    String
+  error     String?
+  sentAt    DateTime? @map("sent_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@unique([source, sourceId, step])
+  @@index([email])
 }
 
 // =============================================================================
