@@ -5,6 +5,8 @@ import { getSession } from '@/lib/session';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { EmptyState } from '@/components/portal/EmptyState';
 import { PUBLIC_SECTORS } from '@/lib/public-draft-request';
+import { MarkContactedButton } from '@/components/admin/MarkContactedButton';
+import { emailFromContact } from '@/lib/inbound-follow-up';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,10 +24,10 @@ export const metadata: Metadata = {
 // venido él. La pantalla existe para que esa cola se mire todas las mañanas y
 // no se quede en una tabla que nadie abre.
 //
-// Sin acciones de momento a propósito: lo que hay que hacer con cada fila es
-// LLAMAR, y eso no pasa por esta pantalla. Marcar como contactado se añadirá
-// cuando el volumen lo pida; hasta entonces, una lista honesta es mejor que
-// un flujo inventado.
+// Lo que hay que hacer con cada fila es LLAMAR, y eso no pasa por esta
+// pantalla. La única acción es «Marcar contactado» (25/10/2026), que llegó con
+// el seguimiento por correo: es lo que lo corta en cuanto se ha hablado con
+// alguien. Cada fila enseña también qué correos de seguimiento ha recibido.
 // =============================================================================
 
 const FECHA = new Intl.DateTimeFormat('es-ES', {
@@ -48,6 +50,23 @@ export default async function PublicDraftsPage() {
         prisma.calculatorLead.findMany({ orderBy: { createdAt: 'desc' }, take: 100 }),
       ])
     : [[], []];
+
+  // 25/10/2026 — los correos de seguimiento (lib/inbound-follow-up.ts) que ha
+  // recibido cada contacto, para no llamar a ciegas a alguien que ya tiene
+  // tres correos nuestros, ni escribir a quien se dio de baja.
+  const followUps = isDatabaseConfigured
+    ? await prisma.inboundFollowUpEmail.findMany({
+        where: { sourceId: { in: [...requests.map((r) => r.id), ...calculatorLeads.map((r) => r.id)] } },
+        orderBy: { createdAt: 'asc' },
+        select: { sourceId: true, step: true, status: true, sentAt: true },
+      })
+    : [];
+  const followUpsBySource = new Map<string, typeof followUps>();
+  for (const f of followUps) {
+    const list = followUpsBySource.get(f.sourceId) ?? [];
+    list.push(f);
+    followUpsBySource.set(f.sourceId, list);
+  }
 
   return (
     <div className="space-y-6">
@@ -75,13 +94,22 @@ export default async function PublicDraftsPage() {
                   <p className="text-sm text-kairikos-muted">
                     {row.city} · {row.contact}
                   </p>
+                  <FollowUpLine
+                    sends={followUpsBySource.get(row.id) ?? []}
+                    unsubscribedAt={row.unsubscribedAt}
+                    consent={row.marketingConsentAt !== null}
+                    isEmail={emailFromContact(row.contact) !== null}
+                  />
                 </div>
                 <div className="flex items-center gap-2">
                   <ConsentPill consentAt={row.marketingConsentAt} />
                   {row.contactedAt ? (
                     <span className="pill-success">Contactado</span>
                   ) : (
-                    <span className="pill-warning">Por llamar</span>
+                    <>
+                      <span className="pill-warning">Por llamar</span>
+                      <MarkContactedButton source="web_draft" id={row.id} />
+                    </>
                   )}
                   <a href={`/mi-web/${row.token}`} target="_blank" rel="noreferrer" className="btn-ghost text-sm">
                     Ver su borrador
@@ -121,13 +149,22 @@ export default async function PublicDraftsPage() {
                       Pierde {row.missedCallsPerWeek} llamadas a la semana: unos{' '}
                       {Math.round(row.annualLossCents / 100).toLocaleString('es-ES')} € al año.
                     </p>
+                    <FollowUpLine
+                      sends={followUpsBySource.get(row.id) ?? []}
+                      unsubscribedAt={row.unsubscribedAt}
+                      consent={row.marketingConsentAt !== null}
+                      isEmail={emailFromContact(row.contact) !== null}
+                    />
                   </div>
                   <div className="flex items-center gap-2">
                     <ConsentPill consentAt={row.marketingConsentAt} />
                     {row.contactedAt ? (
                       <span className="pill-success">Contactado</span>
                     ) : (
-                      <span className="pill-warning">Por llamar</span>
+                      <>
+                        <span className="pill-warning">Por llamar</span>
+                        <MarkContactedButton source="calculator" id={row.id} />
+                      </>
                     )}
                   </div>
                 </div>
@@ -151,5 +188,48 @@ function ConsentPill({ consentAt }: { consentAt: Date | null }) {
     <span className="pill" title="No marcó la casilla de comunicaciones comerciales">
       Solo lo que pidió
     </span>
+  );
+}
+
+const STEP_LABEL: Record<string, string> = { dia_0: 'día 0', dia_3: 'día 3', dia_7: 'día 7' };
+
+/** Qué correos de seguimiento ha recibido. Los «skipped» (no tocaban) no se
+ *  enseñan: no son nada que la persona haya visto. */
+function FollowUpLine({
+  sends,
+  unsubscribedAt,
+  consent,
+  isEmail,
+}: {
+  sends: Array<{ step: string; status: string; sentAt: Date | null }>;
+  unsubscribedAt: Date | null;
+  consent: boolean;
+  isEmail: boolean;
+}) {
+  const visibles = sends.filter((s) => s.status !== 'skipped');
+  if (!consent && !unsubscribedAt) return null;
+  if (!isEmail) {
+    return (
+      <p className="mt-1 text-xs text-kairikos-muted" data-testid="follow-up-line">
+        Sin seguimiento por correo: dejó un teléfono.
+      </p>
+    );
+  }
+  return (
+    <p className="mt-1 text-xs text-kairikos-muted" data-testid="follow-up-line">
+      {unsubscribedAt ? (
+        <span className="font-semibold text-kairikos-danger">Se dio de baja el {FECHA.format(unsubscribedAt)}. </span>
+      ) : null}
+      {visibles.length === 0
+        ? 'Seguimiento por correo: ninguno todavía.'
+        : 'Seguimiento por correo: ' +
+          visibles
+            .map((s) =>
+              s.status === 'sent' && s.sentAt
+                ? `${STEP_LABEL[s.step] ?? s.step} (${FECHA.format(s.sentAt)})`
+                : `${STEP_LABEL[s.step] ?? s.step} (${s.status === 'failed' ? 'falló' : 'enviando'})`,
+            )
+            .join(' · ')}
+    </p>
   );
 }
