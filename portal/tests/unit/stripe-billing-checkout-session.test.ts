@@ -382,6 +382,7 @@ describe('createProductCheckoutSession — session mode branching', () => {
       expect.objectContaining({
         mode: 'payment',
         line_items: [{ price: 'price_setup_web_1', quantity: 1 }],
+        allow_promotion_codes: true,
         invoice_creation: expect.objectContaining({
           enabled: true,
           invoice_data: expect.objectContaining({ metadata: expect.objectContaining({ kairikos_client_product_id: 'cp_1' }) }),
