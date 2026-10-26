@@ -317,6 +317,29 @@ function draftOnly(html: string): string {
   return html ? `<!--draft-only-->${html}<!--/draft-only-->` : '';
 }
 
+// 26/10/2026 — el logotipo de Google Maps junto a cada bloque con datos de
+// Places. Las políticas de Places lo exigen cuando esos datos se enseñan sin
+// un mapa de Google, y #315 solo ponía el texto «Google Maps», que admiten
+// únicamente cuando falta espacio. Los SVG son los oficiales del paquete
+// Google_Maps_Attribution_Assets, sin tocar, servidos desde public/: el gris
+// oscuro sobre fondo claro y el blanco sobre la noche (fondos lisos, así que
+// la versión sin contorno). Alto 18 px (las políticas piden 16–19 dp), margen
+// libre de 10 px arriba y a los lados y 5 px abajo, y la etiqueta accesible
+// «Google Maps» sin traducir.
+//
+// Va como solo-borrador: en la web publicada (website-build.ts) no hay datos
+// de Places —las estrellas, si las hay, vienen del producto de reseñas— y la
+// ruta /google-maps/ no existiría en un alojamiento ajeno.
+export const GOOGLE_MAPS_LOGO_DARK = '/google-maps/google-maps-logo-dark.svg';
+export const GOOGLE_MAPS_LOGO_WHITE = '/google-maps/google-maps-logo-white.svg';
+
+export function googleMapsAttribution(background: 'light' | 'dark'): string {
+  const src = background === 'dark' ? GOOGLE_MAPS_LOGO_WHITE : GOOGLE_MAPS_LOGO_DARK;
+  return draftOnly(
+    `<p class="gm-attr"><img src="${src}" alt="Google Maps" width="98" height="18" translate="no"></p>`,
+  );
+}
+
 export function renderWebDraftHtml(params: {
   subject: WebDraftSubject;
   copy: WebDraftCopy;
@@ -391,6 +414,7 @@ export function renderWebDraftHtml(params: {
       )
       .join('\n    ')}
   </ul>
+  ${googleMapsAttribution('dark')}
 </div></section>`
       : '';
 
@@ -436,13 +460,15 @@ export function renderWebDraftHtml(params: {
   <div class="review-grid">
     ${reviewCards}
   </div>
-  <p class="note">Reseñas de Google de 4 y 5 estrellas, en el orden de relevancia de Google. Fuente: Google Maps.</p>
+  <p class="note">Reseñas de Google de 4 y 5 estrellas, en el orden de relevancia de Google.</p>
+  ${googleMapsAttribution('light')}
   ${mapsHref && showRating ? `<a class="more" href="${esc(mapsHref)}" rel="noopener" target="_blank">Ver las ${reviewCountText} reseñas en Google <span aria-hidden="true">→</span></a>` : ''}
 </div></section>`
       : showRating
         ? // Sin texto de reseñas pero con valoración: el bloque compacto de antes.
           `<section class="reviews compact" id="opiniones"><div class="wrap">
   <p class="score"><span class="stars" aria-hidden="true">${stars(subject.rating!)}</span> <strong>${ratingText(subject.rating!)}</strong> sobre 5 · ${reviewCountText} reseñas en Google</p>
+  ${googleMapsAttribution('light')}
 </div></section>`
         : '';
 
@@ -459,6 +485,7 @@ export function renderWebDraftHtml(params: {
             .join('')}</tbody></table>`
         : ''
     }
+    ${googleMapsAttribution('light')}
   </div>
   ${
     subject.address
@@ -653,6 +680,8 @@ section h2 { font-size: clamp(26px, 3.8vw, 40px); }
 .grid h3 { font-size: 19px; margin-bottom: 6px; }
 .grid p { margin: 0; color: var(--muted); font-size: 15px; }
 .note { margin: 18px 0 0; font-size: 13px; color: var(--muted); }
+.gm-attr { margin: 0; padding: 10px 10px 5px; display: inline-block; line-height: 0; }
+.gm-attr img { height: 18px; width: auto; display: block; }
 
 .reviews { background: #fff; border-block: 1px solid var(--line); }
 .reviews .stars { color: var(--deep); }
@@ -741,7 +770,7 @@ footer .note { margin: 14px 0 0; padding-top: 14px; border-top: 1px solid #22293
       ${callButton(phoneText ? `Llamar al ${phoneText}` : 'Llamar')}
       ${reviews.length > 0 ? '<a class="btn btn-ghost" href="#opiniones">Ver qué dicen sus clientes</a>' : ''}
     </div>
-    ${trustItems ? `<ul class="trust" aria-label="Datos de Google">${trustItems}</ul>` : ''}
+    ${trustItems ? `<ul class="trust" aria-label="Datos de Google">${trustItems}</ul>${googleMapsAttribution('dark')}` : ''}
   </div>
   <figure class="hero-photo">
     <div class="img" role="img" aria-label="Imagen de muestra del sector"></div>

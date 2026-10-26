@@ -1069,7 +1069,7 @@ export default async function AdminClientDetailPage(props: PageProps) {
                 <h2 className="text-lg font-semibold">{productCode === 'prospecting' ? 'Prospectos encontrados' : 'Leads'}</h2>
                 <p className="mt-1 text-xs text-kairikos-muted">Solo lectura — el ciclo de vida de cada lead lo maneja el equipo del cliente.</p>
               </header>
-              <LeadsSummaryPanel leads={leads} />
+              <LeadsSummaryPanel leads={leads} clientId={resolvedClientId ?? undefined} />
             </section>
           ) : null}
 

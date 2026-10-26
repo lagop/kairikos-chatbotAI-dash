@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateAdminRequest } from '@/lib/operator-session';
 import { captureCompetitorSnapshot } from '@/lib/prospecting-competitors';
+import { refreshLeadFromPlaces } from '@/lib/places-retention';
 import { buildReportModel, type MissedCallAssumptions } from '@/lib/prospecting-report';
 import { renderProspectingReportHtml } from '@/lib/prospecting-report-html';
 import { reportShareUrl } from '@/lib/prospecting-share';
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ leadId: str
   if (!auth.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
 
-  const lead = await prisma.lead.findUnique({
+  const found = await prisma.lead.findUnique({
     where: { id: (await ctx.params).leadId },
     select: {
       id: true,
@@ -56,9 +57,16 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ leadId: str
       primaryType: true,
       searchCategory: true,
       searchLocation: true,
+      placesPurgedAt: true,
     },
   });
-  if (!lead) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  if (!found) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+
+  // 26/10/2026 — un prospecto purgado por caducado (lib/places-retention.ts)
+  // solo conserva su place ID: se vuelve a pedir a Google antes de montar el
+  // informe. Si Google no responde, el informe sale con lo que quede.
+  const fresh = found.placesPurgedAt ? await refreshLeadFromPlaces(prisma, found) : null;
+  const lead = fresh ? { ...found, ...fresh } : found;
 
   const url = new URL(req.url);
   const assumptions: Partial<MissedCallAssumptions> = {

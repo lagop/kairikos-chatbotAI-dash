@@ -12,6 +12,7 @@ import {
   SEGUIMIENTOS,
 } from './prospecting-presentacion';
 import { phonesMatch } from './prospecting-replies';
+import { phoneMatchesHash } from './places-retention';
 
 // =============================================================================
 // Prospección con IA, Fase C — the highest-risk piece of this product:
@@ -336,10 +337,15 @@ export async function runProspectingContact(
           where: {
             clientId: campaign.clientId,
             source: 'outbound',
-            contactPhone: { not: null },
-            OR: [{ followUpCount: { gt: 0 } }, { repliedAt: { not: null } }, { status: 'descartado' }],
+            // 26/10/2026 — o su huella: un descartado sin relación pierde el
+            // número a los 30 días (lib/places-retention.ts) y conserva solo
+            // phoneHash, y su «no» tiene que seguir bloqueando ese teléfono.
+            AND: [
+              { OR: [{ contactPhone: { not: null } }, { phoneHash: { not: null } }] },
+              { OR: [{ followUpCount: { gt: 0 } }, { repliedAt: { not: null } }, { status: 'descartado' }] },
+            ],
           },
-          select: { id: true, contactPhone: true, optedOutAt: true },
+          select: { id: true, contactPhone: true, phoneHash: true, optedOutAt: true },
         });
   // Los teléfonos que ya reciben algo en ESTA pasada: dos locales nuevos con
   // el mismo número en el mismo barrido no reciben dos primeros mensajes.
@@ -360,7 +366,9 @@ export async function runProspectingContact(
         // candidato. Cuando el otro salga, el bloqueo de abajo lo retira.
         continue;
       }
-      const blocker = blockers.find((b) => b.id !== lead.id && phonesMatch(b.contactPhone, phone));
+      const blocker = blockers.find(
+        (b) => b.id !== lead.id && (phonesMatch(b.contactPhone, phone) || phoneMatchesHash(phone, b.phoneHash)),
+      );
       if (blocker) {
         // Se opuso por WhatsApp o lo registró el cliente a mano (Lead.optedOutAt).
         const saidNo = blocker.optedOutAt !== null;

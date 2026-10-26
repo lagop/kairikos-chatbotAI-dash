@@ -11,6 +11,7 @@ const mockState = vi.hoisted(() => ({
   send: vi.fn(),
   recipients: vi.fn(),
   googleConfigured: vi.fn(),
+  refresh: vi.fn(),
 }));
 
 vi.mock('@/lib/operator-notify', async (importOriginal) => {
@@ -20,6 +21,7 @@ vi.mock('@/lib/operator-notify', async (importOriginal) => {
 vi.mock('@/lib/operator-alert-settings', () => ({ getOperatorAlertRecipients: () => mockState.recipients() }));
 vi.mock('@/lib/observability', () => ({ logError: vi.fn() }));
 vi.mock('@/lib/google-business', () => ({ isGoogleBusinessOAuthConfigured: () => mockState.googleConfigured() }));
+vi.mock('@/lib/places-retention', () => ({ refreshLeadFromPlaces: (...a: unknown[]) => mockState.refresh(...a) }));
 
 import { callHook, isCallListDue, loadCallList, renderCallList, sendDailyCallList, type CallListLead } from '@/lib/daily-call-list';
 import { sweepClientHealth } from '@/lib/client-health';
@@ -128,16 +130,39 @@ describe('loadCallList', () => {
           source: 'outbound',
           status: 'nuevo',
           optedOutAt: null,
-          contactPhone: { not: null },
+          OR: [
+            { contactPhone: { not: null } },
+            { placesPurgedAt: { not: null }, externalPlaceId: { not: null }, phoneHash: { not: null } },
+          ],
         },
         orderBy: [
           { repliedAt: { sort: 'desc', nulls: 'last' } },
           { score: { sort: 'desc', nulls: 'last' } },
           { createdAt: 'asc' },
         ],
-        take: 15,
+        take: 20,
       }),
     );
+  });
+
+  // 26/10/2026 — los purgados por caducado (lib/places-retention.ts) se
+  // vuelven a pedir a Google justo antes de entrar en la lista.
+  it('un prospecto purgado entra con sus datos recién pedidos a Google, y sin teléfono se queda fuera', async () => {
+    const purged = { ...LEAD({ id: 'p1', contactName: null, contactPhone: null, website: null }), externalPlaceId: 'ChIJ-1', placesPurgedAt: new Date() };
+    const gone = { ...LEAD({ id: 'p2', contactName: null, contactPhone: null, website: null }), externalPlaceId: 'ChIJ-2', placesPurgedAt: new Date() };
+    const live = { ...LEAD({ id: 'l1' }), externalPlaceId: 'ChIJ-3', placesPurgedAt: null };
+    const prisma = makePrisma({ leads: [purged, gone, live] as never });
+    mockState.refresh.mockImplementation(async (_p: unknown, l: { id: string }) =>
+      l.id === 'p1' ? { contactName: 'Fontanería Suárez', contactPhone: '+34 692 27 13 85', website: null } : null,
+    );
+
+    const list = await loadCallList(prisma as never);
+
+    expect(list.map((l) => l.id)).toEqual(['p1', 'l1']);
+    expect(list[0]).toMatchObject({ contactName: 'Fontanería Suárez', contactPhone: '+34 692 27 13 85' });
+    expect(list[0]).not.toHaveProperty('placesPurgedAt');
+    // Al de su sitio no se le pide nada a Google.
+    expect(mockState.refresh).toHaveBeenCalledTimes(2);
   });
 });
 

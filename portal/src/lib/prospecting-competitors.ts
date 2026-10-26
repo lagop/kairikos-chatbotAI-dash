@@ -245,6 +245,8 @@ export async function captureCompetitorSnapshot(
     // mañana cambien las reglas de cálculo.
     metrics: comparison as unknown as object,
     capturedAt: now,
+    // 26/10/2026 — un refresco vuelve a llenar una foto que la purga vació.
+    purgedAt: null,
   };
 
   let shareToken: string | null = cached?.shareToken ?? null;

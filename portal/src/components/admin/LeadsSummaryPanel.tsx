@@ -4,7 +4,14 @@
 // unlike ChannelsOperatorPanel, there is no operator-side mutation here:
 // the client's own sales team owns the whole status lifecycle (see the
 // plan's "Diseño" section on why a cross-client queue was deferred).
+//
+// La única excepción (26/10/2026): «Actualizar desde Google» en los
+// prospectos con los datos de Google caducados (lib/places-retention.ts). No
+// cambia el estado del lead, solo vuelve a traer lo que se purgó; los botones
+// son componentes de cliente aparte y este panel sigue siendo de servidor.
 // =============================================================================
+
+import { RefreshAllExpiredButton, RefreshFromGoogleButton } from '@/components/portal/RefreshFromGoogleButton';
 
 const STATUS_LABEL: Record<string, string> = {
   nuevo: 'Nuevo',
@@ -38,14 +45,29 @@ export interface LeadSummaryRow {
    *  primera apertura paga (Google en el informe, Sonnet en el borrador). */
   hasWebDraft?: boolean;
   hasReport?: boolean;
+  /** 26/10/2026 — datos de Google purgados a los 30 días (lib/places-retention.ts). */
+  placesPurgedAt?: Date | null;
+  placesUnavailable?: string | null;
+  externalPlaceId?: string | null;
 }
 
-export function LeadsSummaryPanel({ leads }: { leads: LeadSummaryRow[] }) {
+export function LeadsSummaryPanel({ leads, clientId }: { leads: LeadSummaryRow[]; clientId?: string }) {
   if (leads.length === 0) {
     return <p className="text-sm text-kairikos-muted">Este cliente todavía no tiene leads capturados.</p>;
   }
 
+  // 26/10/2026 — los que se pueden volver a pedir a Google de una vez. Los que
+  // Google ya no encuentra no cuentan: pedirlos otra vez solo gasta.
+  const expiredCount = leads.filter((l) => l.placesPurgedAt && l.externalPlaceId && !l.placesUnavailable).length;
+
   return (
+    <>
+    {clientId && expiredCount > 0 ? (
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-sm text-kairikos-muted" data-testid="leads-expired-bar">
+        <span>{expiredCount} con los datos de Google caducados.</span>
+        <RefreshAllExpiredButton clientId={clientId} count={expiredCount} />
+      </div>
+    ) : null}
     <ul className="space-y-2" data-testid="leads-summary-list">
       {leads.map((lead) => {
         const contactParts = [lead.contactName, lead.contactPhone, lead.contactEmail].filter(Boolean);
@@ -64,8 +86,24 @@ export function LeadsSummaryPanel({ leads }: { leads: LeadSummaryRow[] }) {
                   {lead.channel ? ` · ${lead.channel}` : ''}
                 </p>
                 <p className="mt-1 text-sm font-medium">
-                  {contactParts.length > 0 ? contactParts.join(' · ') : 'Sin datos de contacto'}
+                  {contactParts.length > 0
+                    ? contactParts.join(' · ')
+                    : lead.placesPurgedAt
+                      ? 'Datos de Google caducados (más de 30 días sin contactar)'
+                      : 'Sin datos de contacto'}
                 </p>
+                {lead.placesUnavailable ? (
+                  <p className="mt-1 text-xs text-kairikos-danger" data-testid="leads-summary-places-unavailable">
+                    {lead.placesUnavailable === 'closed'
+                      ? 'En Google figura como cerrado definitivamente.'
+                      : 'Google ya no encuentra este negocio: su ficha cambió o se retiró.'}
+                  </p>
+                ) : null}
+                {lead.placesPurgedAt && lead.externalPlaceId ? (
+                  <div className="mt-1">
+                    <RefreshFromGoogleButton endpoint={`/api/admin/portal/leads/${lead.id}/actualizar-google`} />
+                  </div>
+                ) : null}
               </div>
               <div className="flex items-center gap-2">
                 {lead.source === 'outbound' ? (
@@ -132,5 +170,6 @@ export function LeadsSummaryPanel({ leads }: { leads: LeadSummaryRow[] }) {
         );
       })}
     </ul>
+    </>
   );
 }

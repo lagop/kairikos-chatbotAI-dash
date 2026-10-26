@@ -22,6 +22,7 @@ import { EmptyState } from '@/components/portal/EmptyState';
 import { ProductPitch } from '@/components/portal/ProductPitch';
 import { SelfServeProductCard, type SelfServeTierOption } from '@/components/portal/SelfServeProductCard';
 import { LeadStatusControls } from '@/components/portal/LeadStatusControls';
+import { RefreshFromGoogleButton } from '@/components/portal/RefreshFromGoogleButton';
 import { suggestedOutreachMessage, whatsappLink, mailtoLink } from '@/lib/lead-contact-links';
 import { ProspectingProfileCard } from '@/components/portal/ProspectingProfileCard';
 import { PROSPECTING_CONSENT_VERSION } from '@/lib/prospecting-contact';
@@ -515,11 +516,31 @@ function LeadRow({
     source: string;
     createdAt: Date;
     optedOutAt: Date | null;
+    placesPurgedAt?: Date | null;
+    placesUnavailable?: string | null;
+    externalPlaceId?: string | null;
   };
 }) {
   const contactParts = [lead.contactName, lead.contactPhone, lead.contactEmail].filter(Boolean);
+  // 26/10/2026 — un prospecto que nadie tocó en 30 días pierde los datos que
+  // vinieron de Google (lib/places-retention.ts): sus condiciones no dejan
+  // guardarlos más. Se dice, en vez de enseñar una tarjeta en blanco.
+  const emptyLabel = lead.placesPurgedAt ? 'Datos de Google caducados (más de 30 días sin contactar)' : 'Sin datos de contacto';
+  const canRefresh = Boolean(lead.placesPurgedAt && lead.externalPlaceId);
   return (
     <div className="card space-y-2" data-testid="lead-row" data-status={lead.status} data-source={lead.source}>
+      {canRefresh ? (
+        <div className="flex flex-wrap items-center gap-2" data-testid="lead-places-expired">
+          {lead.placesUnavailable ? (
+            <span className="text-sm text-kairikos-danger" data-testid="lead-places-unavailable">
+              {lead.placesUnavailable === 'closed'
+                ? 'En Google este negocio figura como cerrado definitivamente.'
+                : 'Google ya no encuentra este negocio: su ficha cambió o se retiró.'}
+            </span>
+          ) : null}
+          <RefreshFromGoogleButton endpoint={`/api/portal/leads/${lead.id}/actualizar-google`} />
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="text-xs uppercase tracking-wider text-kairikos-muted">
@@ -527,7 +548,7 @@ function LeadRow({
             {lead.channel ? ` · ${lead.channel}` : ''}
           </p>
           <h3 className="mt-1 text-base font-semibold">
-            {contactParts.length > 0 ? contactParts.join(' · ') : 'Sin datos de contacto'}
+            {contactParts.length > 0 ? contactParts.join(' · ') : emptyLabel}
           </h3>
         </div>
         <div className="flex items-center gap-2">

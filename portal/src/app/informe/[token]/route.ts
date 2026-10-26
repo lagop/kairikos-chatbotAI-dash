@@ -45,6 +45,7 @@ export async function GET(req: NextRequest, props: { params: Promise<{ token: st
         subjectReviewCount: true,
         competitors: true,
         capturedAt: true,
+        purgedAt: true,
         lead: {
           select: {
             contactName: true,
@@ -58,6 +59,16 @@ export async function GET(req: NextRequest, props: { params: Promise<{ token: st
         },
       },
     });
+
+    // 26/10/2026 — pasados 30 días se vacía (lib/places-retention.ts): las
+    // valoraciones y los competidores son contenido de Google que no se
+    // puede guardar más. El enlace ya enviado lo dice, en vez de dar 404.
+    if (snapshot?.purgedAt) {
+      return new NextResponse(
+        'Este informe ha caducado: sus datos de Google se renuevan cada 30 días. Pide uno nuevo a quien te lo envió.',
+        { status: 410, headers: { 'content-type': 'text/plain; charset=utf-8' } },
+      );
+    }
 
     if (!snapshot) {
       return new NextResponse('Este enlace ya no está disponible.', {

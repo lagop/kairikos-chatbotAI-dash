@@ -11,6 +11,7 @@ import { reportShareUrl } from './prospecting-share';
 import { portalBaseUrl } from './portal-base-url';
 import { logError } from './observability';
 import { isGoogleBusinessOAuthConfigured } from './google-business';
+import { refreshLeadFromPlaces } from './places-retention';
 
 // =============================================================================
 // 04/10/2026 — la lista diaria de llamadas.
@@ -189,22 +190,32 @@ function consentLabel(c: WebContact): string {
 
 /** Los mejores prospectos de la cuenta interna que aún no se han llamado. */
 export async function loadCallList(prisma: PrismaClient, limit = CALL_LIST_SIZE): Promise<CallListLead[]> {
-  return prisma.lead.findMany({
+  const rows = await prisma.lead.findMany({
     where: {
       client: { isInternal: true },
       source: 'outbound',
       status: 'nuevo',
       optedOutAt: null,
-      contactPhone: { not: null },
+      // 26/10/2026 — también los que tenían teléfono y se purgó por caducado
+      // (lib/places-retention.ts): la huella dice que lo tenían, y el place
+      // ID permite volver a pedirlo a Google justo antes de llamar.
+      OR: [
+        { contactPhone: { not: null } },
+        { placesPurgedAt: { not: null }, externalPlaceId: { not: null }, phoneHash: { not: null } },
+      ],
     },
     orderBy: [
       { repliedAt: { sort: 'desc', nulls: 'last' } },
       { score: { sort: 'desc', nulls: 'last' } },
       { createdAt: 'asc' },
     ],
-    take: limit,
+    // Margen por si alguno purgado no vuelve con teléfono (cerrado, o Google
+    // ya no lo da): así la lista no se queda corta.
+    take: limit + 5,
     select: {
       id: true,
+      externalPlaceId: true,
+      placesPurgedAt: true,
       contactName: true,
       contactPhone: true,
       website: true,
@@ -216,6 +227,20 @@ export async function loadCallList(prisma: PrismaClient, limit = CALL_LIST_SIZE)
       competitorSnapshot: { select: { subjectRating: true, subjectReviewCount: true, shareToken: true } },
     },
   });
+
+  const list: CallListLead[] = [];
+  for (const row of rows) {
+    if (list.length >= limit) break;
+    const { externalPlaceId, placesPurgedAt, ...lead } = row;
+    if (placesPurgedAt) {
+      const fresh = await refreshLeadFromPlaces(prisma, { id: lead.id, externalPlaceId });
+      if (!fresh?.contactPhone) continue;
+      list.push({ ...lead, contactName: fresh.contactName, contactPhone: fresh.contactPhone, website: fresh.website });
+      continue;
+    }
+    list.push(lead);
+  }
+  return list;
 }
 
 function escapeHtml(value: string): string {
