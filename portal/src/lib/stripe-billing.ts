@@ -1316,6 +1316,12 @@ export async function createProductCheckoutSession(params: {
           customer: customerId,
           line_items: [{ price: product.stripeSetupPriceId!, quantity: 1 }],
           invoice_creation: { enabled: true, invoice_data: { metadata } },
+          // 26/10/2026 — la casilla de código también en el pago único (la web
+          // desde su borrador). Sin ella no había forma de hacer la compra
+          // real de prueba sin pagar 799 € y perder la comisión al
+          // reembolsar, ni de darle un descuento a un piloto. Un código de
+          // Stripe solo se aplica al producto de su applies_to.
+          allow_promotion_codes: true,
           metadata,
           success_url: successUrl,
           cancel_url: cancelUrl,
