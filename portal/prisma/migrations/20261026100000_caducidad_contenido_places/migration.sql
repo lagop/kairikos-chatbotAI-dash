@@ -6,6 +6,8 @@
 ALTER TABLE "Lead" ADD COLUMN IF NOT EXISTS "places_fetched_at" TIMESTAMP(3);
 ALTER TABLE "Lead" ADD COLUMN IF NOT EXISTS "places_purged_at" TIMESTAMP(3);
 ALTER TABLE "Lead" ADD COLUMN IF NOT EXISTS "phone_hash" TEXT;
+-- 'not_found' | 'closed': Google ya no da ese negocio al volver a pedirlo.
+ALTER TABLE "Lead" ADD COLUMN IF NOT EXISTS "places_unavailable" TEXT;
 
 -- Los leads que vinieron de Places se trajeron el día que se crearon: es la
 -- mejor fecha que hay, y sin ella la purga no sabría cuándo caducan.

@@ -23,7 +23,13 @@ vi.mock('@/lib/google-places', () => ({
 
 import {
   PLACES_RETENTION_DAYS,
-  DAILY_REFRESH_CAP,
+  CLIENT_DAILY_REFRESH_CAP,
+  GLOBAL_DAILY_REFRESH_CAP,
+  isPlaceGone,
+  refreshExpiredLeadsForClient,
+  refreshHttpStatus,
+  refreshLeadPlacesData,
+  refreshResultMessage,
   hasOwnRelationship,
   phoneHashOf,
   phoneMatchesHash,
@@ -180,76 +186,217 @@ describe('purgeExpiredPlacesContent', () => {
   });
 });
 
-describe('refreshLeadFromPlaces', () => {
+// -----------------------------------------------------------------------------
+// «Actualizar desde Google»
+// -----------------------------------------------------------------------------
+
+const DETAILS = {
+  ok: true,
+  data: {
+    id: 'ChIJ-test',
+    name: 'Fontanería Suárez',
+    formattedAddress: 'C. Camelia, 50, 35010 Las Palmas de Gran Canaria',
+    websiteUri: null,
+    phoneNumber: '+34 692 27 13 85',
+    primaryType: 'plumber',
+    businessStatus: 'OPERATIONAL',
+    latitude: 28.1,
+    longitude: -15.4,
+  },
+};
+
+function refreshPrisma(opts: { lead?: object | null; clientCount?: number; globalCount?: number } = {}) {
+  const lead =
+    opts.lead === undefined
+      ? { id: 'l1', clientId: 'c1', tenantId: null, externalPlaceId: 'ChIJ-test', status: 'nuevo' }
+      : opts.lead;
+  return {
+    lead: {
+      findFirst: vi.fn().mockResolvedValue(lead),
+      update: vi.fn().mockResolvedValue({}),
+      findMany: vi.fn().mockResolvedValue([]),
+    },
+    leadAudit: {
+      // Primero el del cliente (lleva clientId), luego el global.
+      count: vi.fn(async (args: { where: { clientId?: string } }) =>
+        args.where.clientId ? (opts.clientCount ?? 0) : (opts.globalCount ?? 0),
+      ),
+      create: vi.fn().mockResolvedValue({}),
+    },
+  };
+}
+
+describe('refreshLeadPlacesData', () => {
   beforeEach(() => {
     resetPlacesRefreshState();
     getPlaceDetailsMock.mockReset();
   });
 
-  const details = {
-    ok: true,
-    data: {
-      id: 'ChIJ-test',
-      name: 'Fontanería Suárez',
-      formattedAddress: 'C. Camelia, 50, 35010 Las Palmas de Gran Canaria',
-      websiteUri: null,
-      phoneNumber: '+34 692 27 13 85',
-      primaryType: 'plumber',
-      businessStatus: 'OPERATIONAL',
-      latitude: 28.1,
-      longitude: -15.4,
-    },
-  };
+  it('el lead tiene que ser del cliente: el clientId va en la consulta y uno ajeno es «no encontrado»', async () => {
+    const prisma = refreshPrisma({ lead: null });
+    const result = await refreshLeadPlacesData(prisma as never, { leadId: 'l1', clientId: 'c2', actorId: 'client:c2', now: NOW });
+    expect(prisma.lead.findFirst.mock.calls[0][0].where).toEqual({ id: 'l1', clientId: 'c2' });
+    expect(result).toEqual({ ok: false, reason: 'lead_not_found' });
+    expect(getPlaceDetailsMock).not.toHaveBeenCalled();
+    expect(refreshHttpStatus(result)).toBe(404);
+  });
 
-  it('guarda lo fresco con una ventana nueva y quita la marca de purgado', async () => {
-    getPlaceDetailsMock.mockResolvedValue(details);
-    const update = vi.fn().mockResolvedValue({});
-    const fresh = await refreshLeadFromPlaces({ lead: { update } } as never, { id: 'l1', externalPlaceId: 'ChIJ-test' }, NOW);
+  it('el operador no filtra por cliente', async () => {
+    getPlaceDetailsMock.mockResolvedValue(DETAILS);
+    const prisma = refreshPrisma();
+    await refreshLeadPlacesData(prisma as never, { leadId: 'l1', actorId: 'op-1', now: NOW });
+    expect(prisma.lead.findFirst.mock.calls[0][0].where).toEqual({ id: 'l1' });
+  });
 
-    expect(fresh).toMatchObject({ contactName: 'Fontanería Suárez', contactPhone: '+34 692 27 13 85', summary: placesSummary(details.data.formattedAddress) });
-    const data = update.mock.calls[0][0].data;
-    expect(data.placesFetchedAt).toEqual(NOW);
-    expect(data.placesPurgedAt).toBeNull();
-    expect(data.phoneHash).toBe(phoneHashOf('692271385'));
+  it('guarda lo fresco, reabre los 30 días, quita las marcas y deja auditoría', async () => {
+    getPlaceDetailsMock.mockResolvedValue(DETAILS);
+    const prisma = refreshPrisma();
+    const result = await refreshLeadPlacesData(prisma as never, { leadId: 'l1', clientId: 'c1', actorId: 'client:c1', now: NOW });
+
+    expect(result).toMatchObject({ ok: true, fromCache: false, fields: { contactName: 'Fontanería Suárez', summary: placesSummary(DETAILS.data.formattedAddress) } });
+    const data = prisma.lead.update.mock.calls[0][0].data;
+    expect(data).toMatchObject({ placesFetchedAt: NOW, placesPurgedAt: null, placesUnavailable: null, phoneHash: phoneHashOf('692271385') });
+    expect(prisma.leadAudit.create.mock.calls[0][0].data).toMatchObject({ leadId: 'l1', clientId: 'c1', action: 'places_refreshed', actorId: 'client:c1' });
+    expect(refreshResultMessage(result)).toBe('Datos actualizados desde Google.');
   });
 
   it('no paga dos veces el mismo negocio en una hora', async () => {
-    getPlaceDetailsMock.mockResolvedValue(details);
-    const prisma = { lead: { update: vi.fn().mockResolvedValue({}) } } as never;
-    await refreshLeadFromPlaces(prisma, { id: 'l1', externalPlaceId: 'ChIJ-test' }, NOW);
-    await refreshLeadFromPlaces(prisma, { id: 'l1', externalPlaceId: 'ChIJ-test' }, new Date(NOW.getTime() + 30 * 60 * 1000));
+    getPlaceDetailsMock.mockResolvedValue(DETAILS);
+    const prisma = refreshPrisma();
+    await refreshLeadPlacesData(prisma as never, { leadId: 'l1', actorId: 'op', now: NOW });
+    const again = await refreshLeadPlacesData(prisma as never, { leadId: 'l1', actorId: 'op', now: new Date(NOW.getTime() + 30 * 60 * 1000) });
+    expect(again).toMatchObject({ ok: true, fromCache: true });
     expect(getPlaceDetailsMock).toHaveBeenCalledTimes(1);
+    expect(prisma.leadAudit.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('al llegar al tope del cliente no llama a Google y lo dice', async () => {
+    const prisma = refreshPrisma({ clientCount: CLIENT_DAILY_REFRESH_CAP });
+    const result = await refreshLeadPlacesData(prisma as never, { leadId: 'l1', clientId: 'c1', actorId: 'client:c1', now: NOW });
+    expect(result).toEqual({ ok: false, reason: 'client_cap' });
+    expect(getPlaceDetailsMock).not.toHaveBeenCalled();
+    expect(refreshHttpStatus(result)).toBe(429);
+    expect(refreshResultMessage(result)).toContain(`tope de ${CLIENT_DAILY_REFRESH_CAP}`);
+  });
+
+  it('el tope global manda sobre el del cliente', async () => {
+    const prisma = refreshPrisma({ globalCount: GLOBAL_DAILY_REFRESH_CAP });
+    const result = await refreshLeadPlacesData(prisma as never, { leadId: 'l1', actorId: 'op', now: NOW });
+    expect(result).toEqual({ ok: false, reason: 'global_cap' });
+    expect(getPlaceDetailsMock).not.toHaveBeenCalled();
+  });
+
+  it('los topes se cuentan en LeadAudit desde el inicio del día', async () => {
+    getPlaceDetailsMock.mockResolvedValue(DETAILS);
+    const prisma = refreshPrisma();
+    await refreshLeadPlacesData(prisma as never, { leadId: 'l1', actorId: 'op', now: NOW });
+    const where = prisma.leadAudit.count.mock.calls[0][0].where;
+    expect(where.action).toEqual({ in: ['places_refreshed', 'places_unavailable'] });
+    expect(where.changedAt).toEqual({ gte: new Date('2026-10-26T00:00:00Z') });
+  });
+
+  it('si Google ya no encuentra el negocio, lo guarda y lo dice en vez de fallar en silencio', async () => {
+    getPlaceDetailsMock.mockResolvedValue({ ok: false, error: 'Place not found', status: 404 });
+    const prisma = refreshPrisma();
+    const result = await refreshLeadPlacesData(prisma as never, { leadId: 'l1', actorId: 'op', now: NOW });
+    expect(result).toEqual({ ok: false, reason: 'not_found' });
+    expect(prisma.lead.update.mock.calls[0][0].data).toEqual({ placesUnavailable: 'not_found' });
+    expect(prisma.leadAudit.create.mock.calls[0][0].data.action).toBe('places_unavailable');
+    expect(refreshResultMessage(result)).toContain('ya no encuentra');
+    expect(refreshHttpStatus(result)).toBe(409);
+  });
+
+  it('un negocio cerrado definitivamente se marca como tal y no se guardan sus datos', async () => {
+    getPlaceDetailsMock.mockResolvedValue({ ...DETAILS, data: { ...DETAILS.data, businessStatus: 'CLOSED_PERMANENTLY' } });
+    const prisma = refreshPrisma();
+    const result = await refreshLeadPlacesData(prisma as never, { leadId: 'l1', actorId: 'op', now: NOW });
+    expect(result).toEqual({ ok: false, reason: 'closed' });
+    expect(prisma.lead.update.mock.calls[0][0].data).toEqual({ placesUnavailable: 'closed' });
+  });
+
+  it('un error pasajero de Google no marca nada ni cuenta para el tope', async () => {
+    getPlaceDetailsMock.mockResolvedValue({ ok: false, error: 'boom', status: 500 });
+    const prisma = refreshPrisma();
+    const result = await refreshLeadPlacesData(prisma as never, { leadId: 'l1', actorId: 'op', now: NOW });
+    expect(result).toEqual({ ok: false, reason: 'error' });
+    expect(prisma.lead.update).not.toHaveBeenCalled();
+    expect(prisma.leadAudit.create).not.toHaveBeenCalled();
   });
 
   it('si Google ya no da el número, no borra la huella que hubiera', async () => {
-    getPlaceDetailsMock.mockResolvedValue({ ...details, data: { ...details.data, phoneNumber: null } });
-    const update = vi.fn().mockResolvedValue({});
-    await refreshLeadFromPlaces({ lead: { update } } as never, { id: 'l1', externalPlaceId: 'ChIJ-test' }, NOW);
-    expect('phoneHash' in update.mock.calls[0][0].data).toBe(false);
+    getPlaceDetailsMock.mockResolvedValue({ ...DETAILS, data: { ...DETAILS.data, phoneNumber: null } });
+    const prisma = refreshPrisma();
+    await refreshLeadPlacesData(prisma as never, { leadId: 'l1', actorId: 'op', now: NOW });
+    expect('phoneHash' in prisma.lead.update.mock.calls[0][0].data).toBe(false);
   });
 
-  it('de un negocio cerrado para siempre no guarda nada', async () => {
-    getPlaceDetailsMock.mockResolvedValue({ ...details, data: { ...details.data, businessStatus: 'CLOSED_PERMANENTLY' } });
-    const update = vi.fn();
-    const fresh = await refreshLeadFromPlaces({ lead: { update } } as never, { id: 'l1', externalPlaceId: 'ChIJ-test' }, NOW);
-    expect(fresh).toBeNull();
-    expect(update).not.toHaveBeenCalled();
+  it('sin place ID no hay nada que pedir', async () => {
+    const prisma = refreshPrisma({ lead: { id: 'l1', clientId: 'c1', tenantId: null, externalPlaceId: null, status: 'nuevo' } });
+    expect(await refreshLeadPlacesData(prisma as never, { leadId: 'l1', actorId: 'op', now: NOW })).toEqual({ ok: false, reason: 'no_place_id' });
   });
 
-  it('sin place ID, error de Google o tope agotado devuelve null sin lanzar', async () => {
-    const prisma = { lead: { update: vi.fn() } } as never;
-    expect(await refreshLeadFromPlaces(prisma, { id: 'l1', externalPlaceId: null }, NOW)).toBeNull();
-
-    getPlaceDetailsMock.mockResolvedValue({ ok: false, error: 'boom' });
-    expect(await refreshLeadFromPlaces(prisma, { id: 'l2', externalPlaceId: 'otro' }, NOW)).toBeNull();
-
-    resetPlacesRefreshState();
-    getPlaceDetailsMock.mockResolvedValue(details);
-    for (let i = 0; i < DAILY_REFRESH_CAP; i += 1) {
-      await refreshLeadFromPlaces(prisma, { id: `l${i}`, externalPlaceId: `place-${i}` }, NOW);
-    }
-    getPlaceDetailsMock.mockClear();
-    expect(await refreshLeadFromPlaces(prisma, { id: 'extra', externalPlaceId: 'place-extra' }, NOW)).toBeNull();
-    expect(getPlaceDetailsMock).not.toHaveBeenCalled();
+  it('isPlaceGone: 404, o 400 de un ID retirado; nada más', () => {
+    expect(isPlaceGone(404, 'x')).toBe(true);
+    expect(isPlaceGone(400, 'Not found: place id')).toBe(true);
+    expect(isPlaceGone(400, 'quota exceeded')).toBe(false);
+    expect(isPlaceGone(500, 'not found')).toBe(false);
+    expect(isPlaceGone(undefined, 'network')).toBe(false);
   });
 });
+
+describe('refreshLeadFromPlaces (lista diaria e informe)', () => {
+  beforeEach(() => {
+    resetPlacesRefreshState();
+    getPlaceDetailsMock.mockReset();
+  });
+
+  it('devuelve los datos frescos o null', async () => {
+    getPlaceDetailsMock.mockResolvedValue(DETAILS);
+    expect(await refreshLeadFromPlaces(refreshPrisma() as never, { id: 'l1', externalPlaceId: 'ChIJ-test' }, NOW)).toMatchObject({
+      contactPhone: '+34 692 27 13 85',
+    });
+    resetPlacesRefreshState();
+    getPlaceDetailsMock.mockResolvedValue({ ok: false, error: 'boom', status: 500 });
+    expect(await refreshLeadFromPlaces(refreshPrisma() as never, { id: 'l1', externalPlaceId: 'ChIJ-test' }, NOW)).toBeNull();
+    expect(await refreshLeadFromPlaces(refreshPrisma() as never, { id: 'l1', externalPlaceId: null }, NOW)).toBeNull();
+  });
+});
+
+describe('refreshExpiredLeadsForClient', () => {
+  beforeEach(() => {
+    resetPlacesRefreshState();
+    getPlaceDetailsMock.mockReset();
+  });
+
+  it('solo los caducados de ese cliente que Google aún encuentra, y se para en el tope', async () => {
+    getPlaceDetailsMock.mockResolvedValue(DETAILS);
+    const prisma = refreshPrisma();
+    prisma.lead.findMany.mockResolvedValue([{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
+    // a pasa; en b el cliente ya está en el tope.
+    let calls = 0;
+    prisma.leadAudit.count.mockImplementation(async (args: { where: { clientId?: string } }) => {
+      if (!args.where.clientId) return 0;
+      calls += 1;
+      return calls === 1 ? 0 : CLIENT_DAILY_REFRESH_CAP;
+    });
+    prisma.lead.findFirst.mockImplementation(async (args: { where: { id: string } }) => ({
+      id: args.where.id,
+      clientId: 'c1',
+      tenantId: null,
+      externalPlaceId: `place-${args.where.id}`,
+      status: 'nuevo',
+    }));
+
+    const result = await refreshExpiredLeadsForClient(prisma as never, { clientId: 'c1', actorId: 'op', now: NOW });
+
+    expect(prisma.lead.findMany.mock.calls[0][0].where).toEqual({
+      clientId: 'c1',
+      placesPurgedAt: { not: null },
+      externalPlaceId: { not: null },
+      placesUnavailable: null,
+    });
+    expect(result).toEqual({ refreshed: 1, unavailable: 0, failed: 0, stoppedAtCap: true });
+    expect(getPlaceDetailsMock).toHaveBeenCalledTimes(1);
+  });
+});
+

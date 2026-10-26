@@ -3279,6 +3279,10 @@ model Lead {
   placesFetchedAt DateTime? @map("places_fetched_at")
   placesPurgedAt  DateTime? @map("places_purged_at")
   phoneHash       String?   @map("phone_hash")
+  // 'not_found' | 'closed': al pedir de nuevo los datos, Google dijo que el
+  // place ID ya no existe o que el negocio cerró. Se enseña en la ficha en
+  // vez de fallar en silencio; un refresco que funcione lo vacía.
+  placesUnavailable String? @map("places_unavailable")
 
   client       ChatbotClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant       Tenant?              @relation(fields: [tenantId], references: [id], onDelete: SetNull)
@@ -3324,6 +3328,9 @@ model LeadAudit {
   // se opuso y se vació todo salvo lo que impide volver a escribirle,
   // actorId 'system:retention' — src/lib/retention-purge.ts) | 'opted_out'
   // (se registró que no quiere que se le contacte — src/lib/lead-opt-out.ts)
+  // | 'places_refreshed' / 'places_unavailable' (26/10/2026 — se volvieron a
+  // pedir a Google sus datos caducados, o Google ya no lo encuentra; cuentan
+  // para el tope diario — src/lib/places-retention.ts)
   action       String
   statusBefore String?  @map("status_before")
   statusAfter  String?  @map("status_after")
