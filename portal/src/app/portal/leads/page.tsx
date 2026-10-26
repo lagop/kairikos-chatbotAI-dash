@@ -515,9 +515,14 @@ function LeadRow({
     source: string;
     createdAt: Date;
     optedOutAt: Date | null;
+    placesPurgedAt?: Date | null;
   };
 }) {
   const contactParts = [lead.contactName, lead.contactPhone, lead.contactEmail].filter(Boolean);
+  // 26/10/2026 — un prospecto que nadie tocó en 30 días pierde los datos que
+  // vinieron de Google (lib/places-retention.ts): sus condiciones no dejan
+  // guardarlos más. Se dice, en vez de enseñar una tarjeta en blanco.
+  const emptyLabel = lead.placesPurgedAt ? 'Datos de Google caducados (más de 30 días sin contactar)' : 'Sin datos de contacto';
   return (
     <div className="card space-y-2" data-testid="lead-row" data-status={lead.status} data-source={lead.source}>
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -527,7 +532,7 @@ function LeadRow({
             {lead.channel ? ` · ${lead.channel}` : ''}
           </p>
           <h3 className="mt-1 text-base font-semibold">
-            {contactParts.length > 0 ? contactParts.join(' · ') : 'Sin datos de contacto'}
+            {contactParts.length > 0 ? contactParts.join(' · ') : emptyLabel}
           </h3>
         </div>
         <div className="flex items-center gap-2">

@@ -360,6 +360,9 @@ async function processCandidates(
             summary: details.data.formattedAddress
               ? `Negocio encontrado en ${details.data.formattedAddress}.`
               : null,
+            // 26/10/2026 — desde aquí cuentan los 30 días que se puede
+            // guardar este contenido de Google (lib/places-retention.ts).
+            placesFetchedAt: new Date(),
           },
         });
         await tx.leadAudit.create({

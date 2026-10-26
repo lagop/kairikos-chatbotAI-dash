@@ -23,7 +23,7 @@ import {
 import { mapPlaceDraftData, type PlaceReview, type PlaceDraftData } from '@/lib/google-places';
 import { withLiveData, addressFromLeadSummary } from '@/lib/web-draft-subject';
 import { parseWebDraftResponse } from '@/lib/web-draft-ai';
-import { renderWebDraftHtml } from '@/lib/web-draft-html';
+import { renderWebDraftHtml, GOOGLE_MAPS_LOGO_DARK, GOOGLE_MAPS_LOGO_WHITE } from '@/lib/web-draft-html';
 import { isLiveEntryFresh, LIVE_CACHE_TTL_MS } from '@/lib/web-draft-live';
 import { stripDraftChrome } from '@/lib/website-build';
 
@@ -330,5 +330,25 @@ describe('renderWebDraftHtml — secciones que dependen de Google', () => {
     expect(site).not.toContain('Imagen de muestra:');
     expect(site).not.toContain('Servicios orientativos');
     expect(site).not.toContain('Propuesta de Kairikos');
+  });
+
+  // 26/10/2026 — las políticas de Places piden el logotipo de Google Maps
+  // cuando sus datos salen sin mapa; el texto solo vale si falta espacio.
+  it('con datos de Places lleva el logotipo de Google Maps, oscuro sobre claro y blanco sobre la noche', () => {
+    const html = renderWebDraftHtml({ subject: full, copy, generatedAt: new Date('2026-10-26') });
+    expect(html).toContain(GOOGLE_MAPS_LOGO_DARK);
+    expect(html).toContain(GOOGLE_MAPS_LOGO_WHITE);
+    expect(html).toMatch(/<img src="[^"]+" alt="Google Maps" width="98" height="18" translate="no">/);
+    // En la web publicada no hay datos de Places, y la ruta no existiría.
+    expect(stripDraftChrome(html)).not.toContain('google-maps-logo');
+  });
+
+  it('sin datos de Google no pone el logotipo', () => {
+    const html = renderWebDraftHtml({
+      subject: { ...full, rating: null, reviewCount: null, reviews: [], highlights: [], hours: [], address: null },
+      copy,
+      generatedAt: new Date('2026-10-26'),
+    });
+    expect(html).not.toContain('google-maps-logo');
   });
 });

@@ -3268,6 +3268,18 @@ model Lead {
   longitude   Float?  @map("longitude")
   primaryType String? @map("primary_type")
 
+  // 26/10/2026 — caducidad del contenido de Google Places (ver
+  // lib/places-retention.ts). Las condiciones de Google Maps Platform solo
+  // dejan guardar sin plazo el place ID, y las coordenadas hasta 30 días.
+  // placesFetchedAt: cuándo se trajo de Google lo que hay en contactName,
+  // contactPhone, website, summary, primaryType y las coordenadas.
+  // placesPurgedAt: cuándo se borró por caducado (queda externalPlaceId).
+  // phoneHash: huella del teléfono (sha256 de sus 9 últimas cifras) que se
+  // queda al purgar, para que una baja siga bloqueando ese número.
+  placesFetchedAt DateTime? @map("places_fetched_at")
+  placesPurgedAt  DateTime? @map("places_purged_at")
+  phoneHash       String?   @map("phone_hash")
+
   client       ChatbotClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant       Tenant?              @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   conversation ChatbotConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
@@ -3293,6 +3305,8 @@ model Lead {
   @@index([tenantId])
   @@index([conversationId])
   @@index([contactId])
+  @@index([placesFetchedAt])
+  @@index([phoneHash])
 }
 
 model LeadAudit {
@@ -3615,7 +3629,11 @@ model ProspectingCompetitorSnapshot {
   competitors Json
   metrics     Json
 
-  capturedAt DateTime @default(now()) @map("captured_at")
+  capturedAt DateTime  @default(now()) @map("captured_at")
+  // 26/10/2026 — la foto se vacía a los 30 días (valoraciones y competidores
+  // son contenido de Places); la fila y su testigo se quedan para que el
+  // enlace diga «caducado» en vez de 404, y un refresco la vuelve a llenar.
+  purgedAt   DateTime? @map("purged_at")
 
   // Mismo motivo que en ProspectingWebDraft: el informe también se manda por
   // WhatsApp a quien no tiene sesión.
