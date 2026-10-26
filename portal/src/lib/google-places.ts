@@ -302,8 +302,11 @@ export async function getPlaceRating(placeId: string): Promise<GooglePlacesResul
  * search calls — see the schema comment on that column.
  */
 export async function getPlaceDetails(placeId: string): Promise<GooglePlacesResult<PlaceDetails>> {
+  // 26/10/2026 — languageCode=es: sin él Google contesta en inglés y la
+  // dirección del prospecto quedaba guardada como «…, Las Palmas, Spain», que
+  // es lo que luego se pintaba en su borrador.
   const result = await callPlacesApi<RawPlaceDetails>(
-    `/places/${encodeURIComponent(placeId)}`,
+    `/places/${encodeURIComponent(placeId)}?languageCode=es&regionCode=ES`,
     'GET',
     DETAILS_FIELD_MASK,
   );
@@ -327,4 +330,113 @@ export async function getPlaceDetails(placeId: string): Promise<GooglePlacesResu
       longitude: typeof d.location?.longitude === 'number' ? d.location.longitude : null,
     },
   };
+}
+
+// =============================================================================
+// 26/10/2026 — los datos públicos con los que se pinta un borrador de web
+// (A11): valoración, número de reseñas, horario, reseñas y dirección al día.
+//
+// Una sola llamada de Details, en español. Con `reviews` la llamada pasa a
+// Enterprise + Atmosphere (25 $ por 1.000, 1.000 gratis al mes), cinco
+// dólares por mil más que el Details del barrido (Enterprise, 20 $). Por eso
+// NO se pide en el barrido de campaña, sino solo cuando se genera o se sirve
+// un borrador, con el tope diario y la caché de lib/web-draft-live.ts.
+//
+// Nada de esto se guarda en la base de datos, y no por descuido: las
+// condiciones de Google Maps Platform solo permiten guardar el place ID (sin
+// plazo) y la latitud y longitud (30 días). Reseñas, valoración, horario y
+// dirección se piden en el momento de enseñarlos — que es además lo que
+// arregla la dirección vieja: un negocio que se muda sale con la nueva.
+// =============================================================================
+
+const DRAFT_DATA_FIELD_MASK =
+  'id,formattedAddress,internationalPhoneNumber,rating,userRatingCount,regularOpeningHours.weekdayDescriptions,reviews,googleMapsUri,businessStatus';
+
+export interface PlaceReview {
+  /** 'places/<id>/reviews/<id>': identifica la reseña sin guardar su texto. */
+  name: string;
+  rating: number | null;
+  text: string;
+  /** Google la tradujo: hay que decírselo a quien la lee (políticas de Places). */
+  translated: boolean;
+  authorName: string | null;
+  authorUri: string | null;
+  relativeTime: string | null;
+}
+
+export interface PlaceDraftData {
+  formattedAddress: string | null;
+  phoneNumber: string | null;
+  rating: number | null;
+  userRatingCount: number | null;
+  weekdayDescriptions: string[];
+  reviews: PlaceReview[];
+  googleMapsUri: string | null;
+  businessStatus: string | null;
+}
+
+interface RawLocalizedText {
+  text?: string;
+  languageCode?: string;
+}
+
+interface RawReview {
+  name?: string;
+  rating?: number;
+  text?: RawLocalizedText;
+  originalText?: RawLocalizedText;
+  relativePublishTimeDescription?: string;
+  authorAttribution?: { displayName?: string; uri?: string };
+}
+
+export interface RawPlaceDraftData {
+  id?: string;
+  formattedAddress?: string;
+  internationalPhoneNumber?: string;
+  rating?: number;
+  userRatingCount?: number;
+  regularOpeningHours?: { weekdayDescriptions?: string[] };
+  reviews?: RawReview[];
+  googleMapsUri?: string;
+  businessStatus?: string;
+}
+
+/** Pura y exportada: el contrato de Google aplanado a lo que usa el borrador.
+ *  Las cadenas vacías cuentan como ausentes (|| y no ??). */
+export function mapPlaceDraftData(raw: RawPlaceDraftData): PlaceDraftData {
+  const reviews: PlaceReview[] = (raw.reviews ?? [])
+    .map((r) => {
+      const shown = r.text?.languageCode;
+      const original = r.originalText?.languageCode;
+      return {
+        name: r.name || '',
+        rating: typeof r.rating === 'number' ? r.rating : null,
+        text: (r.text?.text || '').trim(),
+        translated: Boolean(shown && original && shown !== original),
+        authorName: r.authorAttribution?.displayName?.trim() || null,
+        authorUri: r.authorAttribution?.uri || null,
+        relativeTime: r.relativePublishTimeDescription || null,
+      };
+    })
+    .filter((r) => r.name.length > 0);
+  return {
+    formattedAddress: raw.formattedAddress || null,
+    phoneNumber: raw.internationalPhoneNumber || null,
+    rating: typeof raw.rating === 'number' ? raw.rating : null,
+    userRatingCount: typeof raw.userRatingCount === 'number' ? raw.userRatingCount : null,
+    weekdayDescriptions: raw.regularOpeningHours?.weekdayDescriptions ?? [],
+    reviews,
+    googleMapsUri: raw.googleMapsUri || null,
+    businessStatus: raw.businessStatus || null,
+  };
+}
+
+export async function getPlaceDraftData(placeId: string): Promise<GooglePlacesResult<PlaceDraftData>> {
+  const result = await callPlacesApi<RawPlaceDraftData>(
+    `/places/${encodeURIComponent(placeId)}?languageCode=es&regionCode=ES`,
+    'GET',
+    DRAFT_DATA_FIELD_MASK,
+  );
+  if (!result.ok) return result;
+  return { ok: true, data: mapPlaceDraftData(result.data) };
 }

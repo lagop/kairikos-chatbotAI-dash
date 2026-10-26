@@ -233,7 +233,9 @@ describe('getPlaceDetails', () => {
     const result = await getPlaceDetails('place_1');
 
     const [url, init] = mockState.fetch.mock.calls[0];
-    expect(url).toBe('https://places.googleapis.com/v1/places/place_1');
+    // 26/10/2026 — en español: sin languageCode la dirección se guardaba
+    // como «…, Las Palmas, Spain» y así salía en el borrador del prospecto.
+    expect(url).toBe('https://places.googleapis.com/v1/places/place_1?languageCode=es&regionCode=ES');
     expect(init.method).toBe('GET');
     expect(init.headers['X-Goog-FieldMask']).toContain('internationalPhoneNumber');
     expect(init.headers['X-Goog-FieldMask']).toContain('businessStatus');

@@ -6,6 +6,9 @@ import { renderWebDraftHtml, themeFor } from '@/lib/web-draft-html';
 import { createShareToken, webDraftShareUrl } from '@/lib/prospecting-share';
 import { publicOrigin } from '@/lib/public-origin';
 import { logError } from '@/lib/observability';
+import { getLiveDraftData } from '@/lib/web-draft-live';
+import { addressFromLeadSummary, withLiveData } from '@/lib/web-draft-subject';
+import { filterDraftReviews } from '@/lib/web-draft-reviews';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -47,6 +50,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ leadId: str
       primaryType: true,
       searchCategory: true,
       searchLocation: true,
+      externalPlaceId: true,
       webDraft: true,
       competitorSnapshot: { select: { subjectRating: true, subjectReviewCount: true } },
     },
@@ -60,19 +64,20 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ leadId: str
     return NextResponse.json({ error: 'lead_without_name' }, { status: 422 });
   }
 
-  const subject = {
+  // 26/10/2026 — los datos de Google se piden al enseñar el borrador (no se
+  // pueden guardar; ver lib/web-draft-live.ts), con caché de una hora: abrirlo
+  // y volver a abrirlo durante la llamada es una sola consulta.
+  const live = await getLiveDraftData(lead.externalPlaceId);
+  const baseSubject = {
     businessName,
     primaryType: lead.primaryType,
     city: lead.searchLocation,
-    address: lead.summary?.replace(/^Negocio encontrado en\s*/i, '').replace(/\.$/, '') ?? null,
+    address: addressFromLeadSummary(lead.summary),
     phone: lead.contactPhone,
-    // Las estrellas salen del snapshot del informe comparativo si ya existe.
-    // No se pide a Google aquí: quien abre el borrador casi siempre viene de
-    // haber abierto antes el informe, y una llamada de pago de más por una
-    // línea decorativa no se justifica.
     rating: lead.competitorSnapshot?.subjectRating ?? null,
     reviewCount: lead.competitorSnapshot?.subjectReviewCount ?? null,
   };
+  const liveReviews = live ? filterDraftReviews(live.reviews, businessName) : [];
 
   const url = new URL(req.url);
   const regenerate = url.searchParams.get('regenerar') === '1';
@@ -88,10 +93,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ leadId: str
       primaryType: lead.primaryType,
       category: lead.searchCategory,
       city: lead.searchLocation,
-      address: subject.address,
+      address: live?.formattedAddress || baseSubject.address,
       phone: lead.contactPhone,
-      rating: subject.rating,
-      reviewCount: subject.reviewCount,
+      rating: live?.rating ?? baseSubject.rating,
+      reviewCount: live?.userRatingCount ?? baseSubject.reviewCount,
+      reviews: liveReviews,
     });
 
     if ('skipped' in result) {
@@ -133,6 +139,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ leadId: str
   // esto tendría que construirlo a mano, y el enlace de esta misma ruta NO
   // sirve — pedirá sesión al prospecto.
   const shareUrl = shareToken ? webDraftShareUrl(publicOrigin(req), shareToken) : null;
+  const subject = withLiveData(baseSubject, live, copy);
 
   return new NextResponse(
     renderWebDraftHtml({ subject, copy, generatedAt, shareUrl, themeKey: lead.webDraft?.themeKey ?? null }),

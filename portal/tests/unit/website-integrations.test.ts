@@ -118,6 +118,7 @@ describe('buildWebsiteFiles con integraciones', () => {
     });
     const html = con[0].content.toString('utf8');
     expect(html).toContain('reseñas en Google');
-    expect(html).toContain('4.7');
+    // 26/10/2026 — con coma decimal, como se escribe en España.
+    expect(html).toContain('4,7');
   });
 });

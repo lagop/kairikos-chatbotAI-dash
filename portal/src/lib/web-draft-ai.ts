@@ -2,6 +2,7 @@ import 'server-only';
 import { parseJsonObject } from './ai-json';
 import { logError } from './observability';
 import { resolveActiveAnthropicCredentials } from './anthropic-credentials';
+import { resolveHighlights, type DraftReview, type StoredHighlight } from './web-draft-reviews';
 
 // =============================================================================
 // A11, capa 1 — los textos del borrador de web de un prospecto.
@@ -53,6 +54,10 @@ export interface WebDraftInput {
   phone: string | null;
   rating: number | null;
   reviewCount: number | null;
+  /** 26/10/2026 — las reseñas ya filtradas (4–5 estrellas, sin familiares;
+   *  ver web-draft-reviews.ts). De aquí salen el titular y la banda «Lo que
+   *  repiten sus clientes». Vacío si no hay o no se pudieron pedir. */
+  reviews?: DraftReview[];
 }
 
 export interface WebDraftService {
@@ -68,6 +73,10 @@ export interface WebDraftCopy {
   services: WebDraftService[];
   /** Frase de cierre sobre pedir cita o presupuesto. */
   callToAction: string;
+  /** 26/10/2026 — «Lo que repiten sus clientes»: cada punto apunta a una cita
+   *  LITERAL de una reseña, guardada como referencia y posición, nunca como
+   *  texto (ver web-draft-reviews.ts). Ausente en los borradores anteriores. */
+  highlights?: StoredHighlight[];
 }
 
 export type WebDraftResult =
@@ -88,7 +97,7 @@ function clean(value: unknown, maxChars: number): string {
  * titular es peor que no enseñar nada. El resto puede faltar y la plantilla
  * se las arregla.
  */
-export function parseWebDraftResponse(text: string): WebDraftCopy | null {
+export function parseWebDraftResponse(text: string, reviews: ReadonlyArray<DraftReview> = []): WebDraftCopy | null {
   const raw = parseJsonObject(text);
   if (!raw) return null;
 
@@ -114,6 +123,9 @@ export function parseWebDraftResponse(text: string): WebDraftCopy | null {
     about: clean(raw.about, MAX_PARAGRAPH_CHARS),
     services,
     callToAction: clean(raw.callToAction, MAX_HEADLINE_CHARS),
+    // Una cita que no aparezca tal cual en su reseña se descarta aquí, antes
+    // de guardarse: la IA no pone palabras en boca de un cliente.
+    highlights: resolveHighlights(raw.highlights, reviews),
   };
 }
 
@@ -121,7 +133,7 @@ function buildSystem(): string {
   return [
     'Escribes los textos de la web de un negocio local español. El negocio todavía no es cliente: esto es una propuesta que verá su dueño.',
     'Respondes SOLO con un objeto JSON, sin texto alrededor y sin vallas de markdown.',
-    'Formato: {"headline": string, "subheadline": string, "about": string, "services": [{"name": string, "description": string}], "callToAction": string}.',
+    'Formato: {"headline": string, "subheadline": string, "about": string, "services": [{"name": string, "description": string}], "callToAction": string, "highlights": [{"title": string, "review": number, "quote": string}]}.',
     '',
     'headline: menos de 90 caracteres. Lo que hace y para quién, con su ciudad si se sabe. Nada de "Bienvenidos a".',
     'subheadline: una frase de apoyo, menos de 200 caracteres.',
@@ -129,12 +141,22 @@ function buildSystem(): string {
     'services: entre 3 y 6 servicios PLAUSIBLES para ese tipo de negocio, cada uno con una descripción de una frase.',
     'callToAction: frase corta para pedir cita o presupuesto por teléfono.',
     '',
+    // 26/10/2026 — lo aprendido en la demo de Fontanería Suárez: el titular que
+    // convence no es «servicio de fontanería en Las Palmas», es lo que repiten
+    // sus clientes («localiza la avería sin romper»). Pero solo si lo dicen.
+    'SI SE TE DAN RESEÑAS (numeradas R1, R2…):',
+    '- headline: lo que más repiten sus clientes, dicho como promesa del negocio (por ejemplo "Encuentra la avería sin romperte la casa"). Tiene que poder justificarse con las reseñas.',
+    '- subheadline: qué hace el negocio y, si encaja, cómo lo describen sus clientes en Google.',
+    '- highlights: entre 2 y 4 puntos de lo que REPITEN. title: de 2 a 5 palabras. review: el número de la reseña (1 para R1). quote: un fragmento COPIADO LITERALMENTE de esa reseña, de 8 a 140 caracteres, sin cambiar ni una letra y sin comillas.',
+    '- Si no hay reseñas, highlights es [] y el titular dice qué hace y dónde.',
+    '',
     // Esta es la regla que importa. El borrador se enseña al propio dueño del
     // negocio, que sabe perfectamente qué hace y qué no: un dato inventado
     // (años de experiencia, premios, número de empleados) lo detecta en el
     // acto y tira por tierra la propuesta entera, igual que pasó con el
     // informe comparativo y los 300 € por corte de pelo.
-    'REGLA CRÍTICA: no inventes datos. Nada de años de experiencia, fundadores, premios, número de empleados, precios ni horarios si no se te dan.',
+    'REGLA CRÍTICA: no inventes datos. Nada de años de experiencia, fundadores, premios, número de empleados, precios, garantías, plazos ni horarios si no se te dan. Ninguna cifra que no esté en los datos.',
+    'No pongas nombres de personas en el titular ni en los textos, aunque salgan en las reseñas.',
     'Los servicios son los típicos del sector, descritos en general: es una propuesta, no una descripción de su negocio real.',
     'Escribe en español de España, en tercera persona o impersonal, sin superlativos vacíos ("los mejores", "líderes del sector").',
   ].join('\n');
@@ -149,6 +171,11 @@ function buildUserContent(input: WebDraftInput): string {
   if (input.phone) parts.push(`Teléfono: ${input.phone}`);
   if (input.rating !== null && input.reviewCount !== null) {
     parts.push(`Valoración en Google: ${input.rating} sobre 5 con ${input.reviewCount} reseñas`);
+  }
+  const reviews = input.reviews ?? [];
+  if (reviews.length > 0) {
+    parts.push('', 'Reseñas de Google (de 4 y 5 estrellas):');
+    reviews.forEach((r, i) => parts.push(`R${i + 1}: ${r.text}`));
   }
   return parts.join('\n');
 }
@@ -184,7 +211,7 @@ export async function generateWebDraftCopy(input: WebDraftInput): Promise<WebDra
     const json = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
     const text = json.content?.find((block) => block.type === 'text')?.text?.trim();
     if (!text) return { ok: false, error: 'anthropic_api_empty_response' };
-    const copy = parseWebDraftResponse(text);
+    const copy = parseWebDraftResponse(text, input.reviews ?? []);
     if (!copy) return { ok: false, error: 'anthropic_api_invalid_json' };
     return { ok: true, copy, model };
   } catch (err) {

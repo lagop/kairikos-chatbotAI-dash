@@ -5,6 +5,9 @@ import { createShareToken } from './prospecting-share';
 import { generateWebDraftCopy } from './web-draft-ai';
 import { themeFor, VARIANTS_PER_THEME } from './web-draft-html';
 import { classifyWebsite } from './prospecting-report';
+import { getLiveDraftData } from './web-draft-live';
+import { filterDraftReviews } from './web-draft-reviews';
+import { addressFromLeadSummary } from './web-draft-subject';
 
 // =============================================================================
 // A11, capa 2 — generar los borradores solos, en el barrido semanal.
@@ -71,6 +74,7 @@ interface SweepCandidate {
   primaryType: string | null;
   searchCategory: string | null;
   searchLocation: string | null;
+  externalPlaceId: string | null;
 }
 
 function startOfDay(now: Date): Date {
@@ -113,6 +117,7 @@ export async function sweepPendingWebDrafts(
       primaryType: true,
       searchCategory: true,
       searchLocation: true,
+      externalPlaceId: true,
     },
   })) as SweepCandidate[];
 
@@ -128,18 +133,23 @@ export async function sweepPendingWebDrafts(
     const businessName = lead.contactName;
     if (!businessName) continue;
 
+    // 26/10/2026 — antes el barrido no miraba ni estrellas ni reseñas, y el
+    // titular salía genérico («servicio de fontanería en Las Palmas»). Ahora
+    // se piden a Google al generar (una consulta por borrador, dentro del tope
+    // diario de web-draft-live.ts) para que el titular y las citas salgan de
+    // lo que de verdad dicen sus clientes. Nada de esto se guarda: lo que se
+    // guarda es el texto de la IA y la posición de cada cita.
+    const live = await getLiveDraftData(lead.externalPlaceId, now);
     const result = await generateWebDraftCopy({
       businessName,
       primaryType: lead.primaryType,
       category: lead.searchCategory,
       city: lead.searchLocation,
-      address: lead.summary?.replace(/^Negocio encontrado en\s*/i, '').replace(/\.$/, '') ?? null,
+      address: live?.formattedAddress || addressFromLeadSummary(lead.summary),
       phone: lead.contactPhone,
-      // El barrido no consulta las estrellas: eso es del informe, que las
-      // pide a Google y cuesta. Si el prospecto ya tiene informe, la página
-      // las enseña igual, porque se leen en el momento de servirla.
-      rating: null,
-      reviewCount: null,
+      rating: live?.rating ?? null,
+      reviewCount: live?.userRatingCount ?? null,
+      reviews: live ? filterDraftReviews(live.reviews, businessName) : [],
     });
 
     if ('skipped' in result) {
