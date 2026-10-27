@@ -90,7 +90,9 @@ function buildPrompt(input: WebsiteMetaInput): { system: string; user: string } 
     `- Título: como mucho ${META_TITLE_MAX} caracteres. Lo que se busca primero (servicio + zona si la hay), el nombre del negocio al final si cabe. Sin mayúsculas en todas las palabras ni signos de exclamación.`,
     `- Descripción: entre 110 y ${META_DESCRIPTION_MAX} caracteres. Qué ofrece la página y por qué llamar, en español de España, hablando de usted.`,
     '- Solo lo que dice el resumen de la página. Nunca inventes precios, años de experiencia, garantías ni cifras.',
-    '- Usa las palabras clave del negocio cuando encajen de forma natural; no las amontones.',
+    // Prueba real del 27/10/2026: con la palabra clave «fontanero las palmas»
+    // escribió «Fontanero las palmas | …», copiada tal cual en minúsculas.
+    '- Usa las palabras clave del negocio cuando encajen de forma natural; no las amontones. Vienen en minúsculas porque así se buscan: tú escribe con la ortografía correcta (los lugares con mayúscula: «Las Palmas»).',
     '- Responde SOLO con JSON: [{"ruta": "...", "metaTitulo": "...", "metaDescripcion": "..."}], una por página, con la ruta tal cual te la doy ("" es la portada).',
   ].join('\n');
   const user = [
