@@ -36,6 +36,25 @@ const nextConfig = {
           { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=()' },
         ],
       },
+      // 27/10/2026 — la vista previa de una plantilla SÍ se pinta dentro de
+      // un marco: el del laboratorio (/admin/portal/plantillas), que la mide
+      // con site-template-checks.ts. Con «frame-ancestors 'none'» el marco
+      // salía en blanco, el laboratorio leía «No se pudo leer la vista
+      // previa» en las 21 pasadas y la plantilla quedaba fallida sin que
+      // nadie hubiera mirado su diseño (pasó con las dos de oficios, #325).
+      // 'self' y solo aquí: el resto del portal sigue sin dejarse enmarcar.
+      // El X-Frame-Options: DENY que pone Traefik no estorba: cuando hay
+      // frame-ancestors, los navegadores ignoran X-Frame-Options.
+      // Va DESPUÉS de la regla general: con la misma cabecera, gana la última.
+      {
+        source: '/api/admin/portal/site-templates/:templateId/preview',
+        headers: [
+          {
+            key: 'Content-Security-Policy',
+            value: "frame-ancestors 'self'; base-uri 'self'; object-src 'none'; upgrade-insecure-requests",
+          },
+        ],
+      },
     ];
   },
   webpack: (config, { isServer }) => {
