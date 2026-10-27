@@ -1,4 +1,5 @@
 import { SITE_SECTION_TYPES } from './site-content';
+import { declaredFontFamilies, fontCatalogForPrompt } from './site-fonts';
 import {
   SITE_TEMPLATE_PARTS,
   TemplateSyntaxError,
@@ -120,13 +121,27 @@ function checkPart(name: 'marco' | SiteTemplatePart, source: string, problems: s
   }
   if (/<iframe|<object|<embed/i.test(source)) problems.push(`${where}: no se permiten iframe, object ni embed.`);
   if (/javascript:/i.test(source)) problems.push(`${where}: no se permiten enlaces javascript:.`);
-  for (const m of source.matchAll(/(?:src|href)\s*=\s*["'](?:https?:)?\/\/([^/"']+)/gi)) {
-    if (!ALLOWED_HOSTS.has(m[1].toLowerCase())) {
+  for (const m of source.matchAll(/(?:src|href)\s*=\s*["'](?:https?:)?\/\/([^/"']+)([^"']*)/gi)) {
+    const host = m[1].toLowerCase();
+    if (!ALLOWED_HOSTS.has(host)) {
       problems.push(`${where}: carga un recurso de ${m[1]}. Solo se permiten Google Fonts; todo lo demás va dentro de la plantilla.`);
+    } else if (!(m[2] === '' || m[2] === '/' || (host === 'fonts.googleapis.com' && /^\/css2?\?/.test(m[2])))) {
+      // 27/10/2026 — el motor sirve las tipografías desde la propia web
+      // cambiando el <link> de css2; cualquier otro enlace a Google (un
+      // preload de un .woff2 de gstatic) se quedaría pidiéndoselo a Google.
+      problems.push(`${where}: enlaza ${m[1]}${m[2]}. Las tipografías se declaran solo con el <link href="https://fonts.googleapis.com/css2?family=…"> del <head>.`);
     }
   }
   for (const m of source.matchAll(/url\(\s*["']?(?:https?:)?\/\/([^/"')]+)/gi)) {
-    if (!ALLOWED_HOSTS.has(m[1].toLowerCase())) problems.push(`${where}: el CSS carga ${m[1]}. Solo se permiten Google Fonts.`);
+    problems.push(
+      ALLOWED_HOSTS.has(m[1].toLowerCase())
+        ? `${where}: el CSS carga tipografías de Google con url() o @import. Decláralas solo con el <link> de Google Fonts del <head>.`
+        : `${where}: el CSS carga ${m[1]}. Solo se permiten Google Fonts.`,
+    );
+  }
+  const { unknown } = declaredFontFamilies(source);
+  if (unknown.length) {
+    problems.push(`${where}: las tipografías ${unknown.join(', ')} no están en el catálogo y no se servirían. Usa solo estas — ${fontCatalogForPrompt()}.`);
   }
   const digits = [...new Set(visibleText(source).match(/\d[\d.,:]*/g) ?? [])];
   if (digits.length) {

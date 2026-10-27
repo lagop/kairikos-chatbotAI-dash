@@ -47,7 +47,11 @@ export async function GET(req: NextRequest, props: { params: Promise<{ websiteId
   const index = built.files.find((f) => f.path === (ruta ? `${ruta}/index.html` : 'index.html'));
   if (!index) return NextResponse.json({ error: ruta ? 'page_not_found' : 'build_failed' }, { status: ruta ? 404 : 500 });
 
-  return new NextResponse(index.content.toString('utf8'), {
+  // Las tipografías sí: las enlaza relativas (fuentes/…, viajan con la web) y
+  // aquí no se sirven; las mismas están en /fuentes/ del portal. Sin esto el
+  // operador revisaría la web con la tipografía de respaldo.
+  const html = index.content.toString('utf8').replace(/href="(?:\.\.\/)*fuentes\//g, 'href="/fuentes/');
+  return new NextResponse(html, {
     status: 200,
     headers: {
       'content-type': 'text/html; charset=utf-8',

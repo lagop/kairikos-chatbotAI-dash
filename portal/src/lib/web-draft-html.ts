@@ -1,4 +1,5 @@
 import type { WebDraftCopy } from './web-draft-ai';
+import { fontStylesheetLinks } from './site-fonts';
 import {
   openEveryDaySummary,
   type DraftReview,
@@ -54,8 +55,10 @@ export interface WebDraftTheme {
   accent: string;
   accentDark: string;
   tint: string;
-  /** Familia tipográfica de titulares, de Google Fonts. Cambia el carácter de
-   *  la página más que ningún otro ajuste, y es gratis. */
+  /** Familia tipográfica de titulares, en la notación de Google Fonts. Cambia
+   *  el carácter de la página más que ningún otro ajuste, y es gratis. Tiene
+   *  que estar en el catálogo (site-fonts-catalog.ts): desde el 27/10/2026 se
+   *  sirve desde /fuentes/ y no desde Google. */
   headingFont: string;
   headingStack: string;
 }
@@ -591,9 +594,7 @@ export function renderWebDraftHtml(params: {
 <!-- Es una propuesta sobre un negocio de terceros: nunca indexada. -->
 <meta name="robots" content="noindex, nofollow">
 <title>${esc(subject.businessName)}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=${theme.headingFont}&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+${fontStylesheetLinks([theme.headingFont.split(':')[0].replace(/\+/g, ' '), 'Inter'], '/')}
 <style>
 :root {
   color-scheme: light;

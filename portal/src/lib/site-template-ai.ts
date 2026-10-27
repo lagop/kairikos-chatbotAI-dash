@@ -4,6 +4,7 @@ import { logError } from './observability';
 import { SITE_LIMITS } from './site-content';
 import { SITE_TEMPLATE_PARTS, type SiteTemplatePart, type SiteTemplateSource } from './site-template';
 import { SITE_TEMPLATE_BASE } from './site-template-base';
+import { fontCatalogForPrompt } from './site-fonts';
 
 // =============================================================================
 // Webs con IA, entrega 2 (27/10/2026) — la IA DISEÑA una plantilla (marco +
@@ -65,7 +66,7 @@ function buildSystem(): string {
   return `Eres un diseñador web y desarrollador front-end excelente. Diseñas PLANTILLAS de web para pequeños negocios locales españoles: una plantilla sirve a todos los negocios de un sector, y el contenido de cada uno lo pone después el sistema. No escribes el contenido de ningún negocio.
 
 DIRECCIÓN DE ARTE (lo más importante: tiene que verse como la web de una agencia buena, rica y con personalidad, NO sobria ni de plantilla):
-- Empieza el <style> con un comentario que fije la dirección: paleta (un color de marca profundo + un acento vivo + neutros cálidos) como variables CSS en :root, pareja tipográfica de Google Fonts (una display con carácter + una sans muy legible) y un MOTIVO GRÁFICO propio del sector que repites en SVG decorativos (aria-hidden) por toda la página: fondos, separadores, esquinas.
+- Empieza el <style> con un comentario que fije la dirección: paleta (un color de marca profundo + un acento vivo + neutros cálidos) como variables CSS en :root, pareja tipográfica (una display con carácter + una sans muy legible) elegida SOLO de este catálogo — ${fontCatalogForPrompt()} — y declarada con un único <link href="https://fonts.googleapis.com/css2?family=…"> en el <head> (el sistema la sirve desde la propia web; nada de @import ni enlaces a gstatic) y un MOTIVO GRÁFICO propio del sector que repites en SVG decorativos (aria-hidden) por toda la página: fondos, separadores, esquinas.
 - VARIEDAD DE COMPOSICIÓN: nada de «título + rejilla de tarjetas» en todas las secciones. Portada partida (texto a un lado, foto grande con formas decorativas y una tarjeta flotante con la valoración); banda a sangre con las cifras grandes; servicios en tarjetas con su icono y hover que las eleva; proceso como línea de tiempo numerada con contadores CSS; sección partida foto/texto; precios en tarjetas o tabla elegante; opiniones con la valoración grande; preguntas en acordeón (details/summary); zona con «chips»; banda final de llamada a sangre con el teléfono enorme.
 - Profundidad: sombras suaves en capas, radios coherentes, fondos alternos, algún separador con forma (onda o diagonal).
 
@@ -112,7 +113,7 @@ CAMPOS (y ningún otro):
   Formulario (sección contacto): <form id="kairikos-form"> con campos name="name", name="contact" (teléfono o email) y name="message", con sus <label>; el botón con {{#formulario.muestra}} disabled{{/formulario.muestra}}; un <p id="kairikos-form-note" hidden></p>; y {{#formulario.muestra}}<p>Formulario de muestra: en la web publicada, los mensajes le llegan al correo.</p>{{/formulario.muestra}}. Sin action ni onsubmit: el envío lo pone el sistema.
   Iconos: un sprite al principio del <body> (<svg aria-hidden="true" style="display:none">) con 10–14 <symbol id="i-…"> dibujados por ti con trazo coherente, propios del sector, e incluye siempre i-check, i-telefono e i-estrella.
 
-PROHIBIDO: escribir cifras en la plantilla (todo número sale del contenido; numera con contadores CSS), recursos externos que no sean Google Fonts, iframes, atributos on*, enlaces javascript:.
+PROHIBIDO: escribir cifras en la plantilla (todo número sale del contenido; numera con contadores CSS), recursos externos que no sean ese <link> de Google Fonts, tipografías fuera del catálogo, iframes, atributos on*, enlaces javascript:.
 
 Español de España; al visitante se le habla de usted. Los rótulos fijos («Servicios», «Preguntas frecuentes», «Llamar») los escribes tú.
 

@@ -5,6 +5,7 @@ import { renderWebDraftHtml } from './web-draft-html';
 import type { WebDraftCopy } from './web-draft-ai';
 import type { SiteContent } from './site-content';
 import { renderSiteFiles, type SiteTemplateSource } from './site-template';
+import { fontBySlug, linkedFontSlugs } from './site-fonts';
 
 // =============================================================================
 // Producto Web, Fase 1 — convertir un ClientWebsite en los archivos que se
@@ -125,9 +126,34 @@ export async function buildWebsiteFiles(input: WebsiteBuildInput): Promise<Websi
 
   const localHtml = html
     .replace(new RegExp(`/web-draft/${family}\\.jpg`, 'g'), heroBundled ? HERO_ASSET_PATH : 'assets/portada.svg')
-    .replace(new RegExp(`/web-draft/${family}\\.svg`, 'g'), 'assets/portada.svg');
+    .replace(new RegExp(`/web-draft/${family}\\.svg`, 'g'), 'assets/portada.svg')
+    // Las tipografías, igual que la foto: viajan con la web (site-fonts.ts).
+    .replace(/href="\/fuentes\//g, 'href="fuentes/');
 
   files.unshift({ path: 'index.html', content: Buffer.from(stripDraftChrome(localHtml), 'utf8') });
+  return [...files, ...(await fontFiles([localHtml]))];
+}
+
+/**
+ * Los archivos de las tipografías que enlazan las páginas, para subirlos con
+ * ellas (fuentes/<familia>/fuentes.css y sus .woff2). Se mira el HTML ya
+ * pintado y no la plantilla: lo que se sube es exactamente lo que se enlaza.
+ * Un archivo que faltara en public/ se salta: la página cae a la tipografía
+ * de respaldo, que es feo pero no rompe nada, y nunca se enlaza a Google.
+ */
+async function fontFiles(pages: string[]): Promise<WebsiteFile[]> {
+  const files: WebsiteFile[] = [];
+  for (const slug of new Set(pages.flatMap(linkedFontSlugs))) {
+    const font = fontBySlug(slug);
+    if (!font) continue;
+    for (const name of ['fuentes.css', ...font.files]) {
+      try {
+        files.push({ path: `fuentes/${slug}/${name}`, content: await readFile(path.join(process.cwd(), 'public', 'fuentes', slug, name)) });
+      } catch {
+        // Ver arriba: sin el archivo, tipografía de respaldo.
+      }
+    }
+  }
   return files;
 }
 
@@ -191,7 +217,8 @@ export async function buildDesignedWebsiteFiles(input: DesignedWebsiteBuildInput
     legales: true,
     now: input.now,
   });
-  return hero ? [...pages, hero] : pages;
+  const fonts = await fontFiles(pages.map((p) => p.content.toString('utf8')));
+  return [...pages, ...(hero ? [hero] : []), ...fonts];
 }
 
 /** Comprobación de que no queda ningún enlace al portal en lo que se publica.
@@ -199,5 +226,5 @@ export async function buildDesignedWebsiteFiles(input: DesignedWebsiteBuildInput
  *  cliente que dependa de nuestro servidor es exactamente lo que este diseño
  *  quiere evitar. */
 export function hasPortalReferences(html: string): boolean {
-  return /\/web-draft\//.test(html) || /portal\.kairikos/.test(html);
+  return /\/web-draft\//.test(html) || /portal\.kairikos/.test(html) || /href="\/fuentes\//.test(html);
 }
