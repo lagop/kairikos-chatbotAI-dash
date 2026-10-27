@@ -16,7 +16,8 @@ export const metadata: Metadata = {
 };
 
 // Webs con IA, entrega 2 (27/10/2026) — la biblioteca de plantillas por sector.
-export default async function AdminSiteTemplatesPage() {
+export default async function AdminSiteTemplatesPage(props: { searchParams: Promise<{ nombre?: string; encargo?: string; sector?: string }> }) {
+  const searchParams = await props.searchParams;
   const session = await getSession();
   if (!session.isOperator) redirect('/portal/login?next=/admin/portal/plantillas');
 
@@ -49,7 +50,11 @@ export default async function AdminSiteTemplatesPage() {
         title="Plantillas web"
         description="La IA diseña plantillas por sector; el contenido de cada negocio va aparte. Una plantilla aprobada sirve a todas las webs de su sector."
       />
-      <SiteTemplateLab initial={templates} />
+      {/* Desde la ficha de un cliente: «Encargar una a medida» llega con su encargo. */}
+      <SiteTemplateLab
+        initial={templates}
+        initialForm={{ nombre: searchParams.nombre?.slice(0, 80), encargo: searchParams.encargo?.slice(0, 1500), sector: searchParams.sector?.slice(0, 40) }}
+      />
     </div>
   );
 }

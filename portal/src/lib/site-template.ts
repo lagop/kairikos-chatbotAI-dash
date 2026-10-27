@@ -7,6 +7,7 @@ import {
   type SiteSectionType,
 } from './site-content';
 import { renderSiteMarkdown } from './site-markdown';
+import { LEGAL_PAGES, legalPageMarkdown } from './site-legal';
 
 // =============================================================================
 // Webs con IA, entrega 1 (27/10/2026) — el motor que convierte una PLANTILLA
@@ -222,6 +223,9 @@ export interface SiteRenderContext {
   /** Horario de Google en vivo (borrador); si no, el del contenido. */
   horario?: { dias: string; horas: string }[] | null;
   now?: Date;
+  /** Web publicada (entrega 4): añade aviso legal, privacidad y cookies,
+   *  y sus enlaces en el pie. El borrador no las lleva: no es una web. */
+  legales?: boolean;
 }
 
 /** La leyenda de los datos de ejemplo. La pone el motor, igual en todas las
@@ -281,6 +285,7 @@ function buildView(content: SiteContent, ctx: SiteRenderContext, base: string): 
     formulario: { muestra: !ctx.formAction },
     // Para el «© año» del pie: la plantilla no puede escribir cifras.
     anio: String((ctx.now ?? new Date()).getFullYear()),
+    legales: ctx.legales ? LEGAL_PAGES.map((p) => ({ titulo: p.titulo, href: `${base}${p.ruta}/` })) : [],
   };
 }
 
@@ -432,12 +437,19 @@ function formScript(action: string, phone: string | null, href: string | null): 
 </script>`;
 }
 
-/** Pinta una página completa. */
-export function renderSitePage(template: SiteTemplateSource, content: SiteContent, page: SitePage, ctx: SiteRenderContext): string {
+/** Pinta una página completa. `menu` lo fija quien pinta una página que no
+ *  está en el contenido (las legales): enlaza a las secciones de la portada. */
+export function renderSitePage(
+  template: SiteTemplateSource,
+  content: SiteContent,
+  page: SitePage,
+  ctx: SiteRenderContext,
+  options: { menu?: ReturnType<typeof buildMenu> } = {},
+): string {
   const { base } = pageFile(page.ruta);
   const view = buildView(content, ctx, base);
   const rendered = renderSections(template, content, page, view);
-  const menu = buildMenu(content, page, rendered);
+  const menu = options.menu ?? buildMenu(content, page, rendered);
   const isHome = page.ruta === '';
   const metaTitulo =
     page.metaTitulo || (isHome ? content.datos.titular : `${page.titulo} · ${ctx.negocio.nombre}`) || ctx.negocio.nombre;
@@ -466,6 +478,14 @@ export function renderSitePage(template: SiteTemplateSource, content: SiteConten
     if (ctx.bannerHtml) html = html.replace(/(<body[^>]*>)/i, `$1\n${ctx.bannerHtml}`);
   }
   if (ctx.footerHtml) html = html.replace(/<\/body>/i, `${ctx.footerHtml}\n</body>`);
+  // Los enlaces legales tienen que estar en toda página publicada. Si la
+  // plantilla no los pinta en su pie ({{#legales}}), los pone el motor.
+  if (ctx.legales && !template.marco.includes('{{#legales}}')) {
+    const links = (view.legales as { titulo: string; href: string }[])
+      .map((l) => `<a href="${esc(l.href)}" style="color:inherit">${esc(l.titulo)}</a>`)
+      .join(' · ');
+    html = html.replace(/<\/body>/i, `<nav class="legales" aria-label="Legal" style="text-align:center;font-size:13px;padding:16px">${links}</nav>\n</body>`);
+  }
   if (html.includes('class="dato-ejemplo')) {
     html = html.replace(/<\/body>/i, `${EXAMPLE_LEGEND_HTML}\n</body>`);
   }
@@ -483,8 +503,30 @@ export interface SiteFile {
 /** Todas las páginas de la web. Las fotos las añade quien construye
  *  (website-build.ts), que es quien sabe de dónde salen. */
 export function renderSiteFiles(template: SiteTemplateSource, content: SiteContent, ctx: SiteRenderContext): SiteFile[] {
-  return content.paginas.map((page) => ({
+  const files = content.paginas.map((page) => ({
     path: pageFile(page.ruta).path,
     content: Buffer.from(renderSitePage(template, content, page, ctx), 'utf8'),
   }));
+  if (!ctx.legales) return files;
+
+  // Las páginas legales: el texto (site-legal.ts) como un bloque de texto de
+  // la plantilla, para que se vean con su diseño. Su menú es el de la portada
+  // con los enlaces subiendo de nivel; sin formulario ni datos de ejemplo.
+  const home = content.paginas.find((p) => p.ruta === '') ?? content.paginas[0];
+  const homeRendered = renderSections(template, content, home, buildView(content, ctx, ''));
+  const homeMenu = buildMenu(content, home, homeRendered);
+  for (const legal of LEGAL_PAGES) {
+    const { titulo, texto } = legalPageMarkdown(legal.ruta, content.legal, ctx.negocio.nombre);
+    const page: SitePage = { ruta: legal.ruta, titulo, metaTitulo: `${titulo} · ${ctx.negocio.nombre}`, metaDescripcion: '', secciones: [{ tipo: 'bloque', id: 'legal' }] };
+    const { base } = pageFile(legal.ruta);
+    const legalContent: SiteContent = {
+      ...content,
+      paginas: content.paginas.length > 1 ? content.paginas : [home],
+      bloques: [{ id: 'legal', tipo: 'texto', titulo, texto, foto: '', fotoAlt: '', items: [] }],
+      ejemplos: [],
+    };
+    const menu = homeMenu.map((l) => ({ ...l, actual: false, href: l.href.startsWith('#') ? `${base}${l.href}` : `${base}${l.href.replace(/^(\.\.\/)+/, '').replace(/^\.\/$/, '')}` }));
+    files.push({ path: pageFile(legal.ruta).path, content: Buffer.from(renderSitePage(template, legalContent, page, { ...ctx, formAction: null }, { menu }), 'utf8') });
+  }
+  return files;
 }

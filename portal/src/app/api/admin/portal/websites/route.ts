@@ -64,6 +64,9 @@ export async function POST(req: NextRequest) {
     primaryType: string | null;
     themeKey: string;
     copy: WebDraftCopy;
+    // Webs con IA (27/10/2026): el diseño del borrador, si lo tenía.
+    content: unknown;
+    templateId: string | null;
   } | null = null;
 
   if (body.data.fromLeadId) {
@@ -76,7 +79,7 @@ export async function POST(req: NextRequest) {
         summary: true,
         primaryType: true,
         searchLocation: true,
-        webDraft: { select: { copy: true, themeKey: true } },
+        webDraft: { select: { copy: true, themeKey: true, content: true, templateId: true } },
       },
     });
     if (!lead?.webDraft) return NextResponse.json({ error: 'draft_not_found' }, { status: 404 });
@@ -88,6 +91,8 @@ export async function POST(req: NextRequest) {
       primaryType: lead.primaryType,
       themeKey: lead.webDraft.themeKey,
       copy: lead.webDraft.copy as unknown as WebDraftCopy,
+      content: lead.webDraft.content,
+      templateId: lead.webDraft.templateId,
     };
   }
 
@@ -120,6 +125,7 @@ export async function POST(req: NextRequest) {
             services: [],
             callToAction: '',
           }) as unknown as object,
+          ...(seed?.content != null ? { content: seed.content as object, templateId: seed.templateId } : {}),
           status: 'draft',
           formToken: createFormToken(),
           publishTarget: body.data.publishTarget ?? 'sftp',

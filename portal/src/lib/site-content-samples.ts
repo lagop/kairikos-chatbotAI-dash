@@ -94,6 +94,7 @@ const normal: SiteContent = {
     'garantias.0.texto',
     'bloques.agosto.texto',
   ],
+  legal: { titular: 'Fontanería Ejemplo S.L.', nif: 'B00000000', domicilio: 'Calle de Muestra, 1, Las Palmas de Gran Canaria', email: 'hola@fontaneria-ejemplo.invalid', registro: '' },
   seccionesConfirmadas: [],
 };
 normal.paginas[0].secciones.splice(4, 0, { tipo: 'bloque', id: 'historia' });

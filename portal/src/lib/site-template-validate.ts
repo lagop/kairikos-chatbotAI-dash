@@ -33,7 +33,7 @@ const ROOT_FIELDS = new Set([
   // contenido (site-content.ts)
   'titular', 'subtitulo', 'sobre', 'llamada_accion', 'servicios', 'cifras', 'proceso', 'precios', 'garantias', 'zona', 'faq', 'horario',
   // derivados que pone el motor
-  'sobre_html', 'horario_resumen', 'ancla', 'menu', 'secciones', 'pagina', 'formulario', 'fotos', 'anio',
+  'sobre_html', 'horario_resumen', 'ancla', 'menu', 'secciones', 'pagina', 'formulario', 'fotos', 'anio', 'legales',
   // negocio
   'nombre', 'telefono', 'telefono_href', 'direccion', 'maps_url', 'valoracion', 'num_resenas',
   // Google en vivo, solo en el borrador
@@ -50,7 +50,7 @@ const ITEM_FIELDS = new Set([
  *  campo de texto del cliente con triple llave sería una puerta a inyectar
  *  HTML en su propia web. */
 const RAW_FIELDS = new Set(['secciones', 'sobre_html', 'respuesta_html', 'texto_html', 'resenas_html', 'citas_html', 'atribucion_google_html']);
-const LIST_FIELDS = ['servicios', 'cifras', 'proceso', 'garantias', 'faq', 'horario', 'precios.filas', 'zona.lugares', 'items', 'menu'];
+const LIST_FIELDS = ['legales', 'servicios', 'cifras', 'proceso', 'garantias', 'faq', 'horario', 'precios.filas', 'zona.lugares', 'items', 'menu'];
 
 const ALLOWED_HOSTS = new Set(['fonts.googleapis.com', 'fonts.gstatic.com']);
 /** Una plantilla generada pesa 30–60 KB; el tope es para que un desvarío del

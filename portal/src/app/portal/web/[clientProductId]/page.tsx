@@ -13,6 +13,10 @@ import { WebBriefForm, type WebBriefFormValues } from '@/components/portal/WebBr
 import { WebQuoteCard, type ClientWebQuoteData, type ClientWebQuoteInvoiceData } from '@/components/portal/WebQuoteCard';
 import { WebDeliveryCard } from '@/components/portal/WebDeliveryCard';
 import { WebsiteEditorCard, type WebsiteEditorData } from '@/components/portal/WebsiteEditorCard';
+import { SiteContentEditor } from '@/components/portal/SiteContentEditor';
+import { parseSiteContent } from '@/lib/site-content';
+import { SITE_TEMPLATE_BASE } from '@/lib/site-template-base';
+import { templateIconIds } from '@/lib/web-draft-design';
 import { buildDeliveryProgress, hasDeliveryTracking, type DeliveryProgress } from '@/lib/web-delivery';
 import { GOAL_LABELS, CONTENT_PROVIDED_BY_LABELS, type GOAL_OPTIONS, type CONTENT_PROVIDED_BY_OPTIONS } from '@/lib/web-brief-schema';
 
@@ -139,6 +143,32 @@ export default async function PortalWebProjectPage(
       }
     : null;
 
+  // Webs con IA, entrega 4 (27/10/2026): con contenido v2, el editor nuevo
+  // (secciones, bloques, datos de ejemplo, datos legales); si no, el de
+  // siempre. Y se enseña SIEMPRE que la web exista: antes solo salía con el
+  // formulario enviado, y quien compra con «La quiero» no lo rellena, así que
+  // nunca habría visto su web para editarla.
+  const parsedContent = siteRow?.content != null ? parseSiteContent(siteRow.content) : null;
+  let iconIds: string[] = [];
+  if (parsedContent?.ok) {
+    const tpl = siteRow?.templateId ? await prisma.siteTemplate.findUnique({ where: { id: siteRow.templateId }, select: { marco: true } }) : null;
+    iconIds = templateIconIds(tpl?.marco ?? SITE_TEMPLATE_BASE.marco);
+  }
+  const editor =
+    siteRow && parsedContent?.ok ? (
+      <SiteContentEditor
+        clientProductId={webClientProduct.id}
+        initialContent={parsedContent.content}
+        phone={siteRow.phone}
+        address={siteRow.address}
+        status={siteRow.status}
+        lastPublishedAt={siteRow.lastPublishedAt?.toISOString() ?? null}
+        iconIds={iconIds}
+      />
+    ) : website ? (
+      <WebsiteEditorCard data={website} />
+    ) : null;
+
   const wantsEdit = searchParams.edit === '1';
 
   if (brief?.status === 'submitted' && !wantsEdit) {
@@ -165,7 +195,7 @@ export default async function PortalWebProjectPage(
             deliveryAcceptedAt={delivery.deliveryAcceptedAt}
           />
         ) : null}
-        {website ? <WebsiteEditorCard data={website} /> : null}
+        {editor}
         {care ? (
           <WebCareCard
             webClientProductId={webClientProduct.id}
@@ -204,9 +234,9 @@ export default async function PortalWebProjectPage(
           <SummaryRow label="Notas adicionales" value={brief.additionalNotes} />
         </div>
         <p className="text-sm text-kairikos-muted">
-          ¿Necesitás cambiar algo que no está en este formulario?{' '}
+          ¿Necesitas cambiar algo que no está en este formulario?{' '}
           <Link href="/portal/support" className="underline hover:text-kairikos-text">
-            Escribinos a soporte
+            Escríbenos a soporte
           </Link>
           .
         </p>
@@ -238,9 +268,15 @@ export default async function PortalWebProjectPage(
       <PageHeading
         eyebrow="Portal"
         title="Plataforma web profesional"
-        description="Contanos sobre tu negocio para que empecemos a diseñar tu sitio."
+        description={
+          editor
+            ? 'Tu web ya está hecha: edítala aquí. Si quieres que la rediseñemos, cuéntanos más abajo cómo es tu negocio.'
+            : 'Cuéntanos sobre tu negocio para que empecemos a diseñar tu sitio.'
+        }
       />
       {isQuotePending ? <WebQuoteCard clientProductId={webClientProduct.id} webQuote={webQuote} invoice={webQuoteInvoice} /> : null}
+      {editor}
+      {editor ? <h2 className="pt-4 text-lg font-semibold">Para orientar el diseño (opcional)</h2> : null}
       <WebBriefForm clientProductId={webClientProduct.id} initial={initial} />
     </div>
   );

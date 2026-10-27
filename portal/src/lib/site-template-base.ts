@@ -162,7 +162,7 @@ form .boton[disabled]{opacity:.6;cursor:not-allowed}
 </main>
 <footer class="pie"><div class="contenedor">
   <p><strong>{{nombre}}</strong>{{#direccion}} · {{direccion}}{{/direccion}}{{#telefono}} · <a href="tel:{{telefono_href}}">{{telefono}}</a>{{/telefono}}</p>
-  <p>© {{anio}} {{nombre}}</p>
+  <p>© {{anio}} {{nombre}}{{#legales}} · <a href="{{href}}">{{titulo}}</a>{{/legales}}</p>
 </div></footer>
 <script>
 (function () {

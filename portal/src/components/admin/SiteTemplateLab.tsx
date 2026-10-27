@@ -82,9 +82,21 @@ async function measure(templateId: string, contenido: (typeof CHECK_SAMPLES)[num
   }
 }
 
-export function SiteTemplateLab({ initial }: { initial: SiteTemplateRow[] }) {
+export function SiteTemplateLab({
+  initial,
+  initialForm,
+}: {
+  initial: SiteTemplateRow[];
+  initialForm?: { nombre?: string; encargo?: string; sector?: string };
+}) {
   const [templates, setTemplates] = useState<SiteTemplateRow[]>(initial);
-  const [form, setForm] = useState({ nombre: '', sector: 'trades', variante: '', encargo: '', modelo: 'claude-sonnet-5-5' });
+  const [form, setForm] = useState({
+    nombre: initialForm?.nombre ?? '',
+    sector: initialForm?.sector || 'trades',
+    variante: '',
+    encargo: initialForm?.encargo ?? '',
+    modelo: 'claude-sonnet-5-5',
+  });
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState<{ id: string; done: number; total: number } | null>(null);
