@@ -115,6 +115,7 @@ const normal: SiteContent = {
         fotoAlt: '',
         publicada: true,
         origen: 'cliente',
+        html: '',
       },
       {
         slug: 'termo-o-calentador',
@@ -128,10 +129,12 @@ const normal: SiteContent = {
         fotoAlt: '',
         publicada: true,
         origen: 'cliente',
+        html: '',
       },
     ],
   },
   urlPublica: '',
+  verificacionGoogle: '',
 };
 normal.paginas[0].secciones.splice(4, 0, { tipo: 'bloque', id: 'historia' });
 normal.paginas[0].secciones.unshift({ tipo: 'bloque', id: 'agosto' });
@@ -218,6 +221,7 @@ const exagerado: SiteContent = {
       fotoAlt: 'Foto',
       publicada: true,
       origen: 'cliente' as const,
+      html: '',
     })),
   },
 };

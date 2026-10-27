@@ -28,7 +28,14 @@ const BodySchema = z.object({
   content: z.unknown(),
   phone: z.string().trim().max(50).nullable().optional(),
   address: z.string().trim().max(300).nullable().optional(),
+  // Entrega 6: la versión que el editor tenía al abrirse. El SEO publica
+  // artículos en el blog por su cuenta (website-seo-publish.ts) y el cliente
+  // puede tener el editor abierto: sin esto, su «Guardar» mandaría el
+  // contenido de hace un rato y borraría el artículo sin que nadie lo viera.
+  baseUpdatedAt: z.string().datetime().optional(),
 });
+
+class StaleContentError extends Error {}
 
 export async function PATCH(req: NextRequest, props: { params: Promise<{ clientProductId: string }> }) {
   const params = await props.params;
@@ -53,16 +60,21 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ clientP
   if (!parsed.ok) return NextResponse.json({ error: 'invalid_content', issues: parsed.issues.slice(0, 20) }, { status: 400 });
   const content = parsed.content;
 
+  const savedAt = new Date();
   try {
     await prisma.$transaction(async (tx) => {
-      await tx.clientWebsite.update({
-        where: { id: website.id },
+      // Condicional y atómico: si otra escritura llegó entre medias, no se
+      // pisa nada y el editor pide recargar.
+      const written = await tx.clientWebsite.updateMany({
+        where: { id: website.id, ...(body.data.baseUpdatedAt ? { updatedAt: new Date(body.data.baseUpdatedAt) } : {}) },
         data: {
+          updatedAt: savedAt,
           content: content as unknown as object,
           ...(body.data.phone !== undefined ? { phone: body.data.phone || null } : {}),
           ...(body.data.address !== undefined ? { address: body.data.address || null } : {}),
         },
       });
+      if (written.count === 0) throw new StaleContentError();
       await tx.clientWebsiteAudit.create({
         data: {
           websiteId: website.id,
@@ -86,8 +98,14 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ clientP
         },
       });
     });
-    return NextResponse.json({ ok: true, ejemplosPendientes: content.ejemplos.length, datosLegalesQueFaltan: legalDataMissing(content.legal) });
+    return NextResponse.json({
+      ok: true,
+      ejemplosPendientes: content.ejemplos.length,
+      datosLegalesQueFaltan: legalDataMissing(content.legal),
+      updatedAt: savedAt.toISOString(),
+    });
   } catch (err) {
+    if (err instanceof StaleContentError) return NextResponse.json({ error: 'stale_content' }, { status: 409 });
     logError('client_website.content_update_failed', err, { clientProductId: params.clientProductId });
     return NextResponse.json({ error: 'internal_error' }, { status: 500 });
   }

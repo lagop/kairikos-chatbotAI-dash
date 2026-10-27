@@ -3,6 +3,7 @@ import { GbpManagedCard } from '@/components/portal/GbpManagedCard';
 import { getGbpManagedView } from '@/lib/gbp-managed';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { Prisma } from '@prisma/client';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { requirePortalSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
@@ -12,6 +13,7 @@ import { ProductPitch } from '@/components/portal/ProductPitch';
 import { EmptyState } from '@/components/portal/EmptyState';
 import { SelfServeProductCard, type SelfServeTierOption } from '@/components/portal/SelfServeProductCard';
 import { SeoProfileCard } from '@/components/portal/SeoProfileCard';
+import { SeoWebsiteMetaCard } from '@/components/portal/SeoWebsiteMetaCard';
 import { SeoTrendChart, type SeoTrendPoint } from '@/components/portal/SeoTrendChart';
 import { SeoAnalyticsPicker } from '@/components/portal/SeoAnalyticsPicker';
 import { SeoKeywordsCard } from '@/components/portal/SeoKeywordsCard';
@@ -52,6 +54,8 @@ const CONNECT_ERROR_LABEL: Record<string, string> = {
   site_not_verified:
     'Esa cuenta de Google no tiene tu sitio verificado en Search Console. Verifícalo en Search Console y vuelve a intentarlo.',
   no_tenant: 'No pudimos completar la conexión — escríbenos a soporte.',
+  auto_verify_failed:
+    'No pudimos verificar tu web en Search Console automáticamente. Lo estamos mirando; si tu web tiene datos de ejemplo sin confirmar o le faltan los datos legales, confírmalos en el editor de tu web y vuelve a conectar.',
   not_configured: 'La conexión con Google no está disponible en este momento.',
   not_available_in_dev_mode: 'La conexión con Google no está disponible en modo demo.',
   forbidden: 'Este producto no está incluido en tu plan.',
@@ -195,6 +199,7 @@ export async function SeoPageBody({
       toneOfVoice: true,
       siteUrl: true,
       cmsType: true,
+      websiteId: true,
       // Fase 3.2 — la auditoría técnica existía desde Fase A pero solo la
       // veía un operador, y en crudo. Aquí se traduce a recomendaciones.
       lastAuditResult: true,
@@ -207,6 +212,18 @@ export async function SeoPageBody({
   });
 
   const hasWordPressAppPassword = Boolean(profile?.wordpressAppPasswordCiphertext);
+
+  // Entrega 6 de webs con IA: sus webs hechas por nosotros (las de contenido
+  // v2, que son las que tienen blog). Con alguna, el perfil ofrece publicar
+  // ahí en vez de en WordPress.
+  const kairikosWebsites = (
+    await prisma.clientWebsite.findMany({
+      where: { clientId: resolved.clientId, content: { not: Prisma.DbNull } },
+      select: { id: true, businessName: true, customDomain: true, slug: true },
+      orderBy: { createdAt: 'asc' },
+    })
+  ).map((w) => ({ id: w.id, nombre: w.customDomain ?? w.businessName }));
+  const kairikosWebsiteId = profile?.cmsType === 'kairikos' ? profile.websiteId : null;
 
   // Fase 3.1 — las palabras que el cliente persigue y cómo van.
   const keywordTrends = profile ? await buildKeywordTrends(prisma, resolved.clientId) : [];
@@ -293,7 +310,8 @@ export async function SeoPageBody({
   return (
     <div className="space-y-6">
       <PageHeading eyebrow="Portal" title="SEO con IA" description="Cuéntanos de tu negocio para empezar." />
-      <SeoProfileCard profile={profile} clientProductId={instance.clientProductId} />
+      <SeoProfileCard profile={profile} clientProductId={instance.clientProductId} kairikosWebsites={kairikosWebsites} />
+      {kairikosWebsiteId ? <SeoWebsiteMetaCard clientProductId={instance.clientProductId} /> : null}
       {!gbpManaged.managed && gbpManaged.offer ? (
         <GbpManagedCard
           connectionId={null}

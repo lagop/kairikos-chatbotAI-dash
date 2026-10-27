@@ -7,6 +7,7 @@ import { getSession } from '@/lib/session';
 import { resolveContractedInstance } from '@/lib/client-product-access';
 import { encodeOAuthState } from '@/lib/seo-oauth-state';
 import { buildAuthorizationUrl, isSearchConsoleOAuthConfigured, OAUTH_STATE_COOKIE } from '@/lib/google-search-console';
+import { KAIRIKOS_WEBSITE_SCOPES } from '@/lib/google-site-verification';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -49,7 +50,15 @@ export async function GET(req: NextRequest) {
 
   const nonce = crypto.randomBytes(32).toString('hex');
   const state = nonce;
-  const res = NextResponse.redirect(await buildAuthorizationUrl(state));
+  // Entrega 6 de webs con IA: con una web de Kairikos se piden además los
+  // permisos para verificarla en Search Console por el cliente (ver
+  // google-site-verification.ts). Con WordPress, solo lectura, como siempre.
+  const profile = await prisma.seoProfile.findUnique({
+    where: { clientProductId: instance.clientProductId },
+    select: { cmsType: true, websiteId: true },
+  });
+  const extraScopes = profile?.cmsType === 'kairikos' && profile.websiteId ? KAIRIKOS_WEBSITE_SCOPES : [];
+  const res = NextResponse.redirect(await buildAuthorizationUrl(state, extraScopes));
   // A Google solo viaja el nonce; el id de la contratación se queda en la
   // cookie httpOnly. Ver lib/seo-oauth-state.ts.
   res.cookies.set(OAUTH_STATE_COOKIE, encodeOAuthState(nonce, instance.clientProductId), {

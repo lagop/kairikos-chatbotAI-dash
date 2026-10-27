@@ -3901,6 +3901,7 @@ model ClientWebsite {
   releases      ClientWebsiteRelease[]
   files         ClientWebsiteFile[]
   auditLogs     ClientWebsiteAudit[]
+  seoProfiles   SeoProfile[]
 
   @@index([clientId])
   @@index([tenantId])
@@ -4012,7 +4013,10 @@ model ClientWebsiteAudit {
 
   // 'created' | 'content_updated' | 'credential_saved' | 'published' |
   // 'publish_failed' | 'design_updated' (webs con IA: pasar al contenido v2
-  // o cambiar de plantilla, siempre el operador)
+  // o cambiar de plantilla, siempre el operador) | 'seo_entry_published' (entrega 6:
+  // el SEO añade o actualiza una entrada del blog) | 'meta_applied' (títulos y
+  // descripciones propuestos por la IA y aceptados por el cliente) |
+  // 'search_console_verification' (la etiqueta de Google puesta al conectar)
   action String
   before Json?
   after  Json?
@@ -4265,12 +4269,20 @@ model SeoProfile {
   toneOfVoice         String? @map("tone_of_voice")
 
   // Client-filled — which site, and what it runs on. cmsType is a free
-  // string ('wordpress' | 'wix' | 'squarespace' | 'other' | 'no_se') —
+  // string ('wordpress' | 'wix' | 'squarespace' | 'other' | 'no_se' | 'kairikos') —
   // validated at the lib layer, same posture as every other free-string
   // status column in this schema. Only 'wordpress' is actually
   // publishable as of Fase A/B — Fase C decides the real publish scope.
   siteUrl String? @map("site_url")
   cmsType String? @map("cms_type")
+
+  // Webs con IA, entrega 6 (27/10/2026) — cmsType 'kairikos': la web es una
+  // que hacemos nosotros (ClientWebsite con contenido v2). Los artículos
+  // aprobados se publican como entradas de SU blog (website-seo-publish.ts)
+  // en vez de por la API de WordPress, y los títulos y descripciones de cada
+  // página se aplican con un clic. SetNull: borrar la web no borra el SEO;
+  // el siguiente artículo falla con un motivo claro.
+  websiteId String? @map("website_id") @db.Uuid
 
   // Operator-filled — the technical publish access a non-technical
   // client can't set up alone. Encrypted at rest (AES-256-GCM,
@@ -4326,9 +4338,11 @@ model SeoProfile {
   auditLogs      SeoProfileAudit[]
   contentDrafts  SeoContentDraft[]
   targetKeywords SeoTargetKeyword[]
+  website        ClientWebsite?     @relation(fields: [websiteId], references: [id], onDelete: SetNull)
 
   @@index([clientId])
   @@index([tenantId])
+  @@index([websiteId])
   @@index([status])
 }
 
@@ -4514,6 +4528,10 @@ model SeoContentDraft {
   clientReviewedAt        DateTime? @map("client_reviewed_at")
 
   publishedAt      DateTime? @map("published_at")
+  // Con una web de Kairikos (entrega 6) no hay post de WordPress:
+  // wordpressPostId queda vacío y wordpressPostUrl guarda la dirección de la
+  // entrada del blog. Se reutiliza en vez de duplicar la columna porque es
+  // lo que enseñan el portal y el correo: «dónde se ha publicado».
   wordpressPostId  String?   @map("wordpress_post_id")
   wordpressPostUrl String?   @map("wordpress_post_url")
   publishError     String?   @map("publish_error")

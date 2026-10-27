@@ -1,6 +1,7 @@
 import 'server-only';
 import type { PrismaClient } from '@prisma/client';
 import { publishDraftToWordPress, hasWordPressCredentials } from './wordpress-publish';
+import { publishSeoDraftToWebsite } from './website-seo-publish';
 import { logError } from './observability';
 
 // =============================================================================
@@ -114,8 +115,36 @@ export async function attemptPublishDraft(
       wordpressAppPasswordCiphertext: true,
       wordpressAppPasswordIv: true,
       wordpressAppPasswordTag: true,
+      cmsType: true,
+      websiteId: true,
     },
   });
+
+  // Entrega 6 de webs con IA: con una web de Kairikos el artículo se publica
+  // como entrada de su blog (website-seo-publish.ts), no en WordPress. El
+  // mismo reclamo de arriba evita las publicaciones dobles en los dos casos.
+  if (profile?.cmsType === 'kairikos') {
+    if (!profile.websiteId) {
+      await markPublishFailed(prisma, draftId, 'missing_kairikos_website');
+      return { ok: false, error: 'missing_kairikos_website' };
+    }
+    const site = await publishSeoDraftToWebsite(prisma, profile.websiteId, {
+      id: draft.id,
+      title: draft.title,
+      bodyHtml: draft.bodyHtml,
+      metaDescription: draft.metaDescription,
+    });
+    if (site.ok) {
+      await prisma.seoContentDraft.update({
+        where: { id: draftId },
+        data: { status: 'published', publishedAt: new Date(), wordpressPostId: null, wordpressPostUrl: site.url, publishError: null },
+      });
+      return { ok: true };
+    }
+    logError('seo_content_review.website_publish_failed', new Error(site.error), { clientId, draftId }, 'warn');
+    await markPublishFailed(prisma, draftId, site.error);
+    return { ok: false, error: site.error };
+  }
 
   if (!hasWordPressCredentials(profile)) {
     await markPublishFailed(prisma, draftId, 'missing_wordpress_credentials');
