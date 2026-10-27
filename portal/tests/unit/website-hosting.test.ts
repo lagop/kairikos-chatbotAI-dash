@@ -272,6 +272,21 @@ describe('webs con plantilla de diseño (27/10/2026)', () => {
     expect((await publishWebsite(prisma, 'w1', { type: 'operator' })).ok).toBe(true);
   });
 
+  it('sin los datos legales del titular no se publica (LSSI y RGPD)', async () => {
+    const c = content();
+    c.legal = { titular: '', nif: '', domicilio: '', email: '', registro: '' };
+    mockState.findWebsite.mockResolvedValue(site({ content: c }));
+    expect(await publishWebsite(prisma, 'w1', { type: 'operator' })).toEqual({ ok: false, error: 'legal_data_missing' });
+    expect(mockState.upsertFile).not.toHaveBeenCalled();
+  });
+
+  it('una web publicada lleva sus páginas legales', async () => {
+    mockState.findWebsite.mockResolvedValue(site({ content: content() }));
+    await publishWebsite(prisma, 'w1', { type: 'operator' });
+    const paths = mockState.upsertFile.mock.calls.map((c) => c[0].create.path);
+    expect(paths).toEqual(expect.arrayContaining(['aviso-legal/index.html', 'privacidad/index.html', 'cookies/index.html']));
+  });
+
   it('un contenido que no cumple el esquema no se publica', async () => {
     mockState.findWebsite.mockResolvedValue(site({ content: { version: 2, paginas: [] } }));
     expect(await publishWebsite(prisma, 'w1', { type: 'operator' })).toEqual({ ok: false, error: 'invalid_content' });

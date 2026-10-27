@@ -157,11 +157,32 @@ const datosSchema = z.object({
 });
 export type SiteData = z.infer<typeof datosSchema>;
 
+/** Quién es el titular de la web: lo que exige el art. 10 de la LSSI en el
+ *  aviso legal y el RGPD en la política de privacidad. Sin titular, NIF,
+ *  domicilio y correo no se publica (website-publish.ts). */
+const legalSchema = z
+  .object({
+    titular: optionalText(160),
+    nif: optionalText(20),
+    domicilio: optionalText(300),
+    email: optionalText(160),
+    /** Solo sociedades: «Registro Mercantil de Las Palmas, tomo…». */
+    registro: optionalText(300),
+  })
+  .default({ titular: '', nif: '', domicilio: '', email: '', registro: '' });
+export type SiteLegal = z.infer<typeof legalSchema>;
+
+export function legalDataMissing(legal: SiteLegal | undefined): string[] {
+  const l = legal ?? { titular: '', nif: '', domicilio: '', email: '', registro: '' };
+  return (['titular', 'nif', 'domicilio', 'email'] as const).filter((k) => !l[k].trim());
+}
+
 export const siteContentSchema = z
   .object({
     version: z.literal(2),
     paginas: z.array(pageSchema).min(1).max(SITE_LIMITS.paginas),
     datos: datosSchema,
+    legal: legalSchema,
     bloques: z.array(blockSchema).max(SITE_LIMITS.bloques).default([]),
     /** Rutas de los valores inventados: 'precios.filas.2.precio',
      *  'bloques.historia.texto'. Ver EXAMPLE_PATH_RE. */

@@ -187,6 +187,8 @@ export async function buildDesignedWebsiteFiles(input: DesignedWebsiteBuildInput
     fotos: { portada: hero?.path ?? null, equipo: null, trabajo: null },
     formAction,
     borrador: false,
+    // Entrega 4: aviso legal, privacidad y cookies en toda web publicada.
+    legales: true,
     now: input.now,
   });
   return hero ? [...pages, hero] : pages;

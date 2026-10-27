@@ -41,6 +41,11 @@ export async function POST(_req: NextRequest, props: { params: Promise<{ clientP
   });
 
   if (!result.ok) {
+    // Webs con IA (27/10/2026): estas dos las arregla el propio cliente en su
+    // editor, así que se le dicen tal cual.
+    if (result.error === 'example_data_pending' || result.error === 'legal_data_missing') {
+      return NextResponse.json({ error: result.error }, { status: 409 });
+    }
     const status = result.error === 'credential_missing' ? 409 : 502;
     // Al cliente no se le enseña el error crudo del servidor SFTP: no puede
     // hacer nada con "Permission denied" y le asusta. Se le dice que lo

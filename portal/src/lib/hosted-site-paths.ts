@@ -39,7 +39,11 @@ export function rewriteRelativeUrls(html: string, baseDir: string): string {
   return html.replace(/(\s(?:src|href)\s*=\s*)(["'])([^"']*)\2/gi, (match, attr: string, quote: string, value: string) => {
     if (!value || ABSOLUTE.test(value)) return match;
     const resolved = new URL(value, base);
-    return `${attr}${quote}${resolved.pathname}${resolved.search}${resolved.hash}${quote}`;
+    // Sin barra final en las páginas: Next.js la quita con una redirección
+    // 308, y así se ahorra el salto (y la petición que, desde algunos
+    // navegadores integrados, no completa esa redirección).
+    const pathname = resolved.pathname.length > 1 ? resolved.pathname.replace(/\/$/, '') : resolved.pathname;
+    return `${attr}${quote}${pathname}${resolved.search}${resolved.hash}${quote}`;
   });
 }
 

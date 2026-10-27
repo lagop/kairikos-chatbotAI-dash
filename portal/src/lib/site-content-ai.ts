@@ -150,6 +150,7 @@ export function buildSiteContentFromDraft(copy: WebDraftCopy, expansion: unknown
     datos,
     bloques: [],
     ejemplos: [],
+    legal: { titular: '', nif: '', domicilio: '', email: '', registro: '' },
     seccionesConfirmadas: [],
   };
   // Las rutas que propuso el modelo, solo si existen (al recortar o descartar

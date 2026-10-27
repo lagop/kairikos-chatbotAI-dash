@@ -57,15 +57,99 @@ export interface ClientWebsiteView {
   lastPublishedAt: string | null;
   lastPublishError: string | null;
   credential: { host: string; username: string; remotePath: string; savedAt: string } | null;
+  /** Webs con IA (27/10/2026): si ya usa el contenido v2, con qué plantilla
+   *  (null = la base), y el encargo para una plantilla a medida, sacado del
+   *  formulario de la web que rellenó el cliente. */
+  design?: { v2: boolean; templateId: string | null; templateNombre: string | null; encargo: string | null };
+}
+
+/**
+ * Webs con IA, entrega 4 — el diseño de la web: pasarla al editor nuevo,
+ * ponerle una plantilla aprobada o encargar una a medida con lo que el
+ * cliente contó en su formulario. Es estructura, así que es del operador.
+ */
+function WebsiteDesignControls({
+  website,
+  templates,
+  onDone,
+}: {
+  website: ClientWebsiteView;
+  templates: { id: string; nombre: string; sector: string | null }[];
+  onDone: () => void;
+}) {
+  const design = website.design ?? { v2: false, templateId: null, templateNombre: null, encargo: null };
+  const [choice, setChoice] = useState(design.templateId ?? '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function send(body: object) {
+    setBusy(true);
+    setError(null);
+    const res = await fetch(`/api/admin/portal/websites/${website.id}/design`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    setBusy(false);
+    if (!res.ok) {
+      const code = (await safeJson(res)).error;
+      setError(code === 'template_not_approved' ? 'Esa plantilla no está aprobada.' : `No se pudo cambiar el diseño (${String(code ?? 'error')}).`);
+      return;
+    }
+    onDone();
+  }
+
+  const encargoHref = `/admin/portal/plantillas?${new URLSearchParams({
+    nombre: `A medida · ${website.businessName}`.slice(0, 80),
+    encargo: (design.encargo ?? `Web de ${website.businessName}.`).slice(0, 1500),
+  }).toString()}`;
+
+  return (
+    <div className="rounded-lg border border-kairikos-border p-3 space-y-2" data-testid="client-website-design">
+      <p className="text-sm font-semibold">Diseño</p>
+      {!design.v2 ? (
+        <div className="space-y-2">
+          <p className="text-xs text-kairikos-muted">
+            Usa la plantilla de siempre. Pasarla al editor nuevo le da secciones ordenables, bloques libres, páginas legales y las plantillas de la biblioteca; cambia su aspecto, así que mira la vista previa antes de publicar.
+          </p>
+          <button type="button" className="btn-ghost text-sm" disabled={busy} onClick={() => send({ accion: 'convertir' })}>
+            Pasar al editor nuevo
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <select className="input" value={choice} onChange={(e) => setChoice(e.target.value)} aria-label="Plantilla">
+            <option value="">Plantilla base</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.nombre}
+                {t.sector ? ` (${t.sector})` : ''}
+              </option>
+            ))}
+          </select>
+          <button type="button" className="btn-ghost text-sm" disabled={busy || choice === (design.templateId ?? '')} onClick={() => send({ accion: 'plantilla', templateId: choice || null })}>
+            Poner esta plantilla
+          </button>
+          <a className="btn-ghost text-sm" href={encargoHref}>
+            Encargar una a medida
+          </a>
+        </div>
+      )}
+      {error ? <p className="text-sm text-kairikos-danger">{error}</p> : null}
+    </div>
+  );
 }
 
 export function ClientWebsitePanel({
   clientProductId,
   website,
   draftLeads,
+  templates = [],
 }: {
   clientProductId: string;
   website: ClientWebsiteView | null;
+  /** Webs con IA (27/10/2026): las plantillas aprobadas que se le pueden poner. */
+  templates?: { id: string; nombre: string; sector: string | null }[];
   /** Prospectos de este cliente que ya tienen borrador, para poder crear el
    *  sitio a partir de la página que el negocio ya vio. */
   draftLeads: { id: string; name: string }[];
@@ -175,6 +259,7 @@ export function ClientWebsitePanel({
 
   return (
     <div className="space-y-4" data-testid="client-website-panel">
+      <WebsiteDesignControls website={website} templates={templates} onDone={() => router.refresh()} />
       <div className="flex flex-wrap items-center gap-2">
         <span className={website.status === 'published' ? 'pill-success' : 'pill-warning'}>
           {website.status === 'published' ? 'Publicado' : 'Borrador'}

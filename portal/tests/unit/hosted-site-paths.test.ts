@@ -17,7 +17,7 @@ describe('rewriteRelativeUrls', () => {
       '<img src="assets/portada.jpg"><a href="../">Inicio</a><a href="#contacto">C</a><a href="tel:+34600">T</a>' +
       '<a href="https://ejemplo.es">E</a><link href="https://fonts.googleapis.com/x"><a href="/otra">O</a>';
     expect(rewriteRelativeUrls(html, '/sitios/suarez/servicios/')).toBe(
-      '<img src="/sitios/suarez/servicios/assets/portada.jpg"><a href="/sitios/suarez/">Inicio</a><a href="#contacto">C</a><a href="tel:+34600">T</a>' +
+      '<img src="/sitios/suarez/servicios/assets/portada.jpg"><a href="/sitios/suarez">Inicio</a><a href="#contacto">C</a><a href="tel:+34600">T</a>' +
         '<a href="https://ejemplo.es">E</a><link href="https://fonts.googleapis.com/x"><a href="/otra">O</a>',
     );
   });

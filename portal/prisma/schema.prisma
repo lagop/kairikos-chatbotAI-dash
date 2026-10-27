@@ -4011,7 +4011,8 @@ model ClientWebsiteAudit {
   tenantId  String? @map("tenant_id") @db.Uuid
 
   // 'created' | 'content_updated' | 'credential_saved' | 'published' |
-  // 'publish_failed'
+  // 'publish_failed' | 'design_updated' (webs con IA: pasar al contenido v2
+  // o cambiar de plantilla, siempre el operador)
   action String
   before Json?
   after  Json?

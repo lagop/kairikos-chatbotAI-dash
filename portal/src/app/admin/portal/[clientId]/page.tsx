@@ -247,6 +247,7 @@ export default async function AdminClientDetailPage(props: PageProps) {
   // página que el negocio ya vio.
   let websites: Record<string, ClientWebsiteView | null> = {};
   let draftLeads: { id: string; name: string }[] = [];
+  let approvedSiteTemplates: { id: string; nombre: string; sector: string | null }[] = [];
   // WP: conexión de canales — Fase 5. Populated only when
   // productCode === CHATBOT_PRODUCT_CODE, so the read-only channels
   // panel (+ manual webhook-delivery retry) renders inside that
@@ -397,6 +398,12 @@ export default async function AdminClientDetailPage(props: PageProps) {
               select: { id: true, contactName: true },
             })
           ).map((l) => ({ id: l.id, name: l.contactName ?? 'Sin nombre' }));
+          // Webs con IA (27/10/2026): las plantillas que se le pueden poner.
+          approvedSiteTemplates = await prisma.siteTemplate.findMany({
+            where: { estado: 'aprobada' },
+            orderBy: { createdAt: 'desc' },
+            select: { id: true, nombre: true, sector: true },
+          });
           webProjects = await Promise.all(
             webCps.map(async (webCp, index) => {
               const [webQuoteRow, brief] = await Promise.all([
@@ -424,14 +431,38 @@ export default async function AdminClientDetailPage(props: PageProps) {
               }
               const site = await prisma.clientWebsite.findUnique({
                 where: { clientProductId: webCp.id },
-                include: { credential: { select: { host: true, username: true, remotePath: true, savedAt: true } } },
+                include: {
+                  credential: { select: { host: true, username: true, remotePath: true, savedAt: true } },
+                  template: { select: { nombre: true } },
+                },
               });
+              // Webs con IA (27/10/2026): el formulario de la web del cliente,
+              // resumido, como encargo de una plantilla a medida.
+              const designBrief = site
+                ? await prisma.webBrief.findUnique({
+                    where: { clientProductId: webCp.id },
+                    select: { vertical: true, goal: true, targetAudience: true, brandAssetsNote: true, referenceWebsites: true, additionalNotes: true },
+                  })
+                : null;
+              const encargo = designBrief
+                ? [
+                    designBrief.vertical ? `Sector: ${designBrief.vertical}.` : null,
+                    designBrief.goal ? `Objetivo: ${designBrief.goal}.` : null,
+                    designBrief.targetAudience ? `Público: ${designBrief.targetAudience}.` : null,
+                    designBrief.brandAssetsNote ? `Marca: ${designBrief.brandAssetsNote}.` : null,
+                    designBrief.referenceWebsites ? `Webs que le gustan: ${designBrief.referenceWebsites}.` : null,
+                    designBrief.additionalNotes ? `Notas: ${designBrief.additionalNotes}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' ') || null
+                : null;
               websites[webCp.id] = site
                 ? {
                     id: site.id,
                     businessName: site.businessName,
                     status: site.status,
                     themeKey: site.themeKey,
+                    design: { v2: site.content != null, templateId: site.templateId, templateNombre: site.template?.nombre ?? null, encargo },
                     lastPublishedAt: site.lastPublishedAt?.toISOString() ?? null,
                     lastPublishError: site.lastPublishError,
                     credential: site.credential
@@ -1155,6 +1186,7 @@ export default async function AdminClientDetailPage(props: PageProps) {
                       clientProductId={project.clientProductId}
                       website={websites[project.clientProductId] ?? null}
                       draftLeads={draftLeads}
+                      templates={approvedSiteTemplates}
                     />
                   </div>
                 </section>

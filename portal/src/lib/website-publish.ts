@@ -5,7 +5,7 @@ import { logError } from './observability';
 import { buildDesignedWebsiteFiles, buildWebsiteFiles, type WebsiteFile } from './website-build';
 import { resolveWebsiteIntegrations } from './website-integrations';
 import type { WebDraftCopy } from './web-draft-ai';
-import { parseSiteContent } from './site-content';
+import { legalDataMissing, parseSiteContent } from './site-content';
 import { SITE_TEMPLATE_BASE } from './site-template-base';
 import type { SiteTemplatePart, SiteTemplateSource } from './site-template';
 
@@ -334,6 +334,14 @@ export function pendingExampleData(content: unknown): string[] {
   return parsed.ok ? parsed.content.ejemplos : [];
 }
 
+/** Los datos del titular que faltan para escribir las páginas legales. Solo
+ *  aplica a las webs con contenido v2: las de antes no generan esas páginas. */
+export function pendingLegalData(content: unknown): string[] {
+  if (content == null) return [];
+  const parsed = parseSiteContent(content);
+  return parsed.ok ? legalDataMissing(parsed.content.legal) : [];
+}
+
 /**
  * Publica el sitio: genera los archivos, los sube y deja constancia. Nunca
  * lanza — el resultado dice qué pasó, y el error queda también en la fila
@@ -359,6 +367,9 @@ export async function publishWebsite(
   // Webs con IA (27/10/2026): con datos de ejemplo sin confirmar no se
   // publica. Se comprueba antes de construir nada ni tocar el servidor.
   if (pendingExampleData(website.content).length > 0) return { ok: false, error: 'example_data_pending' };
+  // Entrega 4: una web publicada lleva aviso legal y privacidad (LSSI y
+  // RGPD), y sin los datos del titular no hay con qué escribirlos.
+  if (pendingLegalData(website.content).length > 0) return { ok: false, error: 'legal_data_missing' };
 
   const portalOrigin = process.env.NEXT_PUBLIC_PORTAL_URL || 'https://portal.kairikos.cloud';
   const built = await buildFilesForWebsite(prisma, website, { portalOrigin, now });
