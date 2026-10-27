@@ -3904,7 +3904,8 @@ model ClientWebsite {
 // depende de ningún negocio: la misma sirve a todos los de su sector, y el
 // contenido de cada uno va en ClientWebsite.content.
 //
-// INMUTABLE una vez creada: corregirla o rediseñarla es una fila NUEVA. Así
+// INMUTABLE una vez APROBADA (antes, las rondas de corrección de la IA la
+// reescriben): corregirla o rediseñarla es una fila NUEVA. Así
 // una versión publicada (ClientWebsiteRelease.templateId) se puede volver a
 // construir exactamente igual meses después, y cambiar una plantilla nunca
 // cambia en silencio las webs que ya la usan.
@@ -3923,8 +3924,11 @@ model SiteTemplate {
   // { [pieza]: string } — las piezas de SITE_TEMPLATE_PARTS.
   secciones Json
 
-  // 'borrador' | 'aprobada' | 'retirada'. Solo las aprobadas se ofrecen para
-  // webs nuevas; las retiradas siguen pintando las webs que ya las usan.
+  // 'borrador' (hecha a mano) | 'generando' | 'corrigiendo' |
+  // 'pendiente_navegador' | 'lista' | 'fallida' (las de la IA, ver
+  // site-template-jobs.ts) | 'aprobada' | 'retirada'. Solo las aprobadas se
+  // ofrecen para webs nuevas; las retiradas siguen pintando las webs que ya
+  // las usan.
   estado     String @default("borrador")
   // El último informe de site-template-validate.ts y de las comprobaciones
   // con navegador (entrega 2), para no repetirlas al servirla.
