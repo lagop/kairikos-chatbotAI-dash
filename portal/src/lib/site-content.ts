@@ -282,6 +282,17 @@ export const siteContentSchema = z
      *  portal al conectar Search Console (google-site-verification.ts); el
      *  motor lo pinta en la portada publicada. */
     verificacionGoogle: z.string().trim().max(100).regex(/^[A-Za-z0-9_-]*$/).default(''),
+    /** 27/10/2026 — el color y la tipografía del negocio sobre su plantilla
+     *  (site-style.ts). Vacíos o ausentes, los de la plantilla. El color
+     *  puede ser cualquiera: el motor ajusta su luminosidad hasta que se lea.
+     *  La tipografía es el id de una pareja de la plantilla; si la plantilla
+     *  cambia y no la tiene, se ignora. */
+    estilo: z
+      .object({
+        acento: z.string().trim().toLowerCase().regex(/^(#[0-9a-f]{6})?$/).default(''),
+        tipografia: z.string().trim().max(30).regex(/^[a-z0-9-]*$/).default(''),
+      })
+      .optional(),
     bloques: z.array(blockSchema).max(SITE_LIMITS.bloques).default([]),
     /** Rutas de los valores inventados: 'precios.filas.2.precio',
      *  'bloques.historia.texto'. Ver EXAMPLE_PATH_RE. */

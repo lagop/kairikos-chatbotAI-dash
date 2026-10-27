@@ -6,14 +6,17 @@
 // laboratorio (/admin/portal/plantillas, site-template-jobs.ts). Las de
 // portal/plantillas/<carpeta>/ están escritas a mano: un archivo por pieza
 // (marco.html, portada.html… las de SITE_TEMPLATE_PARTS) y plantilla.json con
-// nombre, sector, variante y encargo.
+// nombre, sector, variante y encargo y, si admite el color y la letra de cada
+// negocio, su declaración de estilo (site-style.ts).
 //
 //   npx tsx scripts/plantilla-a-mano.ts comprobar plantillas/oficios-senal ../demos/plantillas
 //     Valida la plantilla y la pinta con los tres contenidos de muestra (con y
 //     sin su <script>) en la carpeta de salida, junto con las tipografías, la
 //     foto de muestra y comprobar.html: una página que hace con ella lo mismo
 //     que el laboratorio (site-template-checks.ts, mismos anchos y páginas).
-//     Se abre con un servidor estático en la raíz de esa carpeta.
+//     Se abre con un servidor estático en la raíz de esa carpeta. Con
+//     estilo, pinta además cada color y cada pareja de letras que el
+//     laboratorio va a medir (checkPlan) y comprobar.html los mide todos.
 //
 //   npx tsx scripts/plantilla-a-mano.ts sql plantillas/oficios-senal > plantilla.sql
 //     El SQL para meterla en la biblioteca, en estado «pendiente_navegador»:
@@ -47,12 +50,15 @@ mod._resolveFilename = (request, ...rest) =>
 const { renderSiteFiles, SITE_TEMPLATE_PARTS } = require('../src/lib/site-template') as typeof import('../src/lib/site-template');
 const { validateSiteTemplate } = require('../src/lib/site-template-validate') as typeof import('../src/lib/site-template-validate');
 const { SAMPLE_RENDER_CONTEXT, SITE_CONTENT_SAMPLES } = require('../src/lib/site-content-samples') as typeof import('../src/lib/site-content-samples');
+const { parseTemplateStyle } = require('../src/lib/site-style') as typeof import('../src/lib/site-style');
+const { checkPlan } = require('../src/lib/site-template-checks') as typeof import('../src/lib/site-template-checks');
 
 interface Meta {
   nombre: string;
   sector: string;
   variante: string | null;
   encargo: string;
+  estilo?: unknown;
 }
 
 function load(dir: string): { meta: Meta; template: SiteTemplateSource; slug: string } {
@@ -64,7 +70,7 @@ function load(dir: string): { meta: Meta; template: SiteTemplateSource; slug: st
     const body = read(part);
     if (body) secciones[part] = body;
   }
-  return { meta, template: { marco: read('marco'), secciones }, slug: abs.split(/[\\/]/).pop() as string };
+  return { meta, template: { marco: read('marco'), secciones, estilo: (meta.estilo ?? null) as SiteTemplateSource['estilo'] }, slug: abs.split(/[\\/]/).pop() as string };
 }
 
 function validate(template: SiteTemplateSource): SiteTemplateSource {
@@ -84,6 +90,11 @@ function sampleContent(name: SiteContentSampleName): SiteContent {
   return JSON.parse(JSON.stringify(SITE_CONTENT_SAMPLES[name]).replaceAll('"assets/portada.jpg"', '"/web-draft/trades.jpg"')) as SiteContent;
 }
 
+/** La carpeta de una variante de estilo: 'estilo-1d4ed8-x', 'estilo-x-rotulo'. */
+function variantDir(acento?: string, tipografia?: string): string {
+  return `estilo-${acento ? acento.slice(1) : 'x'}-${tipografia || 'x'}`;
+}
+
 function write(path: string, data: string | Buffer) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, data);
@@ -95,12 +106,26 @@ function comprobar(dir: string, out: string) {
   const root = resolve(out);
   rmSync(join(root, slug), { recursive: true, force: true });
   const ctx = { ...SAMPLE_RENDER_CONTEXT, fotos: { portada: '/web-draft/trades.jpg', equipo: null, trabajo: null } };
-  const sinJs: SiteTemplateSource = { ...clean, marco: clean.marco.replace(/<script\b[\s\S]*?<\/script>/gi, '') };
+  const estilo = parseTemplateStyle(clean.estilo);
+  const withStyle: SiteTemplateSource = { ...clean, estilo };
+  const sinJs: SiteTemplateSource = { ...withStyle, marco: clean.marco.replace(/<script\b[\s\S]*?<\/script>/gi, '') };
   for (const name of Object.keys(SITE_CONTENT_SAMPLES) as SiteContentSampleName[]) {
-    for (const [variant, t] of [[name, clean], [`${name}-sin-js`, sinJs]] as const) {
+    for (const [variant, t] of [[name, withStyle], [`${name}-sin-js`, sinJs]] as const) {
       for (const f of renderSiteFiles(t, sampleContent(name), ctx)) write(join(root, slug, variant, f.path), f.content);
     }
   }
+  // Las variantes de estilo que medirá el laboratorio, con y sin script (con
+  // script, para mirarlas a ojo).
+  const variants = new Map(checkPlan(estilo).filter((p) => p.acento || p.tipografia).map((p) => [variantDir(p.acento, p.tipografia), p]));
+  for (const [vdir, { acento, tipografia }] of variants) {
+    for (const name of Object.keys(SITE_CONTENT_SAMPLES) as SiteContentSampleName[]) {
+      const content = { ...sampleContent(name), estilo: { acento: acento ?? '', tipografia: tipografia ?? '' } };
+      for (const [variant, t] of [[name, withStyle], [`${name}-sin-js`, sinJs]] as const) {
+        for (const f of renderSiteFiles(t, content, ctx)) write(join(root, slug, vdir, variant, f.path), f.content);
+      }
+    }
+  }
+  write(join(root, slug, 'estilo.json'), JSON.stringify(estilo));
   // Lo que la vista previa sirve desde el portal.
   cpSync(join(PORTAL, 'public', 'fuentes'), join(root, 'fuentes'), { recursive: true });
   cpSync(join(PORTAL, 'public', 'google-maps'), join(root, 'google-maps'), { recursive: true });
@@ -127,23 +152,22 @@ const HARNESS = `<!doctype html>
 (async function () {
   var C = Comprobaciones;
   var slug = new URLSearchParams(location.search).get("plantilla");
+  var estilo = await (await fetch("/" + slug + "/estilo.json")).json();
+  var plan = C.checkPlan(estilo);
   var runs = [];
-  var total = C.CHECK_PAGES.length * C.CHECK_WIDTHS.length;
-  for (var i = 0; i < C.CHECK_PAGES.length; i++) {
-    var p = C.CHECK_PAGES[i];
-    for (var j = 0; j < C.CHECK_WIDTHS.length; j++) {
-      var ancho = C.CHECK_WIDTHS[j];
-      document.getElementById("estado").textContent = (runs.length + 1) + " / " + total;
-      var iframe = document.createElement("iframe");
-      Object.assign(iframe.style, { position: "fixed", left: "-20000px", top: "0", width: ancho + "px", height: "900px", border: "0" });
-      iframe.src = "/" + slug + "/" + p.contenido + "-sin-js/" + (p.pagina ? p.pagina + "/" : "") + "index.html";
-      document.body.appendChild(iframe);
-      await new Promise(function (r) { iframe.onload = r; });
-      await (iframe.contentDocument.fonts ? iframe.contentDocument.fonts.ready : null);
-      await new Promise(function (r) { setTimeout(r, 300); });
-      runs.push({ ancho: ancho, contenido: p.contenido, pagina: p.pagina, problemas: C.runSiteChecks(iframe.contentDocument, iframe.contentWindow) });
-      iframe.remove();
-    }
+  for (var i = 0; i < plan.length; i++) {
+    var p = plan[i];
+    document.getElementById("estado").textContent = (i + 1) + " / " + plan.length;
+    var iframe = document.createElement("iframe");
+    Object.assign(iframe.style, { position: "fixed", left: "-20000px", top: "0", width: p.ancho + "px", height: "900px", border: "0" });
+    var vdir = p.acento || p.tipografia ? "estilo-" + (p.acento ? p.acento.slice(1) : "x") + "-" + (p.tipografia || "x") + "/" : "";
+    iframe.src = "/" + slug + "/" + vdir + p.contenido + "-sin-js/" + (p.pagina ? p.pagina + "/" : "") + "index.html";
+    document.body.appendChild(iframe);
+    await new Promise(function (r) { iframe.onload = r; });
+    await (iframe.contentDocument.fonts ? iframe.contentDocument.fonts.ready : null);
+    await new Promise(function (r) { setTimeout(r, 300); });
+    runs.push(Object.assign({}, p, { problemas: C.runSiteChecks(iframe.contentDocument, iframe.contentWindow) }));
+    iframe.remove();
   }
   var resumen = C.summarizeCheckRuns(runs, 60);
   window.__resultado = { runs: runs, resumen: resumen };
@@ -173,18 +197,20 @@ function sql(dir: string) {
       },
     ],
   };
+  const estilo = clean.estilo != null ? JSON.stringify(clean.estilo) : null;
   const all = JSON.stringify([meta, clean, validacion]);
   let tag = 'plantilla';
   while (all.includes(`$${tag}$`)) tag += '_';
   const q = (s: string) => `$${tag}$${s}$${tag}$`;
   const nombre = q(meta.nombre);
   const secciones = `${q(JSON.stringify(clean.secciones))}::jsonb`;
+  const estiloSql = estilo ? `${q(estilo)}::jsonb` : 'NULL';
   console.log(`BEGIN;
-UPDATE "SiteTemplate" SET marco = ${q(clean.marco)}, secciones = ${secciones}, sector = ${q(meta.sector)}, variante = ${meta.variante ? q(meta.variante) : 'NULL'},
+UPDATE "SiteTemplate" SET marco = ${q(clean.marco)}, secciones = ${secciones}, estilo = ${estiloSql}, sector = ${q(meta.sector)}, variante = ${meta.variante ? q(meta.variante) : 'NULL'},
   estado = 'pendiente_navegador', validacion = ${q(JSON.stringify(validacion))}::jsonb, updated_at = now()
   WHERE nombre = ${nombre} AND origen = 'manual' AND estado NOT IN ('aprobada', 'retirada');
-INSERT INTO "SiteTemplate" (nombre, sector, variante, origen, modelo, marco, secciones, estado, validacion, updated_at)
-  SELECT ${nombre}, ${q(meta.sector)}, ${meta.variante ? q(meta.variante) : 'NULL'}, 'manual', NULL, ${q(clean.marco)}, ${secciones},
+INSERT INTO "SiteTemplate" (nombre, sector, variante, origen, modelo, marco, secciones, estilo, estado, validacion, updated_at)
+  SELECT ${nombre}, ${q(meta.sector)}, ${meta.variante ? q(meta.variante) : 'NULL'}, 'manual', NULL, ${q(clean.marco)}, ${secciones}, ${estiloSql},
     'pendiente_navegador', ${q(JSON.stringify(validacion))}::jsonb, now()
   WHERE NOT EXISTS (SELECT 1 FROM "SiteTemplate" WHERE nombre = ${nombre});
 SELECT id, nombre, estado FROM "SiteTemplate" WHERE nombre = ${nombre};

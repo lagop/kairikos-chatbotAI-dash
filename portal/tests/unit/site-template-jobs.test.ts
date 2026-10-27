@@ -149,6 +149,16 @@ describe('recordBrowserChecks', () => {
     expect(ai.repair).not.toHaveBeenCalled();
   });
 
+  it('si ningún marco llegó a cargar, no juzga el diseño: sigue pendiente', async () => {
+    const { prisma, rows } = fakePrisma([pending({ origen: 'manual' })]);
+    const runs = [360, 1100].map((ancho) => ({ ancho, contenido: 'normal' as const, problemas: ['No se pudo leer la vista previa.'] }));
+    expect(await recordBrowserChecks(prisma, 'p1', runs)).toEqual({ ok: false, error: 'preview_unreadable' });
+    expect(rows.get('p1')?.estado).toBe('pendiente_navegador');
+    // Con que UNA pasada cargue, sí cuenta: lo demás es un fallo de verdad.
+    const mixed = [...runs, { ancho: 1280, contenido: 'normal' as const, problemas: ['Contraste insuficiente…'] }];
+    expect(await recordBrowserChecks(prisma, 'p1', mixed)).toMatchObject({ ok: true, estado: 'fallida' });
+  });
+
   it('sin rondas disponibles, fallida; y en otro estado no acepta medidas', async () => {
     const { prisma, rows } = fakePrisma([pending({ validacion: { rondas: MAX_REPAIR_ROUNDS, problemas: [], historial: [] } }), pending({ id: 'a1', estado: 'aprobada' })]);
     expect(await recordBrowserChecks(prisma, 'p1', [{ ancho: 360, contenido: 'normal', problemas: ['x'] }])).toMatchObject({ estado: 'fallida' });

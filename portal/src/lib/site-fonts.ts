@@ -71,6 +71,21 @@ export function localizeGoogleFonts(html: string, base: string): string {
     .replace(GOOGLE_IMPORT, '');
 }
 
+/** Cambia unas familias por otras en los enlaces de Google Fonts de una
+ *  página (la tipografía elegida por el negocio, ver site-style.ts). Va
+ *  ANTES de localizeGoogleFonts: así la familia nueva se sirve desde la
+ *  propia web como cualquier otra, y la que deja de usarse no se sube. Los
+ *  pesos de la URL se pierden; no hacen falta, las hojas locales llevan
+ *  todos los de cada familia. */
+export function replaceGoogleFontFamilies(html: string, map: Record<string, string>): string {
+  if (!Object.keys(map).length) return html;
+  return html.replace(GOOGLE_CSS_LINK, (_m, href: string) => {
+    const families = [...new Set(googleFontFamilies(href).map((f) => map[f] ?? f))];
+    const query = families.map((f) => `family=${encodeURIComponent(f).replace(/%20/g, '+')}`).join('&');
+    return `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?${query}&display=swap">\n`;
+  });
+}
+
 /** Las hojas de tipografías que enlaza una página ya pintada, como slugs.
  *  Es lo que website-build.ts mira para saber qué archivos subir. */
 export function linkedFontSlugs(html: string): string[] {

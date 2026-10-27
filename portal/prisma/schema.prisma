@@ -3932,6 +3932,10 @@ model SiteTemplate {
   marco     String
   // { [pieza]: string } — las piezas de SITE_TEMPLATE_PARTS.
   secciones Json
+  // 27/10/2026 — qué colores y tipografías puede cambiar cada negocio
+  // (SiteTemplateStyle, ver site-style.ts). Null = se pinta siempre tal cual
+  // (las de la IA y la base).
+  estilo    Json?
 
   // 'borrador' (hecha a mano) | 'generando' | 'corrigiendo' |
   // 'pendiente_navegador' | 'lista' | 'fallida' (las de la IA, ver

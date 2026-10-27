@@ -39,8 +39,55 @@ export interface CheckRun {
   contenido: CheckSample;
   /** '' = la portada. */
   pagina?: string;
+  /** Con el color o la tipografía de un negocio (site-style.ts). */
+  acento?: string;
+  tipografia?: string;
   problemas: string[];
 }
+
+/** Colores que ningún negocio debería elegir y alguno elegirá: los extremos
+ *  de luminosidad y dos muy saturados. Si a una plantilla se le queda sin
+ *  declarar una variable que sigue al color (site-style.ts), sale aquí. */
+export const STRESS_ACCENTS = ['#000000', '#ffffff', '#1d4ed8', '#e11d48'] as const;
+
+/** Lo que el laboratorio necesita saber del estilo de una plantilla (la
+ *  forma completa está en site-style.ts, que no se trae aquí: esto lo
+ *  importa un componente de cliente). */
+export interface CheckStyle {
+  acento?: { muestras: { nombre: string; color: string }[] };
+  tipografias?: { parejas: { id: string; nombre: string }[] };
+}
+
+export type CheckPlanItem = Omit<CheckRun, 'problemas'>;
+
+/**
+ * Todas las pasadas de una plantilla: las de siempre (CHECK_PAGES por
+ * CHECK_WIDTHS) y, si admite el estilo de cada negocio, además:
+ * - cada color (sus muestras menos la suya, y STRESS_ACCENTS) en la portada a
+ *   360 y 1280 px y en una página interior: lo que cambia es el contraste, y
+ *   la cabecera de página y el menú móvil solo salen ahí;
+ * - cada pareja de letras con el contenido exagerado a los tres anchos y en
+ *   un artículo a 360 px: lo que cambia es la medida (menú, titulares
+ *   largos, URL larguísimas).
+ */
+export function checkPlan(style: CheckStyle | null | undefined): CheckPlanItem[] {
+  const plan: CheckPlanItem[] = [];
+  for (const { contenido, pagina } of CHECK_PAGES) for (const ancho of CHECK_WIDTHS) plan.push({ ancho, contenido, pagina });
+  const own = style?.acento?.muestras[0]?.color.toLowerCase();
+  const accents = style?.acento ? [...new Set([...style.acento.muestras.map((m) => m.color.toLowerCase()), ...STRESS_ACCENTS])].filter((c) => c !== own) : [];
+  for (const acento of accents) {
+    plan.push({ ancho: 360, contenido: 'normal', pagina: '', acento }, { ancho: 1280, contenido: 'normal', pagina: '', acento }, { ancho: 1280, contenido: 'exagerado', pagina: 'servicios', acento });
+  }
+  for (const { id: tipografia } of style?.tipografias?.parejas.slice(1) ?? []) {
+    for (const ancho of CHECK_WIDTHS) plan.push({ ancho, contenido: 'exagerado', pagina: '', tipografia });
+    plan.push({ ancho: 360, contenido: 'exagerado', pagina: 'blog/entrada-1', tipografia });
+  }
+  return plan;
+}
+
+/** Lo que apunta el laboratorio cuando el marco ni siquiera cargó: no dice
+ *  nada del diseño (ver recordBrowserChecks). */
+export const LOAD_FAILURE_PREFIXES = ['La vista previa no cargó', 'No se pudo leer la vista previa'] as const;
 
 type Rgb = { r: number; g: number; b: number; a: number };
 
@@ -287,6 +334,31 @@ export function runSiteChecks(doc: Document, win: Window): string[] {
       `Contenido invisible sin JavaScript: ${hidden.slice(0, 3).map(describe).join(', ')} tiene opacidad 0. Lo que se oculta para animarlo solo se oculta si el JavaScript arrancó (html.js .clase).`,
     );
   }
+
+  // 7. Palabras partidas en los titulares (27/10/2026). overflow-wrap:anywhere
+  // evita que una palabra se salga de la pantalla, pero si el titular es
+  // demasiado grande para la letra, parte palabras normales por la mitad:
+  // «LOCALIZAMO / S LA AVERÍA», visto con una letra ancha en una plantilla
+  // pensada para letra estrecha. No era desborde y no salía en ninguna otra
+  // comprobación. Solo palabras de hasta 14 letras: las larguísimas del
+  // contenido exagerado SÍ tienen que partirse.
+  const broken = new Set<string>();
+  for (const el of Array.from(doc.body.querySelectorAll('h1, h2, h3, .marca'))) {
+    if (el.closest('[aria-hidden="true"]') || !visible(win, el)) continue;
+    const walker = doc.createTreeWalker(el, 4);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const text = node.textContent ?? '';
+      for (const m of text.matchAll(/[\p{L}\p{N}]+/gu)) {
+        if (m[0].length < 4 || m[0].length > 14) continue;
+        const range = doc.createRange();
+        range.setStart(node, m.index ?? 0);
+        range.setEnd(node, (m.index ?? 0) + m[0].length);
+        const tops = new Set(Array.from(range.getClientRects()).filter((r) => r.width > 0).map((r) => Math.round(r.top)));
+        if (tops.size > 1) broken.add(`Palabra partida: «${m[0]}» se corta a mitad en ${describe(el)} a ${W} px; el titular es demasiado grande para esta letra (baja su tamaño con clamp() o usa una letra más estrecha). Reglas: ${matchedRules(doc, el, 4).join(' | ')}`);
+      }
+    }
+  }
+  problems.push(...Array.from(broken).slice(0, 4));
   return problems;
 }
 
@@ -301,7 +373,7 @@ export function summarizeCheckRuns(runs: CheckRun[], max = 20): string[] {
     for (const p of run.problemas) {
       // Las medidas cambian con el ancho; se agrupa por la frase sin números.
       const key = p.replace(/\d+([.,]\d+)?/g, '#').slice(0, 160);
-      const where = `${run.ancho} px, contenido ${run.contenido}${run.pagina ? `, página ${run.pagina}` : ''}`;
+      const where = `${run.ancho} px, contenido ${run.contenido}${run.pagina ? `, página ${run.pagina}` : ''}${run.acento ? `, color ${run.acento}` : ''}${run.tipografia ? `, letra «${run.tipografia}»` : ''}`;
       if (!seen.has(key)) seen.set(key, [p, where]);
       else seen.get(key)?.push(where);
     }

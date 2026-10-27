@@ -6,6 +6,7 @@ import { buildSiteContentFromDraft, expandDraftToSiteContent } from './site-cont
 import { atribucionGoogleHtml, renderCitasHtml, renderResenasHtml } from './site-draft-markup';
 import { renderSitePage, type SiteRenderContext, type SiteTemplatePart, type SiteTemplateSource } from './site-template';
 import { pickSiteTemplateForSector } from './site-template-jobs';
+import { editorStyleOptions, parseTemplateStyle } from './site-style';
 import type { WebDraftCopy } from './web-draft-ai';
 import {
   DEFAULT_WEB_DRAFT_OFFER,
@@ -46,8 +47,10 @@ export function templateIconIds(marco: string): string[] {
 }
 
 async function loadTemplate(prisma: PrismaClient, id: string): Promise<SiteTemplateSource | null> {
-  const row = await prisma.siteTemplate.findUnique({ where: { id }, select: { marco: true, secciones: true } });
-  return row?.marco ? { marco: row.marco, secciones: row.secciones as Partial<Record<SiteTemplatePart, string>> } : null;
+  const row = await prisma.siteTemplate.findUnique({ where: { id }, select: { marco: true, secciones: true, estilo: true } });
+  return row?.marco
+    ? { marco: row.marco, secciones: row.secciones as Partial<Record<SiteTemplatePart, string>>, estilo: parseTemplateStyle(row.estilo) }
+    : null;
 }
 
 /**
@@ -66,12 +69,14 @@ export async function designForDraft(
     const template = await loadTemplate(prisma, picked.id);
     if (!template) return null;
     const iconIds = templateIconIds(template.marco);
+    const estilo = editorStyleOptions(template.estilo ?? null);
     const expanded = await expandDraftToSiteContent({
       businessName: input.businessName,
       kind: primaryTypeLabel(input.primaryType),
       city: input.city,
       copy: input.copy,
       iconIds,
+      estilo,
     });
     const content = expanded.ok && !('skipped' in expanded) ? expanded.content : buildSiteContentFromDraft(input.copy, null, iconIds);
     if (!expanded.ok) logError('web_draft_design.expand_failed', new Error(expanded.error), {}, 'warn');

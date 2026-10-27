@@ -34,6 +34,7 @@ export async function GET(req: NextRequest) {
       modelo: true,
       estado: true,
       validacion: true,
+      estilo: true,
       createdAt: true,
       updatedAt: true,
       _count: { select: { websites: true } },

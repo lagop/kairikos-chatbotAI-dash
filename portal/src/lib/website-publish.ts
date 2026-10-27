@@ -8,6 +8,7 @@ import type { WebDraftCopy } from './web-draft-ai';
 import { legalDataMissing, parseSiteContent } from './site-content';
 import { SITE_TEMPLATE_BASE } from './site-template-base';
 import type { SiteTemplatePart, SiteTemplateSource } from './site-template';
+import { parseTemplateStyle } from './site-style';
 
 // =============================================================================
 // Producto Web, Fase 1 — publicar el sitio de un cliente por SFTP en SU
@@ -327,9 +328,9 @@ export async function buildFilesForWebsite(
     }
     let template: SiteTemplateSource = SITE_TEMPLATE_BASE;
     if (website.templateId) {
-      const row = await prisma.siteTemplate.findUnique({ where: { id: website.templateId }, select: { marco: true, secciones: true } });
+      const row = await prisma.siteTemplate.findUnique({ where: { id: website.templateId }, select: { marco: true, secciones: true, estilo: true } });
       if (!row) return { ok: false, error: 'template_not_found' };
-      template = { marco: row.marco, secciones: row.secciones as Partial<Record<SiteTemplatePart, string>> };
+      template = { marco: row.marco, secciones: row.secciones as Partial<Record<SiteTemplatePart, string>>, estilo: parseTemplateStyle(row.estilo) };
     }
     return {
       ok: true,

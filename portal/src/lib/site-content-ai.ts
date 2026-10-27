@@ -23,6 +23,13 @@ import type { WebDraftCopy } from './web-draft-ai';
 // - Nunca reseñas, valoraciones ni nombres: no hay campo donde ponerlos. Lo
 //   de Google sale de Google y en vivo.
 //
+// 27/10/2026: si la plantilla admite el color y la letra de cada negocio
+// (site-style.ts), el modelo elige también entre los que ofrece, por el
+// oficio o por el nombre («Fontanería Azul»). Solo entre esos: un color
+// inventado no está medido. Así dos fontaneros del mismo pueblo con la misma
+// plantilla no salen iguales. Si no elige, o elige algo que no está, se queda
+// lo de la plantilla.
+//
 // Haiku por defecto: es ampliar un texto ya hecho con un esquema fijo, y
 // cuesta menos de un céntimo. ANTHROPIC_SITE_CONTENT_MODEL lo cambia en local.
 // Mismo molde que las demás integraciones: nunca lanza, parseo puro.
@@ -39,6 +46,14 @@ export interface DraftExpansionInput {
   copy: WebDraftCopy;
   /** Los iconos que tiene la plantilla elegida (sin «i-»). */
   iconIds: string[];
+  /** Los colores y las letras que admite la plantilla (la primera opción de
+   *  cada lista es la suya). Null si no admite cambios. */
+  estilo?: DraftStyleOptions | null;
+}
+
+export interface DraftStyleOptions {
+  muestras: { nombre: string; color: string }[];
+  parejas: { id: string; nombre: string }[];
 }
 
 export type ExpandDraftResult =
@@ -58,7 +73,9 @@ Devuelves SOLO un JSON, sin vallas de markdown:
   "garantias": [{"titulo": string, "texto": string}],         // 2 o 3
   "zona": {"texto": string, "lugares": [{"nombre": string}]}, // 3 a 6 lugares cercanos a su ciudad
   "faq": [{"pregunta": string, "respuesta": string}],         // 3 a 5
-  "ejemplos": [string]   // rutas de lo inventado: "cifras.0.valor", "precios.filas.1.precio", "garantias.0.texto", "zona.lugares.2.nombre", "faq.1.respuesta"…
+  "ejemplos": [string],  // rutas de lo inventado: "cifras.0.valor", "precios.filas.1.precio", "garantias.0.texto", "zona.lugares.2.nombre", "faq.1.respuesta"…
+  "color": string,       // solo si se te dan colores: el nombre de uno, el que mejor le vaya por su oficio o su nombre
+  "letra": string        // solo si se te dan letras: el nombre de una
 }
 
 Reglas:
@@ -78,6 +95,8 @@ function buildUser(input: DraftExpansionInput): string {
     input.copy.about ? `Sobre el negocio: ${input.copy.about}` : null,
     `Servicios:\n${input.copy.services.map((s, i) => `${i + 1}. ${s.name}: ${s.description}`).join('\n')}`,
     `Iconos disponibles: ${input.iconIds.join(', ') || 'check'}`,
+    input.estilo?.muestras.length ? `Colores disponibles: ${input.estilo.muestras.map((m) => m.nombre).join(', ')}` : null,
+    input.estilo?.parejas.length ? `Letras disponibles: ${input.estilo.parejas.map((p) => p.nombre).join(', ')}` : null,
   ]
     .filter(Boolean)
     .join('\n');
@@ -96,7 +115,7 @@ const arr = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? (v.fi
  * había). Recorta a los topes del esquema, descarta lo vacío, ajusta las
  * rutas de ejemplo y marca cualquier cifra que se haya quedado sin marcar.
  */
-export function buildSiteContentFromDraft(copy: WebDraftCopy, expansion: unknown, iconIds: string[]): SiteContent {
+export function buildSiteContentFromDraft(copy: WebDraftCopy, expansion: unknown, iconIds: string[], estilo: DraftStyleOptions | null = null): SiteContent {
   const e = (expansion && typeof expansion === 'object' ? expansion : {}) as Record<string, unknown>;
   const icons = Array.isArray(e.iconos_servicios) ? e.iconos_servicios : [];
   const iconOk = new Set(iconIds);
@@ -156,6 +175,18 @@ export function buildSiteContentFromDraft(copy: WebDraftCopy, expansion: unknown
     urlPublica: '',
     verificacionGoogle: '',
   };
+  // El color y la letra, por nombre y solo de los ofrecidos. La primera
+  // opción es la de la plantilla: se guarda vacía, como si no se eligiera.
+  const byName = <T extends { nombre: string }>(list: T[], value: unknown): T | undefined =>
+    typeof value === 'string' ? list.find((x) => x.nombre.toLowerCase() === value.trim().toLowerCase()) : undefined;
+  const color = estilo ? byName(estilo.muestras, e.color) : undefined;
+  const letra = estilo ? byName(estilo.parejas, e.letra) : undefined;
+  if (color || letra) {
+    content.estilo = {
+      acento: color && color !== estilo?.muestras[0] ? color.color.toLowerCase() : '',
+      tipografia: letra && letra !== estilo?.parejas[0] ? letra.id : '',
+    };
+  }
   // Las rutas que propuso el modelo, solo si existen (al recortar o descartar
   // elementos, una ruta puede haberse quedado apuntando a nada).
   const proposed = Array.isArray(e.ejemplos) ? e.ejemplos.filter((r): r is string => typeof r === 'string') : [];
@@ -204,7 +235,7 @@ export async function expandDraftToSiteContent(input: DraftExpansionInput): Prom
     const text = json.content?.find((b) => b.type === 'text')?.text ?? '';
     const expansion = parseExpansionResponse(text);
     if (!expansion) return { ok: false, error: 'anthropic_api_invalid_json' };
-    return { ok: true, content: buildSiteContentFromDraft(input.copy, expansion, input.iconIds), model };
+    return { ok: true, content: buildSiteContentFromDraft(input.copy, expansion, input.iconIds, input.estilo ?? null), model };
   } catch (err) {
     logError('site_content_ai.expand', err, { route: 'lib/site-content-ai.ts' }, 'warn');
     return { ok: false, error: err instanceof Error ? err.message : 'unknown error' };

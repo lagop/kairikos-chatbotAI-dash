@@ -13,10 +13,11 @@ import { WebBriefForm, type WebBriefFormValues } from '@/components/portal/WebBr
 import { WebQuoteCard, type ClientWebQuoteData, type ClientWebQuoteInvoiceData } from '@/components/portal/WebQuoteCard';
 import { WebDeliveryCard } from '@/components/portal/WebDeliveryCard';
 import { WebsiteEditorCard, type WebsiteEditorData } from '@/components/portal/WebsiteEditorCard';
-import { SiteContentEditor } from '@/components/portal/SiteContentEditor';
+import { SiteContentEditor, type SiteContentEditorProps } from '@/components/portal/SiteContentEditor';
 import { parseSiteContent } from '@/lib/site-content';
 import { SITE_TEMPLATE_BASE } from '@/lib/site-template-base';
 import { templateIconIds } from '@/lib/web-draft-design';
+import { editorStyleOptions, parseTemplateStyle } from '@/lib/site-style';
 import { buildDeliveryProgress, hasDeliveryTracking, type DeliveryProgress } from '@/lib/web-delivery';
 import { GOAL_LABELS, CONTENT_PROVIDED_BY_LABELS, type GOAL_OPTIONS, type CONTENT_PROVIDED_BY_OPTIONS } from '@/lib/web-brief-schema';
 
@@ -150,9 +151,11 @@ export default async function PortalWebProjectPage(
   // nunca habría visto su web para editarla.
   const parsedContent = siteRow?.content != null ? parseSiteContent(siteRow.content) : null;
   let iconIds: string[] = [];
+  let estilo: SiteContentEditorProps['estilo'] = null;
   if (parsedContent?.ok) {
-    const tpl = siteRow?.templateId ? await prisma.siteTemplate.findUnique({ where: { id: siteRow.templateId }, select: { marco: true } }) : null;
+    const tpl = siteRow?.templateId ? await prisma.siteTemplate.findUnique({ where: { id: siteRow.templateId }, select: { marco: true, estilo: true } }) : null;
     iconIds = templateIconIds(tpl?.marco ?? SITE_TEMPLATE_BASE.marco);
+    estilo = editorStyleOptions(parseTemplateStyle(tpl?.estilo));
   }
   const editor =
     siteRow && parsedContent?.ok ? (
@@ -164,6 +167,7 @@ export default async function PortalWebProjectPage(
         status={siteRow.status}
         lastPublishedAt={siteRow.lastPublishedAt?.toISOString() ?? null}
         iconIds={iconIds}
+        estilo={estilo}
         updatedAt={siteRow.updatedAt.toISOString()}
       />
     ) : website ? (

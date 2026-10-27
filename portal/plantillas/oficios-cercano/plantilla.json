@@ -2,5 +2,87 @@
   "nombre": "Oficios · Cercano",
   "sector": "trades",
   "variante": "clara y cálida, verde bosque y terracota",
-  "encargo": "Oficios de confianza para casas (fontanería, electricidad, reformas, pintura, carpintería, jardinería). Clara y cálida: crema, verde bosque profundo y terracota, con tintes pastel (salvia, melocotón, mantequilla). Titulares en Bricolage Grotesque y texto en DM Sans. Esquinas muy redondeadas, composición en mosaico (bento), subrayados dibujados a mano y una pegatina con la valoración. Dinámica: trazos que se dibujan, tarjetas que se inclinan, cifras que cuentan, línea del proceso que se rellena. Transmite cercanía, limpieza y trato de tú a tú (con usted). Escrita a mano."
+  "encargo": "Oficios de confianza para casas (fontanería, electricidad, reformas, pintura, carpintería, jardinería). Clara y cálida: crema, verde bosque profundo y terracota, con tintes pastel (salvia, melocotón, mantequilla). Titulares en Bricolage Grotesque y texto en DM Sans. Esquinas muy redondeadas, composición en mosaico (bento), subrayados dibujados a mano y una pegatina con la valoración. Dinámica: trazos que se dibujan, tarjetas que se inclinan, cifras que cuentan, línea del proceso que se rellena. Transmite cercanía, limpieza y trato de tú a tú (con usted). Escrita a mano.",
+  "estilo": {
+    "acento": {
+      "variables": [
+        {
+          "variable": "--coral",
+          "desde": "color",
+          "contra": [
+            "--blanco",
+            "--crema",
+            "--arena"
+          ],
+          "minimo": 4.5
+        },
+        {
+          "variable": "--coral-vivo",
+          "desde": "tono",
+          "contra": [
+            "--bosque"
+          ],
+          "minimo": 4.5
+        },
+        {
+          "variable": "--coral-claro",
+          "desde": "tono",
+          "contra": [
+            "--tinta"
+          ],
+          "minimo": 7
+        }
+      ],
+      "muestras": [
+        {
+          "nombre": "Terracota",
+          "color": "#b8431f"
+        },
+        {
+          "nombre": "Azul mar",
+          "color": "#1d5fa8"
+        },
+        {
+          "nombre": "Ciruela",
+          "color": "#8a3577"
+        },
+        {
+          "nombre": "Rojo teja",
+          "color": "#b3261e"
+        },
+        {
+          "nombre": "Petróleo",
+          "color": "#0f6b74"
+        },
+        {
+          "nombre": "Mostaza",
+          "color": "#8a6100"
+        }
+      ]
+    },
+    "tipografias": {
+      "titulares": "--display",
+      "texto": "--texto",
+      "parejas": [
+        {
+          "id": "cercana",
+          "nombre": "Cercana",
+          "titulares": "Bricolage Grotesque",
+          "texto": "DM Sans"
+        },
+        {
+          "id": "clasica",
+          "nombre": "Clásica",
+          "titulares": "Fraunces",
+          "texto": "Nunito Sans"
+        },
+        {
+          "id": "redonda",
+          "nombre": "Redonda",
+          "titulares": "Outfit",
+          "texto": "Figtree"
+        }
+      ]
+    }
+  }
 }

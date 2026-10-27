@@ -36,11 +36,12 @@ export default async function AdminSiteTemplatesPage(props: { searchParams: Prom
         modelo: true,
         estado: true,
         validacion: true,
+        estilo: true,
         createdAt: true,
         _count: { select: { websites: true } },
       },
     });
-    templates = rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString(), validacion: r.validacion as SiteTemplateRow['validacion'] }));
+    templates = rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString(), validacion: r.validacion as SiteTemplateRow['validacion'], estilo: r.estilo as SiteTemplateRow['estilo'] }));
   }
 
   return (
