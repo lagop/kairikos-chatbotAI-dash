@@ -126,6 +126,11 @@ export interface WebDraftSeed {
   primaryType: string | null;
   themeKey: string;
   copy: WebDraftCopy;
+  /** Webs con IA (27/10/2026): el contenido v2 y la plantilla del borrador,
+   *  si se generó con diseño de la biblioteca. La web comprada nace con ellos;
+   *  sus datos de ejemplo siguen marcados y no se publica hasta confirmarlos. */
+  content: unknown;
+  templateId: string | null;
 }
 
 /** Mismo criterio que /mi-web: lo que dejó solo cuenta como teléfono si lo es. */
@@ -147,7 +152,7 @@ export async function resolveWebDraft(prisma: PrismaClient, token: string): Prom
 
   const request = await prisma.publicDraftRequest.findUnique({
     where: { token },
-    select: { businessName: true, city: true, contact: true, primaryType: true, themeKey: true, copy: true },
+    select: { businessName: true, city: true, contact: true, primaryType: true, themeKey: true, copy: true, content: true, templateId: true },
   });
   if (request) {
     return {
@@ -160,6 +165,8 @@ export async function resolveWebDraft(prisma: PrismaClient, token: string): Prom
       primaryType: request.primaryType,
       themeKey: request.themeKey,
       copy: request.copy as unknown as WebDraftCopy,
+      content: request.content,
+      templateId: request.templateId,
     };
   }
 
@@ -167,6 +174,8 @@ export async function resolveWebDraft(prisma: PrismaClient, token: string): Prom
     where: { shareToken: token },
     select: {
       copy: true,
+      content: true,
+      templateId: true,
       themeKey: true,
       client: { select: { isInternal: true } },
       lead: { select: { contactName: true, contactPhone: true, summary: true, primaryType: true, searchLocation: true } },
@@ -183,6 +192,8 @@ export async function resolveWebDraft(prisma: PrismaClient, token: string): Prom
     primaryType: draft.lead.primaryType,
     themeKey: draft.themeKey,
     copy: draft.copy as unknown as WebDraftCopy,
+    content: draft.content,
+    templateId: draft.templateId,
   };
 }
 
@@ -321,6 +332,7 @@ export async function createClientWebsiteFromDraft(
           primaryType: seed.primaryType,
           themeKey: seed.themeKey,
           copy: seed.copy as unknown as object,
+          ...(seed.content != null ? { content: seed.content as object, templateId: seed.templateId } : {}),
           status: 'draft',
           formToken: createFormToken(),
           publishTarget: 'kairikos',
@@ -337,7 +349,7 @@ export async function createClientWebsiteFromDraft(
           action: 'created',
           // El testigo NO se guarda: es la llave de un enlace público. Basta
           // con de qué tipo de borrador venía.
-          after: { fromDraft: seed.kind, themeKey: row.themeKey, source: 'self_serve_checkout' },
+          after: { fromDraft: seed.kind, themeKey: row.themeKey, templateId: row.templateId, source: 'self_serve_checkout' },
           actorType: 'system',
           actorEmail: 'stripe:checkout.session.completed',
         },

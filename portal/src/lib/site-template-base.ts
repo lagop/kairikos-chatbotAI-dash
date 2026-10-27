@@ -98,6 +98,16 @@ p{margin:0 0 var(--s-4)}
 .preguntas summary{cursor:pointer;font-weight:600;list-style:none;display:flex;justify-content:space-between;gap:var(--s-4);overflow-wrap:anywhere}
 .preguntas summary::after{content:"+";color:var(--acento);font-size:1.4rem;line-height:1;transition:transform .2s ease}
 .preguntas details[open] summary::after{transform:rotate(45deg)}
+.citas{list-style:none;padding:0;margin:var(--s-5) 0}
+.cita{background:var(--marca);color:var(--blanco);border-radius:var(--radio);padding:var(--s-5);display:flex;flex-direction:column}
+.cita h3{font-size:1.1rem}
+.cita p{margin:0 0 var(--s-3)}
+.cita-autor{margin-top:auto;font-size:.85rem;color:#d7e0ea}
+.resena{margin:0;background:var(--blanco);border:1px solid var(--borde);border-radius:var(--radio);padding:var(--s-5);display:flex;flex-direction:column}
+.resena blockquote{margin:var(--s-2) 0 var(--s-3)}
+.resena figcaption{margin-top:auto;font-size:.85rem;color:var(--tinta-suave)}
+.resena-estrellas{color:#b07800;letter-spacing:.1em}
+.atribucion-google{font-size:.85rem;color:var(--tinta-suave);margin-top:var(--s-4)}
 .chips{display:flex;flex-wrap:wrap;gap:var(--s-2);list-style:none;padding:0;margin:var(--s-5) 0 0}
 .chips li{background:var(--blanco);border:1px solid var(--borde);border-radius:999px;padding:var(--s-1) var(--s-4)}
 .llamada{background:var(--acento);color:var(--blanco);text-align:center;padding-block:var(--s-8)}

@@ -102,7 +102,11 @@ CAMPOS (y ningún otro):
     {{#cifras}} {{valor}} {{etiqueta}} {{/cifras}} · {{#proceso}} {{titulo}} {{texto}} {{/proceso}} · {{#garantias}} {{titulo}} {{texto}} {{/garantias}}
     {{#precios.filas}} {{concepto}} {{precio}} {{detalle}} {{/precios.filas}} y {{precios.nota}}
     {{zona.texto}} y {{#zona.lugares}} {{nombre}} {{/zona.lugares}} · {{#faq}} {{pregunta}} {{{respuesta_html}}} {{/faq}} · {{#horario}} {{dias}} {{horas}} {{/horario}}
-  Opiniones (vienen de Google o del producto de reseñas): {{valoracion}} {{num_resenas}} {{maps_url}}, y en el borrador {{{citas_html}}} (elementos <li> para tu <ul>), {{{resenas_html}}} y {{{atribucion_google_html}}} justo debajo.
+  Opiniones (vienen de Google o del producto de reseñas): {{valoracion}} {{num_resenas}} {{maps_url}}, y en el borrador, ya escritos por el sistema (no cambies su HTML, dales estilo en tu CSS):
+    {{{citas_html}}} = elementos <li class="cita"><h3>título</h3><p>«cita»</p><span class="cita-autor">autor · reseña de Google</span></li> para tu <ul class="citas">
+    {{{resenas_html}}} = elementos <figure class="resena"><div class="resena-estrellas">★★★★★</div><blockquote><p>texto</p></blockquote><figcaption><strong>autor</strong> · hace un año · reseña de Google</figcaption></figure> para tu contenedor (rejilla de tarjetas)
+    {{{atribucion_google_html}}} = <p class="atribucion-google">aviso + logotipo de Google Maps</p>, justo debajo de las reseñas
+  El CSS del marco tiene que dar estilo a .cita, .cita-autor, .resena, .resena-estrellas y .atribucion-google, y envolver cada bloque en {{#citas_html}}…{{/citas_html}} / {{#resenas_html}}…{{/resenas_html}} (pueden venir vacíos).
   Fotos: {{fotos.portada}} {{fotos.equipo}} {{fotos.trabajo}} — pueden venir vacías: envuélvelas en {{#fotos.portada}}.
   Bloques libres (secciones bloque_*): {{titulo}} {{{texto_html}}} {{foto}} {{fotoAlt}} y {{#items}} {{texto}} {{icono}} {{/items}}.
   Formulario (sección contacto): <form id="kairikos-form"> con campos name="name", name="contact" (teléfono o email) y name="message", con sus <label>; el botón con {{#formulario.muestra}} disabled{{/formulario.muestra}}; un <p id="kairikos-form-note" hidden></p>; y {{#formulario.muestra}}<p>Formulario de muestra: en la web publicada, los mensajes le llegan al correo.</p>{{/formulario.muestra}}. Sin action ni onsubmit: el envío lo pone el sistema.

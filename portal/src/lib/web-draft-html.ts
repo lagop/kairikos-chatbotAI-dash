@@ -249,6 +249,12 @@ const PRIMARY_TYPE_LABEL: Readonly<Record<string, string>> = Object.freeze({
   insurance_agency: 'Seguros',
 });
 
+/** El oficio en palabras, o null. Lo usa también el borrador con plantilla de
+ *  diseño (web-draft-design.ts) para contarle a la IA qué negocio es. */
+export function primaryTypeLabel(primaryType: string | null): string | null {
+  return primaryType ? (PRIMARY_TYPE_LABEL[primaryType] ?? null) : null;
+}
+
 /** Por debajo de esto la valoración no sale en el borrador: es una propuesta
  *  de venta, y una nota floja en la portada juega en contra. */
 export const MIN_RATING_TO_SHOW = 4;

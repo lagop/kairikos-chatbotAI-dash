@@ -3,6 +3,7 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { isShareToken } from '@/lib/prospecting-share';
 import { renderWebDraftHtml } from '@/lib/web-draft-html';
 import type { WebDraftCopy } from '@/lib/web-draft-ai';
+import { renderDesignedDraft } from '@/lib/web-draft-design';
 import { logError } from '@/lib/observability';
 import { getWebDraftPurchase, purchaseCtaFor } from '@/lib/web-self-serve';
 import { KAIRIKOS_DEMO_URL } from '@/lib/portal-data';
@@ -49,25 +50,38 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ token: s
     const purchase = await getWebDraftPurchase(prisma, params.token, new Date()).catch(() => null);
     const { cta, offer } = purchaseCtaFor(purchase, params.token, KAIRIKOS_DEMO_URL);
 
-    const html = renderWebDraftHtml({
+    const subject = {
+      businessName: request.businessName,
+      primaryType: request.primaryType,
+      city: request.city,
+      address: null,
+      // El teléfono solo se pinta si lo que dejó ES un teléfono: en la
+      // portada de su propia web, un email donde debería ir el número
+      // queda raro y delata que esto se ha montado solo.
+      phone: /^[+0-9][0-9 ]{7,}$/.test(request.contact) ? request.contact : null,
+      rating: null,
+      reviewCount: null,
+    };
+    // Webs con IA (27/10/2026): con plantilla de la biblioteca, ese diseño;
+    // si no, o si algo falla al pintarla, el borrador de siempre.
+    const designed = await renderDesignedDraft(prisma, {
+      templateId: request.templateId,
+      content: request.content,
+      subject,
+      themeKey: request.themeKey,
       purchase: cta,
       offer,
-      subject: {
-        businessName: request.businessName,
-        primaryType: request.primaryType,
-        city: request.city,
-        address: null,
-        // El teléfono solo se pinta si lo que dejó ES un teléfono: en la
-        // portada de su propia web, un email donde debería ir el número
-        // queda raro y delata que esto se ha montado solo.
-        phone: /^[+0-9][0-9 ]{7,}$/.test(request.contact) ? request.contact : null,
-        rating: null,
-        reviewCount: null,
-      },
-      copy: request.copy as unknown as WebDraftCopy,
-      themeKey: request.themeKey,
-      generatedAt: request.createdAt,
     });
+    const html =
+      designed ??
+      renderWebDraftHtml({
+        purchase: cta,
+        offer,
+        subject,
+        copy: request.copy as unknown as WebDraftCopy,
+        themeKey: request.themeKey,
+        generatedAt: request.createdAt,
+      });
 
     return new NextResponse(html, {
       status: 200,

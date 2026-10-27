@@ -1,5 +1,6 @@
 import { defaultHomePage, type SiteContent } from './site-content';
 import type { SiteRenderContext } from './site-template';
+import { SAMPLE_DRAFT_MARKUP } from './site-draft-markup';
 
 // =============================================================================
 // Webs con IA, entrega 1 (27/10/2026) — contenidos de muestra para probar una
@@ -31,6 +32,10 @@ export const SAMPLE_RENDER_CONTEXT: SiteRenderContext = {
   formAction: null,
   borrador: true,
   bannerHtml: null,
+  // 27/10/2026 — con las citas y reseñas pintadas: sin ellas ninguna
+  // comprobación vería si la plantilla les da estilo, y el borrador real
+  // las lleva casi siempre.
+  ...SAMPLE_DRAFT_MARKUP,
 };
 
 const normal: SiteContent = {
