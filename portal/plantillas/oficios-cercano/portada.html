@@ -1,0 +1,17 @@
+<section class="portada" id="{{ancla}}"><div class="contenedor portada-mosaico">
+  <div class="portada-texto">
+    {{#horario_resumen}}<span class="rotulo">{{horario_resumen}}</span>{{/horario_resumen}}
+    <h1>{{titular}}</h1>
+    <svg class="garabato" viewBox="0 0 220 18" aria-hidden="true"><path d="M3 12c25-9 45 6 72-1s44-8 70 0 47 4 72-6"/></svg>
+    {{#subtitulo}}<p class="entradilla">{{subtitulo}}</p>{{/subtitulo}}
+    <div class="acciones">
+      {{#telefono_href}}<a class="boton" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg>Llamar ahora</a>{{/telefono_href}}
+      <a class="boton boton--claro" href="#contacto">Pedir presupuesto</a>
+    </div>
+  </div>
+  {{#fotos.portada}}<figure class="portada-foto">
+    <img src="{{fotos.portada}}" alt="Trabajo de {{nombre}}">
+    {{#valoracion}}<div class="pegatina"><strong>{{valoracion}}</strong><span class="estrellas" role="img" aria-label="Valoración en Google"><svg aria-hidden="true"><use href="#i-estrella"></use></svg><svg aria-hidden="true"><use href="#i-estrella"></use></svg><svg aria-hidden="true"><use href="#i-estrella"></use></svg><svg aria-hidden="true"><use href="#i-estrella"></use></svg><svg aria-hidden="true"><use href="#i-estrella"></use></svg></span><span>en Google{{#num_resenas}}<br>{{num_resenas}} reseñas{{/num_resenas}}</span></div>{{/valoracion}}
+    {{#direccion}}<figcaption class="horario-tarjeta"><svg aria-hidden="true"><use href="#i-mapa"></use></svg><span>{{direccion}}</span></figcaption>{{/direccion}}
+  </figure>{{/fotos.portada}}
+</div></section>

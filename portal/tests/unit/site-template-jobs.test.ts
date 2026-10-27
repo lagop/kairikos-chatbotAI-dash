@@ -139,6 +139,16 @@ describe('recordBrowserChecks', () => {
     expect(rows.get('p1')?.validacion.rondas).toBe(1);
   });
 
+  it('una hecha a mano con fallos queda fallida: la IA no reescribe un diseño que no es suyo', async () => {
+    const { prisma, rows } = fakePrisma([pending({ origen: 'manual' })]);
+    ai.repair.mockClear();
+    const r = await recordBrowserChecks(prisma, 'p1', [{ ancho: 1100, contenido: 'exagerado', problemas: ['Contraste insuficiente…'] }]);
+    expect(r).toMatchObject({ ok: true, estado: 'fallida' });
+    expect(rows.get('p1')?.estado).toBe('fallida');
+    expect(rows.get('p1')?.validacion.problemas).toEqual(['Contraste insuficiente… (visto a 1100 px, contenido exagerado)']);
+    expect(ai.repair).not.toHaveBeenCalled();
+  });
+
   it('sin rondas disponibles, fallida; y en otro estado no acepta medidas', async () => {
     const { prisma, rows } = fakePrisma([pending({ validacion: { rondas: MAX_REPAIR_ROUNDS, problemas: [], historial: [] } }), pending({ id: 'a1', estado: 'aprobada' })]);
     expect(await recordBrowserChecks(prisma, 'p1', [{ ancho: 360, contenido: 'normal', problemas: ['x'] }])).toMatchObject({ estado: 'fallida' });
