@@ -1,10 +1,13 @@
 import 'server-only';
-import type { PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import { encryptBuffer, decryptBuffer, parseHexKey } from './operator-crypto';
 import { logError } from './observability';
-import { buildWebsiteFiles, type WebsiteFile } from './website-build';
+import { buildDesignedWebsiteFiles, buildWebsiteFiles, type WebsiteFile } from './website-build';
 import { resolveWebsiteIntegrations } from './website-integrations';
 import type { WebDraftCopy } from './web-draft-ai';
+import { parseSiteContent } from './site-content';
+import { SITE_TEMPLATE_BASE } from './site-template-base';
+import type { SiteTemplatePart, SiteTemplateSource } from './site-template';
 
 // =============================================================================
 // Producto Web, Fase 1 — publicar el sitio de un cliente por SFTP en SU
@@ -26,6 +29,9 @@ import type { WebDraftCopy } from './web-draft-ai';
 // medio camino, el cliente se queda con su web anterior en vez de con un
 // directorio vacío. El coste es que un archivo que dejó de generarse
 // sobrevive; hoy solo generamos dos, así que no compensa el riesgo.
+// (27/10/2026: con las webs de varias páginas una página quitada seguiría en
+// su servidor. En nuestro alojamiento ya se limpia — storeHostedFiles —; por
+// SFTP queda para la entrega 5, la de varias páginas.)
 // =============================================================================
 
 const ENV_KEY = 'WEBSITE_PUBLISH_CREDENTIAL_ENCRYPTION_KEY';
@@ -233,6 +239,101 @@ export async function uploadFilesOverSftp(
   }
 }
 
+type WebsiteForBuild = {
+  id: string;
+  clientId: string;
+  formToken: string;
+  businessName: string;
+  primaryType: string | null;
+  themeKey: string;
+  phone: string | null;
+  address: string | null;
+  city: string | null;
+  copy: unknown;
+  content: unknown;
+  templateId: string | null;
+};
+
+export type BuildFilesResult = { ok: true; files: WebsiteFile[] } | { ok: false; error: string };
+
+/**
+ * Los archivos de un sitio, por el camino que le toque. La usan publicar y la
+ * vista previa del operador: una vista previa que no sea exactamente lo que
+ * se sube da confianza falsa.
+ *
+ * Webs con IA (27/10/2026): con `content` (v2) se pinta con su plantilla de
+ * diseño, o con la base si no tiene; sin `content`, como siempre, desde
+ * `copy` + `themeKey`. Nunca lanza.
+ */
+export async function buildFilesForWebsite(
+  prisma: PrismaClient,
+  website: WebsiteForBuild,
+  options: { portalOrigin: string; now: Date },
+): Promise<BuildFilesResult> {
+  const integrations = await resolveWebsiteIntegrations(prisma, website.clientId, options.now);
+  try {
+    if (website.content == null) {
+      return {
+        ok: true,
+        files: await buildWebsiteFiles({
+          integrations,
+          formToken: website.formToken,
+          // El dominio del portal sale de la variable pública que ya usan los
+          // correos: codificarlo aquí dejaría el formulario mudo el día que
+          // cambie, y nadie se enteraría hasta que un cliente se quejara.
+          portalOrigin: options.portalOrigin,
+          businessName: website.businessName,
+          primaryType: website.primaryType,
+          themeKey: website.themeKey,
+          phone: website.phone,
+          address: website.address,
+          city: website.city,
+          copy: website.copy as WebDraftCopy,
+          generatedAt: options.now,
+        }),
+      };
+    }
+    const parsed = parseSiteContent(website.content);
+    if (!parsed.ok) {
+      logError('website_publish.invalid_content', new Error('invalid_site_content'), { websiteId: website.id, issues: parsed.issues.slice(0, 5) }, 'warn');
+      return { ok: false, error: 'invalid_content' };
+    }
+    let template: SiteTemplateSource = SITE_TEMPLATE_BASE;
+    if (website.templateId) {
+      const row = await prisma.siteTemplate.findUnique({ where: { id: website.templateId }, select: { marco: true, secciones: true } });
+      if (!row) return { ok: false, error: 'template_not_found' };
+      template = { marco: row.marco, secciones: row.secciones as Partial<Record<SiteTemplatePart, string>> };
+    }
+    return {
+      ok: true,
+      files: await buildDesignedWebsiteFiles({
+        template,
+        content: parsed.content,
+        formToken: website.formToken,
+        portalOrigin: options.portalOrigin,
+        businessName: website.businessName,
+        themeKey: website.themeKey,
+        phone: website.phone,
+        address: website.address,
+        integrations,
+        now: options.now,
+      }),
+    };
+  } catch (err) {
+    logError('website_publish.build_failed', err, { websiteId: website.id }, 'warn');
+    return { ok: false, error: 'build_failed' };
+  }
+}
+
+/** Rutas de datos de ejemplo que quedan sin confirmar. Una web con datos
+ *  inventados no se publica: en el borrador enseñan posibilidades; en su web
+ *  serían publicidad engañosa con su nombre. */
+export function pendingExampleData(content: unknown): string[] {
+  if (content == null) return [];
+  const parsed = parseSiteContent(content);
+  return parsed.ok ? parsed.content.ejemplos : [];
+}
+
 /**
  * Publica el sitio: genera los archivos, los sube y deja constancia. Nunca
  * lanza — el resultado dice qué pasó, y el error queda también en la fila
@@ -255,31 +356,14 @@ export async function publishWebsite(
   // cliente. Con alojamiento propio no hay nada que pedirle.
   if (!hosted && !website.credential) return { ok: false, error: 'credential_missing' };
 
-  const portalOrigin = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://portal.kairikos.cloud';
-  const integrations = await resolveWebsiteIntegrations(prisma, website.clientId, now);
+  // Webs con IA (27/10/2026): con datos de ejemplo sin confirmar no se
+  // publica. Se comprueba antes de construir nada ni tocar el servidor.
+  if (pendingExampleData(website.content).length > 0) return { ok: false, error: 'example_data_pending' };
 
-  let files: WebsiteFile[];
-  try {
-    files = await buildWebsiteFiles({
-      integrations,
-      formToken: website.formToken,
-      // El dominio del portal sale de la variable pública que ya usan los
-      // correos: codificarlo aquí dejaría el formulario mudo el día que
-      // cambie, y nadie se enteraría hasta que un cliente se quejara.
-      portalOrigin,
-      businessName: website.businessName,
-      primaryType: website.primaryType,
-      themeKey: website.themeKey,
-      phone: website.phone,
-      address: website.address,
-      city: website.city,
-      copy: website.copy as unknown as WebDraftCopy,
-      generatedAt: now,
-    });
-  } catch (err) {
-    logError('website_publish.build_failed', err, { websiteId }, 'warn');
-    return { ok: false, error: 'build_failed' };
-  }
+  const portalOrigin = process.env.NEXT_PUBLIC_PORTAL_URL || 'https://portal.kairikos.cloud';
+  const built = await buildFilesForWebsite(prisma, website, { portalOrigin, now });
+  if (!built.ok) return { ok: false, error: built.error };
+  const files = built.files;
 
   // DOS DESTINOS, mismo resto. En el del cliente se sube por SFTP; en el
   // nuestro, los archivos se guardan y los sirve /sitios/[slug]. Construir,
@@ -341,6 +425,8 @@ export async function publishWebsite(
           // base de datos por nada.
           copy: website.copy as unknown as object,
           themeKey: website.themeKey,
+          content: (website.content ?? undefined) as Prisma.InputJsonValue | undefined,
+          templateId: website.templateId,
           publishedAt: now,
           actorType: actor.type,
         },
@@ -393,6 +479,23 @@ export async function publishWebsite(
  * Nunca borra antes de escribir, igual que la subida por SFTP: si algo falla
  * a medias, el sitio sigue sirviendo lo anterior en lugar de quedarse vacío.
  */
+const CONTENT_TYPES: Record<string, string> = {
+  html: 'text/html; charset=utf-8',
+  css: 'text/css; charset=utf-8',
+  js: 'text/javascript; charset=utf-8',
+  xml: 'application/xml; charset=utf-8',
+  txt: 'text/plain; charset=utf-8',
+  svg: 'image/svg+xml',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+};
+
+export function contentTypeFor(filePath: string): string {
+  return CONTENT_TYPES[filePath.split('.').pop()?.toLowerCase() ?? ''] ?? 'application/octet-stream';
+}
+
 export async function storeHostedFiles(
   prisma: PrismaClient,
   websiteId: string,
@@ -401,19 +504,19 @@ export async function storeHostedFiles(
 ): Promise<{ ok: true; filesUploaded: number } | { ok: false; error: string }> {
   try {
     for (const file of files) {
-      const contentType = file.path.endsWith('.html')
-        ? 'text/html; charset=utf-8'
-        : file.path.endsWith('.svg')
-          ? 'image/svg+xml'
-          : file.path.endsWith('.jpg')
-            ? 'image/jpeg'
-            : 'application/octet-stream';
+      const contentType = contentTypeFor(file.path);
       await prisma.clientWebsiteFile.upsert({
         where: { websiteId_path: { websiteId, path: file.path } },
         create: { websiteId, path: file.path, contentType, content: file.content, updatedAt: now },
         update: { contentType, content: file.content, updatedAt: now },
       });
     }
+    // Webs con IA (27/10/2026): con varias páginas, una página que el cliente
+    // quita tiene que dejar de servirse. Se borra DESPUÉS de escribir todo lo
+    // nuevo, así que un fallo a medias sigue sin dejar el sitio vacío.
+    await prisma.clientWebsiteFile.deleteMany({
+      where: { websiteId, path: { notIn: files.map((f) => f.path) } },
+    });
     return { ok: true, filesUploaded: files.length };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'store_error' };
@@ -443,7 +546,14 @@ export async function rollbackWebsite(
 
   await prisma.clientWebsite.update({
     where: { id: websiteId },
-    data: { copy: release.copy as unknown as object, themeKey: release.themeKey },
+    // El contenido v2 y la plantilla vuelven con la versión. Una versión
+    // anterior a las webs con IA no los tiene: la web vuelve a salir de copy.
+    data: {
+      copy: release.copy as unknown as object,
+      themeKey: release.themeKey,
+      content: release.content == null ? Prisma.DbNull : (release.content as Prisma.InputJsonValue),
+      templateId: release.templateId,
+    },
   });
   return publishWebsite(prisma, websiteId, actor, now);
 }
