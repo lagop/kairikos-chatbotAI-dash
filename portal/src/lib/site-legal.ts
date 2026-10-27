@@ -19,9 +19,10 @@ import type { SiteLegal } from './site-content';
 // - Las webs no ponen cookies (ni analítica ni publicidad), así que no hace
 //   falta aviso de cookies. El día que se añada Google Analytics (entrega 6,
 //   el SEO), hará falta el aviso y bloquear la analítica hasta que acepten.
-// - Las tipografías se cargan de Google Fonts, lo que comunica la IP del
-//   visitante a Google. Está declarado en la política de privacidad; lo
-//   limpio sería servirlas desde la propia web, y queda apuntado.
+// - Las tipografías se sirven desde la propia web (site-fonts.ts, desde el
+//   27/10/2026): el navegador del visitante no se conecta a Google, y por eso
+//   la política de privacidad ya no lo menciona. Si algún día una web vuelve
+//   a cargar algo de un tercero, hay que declararlo aquí.
 // =============================================================================
 
 export const LEGAL_PAGES = [
@@ -64,7 +65,6 @@ export function legalPageMarkdown(ruta: LegalPagePath, legal: SiteLegal, busines
           `**Qué datos tratamos y para qué.** Si nos escribe por el formulario de contacto, tratamos su nombre, su teléfono o correo y su mensaje para responder a su consulta y, si lo pide, preparar un presupuesto. No usamos sus datos para nada más ni los cedemos a terceros, salvo obligación legal.`,
           `**Base legal.** Su consentimiento al enviar el formulario y, cuando pide un presupuesto, la aplicación de medidas precontractuales a petición suya (art. 6.1.a y 6.1.b del RGPD).`,
           `**Encargado del tratamiento.** El alojamiento de esta web y la recepción de los mensajes del formulario los presta Kairikos, como encargado del tratamiento, con un contrato que le obliga a usar los datos solo para ese fin (art. 28 del RGPD).`,
-          `**Tipografías.** Esta web carga sus tipografías de Google Fonts, lo que hace que su navegador comunique su dirección IP a Google para descargarlas.`,
           `**Cuánto tiempo.** Conservamos los mensajes mientras sean necesarios para atender su consulta y, después, durante los plazos que exija la ley.`,
           `**Sus derechos.** Puede pedir acceso, rectificación, supresión, oposición, limitación y portabilidad de sus datos escribiendo a [${legal.email}](mailto:${legal.email}). Si considera que no se han atendido, puede reclamar ante la Agencia Española de Protección de Datos ([www.aepd.es](https://www.aepd.es)).`,
         ].join('\n\n'),

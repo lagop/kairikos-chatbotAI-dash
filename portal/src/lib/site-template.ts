@@ -8,6 +8,7 @@ import {
 } from './site-content';
 import { renderSiteMarkdown } from './site-markdown';
 import { LEGAL_PAGES, legalPageMarkdown } from './site-legal';
+import { localizeGoogleFonts } from './site-fonts';
 
 // =============================================================================
 // Webs con IA, entrega 1 (27/10/2026) — el motor que convierte una PLANTILLA
@@ -492,7 +493,9 @@ export function renderSitePage(
   if (ctx.formAction && rendered.some((r) => r.tipo === 'contacto')) {
     html = html.replace(/<\/body>/i, `${formScript(ctx.formAction, ctx.negocio.telefono, phoneHref(ctx.negocio.telefono))}\n</body>`);
   }
-  return html;
+  // Tipografías desde la propia web, nunca desde Google (site-fonts.ts). El
+  // borrador lo sirve siempre el portal; la web publicada lleva su copia.
+  return localizeGoogleFonts(html, ctx.borrador ? '/' : base);
 }
 
 export interface SiteFile {

@@ -501,6 +501,8 @@ const CONTENT_TYPES: Record<string, string> = {
   jpeg: 'image/jpeg',
   png: 'image/png',
   webp: 'image/webp',
+  // Las tipografías que viajan con la web (site-fonts.ts).
+  woff2: 'font/woff2',
 };
 
 export function contentTypeFor(filePath: string): string {

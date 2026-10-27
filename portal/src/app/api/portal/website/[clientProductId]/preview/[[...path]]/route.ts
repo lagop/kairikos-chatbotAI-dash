@@ -43,7 +43,11 @@ export async function GET(req: NextRequest, props: { params: Promise<{ clientPro
   let body: Uint8Array = new Uint8Array(file.content);
   if (contentType.startsWith('text/html')) {
     const dir = requested.includes('/') ? `${requested.slice(0, requested.lastIndexOf('/'))}/` : '';
-    const html = rewriteRelativeUrls(file.content.toString('utf8'), `/api/portal/website/${params.clientProductId}/preview/${dir}`)
+    // Las tipografías, de /fuentes/ del portal (son los mismos archivos que
+    // viajan con la web): pedirlas por aquí reconstruiría la web entera una
+    // vez por cada archivo de tipografía.
+    const page = file.content.toString('utf8').replace(/href="(?:\.\.\/)*fuentes\//g, 'href="/fuentes/');
+    const html = rewriteRelativeUrls(page, `/api/portal/website/${params.clientProductId}/preview/${dir}`)
       // Es una vista previa: que no la indexe nadie aunque alguien la enlace.
       .replace(/<\/head>/i, '<meta name="robots" content="noindex, nofollow">\n</head>');
     body = new TextEncoder().encode(html);
