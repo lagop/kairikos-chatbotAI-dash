@@ -4,6 +4,9 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { resolveContractedInstance } from '@/lib/client-product-access';
 import { decodeOAuthState } from '@/lib/seo-oauth-state';
+import { logError } from '@/lib/observability';
+import { addSearchConsoleSite, getMetaVerificationToken, KAIRIKOS_WEBSITE_SCOPES, verifySiteOwnership } from '@/lib/google-site-verification';
+import { verifyWebsiteInSearchConsole } from '@/lib/website-seo-publish';
 import {
   exchangeCodeForTokens,
   fetchVerifiedSites,
@@ -71,7 +74,7 @@ export async function GET(req: NextRequest) {
 
   const profile = await prisma.seoProfile.findUnique({
     where: { clientProductId: instance.clientProductId },
-    select: { siteUrl: true },
+    select: { siteUrl: true, cmsType: true, websiteId: true },
   });
   if (!profile?.siteUrl) {
     return redirectTo(`/portal/seo/${instance.clientProductId}?connect_error=no_site_url`);
@@ -83,7 +86,28 @@ export async function GET(req: NextRequest) {
   }
 
   const verifiedSites = await fetchVerifiedSites(tokens.accessToken);
-  const matchedSite = matchVerifiedSite(profile.siteUrl, verifiedSites);
+  let matchedSite = matchVerifiedSite(profile.siteUrl, verifiedSites);
+  // Entrega 6 de webs con IA: si la web es nuestra y nos dio los permisos
+  // de verificar, la verificamos nosotros en vez de mandarle a hacerlo.
+  const grantedScopes = tokens.scope ? tokens.scope.split(' ') : [];
+  if (
+    !matchedSite &&
+    profile.cmsType === 'kairikos' &&
+    profile.websiteId &&
+    KAIRIKOS_WEBSITE_SCOPES.every((s) => grantedScopes.includes(s))
+  ) {
+    const verified = await verifyWebsiteInSearchConsole(prisma, profile.websiteId, tokens.accessToken, profile.siteUrl, {
+      getToken: getMetaVerificationToken,
+      verify: verifySiteOwnership,
+      addSite: addSearchConsoleSite,
+    });
+    if (verified.ok) {
+      matchedSite = profile.siteUrl;
+    } else {
+      logError('seo_oauth.auto_verify_failed', new Error(verified.error), { clientId: resolved.clientId }, 'warn');
+      return redirectTo(`/portal/seo/${instance.clientProductId}?connect_error=auto_verify_failed`);
+    }
+  }
   if (!matchedSite) {
     return redirectTo('/portal/seo?connect_error=site_not_verified');
   }

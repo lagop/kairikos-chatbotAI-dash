@@ -79,13 +79,15 @@ function getRedirectUri(): string {
   return `${base.replace(/\/$/, '')}/api/portal/seo/oauth/callback`;
 }
 
-export async function buildAuthorizationUrl(state: string): Promise<string> {
+/** extraScopes: los de verificar una web de Kairikos (google-site-verification.ts),
+ *  que solo se piden cuando el SEO es sobre una de nuestras webs. */
+export async function buildAuthorizationUrl(state: string, extraScopes: readonly string[] = []): Promise<string> {
   const { clientId } = await getClientCredentials();
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: getRedirectUri(),
     response_type: 'code',
-    scope: SCOPE,
+    scope: [SCOPE, ...extraScopes].join(' '),
     access_type: 'offline',
     prompt: 'consent',
     include_granted_scopes: 'true',

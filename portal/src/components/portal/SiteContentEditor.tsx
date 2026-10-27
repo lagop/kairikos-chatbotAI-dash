@@ -65,6 +65,9 @@ export interface SiteContentEditorProps {
   status: string;
   lastPublishedAt: string | null;
   iconIds: string[];
+  /** Entrega 6: la versión cargada, para que un «Guardar» no pise lo que
+   *  el SEO haya publicado mientras tanto (el servidor responde 409). */
+  updatedAt?: string;
 }
 
 const SECTION_LABEL: Record<SiteSectionType, string> = {
@@ -116,6 +119,8 @@ const ERRORS: Record<string, string> = {
   invalid_public_url: 'La dirección de tu web no parece una dirección: tiene que empezar por https:// (por ejemplo https://fontaneriasuarez.es).',
   duplicate_entry_slug: 'Dos entradas del blog tienen la misma dirección. Cambia una de las dos.',
   reserved_page_path: 'Esa dirección de página la usa la web para otra cosa (blog, aviso legal…). Ponle otro nombre a la página.',
+  stale_content:
+    'Tu web ha cambiado mientras la editabas (por ejemplo, tu servicio de SEO ha publicado un artículo). Copia lo que acabas de escribir y recarga la página para seguir sobre la versión nueva.',
   too_small: 'Hay un título vacío (de una página, una entrada o una sección). Escríbelo y vuelve a guardar.',
 };
 
@@ -148,6 +153,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
   const [newPageTitle, setNewPageTitle] = useState('');
   const [view, setView] = useState<View>({ kind: 'pagina', index: 0 });
   const [autoSlugs, setAutoSlugs] = useState<Set<string>>(new Set());
+  const [baseUpdatedAt, setBaseUpdatedAt] = useState(props.updatedAt);
 
   const pageIndex = view.kind === 'pagina' ? Math.min(view.index, content.paginas.length - 1) : 0;
   const page = content.paginas[pageIndex];
@@ -205,7 +211,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
     const slug = uniqueSlug('entrada', content.blog.entradas.map((e) => e.slug), 'entrada');
     setAutoSlugs((prev) => new Set(prev).add(slug));
     update((d) => {
-      d.blog.entradas.unshift({ slug, titulo: 'Nueva entrada', metaTitulo: '', metaDescripcion: '', fecha: today(), extracto: '', texto: '', foto: '', fotoAlt: '', publicada: false, origen: 'cliente' });
+      d.blog.entradas.unshift({ slug, titulo: 'Nueva entrada', metaTitulo: '', metaDescripcion: '', fecha: today(), extracto: '', texto: '', foto: '', fotoAlt: '', publicada: false, origen: 'cliente', html: '' });
     });
   }
 
@@ -307,7 +313,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
     const res = await fetch(`/api/portal/website/${props.clientProductId}/content`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ content, phone: phone || null, address: address || null }),
+      body: JSON.stringify({ content, phone: phone || null, address: address || null, baseUpdatedAt }),
     });
     setBusy(null);
     if (!res.ok) {
@@ -316,6 +322,8 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
       setError(ERRORS[specific ?? body.error ?? 'internal_error'] ?? ERRORS.internal_error);
       return false;
     }
+    const saved = (await res.json().catch(() => ({}))) as { updatedAt?: string };
+    if (saved.updatedAt) setBaseUpdatedAt(saved.updatedAt);
     setDirty(false);
     setMessage('Guardado. Tu web publicada no cambia hasta que pulses «Publicar».');
     return true;
@@ -528,10 +536,20 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
                         <input type="date" className="input mt-1 w-full" value={entry.fecha} onChange={(e) => e.target.value && setEntry(i, { fecha: e.target.value })} />
                       </label>
                     </div>
-                    <label className="block text-sm">
-                      Texto (**negrita**, «## » para un subtítulo, listas con «- » y enlaces [texto](https://…))
-                      <textarea className="input mt-1 w-full" rows={14} maxLength={20000} value={entry.texto} onChange={(e) => setEntry(i, { texto: e.target.value })} />
-                    </label>
+                    {entry.html ? (
+                      // Entrega 6: los artículos del SEO llegan ya escritos (y
+                      // aprobados por ti en la página de SEO). Aquí se puede
+                      // retocar el título, la fecha o despublicar; el texto
+                      // se cambia pidiendo una revisión desde SEO.
+                      <p className="rounded-lg border border-kairikos-border p-3 text-sm text-kairikos-muted">
+                        Este artículo lo escribió tu servicio de SEO y lo aprobaste en la página de SEO. Puedes cambiar el título, la fecha o dejar de publicarlo; para cambiar el texto, pídenoslo desde soporte.
+                      </p>
+                    ) : (
+                      <label className="block text-sm">
+                        Texto (**negrita**, «## » para un subtítulo, listas con «- » y enlaces [texto](https://…))
+                        <textarea className="input mt-1 w-full" rows={14} maxLength={20000} value={entry.texto} onChange={(e) => setEntry(i, { texto: e.target.value })} />
+                      </label>
+                    )}
                     <label className="block text-sm">
                       Resumen para la lista del blog (si lo dejas vacío, se usa el principio del texto)
                       <textarea className="input mt-1 w-full" rows={2} maxLength={300} value={entry.extracto} onChange={(e) => setEntry(i, { extracto: e.target.value })} />

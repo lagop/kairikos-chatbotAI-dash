@@ -155,6 +155,15 @@ const entrySchema = z.object({
   publicada: z.boolean().default(true),
   /** Quién la escribió. 'seo' = la generó el producto SEO (entrega 6). */
   origen: z.enum(['cliente', 'seo']).default('cliente'),
+  /** Entrega 6: el cuerpo de un artículo del SEO, que llega en HTML (lo
+   *  escribe seo-content-ai.ts). Se limpia al guardarlo y OTRA VEZ al
+   *  pintarlo (site-template.ts): este campo también puede venir del PATCH
+   *  del cliente, y la web alojada se sirve desde el dominio del portal.
+   *  Con html, `texto` no se usa. */
+  html: optionalText(60000),
+  /** El SeoContentDraft del que salió: reintentar una publicación actualiza
+   *  esta entrada en vez de duplicarla. */
+  seoDraftId: z.string().uuid().optional(),
 });
 export type SiteBlogEntry = z.infer<typeof entrySchema>;
 
@@ -171,6 +180,20 @@ const blogSchema = z
  *  ninguna, no hay blog: ni página, ni enlace en el menú. */
 export function publishedEntries(content: { blog: { entradas: SiteBlogEntry[] } }): SiteBlogEntry[] {
   return content.blog.entradas.filter((e) => e.publicada).sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0));
+}
+
+/** «Desatascos en Telde» → 'desatascos-en-telde'. Para direcciones de
+ *  entradas y páginas que crea el servidor (el editor, que es componente de
+ *  cliente, tiene su propia copia). */
+export function slugify(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60)
+    .replace(/-+$/, '');
 }
 
 /** http(s), con un host con punto, sin query ni ancla. Es la web del propio
@@ -254,6 +277,11 @@ export const siteContentSchema = z
      *  cuando la web está en SU servidor; en el nuestro sale del dominio o
      *  del slug (website-publish.ts). Vacía, eso no se genera. */
     urlPublica: optionalText(200).refine((u) => u === '' || isPublicSiteUrl(u), 'invalid_public_url'),
+    /** Entrega 6: el código de la etiqueta de verificación de Search Console
+     *  (<meta name="google-site-verification" content="…">). Lo pone el
+     *  portal al conectar Search Console (google-site-verification.ts); el
+     *  motor lo pinta en la portada publicada. */
+    verificacionGoogle: z.string().trim().max(100).regex(/^[A-Za-z0-9_-]*$/).default(''),
     bloques: z.array(blockSchema).max(SITE_LIMITS.bloques).default([]),
     /** Rutas de los valores inventados: 'precios.filas.2.precio',
      *  'bloques.historia.texto'. Ver EXAMPLE_PATH_RE. */

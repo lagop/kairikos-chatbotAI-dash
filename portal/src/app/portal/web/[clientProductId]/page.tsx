@@ -164,6 +164,7 @@ export default async function PortalWebProjectPage(
         status={siteRow.status}
         lastPublishedAt={siteRow.lastPublishedAt?.toISOString() ?? null}
         iconIds={iconIds}
+        updatedAt={siteRow.updatedAt.toISOString()}
       />
     ) : website ? (
       <WebsiteEditorCard data={website} />

@@ -15,6 +15,8 @@ const ERROR_LABEL: Record<string, string> = {
   invalid_body: 'Revisa los datos del formulario.',
   forbidden: 'Este producto no está disponible en tu cuenta ahora mismo.',
   internal_error: 'Algo falló al guardar. Si persiste, contacta con el equipo técnico.',
+  no_kairikos_website: 'Todavía no tienes una web hecha por Kairikos en tu cuenta.',
+  website_required: 'Elige cuál de tus webs de Kairikos.',
 };
 
 const CMS_OPTIONS: { value: string; label: string }[] = [
@@ -31,17 +33,23 @@ export interface SeoProfile {
   toneOfVoice: string | null;
   siteUrl: string | null;
   cmsType: string | null;
+  websiteId?: string | null;
 }
 
 export function SeoProfileCard({
   profile,
   clientProductId,
+  kairikosWebsites = [],
 }: {
   profile: SeoProfile | null;
   /** Fase 2 multi-instancia — de qué web es esta tarjeta. Se manda en cada
    *  escritura: sin él, el servidor resolvería "la única que haya" y con dos
    *  webs se negaría, que es correcto pero inútil desde aquí. */
   clientProductId: string;
+  /** Entrega 6 de webs con IA: sus webs hechas por nosotros. Con alguna,
+   *  aparece «Mi web hecha por Kairikos»: el SEO publica en su blog y la
+   *  dirección se pone sola. */
+  kairikosWebsites?: { id: string; nombre: string }[];
 }) {
   const router = useRouter();
   const [businessDescription, setBusinessDescription] = useState(profile?.businessDescription ?? '');
@@ -49,6 +57,8 @@ export function SeoProfileCard({
   const [toneOfVoice, setToneOfVoice] = useState(profile?.toneOfVoice ?? '');
   const [siteUrl, setSiteUrl] = useState(profile?.siteUrl ?? '');
   const [cmsType, setCmsType] = useState(profile?.cmsType ?? '');
+  const [websiteId, setWebsiteId] = useState(profile?.websiteId ?? kairikosWebsites[0]?.id ?? '');
+  const cmsOptions = kairikosWebsites.length ? [{ value: 'kairikos', label: 'Mi web hecha por Kairikos' }, ...CMS_OPTIONS] : CMS_OPTIONS;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -67,6 +77,7 @@ export function SeoProfileCard({
     toneOfVoice: profile?.toneOfVoice ?? '',
     siteUrl: profile?.siteUrl ?? '',
     cmsType: profile?.cmsType ?? '',
+    websiteId: profile?.websiteId ?? kairikosWebsites[0]?.id ?? '',
   });
 
   const isDirty =
@@ -74,7 +85,8 @@ export function SeoProfileCard({
     targetAudience !== savedValues.targetAudience ||
     toneOfVoice !== savedValues.toneOfVoice ||
     siteUrl !== savedValues.siteUrl ||
-    cmsType !== savedValues.cmsType;
+    cmsType !== savedValues.cmsType ||
+    (cmsType === 'kairikos' && websiteId !== savedValues.websiteId);
 
   // Covers the exact failure mode above: reloading or closing the tab
   // with unsaved changes here no longer loses them silently — the
@@ -101,8 +113,11 @@ export function SeoProfileCard({
       if (businessDescription.trim()) body.businessDescription = businessDescription.trim();
       if (targetAudience.trim()) body.targetAudience = targetAudience.trim();
       if (toneOfVoice.trim()) body.toneOfVoice = toneOfVoice.trim();
-      if (siteUrl.trim()) body.siteUrl = siteUrl.trim();
+      // Con una web nuestra la dirección la pone el servidor (la del dominio
+      // o la provisional), no la que haya quedado escrita aquí.
+      if (siteUrl.trim() && cmsType !== 'kairikos') body.siteUrl = siteUrl.trim();
       if (cmsType) body.cmsType = cmsType;
+      if (cmsType === 'kairikos' && websiteId) body.websiteId = websiteId;
 
       const res = await fetch('/api/portal/seo/profile', {
         method: 'PATCH',
@@ -114,8 +129,12 @@ export function SeoProfileCard({
         setError(ERROR_LABEL[detail?.error] ?? 'No se pudo guardar.');
         return;
       }
+      // Con una web de Kairikos la dirección la pone el servidor: se enseña ya.
+      const saved = (await res.json().catch(() => null)) as { profile?: { siteUrl?: string | null } } | null;
+      const finalSiteUrl = saved?.profile?.siteUrl ?? siteUrl;
+      setSiteUrl(finalSiteUrl);
       setSaved(true);
-      setSavedValues({ businessDescription, targetAudience, toneOfVoice, siteUrl, cmsType });
+      setSavedValues({ businessDescription, targetAudience, toneOfVoice, siteUrl: finalSiteUrl, cmsType, websiteId });
       router.refresh();
     } catch (err) {
       setError(`Error de red: ${err instanceof Error ? err.message : 'desconocido'}`);
@@ -176,9 +195,23 @@ export function SeoProfileCard({
             placeholder="https://tunegocio.es"
             value={siteUrl}
             onChange={(e) => setSiteUrl(e.target.value)}
+            disabled={cmsType === 'kairikos'}
             data-testid="seo-profile-site-url"
           />
+          {cmsType === 'kairikos' ? <span className="text-xs text-kairikos-muted">Con tu web de Kairikos la ponemos nosotros al guardar.</span> : null}
         </label>
+        {cmsType === 'kairikos' && kairikosWebsites.length > 1 ? (
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-xs font-medium text-kairikos-muted">¿Cuál de tus webs?</span>
+            <select className="input" value={websiteId} onChange={(e) => setWebsiteId(e.target.value)} data-testid="seo-profile-website">
+              {kairikosWebsites.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.nombre}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-xs font-medium text-kairikos-muted">¿Qué usa tu sitio para publicar?</span>
           <select
@@ -188,7 +221,7 @@ export function SeoProfileCard({
             data-testid="seo-profile-cms-type"
           >
             <option value="">Selecciona una opción</option>
-            {CMS_OPTIONS.map((opt) => (
+            {cmsOptions.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>

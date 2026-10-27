@@ -6,6 +6,8 @@ import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { resolveContractedInstance } from '@/lib/client-product-access';
 import { logError } from '@/lib/observability';
+import { parseSiteContent } from '@/lib/site-content';
+import { publicSiteUrl } from '@/lib/website-publish';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -35,7 +37,11 @@ const BodySchema = z
     targetAudience: z.string().trim().min(1).max(1000).optional(),
     toneOfVoice: z.string().trim().min(1).max(500).optional(),
     siteUrl: z.string().trim().url().max(500).optional(),
-    cmsType: z.enum(['wordpress', 'wix', 'squarespace', 'other', 'no_se']).optional(),
+    // 'kairikos' (entrega 6 de webs con IA): la web es una de las nuestras;
+    // el SEO publica en su blog en vez de en WordPress.
+    cmsType: z.enum(['wordpress', 'wix', 'squarespace', 'other', 'no_se', 'kairikos']).optional(),
+    /** Con cmsType 'kairikos' y más de una web: cuál. Con una, se elige sola. */
+    websiteId: z.string().uuid().optional(),
     // Fase 2 multi-instancia — de qué web se está hablando. Opcional: sin él
     // se resuelve la única contratación de 'seo' que haya, que es lo que
     // hacía este endpoint antes.
@@ -81,17 +87,42 @@ export async function PATCH(req: NextRequest) {
   }
   const clientProduct = { id: instance.clientProductId, tenantId: instance.tenantId };
 
+  // Entrega 6: qué web de Kairikos. Solo una suya con contenido v2 (las de
+  // antes no tienen blog). Su dirección pasa a ser la del perfil, que es la
+  // que audita el SEO y la que se conecta con Search Console. undefined =
+  // no se toca; null = se desvincula (eligió otra plataforma).
+  let websiteId: string | null | undefined;
+  let linkedSiteUrl: string | undefined;
+  if (body.data.cmsType === 'kairikos') {
+    const sites = await prisma.clientWebsite.findMany({
+      where: { clientId: resolved.clientId, content: { not: Prisma.DbNull } },
+      select: { id: true, publishTarget: true, slug: true, customDomain: true, content: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    const chosen = body.data.websiteId ? sites.find((w) => w.id === body.data.websiteId) : sites.length === 1 ? sites[0] : undefined;
+    if (!chosen) {
+      return NextResponse.json({ error: sites.length ? 'website_required' : 'no_kairikos_website' }, { status: 400 });
+    }
+    websiteId = chosen.id;
+    const parsed = parseSiteContent(chosen.content);
+    linkedSiteUrl =
+      publicSiteUrl(chosen, parsed.ok ? parsed.content.urlPublica : '', process.env.NEXT_PUBLIC_PORTAL_URL || 'https://portal.kairikos.cloud') ?? undefined;
+  } else if (body.data.cmsType) {
+    websiteId = null;
+  }
+
   const existing = await prisma.seoProfile.findUnique({
     where: { clientProductId: clientProduct.id },
-    select: { id: true, businessDescription: true, targetAudience: true, toneOfVoice: true, siteUrl: true, cmsType: true },
+    select: { id: true, businessDescription: true, targetAudience: true, toneOfVoice: true, siteUrl: true, cmsType: true, websiteId: true },
   });
 
   const fields = {
     businessDescription: body.data.businessDescription,
     targetAudience: body.data.targetAudience,
     toneOfVoice: body.data.toneOfVoice,
-    siteUrl: body.data.siteUrl,
+    siteUrl: body.data.siteUrl ?? linkedSiteUrl,
     cmsType: body.data.cmsType,
+    ...(websiteId !== undefined ? { websiteId } : {}),
   };
 
   let profile;
@@ -103,6 +134,7 @@ export async function PATCH(req: NextRequest) {
         toneOfVoice: existing.toneOfVoice,
         siteUrl: existing.siteUrl,
         cmsType: existing.cmsType,
+        websiteId: existing.websiteId,
       };
       profile = await prisma.$transaction(async (tx) => {
         const updated = await tx.seoProfile.update({
@@ -113,6 +145,7 @@ export async function PATCH(req: NextRequest) {
             toneOfVoice: fields.toneOfVoice ?? existing.toneOfVoice,
             siteUrl: fields.siteUrl ?? existing.siteUrl,
             cmsType: fields.cmsType ?? existing.cmsType,
+            ...(websiteId !== undefined ? { websiteId } : {}),
           },
         });
         await tx.seoProfileAudit.create({
@@ -128,6 +161,7 @@ export async function PATCH(req: NextRequest) {
               toneOfVoice: updated.toneOfVoice,
               siteUrl: updated.siteUrl,
               cmsType: updated.cmsType,
+              websiteId: updated.websiteId,
             },
             actorType: 'client',
             actorEmail: `client:${resolved.clientId}`,
@@ -179,6 +213,7 @@ export async function PATCH(req: NextRequest) {
       toneOfVoice: profile.toneOfVoice,
       siteUrl: profile.siteUrl,
       cmsType: profile.cmsType,
+      websiteId: profile.websiteId,
     },
   });
 }

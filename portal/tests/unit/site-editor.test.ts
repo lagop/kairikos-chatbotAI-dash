@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({
   audits: [] as unknown[],
   template: null as null | { estado: string },
   operatorAuth: { ok: true, operatorId: 'op1' } as { ok: boolean; operatorId?: string },
+  websiteUpdatedAt: new Date('2026-10-27T10:00:00Z'),
 }));
 
 vi.mock('@/lib/observability', () => ({ logError: vi.fn() }));
@@ -14,7 +15,16 @@ vi.mock('@/lib/portal-session', () => ({ resolveClientFromSession: async () => s
 vi.mock('@/lib/operator-session', () => ({ authenticateAdminRequest: async () => state.operatorAuth }));
 vi.mock('@/lib/prisma', () => {
   const tx = {
-    clientWebsite: { update: async (a: unknown) => state.updates.push(a) },
+    clientWebsite: {
+      update: async (a: unknown) => state.updates.push(a),
+      // El guardado del cliente es condicional (entrega 6): solo escribe si
+      // nadie más ha escrito desde que abrió el editor.
+      updateMany: async (a: { where: { updatedAt?: Date } }) => {
+        if (a.where.updatedAt && a.where.updatedAt.getTime() !== state.websiteUpdatedAt.getTime()) return { count: 0 };
+        state.updates.push(a);
+        return { count: 1 };
+      },
+    },
     clientWebsiteAudit: { create: async (a: unknown) => state.audits.push(a) },
   };
   return {
@@ -92,7 +102,7 @@ describe('PATCH /api/portal/website/[id]/content', () => {
     content.paginas[0].secciones[3] = { ...content.paginas[0].secciones[3], oculta: true };
     const res = await patchContent(req({ content, phone: '600 11 22 33' }), params({ clientProductId: 'cp1' }));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, ejemplosPendientes: 0, datosLegalesQueFaltan: [] });
+    expect(await res.json()).toEqual({ ok: true, ejemplosPendientes: 0, datosLegalesQueFaltan: [], updatedAt: expect.any(String) });
     expect((state.updates[0] as { data: { phone: string } }).data.phone).toBe('600 11 22 33');
     const audit = state.audits[0] as { data: { after: Record<string, unknown>; actorEmail: string } };
     expect(audit.data.after).toMatchObject({ version: 2, ejemplosPendientes: 0, datosLegalesCompletos: true });
@@ -107,6 +117,16 @@ describe('PATCH /api/portal/website/[id]/content', () => {
     state.session = { clientId: 'c1', source: 'database' };
     expect((await patchContent(req({ content: { version: 2, paginas: [] } }), params({ clientProductId: 'cp1' }))).status).toBe(400);
     expect(state.updates).toHaveLength(0);
+  });
+
+  it('si la web cambió desde que abrió el editor (el SEO publicó un artículo), no pisa nada', async () => {
+    const stale = await patchContent(req({ content: SITE_CONTENT_SAMPLES.normal, baseUpdatedAt: '2026-10-27T09:00:00.000Z' }), params({ clientProductId: 'cp1' }));
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toEqual({ error: 'stale_content' });
+    expect(state.updates).toHaveLength(0);
+    const fresh = await patchContent(req({ content: SITE_CONTENT_SAMPLES.normal, baseUpdatedAt: '2026-10-27T10:00:00.000Z' }), params({ clientProductId: 'cp1' }));
+    expect(fresh.status).toBe(200);
+    expect((await fresh.json()).updatedAt).toEqual(expect.any(String));
   });
 
   it('una web de las de antes no se edita por aquí', async () => {

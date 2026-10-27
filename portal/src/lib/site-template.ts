@@ -11,6 +11,7 @@ import {
 import { renderSiteMarkdown } from './site-markdown';
 import { LEGAL_PAGES, legalPageMarkdown } from './site-legal';
 import { localizeGoogleFonts } from './site-fonts';
+import { sanitizeArticleHtml, toPlainText } from './seo-article-html';
 
 // =============================================================================
 // Webs con IA, entrega 1 (27/10/2026) — el motor que convierte una PLANTILLA
@@ -476,9 +477,11 @@ export function formatEntryDate(fecha: string): string {
 
 /** El extracto de la lista: el que escribió el cliente o el principio del
  *  texto, sin marcas de formato y cortado en una palabra. */
-export function entryExcerpt(entry: Pick<SiteBlogEntry, 'extracto' | 'texto'>, max = 180): string {
+export function entryExcerpt(entry: Pick<SiteBlogEntry, 'extracto' | 'texto'> & { html?: string }, max = 180): string {
   if (entry.extracto.trim()) return entry.extracto.trim();
-  const plain = entry.texto
+  // Las del SEO traen HTML: se le quitan las etiquetas (toPlainText es la
+  // misma limpieza que se usa para títulos).
+  const plain = (entry.html ? toPlainText(entry.html.replace(/<\/(p|h[2-6]|li)>/g, ' ')) : entry.texto)
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/^#{2,3} +/gm, '')
     .replace(/^[-*] +|^\d{1,2}[.)] +/gm, '')
@@ -500,7 +503,10 @@ function entryView(entry: SiteBlogEntry, base: string): View {
     extracto: entryExcerpt(entry),
     foto,
     foto_alt: entry.fotoAlt,
-    texto_html: renderSiteMarkdown(entry.texto),
+    // El HTML del SEO se limpia al pintarlo además de al guardarlo: el campo
+    // también lo puede mandar el editor del cliente, y una web alojada se
+    // sirve desde el dominio del portal.
+    texto_html: entry.html ? sanitizeArticleHtml(entry.html) : renderSiteMarkdown(entry.texto),
   };
 }
 
@@ -630,7 +636,7 @@ export function renderSitePage(
     html = fixCrossPageAnchors(html, page.ruta, options.anchorsByPage, phoneHref(ctx.negocio.telefono));
   }
   if (!ctx.borrador) {
-    html = html.replace(/<\/head>/i, `${headMeta(ctx, page, metaTitulo, metaDescripcion, options)}\n</head>`);
+    html = html.replace(/<\/head>/i, `${headMeta(ctx, page, metaTitulo, metaDescripcion, { ...options, verificacion: page.ruta === '' ? content.verificacionGoogle : '' })}\n</head>`);
   }
   // Tipografías desde la propia web, nunca desde Google (site-fonts.ts). El
   // borrador lo sirve siempre el portal; la web publicada lleva su copia.
@@ -781,12 +787,14 @@ function headMeta(
   page: Pick<SitePage, 'ruta'>,
   title: string,
   description: string,
-  options: { jsonLd?: object[]; ogType?: 'website' | 'article'; ogImage?: string | null },
+  options: { jsonLd?: object[]; ogType?: 'website' | 'article'; ogImage?: string | null; verificacion?: string },
 ): string {
   const url = ctx.siteUrl ? `${ctx.siteUrl}${page.ruta ? `${page.ruta}/` : ''}` : null;
   const image = absoluteUrl(ctx, options.ogImage ?? ctx.fotos.portada);
   const lines = [
     url ? `<link rel="canonical" href="${esc(url)}">` : '',
+    // Entrega 6: la verificación de Search Console, solo en la portada.
+    options.verificacion ? `<meta name="google-site-verification" content="${esc(options.verificacion)}">` : '',
     `<meta property="og:type" content="${options.ogType ?? 'website'}">`,
     `<meta property="og:title" content="${esc(title)}">`,
     description ? `<meta property="og:description" content="${esc(description)}">` : '',
