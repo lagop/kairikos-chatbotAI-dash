@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { logError } from '@/lib/observability';
+import { isPortalHost, resolveRequestedFile, rewriteRelativeUrls } from '@/lib/hosted-site-paths';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -26,7 +27,7 @@ export const runtime = 'nodejs';
  * el slug.
  */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   props: { params: Promise<{ slug: string; path?: string[] }> }
 ) {
   const params = await props.params;
@@ -36,8 +37,9 @@ export async function GET(
 
   // Sin ruta, index.html. Con ruta, lo que pidan — pero solo de ESTE sitio:
   // el path se usa como clave junto al websiteId, así que un '../' no lleva
-  // a ninguna parte, no hay sistema de ficheros detrás.
-  const requested = (params.path ?? []).join('/') || 'index.html';
+  // a ninguna parte, no hay sistema de ficheros detrás. Una ruta sin
+  // extensión es una página: servicios → servicios/index.html.
+  const requested = resolveRequestedFile(params.path);
 
   try {
     const site = await prisma.clientWebsite.findFirst({
@@ -61,7 +63,16 @@ export async function GET(
       });
     }
 
-    return new NextResponse(new Uint8Array(file.content), {
+    // Por la dirección provisional, las rutas relativas del HTML se resuelven
+    // contra /sitios/<slug>/… (ver hosted-site-paths.ts). Por un dominio
+    // propio la web vive en la raíz y se sirve tal cual.
+    let body: Uint8Array = new Uint8Array(file.content);
+    if (file.contentType.startsWith('text/html') && isPortalHost(req.headers.get('x-forwarded-host') ?? req.headers.get('host'), process.env.NEXT_PUBLIC_PORTAL_URL)) {
+      const dir = requested.includes('/') ? `${requested.slice(0, requested.lastIndexOf('/'))}/` : '';
+      body = new TextEncoder().encode(rewriteRelativeUrls(Buffer.from(file.content).toString('utf8'), `/sitios/${params.slug}/${dir}`));
+    }
+
+    return new NextResponse(body, {
       status: 200,
       headers: {
         'content-type': file.contentType,

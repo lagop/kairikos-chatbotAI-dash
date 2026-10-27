@@ -22,6 +22,8 @@ const mockState = vi.hoisted(() => ({
   createRelease: vi.fn(),
   findFirstRelease: vi.fn(),
   upsertFile: vi.fn(),
+  deleteFiles: vi.fn(),
+  findTemplate: vi.fn(),
   createAudit: vi.fn(),
   integrations: vi.fn(),
   logError: vi.fn(),
@@ -43,7 +45,9 @@ vi.mock('ssh2-sftp-client', () => ({
 }));
 
 import { publishWebsite, rollbackWebsite, hostedWebsiteUrl, slugify } from '@/lib/website-publish';
-import type { PrismaClient } from '@prisma/client';
+import { SITE_CONTENT_SAMPLES } from '@/lib/site-content-samples';
+import { SITE_TEMPLATE_BASE } from '@/lib/site-template-base';
+import { Prisma, type PrismaClient } from '@prisma/client';
 
 const COPY = { headline: 'Titular', subheadline: '', about: '', services: [], callToAction: '' };
 
@@ -64,6 +68,8 @@ function site(over: Record<string, unknown> = {}) {
     slug: 'fontaneria-ejemplo-ab12',
     customDomain: null,
     credential: null,
+    content: null,
+    templateId: null,
     ...over,
   };
 }
@@ -77,7 +83,11 @@ const prisma = {
     findFirst: (...a: unknown[]) => mockState.findFirstRelease(...a),
     create: (...a: unknown[]) => mockState.createRelease(...a),
   },
-  clientWebsiteFile: { upsert: (...a: unknown[]) => mockState.upsertFile(...a) },
+  clientWebsiteFile: {
+    upsert: (...a: unknown[]) => mockState.upsertFile(...a),
+    deleteMany: (...a: unknown[]) => mockState.deleteFiles(...a),
+  },
+  siteTemplate: { findUnique: (...a: unknown[]) => mockState.findTemplate(...a) },
   clientWebsiteAudit: { create: (...a: unknown[]) => mockState.createAudit(...a) },
   $transaction: (fn: (tx: unknown) => Promise<unknown>) =>
     fn({
@@ -94,6 +104,8 @@ beforeEach(() => {
   mockState.createRelease.mockReset().mockResolvedValue({});
   mockState.findRelease.mockReset();
   mockState.upsertFile.mockReset().mockResolvedValue({});
+  mockState.deleteFiles.mockReset().mockResolvedValue({ count: 0 });
+  mockState.findTemplate.mockReset().mockResolvedValue(null);
   mockState.createAudit.mockReset().mockResolvedValue({});
   mockState.integrations.mockReset().mockResolvedValue({ reviews: null, recallPhone: null });
   mockState.logError.mockReset();
@@ -203,5 +215,65 @@ describe('rollbackWebsite', () => {
     mockState.findFirstRelease.mockResolvedValue({ version: 5 });
     await rollbackWebsite(prismaConRelease, 'w1', 2, { type: 'operator' });
     expect(mockState.createRelease.mock.calls[0][0].data.version).toBe(6);
+  });
+
+  it('una versión anterior a las webs con IA vuelve sin contenido v2 ni plantilla', async () => {
+    await rollbackWebsite(prismaConRelease, 'w1', 2, { type: 'operator' });
+    const data = mockState.updateWebsite.mock.calls[0][0].data;
+    expect(data.templateId).toBeUndefined();
+    expect(data.content).toBe(Prisma.DbNull);
+  });
+});
+
+describe('webs con plantilla de diseño (27/10/2026)', () => {
+  const content = () => {
+    const c = JSON.parse(JSON.stringify(SITE_CONTENT_SAMPLES.normal));
+    c.ejemplos = [];
+    c.paginas.push({ ruta: 'servicios', titulo: 'Servicios', metaTitulo: '', metaDescripcion: '', secciones: [{ tipo: 'servicios' }] });
+    return c;
+  };
+
+  it('con contenido v2 y sin plantilla, publica con la base: una página por archivo', async () => {
+    mockState.findWebsite.mockResolvedValue(site({ content: content() }));
+    const result = await publishWebsite(prisma, 'w1', { type: 'operator' });
+    expect(result.ok).toBe(true);
+    const paths = mockState.upsertFile.mock.calls.map((c) => c[0].create.path);
+    expect(paths).toEqual(expect.arrayContaining(['index.html', 'servicios/index.html']));
+    expect(mockState.findTemplate).not.toHaveBeenCalled();
+    // La versión guarda el contenido v2, para poder volver a ella.
+    expect(mockState.createRelease.mock.calls[0][0].data.content.paginas).toHaveLength(2);
+  });
+
+  it('las páginas que ya no existen se borran DESPUÉS de escribir las nuevas', async () => {
+    mockState.findWebsite.mockResolvedValue(site({ content: content() }));
+    await publishWebsite(prisma, 'w1', { type: 'operator' });
+    const where = mockState.deleteFiles.mock.calls[0][0].where;
+    expect(where.websiteId).toBe('w1');
+    expect(where.path.notIn).toEqual(expect.arrayContaining(['index.html', 'servicios/index.html']));
+    expect(mockState.deleteFiles.mock.invocationCallOrder[0]).toBeGreaterThan(
+      Math.max(...mockState.upsertFile.mock.invocationCallOrder),
+    );
+  });
+
+  it('con datos de ejemplo sin confirmar no publica ni toca el servidor', async () => {
+    mockState.findWebsite.mockResolvedValue(site({ content: SITE_CONTENT_SAMPLES.normal }));
+    const result = await publishWebsite(prisma, 'w1', { type: 'operator' });
+    expect(result).toEqual({ ok: false, error: 'example_data_pending' });
+    expect(mockState.upsertFile).not.toHaveBeenCalled();
+  });
+
+  it('con plantilla, la lee de la base de datos; si no existe, no publica', async () => {
+    mockState.findWebsite.mockResolvedValue(site({ content: content(), templateId: 't1' }));
+    const result = await publishWebsite(prisma, 'w1', { type: 'operator' });
+    expect(result).toEqual({ ok: false, error: 'template_not_found' });
+    expect(mockState.findTemplate.mock.calls[0][0].where.id).toBe('t1');
+
+    mockState.findTemplate.mockResolvedValue({ marco: SITE_TEMPLATE_BASE.marco, secciones: SITE_TEMPLATE_BASE.secciones });
+    expect((await publishWebsite(prisma, 'w1', { type: 'operator' })).ok).toBe(true);
+  });
+
+  it('un contenido que no cumple el esquema no se publica', async () => {
+    mockState.findWebsite.mockResolvedValue(site({ content: { version: 2, paginas: [] } }));
+    expect(await publishWebsite(prisma, 'w1', { type: 'operator' })).toEqual({ ok: false, error: 'invalid_content' });
   });
 });

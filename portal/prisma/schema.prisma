@@ -3276,13 +3276,13 @@ model Lead {
   // placesPurgedAt: cuándo se borró por caducado (queda externalPlaceId).
   // phoneHash: huella del teléfono (sha256 de sus 9 últimas cifras) que se
   // queda al purgar, para que una baja siga bloqueando ese número.
-  placesFetchedAt DateTime? @map("places_fetched_at")
-  placesPurgedAt  DateTime? @map("places_purged_at")
-  phoneHash       String?   @map("phone_hash")
+  placesFetchedAt   DateTime? @map("places_fetched_at")
+  placesPurgedAt    DateTime? @map("places_purged_at")
+  phoneHash         String?   @map("phone_hash")
   // 'not_found' | 'closed': al pedir de nuevo los datos, Google dijo que el
   // place ID ya no existe o que el negocio cerró. Se enseña en la ficha en
   // vez de fallar en silencio; un refresco que funcione lo vacía.
-  placesUnavailable String? @map("places_unavailable")
+  placesUnavailable String?   @map("places_unavailable")
 
   client       ChatbotClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant       Tenant?              @relation(fields: [tenantId], references: [id], onDelete: SetNull)
@@ -3840,6 +3840,15 @@ model ClientWebsite {
   // la fila y no rehacer el contenido.
   copy Json
 
+  // Webs con IA (27/10/2026): el contenido v2 (SiteContent, ver
+  // site-content.ts) y la plantilla con la que se pinta. Con `content` a
+  // null la web sigue saliendo de `copy` + `themeKey` con la plantilla de
+  // código de siempre; con `content` y sin plantilla, con la plantilla base
+  // (site-template-base.ts). Dos caminos a propósito: las webs que ya
+  // existen no cambian de aspecto por un despliegue.
+  content    Json?
+  templateId String? @map("template_id") @db.Uuid
+
   // 'draft' | 'published'. Texto libre con los valores documentados aquí,
   // como el resto de columnas de estado del esquema.
   status String @default("draft")
@@ -3878,6 +3887,8 @@ model ClientWebsite {
   client        ChatbotClient             @relation(fields: [clientId], references: [id], onDelete: Cascade)
   clientProduct ClientProduct             @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
   tenant        Tenant?                   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  // Restrict: una plantilla en uso no se borra (se retira, ver SiteTemplate).
+  template      SiteTemplate?             @relation(fields: [templateId], references: [id], onDelete: Restrict)
   credential    WebsitePublishCredential?
   releases      ClientWebsiteRelease[]
   files         ClientWebsiteFile[]
@@ -3885,6 +3896,46 @@ model ClientWebsite {
 
   @@index([clientId])
   @@index([tenantId])
+  @@index([templateId])
+}
+
+// Webs con IA (27/10/2026) — una plantilla de diseño: marco + una pieza por
+// sección y por tipo de bloque libre, en Mustache (ver site-template.ts). No
+// depende de ningún negocio: la misma sirve a todos los de su sector, y el
+// contenido de cada uno va en ClientWebsite.content.
+//
+// INMUTABLE una vez creada: corregirla o rediseñarla es una fila NUEVA. Así
+// una versión publicada (ClientWebsiteRelease.templateId) se puede volver a
+// construir exactamente igual meses después, y cambiar una plantilla nunca
+// cambia en silencio las webs que ya la usan.
+model SiteTemplate {
+  id       String  @id @default(uuid()) @db.Uuid
+  nombre   String
+  // Familia del sector ('trades', 'beauty'…, las de web-draft-html.ts) y
+  // variante dentro de ella. Null = sirve para cualquiera.
+  sector   String?
+  variante String?
+  // 'manual' | 'ia'. Con 'ia', el modelo que la diseñó.
+  origen   String  @default("manual")
+  modelo   String?
+
+  marco     String
+  // { [pieza]: string } — las piezas de SITE_TEMPLATE_PARTS.
+  secciones Json
+
+  // 'borrador' | 'aprobada' | 'retirada'. Solo las aprobadas se ofrecen para
+  // webs nuevas; las retiradas siguen pintando las webs que ya las usan.
+  estado     String @default("borrador")
+  // El último informe de site-template-validate.ts y de las comprobaciones
+  // con navegador (entrega 2), para no repetirlas al servirla.
+  validacion Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  websites ClientWebsite[]
+
+  @@index([sector, estado])
 }
 
 // Cada publicación guarda una copia del contenido con el que salió. Es lo que
@@ -3900,8 +3951,13 @@ model ClientWebsiteRelease {
   // 1, 2, 3… por sitio. Se enseña tal cual al operador ("volver a la v3").
   version   Int
 
-  copy     Json
-  themeKey String @map("theme_key")
+  copy       Json
+  themeKey   String  @map("theme_key")
+  // Webs con IA (27/10/2026): el contenido v2 y la plantilla de esa versión.
+  // Sin FK a propósito: la versión es historia, y las plantillas no se
+  // modifican (ver SiteTemplate), así que el id basta para reconstruirla.
+  content    Json?
+  templateId String? @map("template_id") @db.Uuid
 
   publishedAt DateTime @default(now()) @map("published_at")
   // 'operator' | 'client' — quién publicó esta versión.

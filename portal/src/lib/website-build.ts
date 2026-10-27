@@ -3,6 +3,8 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { renderWebDraftHtml } from './web-draft-html';
 import type { WebDraftCopy } from './web-draft-ai';
+import type { SiteContent } from './site-content';
+import { renderSiteFiles, type SiteTemplateSource } from './site-template';
 
 // =============================================================================
 // Producto Web, Fase 1 — convertir un ClientWebsite en los archivos que se
@@ -127,6 +129,67 @@ export async function buildWebsiteFiles(input: WebsiteBuildInput): Promise<Websi
 
   files.unshift({ path: 'index.html', content: Buffer.from(stripDraftChrome(localHtml), 'utf8') });
   return files;
+}
+
+/** La foto de portada del sector, para subirla junto al HTML. Mismo criterio
+ *  que buildWebsiteFiles: el sitio publicado no le pide nada al portal. */
+async function sectorHeroFile(themeKey: string): Promise<WebsiteFile | null> {
+  const family = themeKey.split('-')[0];
+  for (const [ext, dest] of [['jpg', HERO_ASSET_PATH], ['svg', 'assets/portada.svg']] as const) {
+    try {
+      return { path: dest, content: await readFile(path.join(process.cwd(), 'public', 'web-draft', `${family}.${ext}`)) };
+    } catch {
+      // Sin foto del sector se prueba la siguiente; sin ninguna, la plantilla
+      // no pinta la figura (fotos.portada vacío).
+    }
+  }
+  return null;
+}
+
+export interface DesignedWebsiteBuildInput {
+  template: SiteTemplateSource;
+  content: SiteContent;
+  formToken?: string | null;
+  portalOrigin?: string | null;
+  businessName: string;
+  themeKey: string;
+  phone: string | null;
+  address: string | null;
+  integrations?: WebsiteBuildInput['integrations'];
+  now: Date;
+}
+
+/**
+ * Webs con IA, entrega 1 (27/10/2026) — los archivos de una web con
+ * plantilla de diseño y contenido v2 (site-template.ts). Una página por
+ * archivo ('index.html', 'servicios/index.html'…) más la foto de portada.
+ *
+ * Las mismas reglas que buildWebsiteFiles para lo que viene de otros
+ * productos: con recall, el teléfono es su número de recall; con reviews,
+ * las estrellas. Sin reviews no hay valoración: envejecería sola.
+ */
+export async function buildDesignedWebsiteFiles(input: DesignedWebsiteBuildInput): Promise<WebsiteFile[]> {
+  const formAction =
+    input.formToken && input.portalOrigin
+      ? `${input.portalOrigin.replace(/\/+$/, '')}/api/public/website-form/${input.formToken}`
+      : null;
+  const hero = await sectorHeroFile(input.themeKey);
+  const reviews = input.integrations?.reviews ?? null;
+  const pages = renderSiteFiles(input.template, input.content, {
+    negocio: {
+      nombre: input.businessName,
+      telefono: input.integrations?.recallPhone ?? input.phone,
+      direccion: input.address,
+      mapsUrl: input.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${input.businessName}, ${input.address}`)}` : null,
+      valoracion: reviews ? reviews.rating.toFixed(1).replace('.', ',') : null,
+      numResenas: reviews && reviews.count > 0 ? String(reviews.count) : null,
+    },
+    fotos: { portada: hero?.path ?? null, equipo: null, trabajo: null },
+    formAction,
+    borrador: false,
+    now: input.now,
+  });
+  return hero ? [...pages, hero] : pages;
 }
 
 /** Comprobación de que no queda ningún enlace al portal en lo que se publica.
