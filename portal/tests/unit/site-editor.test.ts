@@ -54,9 +54,11 @@ beforeEach(() => {
 
 describe('páginas legales', () => {
   const ctx = { ...SAMPLE_RENDER_CONTEXT, borrador: false, legales: true };
+  // Sin blog: aquí se miran las legales (el blog tiene sus pruebas en site-blog.test.ts).
+  const sinBlog = { ...SITE_CONTENT_SAMPLES.normal, blog: { ...SITE_CONTENT_SAMPLES.normal.blog, entradas: [] } };
 
   it('una web publicada lleva aviso legal, privacidad y cookies, con los datos del titular', () => {
-    const files = renderSiteFiles(SITE_TEMPLATE_BASE, SITE_CONTENT_SAMPLES.normal, ctx);
+    const files = renderSiteFiles(SITE_TEMPLATE_BASE, sinBlog, ctx);
     expect(files.map((f) => f.path)).toEqual(['index.html', 'aviso-legal/index.html', 'privacidad/index.html', 'cookies/index.html']);
     const aviso = files[1].content.toString('utf8');
     expect(aviso).toContain('B00000000');
@@ -75,7 +77,7 @@ describe('páginas legales', () => {
   });
 
   it('el borrador no lleva páginas legales', () => {
-    expect(renderSiteFiles(SITE_TEMPLATE_BASE, SITE_CONTENT_SAMPLES.normal, SAMPLE_RENDER_CONTEXT)).toHaveLength(1);
+    expect(renderSiteFiles(SITE_TEMPLATE_BASE, sinBlog, SAMPLE_RENDER_CONTEXT)).toHaveLength(1);
   });
 
   it('sabe qué datos legales faltan', () => {

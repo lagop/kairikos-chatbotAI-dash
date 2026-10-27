@@ -35,6 +35,8 @@ const ROOT_FIELDS = new Set([
   'titular', 'subtitulo', 'sobre', 'llamada_accion', 'servicios', 'cifras', 'proceso', 'precios', 'garantias', 'zona', 'faq', 'horario',
   // derivados que pone el motor
   'sobre_html', 'horario_resumen', 'ancla', 'menu', 'secciones', 'pagina', 'formulario', 'fotos', 'anio', 'legales',
+  // el blog (entrega 5): blog = {titulo, intro, href}; entradas en la lista; entrada en el artículo
+  'blog', 'entradas', 'entrada',
   // negocio
   'nombre', 'telefono', 'telefono_href', 'direccion', 'maps_url', 'valoracion', 'num_resenas',
   // Google en vivo, solo en el borrador
@@ -45,13 +47,13 @@ const ITEM_FIELDS = new Set([
   'nombre', 'descripcion', 'icono', 'valor', 'etiqueta', 'titulo', 'texto', 'texto_html', 'concepto', 'precio', 'detalle',
   'nota', 'filas', 'lugares', 'pregunta', 'respuesta', 'respuesta_html', 'dias', 'horas', 'href', 'actual', 'length',
   'foto', 'fotoAlt', 'items', 'id', 'tipo', 'portada', 'equipo', 'trabajo', 'muestra', 'meta_titulo', 'meta_descripcion',
-  'ruta', 'inicio',
+  'ruta', 'inicio', 'fecha', 'fecha_iso', 'extracto', 'foto_alt', 'intro',
 ]);
 /** Solo estos van con triple llave: son HTML que ya produjo el motor. Un
  *  campo de texto del cliente con triple llave sería una puerta a inyectar
  *  HTML en su propia web. */
 const RAW_FIELDS = new Set(['secciones', 'sobre_html', 'respuesta_html', 'texto_html', 'resenas_html', 'citas_html', 'atribucion_google_html']);
-const LIST_FIELDS = ['legales', 'servicios', 'cifras', 'proceso', 'garantias', 'faq', 'horario', 'precios.filas', 'zona.lugares', 'items', 'menu'];
+const LIST_FIELDS = ['legales', 'servicios', 'cifras', 'proceso', 'garantias', 'faq', 'horario', 'precios.filas', 'zona.lugares', 'items', 'menu', 'entradas'];
 
 const ALLOWED_HOSTS = new Set(['fonts.googleapis.com', 'fonts.gstatic.com']);
 /** Una plantilla generada pesa 30–60 KB; el tope es para que un desvarío del
@@ -210,17 +212,40 @@ export function validateSiteTemplate(input: SiteTemplateSource): TemplateValidat
     problems.push('el marco: el JavaScript de la plantilla es solo para el aspecto (menú, animaciones). No puede hacer peticiones, ni eval, ni tocar cookies o almacenamiento; el envío del formulario lo pone el sistema.');
   }
 
+  // Entrega 5: la canónica, las tarjetas para redes y los datos estructurados
+  // los pone el motor en cada página publicada (con la URL de cada una). Si
+  // la plantilla también los pusiera, saldrían duplicados y contradictorios.
+  if (/rel=["']canonical["']|property=["']og:|application\/ld\+json/i.test(marco)) {
+    problems.push('el marco: no pongas <link rel="canonical">, etiquetas og: ni datos estructurados (ld+json); los pone el sistema en cada página publicada.');
+  }
+
   // Las piezas
   for (const part of SITE_TEMPLATE_PARTS) {
     const source = template.secciones[part];
     if (!source || !source.trim()) {
-      problems.push(`falta la sección «${part}». Toda plantilla trae las ${SITE_SECTION_TYPES.length} secciones y los 4 tipos de bloque libre.`);
+      problems.push(`falta la sección «${part}». Toda plantilla trae las ${SITE_SECTION_TYPES.length} secciones, los 4 tipos de bloque libre y las 2 piezas del blog y la cabecera de página.`);
       continue;
     }
     checkPart(part, source, problems);
   }
   for (const extra of Object.keys(template.secciones)) {
     if (!(SITE_TEMPLATE_PARTS as readonly string[]).includes(extra)) problems.push(`sobra la sección «${extra}»: no existe en el esquema.`);
+  }
+
+  // El blog (entrega 5): la lista enlaza cada entrada y el artículo pinta su
+  // texto. Sin esto, la página existe y sale vacía sin que nada falle.
+  const lista = template.secciones.blog_lista ?? '';
+  if (lista && !/\{\{#entradas\}\}[\s\S]*\{\{href\}\}[\s\S]*\{\{\/entradas\}\}/.test(lista)) {
+    problems.push('la sección «blog_lista»: tiene que recorrer {{#entradas}}…{{/entradas}} con un enlace <a href="{{href}}">{{titulo}}</a> a cada entrada.');
+  }
+  const articulo = template.secciones.blog_articulo ?? '';
+  if (articulo && (!articulo.includes('{{{entrada.texto_html}}}') || !articulo.includes('{{entrada.titulo}}'))) {
+    problems.push('la sección «blog_articulo»: tiene que pintar {{entrada.titulo}} (en un <h1>) y el texto con {{{entrada.texto_html}}}.');
+  }
+
+  const cabecera = template.secciones.cabecera_pagina ?? '';
+  if (cabecera && !/<h1\b[^>]*>[\s\S]*\{\{pagina\.titulo\}\}[\s\S]*<\/h1>/.test(cabecera)) {
+    problems.push('la sección «cabecera_pagina»: tiene que llevar el título de la página en un <h1>: <h1>{{pagina.titulo}}</h1>.');
   }
 
   // El formulario: los nombres de campo que espera el buzón del portal

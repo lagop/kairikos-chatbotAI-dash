@@ -252,7 +252,34 @@ type WebsiteForBuild = {
   copy: unknown;
   content: unknown;
   templateId: string | null;
+  publishTarget: string;
+  slug: string | null;
+  customDomain: string | null;
 };
+
+/**
+ * Entrega 5 — la dirección pública de la web, con barra final, para el mapa
+ * del sitio, las canónicas y lo demás que Google quiere en absoluto.
+ *
+ * - En nuestro alojamiento: su dominio propio o, mientras no lo tenga, la
+ *   dirección provisional /sitios/<slug>.
+ * - En su servidor: la que haya escrito él en el editor (content.urlPublica).
+ *   No hay otra forma de saberla: el SFTP dice dónde subir, no dónde se ve.
+ * Sin ninguna, null: la web sale sin esas etiquetas, que es mejor que con
+ * una dirección inventada.
+ */
+export function publicSiteUrl(
+  website: Pick<WebsiteForBuild, 'publishTarget' | 'slug' | 'customDomain'>,
+  urlPublica: string,
+  portalOrigin: string,
+): string | null {
+  const withSlash = (u: string) => (u.endsWith('/') ? u : `${u}/`);
+  if (website.publishTarget === 'kairikos') {
+    const hosted = hostedWebsiteUrl(website, portalOrigin);
+    return hosted ? withSlash(hosted) : null;
+  }
+  return urlPublica ? withSlash(urlPublica) : null;
+}
 
 export type BuildFilesResult = { ok: true; files: WebsiteFile[] } | { ok: false; error: string };
 
@@ -317,6 +344,7 @@ export async function buildFilesForWebsite(
         address: website.address,
         integrations,
         now: options.now,
+        siteUrl: publicSiteUrl(website, parsed.content.urlPublica, options.portalOrigin),
       }),
     };
   } catch (err) {

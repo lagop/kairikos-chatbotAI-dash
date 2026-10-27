@@ -75,6 +75,8 @@ export const SITE_LIMITS = {
   bloqueItems: 8,
   paginas: 20,
   seccionesPorPagina: 30,
+  entradas: 200,
+  entradaTexto: 20000,
 } as const;
 
 const text = (max: number) => z.string().trim().max(max);
@@ -84,6 +86,12 @@ const optionalText = (max: number) => text(max).default('');
  *  con barras para anidar ('servicios/desatascos'). Sin puntos ni '..': la
  *  ruta acaba siendo un nombre de archivo en el servidor del cliente. */
 export const PAGE_PATH_RE = /^(?:[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*)?$/;
+
+/** Entrega 5: rutas que pone el motor y que una página del cliente no puede
+ *  pisar. El blog vive en blog/ y blog/<entrada>/; las legales, en las suyas;
+ *  fotos y tipografías, en assets/ y fuentes/. Una página «blog» del cliente
+ *  sobrescribiría el archivo del motor sin que nadie se enterara. */
+export const RESERVED_PAGE_ROOTS = ['blog', 'aviso-legal', 'privacidad', 'cookies', 'assets', 'fuentes'] as const;
 
 /** Ids de bloque e iconos: lo mismo, sin barras. Acaban en atributos HTML
  *  (id="bloque-…", href="#i-…") y en rutas de ejemplo. */
@@ -120,6 +128,62 @@ const blockSchema = z.object({
   items: z.array(z.object({ texto: text(160).min(1), icono: optionalText(40) })).max(SITE_LIMITS.bloqueItems).default([]),
 });
 export type SiteBlock = z.infer<typeof blockSchema>;
+
+/**
+ * Entrega 5 (27/10/2026) — una entrada del blog. La escribe el cliente desde
+ * el editor («Nueva entrada») o, en la entrega 6, el producto SEO; las dos
+ * acaban aquí y se publican igual. Cada una es una página propia
+ * (blog/<slug>/) con su título y descripción para Google.
+ */
+const entrySchema = z.object({
+  /** Su dirección: blog/<slug>/. No cambia al retocar el título, para que no
+   *  se rompan los enlaces que ya apunten a ella. */
+  slug: z.string().regex(SLUG_RE).max(80),
+  titulo: text(120).min(1),
+  metaTitulo: optionalText(70),
+  metaDescripcion: optionalText(160),
+  /** AAAA-MM-DD. La lista va de la más nueva a la más vieja. */
+  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  /** Lo que sale en la lista del blog. Vacío, el motor corta el texto. */
+  extracto: optionalText(300),
+  /** Formato básico (site-markdown.ts). */
+  texto: optionalText(SITE_LIMITS.entradaTexto),
+  foto: optionalText(200),
+  fotoAlt: optionalText(160),
+  /** Una entrada sin publicar se guarda pero no sale en la web: el cliente
+   *  puede escribirla en dos ratos. */
+  publicada: z.boolean().default(true),
+  /** Quién la escribió. 'seo' = la generó el producto SEO (entrega 6). */
+  origen: z.enum(['cliente', 'seo']).default('cliente'),
+});
+export type SiteBlogEntry = z.infer<typeof entrySchema>;
+
+const blogSchema = z
+  .object({
+    /** El rótulo del menú y el titular de la lista. */
+    titulo: text(30).min(1).default('Blog'),
+    intro: optionalText(300),
+    entradas: z.array(entrySchema).max(SITE_LIMITS.entradas).default([]),
+  })
+  .default({ titulo: 'Blog', intro: '', entradas: [] });
+
+/** Las entradas que salen en la web, de la más nueva a la más vieja. Sin
+ *  ninguna, no hay blog: ni página, ni enlace en el menú. */
+export function publishedEntries(content: { blog: { entradas: SiteBlogEntry[] } }): SiteBlogEntry[] {
+  return content.blog.entradas.filter((e) => e.publicada).sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0));
+}
+
+/** http(s), con un host con punto, sin query ni ancla. Es la web del propio
+ *  cliente y el servidor nunca va a pedirla, así que basta con que tenga
+ *  forma. */
+export function isPublicSiteUrl(u: string): boolean {
+  try {
+    const url = new URL(u);
+    return (url.protocol === 'https:' || url.protocol === 'http:') && url.hostname.includes('.') && !url.search && !url.hash;
+  } catch {
+    return false;
+  }
+}
 
 const datosSchema = z.object({
   titular: text(90).min(1),
@@ -183,6 +247,13 @@ export const siteContentSchema = z
     paginas: z.array(pageSchema).min(1).max(SITE_LIMITS.paginas),
     datos: datosSchema,
     legal: legalSchema,
+    blog: blogSchema,
+    /** La dirección pública de la web ('https://fontaneriasuarez.es/'), para
+     *  lo que Google necesita en absoluto: mapa del sitio, canónicas,
+     *  tarjetas para redes y datos estructurados. Solo la escribe el cliente
+     *  cuando la web está en SU servidor; en el nuestro sale del dominio o
+     *  del slug (website-publish.ts). Vacía, eso no se genera. */
+    urlPublica: optionalText(200).refine((u) => u === '' || isPublicSiteUrl(u), 'invalid_public_url'),
     bloques: z.array(blockSchema).max(SITE_LIMITS.bloques).default([]),
     /** Rutas de los valores inventados: 'precios.filas.2.precio',
      *  'bloques.historia.texto'. Ver EXAMPLE_PATH_RE. */
@@ -198,6 +269,14 @@ export const siteContentSchema = z
     c.paginas.forEach((p, i) => {
       if (rutas.has(p.ruta)) ctx.addIssue({ code: 'custom', path: ['paginas', i, 'ruta'], message: 'duplicate_page_path' });
       rutas.add(p.ruta);
+      if ((RESERVED_PAGE_ROOTS as readonly string[]).includes(p.ruta.split('/')[0])) {
+        ctx.addIssue({ code: 'custom', path: ['paginas', i, 'ruta'], message: 'reserved_page_path' });
+      }
+    });
+    const slugs = new Set<string>();
+    c.blog.entradas.forEach((e, i) => {
+      if (slugs.has(e.slug)) ctx.addIssue({ code: 'custom', path: ['blog', 'entradas', i, 'slug'], message: 'duplicate_entry_slug' });
+      slugs.add(e.slug);
     });
     if (!rutas.has('')) ctx.addIssue({ code: 'custom', path: ['paginas'], message: 'missing_home_page' });
     const ids = new Set<string>();

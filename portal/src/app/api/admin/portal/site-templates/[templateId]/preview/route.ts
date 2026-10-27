@@ -2,7 +2,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateAdminRequest } from '@/lib/operator-session';
 import { SAMPLE_RENDER_CONTEXT, SITE_CONTENT_SAMPLES, type SiteContentSampleName } from '@/lib/site-content-samples';
-import { renderSitePage, type SiteTemplatePart, type SiteTemplateSource } from '@/lib/site-template';
+import { renderSiteFiles, type SiteTemplatePart, type SiteTemplateSource } from '@/lib/site-template';
+import type { SiteContent } from '@/lib/site-content';
 import { SITE_TEMPLATE_BASE } from '@/lib/site-template-base';
 
 export const dynamic = 'force-dynamic';
@@ -38,17 +39,25 @@ export async function GET(req: NextRequest, props: { params: Promise<{ templateI
 
   const requested = req.nextUrl.searchParams.get('contenido') ?? 'normal';
   const sample = (requested in SITE_CONTENT_SAMPLES ? requested : 'normal') as SiteContentSampleName;
-  const content = SITE_CONTENT_SAMPLES[sample];
+  // Las fotos de muestra son rutas del sitio publicado (assets/…); aquí no
+  // existen, así que se sirve la del sector, como la portada.
+  const content = JSON.parse(JSON.stringify(SITE_CONTENT_SAMPLES[sample]).replaceAll('"assets/portada.jpg"', '"/web-draft/trades.jpg"')) as SiteContent;
+  // Entrega 5: ?pagina=blog o ?pagina=blog/entrada-1 (las comprobaciones
+  // miden también la lista y el artículo). Vacío, la portada.
+  const pagina = (req.nextUrl.searchParams.get('pagina') ?? '').replace(/^\/+|\/+$/g, '');
   if (req.nextUrl.searchParams.get('comprobar') === '1') {
     template = { ...template, marco: template.marco.replace(/<script\b[\s\S]*?<\/script>/gi, '') };
   }
 
   let html: string;
   try {
-    html = renderSitePage(template, content, content.paginas[0], {
+    const files = renderSiteFiles(template, content, {
       ...SAMPLE_RENDER_CONTEXT,
       fotos: { portada: '/web-draft/trades.jpg', equipo: null, trabajo: null },
     });
+    const file = files.find((f) => f.path === (pagina ? `${pagina}/index.html` : 'index.html'));
+    if (!file) return NextResponse.json({ error: 'page_not_found' }, { status: 404 });
+    html = file.content.toString('utf8');
   } catch (err) {
     return NextResponse.json({ error: 'render_failed', detail: err instanceof Error ? err.message : '' }, { status: 422 });
   }

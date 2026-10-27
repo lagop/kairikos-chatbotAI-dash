@@ -80,7 +80,7 @@ ALINEACIÓN Y REPARTO (se mide con código en 360, 1100 y 1280 px):
 - Párrafos de 60–75 caracteres por línea.
 - Ningún texto tapado: si numeras con un círculo (::before), deja sitio de sobra para que no pise el título.
 
-ROBUSTEZ: el dueño puede escribir hasta ${SITE_LIMITS.servicios} servicios, ${SITE_LIMITS.preciosFilas} precios, ${SITE_LIMITS.faq} preguntas, ${SITE_LIMITS.lugares} lugares, títulos de tres líneas, o poner solo uno de cada. Nada desborda de 360 a 1600 px: minmax(0,1fr), min-width:0, overflow-wrap:anywhere en los textos del cliente, nunca anchos fijos para contenido. Contraste AA en TODO el texto, también en los rótulos pequeños.
+ROBUSTEZ: la web puede tener varias páginas además de la portada (servicios, contacto, el blog): el mismo marco sirve para todas. El dueño puede escribir hasta ${SITE_LIMITS.servicios} servicios, ${SITE_LIMITS.preciosFilas} precios, ${SITE_LIMITS.faq} preguntas, ${SITE_LIMITS.lugares} lugares, títulos de tres líneas, o poner solo uno de cada. Nada desborda de 360 a 1600 px: minmax(0,1fr), min-width:0, overflow-wrap:anywhere en los textos del cliente, nunca anchos fijos para contenido. Contraste AA en TODO el texto, también en los rótulos pequeños.
 
 MENÚ: lo compone el sistema (como mucho cinco enlaces cortos). Va en una línea en escritorio con white-space:nowrap; por debajo de 1100 px, botón de menú desplegable. La cabecera es fija, se compacta y gana sombra al hacer scroll, y lleva el botón de llamar siempre visible.
 
@@ -110,6 +110,11 @@ CAMPOS (y ningún otro):
   El CSS del marco tiene que dar estilo a .cita, .cita-autor, .resena, .resena-estrellas y .atribucion-google, y envolver cada bloque en {{#citas_html}}…{{/citas_html}} / {{#resenas_html}}…{{/resenas_html}} (pueden venir vacíos).
   Fotos: {{fotos.portada}} {{fotos.equipo}} {{fotos.trabajo}} — pueden venir vacías: envuélvelas en {{#fotos.portada}}.
   Bloques libres (secciones bloque_*): {{titulo}} {{{texto_html}}} {{foto}} {{fotoAlt}} y {{#items}} {{texto}} {{icono}} {{/items}}.
+  Blog (dos piezas que son páginas enteras dentro de <main>, con su propio <h1>; el sistema pone debajo la sección «llamada»):
+    blog_lista: {{blog.titulo}} {{blog.intro}} y {{#entradas}} <a href="{{href}}">{{titulo}}</a> <time datetime="{{fecha_iso}}">{{fecha}}</time> {{extracto}} {{foto}} {{foto_alt}} {{/entradas}} — de 1 a 200 entradas, títulos de tres líneas, extractos vacíos, fotos que pueden faltar: tarjetas en rejilla.
+    blog_articulo: {{entrada.titulo}} en el <h1>, {{entrada.fecha}} {{entrada.fecha_iso}} {{entrada.foto}} {{entrada.foto_alt}}, el texto con {{{entrada.texto_html}}} (párrafos, h2, h3, listas, enlaces; columna de lectura de 60–75 caracteres) y un enlace de vuelta <a href="{{blog.href}}">{{blog.titulo}}</a>.
+  cabecera_pagina: la cabecera de las páginas interiores (servicios, contacto, legales…), que no llevan portada: <h1>{{pagina.titulo}}</h1> en una banda con el carácter de la portada pero más baja. Las demás secciones van debajo.
+  En el marco, {{#blog}}<a href="{{blog.href}}">{{blog.titulo}}</a>{{/blog}} si quieres enlazar el blog en el pie (viene vacío si no hay entradas). La canónica, las etiquetas og: y los datos estructurados los pone el sistema: no los escribas.
   Formulario (sección contacto): <form id="kairikos-form"> con campos name="name", name="contact" (teléfono o email) y name="message", con sus <label>; el botón con {{#formulario.muestra}} disabled{{/formulario.muestra}}; un <p id="kairikos-form-note" hidden></p>; y {{#formulario.muestra}}<p>Formulario de muestra: en la web publicada, los mensajes le llegan al correo.</p>{{/formulario.muestra}}. Sin action ni onsubmit: el envío lo pone el sistema.
   Iconos: un sprite al principio del <body> (<svg aria-hidden="true" style="display:none">) con 10–14 <symbol id="i-…"> dibujados por ti con trazo coherente, propios del sector, e incluye siempre i-check, i-telefono e i-estrella.
 

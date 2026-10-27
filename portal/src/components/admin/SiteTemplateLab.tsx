@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CHECK_SAMPLES, CHECK_WIDTHS, runSiteChecks, type CheckRun } from '@/lib/site-template-checks';
+import { CHECK_PAGES, CHECK_SAMPLES, CHECK_WIDTHS, runSiteChecks, type CheckRun } from '@/lib/site-template-checks';
 
 // =============================================================================
 // Webs con IA, entrega 2 (27/10/2026) — el taller de plantillas del operador.
@@ -56,12 +56,12 @@ const SECTORES = [
 const BUSY = new Set(['generando', 'corrigiendo']);
 
 /** Pinta la plantilla en un marco fuera de la vista y la mide. */
-async function measure(templateId: string, contenido: (typeof CHECK_SAMPLES)[number], ancho: number): Promise<CheckRun> {
+async function measure(templateId: string, contenido: (typeof CHECK_SAMPLES)[number], pagina: string, ancho: number): Promise<CheckRun> {
   const iframe = document.createElement('iframe');
   iframe.setAttribute('aria-hidden', 'true');
   iframe.tabIndex = -1;
   Object.assign(iframe.style, { position: 'fixed', left: '-20000px', top: '0', width: `${ancho}px`, height: '900px', border: '0' });
-  iframe.src = `/api/admin/portal/site-templates/${templateId}/preview?contenido=${contenido}&comprobar=1`;
+  iframe.src = `/api/admin/portal/site-templates/${templateId}/preview?contenido=${contenido}&pagina=${encodeURIComponent(pagina)}&comprobar=1`;
   document.body.appendChild(iframe);
   try {
     await new Promise<void>((resolve, reject) => {
@@ -71,12 +71,12 @@ async function measure(templateId: string, contenido: (typeof CHECK_SAMPLES)[num
     });
     const doc = iframe.contentDocument;
     const win = iframe.contentWindow;
-    if (!doc || !win) return { ancho, contenido, problemas: ['No se pudo leer la vista previa.'] };
+    if (!doc || !win) return { ancho, contenido, pagina, problemas: ['No se pudo leer la vista previa.'] };
     await doc.fonts?.ready;
     await new Promise((r) => setTimeout(r, 300));
-    return { ancho, contenido, problemas: runSiteChecks(doc, win) };
+    return { ancho, contenido, pagina, problemas: runSiteChecks(doc, win) };
   } catch (err) {
-    return { ancho, contenido, problemas: [`La vista previa no cargó (${err instanceof Error ? err.message : 'error'}).`] };
+    return { ancho, contenido, pagina, problemas: [`La vista previa no cargó (${err instanceof Error ? err.message : 'error'}).`] };
   } finally {
     iframe.remove();
   }
@@ -121,11 +121,11 @@ export function SiteTemplateLab({
     checkingRef.current = pending.id;
     (async () => {
       const runs: CheckRun[] = [];
-      const total = CHECK_SAMPLES.length * CHECK_WIDTHS.length;
-      for (const contenido of CHECK_SAMPLES) {
+      const total = CHECK_PAGES.length * CHECK_WIDTHS.length;
+      for (const { contenido, pagina } of CHECK_PAGES) {
         for (const ancho of CHECK_WIDTHS) {
           setChecking({ id: pending.id, done: runs.length, total });
-          runs.push(await measure(pending.id, contenido, ancho));
+          runs.push(await measure(pending.id, contenido, pagina, ancho));
         }
       }
       setChecking({ id: pending.id, done: total, total });
@@ -310,6 +310,12 @@ function Previews({ id }: { id: string }) {
           Ver con contenido {s}
         </a>
       ))}
+      <a className="underline" href={`/api/admin/portal/site-templates/${id}/preview?contenido=normal&pagina=blog`} target="_blank" rel="noopener">
+        Ver el blog
+      </a>
+      <a className="underline" href={`/api/admin/portal/site-templates/${id}/preview?contenido=normal&pagina=blog/como-detectar-una-fuga`} target="_blank" rel="noopener">
+        Ver un artículo
+      </a>
     </p>
   );
 }

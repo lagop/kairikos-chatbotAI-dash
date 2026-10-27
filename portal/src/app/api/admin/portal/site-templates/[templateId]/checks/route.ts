@@ -23,11 +23,12 @@ const BodySchema = z.object({
       z.object({
         ancho: z.number().int().min(320).max(2000),
         contenido: z.enum(CHECK_SAMPLES),
+        pagina: z.string().max(80).regex(/^[a-z0-9/-]*$/).optional(),
         problemas: z.array(z.string().max(2000)).max(40),
       }),
     )
     .min(1)
-    .max(12),
+    .max(24),
 });
 
 export async function POST(req: NextRequest, props: { params: Promise<{ templateId: string }> }) {

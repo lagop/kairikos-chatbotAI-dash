@@ -71,7 +71,10 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ clientP
           action: 'content_updated',
           after: {
             version: 2,
-            paginas: content.paginas.length,
+            paginas: content.paginas.map((p) => p.ruta || '/'),
+            // Solo cuántas y cuáles: el texto de las entradas está en la fila.
+            entradasBlog: content.blog.entradas.map((e) => ({ slug: e.slug, publicada: e.publicada })),
+            urlPublica: content.urlPublica,
             bloques: content.bloques.length,
             seccionesOcultas: content.paginas.flatMap((p) => p.secciones.filter((s) => s.oculta).map((s) => s.tipo)),
             ejemplosPendientes: content.ejemplos.length,
