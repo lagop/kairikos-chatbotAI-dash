@@ -16,10 +16,10 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
     "uso": "display",
     "categoria": "Serif",
     "files": [
-      "fraunces-italic-100-900-latin-ext.woff2",
-      "fraunces-italic-100-900-latin.woff2",
-      "fraunces-normal-100-900-latin-ext.woff2",
-      "fraunces-normal-100-900-latin.woff2"
+      "italic-100-900-latin-ext.woff2",
+      "italic-100-900-latin.woff2",
+      "normal-100-900-latin-ext.woff2",
+      "normal-100-900-latin.woff2"
     ]
   },
   "Playfair Display": {
@@ -27,10 +27,10 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
     "uso": "display",
     "categoria": "Serif",
     "files": [
-      "playfair-display-italic-400-900-latin-ext.woff2",
-      "playfair-display-italic-400-900-latin.woff2",
-      "playfair-display-normal-400-900-latin-ext.woff2",
-      "playfair-display-normal-400-900-latin.woff2"
+      "italic-400-900-latin-ext.woff2",
+      "italic-400-900-latin.woff2",
+      "normal-400-900-latin-ext.woff2",
+      "normal-400-900-latin.woff2"
     ]
   },
   "Lora": {
@@ -38,10 +38,10 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
     "uso": "display",
     "categoria": "Serif",
     "files": [
-      "lora-italic-400-700-latin-ext.woff2",
-      "lora-italic-400-700-latin.woff2",
-      "lora-normal-400-700-latin-ext.woff2",
-      "lora-normal-400-700-latin.woff2"
+      "italic-400-700-latin-ext.woff2",
+      "italic-400-700-latin.woff2",
+      "normal-400-700-latin-ext.woff2",
+      "normal-400-700-latin.woff2"
     ]
   },
   "Libre Baskerville": {
@@ -49,10 +49,10 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
     "uso": "display",
     "categoria": "Serif",
     "files": [
-      "libre-baskerville-italic-400-700-latin-ext.woff2",
-      "libre-baskerville-italic-400-700-latin.woff2",
-      "libre-baskerville-normal-400-700-latin-ext.woff2",
-      "libre-baskerville-normal-400-700-latin.woff2"
+      "italic-400-700-latin-ext.woff2",
+      "italic-400-700-latin.woff2",
+      "normal-400-700-latin-ext.woff2",
+      "normal-400-700-latin.woff2"
     ]
   },
   "Bitter": {
@@ -60,10 +60,10 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
     "uso": "display",
     "categoria": "Serif",
     "files": [
-      "bitter-italic-100-900-latin-ext.woff2",
-      "bitter-italic-100-900-latin.woff2",
-      "bitter-normal-100-900-latin-ext.woff2",
-      "bitter-normal-100-900-latin.woff2"
+      "italic-100-900-latin-ext.woff2",
+      "italic-100-900-latin.woff2",
+      "normal-100-900-latin-ext.woff2",
+      "normal-100-900-latin.woff2"
     ]
   },
   "DM Serif Display": {
@@ -71,10 +71,10 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
     "uso": "display",
     "categoria": "Serif",
     "files": [
-      "dm-serif-display-italic-400-latin-ext.woff2",
-      "dm-serif-display-italic-400-latin.woff2",
-      "dm-serif-display-normal-400-latin-ext.woff2",
-      "dm-serif-display-normal-400-latin.woff2"
+      "italic-400-latin-ext.woff2",
+      "italic-400-latin.woff2",
+      "normal-400-latin-ext.woff2",
+      "normal-400-latin.woff2"
     ]
   },
   "Cormorant Garamond": {
@@ -82,10 +82,10 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
     "uso": "display",
     "categoria": "Serif",
     "files": [
-      "cormorant-garamond-italic-300-700-latin-ext.woff2",
-      "cormorant-garamond-italic-300-700-latin.woff2",
-      "cormorant-garamond-normal-300-700-latin-ext.woff2",
-      "cormorant-garamond-normal-300-700-latin.woff2"
+      "italic-300-700-latin-ext.woff2",
+      "italic-300-700-latin.woff2",
+      "normal-300-700-latin-ext.woff2",
+      "normal-300-700-latin.woff2"
     ]
   },
   "Young Serif": {
@@ -93,8 +93,8 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
     "uso": "display",
     "categoria": "Serif",
     "files": [
-      "young-serif-normal-400-latin-ext.woff2",
-      "young-serif-normal-400-latin.woff2"
+      "normal-400-latin-ext.woff2",
+      "normal-400-latin.woff2"
     ]
   },
   "Instrument Serif": {
@@ -102,10 +102,10 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
     "uso": "display",
     "categoria": "Serif",
     "files": [
-      "instrument-serif-italic-400-latin-ext.woff2",
-      "instrument-serif-italic-400-latin.woff2",
-      "instrument-serif-normal-400-latin-ext.woff2",
-      "instrument-serif-normal-400-latin.woff2"
+      "italic-400-latin-ext.woff2",
+      "italic-400-latin.woff2",
+      "normal-400-latin-ext.woff2",
+      "normal-400-latin.woff2"
     ]
   },
   "Bricolage Grotesque": {
@@ -113,8 +113,8 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
     "uso": "display",
     "categoria": "Sans Serif",
     "files": [
-      "bricolage-grotesque-normal-200-800-latin-ext.woff2",
-      "bricolage-grotesque-normal-200-800-latin.woff2"
+      "normal-200-800-latin-ext.woff2",
+      "normal-200-800-latin.woff2"
     ]
   },
   "Space Grotesk": {
@@ -122,8 +122,8 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
     "uso": "display",
     "categoria": "Sans Serif",
     "files": [
-      "space-grotesk-normal-300-700-latin-ext.woff2",
-      "space-grotesk-normal-300-700-latin.woff2"
+      "normal-300-700-latin-ext.woff2",
+      "normal-300-700-latin.woff2"
     ]
   },
   "Syne": {
@@ -131,8 +131,8 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
     "uso": "display",
     "categoria": "Sans Serif",
     "files": [
-      "syne-normal-400-800-latin-ext.woff2",
-      "syne-normal-400-800-latin.woff2"
+      "normal-400-800-latin-ext.woff2",
+      "normal-400-800-latin.woff2"
     ]
   },
   "Oswald": {
@@ -140,8 +140,8 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
     "uso": "display",
     "categoria": "Sans Serif",
     "files": [
-      "oswald-normal-200-700-latin-ext.woff2",
-      "oswald-normal-200-700-latin.woff2"
+      "normal-200-700-latin-ext.woff2",
+      "normal-200-700-latin.woff2"
     ]
   },
   "Bebas Neue": {
@@ -149,8 +149,8 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
     "uso": "display",
     "categoria": "Sans Serif",
     "files": [
-      "bebas-neue-normal-400-latin-ext.woff2",
-      "bebas-neue-normal-400-latin.woff2"
+      "normal-400-latin-ext.woff2",
+      "normal-400-latin.woff2"
     ]
   },
   "Barlow Condensed": {
@@ -158,42 +158,42 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
     "uso": "display",
     "categoria": "Sans Serif",
     "files": [
-      "barlow-condensed-italic-100-latin-ext.woff2",
-      "barlow-condensed-italic-100-latin.woff2",
-      "barlow-condensed-italic-200-latin-ext.woff2",
-      "barlow-condensed-italic-200-latin.woff2",
-      "barlow-condensed-italic-300-latin-ext.woff2",
-      "barlow-condensed-italic-300-latin.woff2",
-      "barlow-condensed-italic-400-latin-ext.woff2",
-      "barlow-condensed-italic-400-latin.woff2",
-      "barlow-condensed-italic-500-latin-ext.woff2",
-      "barlow-condensed-italic-500-latin.woff2",
-      "barlow-condensed-italic-600-latin-ext.woff2",
-      "barlow-condensed-italic-600-latin.woff2",
-      "barlow-condensed-italic-700-latin-ext.woff2",
-      "barlow-condensed-italic-700-latin.woff2",
-      "barlow-condensed-italic-800-latin-ext.woff2",
-      "barlow-condensed-italic-800-latin.woff2",
-      "barlow-condensed-italic-900-latin-ext.woff2",
-      "barlow-condensed-italic-900-latin.woff2",
-      "barlow-condensed-normal-100-latin-ext.woff2",
-      "barlow-condensed-normal-100-latin.woff2",
-      "barlow-condensed-normal-200-latin-ext.woff2",
-      "barlow-condensed-normal-200-latin.woff2",
-      "barlow-condensed-normal-300-latin-ext.woff2",
-      "barlow-condensed-normal-300-latin.woff2",
-      "barlow-condensed-normal-400-latin-ext.woff2",
-      "barlow-condensed-normal-400-latin.woff2",
-      "barlow-condensed-normal-500-latin-ext.woff2",
-      "barlow-condensed-normal-500-latin.woff2",
-      "barlow-condensed-normal-600-latin-ext.woff2",
-      "barlow-condensed-normal-600-latin.woff2",
-      "barlow-condensed-normal-700-latin-ext.woff2",
-      "barlow-condensed-normal-700-latin.woff2",
-      "barlow-condensed-normal-800-latin-ext.woff2",
-      "barlow-condensed-normal-800-latin.woff2",
-      "barlow-condensed-normal-900-latin-ext.woff2",
-      "barlow-condensed-normal-900-latin.woff2"
+      "italic-100-latin-ext.woff2",
+      "italic-100-latin.woff2",
+      "italic-200-latin-ext.woff2",
+      "italic-200-latin.woff2",
+      "italic-300-latin-ext.woff2",
+      "italic-300-latin.woff2",
+      "italic-400-latin-ext.woff2",
+      "italic-400-latin.woff2",
+      "italic-500-latin-ext.woff2",
+      "italic-500-latin.woff2",
+      "italic-600-latin-ext.woff2",
+      "italic-600-latin.woff2",
+      "italic-700-latin-ext.woff2",
+      "italic-700-latin.woff2",
+      "italic-800-latin-ext.woff2",
+      "italic-800-latin.woff2",
+      "italic-900-latin-ext.woff2",
+      "italic-900-latin.woff2",
+      "normal-100-latin-ext.woff2",
+      "normal-100-latin.woff2",
+      "normal-200-latin-ext.woff2",
+      "normal-200-latin.woff2",
+      "normal-300-latin-ext.woff2",
+      "normal-300-latin.woff2",
+      "normal-400-latin-ext.woff2",
+      "normal-400-latin.woff2",
+      "normal-500-latin-ext.woff2",
+      "normal-500-latin.woff2",
+      "normal-600-latin-ext.woff2",
+      "normal-600-latin.woff2",
+      "normal-700-latin-ext.woff2",
+      "normal-700-latin.woff2",
+      "normal-800-latin-ext.woff2",
+      "normal-800-latin.woff2",
+      "normal-900-latin-ext.woff2",
+      "normal-900-latin.woff2"
     ]
   },
   "Josefin Sans": {
@@ -201,10 +201,10 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
     "uso": "display",
     "categoria": "Sans Serif",
     "files": [
-      "josefin-sans-italic-100-700-latin-ext.woff2",
-      "josefin-sans-italic-100-700-latin.woff2",
-      "josefin-sans-normal-100-700-latin-ext.woff2",
-      "josefin-sans-normal-100-700-latin.woff2"
+      "italic-100-700-latin-ext.woff2",
+      "italic-100-700-latin.woff2",
+      "normal-100-700-latin-ext.woff2",
+      "normal-100-700-latin.woff2"
     ]
   },
   "Inter": {
@@ -212,10 +212,10 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
     "uso": "texto",
     "categoria": "Sans Serif",
     "files": [
-      "inter-italic-100-900-latin-ext.woff2",
-      "inter-italic-100-900-latin.woff2",
-      "inter-normal-100-900-latin-ext.woff2",
-      "inter-normal-100-900-latin.woff2"
+      "italic-100-900-latin-ext.woff2",
+      "italic-100-900-latin.woff2",
+      "normal-100-900-latin-ext.woff2",
+      "normal-100-900-latin.woff2"
     ]
   },
   "Source Sans 3": {
@@ -223,10 +223,10 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
     "uso": "texto",
     "categoria": "Sans Serif",
     "files": [
-      "source-sans-3-italic-200-900-latin-ext.woff2",
-      "source-sans-3-italic-200-900-latin.woff2",
-      "source-sans-3-normal-200-900-latin-ext.woff2",
-      "source-sans-3-normal-200-900-latin.woff2"
+      "italic-200-900-latin-ext.woff2",
+      "italic-200-900-latin.woff2",
+      "normal-200-900-latin-ext.woff2",
+      "normal-200-900-latin.woff2"
     ]
   },
   "Manrope": {
@@ -234,8 +234,8 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
     "uso": "texto",
     "categoria": "Sans Serif",
     "files": [
-      "manrope-normal-200-800-latin-ext.woff2",
-      "manrope-normal-200-800-latin.woff2"
+      "normal-200-800-latin-ext.woff2",
+      "normal-200-800-latin.woff2"
     ]
   },
   "DM Sans": {
@@ -243,10 +243,10 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
     "uso": "texto",
     "categoria": "Sans Serif",
     "files": [
-      "dm-sans-italic-100-1000-latin-ext.woff2",
-      "dm-sans-italic-100-1000-latin.woff2",
-      "dm-sans-normal-100-1000-latin-ext.woff2",
-      "dm-sans-normal-100-1000-latin.woff2"
+      "italic-100-1000-latin-ext.woff2",
+      "italic-100-1000-latin.woff2",
+      "normal-100-1000-latin-ext.woff2",
+      "normal-100-1000-latin.woff2"
     ]
   },
   "Work Sans": {
@@ -254,10 +254,10 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
     "uso": "texto",
     "categoria": "Sans Serif",
     "files": [
-      "work-sans-italic-100-900-latin-ext.woff2",
-      "work-sans-italic-100-900-latin.woff2",
-      "work-sans-normal-100-900-latin-ext.woff2",
-      "work-sans-normal-100-900-latin.woff2"
+      "italic-100-900-latin-ext.woff2",
+      "italic-100-900-latin.woff2",
+      "normal-100-900-latin-ext.woff2",
+      "normal-100-900-latin.woff2"
     ]
   },
   "Nunito Sans": {
@@ -265,10 +265,10 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
     "uso": "texto",
     "categoria": "Sans Serif",
     "files": [
-      "nunito-sans-italic-200-1000-latin-ext.woff2",
-      "nunito-sans-italic-200-1000-latin.woff2",
-      "nunito-sans-normal-200-1000-latin-ext.woff2",
-      "nunito-sans-normal-200-1000-latin.woff2"
+      "italic-200-1000-latin-ext.woff2",
+      "italic-200-1000-latin.woff2",
+      "normal-200-1000-latin-ext.woff2",
+      "normal-200-1000-latin.woff2"
     ]
   },
   "Figtree": {
@@ -276,10 +276,10 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
     "uso": "texto",
     "categoria": "Sans Serif",
     "files": [
-      "figtree-italic-300-900-latin-ext.woff2",
-      "figtree-italic-300-900-latin.woff2",
-      "figtree-normal-300-900-latin-ext.woff2",
-      "figtree-normal-300-900-latin.woff2"
+      "italic-300-900-latin-ext.woff2",
+      "italic-300-900-latin.woff2",
+      "normal-300-900-latin-ext.woff2",
+      "normal-300-900-latin.woff2"
     ]
   },
   "Plus Jakarta Sans": {
@@ -287,10 +287,10 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
     "uso": "texto",
     "categoria": "Sans Serif",
     "files": [
-      "plus-jakarta-sans-italic-200-800-latin-ext.woff2",
-      "plus-jakarta-sans-italic-200-800-latin.woff2",
-      "plus-jakarta-sans-normal-200-800-latin-ext.woff2",
-      "plus-jakarta-sans-normal-200-800-latin.woff2"
+      "italic-200-800-latin-ext.woff2",
+      "italic-200-800-latin.woff2",
+      "normal-200-800-latin-ext.woff2",
+      "normal-200-800-latin.woff2"
     ]
   },
   "Outfit": {
@@ -298,8 +298,8 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
     "uso": "texto",
     "categoria": "Sans Serif",
     "files": [
-      "outfit-normal-100-900-latin-ext.woff2",
-      "outfit-normal-100-900-latin.woff2"
+      "normal-100-900-latin-ext.woff2",
+      "normal-100-900-latin.woff2"
     ]
   },
   "Rubik": {
@@ -307,10 +307,10 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
     "uso": "texto",
     "categoria": "Sans Serif",
     "files": [
-      "rubik-italic-300-900-latin-ext.woff2",
-      "rubik-italic-300-900-latin.woff2",
-      "rubik-normal-300-900-latin-ext.woff2",
-      "rubik-normal-300-900-latin.woff2"
+      "italic-300-900-latin-ext.woff2",
+      "italic-300-900-latin.woff2",
+      "normal-300-900-latin-ext.woff2",
+      "normal-300-900-latin.woff2"
     ]
   },
   "Barlow": {
@@ -318,42 +318,42 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
     "uso": "texto",
     "categoria": "Sans Serif",
     "files": [
-      "barlow-italic-100-latin-ext.woff2",
-      "barlow-italic-100-latin.woff2",
-      "barlow-italic-200-latin-ext.woff2",
-      "barlow-italic-200-latin.woff2",
-      "barlow-italic-300-latin-ext.woff2",
-      "barlow-italic-300-latin.woff2",
-      "barlow-italic-400-latin-ext.woff2",
-      "barlow-italic-400-latin.woff2",
-      "barlow-italic-500-latin-ext.woff2",
-      "barlow-italic-500-latin.woff2",
-      "barlow-italic-600-latin-ext.woff2",
-      "barlow-italic-600-latin.woff2",
-      "barlow-italic-700-latin-ext.woff2",
-      "barlow-italic-700-latin.woff2",
-      "barlow-italic-800-latin-ext.woff2",
-      "barlow-italic-800-latin.woff2",
-      "barlow-italic-900-latin-ext.woff2",
-      "barlow-italic-900-latin.woff2",
-      "barlow-normal-100-latin-ext.woff2",
-      "barlow-normal-100-latin.woff2",
-      "barlow-normal-200-latin-ext.woff2",
-      "barlow-normal-200-latin.woff2",
-      "barlow-normal-300-latin-ext.woff2",
-      "barlow-normal-300-latin.woff2",
-      "barlow-normal-400-latin-ext.woff2",
-      "barlow-normal-400-latin.woff2",
-      "barlow-normal-500-latin-ext.woff2",
-      "barlow-normal-500-latin.woff2",
-      "barlow-normal-600-latin-ext.woff2",
-      "barlow-normal-600-latin.woff2",
-      "barlow-normal-700-latin-ext.woff2",
-      "barlow-normal-700-latin.woff2",
-      "barlow-normal-800-latin-ext.woff2",
-      "barlow-normal-800-latin.woff2",
-      "barlow-normal-900-latin-ext.woff2",
-      "barlow-normal-900-latin.woff2"
+      "italic-100-latin-ext.woff2",
+      "italic-100-latin.woff2",
+      "italic-200-latin-ext.woff2",
+      "italic-200-latin.woff2",
+      "italic-300-latin-ext.woff2",
+      "italic-300-latin.woff2",
+      "italic-400-latin-ext.woff2",
+      "italic-400-latin.woff2",
+      "italic-500-latin-ext.woff2",
+      "italic-500-latin.woff2",
+      "italic-600-latin-ext.woff2",
+      "italic-600-latin.woff2",
+      "italic-700-latin-ext.woff2",
+      "italic-700-latin.woff2",
+      "italic-800-latin-ext.woff2",
+      "italic-800-latin.woff2",
+      "italic-900-latin-ext.woff2",
+      "italic-900-latin.woff2",
+      "normal-100-latin-ext.woff2",
+      "normal-100-latin.woff2",
+      "normal-200-latin-ext.woff2",
+      "normal-200-latin.woff2",
+      "normal-300-latin-ext.woff2",
+      "normal-300-latin.woff2",
+      "normal-400-latin-ext.woff2",
+      "normal-400-latin.woff2",
+      "normal-500-latin-ext.woff2",
+      "normal-500-latin.woff2",
+      "normal-600-latin-ext.woff2",
+      "normal-600-latin.woff2",
+      "normal-700-latin-ext.woff2",
+      "normal-700-latin.woff2",
+      "normal-800-latin-ext.woff2",
+      "normal-800-latin.woff2",
+      "normal-900-latin-ext.woff2",
+      "normal-900-latin.woff2"
     ]
   }
 };
