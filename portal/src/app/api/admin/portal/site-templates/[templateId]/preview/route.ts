@@ -5,6 +5,7 @@ import { SAMPLE_RENDER_CONTEXT, SITE_CONTENT_SAMPLES, type SiteContentSampleName
 import { renderSiteFiles, type SiteTemplatePart, type SiteTemplateSource } from '@/lib/site-template';
 import type { SiteContent } from '@/lib/site-content';
 import { SITE_TEMPLATE_BASE } from '@/lib/site-template-base';
+import { parseTemplateStyle } from '@/lib/site-style';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -22,6 +23,10 @@ export const runtime = 'nodejs';
 //
 // La foto de portada es la del sector de muestra servida por el portal: la
 // vista previa no se publica en ninguna parte.
+//
+// ?acento=%23rrggbb y ?tipografia=<pareja> la pintan con el color o la letra
+// de un negocio (site-style.ts): el laboratorio mide así las muestras y las
+// parejas que ofrece la plantilla, no solo su versión original.
 // =============================================================================
 
 export async function GET(req: NextRequest, props: { params: Promise<{ templateId: string }> }) {
@@ -32,9 +37,9 @@ export async function GET(req: NextRequest, props: { params: Promise<{ templateI
   let template: SiteTemplateSource = SITE_TEMPLATE_BASE;
   if (params.templateId !== 'base') {
     if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
-    const row = await prisma.siteTemplate.findUnique({ where: { id: params.templateId }, select: { marco: true, secciones: true } });
+    const row = await prisma.siteTemplate.findUnique({ where: { id: params.templateId }, select: { marco: true, secciones: true, estilo: true } });
     if (!row || !row.marco) return NextResponse.json({ error: 'not_found' }, { status: 404 });
-    template = { marco: row.marco, secciones: row.secciones as Partial<Record<SiteTemplatePart, string>> };
+    template = { marco: row.marco, secciones: row.secciones as Partial<Record<SiteTemplatePart, string>>, estilo: parseTemplateStyle(row.estilo) };
   }
 
   const requested = req.nextUrl.searchParams.get('contenido') ?? 'normal';
@@ -45,6 +50,9 @@ export async function GET(req: NextRequest, props: { params: Promise<{ templateI
   // Entrega 5: ?pagina=blog o ?pagina=blog/entrada-1 (las comprobaciones
   // miden también la lista y el artículo). Vacío, la portada.
   const pagina = (req.nextUrl.searchParams.get('pagina') ?? '').replace(/^\/+|\/+$/g, '');
+  const acento = (req.nextUrl.searchParams.get('acento') ?? '').toLowerCase();
+  const tipografia = req.nextUrl.searchParams.get('tipografia') ?? '';
+  content.estilo = { acento: /^#[0-9a-f]{6}$/.test(acento) ? acento : '', tipografia: /^[a-z0-9-]{1,30}$/.test(tipografia) ? tipografia : '' };
   if (req.nextUrl.searchParams.get('comprobar') === '1') {
     template = { ...template, marco: template.marco.replace(/<script\b[\s\S]*?<\/script>/gi, '') };
   }

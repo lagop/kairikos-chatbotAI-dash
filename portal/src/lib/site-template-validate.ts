@@ -1,5 +1,6 @@
 import { SITE_SECTION_TYPES } from './site-content';
 import { declaredFontFamilies, fontCatalogForPrompt } from './site-fonts';
+import { validateTemplateStyle } from './site-style';
 import {
   SITE_TEMPLATE_PARTS,
   TemplateSyntaxError,
@@ -172,6 +173,7 @@ export function validateSiteTemplate(input: SiteTemplateSource): TemplateValidat
     secciones: Object.fromEntries(
       Object.entries(input.secciones ?? {}).map(([k, v]) => [k, stripEventAttributes(String(v ?? ''), removed)]),
     ),
+    ...(input.estilo != null ? { estilo: input.estilo } : {}),
   };
 
   const size = Buffer.byteLength(template.marco) + Object.values(template.secciones).reduce((n, s) => n + Buffer.byteLength(s ?? ''), 0);
@@ -262,6 +264,10 @@ export function validateSiteTemplate(input: SiteTemplateSource): TemplateValidat
       if (!re.test(contacto)) problems.push(`la sección «contacto»: falta ${what}. El envío lo pone el sistema y busca exactamente eso.`);
     }
   }
+
+  // Lo que el negocio puede cambiar (site-style.ts). Solo lo declaran las
+  // escritas a mano; las de la IA no traen estilo y no admiten cambios.
+  problems.push(...validateTemplateStyle(input.estilo, marco, declaredFontFamilies(marco).known));
 
   return { ok: problems.length === 0, problems, template, removedAttributes: removed };
 }

@@ -20,7 +20,10 @@ function load(name: string): SiteTemplateSource {
   };
   const secciones: Partial<Record<SiteTemplatePart, string>> = {};
   for (const part of SITE_TEMPLATE_PARTS) if (read(part)) secciones[part] = read(part);
-  return { marco: read('marco'), secciones };
+  // La declaración de estilo (site-style.ts) va en plantilla.json y la
+  // valida validateSiteTemplate con lo demás.
+  const meta = JSON.parse(readFileSync(join(DIR, name, 'plantilla.json'), 'utf8')) as { estilo?: SiteTemplateSource['estilo'] };
+  return { marco: read('marco'), secciones, estilo: meta.estilo ?? null };
 }
 
 const names = readdirSync(DIR).filter((n) => existsSync(join(DIR, n, 'plantilla.json')));
@@ -55,6 +58,18 @@ describe('plantillas escritas a mano', () => {
           expect(home).not.toMatch(/\{\{/);
         }
         expect(templateIconIds(template.marco)).toEqual(expect.arrayContaining(['check', 'telefono', 'estrella', 'herramienta', 'casa', 'reloj']));
+      });
+
+      it('si admite el color del negocio, no le queda ningún color del acento escrito a mano', () => {
+        if (!template.estilo?.acento) return;
+        // Un tono del acento escrito tal cual (una sombra, un hover) no
+        // seguiría al color del negocio: se quedaría del color original en una
+        // web azul. Tienen que salir de la variable (color-mix).
+        const all = [template.marco, ...Object.values(template.secciones)].join('\n');
+        const css = all.replace(/:root\{[^}]*\}/, '');
+        for (const m of template.estilo.acento.muestras.slice(0, 1)) {
+          expect(css.toLowerCase()).not.toContain(m.color.toLowerCase());
+        }
       });
     });
   }

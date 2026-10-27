@@ -2,5 +2,84 @@
   "nombre": "Oficios · Señal",
   "sector": "trades",
   "variante": "oscura e industrial, acento amarillo de obra",
-  "encargo": "Oficios con urgencias (fontanería, electricidad, cerrajería, climatización, reformas). Oscura e industrial: tinta casi negra, amarillo de señal de obra como acento, titulares condensados en mayúsculas (Barlow Condensed + Barlow), rejilla de plano y franjas de obra como motivo. Dinámica: cinta de servicios en movimiento, insignia giratoria de llamar, cifras que cuentan, tarjetas que se elevan. Transmite rapidez, oficio y que cogen el teléfono. Escrita a mano."
+  "encargo": "Oficios con urgencias (fontanería, electricidad, cerrajería, climatización, reformas). Oscura e industrial: tinta casi negra, amarillo de señal de obra como acento, titulares condensados en mayúsculas (Barlow Condensed + Barlow), rejilla de plano y franjas de obra como motivo. Dinámica: cinta de servicios en movimiento, insignia giratoria de llamar, cifras que cuentan, tarjetas que se elevan. Transmite rapidez, oficio y que cogen el teléfono. Escrita a mano.",
+  "estilo": {
+    "acento": {
+      "variables": [
+        {
+          "variable": "--amarillo",
+          "desde": "color",
+          "contra": [
+            "--noche",
+            "--noche-2",
+            "--noche-3",
+            "--tinta"
+          ],
+          "minimo": 4.5
+        },
+        {
+          "variable": "--amarillo-tinta",
+          "desde": "tono",
+          "contra": [
+            "--blanco",
+            "--hormigon"
+          ],
+          "minimo": 4.5
+        },
+        {
+          "variable": "--amarillo-claro",
+          "desde": "tono",
+          "contra": [
+            "--tinta",
+            "--noche"
+          ],
+          "minimo": 7
+        }
+      ],
+      "muestras": [
+        {
+          "nombre": "Amarillo obra",
+          "color": "#ffc21a"
+        },
+        {
+          "nombre": "Naranja",
+          "color": "#ff8a1f"
+        },
+        {
+          "nombre": "Rojo señal",
+          "color": "#ff5a4a"
+        },
+        {
+          "nombre": "Verde",
+          "color": "#5fd36a"
+        },
+        {
+          "nombre": "Azul",
+          "color": "#4db5ff"
+        },
+        {
+          "nombre": "Turquesa",
+          "color": "#2fd3c3"
+        }
+      ]
+    },
+    "tipografias": {
+      "titulares": "--display",
+      "texto": "--texto",
+      "parejas": [
+        {
+          "id": "obra",
+          "nombre": "Obra",
+          "titulares": "Barlow Condensed",
+          "texto": "Barlow"
+        },
+        {
+          "id": "rotulo",
+          "nombre": "Rótulo",
+          "titulares": "Oswald",
+          "texto": "Inter"
+        }
+      ]
+    }
+  }
 }

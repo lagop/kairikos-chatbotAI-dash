@@ -24,11 +24,14 @@ const BodySchema = z.object({
         ancho: z.number().int().min(320).max(2000),
         contenido: z.enum(CHECK_SAMPLES),
         pagina: z.string().max(80).regex(/^[a-z0-9/-]*$/).optional(),
+        acento: z.string().regex(/^#[0-9a-f]{6}$/).optional(),
+        tipografia: z.string().max(30).regex(/^[a-z0-9-]+$/).optional(),
         problemas: z.array(z.string().max(2000)).max(40),
       }),
     )
     .min(1)
-    .max(24),
+    // 21 de siempre más las de cada color y pareja de letras (checkPlan).
+    .max(120),
 });
 
 export async function POST(req: NextRequest, props: { params: Promise<{ templateId: string }> }) {
@@ -42,7 +45,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ template
 
   try {
     const result = await recordBrowserChecks(prisma, params.templateId, body.data.runs);
-    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.error === 'not_found' ? 404 : 409 });
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.error === 'not_found' ? 404 : result.error === 'preview_unreadable' ? 422 : 409 });
     return NextResponse.json(result);
   } catch (err) {
     logError('site_templates.checks_failed', err, { templateId: params.templateId });

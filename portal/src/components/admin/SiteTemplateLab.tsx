@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CHECK_PAGES, CHECK_SAMPLES, CHECK_WIDTHS, runSiteChecks, type CheckRun } from '@/lib/site-template-checks';
+import { CHECK_SAMPLES, checkPlan, runSiteChecks, type CheckPlanItem, type CheckRun, type CheckStyle } from '@/lib/site-template-checks';
 
 // =============================================================================
 // Webs con IA, entrega 2 (27/10/2026) — el taller de plantillas del operador.
@@ -13,6 +13,13 @@ import { CHECK_PAGES, CHECK_SAMPLES, CHECK_WIDTHS, runSiteChecks, type CheckRun 
 // en el servidor; el del operador hace ese trabajo (ver el porqué en
 // site-template-checks.ts). Por eso conviene dejar la página abierta mientras
 // se genera.
+//
+// 27/10/2026: las que admiten el color y la letra de cada negocio
+// (site-style.ts) se miden también con cada muestra de color, con colores
+// extremos y con cada pareja de letras (checkPlan). Y si ningún marco llega a
+// cargar, la plantilla NO se da por fallida: ese día la cabecera
+// frame-ancestors dejaba los marcos en blanco y las dos de oficios cayeron
+// sin que se hubiera medido nada.
 // =============================================================================
 
 export interface SiteTemplateRow {
@@ -31,6 +38,8 @@ export interface SiteTemplateRow {
     historial?: { fase: string; at: string; detalle: string; problemas?: string[] }[];
   } | null;
   createdAt: string;
+  /** Lo que admite del estilo de cada negocio (SiteTemplateStyle). */
+  estilo?: CheckStyle | null;
   _count?: { websites: number };
 }
 
@@ -56,12 +65,14 @@ const SECTORES = [
 const BUSY = new Set(['generando', 'corrigiendo']);
 
 /** Pinta la plantilla en un marco fuera de la vista y la mide. */
-async function measure(templateId: string, contenido: (typeof CHECK_SAMPLES)[number], pagina: string, ancho: number): Promise<CheckRun> {
+async function measure(templateId: string, item: CheckPlanItem): Promise<CheckRun> {
+  const { ancho, contenido, pagina = '', acento, tipografia } = item;
+  const variant = `${acento ? `&acento=${encodeURIComponent(acento)}` : ''}${tipografia ? `&tipografia=${tipografia}` : ''}`;
   const iframe = document.createElement('iframe');
   iframe.setAttribute('aria-hidden', 'true');
   iframe.tabIndex = -1;
   Object.assign(iframe.style, { position: 'fixed', left: '-20000px', top: '0', width: `${ancho}px`, height: '900px', border: '0' });
-  iframe.src = `/api/admin/portal/site-templates/${templateId}/preview?contenido=${contenido}&pagina=${encodeURIComponent(pagina)}&comprobar=1`;
+  iframe.src = `/api/admin/portal/site-templates/${templateId}/preview?contenido=${contenido}&pagina=${encodeURIComponent(pagina)}${variant}&comprobar=1`;
   document.body.appendChild(iframe);
   try {
     await new Promise<void>((resolve, reject) => {
@@ -71,12 +82,12 @@ async function measure(templateId: string, contenido: (typeof CHECK_SAMPLES)[num
     });
     const doc = iframe.contentDocument;
     const win = iframe.contentWindow;
-    if (!doc || !win) return { ancho, contenido, pagina, problemas: ['No se pudo leer la vista previa.'] };
+    if (!doc || !win) return { ...item, problemas: ['No se pudo leer la vista previa.'] };
     await doc.fonts?.ready;
     await new Promise((r) => setTimeout(r, 300));
-    return { ancho, contenido, pagina, problemas: runSiteChecks(doc, win) };
+    return { ...item, problemas: runSiteChecks(doc, win) };
   } catch (err) {
-    return { ancho, contenido, pagina, problemas: [`La vista previa no cargó (${err instanceof Error ? err.message : 'error'}).`] };
+    return { ...item, problemas: [`La vista previa no cargó (${err instanceof Error ? err.message : 'error'}).`] };
   } finally {
     iframe.remove();
   }
@@ -101,6 +112,9 @@ export function SiteTemplateLab({
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState<{ id: string; done: number; total: number } | null>(null);
   const checkingRef = useRef<string | null>(null);
+  // Las que no se pudieron ni cargar en esta sesión: no se reintentan solas
+  // (seguirían fallando igual), se avisa.
+  const [unreadable, setUnreadable] = useState<Set<string>>(new Set());
 
   const refresh = useCallback(async () => {
     const res = await fetch('/api/admin/portal/site-templates', { cache: 'no-store' });
@@ -116,29 +130,29 @@ export function SiteTemplateLab({
 
   // Las que esperan al navegador se miden aquí, de una en una.
   useEffect(() => {
-    const pending = templates.find((t) => t.estado === 'pendiente_navegador');
+    const pending = templates.find((t) => t.estado === 'pendiente_navegador' && !unreadable.has(t.id));
     if (!pending || checkingRef.current) return;
     checkingRef.current = pending.id;
     (async () => {
       const runs: CheckRun[] = [];
-      const total = CHECK_PAGES.length * CHECK_WIDTHS.length;
-      for (const { contenido, pagina } of CHECK_PAGES) {
-        for (const ancho of CHECK_WIDTHS) {
-          setChecking({ id: pending.id, done: runs.length, total });
-          runs.push(await measure(pending.id, contenido, pagina, ancho));
-        }
+      const plan = checkPlan(pending.estilo);
+      const total = plan.length;
+      for (const item of plan) {
+        setChecking({ id: pending.id, done: runs.length, total });
+        runs.push(await measure(pending.id, item));
       }
       setChecking({ id: pending.id, done: total, total });
-      await fetch(`/api/admin/portal/site-templates/${pending.id}/checks`, {
+      const res = await fetch(`/api/admin/portal/site-templates/${pending.id}/checks`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ runs }),
       });
+      if (res.status === 422) setUnreadable((prev) => new Set(prev).add(pending.id));
       checkingRef.current = null;
       setChecking(null);
       await refresh();
     })();
-  }, [templates, refresh]);
+  }, [templates, refresh, unreadable]);
 
   async function encargar(e: React.FormEvent) {
     e.preventDefault();
@@ -254,7 +268,13 @@ export function SiteTemplateLab({
                 </span>
               </div>
               {v.encargo ? <p className="text-sm">{v.encargo}</p> : null}
-              {t.estado !== 'generando' ? <Previews id={t.id} /> : null}
+              {unreadable.has(t.id) ? (
+                <p className="text-sm text-kairikos-danger">
+                  Este navegador no pudo cargar ninguna vista previa, así que no se ha medido nada y sigue pendiente. Recarga la página para
+                  intentarlo otra vez; si se repite, el fallo es del portal, no de la plantilla.
+                </p>
+              ) : null}
+              {t.estado !== 'generando' ? <Previews id={t.id} estilo={t.estilo} /> : null}
               {v.problemas?.length ? (
                 <details className="text-sm">
                   <summary className="cursor-pointer text-kairikos-danger">{v.problemas.length} problemas pendientes</summary>
@@ -302,20 +322,44 @@ export function SiteTemplateLab({
   );
 }
 
-function Previews({ id }: { id: string }) {
+function Previews({ id, estilo }: { id: string; estilo?: SiteTemplateRow['estilo'] }) {
+  const url = (params: string) => `/api/admin/portal/site-templates/${id}/preview?contenido=normal${params}`;
   return (
-    <p className="flex flex-wrap gap-3 text-sm">
-      {CHECK_SAMPLES.map((s) => (
-        <a key={s} className="underline" href={`/api/admin/portal/site-templates/${id}/preview?contenido=${s}`} target="_blank" rel="noopener">
-          Ver con contenido {s}
+    <>
+      <p className="flex flex-wrap gap-3 text-sm">
+        {CHECK_SAMPLES.map((s) => (
+          <a key={s} className="underline" href={`/api/admin/portal/site-templates/${id}/preview?contenido=${s}`} target="_blank" rel="noopener">
+            Ver con contenido {s}
+          </a>
+        ))}
+        <a className="underline" href={`/api/admin/portal/site-templates/${id}/preview?contenido=normal&pagina=blog`} target="_blank" rel="noopener">
+          Ver el blog
         </a>
-      ))}
-      <a className="underline" href={`/api/admin/portal/site-templates/${id}/preview?contenido=normal&pagina=blog`} target="_blank" rel="noopener">
-        Ver el blog
-      </a>
-      <a className="underline" href={`/api/admin/portal/site-templates/${id}/preview?contenido=normal&pagina=blog/como-detectar-una-fuga`} target="_blank" rel="noopener">
-        Ver un artículo
-      </a>
-    </p>
+        <a className="underline" href={`/api/admin/portal/site-templates/${id}/preview?contenido=normal&pagina=blog/como-detectar-una-fuga`} target="_blank" rel="noopener">
+          Ver un artículo
+        </a>
+      </p>
+      {estilo?.acento ? (
+        <p className="flex flex-wrap items-center gap-3 text-sm">
+          <span className="text-kairikos-muted">Colores:</span>
+          {estilo.acento.muestras.map((m) => (
+            <a key={m.color} className="inline-flex items-center gap-1 underline" href={url(`&acento=${encodeURIComponent(m.color)}`)} target="_blank" rel="noopener">
+              <span aria-hidden="true" className="inline-block h-3 w-3 rounded-full border border-black/20" style={{ background: m.color }} />
+              {m.nombre}
+            </a>
+          ))}
+        </p>
+      ) : null}
+      {estilo?.tipografias ? (
+        <p className="flex flex-wrap items-center gap-3 text-sm">
+          <span className="text-kairikos-muted">Letras:</span>
+          {estilo.tipografias.parejas.map((p) => (
+            <a key={p.id} className="underline" href={url(`&tipografia=${p.id}`)} target="_blank" rel="noopener">
+              {p.nombre}
+            </a>
+          ))}
+        </p>
+      ) : null}
+    </>
   );
 }

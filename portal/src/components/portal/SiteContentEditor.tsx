@@ -29,6 +29,12 @@ import type { SiteBlock, SiteBlogEntry, SiteContent, SiteSectionRef, SiteSection
 // Este archivo no importa nada de lib/ que no sean tipos: es un componente de
 // cliente (ver «Rutas y libs» en CLAUDE.md). Por eso las rutas reservadas y la
 // forma de un slug se repiten aquí (lib/site-content.ts es la regla).
+//
+// 27/10/2026: «Color y letra». El cliente elige el color de su marca (una
+// muestra o el que quiera) y una de las parejas de letras de su plantilla. El
+// color va tal cual al contenido; el ajuste para que se lea lo hace el motor
+// al pintar (lib/site-style.ts), así que aquí no se calcula nada: lo que se
+// ve de verdad es la vista previa.
 // =============================================================================
 
 /** Lo mismo que RESERVED_PAGE_ROOTS en lib/site-content.ts. */
@@ -68,6 +74,13 @@ export interface SiteContentEditorProps {
   /** Entrega 6: la versión cargada, para que un «Guardar» no pise lo que
    *  el SEO haya publicado mientras tanto (el servidor responde 409). */
   updatedAt?: string;
+  /** 27/10/2026 — los colores y las letras que admite su plantilla
+   *  (lib/site-style.ts). Null si su plantilla no admite cambios. La primera
+   *  muestra y la primera pareja son las de la plantilla. */
+  estilo?: {
+    muestras: { nombre: string; color: string }[];
+    parejas: { id: string; nombre: string; titulares: string; texto: string; hojas: string[] }[];
+  } | null;
 }
 
 const SECTION_LABEL: Record<SiteSectionType, string> = {
@@ -267,6 +280,12 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
       for (const p of rest.slice(0, -1)) target = (target as Record<string, unknown>)[p] as Record<string, unknown>;
       (target as Record<string, unknown>)[rest[rest.length - 1]] = value;
       d.ejemplos = d.ejemplos.filter((e) => e !== path);
+    });
+  }
+
+  function setStyle(patch: { acento?: string; tipografia?: string }) {
+    update((d) => {
+      d.estilo = { acento: d.estilo?.acento ?? '', tipografia: d.estilo?.tipografia ?? '', ...patch };
     });
   }
 
@@ -470,6 +489,8 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
         {message ? <p className="text-sm text-kairikos-success">{message}</p> : null}
         {error ? <p className="text-sm text-kairikos-danger">{error}</p> : null}
       </div>
+
+      {props.estilo ? <StyleCard estilo={props.estilo} value={content.estilo} onChange={setStyle} /> : null}
 
       {/* Las páginas y el blog. La portada siempre la primera: es la raíz. */}
       <nav className="flex flex-wrap gap-2" aria-label="Páginas de tu web">
@@ -745,6 +766,101 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
         </div>
       </div>
     </section>
+  );
+}
+
+/** El color de la marca y la pareja de letras. Vacío = lo de la plantilla. */
+function StyleCard({
+  estilo,
+  value,
+  onChange,
+}: {
+  estilo: NonNullable<SiteContentEditorProps['estilo']>;
+  value: SiteContent['estilo'];
+  onChange: (patch: { acento?: string; tipografia?: string }) => void;
+}) {
+  const own = estilo.muestras[0]?.color ?? '#000000';
+  const acento = value?.acento || '';
+  const tipografia = value?.tipografia || '';
+  const custom = acento !== '' && !estilo.muestras.some((m) => m.color === acento);
+  return (
+    <div className="card space-y-4" data-testid="site-editor-style">
+      <div>
+        <p className="font-semibold">Color y letra</p>
+        <p className="text-sm text-kairikos-muted">
+          Pon el color de tu marca (el de tu rótulo, tu furgoneta o tu logo) y el tipo de letra que más te guste. Si tu color no se leyera bien
+          sobre el fondo de tu web, lo aclaramos u oscurecemos lo justo.
+        </p>
+      </div>
+      {estilo.muestras.length ? (
+        <fieldset>
+          <legend className="text-sm font-medium">Color</legend>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {estilo.muestras.map((m, i) => {
+              const active = i === 0 ? acento === '' || acento === m.color : acento === m.color;
+              return (
+                <button
+                  key={m.color}
+                  type="button"
+                  className={active ? 'btn-primary text-sm' : 'btn-ghost text-sm'}
+                  aria-pressed={active}
+                  onClick={() => onChange({ acento: i === 0 ? '' : m.color })}
+                >
+                  <span aria-hidden="true" className="mr-1 inline-block h-4 w-4 rounded-full border border-black/20 align-middle" style={{ background: m.color }} />
+                  {m.nombre}
+                  {i === 0 ? ' (el de la plantilla)' : ''}
+                </button>
+              );
+            })}
+            <label className={custom ? 'btn-primary text-sm' : 'btn-ghost text-sm'}>
+              Otro color
+              <input
+                type="color"
+                className="ml-2 h-6 w-8 cursor-pointer border-0 bg-transparent p-0 align-middle"
+                value={acento || own}
+                onChange={(e) => onChange({ acento: e.target.value.toLowerCase() })}
+              />
+            </label>
+          </div>
+        </fieldset>
+      ) : null}
+      {estilo.parejas.length ? (
+        <fieldset>
+          <legend className="text-sm font-medium">Letra</legend>
+          {/* Las hojas de cada pareja, servidas por el portal, para que cada
+              opción se vea con su propia letra. */}
+          {estilo.parejas.flatMap((p) => p.hojas).map((href) => (
+            <link key={href} rel="stylesheet" href={href} />
+          ))}
+          <div className="mt-2 grid gap-2 sm:grid-cols-3">
+            {estilo.parejas.map((p, i) => {
+              const active = i === 0 ? tipografia === '' || tipografia === p.id : tipografia === p.id;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={`rounded-xl border p-3 text-left ${active ? 'border-kairikos-accent ring-2 ring-kairikos-accent' : 'border-kairikos-border'}`}
+                  aria-pressed={active}
+                  onClick={() => onChange({ tipografia: i === 0 ? '' : p.id })}
+                >
+                  <span className="block text-xl font-bold" style={{ fontFamily: `"${p.titulares}"` }}>
+                    {p.nombre}
+                  </span>
+                  <span className="block text-sm" style={{ fontFamily: `"${p.texto}"` }}>
+                    Así se lee el texto de tu web.
+                  </span>
+                  <span className="mt-1 block text-xs text-kairikos-muted">
+                    {p.titulares} + {p.texto}
+                    {i === 0 ? ' · la de la plantilla' : ''}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
+      ) : null}
+      <p className="text-xs text-kairikos-muted">Guarda y pulsa «Ver cómo queda» para verlo en tu web.</p>
+    </div>
   );
 }
 

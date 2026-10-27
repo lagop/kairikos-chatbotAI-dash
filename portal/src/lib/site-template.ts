@@ -10,7 +10,8 @@ import {
 } from './site-content';
 import { renderSiteMarkdown } from './site-markdown';
 import { LEGAL_PAGES, legalPageMarkdown } from './site-legal';
-import { localizeGoogleFonts } from './site-fonts';
+import { localizeGoogleFonts, replaceGoogleFontFamilies } from './site-fonts';
+import { resolveSiteStyle, siteStyleCss, type SiteTemplateStyle } from './site-style';
 import { sanitizeArticleHtml, toPlainText } from './seo-article-html';
 
 // =============================================================================
@@ -64,6 +65,9 @@ export const SITE_TEMPLATE_PARTS: readonly SiteTemplatePart[] = [...SITE_SECTION
 export interface SiteTemplateSource {
   marco: string;
   secciones: Partial<Record<SiteTemplatePart, string>>;
+  /** Qué colores y tipografías puede cambiar cada negocio (site-style.ts).
+   *  Sin esto, la plantilla se pinta siempre tal cual. */
+  estilo?: SiteTemplateStyle | null;
 }
 
 // ---- Mustache: análisis --------------------------------------------------------
@@ -637,6 +641,13 @@ export function renderSitePage(
   }
   if (!ctx.borrador) {
     html = html.replace(/<\/head>/i, `${headMeta(ctx, page, metaTitulo, metaDescripcion, { ...options, verificacion: page.ruta === '' ? content.verificacionGoogle : '' })}\n</head>`);
+  }
+  // El color y la tipografía del negocio (site-style.ts): una hoja después de
+  // la de la plantilla y, si cambia la letra, el enlace a la familia nueva.
+  const estilo = resolveSiteStyle(template.marco, template.estilo, content.estilo);
+  if (estilo) {
+    html = html.replace(/<\/head>/i, `${siteStyleCss(estilo.variables)}\n</head>`);
+    html = replaceGoogleFontFamilies(html, estilo.familias);
   }
   // Tipografías desde la propia web, nunca desde Google (site-fonts.ts). El
   // borrador lo sirve siempre el portal; la web publicada lleva su copia.

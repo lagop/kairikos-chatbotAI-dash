@@ -4,7 +4,7 @@ import { logError } from './observability';
 import type { SiteTemplatePart, SiteTemplateSource } from './site-template';
 import { validateSiteTemplate } from './site-template-validate';
 import { generateSiteTemplate, repairSiteTemplate, type SiteTemplateBrief } from './site-template-ai';
-import { summarizeCheckRuns, type CheckRun } from './site-template-checks';
+import { LOAD_FAILURE_PREFIXES, summarizeCheckRuns, type CheckRun } from './site-template-checks';
 
 // =============================================================================
 // Webs con IA, entrega 2 (27/10/2026) — el ciclo de vida de una plantilla que
@@ -228,7 +228,7 @@ function rowTemplate(row: { marco: string; secciones: unknown }): SiteTemplateSo
 
 export type RecordChecksResult =
   | { ok: true; estado: SiteTemplateEstado; problemas: string[] }
-  | { ok: false; error: 'not_found' | 'wrong_state' };
+  | { ok: false; error: 'not_found' | 'wrong_state' | 'preview_unreadable' };
 
 /**
  * Lo que midió el navegador del operador. Sin fallos, la plantilla queda
@@ -244,6 +244,14 @@ export async function recordBrowserChecks(
   const row = await prisma.siteTemplate.findUnique({ where: { id } });
   if (!row) return { ok: false, error: 'not_found' };
   if (row.estado !== 'pendiente_navegador') return { ok: false, error: 'wrong_state' };
+  // Si NINGÚN marco llegó a cargar, el fallo es del navegador o del portal,
+  // no del diseño: la plantilla sigue pendiente. El 27/10 la cabecera
+  // frame-ancestors 'none' dejó en blanco las 21 pasadas y las dos plantillas
+  // de oficios quedaron fallidas sin que nadie hubiera medido nada.
+  const unreadable = (p: string) => LOAD_FAILURE_PREFIXES.some((prefix) => p.startsWith(prefix));
+  if (runs.length && runs.every((r) => r.problemas.length > 0 && r.problemas.every(unreadable))) {
+    return { ok: false, error: 'preview_unreadable' };
+  }
   const validacion = asValidacion(row.validacion);
   const problems = summarizeCheckRuns(runs);
   validacion.problemas = problems;
