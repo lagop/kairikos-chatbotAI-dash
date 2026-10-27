@@ -1,7 +1,9 @@
 import {
   SITE_BLOCK_TYPES,
   SITE_SECTION_TYPES,
+  publishedEntries,
   type SiteBlock,
+  type SiteBlogEntry,
   type SiteContent,
   type SitePage,
   type SiteSectionType,
@@ -45,8 +47,18 @@ import { localizeGoogleFonts } from './site-fonts';
 
 /** Las piezas de una plantilla además del marco. */
 export const SITE_BLOCK_PARTS = SITE_BLOCK_TYPES.map((t) => `bloque_${t}` as const);
-export type SiteTemplatePart = SiteSectionType | (typeof SITE_BLOCK_PARTS)[number];
-export const SITE_TEMPLATE_PARTS: readonly SiteTemplatePart[] = [...SITE_SECTION_TYPES, ...SITE_BLOCK_PARTS];
+/** Entrega 5: la lista del blog (blog/) y el artículo (blog/<slug>/). */
+export const SITE_BLOG_PARTS = ['blog_lista', 'blog_articulo'] as const;
+/** Entrega 5: la cabecera de una página interior (su <h1> con el título). La
+ *  pone el motor en toda página que no sea la portada ni tenga la sección
+ *  portada: sin ella, «Desatascos en Telde» no tenía h1 ni se veía su nombre. */
+export const SITE_PAGE_PARTS = ['cabecera_pagina'] as const;
+export type SiteTemplatePart =
+  | SiteSectionType
+  | (typeof SITE_BLOCK_PARTS)[number]
+  | (typeof SITE_BLOG_PARTS)[number]
+  | (typeof SITE_PAGE_PARTS)[number];
+export const SITE_TEMPLATE_PARTS: readonly SiteTemplatePart[] = [...SITE_SECTION_TYPES, ...SITE_BLOCK_PARTS, ...SITE_BLOG_PARTS, ...SITE_PAGE_PARTS];
 
 export interface SiteTemplateSource {
   marco: string;
@@ -227,6 +239,11 @@ export interface SiteRenderContext {
   /** Web publicada (entrega 4): añade aviso legal, privacidad y cookies,
    *  y sus enlaces en el pie. El borrador no las lleva: no es una web. */
   legales?: boolean;
+  /** Entrega 5: la dirección pública de la web, con barra final
+   *  ('https://fontaneriasuarez.es/'). Con ella salen la canónica, el mapa del
+   *  sitio y las URL absolutas de las tarjetas para redes y de los datos
+   *  estructurados. Sin ella (o en el borrador), no. */
+  siteUrl?: string | null;
 }
 
 /** La leyenda de los datos de ejemplo. La pone el motor, igual en todas las
@@ -287,6 +304,9 @@ function buildView(content: SiteContent, ctx: SiteRenderContext, base: string): 
     // Para el «© año» del pie: la plantilla no puede escribir cifras.
     anio: String((ctx.now ?? new Date()).getFullYear()),
     legales: ctx.legales ? LEGAL_PAGES.map((p) => ({ titulo: p.titulo, href: `${base}${p.ruta}/` })) : [],
+    // Entrega 5: para que el marco pueda enlazar al blog (en el pie, por
+    // ejemplo). Vacío si no hay ninguna entrada publicada.
+    blog: publishedEntries(content).length ? { titulo: content.blog.titulo, intro: content.blog.intro, href: `${base}blog/` } : '',
   };
 }
 
@@ -330,7 +350,7 @@ export function pageFile(ruta: string): { path: string; base: string } {
 interface RenderedSection {
   kind: 'section' | 'block';
   anchor: string;
-  tipo: SiteSectionType | 'bloque';
+  tipo: SiteSectionType | 'bloque' | 'blog';
   html: string;
 }
 
@@ -376,28 +396,125 @@ function renderSections(
   return rendered;
 }
 
-/** El menú: con varias páginas, las páginas; con una, las secciones que se
- *  han pintado, por prioridad, hasta cinco, y Contacto siempre la última. */
+type MenuLink = { titulo: string; href: string; actual: boolean };
+
+/**
+ * El menú de `page`, con los enlaces relativos a ella.
+ *
+ * - Varias páginas: las páginas en el orden del cliente, menos la portada (la
+ *   marca de la cabecera ya lleva a ella), hasta cinco.
+ * - Una página: las secciones pintadas en la PORTADA (`homeRendered`), por
+ *   prioridad, y Contacto siempre la última. Desde otra página (legales,
+ *   blog) los anclas suben de nivel: ../#servicios.
+ *
+ * Entrega 5: si hay entradas publicadas, «Blog» entra siempre, delante de la
+ * última página o de Contacto. Cabe porque se le quita sitio a otro enlace:
+ * el menú de escritorio va en una línea y las comprobaciones lo miden.
+ */
 export function buildMenu(
   content: SiteContent,
-  page: SitePage,
-  rendered: Pick<RenderedSection, 'kind' | 'tipo' | 'anchor'>[],
-): { titulo: string; href: string; actual: boolean }[] {
+  page: Pick<SitePage, 'ruta'>,
+  homeRendered: Pick<RenderedSection, 'kind' | 'tipo' | 'anchor'>[],
+): MenuLink[] {
   const { base } = pageFile(page.ruta);
+  const blog: MenuLink[] = publishedEntries(content).length
+    ? [{ titulo: content.blog.titulo, href: `${base}blog/`, actual: page.ruta === 'blog' || page.ruta.startsWith('blog/') }]
+    : [];
   if (content.paginas.length > 1) {
-    return content.paginas.slice(0, 8).map((p) => ({
-      titulo: p.titulo,
-      href: p.ruta ? `${base}${p.ruta}/` : base || './',
-      actual: p.ruta === page.ruta,
-    }));
+    const pages = content.paginas
+      .filter((p) => p.ruta !== '')
+      .map((p) => ({ titulo: p.titulo, href: `${base}${p.ruta}/`, actual: p.ruta === page.ruta }))
+      .slice(0, MENU_MAX_LINKS - blog.length);
+    // Delante de la última solo si es la de contacto (lo habitual es que
+    // cierre el menú); si no, al final.
+    const last = content.paginas.filter((p) => p.ruta !== '').slice(0, pages.length).at(-1);
+    const contactLast = Boolean(last?.secciones.some((s) => s.tipo === 'contacto' && !s.oculta));
+    return blog.length && contactLast ? [...pages.slice(0, -1), ...blog, pages[pages.length - 1]] : [...pages, ...blog];
   }
-  const present = new Set(rendered.filter((r) => r.kind === 'section').map((r) => r.tipo));
+  const present = new Set(homeRendered.filter((r) => r.kind === 'section').map((r) => r.tipo));
   const links = (Object.keys(MENU_LABELS) as SiteSectionType[])
     .filter((tipo) => present.has(tipo))
-    .slice(0, present.has('contacto') ? MENU_MAX_LINKS - 1 : MENU_MAX_LINKS)
-    .map((tipo) => ({ titulo: MENU_LABELS[tipo] as string, href: `#${tipo}`, actual: false }));
-  if (present.has('contacto')) links.push({ titulo: 'Contacto', href: '#contacto', actual: false });
+    .slice(0, MENU_MAX_LINKS - blog.length - (present.has('contacto') ? 1 : 0))
+    .map((tipo) => ({ titulo: MENU_LABELS[tipo] as string, href: `${base}#${tipo}`, actual: false }));
+  links.push(...blog);
+  if (present.has('contacto')) links.push({ titulo: 'Contacto', href: `${base}#contacto`, actual: false });
   return links;
+}
+
+/**
+ * Entrega 5 — los anclas a secciones que están en OTRA página. Una plantilla
+ * escribe href="#contacto" en el botón de la portada sin saber si el
+ * formulario está en la misma página o en «Contacto». El motor sí lo sabe:
+ * lo apunta a la página que tiene esa sección; si no la tiene ninguna, al
+ * teléfono (para «contacto») o lo deja (un ancla sin destino no hace nada).
+ * Solo toca anclas de secciones y bloques: #contenido, #menu o los iconos
+ * (#i-…) son del propio documento.
+ */
+function fixCrossPageAnchors(
+  html: string,
+  ruta: string,
+  anchorsByPage: Map<string, Set<string>>,
+  telHref: string | null,
+): string {
+  const here = anchorsByPage.get(ruta) ?? new Set<string>();
+  const { base } = pageFile(ruta);
+  const sections = new Set<string>(SITE_SECTION_TYPES);
+  return html.replace(/(<a\b[^>]*?\shref=")#([a-z0-9-]+)"/g, (match, pre: string, anchor: string) => {
+    if (!sections.has(anchor) && !anchor.startsWith('bloque-')) return match;
+    if (here.has(anchor)) return match;
+    for (const [other, anchors] of anchorsByPage) {
+      if (anchors.has(anchor)) return `${pre}${base}${other ? `${other}/` : ''}#${anchor}"`;
+    }
+    return anchor === 'contacto' && telHref ? `${pre}tel:${telHref}"` : match;
+  });
+}
+
+/** «20 de octubre de 2026». En UTC: la fecha es un día, no un instante. */
+export function formatEntryDate(fecha: string): string {
+  return new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${fecha}T00:00:00Z`));
+}
+
+/** El extracto de la lista: el que escribió el cliente o el principio del
+ *  texto, sin marcas de formato y cortado en una palabra. */
+export function entryExcerpt(entry: Pick<SiteBlogEntry, 'extracto' | 'texto'>, max = 180): string {
+  if (entry.extracto.trim()) return entry.extracto.trim();
+  const plain = entry.texto
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/^#{2,3} +/gm, '')
+    .replace(/^[-*] +|^\d{1,2}[.)] +/gm, '')
+    .replace(/\*+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (plain.length <= max) return plain;
+  const cut = plain.slice(0, max);
+  return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), max - 30)).trim()}…`;
+}
+
+function entryView(entry: SiteBlogEntry, base: string): View {
+  const foto = entry.foto && !/^(https?:)?\/\//.test(entry.foto) ? base + entry.foto : entry.foto;
+  return {
+    titulo: entry.titulo,
+    href: `${base}blog/${entry.slug}/`,
+    fecha: formatEntryDate(entry.fecha),
+    fecha_iso: entry.fecha,
+    extracto: entryExcerpt(entry),
+    foto,
+    foto_alt: entry.fotoAlt,
+    texto_html: renderSiteMarkdown(entry.texto),
+  };
+}
+
+/** Si la plantilla no trae las piezas del blog (las de antes de la entrega
+ *  5), una versión sencilla con clases propias. Feo pero digno; las
+ *  plantillas nuevas no pasan el validador sin las suyas. */
+const BLOG_FALLBACK: Record<(typeof SITE_BLOG_PARTS)[number] | (typeof SITE_PAGE_PARTS)[number], string> = {
+  cabecera_pagina: '<header id="{{ancla}}" style="max-width:72rem;margin:0 auto;padding:3rem 1rem 0"><h1>{{pagina.titulo}}</h1></header>',
+  blog_lista: `<section id="{{ancla}}" style="max-width:46rem;margin:0 auto;padding:3rem 1rem"><h1>{{blog.titulo}}</h1>{{#blog.intro}}<p>{{blog.intro}}</p>{{/blog.intro}}{{#entradas}}<article style="margin-top:2rem"><h2><a href="{{href}}">{{titulo}}</a></h2><p><time datetime="{{fecha_iso}}">{{fecha}}</time></p><p>{{extracto}}</p></article>{{/entradas}}</section>`,
+  blog_articulo: `<article id="{{ancla}}" style="max-width:46rem;margin:0 auto;padding:3rem 1rem;overflow-wrap:anywhere"><p><a href="{{blog.href}}">{{blog.titulo}}</a></p><h1>{{entrada.titulo}}</h1><p><time datetime="{{entrada.fecha_iso}}">{{entrada.fecha}}</time></p>{{#entrada.foto}}<img src="{{entrada.foto}}" alt="{{entrada.foto_alt}}" style="max-width:100%;height:auto">{{/entrada.foto}}{{{entrada.texto_html}}}</article>`,
+};
+
+function renderBlogPart(template: SiteTemplateSource, part: (typeof SITE_BLOG_PARTS)[number] | (typeof SITE_PAGE_PARTS)[number], view: View): string {
+  return renderNodes(parseMustache(template.secciones[part] ?? BLOG_FALLBACK[part]), [{ value: view, path: '' }], new Set());
 }
 
 /** El envío del formulario: el mismo comportamiento que web-draft-html.ts, que
@@ -445,11 +562,27 @@ export function renderSitePage(
   content: SiteContent,
   page: SitePage,
   ctx: SiteRenderContext,
-  options: { menu?: ReturnType<typeof buildMenu> } = {},
+  options: {
+    menu?: ReturnType<typeof buildMenu>;
+    /** Lo que va en {{{secciones}}} cuando la página no sale de la lista
+     *  de secciones (la lista del blog, un artículo). */
+    body?: RenderedSection[];
+    /** Las secciones de cada página, para apuntar los anclas que viven en
+     *  otra (fixCrossPageAnchors). Solo lo pasa renderSiteFiles. */
+    anchorsByPage?: Map<string, Set<string>>;
+    /** Datos estructurados (schema.org) propios de esta página. */
+    jsonLd?: object[];
+    ogType?: 'website' | 'article';
+    ogImage?: string | null;
+  } = {},
 ): string {
   const { base } = pageFile(page.ruta);
   const view = buildView(content, ctx, base);
-  const rendered = renderSections(template, content, page, view);
+  const rendered = options.body ?? renderSections(template, content, page, view);
+  if (!options.body && page.ruta !== '' && !rendered.some((r) => r.tipo === 'portada')) {
+    const html = renderBlogPart(template, 'cabecera_pagina', { ...view, ancla: 'cabecera', pagina: { titulo: page.titulo } });
+    rendered.unshift({ kind: 'block', anchor: 'cabecera', tipo: 'bloque', html });
+  }
   const menu = options.menu ?? buildMenu(content, page, rendered);
   const isHome = page.ruta === '';
   const metaTitulo =
@@ -493,6 +626,12 @@ export function renderSitePage(
   if (ctx.formAction && rendered.some((r) => r.tipo === 'contacto')) {
     html = html.replace(/<\/body>/i, `${formScript(ctx.formAction, ctx.negocio.telefono, phoneHref(ctx.negocio.telefono))}\n</body>`);
   }
+  if (options.anchorsByPage) {
+    html = fixCrossPageAnchors(html, page.ruta, options.anchorsByPage, phoneHref(ctx.negocio.telefono));
+  }
+  if (!ctx.borrador) {
+    html = html.replace(/<\/head>/i, `${headMeta(ctx, page, metaTitulo, metaDescripcion, options)}\n</head>`);
+  }
   // Tipografías desde la propia web, nunca desde Google (site-fonts.ts). El
   // borrador lo sirve siempre el portal; la web publicada lleva su copia.
   return localizeGoogleFonts(html, ctx.borrador ? '/' : base);
@@ -503,33 +642,197 @@ export interface SiteFile {
   content: Buffer;
 }
 
-/** Todas las páginas de la web. Las fotos las añade quien construye
- *  (website-build.ts), que es quien sabe de dónde salen. */
+/** Todas las páginas de la web: las del contenido, el blog (entrega 5), las
+ *  legales y, publicada con dirección conocida, sitemap.xml y robots.txt. Las
+ *  fotos y las tipografías las añade quien construye (website-build.ts). */
 export function renderSiteFiles(template: SiteTemplateSource, content: SiteContent, ctx: SiteRenderContext): SiteFile[] {
-  const files = content.paginas.map((page) => ({
-    path: pageFile(page.ruta).path,
-    content: Buffer.from(renderSitePage(template, content, page, ctx), 'utf8'),
-  }));
-  if (!ctx.legales) return files;
+  const file = (path: string, html: string): SiteFile => ({ path, content: Buffer.from(html, 'utf8') });
+  const home = content.paginas.find((p) => p.ruta === '') ?? content.paginas[0];
+
+  // Qué secciones acaba pintando cada página: para el menú de una web de una
+  // página (sale de la portada) y para los anclas entre páginas.
+  const anchorsByPage = new Map<string, Set<string>>();
+  let homeRendered: RenderedSection[] = [];
+  for (const page of content.paginas) {
+    const rendered = renderSections(template, content, page, buildView(content, ctx, pageFile(page.ruta).base));
+    anchorsByPage.set(page.ruta, new Set(rendered.map((r) => r.anchor)));
+    if (page === home) homeRendered = rendered;
+  }
+  const menuFor = (ruta: string) => buildMenu(content, { ruta }, homeRendered);
+  const published = !ctx.borrador;
+
+  const files = content.paginas.map((page) =>
+    file(
+      pageFile(page.ruta).path,
+      renderSitePage(template, content, page, ctx, {
+        menu: menuFor(page.ruta),
+        anchorsByPage,
+        jsonLd: page === home && published ? [localBusinessLd(content, ctx)] : undefined,
+      }),
+    ),
+  );
+
+  // El blog: la lista y una página por entrada, cada una con la llamada final
+  // debajo (quien lee un consejo es quien acaba llamando).
+  const entries = publishedEntries(content);
+  if (entries.length) {
+    const nombre = ctx.negocio.nombre;
+    const llamada = (ruta: string) =>
+      renderSections(template, content, { ruta, titulo: '', metaTitulo: '', metaDescripcion: '', secciones: [{ tipo: 'llamada' }] }, buildView(content, ctx, pageFile(ruta).base));
+    const listPage: SitePage = {
+      ruta: 'blog',
+      titulo: content.blog.titulo,
+      metaTitulo: `${content.blog.titulo} · ${nombre}`,
+      metaDescripcion: content.blog.intro || `Artículos y consejos de ${nombre}.`,
+      secciones: [],
+    };
+    const listBase = pageFile('blog').base;
+    const listView = { ...buildView(content, ctx, listBase), ancla: 'blog', entradas: entries.map((e) => entryView(e, listBase)) };
+    files.push(
+      file(
+        'blog/index.html',
+        renderSitePage(template, content, listPage, ctx, {
+          menu: menuFor('blog'),
+          anchorsByPage,
+          body: [{ kind: 'section', anchor: 'blog', tipo: 'blog', html: renderBlogPart(template, 'blog_lista', listView) }, ...llamada('blog')],
+        }),
+      ),
+    );
+    for (const entry of entries) {
+      const ruta = `blog/${entry.slug}`;
+      const base = pageFile(ruta).base;
+      const view = { ...buildView(content, ctx, base), ancla: 'articulo', entrada: entryView(entry, base) };
+      const page: SitePage = {
+        ruta,
+        titulo: entry.titulo,
+        // Con el nombre si cabe en los ~70 caracteres que enseña Google; si
+        // no, solo el título: cortado a mitad de palabra queda peor.
+        metaTitulo: entry.metaTitulo || (`${entry.titulo} · ${nombre}`.length <= 70 ? `${entry.titulo} · ${nombre}` : entry.titulo),
+        metaDescripcion: entry.metaDescripcion || entryExcerpt(entry, 155),
+        secciones: [],
+      };
+      files.push(
+        file(
+          pageFile(ruta).path,
+          renderSitePage(template, content, page, ctx, {
+            menu: menuFor(ruta),
+            anchorsByPage,
+            body: [{ kind: 'section', anchor: 'articulo', tipo: 'blog', html: renderBlogPart(template, 'blog_articulo', view) }, ...llamada(ruta)],
+            jsonLd: published ? [blogPostingLd(entry, ctx)] : undefined,
+            ogType: 'article',
+            ogImage: entry.foto || undefined,
+          }),
+        ),
+      );
+    }
+  }
 
   // Las páginas legales: el texto (site-legal.ts) como un bloque de texto de
-  // la plantilla, para que se vean con su diseño. Su menú es el de la portada
-  // con los enlaces subiendo de nivel; sin formulario ni datos de ejemplo.
-  const home = content.paginas.find((p) => p.ruta === '') ?? content.paginas[0];
-  const homeRendered = renderSections(template, content, home, buildView(content, ctx, ''));
-  const homeMenu = buildMenu(content, home, homeRendered);
-  for (const legal of LEGAL_PAGES) {
-    const { titulo, texto } = legalPageMarkdown(legal.ruta, content.legal, ctx.negocio.nombre);
-    const page: SitePage = { ruta: legal.ruta, titulo, metaTitulo: `${titulo} · ${ctx.negocio.nombre}`, metaDescripcion: '', secciones: [{ tipo: 'bloque', id: 'legal' }] };
-    const { base } = pageFile(legal.ruta);
-    const legalContent: SiteContent = {
-      ...content,
-      paginas: content.paginas.length > 1 ? content.paginas : [home],
-      bloques: [{ id: 'legal', tipo: 'texto', titulo, texto, foto: '', fotoAlt: '', items: [] }],
-      ejemplos: [],
-    };
-    const menu = homeMenu.map((l) => ({ ...l, actual: false, href: l.href.startsWith('#') ? `${base}${l.href}` : `${base}${l.href.replace(/^(\.\.\/)+/, '').replace(/^\.\/$/, '')}` }));
-    files.push({ path: pageFile(legal.ruta).path, content: Buffer.from(renderSitePage(template, legalContent, page, { ...ctx, formAction: null }, { menu }), 'utf8') });
+  // la plantilla, para que se vean con su diseño; sin formulario ni datos de
+  // ejemplo.
+  if (ctx.legales) {
+    for (const legal of LEGAL_PAGES) {
+      const { titulo, texto } = legalPageMarkdown(legal.ruta, content.legal, ctx.negocio.nombre);
+      const page: SitePage = { ruta: legal.ruta, titulo, metaTitulo: `${titulo} · ${ctx.negocio.nombre}`, metaDescripcion: '', secciones: [{ tipo: 'bloque', id: 'legal' }] };
+      const legalContent: SiteContent = {
+        ...content,
+        // Sin título: el h1 lo pone la cabecera de la página.
+        bloques: [{ id: 'legal', tipo: 'texto', titulo: '', texto, foto: '', fotoAlt: '', items: [] }],
+        ejemplos: [],
+      };
+      files.push(file(pageFile(legal.ruta).path, renderSitePage(template, legalContent, page, { ...ctx, formAction: null }, { menu: menuFor(legal.ruta), anchorsByPage })));
+    }
+  }
+
+  // El mapa del sitio y robots.txt: solo publicada y sabiendo su dirección
+  // (las URL de un sitemap son absolutas). Las legales no van: no son lo que
+  // nadie busca, y Google las encuentra igual por el pie.
+  if (published && ctx.siteUrl) {
+    const urls: { loc: string; lastmod?: string }[] = [
+      ...content.paginas.map((p) => ({ loc: p.ruta ? `${p.ruta}/` : '' })),
+      ...(entries.length ? [{ loc: 'blog/', lastmod: entries[0].fecha }, ...entries.map((e) => ({ loc: `blog/${e.slug}/`, lastmod: e.fecha }))] : []),
+    ];
+    const body = urls.map((u) => `  <url><loc>${esc(ctx.siteUrl + u.loc)}</loc>${u.lastmod ? `<lastmod>${u.lastmod}</lastmod>` : ''}</url>`).join('\n');
+    files.push(file('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>\n`));
+    files.push(file('robots.txt', `User-agent: *\nAllow: /\n\nSitemap: ${ctx.siteUrl}sitemap.xml\n`));
   }
   return files;
+}
+
+// ---- Lo que va en el <head> de una web publicada (entrega 5) ---------------
+
+/** Una ruta del sitio en absoluto, si se conoce la dirección de la web. */
+function absoluteUrl(ctx: SiteRenderContext, path: string | null | undefined): string | null {
+  if (!path) return null;
+  if (/^https?:\/\//.test(path)) return path;
+  return ctx.siteUrl ? ctx.siteUrl + path.replace(/^\/+/, '') : null;
+}
+
+function ldScript(data: object): string {
+  // «</script>» dentro de un texto del cliente cerraría la etiqueta.
+  return `<script type="application/ld+json">${JSON.stringify(data).replace(/</g, '\\u003c')}</script>`;
+}
+
+/** La canónica, las tarjetas para redes (Open Graph) y los datos
+ *  estructurados. Lo pone el motor, como el noindex del borrador: una
+ *  plantilla que se olvidara no se notaría hasta mirar Search Console. */
+function headMeta(
+  ctx: SiteRenderContext,
+  page: Pick<SitePage, 'ruta'>,
+  title: string,
+  description: string,
+  options: { jsonLd?: object[]; ogType?: 'website' | 'article'; ogImage?: string | null },
+): string {
+  const url = ctx.siteUrl ? `${ctx.siteUrl}${page.ruta ? `${page.ruta}/` : ''}` : null;
+  const image = absoluteUrl(ctx, options.ogImage ?? ctx.fotos.portada);
+  const lines = [
+    url ? `<link rel="canonical" href="${esc(url)}">` : '',
+    `<meta property="og:type" content="${options.ogType ?? 'website'}">`,
+    `<meta property="og:title" content="${esc(title)}">`,
+    description ? `<meta property="og:description" content="${esc(description)}">` : '',
+    `<meta property="og:site_name" content="${esc(ctx.negocio.nombre)}">`,
+    '<meta property="og:locale" content="es_ES">',
+    url ? `<meta property="og:url" content="${esc(url)}">` : '',
+    image ? `<meta property="og:image" content="${esc(image)}">\n<meta name="twitter:card" content="summary_large_image">` : '',
+    ...(options.jsonLd ?? []).map(ldScript),
+  ];
+  return lines.filter(Boolean).join('\n');
+}
+
+/** El negocio para Google: nombre, teléfono, dirección, zona. Solo con lo
+ *  que el cliente tiene escrito: un dato estructurado vacío o inventado es
+ *  peor que ninguno. Sin valoración: Google no la admite de uno mismo. */
+function localBusinessLd(content: SiteContent, ctx: SiteRenderContext): object {
+  const tel = phoneHref(ctx.negocio.telefono);
+  const lugares = content.datos.zona.lugares.map((l) => l.nombre);
+  const image = absoluteUrl(ctx, ctx.fotos.portada);
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'LocalBusiness',
+    name: ctx.negocio.nombre,
+    ...(content.datos.subtitulo ? { description: content.datos.subtitulo } : {}),
+    ...(ctx.siteUrl ? { url: ctx.siteUrl } : {}),
+    ...(tel ? { telephone: tel } : {}),
+    ...(ctx.negocio.direccion ? { address: { '@type': 'PostalAddress', streetAddress: ctx.negocio.direccion, addressCountry: 'ES' } } : {}),
+    ...(image ? { image } : {}),
+    ...(lugares.length ? { areaServed: lugares } : {}),
+  };
+}
+
+function blogPostingLd(entry: SiteBlogEntry, ctx: SiteRenderContext): object {
+  const url = ctx.siteUrl ? `${ctx.siteUrl}blog/${entry.slug}/` : null;
+  const image = absoluteUrl(ctx, entry.foto || ctx.fotos.portada);
+  const autor = { '@type': 'Organization', name: ctx.negocio.nombre, ...(ctx.siteUrl ? { url: ctx.siteUrl } : {}) };
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'BlogPosting',
+    headline: entry.titulo.slice(0, 110),
+    description: entryExcerpt(entry, 155),
+    datePublished: entry.fecha,
+    dateModified: entry.fecha,
+    author: autor,
+    publisher: autor,
+    ...(url ? { mainEntityOfPage: url, url } : {}),
+    ...(image ? { image } : {}),
+  };
 }

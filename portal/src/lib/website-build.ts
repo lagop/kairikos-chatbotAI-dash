@@ -183,6 +183,8 @@ export interface DesignedWebsiteBuildInput {
   address: string | null;
   integrations?: WebsiteBuildInput['integrations'];
   now: Date;
+  /** Entrega 5: la dirección pública (website-publish.ts, publicSiteUrl). */
+  siteUrl?: string | null;
 }
 
 /**
@@ -215,6 +217,7 @@ export async function buildDesignedWebsiteFiles(input: DesignedWebsiteBuildInput
     borrador: false,
     // Entrega 4: aviso legal, privacidad y cookies en toda web publicada.
     legales: true,
+    siteUrl: input.siteUrl ?? null,
     now: input.now,
   });
   const fonts = await fontFiles(pages.map((p) => p.content.toString('utf8')));

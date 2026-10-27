@@ -176,13 +176,15 @@ describe('motor de plantillas', () => {
   it('varias páginas: un archivo por página, enlaces y fotos relativos a su profundidad', () => {
     const c = normal();
     c.paginas.push({ ruta: 'servicios/desatascos', titulo: 'Desatascos', metaTitulo: '', metaDescripcion: '', secciones: [{ tipo: 'servicios' }, { tipo: 'contacto' }] });
+    c.blog.entradas = [];
     const files = renderSiteFiles(SITE_TEMPLATE_BASE, c, ctx());
     expect(files.map((f) => f.path)).toEqual(['index.html', 'servicios/desatascos/index.html']);
     const sub = files[1].content.toString('utf8');
     expect(pageFile('servicios/desatascos').base).toBe('../../');
     expect(sub).toContain('<a class="marca" href="../../">');
     expect(sub).toContain('<a href="../../servicios/desatascos/" aria-current="page">Desatascos</a>');
-    expect(sub).toContain('<a href="../../">Inicio</a>');
+    // La portada no va en el menú: la marca de la cabecera ya lleva a ella.
+    expect(sub).not.toContain('<a href="../../">Inicio</a>');
     expect(sub).toContain('<title>Desatascos · Fontanería Ejemplo</title>');
     const home = files[0].content.toString('utf8');
     expect(home).toContain('src="assets/portada.jpg"');

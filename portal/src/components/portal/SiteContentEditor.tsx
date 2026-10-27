@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { SiteBlock, SiteContent, SiteSectionRef, SiteSectionType } from '@/lib/site-content';
+import type { SiteBlock, SiteBlogEntry, SiteContent, SiteSectionRef, SiteSectionType } from '@/lib/site-content';
 
 // =============================================================================
 // Webs con IA, entrega 4 (27/10/2026) — el editor de la web con plantilla de
@@ -19,9 +19,43 @@ import type { SiteBlock, SiteContent, SiteSectionRef, SiteSectionType } from '@/
 // desplazamiento va incluido», y solo revisando la sección entera se cubren.
 // Editar un dato de ejemplo también lo confirma: ya es suyo.
 //
+// Entrega 5 (27/10/2026): varias páginas y blog. Cada página es una lista de
+// secciones; los DATOS de una sección son de la web, no de la página (los
+// servicios son los mismos estén donde estén), así que poner «Servicios» en
+// dos páginas enseña lo mismo en las dos. El blog va en su pestaña: una
+// entrada nueva nace SIN publicar, para que una a medias no salga en la web
+// al publicar otra cosa.
+//
 // Este archivo no importa nada de lib/ que no sean tipos: es un componente de
-// cliente (ver «Rutas y libs» en CLAUDE.md).
+// cliente (ver «Rutas y libs» en CLAUDE.md). Por eso las rutas reservadas y la
+// forma de un slug se repiten aquí (lib/site-content.ts es la regla).
 // =============================================================================
+
+/** Lo mismo que RESERVED_PAGE_ROOTS en lib/site-content.ts. */
+const RESERVED = ['blog', 'aviso-legal', 'privacidad', 'cookies', 'assets', 'fuentes'];
+
+/** «Desatascos en Telde» → 'desatascos-en-telde'. */
+function slugify(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60)
+    .replace(/-+$/, '');
+}
+
+function uniqueSlug(base: string, taken: string[], fallback: string): string {
+  const root = base || fallback;
+  let slug = root;
+  for (let n = 2; taken.includes(slug) || RESERVED.includes(slug); n++) slug = `${root}-${n}`;
+  return slug;
+}
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+type View = { kind: 'pagina'; index: number } | { kind: 'blog' };
 
 export interface SiteContentEditorProps {
   clientProductId: string;
@@ -78,6 +112,11 @@ const ERRORS: Record<string, string> = {
   publish_failed: 'No hemos podido publicar ahora mismo. Lo estamos revisando; tus cambios están guardados.',
   invalid_content: 'Hay algún campo que no cuadra (demasiado largo o vacío donde no puede). Revisa lo último que cambiaste.',
   internal_error: 'Algo falló por nuestra parte. Tus cambios no se han perdido.',
+  // Entrega 5: los motivos concretos que devuelve el guardado (issues).
+  invalid_public_url: 'La dirección de tu web no parece una dirección: tiene que empezar por https:// (por ejemplo https://fontaneriasuarez.es).',
+  duplicate_entry_slug: 'Dos entradas del blog tienen la misma dirección. Cambia una de las dos.',
+  reserved_page_path: 'Esa dirección de página la usa la web para otra cosa (blog, aviso legal…). Ponle otro nombre a la página.',
+  too_small: 'Hay un título vacío (de una página, una entrada o una sección). Escríbelo y vuelve a guardar.',
 };
 
 function refKey(ref: SiteSectionRef): string {
@@ -105,15 +144,103 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [newBlock, setNewBlock] = useState<SiteBlock['tipo']>('texto');
+  const [newSection, setNewSection] = useState<SiteSectionType | ''>('');
+  const [newPageTitle, setNewPageTitle] = useState('');
+  const [view, setView] = useState<View>({ kind: 'pagina', index: 0 });
+  const [autoSlugs, setAutoSlugs] = useState<Set<string>>(new Set());
 
-  const page = content.paginas[0];
+  const pageIndex = view.kind === 'pagina' ? Math.min(view.index, content.paginas.length - 1) : 0;
+  const page = content.paginas[pageIndex];
   const pending = content.ejemplos.length;
+  // La vista previa abre la página que se está editando. La del blog solo
+  // existe con alguna entrada publicada.
+  const previewPath = view.kind === 'blog' ? (content.blog.entradas.some((e) => e.publicada) ? '/blog' : '') : page.ruta ? `/${page.ruta}` : '';
   const legalMissing = (['titular', 'nif', 'domicilio', 'email'] as const).filter((k) => !content.legal[k].trim());
 
-  const pendingSections = useMemo(
-    () => page.secciones.filter((r) => !r.oculta && pendingIn(content, r) > 0).map((r) => (r.tipo === 'bloque' ? 'un bloque' : SECTION_LABEL[r.tipo])),
-    [content, page],
-  );
+  const pendingSections = useMemo(() => {
+    const labels = content.paginas.flatMap((p) =>
+      p.secciones.filter((r) => !r.oculta && pendingIn(content, r) > 0).map((r) => (r.tipo === 'bloque' ? 'un bloque' : SECTION_LABEL[r.tipo])),
+    );
+    return [...new Set(labels)];
+  }, [content]);
+
+  function addPage() {
+    const titulo = newPageTitle.trim().slice(0, 30);
+    if (!titulo) return;
+    update((d) => {
+      const ruta = uniqueSlug(slugify(titulo), d.paginas.map((p) => p.ruta), 'pagina');
+      d.paginas.push({ ruta, titulo, metaTitulo: '', metaDescripcion: '', secciones: [] });
+    });
+    setNewPageTitle('');
+    setView({ kind: 'pagina', index: content.paginas.length });
+  }
+
+  function removePage(index: number) {
+    if (index === 0 || !window.confirm('¿Quitar esta página de tu web? Sus secciones siguen guardadas y puedes ponerlas en otra.')) return;
+    update((d) => {
+      d.paginas.splice(index, 1);
+    });
+    setView({ kind: 'pagina', index: 0 });
+  }
+
+  function movePage(index: number, delta: number) {
+    const to = index + delta;
+    // La portada se queda la primera: es la dirección raíz de la web.
+    if (index === 0 || to < 1 || to >= content.paginas.length) return;
+    update((d) => {
+      [d.paginas[index], d.paginas[to]] = [d.paginas[to], d.paginas[index]];
+    });
+    setView({ kind: 'pagina', index: to });
+  }
+
+  function addSection() {
+    if (!newSection) return;
+    update((d) => {
+      d.paginas[pageIndex].secciones.push({ tipo: newSection });
+    });
+    setNewSection('');
+  }
+
+  function newEntry() {
+    const slug = uniqueSlug('entrada', content.blog.entradas.map((e) => e.slug), 'entrada');
+    setAutoSlugs((prev) => new Set(prev).add(slug));
+    update((d) => {
+      d.blog.entradas.unshift({ slug, titulo: 'Nueva entrada', metaTitulo: '', metaDescripcion: '', fecha: today(), extracto: '', texto: '', foto: '', fotoAlt: '', publicada: false, origen: 'cliente' });
+    });
+  }
+
+  /** La dirección de una entrada creada en esta sesión sigue a su título
+   *  hasta que el cliente la toca a mano. Las que ya existían no cambian
+   *  solas: puede haber enlaces apuntándolas. */
+  function setEntry(index: number, patch: Partial<SiteBlogEntry>) {
+    const entry = content.blog.entradas[index];
+    let slug = patch.slug ?? entry.slug;
+    if (patch.slug !== undefined) {
+      setAutoSlugs((prev) => {
+        const next = new Set(prev);
+        next.delete(entry.slug);
+        return next;
+      });
+    } else if (patch.titulo !== undefined && autoSlugs.has(entry.slug)) {
+      const others = content.blog.entradas.filter((_, i) => i !== index).map((e) => e.slug);
+      slug = uniqueSlug(slugify(patch.titulo), others, 'entrada');
+      setAutoSlugs((prev) => {
+        const next = new Set(prev);
+        next.delete(entry.slug);
+        return next.add(slug);
+      });
+    }
+    update((d) => {
+      Object.assign(d.blog.entradas[index], patch, { slug });
+    });
+  }
+
+  function removeEntry(index: number) {
+    if (!window.confirm('¿Borrar esta entrada? Si estaba publicada, desaparece de tu web al volver a publicar.')) return;
+    update((d) => {
+      d.blog.entradas.splice(index, 1);
+    });
+  }
 
   function update(mutate: (draft: SiteContent) => void) {
     setContent((prev) => {
@@ -147,7 +274,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
 
   function move(index: number, delta: number) {
     update((d) => {
-      const list = d.paginas[0].secciones;
+      const list = d.paginas[pageIndex].secciones;
       const to = index + delta;
       if (to < 0 || to >= list.length) return;
       [list[index], list[to]] = [list[to], list[index]];
@@ -160,7 +287,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
       while (d.bloques.some((b) => b.id === `bloque-${n}`)) n++;
       const id = `bloque-${n}`;
       d.bloques.push({ id, tipo: newBlock, titulo: '', texto: '', foto: '', fotoAlt: '', items: newBlock === 'lista' ? [{ texto: '', icono: '' }] : [] });
-      const list = d.paginas[0].secciones;
+      const list = d.paginas[pageIndex].secciones;
       const contacto = list.findIndex((s) => s.tipo === 'contacto');
       list.splice(contacto >= 0 ? contacto : list.length, 0, { tipo: 'bloque', id });
     });
@@ -184,8 +311,9 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
     });
     setBusy(null);
     if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as { error?: string };
-      setError(ERRORS[body.error ?? 'internal_error'] ?? ERRORS.internal_error);
+      const body = (await res.json().catch(() => ({}))) as { error?: string; issues?: { message: string; path: string }[] };
+      const specific = body.issues?.map((i) => (i.message.startsWith('String must contain at least') ? 'too_small' : i.message)).find((m) => m in ERRORS);
+      setError(ERRORS[specific ?? body.error ?? 'internal_error'] ?? ERRORS.internal_error);
       return false;
     }
     setDirty(false);
@@ -321,7 +449,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
           {/* Sin barra final: Next.js la quita con una redirección que el
               navegador no siempre completa; las rutas relativas de la vista
               previa ya se reescriben enteras (hosted-site-paths.ts). */}
-          <a className="btn-ghost" href={`/api/portal/website/${props.clientProductId}/preview`} target="_blank" rel="noopener">
+          <a className="btn-ghost" href={`/api/portal/website/${props.clientProductId}/preview${previewPath}`} target="_blank" rel="noopener">
             Ver cómo queda
           </a>
           <button type="button" className="btn-ghost" disabled={!dirty || busy !== null} onClick={save}>
@@ -335,60 +463,224 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
         {error ? <p className="text-sm text-kairikos-danger">{error}</p> : null}
       </div>
 
-      <ol className="space-y-2">
-        {page.secciones.map((ref, i) => {
-          const examples = pendingIn(content, ref);
-          const block = ref.tipo === 'bloque' ? content.bloques.find((b) => b.id === ref.id) : null;
-          const label = ref.tipo === 'bloque' ? `${block ? BLOCK_LABEL[block.tipo] : 'Bloque'}${block?.titulo ? `: ${block.titulo}` : ''}` : SECTION_LABEL[ref.tipo];
-          return (
-            <li key={refKey(ref)} className={`card ${ref.oculta ? 'opacity-60' : ''}`}>
-              <details>
-                <summary className="flex cursor-pointer flex-wrap items-center gap-2">
-                  <span className="font-medium">{label}</span>
-                  {ref.oculta ? <span className="pill-muted">Oculta</span> : null}
-                  {examples > 0 ? <span className="pill-warning">{examples} de ejemplo</span> : null}
-                </summary>
-                <div className="mt-4 space-y-4">
-                  {sectionEditor(ref)}
-                  <div className="flex flex-wrap gap-2 border-t border-kairikos-border pt-3 text-sm">
-                    <button type="button" className="btn-ghost" disabled={i === 0} onClick={() => move(i, -1)}>
-                      Subir sección
-                    </button>
-                    <button type="button" className="btn-ghost" disabled={i === page.secciones.length - 1} onClick={() => move(i, 1)}>
-                      Bajar sección
-                    </button>
-                    {ref.tipo !== 'portada' && ref.tipo !== 'contacto' ? (
-                      <button type="button" className="btn-ghost" onClick={() => update((d) => (d.paginas[0].secciones[i].oculta = !ref.oculta))}>
-                        {ref.oculta ? 'Mostrar en la web' : 'Ocultar de la web'}
-                      </button>
-                    ) : null}
-                    {examples > 0 ? (
-                      <button type="button" className="btn-primary" onClick={() => confirmSection(ref)}>
-                        Confirmar sección: lo que pone es cierto
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              </details>
-            </li>
-          );
-        })}
-      </ol>
-
-      <div className="card flex flex-wrap items-center gap-2">
-        <span className="text-sm">Añadir</span>
-        <select className="input" value={newBlock} onChange={(e) => setNewBlock(e.target.value as SiteBlock['tipo'])} aria-label="Tipo de bloque">
-          {(Object.keys(BLOCK_LABEL) as SiteBlock['tipo'][]).map((t) => (
-            <option key={t} value={t}>
-              {BLOCK_LABEL[t]}
-            </option>
-          ))}
-        </select>
-        <button type="button" className="btn-ghost" onClick={addBlock} disabled={content.bloques.length >= 12}>
-          Añadir bloque
+      {/* Las páginas y el blog. La portada siempre la primera: es la raíz. */}
+      <nav className="flex flex-wrap gap-2" aria-label="Páginas de tu web">
+        {content.paginas.map((p, i) => (
+          <button
+            key={p.ruta || 'inicio'}
+            type="button"
+            className={view.kind === 'pagina' && pageIndex === i ? 'btn-primary' : 'btn-ghost'}
+            aria-current={view.kind === 'pagina' && pageIndex === i ? 'page' : undefined}
+            onClick={() => setView({ kind: 'pagina', index: i })}
+          >
+            {i === 0 ? `${p.titulo} (portada)` : p.titulo}
+          </button>
+        ))}
+        <button type="button" className={view.kind === 'blog' ? 'btn-primary' : 'btn-ghost'} aria-current={view.kind === 'blog' ? 'page' : undefined} onClick={() => setView({ kind: 'blog' })}>
+          {content.blog.titulo} ({content.blog.entradas.filter((e) => e.publicada).length})
         </button>
-        <span className="text-xs text-kairikos-muted">Se añade antes de «Contacto»; luego puedes moverlo.</span>
-      </div>
+      </nav>
+
+      {view.kind === 'blog' ? (
+        <div className="space-y-4" data-testid="site-editor-blog">
+          <div className="card space-y-3">
+            <p className="font-semibold">Blog</p>
+            <p className="text-sm text-kairikos-muted">
+              Cada entrada es una página de tu web con su propia dirección, buena para salir en Google cuando alguien busca lo que explicas. El enlace «{content.blog.titulo}» aparece en el menú en cuanto publicas la primera.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-sm">
+                Nombre en el menú
+                <input className="input mt-1 w-full" maxLength={30} value={content.blog.titulo} onChange={(e) => update((d) => (d.blog.titulo = e.target.value))} />
+              </label>
+              <label className="text-sm">
+                Frase de presentación
+                <input className="input mt-1 w-full" maxLength={300} value={content.blog.intro} onChange={(e) => update((d) => (d.blog.intro = e.target.value))} />
+              </label>
+            </div>
+            <button type="button" className="btn-primary" onClick={newEntry} disabled={content.blog.entradas.length >= 200}>
+              Nueva entrada
+            </button>
+          </div>
+          <ol className="space-y-2">
+            {content.blog.entradas.map((entry, i) => (
+              <li key={i} className="card">
+                <details open={autoSlugs.has(entry.slug)}>
+                  <summary className="flex cursor-pointer flex-wrap items-center gap-2">
+                    <span className="font-medium">{entry.titulo || 'Sin título'}</span>
+                    <span className={entry.publicada ? 'pill-success' : 'pill-muted'}>{entry.publicada ? 'Publicada' : 'Sin publicar'}</span>
+                    {entry.origen === 'seo' ? <span className="pill-muted">SEO</span> : null}
+                    <span className="text-xs text-kairikos-muted">{entry.fecha}</span>
+                  </summary>
+                  <div className="mt-4 space-y-3">
+                    <label className="block text-sm">
+                      Título
+                      <input className="input mt-1 w-full" maxLength={120} value={entry.titulo} onChange={(e) => setEntry(i, { titulo: e.target.value })} />
+                    </label>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="text-sm">
+                        Dirección: /blog/{entry.slug}/
+                        <input className="input mt-1 w-full" maxLength={80} value={entry.slug} onChange={(e) => setEntry(i, { slug: slugify(e.target.value) || entry.slug })} />
+                        <span className="text-xs text-kairikos-muted">Una vez publicada, mejor no cambiarla: los enlaces a la antigua dejarían de funcionar.</span>
+                      </label>
+                      <label className="text-sm">
+                        Fecha
+                        <input type="date" className="input mt-1 w-full" value={entry.fecha} onChange={(e) => e.target.value && setEntry(i, { fecha: e.target.value })} />
+                      </label>
+                    </div>
+                    <label className="block text-sm">
+                      Texto (**negrita**, «## » para un subtítulo, listas con «- » y enlaces [texto](https://…))
+                      <textarea className="input mt-1 w-full" rows={14} maxLength={20000} value={entry.texto} onChange={(e) => setEntry(i, { texto: e.target.value })} />
+                    </label>
+                    <label className="block text-sm">
+                      Resumen para la lista del blog (si lo dejas vacío, se usa el principio del texto)
+                      <textarea className="input mt-1 w-full" rows={2} maxLength={300} value={entry.extracto} onChange={(e) => setEntry(i, { extracto: e.target.value })} />
+                    </label>
+                    <details className="text-sm">
+                      <summary className="cursor-pointer">Cómo sale en Google (opcional)</summary>
+                      <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                        <label>
+                          Título para Google
+                          <input className="input mt-1 w-full" maxLength={70} value={entry.metaTitulo} onChange={(e) => setEntry(i, { metaTitulo: e.target.value })} />
+                        </label>
+                        <label>
+                          Descripción para Google
+                          <input className="input mt-1 w-full" maxLength={160} value={entry.metaDescripcion} onChange={(e) => setEntry(i, { metaDescripcion: e.target.value })} />
+                        </label>
+                      </div>
+                    </details>
+                    <div className="flex flex-wrap items-center gap-3 border-t border-kairikos-border pt-3 text-sm">
+                      <label className="flex items-center gap-2">
+                        <input type="checkbox" checked={entry.publicada} onChange={(e) => setEntry(i, { publicada: e.target.checked })} />
+                        Publicar esta entrada (sale en tu web la próxima vez que pulses «Publicar»)
+                      </label>
+                      <button type="button" className="btn-ghost text-kairikos-danger" onClick={() => removeEntry(i)}>
+                        Borrar entrada
+                      </button>
+                    </div>
+                  </div>
+                </details>
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : (
+        <>
+          <div className="card space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-sm">
+                Nombre en el menú
+                <input className="input mt-1 w-full" maxLength={30} value={page.titulo} onChange={(e) => update((d) => (d.paginas[pageIndex].titulo = e.target.value))} />
+              </label>
+              <p className="text-sm text-kairikos-muted sm:pt-6">Dirección: /{page.ruta ? `${page.ruta}/` : ''}</p>
+            </div>
+            <details className="text-sm">
+              <summary className="cursor-pointer">Cómo sale en Google (opcional)</summary>
+              <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                <label>
+                  Título para Google
+                  <input className="input mt-1 w-full" maxLength={70} value={page.metaTitulo} onChange={(e) => update((d) => (d.paginas[pageIndex].metaTitulo = e.target.value))} />
+                </label>
+                <label>
+                  Descripción para Google
+                  <input className="input mt-1 w-full" maxLength={160} value={page.metaDescripcion} onChange={(e) => update((d) => (d.paginas[pageIndex].metaDescripcion = e.target.value))} />
+                </label>
+              </div>
+            </details>
+            {pageIndex > 0 ? (
+              <div className="flex flex-wrap gap-2 text-sm">
+                <button type="button" className="btn-ghost" disabled={pageIndex === 1} onClick={() => movePage(pageIndex, -1)}>
+                  Antes en el menú
+                </button>
+                <button type="button" className="btn-ghost" disabled={pageIndex === content.paginas.length - 1} onClick={() => movePage(pageIndex, 1)}>
+                  Después en el menú
+                </button>
+                <button type="button" className="btn-ghost text-kairikos-danger" onClick={() => removePage(pageIndex)}>
+                  Quitar esta página
+                </button>
+              </div>
+            ) : null}
+            {content.paginas.length > 6 ? <p className="text-xs text-kairikos-warning">En el menú caben cinco enlaces: las páginas de más siguen existiendo, pero no salen en él.</p> : null}
+          </div>
+
+          {page.secciones.length === 0 ? <p className="card text-sm text-kairikos-muted">Esta página está vacía: añádele secciones o bloques aquí debajo.</p> : null}
+          <ol className="space-y-2">
+            {page.secciones.map((ref, i) => {
+              const examples = pendingIn(content, ref);
+              const block = ref.tipo === 'bloque' ? content.bloques.find((b) => b.id === ref.id) : null;
+              const label = ref.tipo === 'bloque' ? `${block ? BLOCK_LABEL[block.tipo] : 'Bloque'}${block?.titulo ? `: ${block.titulo}` : ''}` : SECTION_LABEL[ref.tipo];
+              return (
+                <li key={refKey(ref)} className={`card ${ref.oculta ? 'opacity-60' : ''}`}>
+                  <details>
+                    <summary className="flex cursor-pointer flex-wrap items-center gap-2">
+                      <span className="font-medium">{label}</span>
+                      {ref.oculta ? <span className="pill-muted">Oculta</span> : null}
+                      {examples > 0 ? <span className="pill-warning">{examples} de ejemplo</span> : null}
+                    </summary>
+                    <div className="mt-4 space-y-4">
+                      {sectionEditor(ref)}
+                      <div className="flex flex-wrap gap-2 border-t border-kairikos-border pt-3 text-sm">
+                        <button type="button" className="btn-ghost" disabled={i === 0} onClick={() => move(i, -1)}>
+                          Subir sección
+                        </button>
+                        <button type="button" className="btn-ghost" disabled={i === page.secciones.length - 1} onClick={() => move(i, 1)}>
+                          Bajar sección
+                        </button>
+                        {ref.tipo !== 'portada' && ref.tipo !== 'contacto' ? (
+                          <button type="button" className="btn-ghost" onClick={() => update((d) => (d.paginas[pageIndex].secciones[i].oculta = !ref.oculta))}>
+                            {ref.oculta ? 'Mostrar en la web' : 'Ocultar de la web'}
+                          </button>
+                        ) : null}
+                        {examples > 0 ? (
+                          <button type="button" className="btn-primary" onClick={() => confirmSection(ref)}>
+                            Confirmar sección: lo que pone es cierto
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </details>
+                </li>
+              );
+            })}
+          </ol>
+
+          <div className="card flex flex-wrap items-center gap-2">
+            <span className="text-sm">Añadir a esta página</span>
+            <select className="input" value={newSection} onChange={(e) => setNewSection(e.target.value as SiteSectionType | '')} aria-label="Sección">
+              <option value="">Una sección…</option>
+              {(Object.keys(SECTION_LABEL) as SiteSectionType[])
+                .filter((t) => !page.secciones.some((s) => s.tipo === t))
+                .map((t) => (
+                  <option key={t} value={t}>
+                    {SECTION_LABEL[t]}
+                  </option>
+                ))}
+            </select>
+            <button type="button" className="btn-ghost" onClick={addSection} disabled={!newSection}>
+              Añadir sección
+            </button>
+            <select className="input" value={newBlock} onChange={(e) => setNewBlock(e.target.value as SiteBlock['tipo'])} aria-label="Tipo de bloque">
+              {(Object.keys(BLOCK_LABEL) as SiteBlock['tipo'][]).map((t) => (
+                <option key={t} value={t}>
+                  {BLOCK_LABEL[t]}
+                </option>
+              ))}
+            </select>
+            <button type="button" className="btn-ghost" onClick={addBlock} disabled={content.bloques.length >= 12}>
+              Añadir bloque
+            </button>
+            <span className="text-xs text-kairikos-muted">Los datos de una sección son de toda la web: «Servicios» en dos páginas enseña lo mismo en las dos.</span>
+          </div>
+
+          <div className="card flex flex-wrap items-center gap-2">
+            <label className="text-sm" htmlFor="nueva-pagina">Nueva página</label>
+            <input id="nueva-pagina" className="input" maxLength={30} placeholder="Por ejemplo: Desatascos" value={newPageTitle} onChange={(e) => setNewPageTitle(e.target.value)} />
+            <button type="button" className="btn-ghost" onClick={addPage} disabled={!newPageTitle.trim() || content.paginas.length >= 20}>
+              Crear página
+            </button>
+          </div>
+        </>
+      )}
 
       <div className="card space-y-3">
         <p className="font-semibold">Contacto y datos legales</p>
@@ -402,6 +694,20 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
             <input className="input mt-1 w-full" maxLength={300} value={address} onChange={(e) => { setAddress(e.target.value); setDirty(true); }} />
           </label>
         </div>
+        <label className="block text-sm">
+          Dirección de tu web, si está en tu propio alojamiento (por ejemplo https://fontaneriasuarez.es)
+          <input
+            className="input mt-1 w-full"
+            type="url"
+            maxLength={200}
+            placeholder="https://"
+            value={content.urlPublica}
+            onChange={(e) => update((d) => (d.urlPublica = e.target.value.trim()))}
+          />
+          <span className="text-xs text-kairikos-muted">
+            Con ella preparamos lo que Google pide para leer bien tu web (el mapa del sitio y la dirección de cada página). Si la alojamos nosotros, no hace falta.
+          </span>
+        </label>
         <p className="text-xs text-kairikos-muted">Para el aviso legal y la política de privacidad de tu web (los pide la ley a toda web de un negocio).</p>
         <div className="grid gap-3 sm:grid-cols-2">
           {(

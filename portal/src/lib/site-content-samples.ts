@@ -96,6 +96,42 @@ const normal: SiteContent = {
   ],
   legal: { titular: 'Fontanería Ejemplo S.L.', nif: 'B00000000', domicilio: 'Calle de Muestra, 1, Las Palmas de Gran Canaria', email: 'hola@fontaneria-ejemplo.invalid', registro: '' },
   seccionesConfirmadas: [],
+  // Entrega 5: con blog, para que las comprobaciones con navegador prueben
+  // también la lista y el artículo de cada plantilla.
+  blog: {
+    titulo: 'Blog',
+    intro: 'Consejos de fontanería para casa, contados sin tecnicismos.',
+    entradas: [
+      {
+        slug: 'como-detectar-una-fuga',
+        titulo: 'Cómo saber si tiene una fuga de agua sin romper nada',
+        metaTitulo: '',
+        metaDescripcion: '',
+        fecha: '2026-10-20',
+        extracto: 'Tres comprobaciones que puede hacer usted mismo antes de llamar a nadie.',
+        texto:
+          'Una fuga pequeña puede pasar meses sin verse.\n\n## Mire el contador\n\nCierre todos los grifos y apunte la lectura. Si al cabo de una hora ha cambiado, hay una fuga.\n\n## Revise las juntas\n\n- Debajo del fregadero\n- Detrás del inodoro\n- En la toma de la lavadora\n\nSi no la encuentra, [escríbanos](mailto:hola@fontaneria-ejemplo.invalid).',
+        foto: '',
+        fotoAlt: '',
+        publicada: true,
+        origen: 'cliente',
+      },
+      {
+        slug: 'termo-o-calentador',
+        titulo: '¿Termo eléctrico o calentador de gas?',
+        metaTitulo: '',
+        metaDescripcion: '',
+        fecha: '2026-09-02',
+        extracto: '',
+        texto: 'Depende de cuántos son en casa y de la instalación que ya tiene.\n\nUn termo es más barato de poner; un calentador gasta menos si se usa mucho.',
+        foto: '',
+        fotoAlt: '',
+        publicada: true,
+        origen: 'cliente',
+      },
+    ],
+  },
+  urlPublica: '',
 };
 normal.paginas[0].secciones.splice(4, 0, { tipo: 'bloque', id: 'historia' });
 normal.paginas[0].secciones.unshift({ tipo: 'bloque', id: 'agosto' });
@@ -104,6 +140,15 @@ const repeat = (s: string, n: number) => Array.from({ length: n }, () => s).join
 
 const exagerado: SiteContent = {
   ...normal,
+  // Entrega 5: varias páginas con el título más largo que admite el menú,
+  // para que las comprobaciones midan el menú lleno y la cabecera de página.
+  paginas: [
+    defaultHomePage(),
+    { ruta: 'servicios', titulo: 'Servicios y precios completos', metaTitulo: '', metaDescripcion: '', secciones: [{ tipo: 'servicios' }, { tipo: 'precios' }] },
+    { ruta: 'empresa', titulo: 'Nuestra empresa y garantías', metaTitulo: '', metaDescripcion: '', secciones: [{ tipo: 'sobre' }, { tipo: 'proceso' }, { tipo: 'garantias' }] },
+    { ruta: 'preguntas', titulo: 'Preguntas más frecuentes', metaTitulo: '', metaDescripcion: '', secciones: [{ tipo: 'faq' }] },
+    { ruta: 'contacto', titulo: 'Contacto y zona de trabajo', metaTitulo: '', metaDescripcion: '', secciones: [{ tipo: 'contacto' }, { tipo: 'zona' }] },
+  ],
   datos: {
     ...normal.datos,
     titular: 'Fontanería, desatascos, termos, calentadores y reformas de baño completas en toda la isla',
@@ -152,6 +197,29 @@ const exagerado: SiteContent = {
     { id: 'agosto', tipo: 'lista', titulo: 'Por qué elegirnos', texto: '', foto: '', fotoAlt: '', items: Array.from({ length: 8 }, (_, i) => ({ texto: repeat('Motivo número', (i % 3) + 1) + ` ${i + 1}`, icono: '' })) },
   ],
   ejemplos: [],
+  blog: {
+    titulo: 'Consejos y noticias',
+    intro: repeat('Todo lo que conviene saber sobre la fontanería de su casa, explicado con calma.', 4).slice(0, 300),
+    entradas: Array.from({ length: 12 }, (_, i) => ({
+      slug: `entrada-${i + 1}`,
+      titulo: i % 2 ? `Entrada ${i + 1}` : 'Todo lo que debe revisar en la instalación de agua de una vivienda antigua antes de comprarla o reformarla',
+      metaTitulo: '',
+      metaDescripcion: '',
+      fecha: `2026-${String(10 - (i % 9)).padStart(2, '0')}-${String(28 - i).padStart(2, '0')}`,
+      extracto: i % 3 ? repeat('Extracto largo de la entrada con bastante detalle.', 6).slice(0, 300) : '',
+      texto: [
+        repeat('Párrafo largo de la entrada.', 30),
+        '## Un subtítulo largo que ocupa más de una línea en el móvil y en escritorio',
+        repeat('Otro párrafo.', 40),
+        '- Punto uno bastante largo para ver cómo parte la línea\n- Punto dos\n- Punto tres',
+        'https://ejemplo.invalid/una-direccion-muy-larga-sin-espacios-que-no-debe-desbordar-el-ancho-de-la-pagina-en-movil',
+      ].join('\n\n'),
+      foto: i === 0 ? 'assets/portada.jpg' : '',
+      fotoAlt: 'Foto',
+      publicada: true,
+      origen: 'cliente' as const,
+    })),
+  },
 };
 
 const minimo: SiteContent = {
@@ -168,6 +236,7 @@ const minimo: SiteContent = {
     faq: normal.datos.faq.slice(0, 1),
   },
   ejemplos: ['cifras.0.valor', 'precios.filas.0.precio'],
+  blog: { titulo: 'Blog', intro: '', entradas: [{ ...normal.blog.entradas[1], extracto: '', texto: 'Una línea.' }] },
 };
 
 export const SITE_CONTENT_SAMPLES = { normal, exagerado, minimo } as const;

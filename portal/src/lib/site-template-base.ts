@@ -129,6 +129,19 @@ form .boton[disabled]{opacity:.6;cursor:not-allowed}
 .lista-iconos svg{flex:none;width:1.4rem;height:1.4rem;color:var(--acento)}
 .pie{background:var(--marca);color:#d7e0ea;padding-block:var(--s-6);font-size:.95rem}
 .pie a{color:var(--blanco)}
+.cabecera-pagina{padding-block:var(--s-7) var(--s-5);background:radial-gradient(circle at 85% 20%,var(--acento-claro),transparent 55%)}
+.cabecera-pagina h1,.blog-lista h1{font-size:clamp(2.2rem,5vw,3.4rem)}.cabecera-pagina h1{margin:0}
+.entradas{display:grid;gap:var(--s-5);grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr));margin-top:var(--s-6)}
+.entradas>*{min-width:0}
+.entrada h3 a{color:inherit;text-decoration:none}.entrada h3 a:hover{text-decoration:underline}
+.entrada img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:12px;margin-bottom:var(--s-4)}
+.entrada .leer{margin-top:auto;font-weight:600}
+time{font-size:.9rem;color:var(--tinta-suave)}
+.articulo{max-width:46rem}
+.articulo h1{font-size:clamp(2rem,4.5vw,3rem)}
+.articulo img{width:100%;border-radius:var(--radio);margin:var(--s-5) 0}
+.articulo .cuerpo{overflow-wrap:anywhere}.articulo .cuerpo h2{font-size:1.6rem;margin-top:var(--s-6)}.articulo .cuerpo h3{font-size:1.25rem;margin-top:var(--s-5)}
+.volver{display:inline-block;margin-bottom:var(--s-4);font-weight:600}
 .dato-ejemplo{text-decoration:underline dashed var(--acento);text-underline-offset:3px}
 .dato-ejemplo::after{content:"ejemplo";font:600 .62rem/1 var(--texto);text-transform:uppercase;letter-spacing:.06em;background:#fde68a;color:#5b4500;border-radius:4px;padding:2px 4px;margin-left:4px;vertical-align:middle}
 .dato-ejemplo-bloque{outline:2px dashed #e0b200;outline-offset:6px;border-radius:4px}
@@ -293,6 +306,23 @@ const SECCIONES: SiteTemplateSource['secciones'] = {
   bloque_aviso: `<section class="seccion" id="{{ancla}}"><div class="contenedor">
   <div class="aviso" role="note">{{#titulo}}<strong>{{titulo}}</strong> {{/titulo}}{{{texto_html}}}</div>
 </div></section>`,
+  blog_lista: `<section class="seccion blog-lista" id="{{ancla}}"><div class="contenedor">
+  <span class="rotulo">{{nombre}}</span>
+  <h1>{{blog.titulo}}</h1>
+  {{#blog.intro}}<p class="lead">{{blog.intro}}</p>{{/blog.intro}}
+  <div class="entradas">{{#entradas}}<article class="tarjeta entrada aparece">{{#foto}}<img src="{{foto}}" alt="{{foto_alt}}">{{/foto}}<time datetime="{{fecha_iso}}">{{fecha}}</time><h3><a href="{{href}}">{{titulo}}</a></h3>{{#extracto}}<p>{{extracto}}</p>{{/extracto}}<a class="leer" href="{{href}}" aria-hidden="true" tabindex="-1">Leer</a></article>{{/entradas}}</div>
+</div></section>`,
+  cabecera_pagina: `<header class="cabecera-pagina" id="{{ancla}}"><div class="contenedor">
+  <span class="rotulo">{{nombre}}</span>
+  <h1>{{pagina.titulo}}</h1>
+</div></header>`,
+  blog_articulo: `<article class="seccion" id="{{ancla}}"><div class="contenedor articulo">
+  <a class="volver" href="{{blog.href}}">{{blog.titulo}}</a>
+  <h1>{{entrada.titulo}}</h1>
+  <time datetime="{{entrada.fecha_iso}}">{{entrada.fecha}}</time>
+  {{#entrada.foto}}<img src="{{entrada.foto}}" alt="{{entrada.foto_alt}}">{{/entrada.foto}}
+  <div class="cuerpo lead">{{{entrada.texto_html}}}</div>
+</div></article>`,
 };
 
 export const SITE_TEMPLATE_BASE: SiteTemplateSource = { marco: MARCO, secciones: SECCIONES };

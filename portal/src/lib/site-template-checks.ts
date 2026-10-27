@@ -22,9 +22,23 @@ export const CHECK_WIDTHS = [360, 1100, 1280] as const;
 export const CHECK_SAMPLES = ['normal', 'exagerado', 'minimo'] as const;
 export type CheckSample = (typeof CHECK_SAMPLES)[number];
 
+/** Qué se mide: la portada con los tres contenidos y, desde la entrega 5, la
+ *  lista del blog y un artículo con el contenido exagerado (doce entradas,
+ *  títulos de tres líneas, una URL larguísima en el texto) y la lista con
+ *  el mínimo (una entrada sin extracto). Por tres anchos: 18 pasadas. */
+export const CHECK_PAGES: readonly { contenido: CheckSample; pagina: string }[] = [
+  ...CHECK_SAMPLES.map((contenido) => ({ contenido, pagina: '' })),
+  { contenido: 'exagerado', pagina: 'servicios' },
+  { contenido: 'exagerado', pagina: 'blog' },
+  { contenido: 'exagerado', pagina: 'blog/entrada-1' },
+  { contenido: 'minimo', pagina: 'blog' },
+];
+
 export interface CheckRun {
   ancho: number;
   contenido: CheckSample;
+  /** '' = la portada. */
+  pagina?: string;
   problemas: string[];
 }
 
@@ -287,7 +301,7 @@ export function summarizeCheckRuns(runs: CheckRun[], max = 20): string[] {
     for (const p of run.problemas) {
       // Las medidas cambian con el ancho; se agrupa por la frase sin números.
       const key = p.replace(/\d+([.,]\d+)?/g, '#').slice(0, 160);
-      const where = `${run.ancho} px, contenido ${run.contenido}`;
+      const where = `${run.ancho} px, contenido ${run.contenido}${run.pagina ? `, página ${run.pagina}` : ''}`;
       if (!seen.has(key)) seen.set(key, [p, where]);
       else seen.get(key)?.push(where);
     }

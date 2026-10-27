@@ -113,7 +113,10 @@ async function download(family, meta) {
     const range = /unicode-range:\s*([^;]+);/.exec(body)[1].trim();
     let file = seen.get(src);
     if (!file) {
-      file = `${slug}-${style}-${weight.replace(' ', '-')}-${subset}.woff2`;
+      // Sin el nombre de la familia: ya lo dice la carpeta, y «space-grotesk-normal-…»
+      // contiene «sk-» seguido de 16 caracteres, que el escáner de secretos
+      // (scripts/secrets-patterns.txt) toma por una clave de API.
+      file = `${style}-${weight.replace(' ', '-')}-${subset}.woff2`;
       const bin = Buffer.from(await (await fetch(src)).arrayBuffer());
       await writeFile(path.join(dir, file), bin);
       seen.set(src, file);
