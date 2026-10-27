@@ -177,6 +177,14 @@ export function validateSiteTemplate(input: SiteTemplateSource): TemplateValidat
       problems.push(`el marco: el CSS tiene que dar estilo a .${cls} (los datos de ejemplo y su leyenda los pone el motor; la plantilla decide cómo se ven).`);
     }
   }
+  // 27/10/2026 — las citas y reseñas de Google las escribe el código
+  // (site-draft-markup.ts, por las políticas de Places); la plantilla les da
+  // estilo. Sin esto salían como una lista sin formato.
+  for (const cls of ['cita', 'cita-autor', 'resena', 'resena-estrellas', 'atribucion-google']) {
+    if (!new RegExp(`\\.${cls}(?![\\w-])`).test(marco)) {
+      problems.push(`el marco: el CSS tiene que dar estilo a .${cls}; las citas y reseñas de Google llegan ya escritas con esas clases (ver los campos *_html).`);
+    }
+  }
   const holes = marco.match(/\{\{\{secciones\}\}\}/g)?.length ?? 0;
   if (holes !== 1) problems.push(`el marco: tiene que llevar {{{secciones}}} exactamente una vez (lleva ${holes}); ahí van las secciones en el orden del cliente.`);
   const scripts = marco.match(/<script\b/gi)?.length ?? 0;

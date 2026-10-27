@@ -8,6 +8,7 @@ import { classifyWebsite } from './prospecting-report';
 import { getLiveDraftData } from './web-draft-live';
 import { filterDraftReviews } from './web-draft-reviews';
 import { addressFromLeadSummary } from './web-draft-subject';
+import { designForDraft } from './web-draft-design';
 
 // =============================================================================
 // A11, capa 2 — generar los borradores solos, en el barrido semanal.
@@ -179,6 +180,17 @@ export async function sweepPendingWebDrafts(
       siblings.length,
     );
 
+    // Webs con IA (27/10/2026): con plantilla aprobada para su sector, el
+    // borrador sale con el diseño de la biblioteca y el contenido ampliado.
+    // Sin ella, null y todo sigue como antes (web-draft-design.ts).
+    const design = await designForDraft(prisma, {
+      copy: result.copy,
+      themeKey: variant,
+      businessName,
+      primaryType: lead.primaryType,
+      city: lead.searchLocation,
+    });
+
     try {
       await prisma.prospectingWebDraft.create({
         data: {
@@ -186,6 +198,7 @@ export async function sweepPendingWebDrafts(
           clientId: lead.clientId,
           tenantId: lead.tenantId,
           copy: result.copy as unknown as object,
+          ...(design ? { content: design.content as unknown as object, templateId: design.templateId } : {}),
           themeKey: variant,
           model: result.model,
           generatedAt: now,

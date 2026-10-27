@@ -4,6 +4,7 @@ import type { PrismaClient } from '@prisma/client';
 import { generateWebDraftCopy } from './web-draft-ai';
 import { themeFor } from './web-draft-html';
 import { createShareToken } from './prospecting-share';
+import { designForDraft } from './web-draft-design';
 import { logError } from './observability';
 
 // =============================================================================
@@ -127,6 +128,17 @@ export async function createPublicDraft(
     return { ok: false, error: 'unavailable' };
   }
 
+  // Webs con IA (27/10/2026): con plantilla aprobada para su sector, diseño
+  // de la biblioteca (web-draft-design.ts); si no, null y como siempre.
+  const themeKey = `${themeFor(sector.primaryType).key}-1`;
+  const design = await designForDraft(prisma, {
+    copy: generated.copy,
+    themeKey,
+    businessName: input.businessName.trim().slice(0, 200),
+    primaryType: sector.primaryType,
+    city: input.city.trim().slice(0, 120),
+  });
+
   const token = createShareToken();
   await prisma.publicDraftRequest.create({
     data: {
@@ -136,9 +148,10 @@ export async function createPublicDraft(
       city: input.city.trim().slice(0, 120),
       contact: input.contact.trim().slice(0, 200),
       sector: input.sector.slice(0, 40),
-      themeKey: `${themeFor(sector.primaryType).key}-1`,
+      themeKey,
       primaryType: sector.primaryType,
       copy: generated.copy as unknown as object,
+      ...(design ? { content: design.content as unknown as object, templateId: design.templateId } : {}),
       model: generated.model,
       marketingConsentAt: input.marketingConsent === true ? now : null,
       createdAt: now,

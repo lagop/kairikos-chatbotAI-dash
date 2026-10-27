@@ -9,6 +9,8 @@ import { logError } from '@/lib/observability';
 import { getLiveDraftData } from '@/lib/web-draft-live';
 import { addressFromLeadSummary, withLiveData } from '@/lib/web-draft-subject';
 import { filterDraftReviews } from '@/lib/web-draft-reviews';
+import { designForDraft, renderDesignedDraft } from '@/lib/web-draft-design';
+import { Prisma } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -86,6 +88,12 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ leadId: str
   let copy: WebDraftCopy | null =
     !regenerate && lead.webDraft ? (lead.webDraft.copy as unknown as WebDraftCopy) : null;
   let generatedAt = lead.webDraft?.generatedAt ?? new Date();
+  // Webs con IA (27/10/2026): el diseño de la biblioteca, si su sector tiene
+  // plantilla aprobada (web-draft-design.ts). Al regenerar se vuelve a elegir.
+  let design: { content: unknown; templateId: string | null } = {
+    content: lead.webDraft?.content ?? null,
+    templateId: lead.webDraft?.templateId ?? null,
+  };
 
   if (!copy) {
     const result = await generateWebDraftCopy({
@@ -109,11 +117,22 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ leadId: str
 
     copy = result.copy;
     generatedAt = new Date();
+    const themeKey = themeFor(lead.primaryType).key;
+    const designed = await designForDraft(prisma, {
+      copy,
+      themeKey,
+      businessName,
+      primaryType: lead.primaryType,
+      city: lead.searchLocation,
+    });
+    design = { content: designed?.content ?? null, templateId: designed?.templateId ?? null };
     const payload = {
       clientId: lead.clientId,
       tenantId: lead.tenantId,
       copy: copy as unknown as object,
-      themeKey: themeFor(lead.primaryType).key,
+      content: designed ? (designed.content as unknown as object) : Prisma.DbNull,
+      templateId: designed?.templateId ?? null,
+      themeKey,
       model: result.model,
       generatedAt,
     };
@@ -140,9 +159,17 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ leadId: str
   // sirve — pedirá sesión al prospecto.
   const shareUrl = shareToken ? webDraftShareUrl(publicOrigin(req), shareToken) : null;
   const subject = withLiveData(baseSubject, live, copy);
+  const themeKey = lead.webDraft?.themeKey ?? themeFor(lead.primaryType).key;
+  const designed = await renderDesignedDraft(prisma, {
+    templateId: design.templateId,
+    content: design.content,
+    subject,
+    themeKey,
+    shareUrl,
+  });
 
   return new NextResponse(
-    renderWebDraftHtml({ subject, copy, generatedAt, shareUrl, themeKey: lead.webDraft?.themeKey ?? null }),
+    designed ?? renderWebDraftHtml({ subject, copy, generatedAt, shareUrl, themeKey: lead.webDraft?.themeKey ?? null }),
     {
       status: 200,
       headers: {

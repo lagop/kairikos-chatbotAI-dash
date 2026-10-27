@@ -3,6 +3,7 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { isShareToken } from '@/lib/prospecting-share';
 import { renderWebDraftHtml } from '@/lib/web-draft-html';
 import type { WebDraftCopy } from '@/lib/web-draft-ai';
+import { renderDesignedDraft } from '@/lib/web-draft-design';
 import { logError } from '@/lib/observability';
 import { getWebDraftPurchase, purchaseCtaFor } from '@/lib/web-self-serve';
 import { KAIRIKOS_DEMO_URL } from '@/lib/portal-data';
@@ -46,6 +47,8 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ token: s
       where: { shareToken: params.token },
       select: {
         copy: true,
+        content: true,
+        templateId: true,
         themeKey: true,
         generatedAt: true,
         lead: {
@@ -92,14 +95,26 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ token: s
       copy,
     );
 
-    const html = renderWebDraftHtml({
+    // Webs con IA (27/10/2026): con plantilla de la biblioteca, ese diseño;
+    // si no la tiene o algo falla al pintarla, el borrador de siempre.
+    const designed = await renderDesignedDraft(prisma, {
+      templateId: draft.templateId,
+      content: draft.content,
+      subject,
+      themeKey: draft.themeKey,
       purchase: cta,
       offer,
-      subject,
-      copy,
-      generatedAt: draft.generatedAt,
-      themeKey: draft.themeKey,
     });
+    const html =
+      designed ??
+      renderWebDraftHtml({
+        purchase: cta,
+        offer,
+        subject,
+        copy,
+        generatedAt: draft.generatedAt,
+        themeKey: draft.themeKey,
+      });
 
     return new NextResponse(html, {
       status: 200,

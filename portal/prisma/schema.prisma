@@ -3778,6 +3778,14 @@ model ProspectingWebDraft {
   // usado para no repetirla entre competidores de la misma zona.
   themeKey String @map("theme_key")
 
+  // Webs con IA, entrega 3 (27/10/2026): el borrador con plantilla de diseño
+  // de la biblioteca y contenido v2 (site-content.ts), con los datos de
+  // ejemplo marcados. Null mientras el sector no tenga plantilla aprobada: el
+  // borrador sale entonces de `copy`, como siempre. Sin FK: las plantillas
+  // aprobadas no se modifican ni se borran (ver SiteTemplate).
+  content    Json?
+  templateId String? @map("template_id") @db.Uuid
+
   model       String
   generatedAt DateTime @default(now()) @map("generated_at")
 
@@ -4076,8 +4084,11 @@ model PublicDraftRequest {
   primaryType  String @map("primary_type")
   themeKey     String @map("theme_key")
 
-  copy  Json
-  model String
+  copy       Json
+  model      String
+  // Webs con IA, entrega 3 (27/10/2026): igual que en ProspectingWebDraft.
+  content    Json?
+  templateId String? @map("template_id") @db.Uuid
 
   // Cuándo se le contactó, si se hizo. Null es "pendiente de llamar", que es
   // como se usa esta tabla en la práctica.

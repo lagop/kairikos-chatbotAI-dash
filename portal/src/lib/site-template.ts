@@ -212,6 +212,9 @@ export interface SiteRenderContext {
   /** Borrador: banda de propuesta, noindex y formulario de muestra. */
   borrador: boolean;
   bannerHtml?: string | null;
+  /** Lo nuestro al final de la página (la oferta «La quiero» del borrador).
+   *  Va con sus propios estilos en línea: es de Kairikos, no de su web. */
+  footerHtml?: string | null;
   /** HTML ya hecho de Google en vivo, solo en el borrador. */
   resenasHtml?: string | null;
   citasHtml?: string | null;
@@ -462,6 +465,7 @@ export function renderSitePage(template: SiteTemplateSource, content: SiteConten
     html = html.replace(/<\/head>/i, '<meta name="robots" content="noindex, nofollow">\n</head>');
     if (ctx.bannerHtml) html = html.replace(/(<body[^>]*>)/i, `$1\n${ctx.bannerHtml}`);
   }
+  if (ctx.footerHtml) html = html.replace(/<\/body>/i, `${ctx.footerHtml}\n</body>`);
   if (html.includes('class="dato-ejemplo')) {
     html = html.replace(/<\/body>/i, `${EXAMPLE_LEGEND_HTML}\n</body>`);
   }
