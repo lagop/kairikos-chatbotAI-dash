@@ -249,7 +249,7 @@ export function SiteTemplateLab({
                 <span className={estado.pill}>{isChecking ? `Comprobando ${checking.done}/${checking.total}…` : estado.label}</span>
                 <span className="text-xs text-kairikos-muted">
                   {t.sector ?? 'cualquier sector'}
-                  {t.variante ? ` · ${t.variante}` : ''} · {t.modelo ?? 'modelo por defecto'} · {(v.costeUsd ?? 0).toFixed(2)} $ · {v.rondas ?? 0} rondas
+                  {t.variante ? ` · ${t.variante}` : ''} · {t.origen === 'manual' ? 'hecha a mano' : (t.modelo ?? 'modelo por defecto')} · {(v.costeUsd ?? 0).toFixed(2)} $ · {v.rondas ?? 0} rondas
                   {t._count ? ` · ${t._count.websites} webs` : ''}
                 </span>
               </div>

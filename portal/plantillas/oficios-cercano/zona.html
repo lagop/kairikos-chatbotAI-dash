@@ -1,0 +1,9 @@
+<section class="seccion" id="{{ancla}}"><div class="contenedor zona-rejilla">
+  <div>
+    <span class="rotulo">Zona de trabajo</span>
+    <h2>Vamos hasta su casa</h2>
+    {{#zona.texto}}<p class="lead">{{zona.texto}}</p>{{/zona.texto}}
+    {{#zona.lugares.length}}<ul class="chips">{{#zona.lugares}}<li class="aparece"><svg aria-hidden="true"><use href="#i-mapa"></use></svg>{{nombre}}</li>{{/zona.lugares}}</ul>{{/zona.lugares.length}}
+  </div>
+  <div class="mapa" aria-hidden="true"><span class="pin"></span></div>
+</div></section>

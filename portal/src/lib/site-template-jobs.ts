@@ -257,7 +257,11 @@ export async function recordBrowserChecks(
     await save(prisma, id, { estado: 'lista', validacion });
     return { ok: true, estado: 'lista', problemas: [] };
   }
-  if (validacion.rondas >= MAX_REPAIR_ROUNDS) {
+  // Las escritas a mano (scripts/plantilla-a-mano.ts) no pasan por la ronda
+  // de corrección: la IA reescribiría un diseño que no es suyo sin que nadie
+  // lo vea. Se quedan fallidas con los problemas a la vista y se corrigen en
+  // portal/plantillas/, donde viven.
+  if (row.origen === 'manual' || validacion.rondas >= MAX_REPAIR_ROUNDS) {
     await save(prisma, id, { estado: 'fallida', validacion });
     return { ok: true, estado: 'fallida', problemas: problems };
   }
