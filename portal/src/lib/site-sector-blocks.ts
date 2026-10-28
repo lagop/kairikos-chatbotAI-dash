@@ -1,5 +1,5 @@
 import type { SiteBlock, SiteContent, SiteSectionRef } from './site-content';
-import { beautyPhotoSet, TRADE_PHOTO_COUNTS, tradePhotoSet } from './trade-photos';
+import { beautyPhotoSet, tradeDetailPhotos, tradePhotoSet } from './trade-photos';
 
 // =============================================================================
 // Bloques de ejemplo por sector (28/10/2026).
@@ -153,18 +153,18 @@ function withoutBlock(content: SiteContent, id: string): SiteContent {
 }
 
 /** En oficios, una foto de SU oficio en cada pestaña de lo que incluye cada
- *  servicio, rotando entre las que hay (hoy, 3 por oficio: alguna repite la
- *  de portada). Son de banco: el bloque ya va entero de ejemplo. */
+ *  servicio: las que no son de portada (trade-photos.ts), así que ninguna
+ *  pestaña la repite. Son de banco: el bloque ya va entero de ejemplo. */
 function withTradePhotos(content: SiteContent, input: SectorInput): SiteContent {
   const set = tradePhotoSet(input.businessName, input.primaryType);
   const detail = content.bloques.find((b) => b.id === DETAIL_BLOCK_ID);
   if (!set || !detail) return content;
   const next = structuredClone(content);
-  const n = TRADE_PHOTO_COUNTS[set];
+  const fotos = tradeDetailPhotos(set, input.businessName);
   next.bloques
     .find((b) => b.id === DETAIL_BLOCK_ID)!
     .pestanas.forEach((p, i) => {
-      p.foto = `/web-draft/oficios/${set}-${((i + 1) % n) + 1}.jpg`;
+      p.foto = fotos[i % fotos.length];
       p.alt = p.titulo;
     });
   return next;
