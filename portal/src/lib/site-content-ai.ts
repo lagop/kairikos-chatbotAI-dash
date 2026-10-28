@@ -1,7 +1,8 @@
 import 'server-only';
 import { resolveActiveAnthropicCredentials } from './anthropic-credentials';
 import { logError } from './observability';
-import { defaultHomePage, parseSiteContent, resolveContentPath, SITE_LIMITS, type SiteContent } from './site-content';
+import { defaultHomePage, parseSiteContent, resolveContentPath, SITE_LIMITS, type SiteBlock, type SiteContent } from './site-content';
+import { COMPARISON_BLOCK_ID, DETAIL_BLOCK_ID, vacio } from './site-sector-blocks';
 import type { WebDraftCopy } from './web-draft-ai';
 
 // =============================================================================
@@ -72,7 +73,9 @@ Devuelves SOLO un JSON, sin vallas de markdown:
   "precios": {"nota": string, "filas": [{"concepto": string, "precio": string, "detalle": string}]},  // 3 a 5 filas, precios «Desde X €»
   "garantias": [{"titulo": string, "texto": string}],         // 2 o 3
   "zona": {"texto": string, "lugares": [{"nombre": string}]}, // 3 a 6 lugares cercanos a su ciudad
-  "faq": [{"pregunta": string, "respuesta": string}],         // 3 a 5
+  "faq": [{"pregunta": string, "respuesta": string}],         // 4 a 6, las dudas reales de quien contrata este oficio
+  "servicios_detalle": [{"descripcion": string, "incluye": [string]}],  // uno por servicio, en el mismo orden
+  "comparativa": {"titulo": string, "texto": string, "columnas": [string], "filas": [{"concepto": string, "valores": [string]}]},  // o null
   "ejemplos": [string],  // rutas de lo inventado: "cifras.0.valor", "precios.filas.1.precio", "garantias.0.texto", "zona.lugares.2.nombre", "faq.1.respuesta"…
   "color": string,       // solo si se te dan colores: el nombre de uno, el que mejor le vaya por su oficio o su nombre
   "letra": string        // solo si se te dan letras: el nombre de una
@@ -82,7 +85,9 @@ Reglas:
 - Toda cifra, precio, año, plazo, garantía, lugar o afirmación concreta que te inventes va en "ejemplos". Ante la duda, márcalo.
 - Nunca inventes opiniones, valoraciones, número de reseñas ni nombres de personas.
 - Coherente con su texto y su oficio; nada de frases de agencia. Español de España; al visitante se le habla de usted.
-- Textos cortos: títulos de 2 a 5 palabras, textos de una o dos frases, respuestas de dos o tres frases.`;
+- Títulos de 2 a 5 palabras. Textos de una o dos frases; respuestas de la faq de dos a cuatro frases, que resuelvan la duda de verdad.
+- servicios_detalle: amplía cada servicio SIN cambiarle el sentido. "descripcion", de dos o tres frases (máximo 280 caracteres): qué es y para quién; "incluye", de 3 a 5 puntos cortos (máximo 12 palabras cada uno) con lo que comprende el trabajo. Explica el oficio: materiales, opciones, cómo se hace. Lo que sea una promesa concreta del negocio (plazos, marcas, garantías) es inventado y va en "ejemplos".
+- comparativa: solo si en este oficio el cliente suele dudar entre 2 o 3 opciones (aluminio o PVC, termo eléctrico o de gas, corredera o abatible…). Columnas: las opciones. De 4 a 7 filas; cada valor es «sí», «no» o algo de 1 a 4 palabras. Información general del oficio, honesta: ninguna opción gana en todo. Si no hay una duda así, null.`;
 }
 
 function buildUser(input: DraftExpansionInput): string {
@@ -108,6 +113,26 @@ function stripCodeFence(text: string): string {
 
 const str = (v: unknown, max: number): string => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 const arr = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? (v.filter((x) => x && typeof x === 'object') as Record<string, unknown>[]) : []);
+const strList = (v: unknown, max: number): string[] => (Array.isArray(v) ? v.map((x) => str(x, max)).filter(Boolean) : []);
+
+/** La comparativa del oficio, o null si no hay una que se sostenga: de 2 a 4
+ *  opciones y al menos 3 filas con un valor por opción. */
+function buildComparison(value: unknown): SiteBlock | null {
+  if (!value || typeof value !== 'object') return null;
+  const c = value as Record<string, unknown>;
+  const columnas = strList(c.columnas, 40).slice(0, 4);
+  if (columnas.length < 2) return null;
+  const filas = arr(c.filas)
+    .map((f) => ({ concepto: str(f.concepto, 120), valores: strList(f.valores, 60) }))
+    .filter((f) => f.concepto && f.valores.length === columnas.length)
+    .slice(0, SITE_LIMITS.bloqueFilas);
+  if (filas.length < 3) return null;
+  return {
+    ...vacio(COMPARISON_BLOCK_ID, 'comparativa', str(c.titulo, 90) || columnas.join(' o ')),
+    texto: str(c.texto, 400),
+    comparativa: { columnas, destacada: -1, filas },
+  };
+}
 
 /**
  * Función pura: el contenido v2 a partir del texto del borrador y de lo que
@@ -163,11 +188,42 @@ export function buildSiteContentFromDraft(copy: WebDraftCopy, expansion: unknown
   };
   if (!datos.servicios.length) datos.servicios = [{ nombre: 'Servicios', descripcion: '', icono: '' }];
 
+  // 28/10/2026 — la portada más trabajada (Orlando: «el borrador es solo la
+  // portada, pero más currado»). El servicio con su descripción ampliada y,
+  // en pestañas, lo que incluye cada uno; y la comparativa del oficio.
+  const detalle = arr(e.servicios_detalle);
+  const ampliados: number[] = [];
+  datos.servicios.forEach((s, i) => {
+    const d = str(detalle[i]?.descripcion, 300);
+    if (d && copy.services[i]) {
+      s.descripcion = d;
+      ampliados.push(i);
+    }
+  });
+  const bloques: SiteBlock[] = [];
+  const pestanas = datos.servicios
+    .map((s, i) => {
+      const incluye = strList(detalle[i]?.incluye, 120).slice(0, 6);
+      return incluye.length ? { titulo: s.nombre.slice(0, 40).trim(), texto: incluye.map((x) => `- ${x}`).join('\n'), foto: '', alt: '' } : null;
+    })
+    .filter((p): p is NonNullable<typeof p> => p !== null)
+    .slice(0, SITE_LIMITS.bloquePestanas);
+  if (pestanas.length >= 2) bloques.push({ ...vacio(DETAIL_BLOCK_ID, 'pestanas', 'Qué incluye cada servicio'), pestanas });
+  const comparativa = buildComparison(e.comparativa);
+  if (comparativa) bloques.push(comparativa);
+
+  const home = defaultHomePage();
+  for (const [after, id] of [['servicios', DETAIL_BLOCK_ID], ['proceso', COMPARISON_BLOCK_ID]] as const) {
+    if (!bloques.some((b) => b.id === id)) continue;
+    const at = home.secciones.findIndex((s) => s.tipo === after);
+    home.secciones.splice(at + 1, 0, { tipo: 'bloque', id });
+  }
+
   const content: SiteContent = {
     version: 2,
-    paginas: [defaultHomePage()],
+    paginas: [home],
     datos,
-    bloques: [],
+    bloques,
     ejemplos: [],
     legal: { titular: '', nif: '', domicilio: '', email: '', registro: '' },
     seccionesConfirmadas: [],
@@ -201,6 +257,11 @@ export function buildSiteContentFromDraft(copy: WebDraftCopy, expansion: unknown
     else if (value && typeof value === 'object') for (const [k, v] of Object.entries(value)) walk(v, `${path}.${k}`);
   };
   for (const key of ['cifras', 'proceso', 'precios', 'garantias', 'zona', 'faq'] as const) walk(datos[key], key);
+  for (const i of ampliados) walk(datos.servicios[i].descripcion, `servicios.${i}.descripcion`);
+  // Lo que incluye cada servicio es una promesa del negocio, y la comparativa,
+  // información que alguien tiene que haber leído: los dos, enteros, de
+  // ejemplo (se resaltan y no se publican sin mirarlos, como los de sector).
+  for (const b of bloques) marked.add(`bloques.${b.id}.titulo`);
   content.ejemplos = Array.from(marked).slice(0, 200);
 
   const parsed = parseSiteContent(content);
@@ -226,7 +287,21 @@ export async function expandDraftToSiteContent(input: DraftExpansionInput): Prom
     const res = await fetch(`${resolved.baseUrl}/v1/messages`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': resolved.apiKey, 'anthropic-version': ANTHROPIC_VERSION },
-      body: JSON.stringify({ model, max_tokens: 4000, system: buildSystem(), messages: [{ role: 'user', content: buildUser(input) }] }),
+      // 28/10/2026 — sin razonamiento: Haiku 5.5 razona por su cuenta si no se
+      // le dice, y medido en producción gastaba 5.200–5.700 tokens pensando;
+      // con el contenido ampliado, 2 de cada 5 respuestas se cortaban en el
+      // tope (stop_reason max_tokens) y el JSON no se leía. Rellenar un
+      // esquema no lo necesita: sin él, 11–12 s y ~2.600 tokens, y todas bien.
+      // Solo en Haiku: Sonnet 5.5 rechaza `disabled` (400, pide otro valor).
+      // Los demás modelos (solo en local, por la variable) razonan con más
+      // margen de tope.
+      body: JSON.stringify({
+        model,
+        max_tokens: model.includes('haiku') ? 8000 : 16000,
+        ...(model.includes('haiku') ? { thinking: { type: 'disabled' } } : {}),
+        system: buildSystem(),
+        messages: [{ role: 'user', content: buildUser(input) }],
+      }),
     });
     if (!res.ok) {
       const detail = await res.text().catch(() => '');

@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { withSectorExamples } from '@/lib/site-sector-blocks';
+import { DETAIL_BLOCK_ID, vacio, withSectorExamples } from '@/lib/site-sector-blocks';
 import { BEAUTY_PHOTO_COUNTS, beautyPhotoSet, tradeHeroPhoto } from '@/lib/trade-photos';
 import { parseSiteContent } from '@/lib/site-content';
 import { renderSiteFiles } from '@/lib/site-template';
@@ -53,6 +53,28 @@ describe('bloques de ejemplo del sector', () => {
     expect(b.bloques.some((x) => x.tipo === 'antes_despues')).toBe(false);
     expect(withSectorExamples(base(), { familia: 'trades', businessName: 'Aluminios', primaryType: null })).toEqual(base());
     expect(withSectorExamples(base(), { familia: 'beauty', businessName: 'Nails Bar', primaryType: 'nail_salon' })).toEqual(base());
+  });
+
+  it('lo que incluye cada servicio: en oficios lleva fotos de su oficio; en peluquería lo sustituyen las pestañas del sector', () => {
+    const conDetalle = () => {
+      const c = base();
+      c.bloques.push({ ...vacio(DETAIL_BLOCK_ID, 'pestanas', 'Qué incluye cada servicio'), pestanas: [0, 1, 2, 3].map((i) => ({ titulo: `S${i}`, texto: '- x', foto: '', alt: '' })) });
+      c.paginas[0].secciones.splice(3, 0, { tipo: 'bloque', id: DETAIL_BLOCK_ID });
+      c.ejemplos = [`bloques.${DETAIL_BLOCK_ID}.titulo`];
+      return c;
+    };
+    const t = withSectorExamples(conDetalle(), { familia: 'trades', businessName: 'Aluminios Telde', primaryType: null });
+    const fotos = t.bloques.find((b) => b.id === DETAIL_BLOCK_ID)!.pestanas.map((p) => p.foto);
+    expect(fotos).toEqual(['/web-draft/oficios/aluminio-2.jpg', '/web-draft/oficios/aluminio-3.jpg', '/web-draft/oficios/aluminio-1.jpg', '/web-draft/oficios/aluminio-2.jpg']);
+    for (const f of fotos) expect(existsSync(join(process.cwd(), 'public', f)), f).toBe(true);
+    expect(parseSiteContent(t).ok).toBe(true);
+    // Un oficio que no se reconoce se queda sin fotos, no con la de otro.
+    expect(withSectorExamples(conDetalle(), { familia: 'trades', businessName: 'Servicios Pérez', primaryType: null })).toEqual(conDetalle());
+
+    const p = withSectorExamples(conDetalle(), { familia: 'beauty', businessName: 'Liso & Rizo', primaryType: 'hair_salon' });
+    expect(p.bloques.some((b) => b.id === DETAIL_BLOCK_ID)).toBe(false);
+    expect(p.paginas[0].secciones.some((s) => s.tipo === 'bloque' && s.id === DETAIL_BLOCK_ID)).toBe(false);
+    expect(p.ejemplos.some((r) => r.includes(DETAIL_BLOCK_ID))).toBe(false);
   });
 
   it('al publicar, las fotos de banco viajan con la web y ninguna página apunta al portal', async () => {
