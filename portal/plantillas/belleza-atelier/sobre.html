@@ -1,0 +1,8 @@
+<section class="seccion seccion--palo" id="{{ancla}}"><div class="contenedor sobre">
+  {{#fotos.equipo}}<figure class="sobre-foto aparece"><img src="{{fotos.equipo}}" alt="El equipo de {{nombre}}"></figure>{{/fotos.equipo}}{{^fotos.equipo}}<div class="sobre-marca aparece" aria-hidden="true">{{nombre}}</div>{{/fotos.equipo}}
+  <div class="aparece">
+    <p class="antetitulo">Quiénes somos</p>
+    <h2>{{nombre}}</h2>
+    <div class="texto-rico">{{{sobre_html}}}</div>
+  </div>
+</div></section>

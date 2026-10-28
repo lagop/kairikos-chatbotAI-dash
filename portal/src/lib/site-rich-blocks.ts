@@ -213,12 +213,14 @@ function renderVideo(b: RichBlockInput, src: (p: string) => string): string {
 
 /** El HTML de un bloque rico. `base` es lo que se antepone a las rutas de
  *  las fotos desde esta página ('' en la portada, '../' en una interior). */
-export function renderRichBlock(b: RichBlockInput, base: string): string {
+export function renderRichBlock(b: RichBlockInput, base: string, ejemplo = false): string {
   // Solo las relativas suben de nivel: una absoluta ('/web-draft/…', la de
   // la vista previa del laboratorio) ya apunta bien desde cualquier página.
   const src = (p: string) => esc(p && !/^(?:https?:|\/)/.test(p) ? base + p : p);
-  const open = `<section class="k-bloque k-${b.tipo.replace('_', '-')}" id="bloque-${esc(b.id)}"><div class="k-dentro">${head(b)}`;
-  const close = '</div></section>';
+  // De ejemplo (site-sector-blocks.ts): el bloque entero va resaltado con la
+  // marca de la plantilla (.dato-ejemplo-bloque).
+  const open = `<section class="k-bloque k-${b.tipo.replace('_', '-')}" id="bloque-${esc(b.id)}"><div class="k-dentro">${ejemplo ? '<div class="dato-ejemplo-bloque">' : ''}${head(b)}`;
+  const close = `${ejemplo ? '</div>' : ''}</div></section>`;
 
   if (b.tipo === 'galeria') {
     const items = b.fotos

@@ -207,7 +207,34 @@ export interface DesignedWebsiteBuildInput {
  * productos: con recall, el teléfono es su número de recall; con reviews,
  * las estrellas. Sin reviews no hay valoración: envejecería sola.
  */
+/**
+ * Las fotos de nuestro banco que cita el contenido (las de los bloques de
+ * ejemplo por sector, site-sector-blocks.ts), copiadas a assets/muestra/ y con
+ * el contenido apuntando a la copia: la web publicada no le pide nada al
+ * portal. Una que faltara en public/ se queda fuera (y su bloque, sin foto).
+ */
+async function bundleStockImages(content: SiteContent): Promise<{ content: SiteContent; files: WebsiteFile[] }> {
+  const found = new Map<string, string>();
+  const json = JSON.stringify(content).replace(/"(\/web-draft\/([a-z0-9_-]+)\/([a-z0-9_-]+\.(?:jpe?g|png|webp)))"/g, (_m, src: string, dir: string, file: string) => {
+    const dest = `assets/muestra/${dir}-${file}`;
+    found.set(src, dest);
+    return JSON.stringify(dest);
+  });
+  if (!found.size) return { content, files: [] };
+  const files: WebsiteFile[] = [];
+  for (const [src, dest] of found) {
+    try {
+      files.push({ path: dest, content: await readFile(path.join(process.cwd(), 'public', src)) });
+    } catch {
+      // Ver arriba.
+    }
+  }
+  return { content: JSON.parse(json) as SiteContent, files };
+}
+
 export async function buildDesignedWebsiteFiles(input: DesignedWebsiteBuildInput): Promise<WebsiteFile[]> {
+  const stock = await bundleStockImages(input.content);
+  input = { ...input, content: stock.content };
   const formAction =
     input.formToken && input.portalOrigin
       ? `${input.portalOrigin.replace(/\/+$/, '')}/api/public/website-form/${input.formToken}`
@@ -233,7 +260,7 @@ export async function buildDesignedWebsiteFiles(input: DesignedWebsiteBuildInput
     now: input.now,
   });
   const fonts = await fontFiles(pages.map((p) => p.content.toString('utf8')));
-  return [...pages, ...(hero ? [hero] : []), ...(input.uploads ?? []), ...fonts];
+  return [...pages, ...(hero ? [hero] : []), ...(input.uploads ?? []), ...stock.files, ...fonts];
 }
 
 /** Comprobación de que no queda ningún enlace al portal en lo que se publica.
