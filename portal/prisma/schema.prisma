@@ -3799,12 +3799,49 @@ model ProspectingWebDraft {
   // recargando una página.
   shareToken String @unique @map("share_token")
 
-  lead   Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  lead     Lead                         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  client   ChatbotClient                @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant   Tenant?                      @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  versions ProspectingWebDraftVersion[]
 
   @@index([clientId, generatedAt])
   @@index([tenantId])
+}
+
+/// 28/10/2026 — el historial de un borrador de prospecto: cada fila es el
+/// estado ANTERIOR a un cambio, con el cambio que lo sustituyó. Sirve para
+/// deshacer un retoque a mano (scripts/borrador-web.ts, lib/web-draft-edit.ts)
+/// y para que regenerar no se lleve por delante un retoque sin dejar rastro.
+///
+/// Se borra CON el borrador (Cascade), a propósito y contra la costumbre de
+/// que las auditorías sobrevivan: estas filas son copias del borrador, con el
+/// nombre del negocio y textos sacados de sus reseñas. Si un prospecto se
+/// opone, retention-purge.ts borra su borrador, y una copia que sobreviviera
+/// incumpliría exactamente lo que se le prometió.
+model ProspectingWebDraftVersion {
+  /// Lo pone Postgres y no Prisma: estas filas las inserta casi siempre el SQL
+  /// de la herramienta, que pasa por psql y no por el cliente.
+  id      String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  draftId String @map("draft_id") @db.Uuid
+
+  /// Qué sustituyó a este estado: 'retoque' (a mano, con la herramienta) |
+  /// 'restaurado' (se volvió a otra versión) | 'regenerado' (el operador pidió
+  /// uno nuevo desde el portal).
+  accion  String
+  nota    String?
+  /// 'system:claude-code' para la herramienta; el id del operador al regenerar.
+  actorId String  @map("actor_id")
+
+  copy       Json
+  content    Json?
+  templateId String? @map("template_id") @db.Uuid
+  themeKey   String  @map("theme_key")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  draft ProspectingWebDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+
+  @@index([draftId, createdAt])
 }
 
 // =============================================================================

@@ -3,6 +3,7 @@ import { parseJsonObject } from './ai-json';
 import { logError } from './observability';
 import { resolveActiveAnthropicCredentials } from './anthropic-credentials';
 import { resolveHighlights, type DraftReview, type StoredHighlight } from './web-draft-reviews';
+import { WEB_DRAFT_COPY_LIMITS } from './web-draft-edit';
 
 // =============================================================================
 // A11, capa 1 — los textos del borrador de web de un prospecto.
@@ -36,11 +37,12 @@ const ANTHROPIC_VERSION = '2023-06-01';
  *  ANTHROPIC_*_MODEL no llegan al contenedor — ver CLAUDE.md). */
 const DEFAULT_MODEL = 'claude-sonnet-5';
 
-const MAX_HEADLINE_CHARS = 90;
-const MAX_PARAGRAPH_CHARS = 400;
-const MAX_SERVICES = 6;
-const MAX_SERVICE_NAME_CHARS = 60;
-const MAX_SERVICE_TEXT_CHARS = 180;
+// En web-draft-edit.ts, que los comparte con el retoque a mano.
+const MAX_HEADLINE_CHARS = WEB_DRAFT_COPY_LIMITS.headline;
+const MAX_PARAGRAPH_CHARS = WEB_DRAFT_COPY_LIMITS.paragraph;
+const MAX_SERVICES = WEB_DRAFT_COPY_LIMITS.services;
+const MAX_SERVICE_NAME_CHARS = WEB_DRAFT_COPY_LIMITS.serviceName;
+const MAX_SERVICE_TEXT_CHARS = WEB_DRAFT_COPY_LIMITS.serviceText;
 
 export interface WebDraftInput {
   businessName: string;
