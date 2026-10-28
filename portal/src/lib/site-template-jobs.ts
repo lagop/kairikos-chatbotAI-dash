@@ -244,12 +244,15 @@ export async function recordBrowserChecks(
   const row = await prisma.siteTemplate.findUnique({ where: { id } });
   if (!row) return { ok: false, error: 'not_found' };
   if (row.estado !== 'pendiente_navegador') return { ok: false, error: 'wrong_state' };
-  // Si NINGÚN marco llegó a cargar, el fallo es del navegador o del portal,
-  // no del diseño: la plantilla sigue pendiente. El 27/10 la cabecera
-  // frame-ancestors 'none' dejó en blanco las 21 pasadas y las dos plantillas
-  // de oficios quedaron fallidas sin que nadie hubiera medido nada.
+  // Si un marco no llegó a cargar, el fallo es del navegador o del portal, no
+  // del diseño: la plantilla sigue pendiente y se vuelve a medir entera. El
+  // 27/10 la cabecera frame-ancestors 'none' dejó en blanco las 21 pasadas y
+  // las dos plantillas de oficios quedaron fallidas sin que nadie hubiera
+  // medido nada. Al principio bastaba con que fallaran TODAS; el 28/10
+  // «Encuadre» cayó fallida por tres pasadas de 56 que no cargaron porque el
+  // despliegue estaba reiniciando el contenedor justo entonces. Basta UNA.
   const unreadable = (p: string) => LOAD_FAILURE_PREFIXES.some((prefix) => p.startsWith(prefix));
-  if (runs.length && runs.every((r) => r.problemas.length > 0 && r.problemas.every(unreadable))) {
+  if (runs.some((r) => r.problemas.some(unreadable))) {
     return { ok: false, error: 'preview_unreadable' };
   }
   const validacion = asValidacion(row.validacion);

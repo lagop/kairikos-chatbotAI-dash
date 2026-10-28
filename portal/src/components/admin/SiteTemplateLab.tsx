@@ -270,7 +270,7 @@ export function SiteTemplateLab({
               {v.encargo ? <p className="text-sm">{v.encargo}</p> : null}
               {unreadable.has(t.id) ? (
                 <p className="text-sm text-kairikos-danger">
-                  Este navegador no pudo cargar ninguna vista previa, así que no se ha medido nada y sigue pendiente. Recarga la página para
+                  Este navegador no pudo cargar alguna de las vistas previas, así que no cuenta como medida y sigue pendiente. Recarga la página para
                   intentarlo otra vez; si se repite, el fallo es del portal, no de la plantilla.
                 </p>
               ) : null}

@@ -149,14 +149,19 @@ describe('recordBrowserChecks', () => {
     expect(ai.repair).not.toHaveBeenCalled();
   });
 
-  it('si ningún marco llegó a cargar, no juzga el diseño: sigue pendiente', async () => {
+  it('si algún marco no llegó a cargar, no juzga el diseño: sigue pendiente', async () => {
     const { prisma, rows } = fakePrisma([pending({ origen: 'manual' })]);
     const runs = [360, 1100].map((ancho) => ({ ancho, contenido: 'normal' as const, problemas: ['No se pudo leer la vista previa.'] }));
     expect(await recordBrowserChecks(prisma, 'p1', runs)).toEqual({ ok: false, error: 'preview_unreadable' });
     expect(rows.get('p1')?.estado).toBe('pendiente_navegador');
-    // Con que UNA pasada cargue, sí cuenta: lo demás es un fallo de verdad.
-    const mixed = [...runs, { ancho: 1280, contenido: 'normal' as const, problemas: ['Contraste insuficiente…'] }];
-    expect(await recordBrowserChecks(prisma, 'p1', mixed)).toMatchObject({ ok: true, estado: 'fallida' });
+    // 28/10: tres pasadas de 56 sin cargar (un despliegue a medias) y el
+    // resto bien. Tampoco cuenta: se vuelve a medir entera.
+    const mixed = [...runs, { ancho: 1280, contenido: 'normal' as const, problemas: [] }];
+    expect(await recordBrowserChecks(prisma, 'p1', mixed)).toEqual({ ok: false, error: 'preview_unreadable' });
+    expect(rows.get('p1')?.estado).toBe('pendiente_navegador');
+    // Con todo cargado, un fallo de verdad sí cuenta.
+    const real = [{ ancho: 1280, contenido: 'normal' as const, problemas: ['Contraste insuficiente…'] }];
+    expect(await recordBrowserChecks(prisma, 'p1', real)).toMatchObject({ ok: true, estado: 'fallida' });
   });
 
   it('sin rondas disponibles, fallida; y en otro estado no acepta medidas', async () => {
