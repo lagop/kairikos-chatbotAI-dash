@@ -114,6 +114,10 @@ const BLOCK_LABEL: Record<SiteBlock['tipo'], string> = {
   galeria: 'Galería de trabajos',
   antes_despues: 'Antes y después',
   catalogo: 'Catálogo de modelos',
+  pestanas: 'Pestañas',
+  comparativa: 'Comparativa',
+  trayectoria: 'Trayectoria',
+  marcas: 'Marcas y certificados',
 };
 
 /** Qué rutas de datos de ejemplo pertenecen a cada sección. */
@@ -322,7 +326,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
       let n = d.bloques.length + 1;
       while (d.bloques.some((b) => b.id === `bloque-${n}`)) n++;
       const id = `bloque-${n}`;
-      d.bloques.push({ id, tipo: newBlock, titulo: '', texto: '', foto: '', fotoAlt: '', items: newBlock === 'lista' ? [{ texto: '', icono: '' }] : [], fotos: newBlock === 'antes_despues' ? [{ foto: '', alt: '', texto: 'Antes' }, { foto: '', alt: '', texto: 'Después' }] : [], productos: [] });
+      d.bloques.push({ id, tipo: newBlock, titulo: '', texto: '', foto: '', fotoAlt: '', items: newBlock === 'lista' ? [{ texto: '', icono: '' }] : [], fotos: newBlock === 'antes_despues' ? [{ foto: '', alt: '', texto: 'Antes' }, { foto: '', alt: '', texto: 'Después' }] : [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [] });
       const list = d.paginas[pageIndex].secciones;
       const contacto = list.findIndex((s) => s.tipo === 'contacto');
       list.splice(contacto >= 0 ? contacto : list.length, 0, { tipo: 'bloque', id });
@@ -437,7 +441,16 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
               {text('Qué se ve en la foto (para quien no puede verla y para Google)', `${base}.fotoAlt`, b.fotoAlt, 160)}
             </>
           ) : null}
-          {b.tipo === 'galeria' || b.tipo === 'antes_despues' ? (
+          {b.tipo === 'pestanas' ? (
+            <TabsEditor apiBase={props.apiBase} pestanas={b.pestanas} onChange={(pestanas) => update((d) => void ((d.bloques.find((x) => x.id === b.id) as SiteBlock).pestanas = pestanas))} />
+          ) : null}
+          {b.tipo === 'comparativa' ? (
+            <ComparisonEditor value={b.comparativa} onChange={(comparativa) => update((d) => void ((d.bloques.find((x) => x.id === b.id) as SiteBlock).comparativa = comparativa))} />
+          ) : null}
+          {b.tipo === 'trayectoria' ? (
+            <MilestonesEditor hitos={b.hitos} onChange={(hitos) => update((d) => void ((d.bloques.find((x) => x.id === b.id) as SiteBlock).hitos = hitos))} />
+          ) : null}
+          {b.tipo === 'galeria' || b.tipo === 'antes_despues' || b.tipo === 'marcas' ? (
             <RichPhotosEditor
               apiBase={props.apiBase}
               mode={b.tipo}
@@ -974,7 +987,7 @@ function RichPhotosEditor({
   onChange,
 }: {
   apiBase: string;
-  mode: 'galeria' | 'antes_despues';
+  mode: 'galeria' | 'antes_despues' | 'marcas';
   fotos: SiteBlock['fotos'];
   onChange: (fotos: SiteBlock['fotos']) => void;
 }) {
@@ -990,6 +1003,8 @@ function RichPhotosEditor({
     <div className="space-y-3">
       {mode === 'antes_despues' ? (
         <p className="text-xs text-kairikos-muted">Dos fotos del mismo sitio, a ser posible desde el mismo ángulo. En tu web se superponen y el visitante arrastra para comparar.</p>
+      ) : mode === 'marcas' ? (
+        <p className="text-xs text-kairikos-muted">Los logos de las marcas con las que trabajas o de tus certificados, mejor en PNG con fondo transparente. Con más de cuatro, en tu web pasan en cinta.</p>
       ) : (
         <p className="text-xs text-kairikos-muted">Tus trabajos. En tu web, al tocar una foto se amplía y se puede pasar a la siguiente.</p>
       )}
@@ -998,21 +1013,21 @@ function RichPhotosEditor({
           <div key={i} className="space-y-2 rounded-lg border border-kairikos-border p-3">
             <ImagePicker
               apiBase={apiBase}
-              label={mode === 'antes_despues' ? (i === 0 ? 'Foto de antes' : 'Foto de después') : `Foto ${i + 1}`}
-              help="Sube una foto tuya."
+              label={mode === 'antes_despues' ? (i === 0 ? 'Foto de antes' : 'Foto de después') : mode === 'marcas' ? `Logo ${i + 1}` : `Foto ${i + 1}`}
+              help={mode === 'marcas' ? 'Sube el logo.' : 'Sube una foto tuya.'}
               value={f.foto}
-              kind="foto"
+              kind={mode === 'marcas' ? 'logo' : 'foto'}
               onChange={(path) => set(i, { foto: path })}
             />
             <label className="block text-xs font-medium">
-              {mode === 'antes_despues' ? 'Etiqueta (sale sobre la foto)' : 'Pie de foto (opcional)'}
+              {mode === 'antes_despues' ? 'Etiqueta (sale sobre la foto)' : mode === 'marcas' ? 'Texto bajo el logo (opcional, p. ej. «Instalador oficial»)' : 'Pie de foto (opcional)'}
               <input className="input mt-1 w-full" maxLength={160} value={f.texto} onChange={(e) => set(i, { texto: e.target.value })} />
             </label>
             <label className="block text-xs font-medium">
-              Qué se ve (para quien no puede verla y para Google)
+              {mode === 'marcas' ? 'Nombre de la marca o del certificado' : 'Qué se ve (para quien no puede verla y para Google)'}
               <input className="input mt-1 w-full" maxLength={160} value={f.alt} onChange={(e) => set(i, { alt: e.target.value })} />
             </label>
-            {mode === 'galeria' ? (
+            {mode !== 'antes_despues' ? (
               <div className="flex gap-2">
                 <button type="button" className="btn-ghost text-xs" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Subir">↑</button>
                 <button type="button" className="btn-ghost text-xs" onClick={() => move(i, 1)} disabled={i === list.length - 1} aria-label="Bajar">↓</button>
@@ -1024,9 +1039,162 @@ function RichPhotosEditor({
           </div>
         ))}
       </div>
-      {mode === 'galeria' && list.length < 24 ? (
+      {mode !== 'antes_despues' && list.length < 24 ? (
         <button type="button" className="btn-ghost text-sm" onClick={() => onChange([...list, { foto: '', alt: '', texto: '' }])}>
-          + Añadir foto
+          {mode === 'marcas' ? '+ Añadir logo' : '+ Añadir foto'}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/** Tanda 2 — las pestañas de un bloque (hasta 6). */
+function TabsEditor({ apiBase, pestanas, onChange }: { apiBase: string; pestanas: SiteBlock['pestanas']; onChange: (p: SiteBlock['pestanas']) => void }) {
+  const set = (i: number, patch: Partial<SiteBlock['pestanas'][number]>) => onChange(pestanas.map((t, j) => (j === i ? { ...t, ...patch } : t)));
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-kairikos-muted">Varias pestañas en un mismo bloque, por ejemplo «Particulares · Empresas · Comunidades». El visitante pasa de una a otra sin bajar.</p>
+      {pestanas.map((t, i) => (
+        <div key={i} className="grid gap-3 rounded-lg border border-kairikos-border p-3 sm:grid-cols-[1fr_14rem]">
+          <div className="space-y-2">
+            <label className="block text-xs font-medium">
+              Título de la pestaña
+              <input className="input mt-1 w-full" maxLength={40} value={t.titulo} onChange={(e) => set(i, { titulo: e.target.value })} />
+            </label>
+            <label className="block text-xs font-medium">
+              Texto (puedes usar **negrita** y listas con «- »)
+              <textarea className="input mt-1 w-full" rows={4} maxLength={2000} value={t.texto} onChange={(e) => set(i, { texto: e.target.value })} />
+            </label>
+            <button type="button" className="btn-ghost text-xs text-kairikos-danger" onClick={() => onChange(pestanas.filter((_, j) => j !== i))}>
+              Quitar pestaña
+            </button>
+          </div>
+          <div className="space-y-2">
+            <ImagePicker apiBase={apiBase} label="Foto (opcional)" help="Una foto para esta pestaña." value={t.foto} kind="foto" onChange={(path) => set(i, { foto: path })} />
+            {t.foto ? (
+              <label className="block text-xs font-medium">
+                Qué se ve
+                <input className="input mt-1 w-full" maxLength={160} value={t.alt} onChange={(e) => set(i, { alt: e.target.value })} />
+              </label>
+            ) : null}
+          </div>
+        </div>
+      ))}
+      {pestanas.length < 6 ? (
+        <button type="button" className="btn-ghost text-sm" onClick={() => onChange([...pestanas, { titulo: '', texto: '', foto: '', alt: '' }])}>
+          + Añadir pestaña
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/** Tanda 2 — una comparativa: hasta 4 columnas y 15 filas. */
+function ComparisonEditor({ value, onChange }: { value: SiteBlock['comparativa']; onChange: (v: SiteBlock['comparativa']) => void }) {
+  const { columnas, destacada, filas } = value;
+  const setCol = (i: number, t: string) => onChange({ ...value, columnas: columnas.map((c, j) => (j === i ? t : c)) });
+  const addCol = () => onChange({ ...value, columnas: [...columnas, ''], filas: filas.map((f) => ({ ...f, valores: [...f.valores, ''] })) });
+  const removeCol = (i: number) =>
+    onChange({
+      columnas: columnas.filter((_, j) => j !== i),
+      destacada: destacada === i ? -1 : destacada > i ? destacada - 1 : destacada,
+      filas: filas.map((f) => ({ ...f, valores: f.valores.filter((_, j) => j !== i) })),
+    });
+  const setFila = (i: number, patch: Partial<SiteBlock['comparativa']['filas'][number]>) => onChange({ ...value, filas: filas.map((f, j) => (j === i ? { ...f, ...patch } : f)) });
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-kairikos-muted">Compara opciones (PVC frente a aluminio, tus kits o tus planes). Escribe «sí» o «no» y en tu web sale una marca; cualquier otra cosa sale tal cual.</p>
+      <div className="flex flex-wrap items-end gap-2">
+        {columnas.map((c, i) => (
+          <label key={i} className="block text-xs font-medium">
+            Opción {i + 1}
+            <span className="mt-1 flex gap-1">
+              <input className="input w-36" maxLength={40} value={c} onChange={(e) => setCol(i, e.target.value)} />
+              <button type="button" className="btn-ghost text-xs text-kairikos-danger" onClick={() => removeCol(i)} aria-label={`Quitar la opción ${i + 1}`}>
+                ×
+              </button>
+            </span>
+          </label>
+        ))}
+        {columnas.length < 4 ? (
+          <button type="button" className="btn-ghost text-sm" onClick={addCol}>
+            + Opción
+          </button>
+        ) : null}
+      </div>
+      {columnas.length ? (
+        <label className="block text-xs font-medium">
+          Resaltar una opción
+          <select className="input mt-1" value={destacada} onChange={(e) => onChange({ ...value, destacada: Number(e.target.value) })}>
+            <option value={-1}>Ninguna</option>
+            {columnas.map((c, i) => (
+              <option key={i} value={i}>
+                {c || `Opción ${i + 1}`}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+      {filas.map((f, i) => (
+        <div key={i} className="flex flex-wrap items-end gap-2 rounded-lg border border-kairikos-border p-2">
+          <label className="block flex-1 text-xs font-medium">
+            Qué se compara
+            <input className="input mt-1 w-full" maxLength={120} value={f.concepto} onChange={(e) => setFila(i, { concepto: e.target.value })} />
+          </label>
+          {columnas.map((c, j) => (
+            <label key={j} className="block text-xs font-medium">
+              {c || `Opción ${j + 1}`}
+              <input
+                className="input mt-1 w-28"
+                maxLength={60}
+                placeholder="sí / no / texto"
+                value={f.valores[j] ?? ''}
+                onChange={(e) => setFila(i, { valores: columnas.map((_, k) => (k === j ? e.target.value : (f.valores[k] ?? ''))) })}
+              />
+            </label>
+          ))}
+          <button type="button" className="btn-ghost text-xs text-kairikos-danger" onClick={() => onChange({ ...value, filas: filas.filter((_, j) => j !== i) })}>
+            Quitar
+          </button>
+        </div>
+      ))}
+      {filas.length < 15 ? (
+        <button type="button" className="btn-ghost text-sm" onClick={() => onChange({ ...value, filas: [...filas, { concepto: '', valores: columnas.map(() => '') }] })}>
+          + Añadir fila
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/** Tanda 2 — los hitos de una trayectoria (hasta 12). */
+function MilestonesEditor({ hitos, onChange }: { hitos: SiteBlock['hitos']; onChange: (h: SiteBlock['hitos']) => void }) {
+  const set = (i: number, patch: Partial<SiteBlock['hitos'][number]>) => onChange(hitos.map((h, j) => (j === i ? { ...h, ...patch } : h)));
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-kairikos-muted">Tu historia en fechas: cuándo empezaste, la primera nave, los 1.000 clientes… En tu web sale como una línea de tiempo.</p>
+      {hitos.map((h, i) => (
+        <div key={i} className="grid gap-2 rounded-lg border border-kairikos-border p-3 sm:grid-cols-[8rem_1fr]">
+          <label className="block text-xs font-medium">
+            Fecha
+            <input className="input mt-1 w-full" maxLength={30} placeholder="1998" value={h.fecha} onChange={(e) => set(i, { fecha: e.target.value })} />
+          </label>
+          <label className="block text-xs font-medium">
+            Qué pasó
+            <input className="input mt-1 w-full" maxLength={90} value={h.titulo} onChange={(e) => set(i, { titulo: e.target.value })} />
+          </label>
+          <label className="block text-xs font-medium sm:col-span-2">
+            Detalle (opcional)
+            <textarea className="input mt-1 w-full" rows={2} maxLength={300} value={h.texto} onChange={(e) => set(i, { texto: e.target.value })} />
+          </label>
+          <button type="button" className="btn-ghost justify-self-start text-xs text-kairikos-danger" onClick={() => onChange(hitos.filter((_, j) => j !== i))}>
+            Quitar
+          </button>
+        </div>
+      ))}
+      {hitos.length < 12 ? (
+        <button type="button" className="btn-ghost text-sm" onClick={() => onChange([...hitos, { fecha: '', titulo: '', texto: '' }])}>
+          + Añadir hito
         </button>
       ) : null}
     </div>

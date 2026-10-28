@@ -26,7 +26,8 @@ import { renderSiteMarkdown } from './site-markdown';
 // después de comprar, con lo suyo, y la IA del borrador no los genera.
 // =============================================================================
 
-export const SITE_RICH_BLOCK_TYPES = ['galeria', 'antes_despues', 'catalogo'] as const;
+// Tanda 2 (28/10/2026): pestañas, comparativa, trayectoria y marcas.
+export const SITE_RICH_BLOCK_TYPES = ['galeria', 'antes_despues', 'catalogo', 'pestanas', 'comparativa', 'trayectoria', 'marcas'] as const;
 export type SiteRichBlockType = (typeof SITE_RICH_BLOCK_TYPES)[number];
 
 export function isRichBlockType(tipo: string): tipo is SiteRichBlockType {
@@ -40,6 +41,9 @@ export interface RichBlockInput {
   texto: string;
   fotos: { foto: string; alt: string; texto: string }[];
   productos: { nombre: string; categoria: string; foto: string; alt: string; descripcion: string; caracteristicas: string[]; precio: string }[];
+  pestanas: { titulo: string; texto: string; foto: string; alt: string }[];
+  comparativa: { columnas: string[]; destacada: number; filas: { concepto: string; valores: string[] }[] };
+  hitos: { fecha: string; titulo: string; texto: string }[];
 }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -58,11 +62,69 @@ function slug(text: string): string {
 /** Si el bloque tiene algo que enseñar. Uno vacío no se pinta. */
 export function richBlockHasContent(b: RichBlockInput): boolean {
   if (b.tipo === 'catalogo') return b.productos.length > 0;
+  if (b.tipo === 'pestanas') return b.pestanas.length > 0;
+  if (b.tipo === 'comparativa') return b.comparativa.columnas.length > 0 && b.comparativa.filas.length > 0;
+  if (b.tipo === 'trayectoria') return b.hitos.length > 0;
   return b.fotos.some((f) => f.foto);
 }
 
 function head(b: RichBlockInput): string {
   return (b.titulo ? `<h2>${esc(b.titulo)}</h2>` : '') + (b.texto ? `<div class="k-texto">${renderSiteMarkdown(b.texto)}</div>` : '');
+}
+
+/** Pestañas. Sin JavaScript son secciones una debajo de otra, cada una con
+ *  su título; el script las convierte en pestañas (roles ARIA incluidos) y
+ *  oculta los títulos repetidos. */
+function renderPestanas(b: RichBlockInput, src: (p: string) => string): string {
+  const paneles = b.pestanas
+    .map(
+      (t, i) =>
+        `<div class="k-panel" id="k-panel-${esc(b.id)}-${i}" data-k-titulo="${esc(t.titulo)}"><h3 class="k-panel-titulo">${esc(t.titulo)}</h3><div class="k-panel-cuerpo${t.foto ? ' k-panel-cuerpo--foto' : ''}">` +
+        (t.foto ? `<img src="${src(t.foto)}" alt="${esc(t.alt)}" loading="lazy">` : '') +
+        `<div class="k-panel-texto">${renderSiteMarkdown(t.texto)}</div></div></div>`,
+    )
+    .join('');
+  return `<div class="k-pestanas" data-k-pestanas>${paneles}</div>`;
+}
+
+/** Una celda de la comparativa: «sí» y «no» se pintan como marca; lo demás,
+ *  tal cual. */
+function celda(valor: string): string {
+  const v = valor.trim().toLowerCase();
+  if (v === '') return '';
+  if (['sí', 'si', 'yes', '✓', '✔'].includes(v)) return '<span class="k-si" role="img" aria-label="Sí"></span>';
+  if (['no', '—', '-', '–', '✗', 'x'].includes(v)) return '<span class="k-no" role="img" aria-label="No"></span>';
+  return esc(valor);
+}
+
+/** Comparativa: una tabla de verdad. En el móvil cada fila pasa a ser una
+ *  tarjeta, con el nombre de la columna delante de cada valor. */
+function renderComparativa(b: RichBlockInput): string {
+  const { columnas, destacada, filas } = b.comparativa;
+  const cls = (i: number) => (i === destacada ? ' class="k-destacada"' : '');
+  const cabeza = `<thead><tr><td></td>${columnas.map((c, i) => `<th scope="col"${cls(i)}>${esc(c)}</th>`).join('')}</tr></thead>`;
+  const cuerpo = filas
+    .map((f) => `<tr><th scope="row">${esc(f.concepto)}</th>${columnas.map((c, i) => `<td data-k-columna="${esc(c)}"${cls(i)}>${celda(f.valores[i] ?? '')}</td>`).join('')}</tr>`)
+    .join('');
+  return `<div class="k-comparativa-marco"><table class="k-comparativa">${cabeza}<tbody>${cuerpo}</tbody></table></div>`;
+}
+
+/** Trayectoria: una línea de tiempo que se dibuja al bajar. */
+function renderTrayectoria(b: RichBlockInput): string {
+  return `<ol class="k-trayectoria">${b.hitos
+    .map((h) => `<li class="k-hito"><p class="k-hito-fecha">${esc(h.fecha)}</p><div class="k-hito-cuerpo"><h3>${esc(h.titulo)}</h3>${h.texto ? `<p>${esc(h.texto)}</p>` : ''}</div></li>`)
+    .join('')}</ol>`;
+}
+
+/** Marcas y certificados. Con más de cuatro, pasan en cinta (la segunda copia
+ *  es solo para que el bucle no tenga salto, y se oculta a los lectores). */
+function renderMarcas(b: RichBlockInput, src: (p: string) => string): string {
+  const logos = b.fotos.filter((f) => f.foto);
+  const items = logos
+    .map((f) => `<li><img src="${src(f.foto)}" alt="${esc(f.alt)}" loading="lazy">${f.texto ? `<span class="k-marca-texto">${esc(f.texto)}</span>` : ''}</li>`)
+    .join('');
+  if (logos.length <= 4) return `<div class="k-marcas"><ul class="k-marcas-pista">${items}</ul></div>`;
+  return `<div class="k-marcas k-marcas--cinta"><ul class="k-marcas-pista">${items}</ul><ul class="k-marcas-pista" aria-hidden="true">${items.replace(/ alt="[^"]*"/g, ' alt=""')}</ul></div>`;
 }
 
 /** El HTML de un bloque rico. `base` es lo que se antepone a las rutas de
@@ -103,6 +165,11 @@ export function renderRichBlock(b: RichBlockInput, base: string): string {
       `</figure>${close}`
     );
   }
+
+  if (b.tipo === 'pestanas') return open + renderPestanas(b, src) + close;
+  if (b.tipo === 'comparativa') return open + renderComparativa(b) + close;
+  if (b.tipo === 'trayectoria') return open + renderTrayectoria(b) + close;
+  if (b.tipo === 'marcas') return open + renderMarcas(b, src) + close;
 
   // Catálogo
   const cats = [...new Map(b.productos.filter((p) => p.categoria).map((p) => [slug(p.categoria), p.categoria])).entries()];
@@ -179,8 +246,62 @@ export const BLOQUES_CSS = `<style id="bloques-kairikos">
 .k-caracteristicas{list-style:none;margin:.3rem 0 0;padding:0;display:grid;gap:.3rem;font-size:.95rem}
 .k-caracteristicas li{position:relative;padding-left:1.4rem}
 .k-caracteristicas li::before{content:"";position:absolute;left:0;top:.35em;width:.8rem;height:.45rem;border-left:2px solid var(--k-acento-texto,var(--k-acento,currentColor));border-bottom:2px solid var(--k-acento-texto,var(--k-acento,currentColor));transform:rotate(-45deg)}
+.k-pestanas-lista{display:flex;flex-wrap:wrap;gap:.25rem;margin:0 0 1.5rem;border-bottom:2px solid var(--k-borde,rgba(127,127,127,.3))}
+.k-pestanas-lista button{font:inherit;font-weight:600;padding:.7rem 1.1rem;margin-bottom:-2px;border:0;border-bottom:2px solid transparent;background:transparent;color:inherit;cursor:pointer;transition:color .2s ease,border-color .2s ease}
+.k-pestanas-lista button[aria-selected="true"]{border-bottom-color:var(--k-acento,#222);color:var(--k-acento-texto,var(--k-acento,inherit))}
+.k-pestanas-lista button:focus-visible{outline:2px solid var(--k-acento,#222);outline-offset:2px}
+.k-panel+.k-panel{margin-top:2rem}
+.k-pestanas--js .k-panel+.k-panel{margin-top:0}
+.k-pestanas--js .k-panel-titulo{display:none}
+.k-panel[hidden]{display:none}
+.k-panel-cuerpo{display:grid;gap:1.5rem 2.5rem;grid-template-columns:minmax(0,1fr);align-items:start;overflow-wrap:anywhere}
+.k-panel-cuerpo--foto{grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr))}
+.k-panel-cuerpo>*{min-width:0}
+.k-panel-cuerpo img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:var(--k-radio,8px)}
+.k-panel-texto>:first-child{margin-top:0}
+.k-comparativa-marco{max-width:100%}
+.k-comparativa{width:100%;border-collapse:collapse;background:var(--k-superficie,transparent);border-radius:var(--k-radio,8px);overflow:hidden}
+.k-comparativa th,.k-comparativa td{padding:.85rem 1rem;text-align:center;border-bottom:1px solid var(--k-borde,rgba(127,127,127,.25));overflow-wrap:break-word;hyphens:auto}
+.k-comparativa thead th{font-weight:700;font-size:1.05rem}
+.k-comparativa tbody th{text-align:left;font-weight:600}
+.k-comparativa .k-destacada{background:color-mix(in srgb,var(--k-acento,#888) 10%,var(--k-superficie,#fff))}
+.k-comparativa thead .k-destacada{background:var(--k-acento,#222);color:var(--k-sobre-acento,#fff)}
+.k-si,.k-no{display:inline-block;width:1.4rem;height:1.4rem;border-radius:50%;vertical-align:middle;position:relative}
+.k-si{background:color-mix(in srgb,var(--k-acento,#2e7d32) 16%,transparent)}
+.k-si::after{content:"";position:absolute;left:.48rem;top:.25rem;width:.4rem;height:.7rem;border-right:2px solid var(--k-acento-texto,var(--k-acento,#2e7d32));border-bottom:2px solid var(--k-acento-texto,var(--k-acento,#2e7d32));transform:rotate(45deg)}
+.k-no::after{content:"";position:absolute;left:.35rem;right:.35rem;top:50%;height:2px;margin-top:-1px;background:currentColor;opacity:.45}
+@media (max-width:640px){
+.k-comparativa thead{display:none}
+.k-comparativa,.k-comparativa tbody,.k-comparativa tr,.k-comparativa th,.k-comparativa td{display:block;width:100%}
+.k-comparativa tr{border-bottom:1px solid var(--k-borde,rgba(127,127,127,.25));padding:.75rem 1rem}
+.k-comparativa th,.k-comparativa td{padding:.3rem 0;border:0;text-align:left}
+.k-comparativa tbody th{font-size:1.05rem;padding-bottom:.4rem}
+.k-comparativa td{display:flex;justify-content:space-between;gap:1rem}
+.k-comparativa td::before{content:attr(data-k-columna);font-weight:600}
+.k-comparativa .k-destacada{background:transparent}}
+.k-trayectoria{position:relative;isolation:isolate;list-style:none;margin:0;padding:0 0 0 1.75rem;display:grid;gap:2rem;max-width:56rem}
+.k-trayectoria::before{content:"";position:absolute;z-index:-1;left:.45rem;top:.5rem;bottom:.5rem;width:2px;background:var(--k-borde,rgba(127,127,127,.35))}
+.k-hito{position:relative;display:grid;gap:.25rem 2rem;min-width:0}
+.k-hito::before{content:"";position:absolute;z-index:-1;left:-1.75rem;top:.35rem;width:1rem;height:1rem;border-radius:50%;background:var(--k-acento,#222);box-shadow:0 0 0 4px var(--k-superficie,#fff)}
+.k-hito-fecha{margin:0;font-weight:800;font-size:1.15rem;color:var(--k-acento-texto,var(--k-acento,inherit));overflow-wrap:anywhere}
+.k-hito-cuerpo{min-width:0;overflow-wrap:anywhere}
+.k-hito-cuerpo h3{margin:0 0 .3rem}
+.k-hito-cuerpo p{margin:0;color:var(--k-suave,inherit)}
+@media (min-width:760px){.k-hito{grid-template-columns:9rem minmax(0,1fr)}}
+.k-js .k-hito{opacity:0;transform:translateY(16px);transition:opacity .6s ease,transform .7s ease}
+.k-js .k-hito.k-visto{opacity:1;transform:none}
+.k-marcas{overflow:hidden}
+.k-marcas-pista{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:1.5rem 3rem}
+.k-marcas-pista li{display:flex;flex-direction:column;align-items:center;gap:.4rem;min-width:0}
+.k-marcas-pista img{height:3.25rem;width:auto;max-width:11rem;object-fit:contain;filter:grayscale(1);opacity:.8;transition:filter .3s ease,opacity .3s ease}
+.k-marcas-pista li:hover img{filter:none;opacity:1}
+.k-marca-texto{font-size:.8rem;font-weight:600;text-align:center}
+.k-marcas--cinta{display:flex;-webkit-mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent)}
+.k-marcas--cinta .k-marcas-pista{flex:none;flex-wrap:nowrap;padding-right:3rem;animation:k-cinta 32s linear infinite}
+.k-marcas--cinta:hover .k-marcas-pista{animation-play-state:paused}
+@keyframes k-cinta{to{transform:translateX(-100%)}}
 .k-precio{margin-top:auto!important;padding-top:.6rem;font-weight:800;font-size:1.15rem;color:var(--k-acento-texto,var(--k-acento,inherit))}
-@media (prefers-reduced-motion:reduce){.k-galeria-foto img{transition:none}}
+@media (prefers-reduced-motion:reduce){.k-galeria-foto img{transition:none}.k-js .k-hito{opacity:1;transform:none;transition:none}.k-marcas--cinta{display:block;-webkit-mask-image:none;mask-image:none}.k-marcas--cinta .k-marcas-pista{flex-wrap:wrap;animation:none;padding-right:0}.k-marcas--cinta .k-marcas-pista[aria-hidden]{display:none}}
 </style>`;
 
 /** El comportamiento. Solo aspecto: sin peticiones ni almacenamiento. */
@@ -247,5 +368,44 @@ export const BLOQUES_JS = `<script>
       cat.querySelectorAll(".k-producto").forEach(function (p) { p.hidden = !!k && p.getAttribute("data-k-categoria") !== k; });
     });
   });
+  // Pestañas: las secciones pasan a pestañas, con sus roles y las flechas.
+  document.querySelectorAll("[data-k-pestanas]").forEach(function (cont) {
+    var paneles = Array.prototype.slice.call(cont.querySelectorAll(".k-panel"));
+    if (paneles.length < 2) return;
+    var lista = document.createElement("div");
+    lista.className = "k-pestanas-lista"; lista.setAttribute("role", "tablist");
+    var botones = paneles.map(function (p, i) {
+      var b = document.createElement("button");
+      b.type = "button"; b.id = p.id + "-tab"; b.textContent = p.getAttribute("data-k-titulo");
+      b.setAttribute("role", "tab"); b.setAttribute("aria-controls", p.id);
+      p.setAttribute("role", "tabpanel"); p.setAttribute("aria-labelledby", b.id); p.tabIndex = 0;
+      b.addEventListener("click", function () { elegir(i, false); });
+      lista.appendChild(b);
+      return b;
+    });
+    function elegir(i, foco) {
+      botones.forEach(function (b, j) { b.setAttribute("aria-selected", j === i ? "true" : "false"); b.tabIndex = j === i ? 0 : -1; paneles[j].hidden = j !== i; });
+      if (foco) botones[i].focus();
+    }
+    lista.addEventListener("keydown", function (e) {
+      var i = botones.indexOf(document.activeElement);
+      if (i < 0) return;
+      if (e.key === "ArrowRight") { e.preventDefault(); elegir((i + 1) % botones.length, true); }
+      if (e.key === "ArrowLeft") { e.preventDefault(); elegir((i - 1 + botones.length) % botones.length, true); }
+    });
+    cont.insertBefore(lista, paneles[0]);
+    cont.classList.add("k-pestanas--js");
+    elegir(0, false);
+  });
+
+  // La trayectoria aparece hito a hito al bajar.
+  var hitos = document.querySelectorAll(".k-hito");
+  if (hitos.length && "IntersectionObserver" in window && !(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)) {
+    document.documentElement.classList.add("k-js");
+    var obsHitos = new IntersectionObserver(function (entradas) {
+      entradas.forEach(function (en) { if (en.isIntersecting) { en.target.classList.add("k-visto"); obsHitos.unobserve(en.target); } });
+    }, { rootMargin: "0px 0px -10% 0px" });
+    hitos.forEach(function (h) { obsHitos.observe(h); });
+  }
 })();
 </script>`;

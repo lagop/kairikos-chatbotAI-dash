@@ -76,6 +76,9 @@ export const SITE_LIMITS = {
   bloqueItems: 8,
   bloqueFotos: 24,
   bloqueProductos: 24,
+  bloquePestanas: 6,
+  bloqueFilas: 15,
+  bloqueHitos: 12,
   paginas: 20,
   seccionesPorPagina: 30,
   entradas: 200,
@@ -184,6 +187,30 @@ const blockSchema = z.object({
       }),
     )
     .max(SITE_LIMITS.bloqueProductos)
+    .default([]),
+  /** Tanda 2 (28/10/2026) — pestañas: cada una con su título, su texto (con
+   *  formato básico) y, si quiere, una foto. */
+  pestanas: z
+    .array(z.object({ titulo: text(40).min(1), texto: optionalText(2000), foto: blockImagePath, alt: optionalText(160) }))
+    .max(SITE_LIMITS.bloquePestanas)
+    .default([]),
+  /** Comparativa: columnas (las opciones) y filas (lo que se compara). Un
+   *  valor «sí» o «no» se pinta como marca; lo demás, tal cual. `destacada` es
+   *  la columna que se resalta (-1, ninguna). */
+  comparativa: z
+    .object({
+      columnas: z.array(text(40).min(1)).max(4).default([]),
+      destacada: z.number().int().min(-1).max(3).default(-1),
+      filas: z
+        .array(z.object({ concepto: text(120).min(1), valores: z.array(optionalText(60)).max(4).default([]) }))
+        .max(SITE_LIMITS.bloqueFilas)
+        .default([]),
+    })
+    .default({ columnas: [], destacada: -1, filas: [] }),
+  /** Trayectoria: los hitos, en el orden en que salen. */
+  hitos: z
+    .array(z.object({ fecha: text(30).min(1), titulo: text(90).min(1), texto: optionalText(300) }))
+    .max(SITE_LIMITS.bloqueHitos)
     .default([]),
 });
 export type SiteBlock = z.infer<typeof blockSchema>;
