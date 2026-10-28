@@ -209,6 +209,17 @@ describe('validateSiteTemplate', () => {
     expect(r.ok).toBe(true);
   });
 
+  it('exige las variables con las que el motor pinta los bloques ricos, y dice para qué es cada una', () => {
+    const t = base();
+    t.marco = t.marco.replace(/--k-acento-texto:[^;]+;/, '').replace(/--k-superficie:[^;]+;/, '');
+    const r = validateSiteTemplate(t);
+    expect(r.ok).toBe(false);
+    expect(r.problems).toHaveLength(1);
+    expect(r.problems[0]).toMatch(/Faltan: --k-acento-texto \(el acento como texto.*\), --k-superficie \(fondo de tarjeta\)\.$/);
+    // --k-acento sigue declarada: que se llame igual que el principio de otra no confunde.
+    expect(r.problems[0]).not.toMatch(/--k-acento \(/);
+  });
+
   it('quita los atributos on* sin gastar una ronda de IA', () => {
     const t = base();
     t.secciones.contacto = (t.secciones.contacto as string).replace('method="post"', 'method="post" onsubmit="return false"');

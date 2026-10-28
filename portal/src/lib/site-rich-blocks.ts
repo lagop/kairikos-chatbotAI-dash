@@ -31,6 +31,23 @@ import { renderSiteMarkdown } from './site-markdown';
 export const SITE_RICH_BLOCK_TYPES = ['galeria', 'antes_despues', 'catalogo', 'pestanas', 'comparativa', 'trayectoria', 'marcas', 'video'] as const;
 export type SiteRichBlockType = (typeof SITE_RICH_BLOCK_TYPES)[number];
 
+/**
+ * Las variables con las que una plantilla le dice al motor cómo pintar estos
+ * bloques. Las exige el validador (site-template-validate.ts) y las pide el
+ * encargo a la IA (site-template-ai.ts): sin ellas los bloques salen con
+ * colores neutros, legibles pero ajenos a la plantilla. --k-radio y
+ * --k-margen tienen una reserva razonable y no se exigen.
+ */
+export const BLOQUES_VARIABLES = [
+  { nombre: '--k-acento', para: 'fondo de botones y filtros' },
+  { nombre: '--k-sobre-acento', para: 'texto encima de --k-acento' },
+  { nombre: '--k-acento-texto', para: 'el acento como texto sobre el fondo de la página, con contraste de 4,5' },
+  { nombre: '--k-superficie', para: 'fondo de tarjeta' },
+  { nombre: '--k-borde', para: 'filetes y bordes' },
+  { nombre: '--k-suave', para: 'texto secundario' },
+  { nombre: '--k-ancho', para: 'el ancho de tu contenedor' },
+] as const;
+
 export function isRichBlockType(tipo: string): tipo is SiteRichBlockType {
   return (SITE_RICH_BLOCK_TYPES as readonly string[]).includes(tipo);
 }

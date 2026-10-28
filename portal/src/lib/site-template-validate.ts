@@ -1,6 +1,7 @@
 import { SITE_SECTION_TYPES } from './site-content';
 import { declaredFontFamilies, fontCatalogForPrompt } from './site-fonts';
 import { validateTemplateStyle } from './site-style';
+import { BLOQUES_VARIABLES } from './site-rich-blocks';
 import {
   SITE_TEMPLATE_PARTS,
   TemplateSyntaxError,
@@ -263,6 +264,17 @@ export function validateSiteTemplate(input: SiteTemplateSource): TemplateValidat
     ] as const) {
       if (!re.test(contacto)) problems.push(`la sección «contacto»: falta ${what}. El envío lo pone el sistema y busca exactamente eso.`);
     }
+  }
+
+  // 28/10/2026 — los bloques ricos (galería, catálogo, comparativa…) los pinta
+  // el motor con los colores que la plantilla declare en estas variables
+  // (site-rich-blocks.ts). Sin ellas saldrían con colores neutros, ajenos a
+  // la plantilla, y nadie lo notaría hasta que un cliente añadiera uno.
+  const missingVars = BLOQUES_VARIABLES.filter((v) => !new RegExp(`${v.nombre}\\s*:`).test(marco));
+  if (missingVars.length) {
+    problems.push(
+      `el marco: declara en :root las variables con las que el sistema pinta sus bloques de galería, catálogo, comparativa, pestañas y vídeo, apuntando a tu paleta. Faltan: ${missingVars.map((v) => `${v.nombre} (${v.para})`).join(', ')}.`,
+    );
   }
 
   // Lo que el negocio puede cambiar (site-style.ts). Solo lo declaran las
