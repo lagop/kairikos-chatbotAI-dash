@@ -1,0 +1,21 @@
+<section class="portada" id="{{ancla}}"><div class="contenedor portada-rejilla">
+  <div>
+    <p class="ref"><span>Ficha</span><span>{{nombre}}</span></p>
+    <h1>{{titular}}</h1>
+    {{#subtitulo}}<p class="entradilla">{{subtitulo}}</p>{{/subtitulo}}
+    <div class="acciones">
+      {{#telefono_href}}<a class="boton" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg>Llamar ahora</a>{{/telefono_href}}
+      <a class="boton boton--borde" href="#contacto">Pedir presupuesto</a>
+    </div>
+  </div>
+  <div>
+    {{#fotos.portada}}<figure class="plano"><span class="cota cota--h" aria-hidden="true"></span><span class="cota cota--v" aria-hidden="true"></span><img src="{{fotos.portada}}" alt="Trabajo de {{nombre}}"></figure>{{/fotos.portada}}
+    <dl class="datos-ficha">
+      {{#valoracion}}<div><dt>Valoración</dt><dd>{{valoracion}} <span class="estrellas" role="img" aria-label="Valoración en Google"><svg aria-hidden="true"><use href="#i-estrella"></use></svg><svg aria-hidden="true"><use href="#i-estrella"></use></svg><svg aria-hidden="true"><use href="#i-estrella"></use></svg><svg aria-hidden="true"><use href="#i-estrella"></use></svg><svg aria-hidden="true"><use href="#i-estrella"></use></svg></span> <small>en Google{{#num_resenas}} · {{num_resenas}} reseñas{{/num_resenas}}</small></dd></div>{{/valoracion}}
+      {{#horario_resumen}}<div><dt>Horario</dt><dd>{{horario_resumen}}</dd></div>{{/horario_resumen}}
+      {{#direccion}}<div><dt>Dirección</dt><dd>{{direccion}}</dd></div>{{/direccion}}
+      {{#telefono}}<div><dt>Teléfono</dt><dd><a href="tel:{{telefono_href}}">{{telefono}}</a></dd></div>{{/telefono}}
+      <div><dt>Presupuesto</dt><dd>Sin compromiso</dd></div>
+    </dl>
+  </div>
+</div></section>

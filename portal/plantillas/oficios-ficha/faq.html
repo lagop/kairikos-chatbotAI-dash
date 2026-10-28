@@ -1,0 +1,8 @@
+<section class="seccion" id="{{ancla}}"><div class="contenedor faq">
+  <div class="faq-lado">
+    <p class="etiqueta">Preguntas frecuentes</p>
+    <h2>Dudas habituales</h2>
+    {{#telefono}}<p>¿No encuentra la suya? Llámenos y se la resolvemos.</p><a href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg>{{telefono}}</a>{{/telefono}}
+  </div>
+  <div class="preguntas">{{#faq}}<details class="aparece"><summary><span>{{pregunta}}</span></summary><div class="respuesta">{{{respuesta_html}}}</div></details>{{/faq}}</div>
+</div></section>

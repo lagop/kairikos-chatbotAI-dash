@@ -1,0 +1,41 @@
+{
+  "nombre": "Oficios · Ficha",
+  "sector": "trades",
+  "variante": "técnica y precisa, papel milimetrado, grafito y verde azulado",
+  "encargo": "Oficios que venden producto e instalación más que urgencias (carpintería de aluminio y PVC, placas solares, cerramientos, climatización, reformas por proyecto). Estética de ficha técnica o de plano: fondo claro y frío con rejilla milimetrada, tinta grafito y un acento verde azulado. Todo va en celdas con filetes de 1 px: servicios como fichas con su código (S-01), precios en una tabla de verdad, cifras como indicadores, preguntas numeradas (P-01) y la zona como un radar de cobertura. La foto va enmarcada con cotas, como en un plano, y junto a ella los datos del negocio en tabla; arriba, una barra con dirección, horario y teléfono. Titulares en Space Grotesk y texto en Inter con cifras tabulares. Dinámica: las cotas y los filetes se dibujan, las celdas se iluminan, las cifras cuentan y el barrido del radar gira. Transmite precisión, seriedad y presupuesto claro. Escrita a mano.",
+  "estilo": {
+    "acento": {
+      "variables": [
+        {
+          "variable": "--acento",
+          "desde": "color",
+          "contra": ["--fondo", "--fondo-2", "--blanco"],
+          "minimo": 4.5
+        },
+        {
+          "variable": "--acento-claro",
+          "desde": "tono",
+          "contra": ["--tinta", "--tinta-2"],
+          "minimo": 4.5
+        }
+      ],
+      "muestras": [
+        { "nombre": "Verde azulado", "color": "#0f766e" },
+        { "nombre": "Azul", "color": "#1d4ed8" },
+        { "nombre": "Naranja", "color": "#c2410c" },
+        { "nombre": "Verde", "color": "#15803d" },
+        { "nombre": "Rojo", "color": "#b91c1c" },
+        { "nombre": "Índigo", "color": "#4338ca" }
+      ]
+    },
+    "tipografias": {
+      "titulares": "--display",
+      "texto": "--texto",
+      "parejas": [
+        { "id": "tecnica", "nombre": "Técnica", "titulares": "Space Grotesk", "texto": "Inter" },
+        { "id": "moderna", "nombre": "Moderna", "titulares": "Plus Jakarta Sans", "texto": "Source Sans 3" },
+        { "id": "robusta", "nombre": "Robusta", "titulares": "Rubik", "texto": "Work Sans" }
+      ]
+    }
+  }
+}
