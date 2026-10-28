@@ -140,12 +140,34 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ leadId: str
       // El testigo se crea UNA vez y no cambia al regenerar: un enlace que ya
       // mandaste por WhatsApp tiene que seguir abriendo aunque después
       // reescribas el texto.
-      const saved = await prisma.prospectingWebDraft.upsert({
+      const upsert = prisma.prospectingWebDraft.upsert({
         where: { leadId: lead.id },
         create: { leadId: lead.id, ...payload, shareToken: createShareToken() },
         update: payload,
         select: { shareToken: true },
       });
+      // 28/10/2026 — regenerar sustituye el borrador entero, retoques a mano
+      // incluidos (scripts/borrador-web.ts). El anterior queda en el
+      // historial, y la herramienta puede volver a él.
+      const old = lead.webDraft;
+      const saved = old
+        ? (
+            await prisma.$transaction([
+              prisma.prospectingWebDraftVersion.create({
+                data: {
+                  draftId: old.id,
+                  accion: 'regenerado',
+                  actorId: auth.operatorId,
+                  copy: old.copy as Prisma.InputJsonValue,
+                  content: old.content === null ? Prisma.DbNull : (old.content as Prisma.InputJsonValue),
+                  templateId: old.templateId,
+                  themeKey: old.themeKey,
+                },
+              }),
+              upsert,
+            ])
+          )[1]
+        : await upsert;
       shareToken = saved.shareToken;
     } catch (err) {
       // La generación ya está pagada: que no se pueda guardar no debe
