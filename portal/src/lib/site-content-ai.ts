@@ -174,6 +174,7 @@ export function buildSiteContentFromDraft(copy: WebDraftCopy, expansion: unknown
     blog: { titulo: 'Blog', intro: '', entradas: [] },
     urlPublica: '',
     verificacionGoogle: '',
+    imagenes: { logo: '', portada: '' },
   };
   // El color y la letra, por nombre y solo de los ofrecidos. La primera
   // opción es la de la plantilla: se guarda vacía, como si no se eligiera.

@@ -193,6 +193,9 @@ export interface DesignedWebsiteBuildInput {
   now: Date;
   /** Entrega 5: la dirección pública (website-publish.ts, publicSiteUrl). */
   siteUrl?: string | null;
+  /** 28/10/2026 — el logo y las fotos que subió el cliente y cita el
+   *  contenido (site-uploads.ts, referencedImageFiles). */
+  uploads?: WebsiteFile[];
 }
 
 /**
@@ -209,7 +212,8 @@ export async function buildDesignedWebsiteFiles(input: DesignedWebsiteBuildInput
     input.formToken && input.portalOrigin
       ? `${input.portalOrigin.replace(/\/+$/, '')}/api/public/website-form/${input.formToken}`
       : null;
-  const hero = await sectorHeroFile(input.themeKey, input);
+  // Con foto de portada propia, la de su oficio ya no hace falta.
+  const hero = input.content.imagenes?.portada ? null : await sectorHeroFile(input.themeKey, input);
   const reviews = input.integrations?.reviews ?? null;
   const pages = renderSiteFiles(input.template, input.content, {
     negocio: {
@@ -229,7 +233,7 @@ export async function buildDesignedWebsiteFiles(input: DesignedWebsiteBuildInput
     now: input.now,
   });
   const fonts = await fontFiles(pages.map((p) => p.content.toString('utf8')));
-  return [...pages, ...(hero ? [hero] : []), ...fonts];
+  return [...pages, ...(hero ? [hero] : []), ...(input.uploads ?? []), ...fonts];
 }
 
 /** Comprobación de que no queda ningún enlace al portal en lo que se publica.

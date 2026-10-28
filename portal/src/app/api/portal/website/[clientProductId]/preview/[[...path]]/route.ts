@@ -4,6 +4,7 @@ import { resolveClientFromSession } from '@/lib/portal-session';
 import { buildFilesForWebsite, contentTypeFor } from '@/lib/website-publish';
 import { publicOrigin } from '@/lib/public-origin';
 import { resolveRequestedFile, rewriteRelativeUrls } from '@/lib/hosted-site-paths';
+import { SITE_UPLOAD_PATH_RE } from '@/lib/site-content';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -31,6 +32,19 @@ export async function GET(req: NextRequest, props: { params: Promise<{ clientPro
     where: { clientProductId: params.clientProductId, clientId: resolved.clientId },
   });
   if (!website) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+
+  // 28/10/2026 — una imagen subida (site-uploads.ts) se sirve tal cual, sin
+  // construir la web entera: el editor enseña la miniatura en cuanto se
+  // sube, antes de guardar, cuando el contenido todavía no la cita.
+  const asked = resolveRequestedFile(params.path);
+  if (SITE_UPLOAD_PATH_RE.test(asked)) {
+    const image = await prisma.clientWebsiteImage.findUnique({ where: { websiteId_path: { websiteId: website.id, path: asked } }, select: { contentType: true, content: true } });
+    if (!image) return new NextResponse('No encontrada.', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
+    return new NextResponse(new Uint8Array(image.content), {
+      status: 200,
+      headers: { 'content-type': image.contentType, 'cache-control': 'private, max-age=3600', 'x-robots-tag': 'noindex, nofollow', 'x-content-type-options': 'nosniff' },
+    });
+  }
 
   const built = await buildFilesForWebsite(prisma, website, { portalOrigin: publicOrigin(req), now: new Date() });
   if (!built.ok) return NextResponse.json({ error: built.error }, { status: 500 });

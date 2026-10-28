@@ -73,6 +73,7 @@ p{margin:0 0 var(--s-4)}
 .marca::before{content:"";flex:none;width:.7rem;height:.7rem;background:var(--cobalto-claro);transform:rotate(45deg);transition:transform .4s ease}
 .marca:hover::before{transform:rotate(225deg)}
 .marca span{min-width:0;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.05}
+.marca--logo::before{display:none}.marca img{display:block;height:3rem;width:auto;max-width:100%;object-fit:contain;background:var(--blanco);padding:.3rem .55rem;border-radius:var(--radio)}
 .menu{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:0 var(--s-1)}
 .menu a{position:relative;white-space:nowrap;text-decoration:none;font-weight:600;font-size:.95rem;color:var(--claro);padding:var(--s-2) var(--s-3)}
 .menu a::after{content:"";position:absolute;left:var(--s-3);right:var(--s-3);bottom:.2rem;height:1px;background:currentColor;transform:scaleX(0);transform-origin:left;transition:transform .25s ease}
@@ -365,7 +366,7 @@ time{font-size:.85rem;font-weight:700;text-transform:uppercase;letter-spacing:.1
 </svg>
 <a class="saltar" href="#contenido">Saltar al contenido</a>
 <header class="cabecera"><div class="contenedor">
-  <a class="marca" href="{{pagina.inicio}}"><span>{{nombre}}</span></a>
+  <a class="marca{{#logo}} marca--logo{{/logo}}" href="{{pagina.inicio}}">{{#logo}}<img src="{{logo}}" alt="{{nombre}}">{{/logo}}{{^logo}}<span>{{nombre}}</span>{{/logo}}</a>
   <nav class="menu" id="menu" aria-label="Principal">{{#menu}}<a href="{{href}}"{{#actual}} aria-current="page"{{/actual}}>{{titulo}}</a>{{/menu}}</nav>
   {{#telefono_href}}<a class="boton" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg><span>Llamar</span></a>{{/telefono_href}}
   <button class="abrir-menu" type="button" aria-expanded="false" aria-controls="menu" aria-label="Abrir el menú"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16M4 16h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>

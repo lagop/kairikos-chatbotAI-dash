@@ -407,7 +407,19 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
           {b.tipo === 'lista'
             ? listEditor(`${base}.items`, b.items as unknown as Record<string, string>[], [{ key: 'texto', label: 'Punto', max: 160 }, { key: 'icono', label: 'Icono', kind: 'icon', max: 40 }], { texto: '', icono: '' }, 8)
             : null}
-          {b.tipo === 'texto_foto' ? <p className="text-xs text-kairikos-muted">Para poner tu foto, mándanosla por soporte y la subimos nosotros.</p> : null}
+          {b.tipo === 'texto_foto' ? (
+            <>
+              <ImagePicker
+                clientProductId={props.clientProductId}
+                label="Foto"
+                help="Una foto tuya: un trabajo, tu equipo, tu local."
+                value={b.foto}
+                kind="foto"
+                onChange={(path) => update((d) => void ((d.bloques.find((x) => x.id === b.id) as SiteBlock).foto = path))}
+              />
+              {text('Qué se ve en la foto (para quien no puede verla y para Google)', `${base}.fotoAlt`, b.fotoAlt, 160)}
+            </>
+          ) : null}
           <button type="button" className="btn-ghost text-sm text-kairikos-danger" onClick={() => removeBlock(b.id)}>
             Quitar este bloque
           </button>
@@ -491,6 +503,34 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
       </div>
 
       {props.estilo ? <StyleCard estilo={props.estilo} value={content.estilo} onChange={setStyle} /> : null}
+
+      <div className="card space-y-4" data-testid="site-editor-images">
+        <div>
+          <p className="font-semibold">Logo y foto de portada</p>
+          <p className="text-sm text-kairikos-muted">
+            Con tu logo, la cabecera de tu web lo enseña en vez de tu nombre escrito. Con tu foto, la portada lleva la tuya en vez de la de muestra
+            de tu oficio. Las reducimos al subirlas y les quitamos los datos de la cámara (como el lugar donde se hizo la foto).
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <ImagePicker
+            clientProductId={props.clientProductId}
+            label="Logo"
+            help="Mejor en PNG con fondo transparente."
+            value={content.imagenes?.logo ?? ''}
+            kind="logo"
+            onChange={(path) => update((d) => void (d.imagenes = { logo: path, portada: d.imagenes?.portada ?? '' }))}
+          />
+          <ImagePicker
+            clientProductId={props.clientProductId}
+            label="Foto de portada"
+            help="Horizontal, de un trabajo tuyo. Sin ella, va la de muestra de tu oficio."
+            value={content.imagenes?.portada ?? ''}
+            kind="foto"
+            onChange={(path) => update((d) => void (d.imagenes = { logo: d.imagenes?.logo ?? '', portada: path }))}
+          />
+        </div>
+      </div>
 
       {/* Las páginas y el blog. La portada siempre la primera: es la raíz. */}
       <nav className="flex flex-wrap gap-2" aria-label="Páginas de tu web">
@@ -766,6 +806,125 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
         </div>
       </div>
     </section>
+  );
+}
+
+const UPLOAD_ERRORS: Record<string, string> = {
+  unreadable: 'No hemos podido leer esa imagen. Prueba con una JPG o PNG.',
+  too_large: 'La imagen pesa demasiado incluso reducida. Prueba con otra.',
+  not_an_image: 'Ese archivo no es una imagen JPG, PNG o WebP.',
+  too_big_dimensions: 'La imagen es demasiado grande. Prueba con otra.',
+  too_many_images: 'Has subido muchas imágenes sin usarlas. Guarda los cambios y vuelve a probar.',
+  internal_error: 'No se ha podido subir. Inténtalo de nuevo en un momento.',
+};
+
+/**
+ * Reduce la imagen en el navegador y la vuelve a codificar antes de subirla
+ * (site-uploads.ts explica por qué aquí y no en el servidor). Al pintarla en
+ * un canvas se pierden los datos de la cámara, GPS incluido. El logo guarda
+ * la transparencia; las fotos van sobre blanco.
+ */
+async function prepareImage(file: File, kind: 'logo' | 'foto'): Promise<Blob> {
+  const maxSide = kind === 'logo' ? 800 : 1920;
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('no_canvas');
+  if (kind === 'foto') {
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  const encode = (type: string, quality?: number) => new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality));
+  // WebP si el navegador sabe hacerlo (Safari devuelve PNG en su lugar);
+  // si no, PNG para el logo y JPEG para las fotos.
+  const webp = await encode('image/webp', 0.82);
+  if (webp && webp.type === 'image/webp') return webp;
+  const fallback = kind === 'logo' ? await encode('image/png') : await encode('image/jpeg', 0.82);
+  if (!fallback) throw new Error('no_blob');
+  return fallback;
+}
+
+/** Subir, ver y quitar una imagen. La miniatura sale de la vista previa, que
+ *  sirve la subida aunque todavía no esté guardada en el contenido. */
+function ImagePicker({
+  clientProductId,
+  label,
+  help,
+  value,
+  kind,
+  onChange,
+}: {
+  clientProductId: string;
+  label: string;
+  help: string;
+  value: string;
+  kind: 'logo' | 'foto';
+  onChange: (path: string) => void;
+}) {
+  const [state, setState] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null });
+
+  async function upload(file: File) {
+    setState({ busy: true, error: null });
+    let blob: Blob;
+    try {
+      blob = await prepareImage(file, kind);
+    } catch {
+      setState({ busy: false, error: UPLOAD_ERRORS.unreadable });
+      return;
+    }
+    const form = new FormData();
+    form.append('archivo', blob, `imagen.${blob.type.split('/')[1] ?? 'jpg'}`);
+    const res = await fetch(`/api/portal/website/${clientProductId}/images`, { method: 'POST', body: form }).catch(() => null);
+    const body = (await res?.json().catch(() => ({}))) as { path?: string; error?: string };
+    if (!res?.ok || !body.path) {
+      setState({ busy: false, error: UPLOAD_ERRORS[body.error ?? 'internal_error'] ?? UPLOAD_ERRORS.internal_error });
+      return;
+    }
+    setState({ busy: false, error: null });
+    onChange(body.path);
+  }
+
+  return (
+    <div className="space-y-2" data-testid={`image-picker-${kind}`}>
+      <p className="text-sm font-medium">{label}</p>
+      <div
+        className={`flex h-32 items-center justify-center overflow-hidden rounded-xl border border-kairikos-border ${kind === 'logo' ? 'bg-[repeating-conic-gradient(#eee_0_25%,#fff_0_50%)] bg-[length:16px_16px] p-3' : 'bg-kairikos-surface'}`}
+      >
+        {value ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={`/api/portal/website/${clientProductId}/preview/${value}`} alt={label} className={kind === 'logo' ? 'max-h-full max-w-full object-contain' : 'h-full w-full object-cover'} />
+        ) : (
+          <span className="px-3 text-center text-xs text-kairikos-muted">{help}</span>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className={`btn-ghost text-sm ${state.busy ? 'pointer-events-none opacity-60' : 'cursor-pointer'}`}>
+          {state.busy ? 'Subiendo…' : value ? 'Cambiar' : 'Subir'}
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="sr-only"
+            disabled={state.busy}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (file) void upload(file);
+            }}
+          />
+        </label>
+        {value ? (
+          <button type="button" className="btn-ghost text-sm text-kairikos-danger" disabled={state.busy} onClick={() => onChange('')}>
+            Quitar
+          </button>
+        ) : null}
+      </div>
+      {state.error ? <p className="text-sm text-kairikos-danger">{state.error}</p> : null}
+    </div>
   );
 }
 

@@ -9,6 +9,7 @@ import { legalDataMissing, parseSiteContent } from './site-content';
 import { SITE_TEMPLATE_BASE } from './site-template-base';
 import type { SiteTemplatePart, SiteTemplateSource } from './site-template';
 import { parseTemplateStyle } from './site-style';
+import { referencedImageFiles } from './site-uploads';
 
 // =============================================================================
 // Producto Web, Fase 1 — publicar el sitio de un cliente por SFTP en SU
@@ -347,6 +348,7 @@ export async function buildFilesForWebsite(
         integrations,
         now: options.now,
         siteUrl: publicSiteUrl(website, parsed.content.urlPublica, options.portalOrigin),
+        uploads: await referencedImageFiles(prisma, website.id, parsed.content),
       }),
     };
   } catch (err) {

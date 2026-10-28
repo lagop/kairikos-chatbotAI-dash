@@ -3900,6 +3900,7 @@ model ClientWebsite {
   credential    WebsitePublishCredential?
   releases      ClientWebsiteRelease[]
   files         ClientWebsiteFile[]
+  images        ClientWebsiteImage[]
   auditLogs     ClientWebsiteAudit[]
   seoProfiles   SeoProfile[]
 
@@ -3990,6 +3991,32 @@ model ClientWebsiteRelease {
 // la base de datos y no en disco a propósito: el contenedor se recrea en cada
 // despliegue y un volumen más es una cosa más que respaldar y que se puede
 // olvidar. Son dos archivos por sitio y unos 300 KB.
+// 28/10/2026 — las imágenes que sube el cliente desde el editor: su logo,
+// su foto de portada y las de los bloques «texto con foto». Llegan ya
+// reducidas y recomprimidas por su navegador (lo que además quita los datos
+// de la cámara, GPS incluido) y aquí solo se comprueba que son una imagen de
+// verdad y de un tamaño razonable (site-uploads.ts). El contenido las cita
+// por `path` ('assets/subidas/<id>.webp') y la publicación sube solo las que
+// cita. En Postgres y no en disco, igual que ClientWebsiteFile: viajan con
+// las copias de la base y no dependen de un volumen.
+model ClientWebsiteImage {
+  id        String @id @default(uuid()) @db.Uuid
+  websiteId String @map("website_id") @db.Uuid
+  path      String
+
+  contentType String @map("content_type")
+  content     Bytes
+  width       Int
+  height      Int
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  website ClientWebsite @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@unique([websiteId, path])
+  @@index([websiteId, createdAt])
+}
+
 model ClientWebsiteFile {
   id        String @id @default(uuid()) @db.Uuid
   websiteId String @map("website_id") @db.Uuid
@@ -4020,7 +4047,8 @@ model ClientWebsiteAudit {
   // o cambiar de plantilla, siempre el operador) | 'seo_entry_published' (entrega 6:
   // el SEO añade o actualiza una entrada del blog) | 'meta_applied' (títulos y
   // descripciones propuestos por la IA y aceptados por el cliente) |
-  // 'search_console_verification' (la etiqueta de Google puesta al conectar)
+  // 'search_console_verification' (la etiqueta de Google puesta al conectar) |
+  // 'image_uploaded' (el cliente sube su logo o una foto; ruta y tamaño)
   action String
   before Json?
   after  Json?

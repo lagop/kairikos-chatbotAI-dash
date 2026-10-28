@@ -15,7 +15,9 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
-import { stripDraftChrome, hasPortalReferences, buildWebsiteFiles } from '@/lib/website-build';
+import { stripDraftChrome, hasPortalReferences, buildWebsiteFiles, buildDesignedWebsiteFiles } from '@/lib/website-build';
+import { SITE_TEMPLATE_BASE } from '@/lib/site-template-base';
+import { SITE_CONTENT_SAMPLES } from '@/lib/site-content-samples';
 import { tradeHeroPhoto } from '@/lib/trade-photos';
 import {
   isPublishableHost,
@@ -156,5 +158,43 @@ describe('withDeadline', () => {
 
   it('el tope de conexión es el mismo que el readyTimeout: no hay dos números que se contradigan', () => {
     expect(SFTP_CONNECT_TIMEOUT_MS).toBe(20000);
+  });
+});
+
+describe('buildDesignedWebsiteFiles con el logo y las fotos del cliente', () => {
+  const logo = 'assets/subidas/0123456789abcdef01.png';
+  const portada = 'assets/subidas/abcdefabcdefabcdef.jpg';
+  const base = {
+    template: SITE_TEMPLATE_BASE,
+    businessName: 'Fontanería Ejemplo',
+    primaryType: 'plumber',
+    themeKey: 'trades-1',
+    phone: null,
+    address: null,
+    now: new Date('2026-10-28'),
+  };
+
+  it('las subidas viajan con la web y la portada propia sustituye a la de su oficio', async () => {
+    const files = await buildDesignedWebsiteFiles({
+      ...base,
+      content: { ...SITE_CONTENT_SAMPLES.normal, imagenes: { logo, portada } },
+      uploads: [
+        { path: logo, content: Buffer.from('logo') },
+        { path: portada, content: Buffer.from('foto') },
+      ],
+    });
+    const paths = files.map((f) => f.path);
+    expect(paths).toEqual(expect.arrayContaining([logo, portada]));
+    expect(paths).not.toContain('assets/portada.jpg');
+    const home = files.find((f) => f.path === 'index.html')!.content.toString('utf8');
+    expect(home).toContain(`<img src="${logo}"`);
+    expect(home).toContain(portada);
+    expect(hasPortalReferences(home)).toBe(false);
+  });
+
+  it('sin subidas, la de su oficio como hasta ahora', async () => {
+    const files = await buildDesignedWebsiteFiles({ ...base, content: SITE_CONTENT_SAMPLES.normal });
+    expect(files.map((f) => f.path)).toContain('assets/portada.jpg');
+    expect(files.some((f) => f.path.startsWith('assets/subidas/'))).toBe(false);
   });
 });

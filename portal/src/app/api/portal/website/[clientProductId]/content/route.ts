@@ -88,6 +88,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ clientP
             entradasBlog: content.blog.entradas.map((e) => ({ slug: e.slug, publicada: e.publicada })),
             urlPublica: content.urlPublica,
             bloques: content.bloques.length,
+            imagenes: { logo: content.imagenes.logo, portada: content.imagenes.portada },
             seccionesOcultas: content.paginas.flatMap((p) => p.secciones.filter((s) => s.oculta).map((s) => s.tipo)),
             ejemplosPendientes: content.ejemplos.length,
             seccionesConfirmadas: content.seccionesConfirmadas,
