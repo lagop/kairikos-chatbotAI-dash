@@ -31,7 +31,8 @@ const MARCO = `<!doctype html>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-:root{--tinta:#14283d;--tinta-suave:#41566b;--marca:#16324f;--acento:#b4501f;--acento-claro:#fbe9dd;--papel:#faf7f2;--blanco:#fff;--borde:#e6dfd4;
+:root{--k-acento:var(--acento);--k-sobre-acento:var(--blanco);--k-acento-texto:var(--acento);--k-superficie:var(--blanco);--k-borde:var(--borde);--k-suave:var(--tinta-suave);--k-radio:var(--radio);--k-ancho:var(--ancho);--k-margen:var(--s-5);
+--tinta:#14283d;--tinta-suave:#41566b;--marca:#16324f;--acento:#b4501f;--acento-claro:#fbe9dd;--papel:#faf7f2;--blanco:#fff;--borde:#e6dfd4;
 --s-1:.25rem;--s-2:.5rem;--s-3:.75rem;--s-4:1rem;--s-5:1.5rem;--s-6:2rem;--s-7:3rem;--s-8:5rem;--radio:16px;--sombra:0 1px 2px rgba(20,40,61,.06),0 8px 24px rgba(20,40,61,.08);
 --display:"Fraunces",Georgia,serif;--texto:"Inter",system-ui,sans-serif;--ancho:1160px}
 *,*::before,*::after{box-sizing:border-box}

@@ -3,12 +3,14 @@ import {
   SITE_SECTION_TYPES,
   publishedEntries,
   type SiteBlock,
+  type SiteBlockType,
   type SiteBlogEntry,
   type SiteContent,
   type SitePage,
   type SiteSectionType,
 } from './site-content';
 import { renderSiteMarkdown } from './site-markdown';
+import { BLOQUES_CSS, BLOQUES_JS, isRichBlockType, renderRichBlock, richBlockHasContent } from './site-rich-blocks';
 import { LEGAL_PAGES, legalPageMarkdown } from './site-legal';
 import { localizeGoogleFonts, replaceGoogleFontFamilies } from './site-fonts';
 import { resolveSiteStyle, siteStyleCss, type SiteTemplateStyle } from './site-style';
@@ -381,7 +383,16 @@ function renderSections(
     if (ref.oculta) continue;
     if (ref.tipo === 'bloque') {
       const block = content.bloques.find((b) => b.id === ref.id);
-      const source = block ? template.secciones[`bloque_${block.tipo}`] : undefined;
+      if (block && isRichBlockType(block.tipo)) {
+        // 28/10/2026 — los ricos los pinta el motor, en cualquier plantilla
+        // (site-rich-blocks.ts).
+        const rich = { ...block, tipo: block.tipo };
+        if (richBlockHasContent(rich)) {
+          rendered.push({ kind: 'block', anchor: `bloque-${block.id}`, tipo: 'bloque', html: renderRichBlock(rich, pageFile(page.ruta).base) });
+        }
+        continue;
+      }
+      const source = block ? template.secciones[`bloque_${block.tipo as SiteBlockType}`] : undefined;
       if (!block || !source) continue;
       if (!block.titulo && !block.texto && block.items.length === 0) continue;
       const anchor = `bloque-${block.id}`;
@@ -637,6 +648,12 @@ export function renderSitePage(
   if (html.includes('class="dato-ejemplo')) {
     html = html.replace(/<\/body>/i, `${EXAMPLE_LEGEND_HTML}\n</body>`);
   }
+  // Los bloques ricos: su aspecto base ANTES del de la plantilla (que gana si
+  // retoca algo) y su comportamiento al final. Solo en las páginas que los
+  // llevan.
+  if (html.includes('class="k-bloque')) {
+    html = html.replace(/<head>/i, `<head>\n${BLOQUES_CSS}`).replace(/<\/body>/i, `${BLOQUES_JS}\n</body>`);
+  }
   if (ctx.formAction && rendered.some((r) => r.tipo === 'contacto')) {
     html = html.replace(/<\/body>/i, `${formScript(ctx.formAction, ctx.negocio.telefono, phoneHref(ctx.negocio.telefono))}\n</body>`);
   }
@@ -766,7 +783,7 @@ export function renderSiteFiles(template: SiteTemplateSource, content: SiteConte
       const legalContent: SiteContent = {
         ...content,
         // Sin título: el h1 lo pone la cabecera de la página.
-        bloques: [{ id: 'legal', tipo: 'texto', titulo: '', texto, foto: '', fotoAlt: '', items: [] }],
+        bloques: [{ id: 'legal', tipo: 'texto', titulo: '', texto, foto: '', fotoAlt: '', items: [], fotos: [], productos: [] }],
         ejemplos: [],
       };
       files.push(file(pageFile(legal.ruta).path, renderSitePage(template, legalContent, page, { ...ctx, formAction: null }, { menu: menuFor(legal.ruta), anchorsByPage })));

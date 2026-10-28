@@ -82,8 +82,8 @@ const normal: SiteContent = {
     horario: [{ dias: 'Todos los días', horas: '8:00 – 20:00' }],
   },
   bloques: [
-    { id: 'historia', tipo: 'texto', titulo: 'Nuestra historia', texto: 'Empezamos con una furgoneta y muchas ganas.', foto: '', fotoAlt: '', items: [] },
-    { id: 'agosto', tipo: 'aviso', titulo: 'Agosto', texto: 'Cerrado del 10 al 20 de agosto.', foto: '', fotoAlt: '', items: [] },
+    { id: 'historia', tipo: 'texto', titulo: 'Nuestra historia', texto: 'Empezamos con una furgoneta y muchas ganas.', foto: '', fotoAlt: '', items: [], fotos: [], productos: [] },
+    { id: 'agosto', tipo: 'aviso', titulo: 'Agosto', texto: 'Cerrado del 10 al 20 de agosto.', foto: '', fotoAlt: '', items: [], fotos: [], productos: [] },
   ],
   ejemplos: [
     'cifras.0.valor',
@@ -148,7 +148,15 @@ const exagerado: SiteContent = {
   // para que las comprobaciones midan el menú lleno y la cabecera de página.
   paginas: [
     defaultHomePage(),
-    { ruta: 'servicios', titulo: 'Servicios y precios completos', metaTitulo: '', metaDescripcion: '', secciones: [{ tipo: 'servicios' }, { tipo: 'precios' }] },
+    // 28/10/2026 — los bloques ricos (site-rich-blocks.ts), aquí para que el
+    // laboratorio los mida en cada plantilla y cada ancho.
+    {
+      ruta: 'servicios',
+      titulo: 'Servicios y precios completos',
+      metaTitulo: '',
+      metaDescripcion: '',
+      secciones: [{ tipo: 'servicios' }, { tipo: 'bloque', id: 'catalogo' }, { tipo: 'bloque', id: 'galeria' }, { tipo: 'bloque', id: 'antes-despues' }, { tipo: 'precios' }],
+    },
     { ruta: 'empresa', titulo: 'Nuestra empresa y garantías', metaTitulo: '', metaDescripcion: '', secciones: [{ tipo: 'sobre' }, { tipo: 'proceso' }, { tipo: 'garantias' }] },
     { ruta: 'preguntas', titulo: 'Preguntas más frecuentes', metaTitulo: '', metaDescripcion: '', secciones: [{ tipo: 'faq' }] },
     { ruta: 'contacto', titulo: 'Contacto y zona de trabajo', metaTitulo: '', metaDescripcion: '', secciones: [{ tipo: 'contacto' }, { tipo: 'zona' }] },
@@ -197,8 +205,52 @@ const exagerado: SiteContent = {
     ],
   },
   bloques: [
-    { id: 'historia', tipo: 'texto_foto', titulo: 'Una historia larga de verdad, contada con calma y con muchos detalles', texto: repeat('Párrafo largo de la historia.', 40).slice(0, 2000), foto: 'assets/portada.jpg', fotoAlt: 'Foto', items: [] },
-    { id: 'agosto', tipo: 'lista', titulo: 'Por qué elegirnos', texto: '', foto: '', fotoAlt: '', items: Array.from({ length: 8 }, (_, i) => ({ texto: repeat('Motivo número', (i % 3) + 1) + ` ${i + 1}`, icono: '' })) },
+    { id: 'historia', tipo: 'texto_foto', titulo: 'Una historia larga de verdad, contada con calma y con muchos detalles', texto: repeat('Párrafo largo de la historia.', 40).slice(0, 2000), foto: 'assets/portada.jpg', fotoAlt: 'Foto', items: [], fotos: [], productos: [] },
+    { id: 'agosto', tipo: 'lista', titulo: 'Por qué elegirnos', texto: '', foto: '', fotoAlt: '', items: Array.from({ length: 8 }, (_, i) => ({ texto: repeat('Motivo número', (i % 3) + 1) + ` ${i + 1}`, icono: '' })), fotos: [], productos: [] },
+    {
+      id: 'galeria',
+      tipo: 'galeria',
+      titulo: 'Trabajos recientes en viviendas, locales y comunidades de toda la isla',
+      texto: repeat('Una selección de obras terminadas.', 4),
+      foto: '',
+      fotoAlt: '',
+      items: [],
+      fotos: Array.from({ length: 13 }, (_, i) => ({ foto: 'assets/portada.jpg', alt: `Trabajo ${i + 1}`, texto: i % 3 ? '' : repeat('Pie de foto largo que explica el trabajo.', 3).slice(0, 160) })),
+      productos: [],
+    },
+    {
+      id: 'antes-despues',
+      tipo: 'antes_despues',
+      titulo: 'Así quedó el baño de la calle Triana después de la reforma completa',
+      texto: '',
+      foto: '',
+      fotoAlt: '',
+      items: [],
+      fotos: [
+        { foto: 'assets/portada.jpg', alt: 'El baño antes', texto: 'Antes de la reforma' },
+        { foto: 'assets/portada.jpg', alt: 'El baño después', texto: 'Después de la reforma' },
+      ],
+      productos: [],
+    },
+    {
+      id: 'catalogo',
+      tipo: 'catalogo',
+      titulo: 'Modelos de ventanas, puertas y mamparas que instalamos',
+      texto: repeat('Todos a medida.', 3),
+      foto: '',
+      fotoAlt: '',
+      items: [],
+      fotos: [],
+      productos: Array.from({ length: 9 }, (_, i) => ({
+        nombre: i % 2 ? `Modelo ${i + 1}` : 'Ventana corredera de aluminio con rotura de puente térmico y doble vidrio',
+        categoria: ['Ventanas', 'Puertas de entrada y de paso', 'Mamparas'][i % 3],
+        foto: i === 4 ? '' : 'assets/portada.jpg',
+        alt: `Modelo ${i + 1}`,
+        descripcion: repeat('Descripción del modelo con sus ventajas.', (i % 3) + 1).slice(0, 300),
+        caracteristicas: ['Rotura de puente térmico', 'Doble acristalamiento con cámara de aire', 'Herrajes de acero inoxidable'].slice(0, (i % 3) + 1),
+        precio: i % 4 === 3 ? '' : i % 2 ? `desde ${300 + i * 50} €` : 'desde 1.250,00 € instalada',
+      })),
+    },
   ],
   ejemplos: [],
   blog: {
