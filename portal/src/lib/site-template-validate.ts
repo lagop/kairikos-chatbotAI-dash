@@ -38,8 +38,8 @@ const ROOT_FIELDS = new Set([
   'sobre_html', 'horario_resumen', 'ancla', 'menu', 'secciones', 'pagina', 'formulario', 'fotos', 'anio', 'legales',
   // el blog (entrega 5): blog = {titulo, intro, href}; entradas en la lista; entrada en el artículo
   'blog', 'entradas', 'entrada',
-  // negocio
-  'nombre', 'telefono', 'telefono_href', 'direccion', 'maps_url', 'valoracion', 'num_resenas',
+  // negocio ('logo': la ruta del que subió el cliente, o vacío)
+  'nombre', 'logo', 'telefono', 'telefono_href', 'direccion', 'maps_url', 'valoracion', 'num_resenas',
   // Google en vivo, solo en el borrador
   'resenas_html', 'citas_html', 'atribucion_google_html',
 ]);

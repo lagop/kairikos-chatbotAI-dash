@@ -65,6 +65,7 @@ p{margin:0 0 var(--s-4)}
 .cabecera.con-sombra{box-shadow:0 6px 18px rgba(20,40,61,.08);border-color:var(--borde)}
 .cabecera .contenedor{display:flex;align-items:center;gap:var(--s-5);min-height:4.5rem}
 .marca{font:700 1.25rem/1.1 var(--display);color:var(--marca);text-decoration:none;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.marca img{display:block;height:2.75rem;width:auto;max-width:100%;object-fit:contain}
 .menu{display:flex;gap:var(--s-5);margin-left:auto}
 .menu a{white-space:nowrap;text-decoration:none;color:var(--tinta);font-weight:500;background:linear-gradient(var(--acento),var(--acento)) 0 100%/0 2px no-repeat;transition:background-size .25s ease}
 .menu a:hover,.menu a[aria-current]{background-size:100% 2px}
@@ -165,7 +166,7 @@ time{font-size:.9rem;color:var(--tinta-suave)}
 </svg>
 <a class="saltar" href="#contenido">Saltar al contenido</a>
 <header class="cabecera"><div class="contenedor">
-  <a class="marca" href="{{pagina.inicio}}">{{nombre}}</a>
+  <a class="marca" href="{{pagina.inicio}}">{{#logo}}<img src="{{logo}}" alt="{{nombre}}">{{/logo}}{{^logo}}{{nombre}}{{/logo}}</a>
   <nav class="menu" id="menu" aria-label="Principal">{{#menu}}<a href="{{href}}"{{#actual}} aria-current="page"{{/actual}}>{{titulo}}</a>{{/menu}}</nav>
   <button class="abrir-menu" type="button" aria-expanded="false" aria-controls="menu" aria-label="Abrir el menú"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
   {{#telefono_href}}<a class="boton" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg><span>Llamar</span></a>{{/telefono_href}}

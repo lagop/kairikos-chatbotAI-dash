@@ -97,6 +97,23 @@ export const RESERVED_PAGE_ROOTS = ['blog', 'aviso-legal', 'privacidad', 'cookie
  *  (id="bloque-…", href="#i-…") y en rutas de ejemplo. */
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+/** Dónde viven las imágenes que sube el cliente dentro de su web
+ *  (site-uploads.ts). El nombre lo pone el servidor, nunca el cliente. */
+export const SITE_UPLOAD_PATH_RE = /^assets\/subidas\/[a-f0-9]{18}\.(?:jpg|png|webp)$/;
+const uploadPath = z.string().trim().max(60).refine((p) => p === '' || SITE_UPLOAD_PATH_RE.test(p), 'invalid_upload_path').default('');
+
+/** Las subidas que cita el contenido: las únicas que viajan con la web al
+ *  publicarla. Las demás (una foto cambiada por otra) se quedan en el
+ *  portal hasta que se recojan. */
+export function referencedUploads(content: {
+  imagenes?: { logo: string; portada: string };
+  bloques: { foto: string }[];
+  blog: { entradas: { foto: string }[] };
+}): string[] {
+  const all = [content.imagenes?.logo ?? '', content.imagenes?.portada ?? '', ...content.bloques.map((b) => b.foto), ...content.blog.entradas.map((e) => e.foto)];
+  return [...new Set(all.filter((p) => SITE_UPLOAD_PATH_RE.test(p)))];
+}
+
 const sectionRefSchema = z.union([
   z.object({ tipo: z.enum(SITE_SECTION_TYPES), oculta: z.boolean().optional() }),
   z.object({ tipo: z.literal('bloque'), id: z.string().regex(SLUG_RE).max(40), oculta: z.boolean().optional() }),
@@ -293,6 +310,14 @@ export const siteContentSchema = z
         tipografia: z.string().trim().max(30).regex(/^[a-z0-9-]*$/).default(''),
       })
       .optional(),
+    /** 28/10/2026 — las imágenes que sube el cliente (site-uploads.ts): su
+     *  logo, que la plantilla pone en la cabecera en vez del nombre escrito,
+     *  y su foto de portada, que sustituye a la de su oficio. Solo rutas de
+     *  subidas: aquí no cabe una URL ajena que la web acabaría pidiendo a un
+     *  tercero en cada visita. Vacías, lo de siempre. */
+    imagenes: z
+      .object({ logo: uploadPath, portada: uploadPath })
+      .default({ logo: '', portada: '' }),
     bloques: z.array(blockSchema).max(SITE_LIMITS.bloques).default([]),
     /** Rutas de los valores inventados: 'precios.filas.2.precio',
      *  'bloques.historia.texto'. Ver EXAMPLE_PATH_RE. */

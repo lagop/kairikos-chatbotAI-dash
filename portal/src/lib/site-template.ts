@@ -300,6 +300,9 @@ function buildView(content: SiteContent, ctx: SiteRenderContext, base: string): 
     resenas_html: ctx.resenasHtml ?? '',
     citas_html: ctx.citasHtml ?? '',
     atribucion_google_html: ctx.atribucionGoogleHtml ?? '',
+    // 28/10/2026 — el logo que subió el cliente (site-uploads.ts). Vacío, la
+    // plantilla escribe el nombre como siempre.
+    logo: prefix(content.imagenes?.logo || null) ?? '',
     fotos: {
       portada: prefix(ctx.fotos.portada) ?? '',
       equipo: prefix(ctx.fotos.equipo) ?? '',
@@ -586,6 +589,7 @@ export function renderSitePage(
     ogImage?: string | null;
   } = {},
 ): string {
+  ctx = withClientImages(content, ctx);
   const { base } = pageFile(page.ruta);
   const view = buildView(content, ctx, base);
   const rendered = options.body ?? renderSections(template, content, page, view);
@@ -659,10 +663,18 @@ export interface SiteFile {
   content: Buffer;
 }
 
+/** 28/10/2026 — la foto de portada que subió el cliente manda sobre la de su
+ *  oficio, también en las tarjetas para redes. */
+function withClientImages(content: SiteContent, ctx: SiteRenderContext): SiteRenderContext {
+  const portada = content.imagenes?.portada;
+  return portada ? { ...ctx, fotos: { ...ctx.fotos, portada } } : ctx;
+}
+
 /** Todas las páginas de la web: las del contenido, el blog (entrega 5), las
  *  legales y, publicada con dirección conocida, sitemap.xml y robots.txt. Las
  *  fotos y las tipografías las añade quien construye (website-build.ts). */
 export function renderSiteFiles(template: SiteTemplateSource, content: SiteContent, ctx: SiteRenderContext): SiteFile[] {
+  ctx = withClientImages(content, ctx);
   const file = (path: string, html: string): SiteFile => ({ path, content: Buffer.from(html, 'utf8') });
   const home = content.paginas.find((p) => p.ruta === '') ?? content.paginas[0];
 

@@ -60,6 +60,22 @@ describe('plantillas escritas a mano', () => {
         expect(templateIconIds(template.marco)).toEqual(expect.arrayContaining(['check', 'telefono', 'estrella', 'herramienta', 'casa', 'reloj']));
       });
 
+      it('con logo subido, la cabecera lo enseña en vez del nombre, también en las páginas interiores', () => {
+        const logo = 'assets/subidas/0123456789abcdef01.png';
+        const portada = 'assets/subidas/abcdefabcdefabcdef.jpg';
+        const content = { ...SITE_CONTENT_SAMPLES.normal, imagenes: { logo, portada } };
+        const files = renderSiteFiles(template, content, SAMPLE_RENDER_CONTEXT);
+        const home = files.find((f) => f.path === 'index.html')?.content.toString('utf8') ?? '';
+        const marca = home.match(/<a class="marca[^"]*"[^>]*>([\s\S]*?)<\/a>/)?.[1] ?? '';
+        expect(marca).toContain(`<img src="${logo}"`);
+        expect(marca).not.toContain('<span>');
+        // La portada propia sustituye a la de su oficio.
+        expect(home).toContain(`src="${portada}"`);
+        expect(home).not.toContain('assets/portada.jpg');
+        const inner = files.find((f) => f.path.startsWith('blog/') && f.path.endsWith('index.html'))?.content.toString('utf8') ?? '';
+        expect(inner).toContain(`../${logo}`);
+      });
+
       it('si admite el color del negocio, no le queda ningún color del acento escrito a mano', () => {
         if (!template.estilo?.acento) return;
         // Un tono del acento escrito tal cual (una sombra, un hover) no

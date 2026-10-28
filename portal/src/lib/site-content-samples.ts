@@ -135,6 +135,7 @@ const normal: SiteContent = {
   },
   urlPublica: '',
   verificacionGoogle: '',
+  imagenes: { logo: '', portada: '' },
 };
 normal.paginas[0].secciones.splice(4, 0, { tipo: 'bloque', id: 'historia' });
 normal.paginas[0].secciones.unshift({ tipo: 'bloque', id: 'agosto' });
