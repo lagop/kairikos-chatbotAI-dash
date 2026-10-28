@@ -110,6 +110,10 @@ const BLOCK_LABEL: Record<SiteBlock['tipo'], string> = {
   texto_foto: 'Texto con foto',
   lista: 'Lista con iconos',
   aviso: 'Aviso destacado',
+  // 28/10/2026 — los pinta el motor en cualquier plantilla (site-rich-blocks.ts).
+  galeria: 'Galería de trabajos',
+  antes_despues: 'Antes y después',
+  catalogo: 'Catálogo de modelos',
 };
 
 /** Qué rutas de datos de ejemplo pertenecen a cada sección. */
@@ -318,7 +322,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
       let n = d.bloques.length + 1;
       while (d.bloques.some((b) => b.id === `bloque-${n}`)) n++;
       const id = `bloque-${n}`;
-      d.bloques.push({ id, tipo: newBlock, titulo: '', texto: '', foto: '', fotoAlt: '', items: newBlock === 'lista' ? [{ texto: '', icono: '' }] : [] });
+      d.bloques.push({ id, tipo: newBlock, titulo: '', texto: '', foto: '', fotoAlt: '', items: newBlock === 'lista' ? [{ texto: '', icono: '' }] : [], fotos: newBlock === 'antes_despues' ? [{ foto: '', alt: '', texto: 'Antes' }, { foto: '', alt: '', texto: 'Después' }] : [], productos: [] });
       const list = d.paginas[pageIndex].secciones;
       const contacto = list.findIndex((s) => s.tipo === 'contacto');
       list.splice(contacto >= 0 ? contacto : list.length, 0, { tipo: 'bloque', id });
@@ -432,6 +436,21 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
               />
               {text('Qué se ve en la foto (para quien no puede verla y para Google)', `${base}.fotoAlt`, b.fotoAlt, 160)}
             </>
+          ) : null}
+          {b.tipo === 'galeria' || b.tipo === 'antes_despues' ? (
+            <RichPhotosEditor
+              apiBase={props.apiBase}
+              mode={b.tipo}
+              fotos={b.fotos}
+              onChange={(fotos) => update((d) => void ((d.bloques.find((x) => x.id === b.id) as SiteBlock).fotos = fotos))}
+            />
+          ) : null}
+          {b.tipo === 'catalogo' ? (
+            <CatalogEditor
+              apiBase={props.apiBase}
+              productos={b.productos}
+              onChange={(productos) => update((d) => void ((d.bloques.find((x) => x.id === b.id) as SiteBlock).productos = productos))}
+            />
           ) : null}
           <button type="button" className="btn-ghost text-sm text-kairikos-danger" onClick={() => removeBlock(b.id)}>
             Quitar este bloque
@@ -943,6 +962,147 @@ function ImagePicker({
         ) : null}
       </div>
       {state.error ? <p className="text-sm text-kairikos-danger">{state.error}</p> : null}
+    </div>
+  );
+}
+
+/** Las fotos de una galería (hasta 24) o las dos de un antes y después. */
+function RichPhotosEditor({
+  apiBase,
+  mode,
+  fotos,
+  onChange,
+}: {
+  apiBase: string;
+  mode: 'galeria' | 'antes_despues';
+  fotos: SiteBlock['fotos'];
+  onChange: (fotos: SiteBlock['fotos']) => void;
+}) {
+  const list = mode === 'antes_despues' ? [0, 1].map((i) => fotos[i] ?? { foto: '', alt: '', texto: i === 0 ? 'Antes' : 'Después' }) : fotos;
+  const set = (i: number, patch: Partial<SiteBlock['fotos'][number]>) => onChange(list.map((f, j) => (j === i ? { ...f, ...patch } : f)));
+  const move = (i: number, d: number) => {
+    const next = [...list];
+    if (i + d < 0 || i + d >= next.length) return;
+    [next[i], next[i + d]] = [next[i + d], next[i]];
+    onChange(next);
+  };
+  return (
+    <div className="space-y-3">
+      {mode === 'antes_despues' ? (
+        <p className="text-xs text-kairikos-muted">Dos fotos del mismo sitio, a ser posible desde el mismo ángulo. En tu web se superponen y el visitante arrastra para comparar.</p>
+      ) : (
+        <p className="text-xs text-kairikos-muted">Tus trabajos. En tu web, al tocar una foto se amplía y se puede pasar a la siguiente.</p>
+      )}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {list.map((f, i) => (
+          <div key={i} className="space-y-2 rounded-lg border border-kairikos-border p-3">
+            <ImagePicker
+              apiBase={apiBase}
+              label={mode === 'antes_despues' ? (i === 0 ? 'Foto de antes' : 'Foto de después') : `Foto ${i + 1}`}
+              help="Sube una foto tuya."
+              value={f.foto}
+              kind="foto"
+              onChange={(path) => set(i, { foto: path })}
+            />
+            <label className="block text-xs font-medium">
+              {mode === 'antes_despues' ? 'Etiqueta (sale sobre la foto)' : 'Pie de foto (opcional)'}
+              <input className="input mt-1 w-full" maxLength={160} value={f.texto} onChange={(e) => set(i, { texto: e.target.value })} />
+            </label>
+            <label className="block text-xs font-medium">
+              Qué se ve (para quien no puede verla y para Google)
+              <input className="input mt-1 w-full" maxLength={160} value={f.alt} onChange={(e) => set(i, { alt: e.target.value })} />
+            </label>
+            {mode === 'galeria' ? (
+              <div className="flex gap-2">
+                <button type="button" className="btn-ghost text-xs" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Subir">↑</button>
+                <button type="button" className="btn-ghost text-xs" onClick={() => move(i, 1)} disabled={i === list.length - 1} aria-label="Bajar">↓</button>
+                <button type="button" className="btn-ghost text-xs text-kairikos-danger" onClick={() => onChange(list.filter((_, j) => j !== i))}>
+                  Quitar
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+      {mode === 'galeria' && list.length < 24 ? (
+        <button type="button" className="btn-ghost text-sm" onClick={() => onChange([...list, { foto: '', alt: '', texto: '' }])}>
+          + Añadir foto
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/** Los modelos de un catálogo (hasta 24). Con dos categorías o más, la web
+ *  enseña filtros. */
+function CatalogEditor({ apiBase, productos, onChange }: { apiBase: string; productos: SiteBlock['productos']; onChange: (p: SiteBlock['productos']) => void }) {
+  const set = (i: number, patch: Partial<SiteBlock['productos'][number]>) => onChange(productos.map((p, j) => (j === i ? { ...p, ...patch } : p)));
+  const move = (i: number, d: number) => {
+    const next = [...productos];
+    if (i + d < 0 || i + d >= next.length) return;
+    [next[i], next[i + d]] = [next[i + d], next[i]];
+    onChange(next);
+  };
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-kairikos-muted">Tus modelos o productos. Si les pones categoría (Ventanas, Puertas, Mamparas…), tu web enseña unos botones para filtrar.</p>
+      {productos.map((p, i) => (
+        <div key={i} className="grid gap-3 rounded-lg border border-kairikos-border p-3 sm:grid-cols-[14rem_1fr]">
+          <ImagePicker apiBase={apiBase} label="Foto" help="Una foto del modelo." value={p.foto} kind="foto" onChange={(path) => set(i, { foto: path })} />
+          <div className="space-y-2">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="block text-xs font-medium">
+                Nombre
+                <input className="input mt-1 w-full" maxLength={80} value={p.nombre} onChange={(e) => set(i, { nombre: e.target.value })} />
+              </label>
+              <label className="block text-xs font-medium">
+                Categoría (opcional)
+                <input className="input mt-1 w-full" maxLength={40} value={p.categoria} onChange={(e) => set(i, { categoria: e.target.value })} />
+              </label>
+            </div>
+            <label className="block text-xs font-medium">
+              Descripción
+              <textarea className="input mt-1 w-full" rows={2} maxLength={300} value={p.descripcion} onChange={(e) => set(i, { descripcion: e.target.value })} />
+            </label>
+            <label className="block text-xs font-medium">
+              Características (una por línea, hasta 8)
+              <textarea
+                className="input mt-1 w-full"
+                rows={3}
+                value={p.caracteristicas.join('\n')}
+                onChange={(e) => set(i, { caracteristicas: e.target.value.split('\n').map((c) => c.slice(0, 80)).slice(0, 8) })}
+                onBlur={(e) => set(i, { caracteristicas: e.target.value.split('\n').map((c) => c.trim()).filter(Boolean).slice(0, 8) })}
+              />
+            </label>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="block text-xs font-medium">
+                Precio (opcional, p. ej. «desde 450 €»)
+                <input className="input mt-1 w-full" maxLength={40} value={p.precio} onChange={(e) => set(i, { precio: e.target.value })} />
+              </label>
+              <label className="block text-xs font-medium">
+                Qué se ve en la foto
+                <input className="input mt-1 w-full" maxLength={160} value={p.alt} onChange={(e) => set(i, { alt: e.target.value })} />
+              </label>
+            </div>
+            <div className="flex gap-2">
+              <button type="button" className="btn-ghost text-xs" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Subir">↑</button>
+              <button type="button" className="btn-ghost text-xs" onClick={() => move(i, 1)} disabled={i === productos.length - 1} aria-label="Bajar">↓</button>
+              <button type="button" className="btn-ghost text-xs text-kairikos-danger" onClick={() => onChange(productos.filter((_, j) => j !== i))}>
+                Quitar
+              </button>
+            </div>
+          </div>
+        </div>
+      ))}
+      {productos.length < 24 ? (
+        <button
+          type="button"
+          className="btn-ghost text-sm"
+          onClick={() => onChange([...productos, { nombre: '', categoria: '', foto: '', alt: '', descripcion: '', caracteristicas: [], precio: '' }])}
+        >
+          + Añadir modelo
+        </button>
+      ) : null}
     </div>
   );
 }

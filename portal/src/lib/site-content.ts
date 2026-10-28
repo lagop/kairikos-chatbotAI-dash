@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SITE_RICH_BLOCK_TYPES } from './site-rich-blocks';
 
 // =============================================================================
 // Webs con IA, entrega 1 (27/10/2026) — el CONTENIDO de una web, separado de
@@ -73,6 +74,8 @@ export const SITE_LIMITS = {
   horario: 7,
   bloques: 12,
   bloqueItems: 8,
+  bloqueFotos: 24,
+  bloqueProductos: 24,
   paginas: 20,
   seccionesPorPagina: 30,
   entradas: 200,
@@ -107,10 +110,15 @@ const uploadPath = z.string().trim().max(60).refine((p) => p === '' || SITE_UPLO
  *  portal hasta que se recojan. */
 export function referencedUploads(content: {
   imagenes?: { logo: string; portada: string };
-  bloques: { foto: string }[];
+  bloques: { foto: string; fotos?: { foto: string }[]; productos?: { foto: string }[] }[];
   blog: { entradas: { foto: string }[] };
 }): string[] {
-  const all = [content.imagenes?.logo ?? '', content.imagenes?.portada ?? '', ...content.bloques.map((b) => b.foto), ...content.blog.entradas.map((e) => e.foto)];
+  const all = [
+    content.imagenes?.logo ?? '',
+    content.imagenes?.portada ?? '',
+    ...content.bloques.flatMap((b) => [b.foto, ...(b.fotos ?? []).map((f) => f.foto), ...(b.productos ?? []).map((p) => p.foto)]),
+    ...content.blog.entradas.map((e) => e.foto),
+  ];
   return [...new Set(all.filter((p) => SITE_UPLOAD_PATH_RE.test(p)))];
 }
 
@@ -133,9 +141,21 @@ const pageSchema = z.object({
 });
 export type SitePage = z.infer<typeof pageSchema>;
 
+/** Una foto de un bloque rico: una ruta de imagen dentro del sitio (las
+ *  subidas, assets/subidas/…). Nunca una URL ajena, que la web pediría a un
+ *  tercero en cada visita. */
+const blockImagePath = z
+  .string()
+  .trim()
+  .max(200)
+  .refine((p) => p === '' || /^assets\/[a-z0-9/._-]+\.(?:jpe?g|png|webp)$/i.test(p), 'invalid_image_path')
+  .default('');
+
 const blockSchema = z.object({
   id: z.string().regex(SLUG_RE).max(40),
-  tipo: z.enum(SITE_BLOCK_TYPES),
+  /** Los de siempre los pinta la plantilla (bloque_<tipo>); los ricos
+   *  (galería, antes y después, catálogo), el motor (site-rich-blocks.ts). */
+  tipo: z.enum([...SITE_BLOCK_TYPES, ...SITE_RICH_BLOCK_TYPES]),
   titulo: optionalText(90),
   /** Formato básico (site-markdown.ts): negrita, cursiva, listas, enlaces. */
   texto: optionalText(2000),
@@ -143,6 +163,28 @@ const blockSchema = z.object({
   foto: optionalText(200),
   fotoAlt: optionalText(160),
   items: z.array(z.object({ texto: text(160).min(1), icono: optionalText(40) })).max(SITE_LIMITS.bloqueItems).default([]),
+  /** 28/10/2026 — galería (todas) y antes y después (la 1.ª es el antes, la
+   *  2.ª el después; `texto` es el pie, o la etiqueta del comparador). */
+  fotos: z
+    .array(z.object({ foto: blockImagePath, alt: optionalText(160), texto: optionalText(160) }))
+    .max(SITE_LIMITS.bloqueFotos)
+    .default([]),
+  /** 28/10/2026 — el catálogo de modelos. Con dos categorías o más, la web
+   *  enseña filtros. */
+  productos: z
+    .array(
+      z.object({
+        nombre: text(80).min(1),
+        categoria: optionalText(40),
+        foto: blockImagePath,
+        alt: optionalText(160),
+        descripcion: optionalText(300),
+        caracteristicas: z.array(text(80).min(1)).max(8).default([]),
+        precio: optionalText(40),
+      }),
+    )
+    .max(SITE_LIMITS.bloqueProductos)
+    .default([]),
 });
 export type SiteBlock = z.infer<typeof blockSchema>;
 
