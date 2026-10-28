@@ -176,7 +176,12 @@ function snapshot(leadId: string, accion: string, notaSql: string, actorId: stri
   FROM "ProspectingWebDraft" d WHERE d.lead_id = '${leadId}';`;
 }
 
-export function draftSaveSql(edit: DraftEditFile, nota: string, actorId: string): string {
+/** Cómo llega cada versión al historial desde la herramienta: un retoque de
+ *  textos o el paso al diseño de la biblioteca (`convertir`). «regenerado»
+ *  y «restaurado» los escriben la ruta del portal y draftRestoreSql. */
+export type DraftSaveAccion = 'retoque' | 'convertido';
+
+export function draftSaveSql(edit: DraftEditFile, nota: string, actorId: string, accion: DraftSaveAccion = 'retoque'): string {
   assertUuid(edit.leadId, edit.templateId);
   if (!/^[0-9a-f]{32}$/.test(edit.huella)) throw new Error('huella inválida');
   const copy = JSON.stringify(edit.copy);
@@ -192,7 +197,7 @@ END $tpl$;\n`
     : '';
   return `BEGIN;
 ${guard(edit.leadId, edit.huella)}
-${templateCheck}${snapshot(edit.leadId, 'retoque', q(nota), actorId, q)}
+${templateCheck}${snapshot(edit.leadId, accion, q(nota), actorId, q)}
 UPDATE "ProspectingWebDraft" SET copy = ${q(copy)}::jsonb, content = ${content ? `${q(content)}::jsonb` : 'NULL'},
   template_id = ${edit.templateId ? `'${edit.templateId}'` : 'NULL'}, theme_key = ${q(edit.themeKey)}
   WHERE lead_id = '${edit.leadId}';
@@ -229,4 +234,41 @@ UPDATE "ProspectingWebDraft" d SET copy = e.copy, content = e.content, template_
   FROM _elegida e WHERE d.lead_id = '${leadId}';
 SELECT 'restaurado', e.id, e.copy->>'headline' FROM _elegida e;
 COMMIT;`;
+}
+
+// --- Convertir al diseño de la biblioteca -------------------------------------
+
+/**
+ * El script para `docker exec -i <app> node -`: pide al portal, desde dentro
+ * del contenedor, la propuesta de diseño para un borrador
+ * (/api/internal/prospecting/web-drafts/[leadId]/design). La clave interna
+ * sale del entorno del propio contenedor y no viaja ni se imprime.
+ */
+export function designProposalScript(leadId: string, templateId: string | null): string {
+  assertUuid(leadId, templateId);
+  const body = JSON.stringify(templateId ? { templateId } : {});
+  return `fetch('http://localhost:3000/api/internal/prospecting/web-drafts/${leadId}/design', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', 'x-kairikos-internal-key': process.env.PORTAL_API_KEY || '' },
+  body: ${JSON.stringify(body)},
+}).then(async (r) => {
+  const t = await r.text();
+  if (!r.ok) { console.error('HTTP ' + r.status + ': ' + t); process.exit(1); }
+  console.log(t);
+}, (e) => { console.error(String(e)); process.exit(1); });`;
+}
+
+/**
+ * El archivo de `leer` con el diseño propuesto: el texto (copy) y la familia
+ * se quedan como estaban, contenido y plantilla son los de la propuesta. Se
+ * valida igual que un retoque, así que una propuesta que no se pintaría no
+ * llega a guardarse.
+ */
+export function mergeDesignProposal(read: unknown, proposal: unknown): DraftEditResult & { expanded?: boolean } {
+  const p = (proposal ?? {}) as Record<string, unknown>;
+  if (typeof p.templateId !== 'string' || p.content == null) {
+    return { ok: false, errors: ['propuesta: no trae templateId y content (¿es la salida de «propuesta»?)'] };
+  }
+  const merged = parseDraftEdit({ ...(read as Record<string, unknown>), content: p.content, templateId: p.templateId });
+  return merged.ok ? { ...merged, expanded: p.expanded === true } : merged;
 }
