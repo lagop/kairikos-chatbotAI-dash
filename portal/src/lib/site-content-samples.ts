@@ -82,8 +82,8 @@ const normal: SiteContent = {
     horario: [{ dias: 'Todos los días', horas: '8:00 – 20:00' }],
   },
   bloques: [
-    { id: 'historia', tipo: 'texto', titulo: 'Nuestra historia', texto: 'Empezamos con una furgoneta y muchas ganas.', foto: '', fotoAlt: '', items: [], fotos: [], productos: [] },
-    { id: 'agosto', tipo: 'aviso', titulo: 'Agosto', texto: 'Cerrado del 10 al 20 de agosto.', foto: '', fotoAlt: '', items: [], fotos: [], productos: [] },
+    { id: 'historia', tipo: 'texto', titulo: 'Nuestra historia', texto: 'Empezamos con una furgoneta y muchas ganas.', foto: '', fotoAlt: '', items: [], fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [] },
+    { id: 'agosto', tipo: 'aviso', titulo: 'Agosto', texto: 'Cerrado del 10 al 20 de agosto.', foto: '', fotoAlt: '', items: [], fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [] },
   ],
   ejemplos: [
     'cifras.0.valor',
@@ -142,6 +142,22 @@ normal.paginas[0].secciones.unshift({ tipo: 'bloque', id: 'agosto' });
 
 const repeat = (s: string, n: number) => Array.from({ length: n }, () => s).join(' ');
 
+/** Un bloque con todos sus campos vacíos, para rellenar solo lo suyo. */
+const bloqueVacio = (id: string, tipo: SiteContent['bloques'][number]['tipo']): SiteContent['bloques'][number] => ({
+  id,
+  tipo,
+  titulo: '',
+  texto: '',
+  foto: '',
+  fotoAlt: '',
+  items: [],
+  fotos: [],
+  productos: [],
+  pestanas: [],
+  comparativa: { columnas: [], destacada: -1, filas: [] },
+  hitos: [],
+});
+
 const exagerado: SiteContent = {
   ...normal,
   // Entrega 5: varias páginas con el título más largo que admite el menú,
@@ -155,7 +171,17 @@ const exagerado: SiteContent = {
       titulo: 'Servicios y precios completos',
       metaTitulo: '',
       metaDescripcion: '',
-      secciones: [{ tipo: 'servicios' }, { tipo: 'bloque', id: 'catalogo' }, { tipo: 'bloque', id: 'galeria' }, { tipo: 'bloque', id: 'antes-despues' }, { tipo: 'precios' }],
+      secciones: [
+        { tipo: 'servicios' },
+        { tipo: 'bloque', id: 'catalogo' },
+        { tipo: 'bloque', id: 'galeria' },
+        { tipo: 'bloque', id: 'antes-despues' },
+        { tipo: 'bloque', id: 'pestanas' },
+        { tipo: 'bloque', id: 'comparativa' },
+        { tipo: 'bloque', id: 'trayectoria' },
+        { tipo: 'bloque', id: 'marcas' },
+        { tipo: 'precios' },
+      ],
     },
     { ruta: 'empresa', titulo: 'Nuestra empresa y garantías', metaTitulo: '', metaDescripcion: '', secciones: [{ tipo: 'sobre' }, { tipo: 'proceso' }, { tipo: 'garantias' }] },
     { ruta: 'preguntas', titulo: 'Preguntas más frecuentes', metaTitulo: '', metaDescripcion: '', secciones: [{ tipo: 'faq' }] },
@@ -205,8 +231,8 @@ const exagerado: SiteContent = {
     ],
   },
   bloques: [
-    { id: 'historia', tipo: 'texto_foto', titulo: 'Una historia larga de verdad, contada con calma y con muchos detalles', texto: repeat('Párrafo largo de la historia.', 40).slice(0, 2000), foto: 'assets/portada.jpg', fotoAlt: 'Foto', items: [], fotos: [], productos: [] },
-    { id: 'agosto', tipo: 'lista', titulo: 'Por qué elegirnos', texto: '', foto: '', fotoAlt: '', items: Array.from({ length: 8 }, (_, i) => ({ texto: repeat('Motivo número', (i % 3) + 1) + ` ${i + 1}`, icono: '' })), fotos: [], productos: [] },
+    { id: 'historia', tipo: 'texto_foto', titulo: 'Una historia larga de verdad, contada con calma y con muchos detalles', texto: repeat('Párrafo largo de la historia.', 40).slice(0, 2000), foto: 'assets/portada.jpg', fotoAlt: 'Foto', items: [], fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [] },
+    { id: 'agosto', tipo: 'lista', titulo: 'Por qué elegirnos', texto: '', foto: '', fotoAlt: '', items: Array.from({ length: 8 }, (_, i) => ({ texto: repeat('Motivo número', (i % 3) + 1) + ` ${i + 1}`, icono: '' })), fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [] },
     {
       id: 'galeria',
       tipo: 'galeria',
@@ -215,6 +241,9 @@ const exagerado: SiteContent = {
       foto: '',
       fotoAlt: '',
       items: [],
+      pestanas: [],
+      comparativa: { columnas: [], destacada: -1, filas: [] },
+      hitos: [],
       fotos: Array.from({ length: 13 }, (_, i) => ({ foto: 'assets/portada.jpg', alt: `Trabajo ${i + 1}`, texto: i % 3 ? '' : repeat('Pie de foto largo que explica el trabajo.', 3).slice(0, 160) })),
       productos: [],
     },
@@ -226,6 +255,9 @@ const exagerado: SiteContent = {
       foto: '',
       fotoAlt: '',
       items: [],
+      pestanas: [],
+      comparativa: { columnas: [], destacada: -1, filas: [] },
+      hitos: [],
       fotos: [
         { foto: 'assets/portada.jpg', alt: 'El baño antes', texto: 'Antes de la reforma' },
         { foto: 'assets/portada.jpg', alt: 'El baño después', texto: 'Después de la reforma' },
@@ -240,6 +272,9 @@ const exagerado: SiteContent = {
       foto: '',
       fotoAlt: '',
       items: [],
+      pestanas: [],
+      comparativa: { columnas: [], destacada: -1, filas: [] },
+      hitos: [],
       fotos: [],
       productos: Array.from({ length: 9 }, (_, i) => ({
         nombre: i % 2 ? `Modelo ${i + 1}` : 'Ventana corredera de aluminio con rotura de puente térmico y doble vidrio',
@@ -250,6 +285,43 @@ const exagerado: SiteContent = {
         caracteristicas: ['Rotura de puente térmico', 'Doble acristalamiento con cámara de aire', 'Herrajes de acero inoxidable'].slice(0, (i % 3) + 1),
         precio: i % 4 === 3 ? '' : i % 2 ? `desde ${300 + i * 50} €` : 'desde 1.250,00 € instalada',
       })),
+    },
+    // Tanda 2: pestañas, comparativa, trayectoria y marcas, al máximo.
+    {
+      ...bloqueVacio('pestanas', 'pestanas'),
+      titulo: 'Soluciones para particulares, empresas y comunidades de propietarios',
+      pestanas: Array.from({ length: 6 }, (_, i) => ({
+        titulo: i % 2 ? `Pestaña ${i + 1}` : 'Comunidades de vecinos',
+        texto: repeat('Texto largo de la pestaña con **negrita** y detalles.', 12).slice(0, 2000),
+        foto: i % 3 ? 'assets/portada.jpg' : '',
+        alt: 'Foto',
+      })),
+    },
+    {
+      ...bloqueVacio('comparativa', 'comparativa'),
+      titulo: 'Aluminio con rotura de puente térmico frente a PVC y madera tratada',
+      comparativa: {
+        columnas: ['Aluminio RPT', 'PVC de alta gama', 'Madera tratada', 'Mixta'],
+        destacada: 0,
+        filas: Array.from({ length: 15 }, (_, i) => ({
+          concepto: i % 2 ? `Característica ${i + 1}` : 'Aislamiento térmico y acústico en fachadas expuestas al viento',
+          valores: ['sí', 'no', i % 3 ? 'Hasta 30 años con mantenimiento' : 'sí', ''],
+        })),
+      },
+    },
+    {
+      ...bloqueVacio('trayectoria', 'trayectoria'),
+      titulo: 'Más de treinta años trabajando en toda la isla',
+      hitos: Array.from({ length: 12 }, (_, i) => ({
+        fecha: i % 4 ? String(1990 + i * 3) : 'Primavera de 1994',
+        titulo: i % 2 ? `Hito ${i + 1}` : 'Abrimos el primer taller en el polígono de El Sebadal',
+        texto: repeat('Detalle del hito con algo de contexto.', (i % 3) + 1).slice(0, 300),
+      })),
+    },
+    {
+      ...bloqueVacio('marcas', 'marcas'),
+      titulo: 'Trabajamos con las mejores marcas y certificaciones del sector',
+      fotos: Array.from({ length: 9 }, (_, i) => ({ foto: 'assets/portada.jpg', alt: `Marca ${i + 1}`, texto: i % 2 ? 'Instalador oficial certificado' : '' })),
     },
   ],
   ejemplos: [],

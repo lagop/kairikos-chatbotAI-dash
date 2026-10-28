@@ -783,7 +783,7 @@ export function renderSiteFiles(template: SiteTemplateSource, content: SiteConte
       const legalContent: SiteContent = {
         ...content,
         // Sin título: el h1 lo pone la cabecera de la página.
-        bloques: [{ id: 'legal', tipo: 'texto', titulo: '', texto, foto: '', fotoAlt: '', items: [], fotos: [], productos: [] }],
+        bloques: [{ id: 'legal', tipo: 'texto', titulo: '', texto, foto: '', fotoAlt: '', items: [], fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [] }],
         ejemplos: [],
       };
       files.push(file(pageFile(legal.ruta).path, renderSitePage(template, legalContent, page, { ...ctx, formAction: null }, { menu: menuFor(legal.ruta), anchorsByPage })));

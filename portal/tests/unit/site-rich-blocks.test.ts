@@ -6,7 +6,7 @@ import { SITE_TEMPLATE_BASE } from '@/lib/site-template-base';
 import { SAMPLE_RENDER_CONTEXT, SITE_CONTENT_SAMPLES } from '@/lib/site-content-samples';
 
 const foto = 'assets/subidas/0123456789abcdef01.webp';
-const block = (over: Partial<RichBlockInput>): RichBlockInput => ({ id: 'b', tipo: 'galeria', titulo: '', texto: '', fotos: [], productos: [], ...over });
+const block = (over: Partial<RichBlockInput>): RichBlockInput => ({ id: 'b', tipo: 'galeria', titulo: '', texto: '', fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [], ...over });
 
 describe('renderRichBlock', () => {
   it('galería: cada foto enlaza a sí misma (sin JavaScript se abre igual) y sube de nivel en una página interior', () => {
@@ -59,7 +59,7 @@ describe('en la web', () => {
     bloques: [...SITE_CONTENT_SAMPLES.normal.bloques, ...bloques],
     paginas: [{ ...SITE_CONTENT_SAMPLES.normal.paginas[0], secciones: [...SITE_CONTENT_SAMPLES.normal.paginas[0].secciones, ...bloques.map((b) => ({ tipo: 'bloque' as const, id: b.id }))] }],
   });
-  const galeria = { id: 'obras', tipo: 'galeria' as const, titulo: 'Obras', texto: '', foto: '', fotoAlt: '', items: [], productos: [], fotos: [{ foto, alt: 'x', texto: '' }] };
+  const galeria = { id: 'obras', tipo: 'galeria' as const, titulo: 'Obras', texto: '', foto: '', fotoAlt: '', items: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [], fotos: [{ foto, alt: 'x', texto: '' }] };
 
   it('cualquier plantilla los pinta, con su estilo y su script, y solo en las páginas que los llevan', () => {
     const files = renderSiteFiles(SITE_TEMPLATE_BASE, content([galeria]), SAMPLE_RENDER_CONTEXT);
@@ -78,5 +78,50 @@ describe('en la web', () => {
     expect(referencedUploads(c)).toEqual(expect.arrayContaining([foto, 'assets/subidas/abcdefabcdefabcdef.jpg']));
     const ajena = content([{ ...galeria, fotos: [{ foto: 'https://otra-web.com/x.jpg', alt: '', texto: '' }] }]);
     expect(parseSiteContent(ajena).ok).toBe(false);
+  });
+});
+
+describe('tanda 2', () => {
+  const vacio = { pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [] };
+
+  it('pestañas: sin JavaScript, secciones con su título; el script las convierte', () => {
+    const html = renderRichBlock(
+      block({ ...vacio, tipo: 'pestanas', pestanas: [{ titulo: 'Particulares', texto: '**Hola**', foto, alt: 'x' }, { titulo: 'Empresas', texto: 'Adiós', foto: '', alt: '' }] }),
+      '',
+    );
+    expect(html).toContain('<div class="k-pestanas" data-k-pestanas>');
+    expect(html).toContain('<h3 class="k-panel-titulo">Particulares</h3>');
+    expect(html).toContain('data-k-titulo="Empresas"');
+    expect(html).toContain('<strong>Hola</strong>');
+  });
+
+  it('comparativa: «sí» y «no» como marca con su texto para lectores; lo demás tal cual; la columna resaltada', () => {
+    const html = renderRichBlock(
+      block({ ...vacio, tipo: 'comparativa', comparativa: { columnas: ['PVC', 'Aluminio'], destacada: 1, filas: [{ concepto: 'Aislamiento', valores: ['Sí', '30 años'] }, { concepto: 'Precio', valores: ['no', ''] }] } }),
+      '',
+    );
+    expect(html).toContain('<th scope="col" class="k-destacada">Aluminio</th>');
+    expect(html).toContain('<span class="k-si" role="img" aria-label="Sí"></span>');
+    expect(html).toContain('<span class="k-no" role="img" aria-label="No"></span>');
+    expect(html).toContain('data-k-columna="Aluminio" class="k-destacada">30 años</td>');
+    expect(html).toMatch(/data-k-columna="Aluminio" class="k-destacada"><\/td>/);
+  });
+
+  it('trayectoria y marcas; con más de cuatro marcas, en cinta con la copia oculta a los lectores', () => {
+    const t = renderRichBlock(block({ ...vacio, tipo: 'trayectoria', hitos: [{ fecha: '1998', titulo: 'Abrimos', texto: '' }] }), '');
+    expect(t).toContain('<p class="k-hito-fecha">1998</p>');
+    const pocas = renderRichBlock(block({ ...vacio, tipo: 'marcas', fotos: Array.from({ length: 3 }, () => ({ foto, alt: 'Marca', texto: '' })) }), '');
+    expect(pocas).not.toContain('k-marcas--cinta');
+    const muchas = renderRichBlock(block({ ...vacio, tipo: 'marcas', fotos: Array.from({ length: 6 }, () => ({ foto, alt: 'Marca', texto: '' })) }), '');
+    expect(muchas).toContain('k-marcas--cinta');
+    expect(muchas).toContain('<ul class="k-marcas-pista" aria-hidden="true">');
+    expect(muchas.split('aria-hidden="true">')[1]).not.toContain('alt="Marca"');
+  });
+
+  it('vacíos no se pintan', () => {
+    expect(richBlockHasContent(block({ ...vacio, tipo: 'pestanas' }))).toBe(false);
+    expect(richBlockHasContent(block({ ...vacio, tipo: 'comparativa', comparativa: { columnas: ['A'], destacada: -1, filas: [] } }))).toBe(false);
+    expect(richBlockHasContent(block({ ...vacio, tipo: 'trayectoria' }))).toBe(false);
+    expect(richBlockHasContent(block({ ...vacio, tipo: 'marcas' }))).toBe(false);
   });
 });
