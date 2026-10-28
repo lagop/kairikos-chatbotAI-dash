@@ -1,5 +1,6 @@
 import type { WebDraftCopy } from './web-draft-ai';
 import { fontStylesheetLinks } from './site-fonts';
+import { tradeHeroPhoto } from './trade-photos';
 import {
   openEveryDaySummary,
   type DraftReview,
@@ -202,8 +203,11 @@ export function themeForVariant(themeKey: string): { theme: WebDraftTheme; varia
  * prueba sin sistema de ficheros, y el navegador ya sabe resolverlo. Ver
  * public/web-draft/README.md para qué foto poner y de dónde sacarla.
  */
-export function heroImageUrls(theme: WebDraftTheme): string[] {
-  return [`/web-draft/${theme.key}.jpg`, `/web-draft/${theme.key}.svg`];
+export function heroImageUrls(theme: WebDraftTheme, subject?: Pick<WebDraftSubject, 'businessName' | 'primaryType'>): string[] {
+  // 28/10/2026 — en oficios, la foto de SU oficio (trade-photos.ts) si se
+  // reconoce; si no, la del sector de siempre.
+  const trade = subject ? tradeHeroPhoto(theme.key, subject.businessName, subject.primaryType) : null;
+  return [trade ?? `/web-draft/${theme.key}.jpg`, `/web-draft/${theme.key}.svg`];
 }
 
 export interface WebDraftSubject {
@@ -374,7 +378,7 @@ export function renderWebDraftHtml(params: {
   const resolved = params.themeKey ? themeForVariant(params.themeKey) : null;
   const theme = resolved?.theme ?? themeFor(subject.primaryType);
   const shift = resolved ? VARIANT_SHIFT[resolved.variant] : null;
-  const [photo, fallback] = heroImageUrls(theme);
+  const [photo, fallback] = heroImageUrls(theme, subject);
 
   const phoneText = subject.phone ? formatSpanishPhone(subject.phone) : null;
   const phoneHref = subject.phone ? telHref(subject.phone) : null;

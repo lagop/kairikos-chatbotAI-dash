@@ -340,6 +340,7 @@ export async function buildFilesForWebsite(
         formToken: website.formToken,
         portalOrigin: options.portalOrigin,
         businessName: website.businessName,
+        primaryType: website.primaryType,
         themeKey: website.themeKey,
         phone: website.phone,
         address: website.address,

@@ -105,7 +105,8 @@ describe('borrador con plantilla', () => {
     expect(ctx.citasHtml).toBeNull();
     expect(ctx.resenasHtml).toContain('class="resena"');
     expect(ctx.horario).toEqual([{ dias: 'Todos los días', horas: '8:00–20:00' }]);
-    expect(ctx.fotos.portada).toBe('/web-draft/trades.jpg');
+    // Un fontanero: la foto de su oficio (trade-photos.ts), no la genérica.
+    expect(ctx.fotos.portada).toMatch(/^\/web-draft\/oficios\/fontaneria-[123]\.jpg$/);
     expect(ctx.footerHtml).toContain('La quiero · 799 €');
     expect(draftRenderContext({ subject: { ...subject, rating: 3.6 }, themeKey: 'trades-1' }).negocio.valoracion).toBeNull();
   });

@@ -134,7 +134,7 @@ export function draftRenderContext(params: {
     subject.rating !== null && subject.reviewCount !== null && subject.reviewCount > 0 && subject.rating >= MIN_RATING_TO_SHOW;
   const reviews = (subject.reviews ?? []).slice(0, 3);
   const highlights = (subject.highlights ?? []).slice(0, 4);
-  const [photo] = heroImageUrls(themeForVariant(params.themeKey).theme);
+  const [photo] = heroImageUrls(themeForVariant(params.themeKey).theme, subject);
   return {
     negocio: {
       nombre: subject.businessName,
