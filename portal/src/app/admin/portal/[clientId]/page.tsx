@@ -1183,6 +1183,7 @@ export default async function AdminClientDetailPage(props: PageProps) {
                       </p>
                     </header>
                     <ClientWebsitePanel
+                      clientId={params.clientId}
                       clientProductId={project.clientProductId}
                       website={websites[project.clientProductId] ?? null}
                       draftLeads={draftLeads}

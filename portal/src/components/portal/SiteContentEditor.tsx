@@ -64,7 +64,14 @@ const today = () => new Date().toISOString().slice(0, 10);
 type View = { kind: 'pagina'; index: number } | { kind: 'blog' };
 
 export interface SiteContentEditorProps {
-  clientProductId: string;
+  /** Dónde guarda, publica, sube y enseña la vista previa: la del cliente
+   *  ('/api/portal/website/<clientProductId>') o, desde el 28/10/2026, la del
+   *  operador ('/api/admin/portal/websites/<websiteId>'), que edita la web
+   *  del cliente con este mismo editor. */
+  apiBase: string;
+  /** El operador editando en nombre del cliente: lo dice arriba y ve el
+   *  error crudo al publicar (el del servidor SFTP, que es el que le sirve). */
+  operador?: { clienteNombre: string } | null;
   initialContent: SiteContent;
   phone: string | null;
   address: string | null;
@@ -329,7 +336,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
   async function save(): Promise<boolean> {
     setBusy('save');
     setError(null);
-    const res = await fetch(`/api/portal/website/${props.clientProductId}/content`, {
+    const res = await fetch(`${props.apiBase}/content`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ content, phone: phone || null, address: address || null, baseUpdatedAt }),
@@ -352,14 +359,20 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
     if (dirty && !(await save())) return;
     setBusy('publish');
     setError(null);
-    const res = await fetch(`/api/portal/website/${props.clientProductId}/publish`, { method: 'POST' });
+    const res = await fetch(`${props.apiBase}/publish`, { method: 'POST' });
     setBusy(null);
     if (!res.ok) {
       const body = (await res.json().catch(() => ({}))) as { error?: string };
+      // Al operador, el motivo tal cual: «Permission denied» del SFTP del
+      // cliente es justo lo que necesita saber para arreglarlo.
+      if (props.operador && body.error && !(body.error in ERRORS)) {
+        setError(body.error === 'credential_missing' ? 'Falta la credencial de SFTP de su alojamiento: pégala en la ficha del cliente.' : `No se pudo publicar: ${body.error}`);
+        return;
+      }
       setError(ERRORS[body.error ?? 'publish_failed'] ?? ERRORS.publish_failed);
       return;
     }
-    setMessage('Publicada. Los cambios ya están en tu web.');
+    setMessage(props.operador ? 'Publicada. Los cambios ya están en su web.' : 'Publicada. Los cambios ya están en tu web.');
     router.refresh();
   }
 
@@ -410,7 +423,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
           {b.tipo === 'texto_foto' ? (
             <>
               <ImagePicker
-                clientProductId={props.clientProductId}
+                apiBase={props.apiBase}
                 label="Foto"
                 help="Una foto tuya: un trabajo, tu equipo, tu local."
                 value={b.foto}
@@ -473,8 +486,14 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
   return (
     <section className="space-y-4" aria-label="Tu web" data-testid="site-content-editor">
       <div className="card space-y-3">
+        {props.operador ? (
+          <p className="rounded-lg bg-kairikos-warning/10 px-3 py-2 text-sm" data-testid="site-editor-operator">
+            Estás editando la web de <strong>{props.operador.clienteNombre}</strong> como operador. Es la misma web que ve el cliente en su
+            portal: lo que guardes lo verá él, y queda en la auditoría a tu nombre.
+          </p>
+        ) : null}
         <div className="flex flex-wrap items-center gap-2">
-          <p className="font-semibold">Tu web</p>
+          <p className="font-semibold">{props.operador ? 'Su web' : 'Tu web'}</p>
           <span className={props.status === 'published' ? 'pill-success' : 'pill-muted'}>{props.status === 'published' ? 'Publicada' : 'Sin publicar'}</span>
           {props.lastPublishedAt ? <span className="text-xs text-kairikos-muted">Última publicación: {new Date(props.lastPublishedAt).toLocaleString('es-ES')}</span> : null}
         </div>
@@ -488,7 +507,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
           {/* Sin barra final: Next.js la quita con una redirección que el
               navegador no siempre completa; las rutas relativas de la vista
               previa ya se reescriben enteras (hosted-site-paths.ts). */}
-          <a className="btn-ghost" href={`/api/portal/website/${props.clientProductId}/preview${previewPath}`} target="_blank" rel="noopener">
+          <a className="btn-ghost" href={`${props.apiBase}/preview${previewPath}`} target="_blank" rel="noopener">
             Ver cómo queda
           </a>
           <button type="button" className="btn-ghost" disabled={!dirty || busy !== null} onClick={save}>
@@ -514,7 +533,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <ImagePicker
-            clientProductId={props.clientProductId}
+            apiBase={props.apiBase}
             label="Logo"
             help="Mejor en PNG con fondo transparente."
             value={content.imagenes?.logo ?? ''}
@@ -522,7 +541,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
             onChange={(path) => update((d) => void (d.imagenes = { logo: path, portada: d.imagenes?.portada ?? '' }))}
           />
           <ImagePicker
-            clientProductId={props.clientProductId}
+            apiBase={props.apiBase}
             label="Foto de portada"
             help="Horizontal, de un trabajo tuyo. Sin ella, va la de muestra de tu oficio."
             value={content.imagenes?.portada ?? ''}
@@ -852,14 +871,14 @@ async function prepareImage(file: File, kind: 'logo' | 'foto'): Promise<Blob> {
 /** Subir, ver y quitar una imagen. La miniatura sale de la vista previa, que
  *  sirve la subida aunque todavía no esté guardada en el contenido. */
 function ImagePicker({
-  clientProductId,
+  apiBase,
   label,
   help,
   value,
   kind,
   onChange,
 }: {
-  clientProductId: string;
+  apiBase: string;
   label: string;
   help: string;
   value: string;
@@ -879,7 +898,7 @@ function ImagePicker({
     }
     const form = new FormData();
     form.append('archivo', blob, `imagen.${blob.type.split('/')[1] ?? 'jpg'}`);
-    const res = await fetch(`/api/portal/website/${clientProductId}/images`, { method: 'POST', body: form }).catch(() => null);
+    const res = await fetch(`${apiBase}/images`, { method: 'POST', body: form }).catch(() => null);
     const body = (await res?.json().catch(() => ({}))) as { path?: string; error?: string };
     if (!res?.ok || !body.path) {
       setState({ busy: false, error: UPLOAD_ERRORS[body.error ?? 'internal_error'] ?? UPLOAD_ERRORS.internal_error });
@@ -897,7 +916,7 @@ function ImagePicker({
       >
         {value ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={`/api/portal/website/${clientProductId}/preview/${value}`} alt={label} className={kind === 'logo' ? 'max-h-full max-w-full object-contain' : 'h-full w-full object-cover'} />
+          <img src={`${apiBase}/preview/${value}`} alt={label} className={kind === 'logo' ? 'max-h-full max-w-full object-contain' : 'h-full w-full object-cover'} />
         ) : (
           <span className="px-3 text-center text-xs text-kairikos-muted">{help}</span>
         )}
