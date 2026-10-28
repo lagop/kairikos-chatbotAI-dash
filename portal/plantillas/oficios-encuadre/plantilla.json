@@ -1,0 +1,41 @@
+{
+  "nombre": "Oficios · Encuadre",
+  "sector": "trades",
+  "variante": "fotográfica y editorial, papel claro, tinta y azul cobalto",
+  "encargo": "Oficios donde el trabajo se ve (carpintería de aluminio, reformas, placas solares, fontanería, electricidad, carpintería, pintura). La foto manda: la portada es la foto de su oficio a sangre con el titular encima, en serifa grande, como la portada de una revista. El resto es papel claro y tinta casi negra con un solo acento (azul cobalto) y filetes finos en vez de tarjetas: servicios en un índice numerado, precios como una carta con puntos guía, la zona como una línea de nombres. La foto vuelve en la llamada final, virada al color del negocio. Titulares en Instrument Serif y texto en Manrope. Dinámica: la foto se acerca despacio al cargar, las filas del índice se deslizan, las cifras cuentan y la línea del proceso se dibuja. Transmite trabajo bien hecho y oficio serio. Escrita a mano.",
+  "estilo": {
+    "acento": {
+      "variables": [
+        {
+          "variable": "--cobalto",
+          "desde": "color",
+          "contra": ["--papel", "--papel-2", "--blanco"],
+          "minimo": 4.5
+        },
+        {
+          "variable": "--cobalto-claro",
+          "desde": "tono",
+          "contra": ["--tinta", "--tinta-2"],
+          "minimo": 4.5
+        }
+      ],
+      "muestras": [
+        { "nombre": "Cobalto", "color": "#2348d8" },
+        { "nombre": "Granate", "color": "#a3213a" },
+        { "nombre": "Verde", "color": "#1d6f42" },
+        { "nombre": "Petróleo", "color": "#0d6170" },
+        { "nombre": "Naranja", "color": "#b14a00" },
+        { "nombre": "Violeta", "color": "#5b35b5" }
+      ]
+    },
+    "tipografias": {
+      "titulares": "--display",
+      "texto": "--texto",
+      "parejas": [
+        { "id": "editorial", "nombre": "Editorial", "titulares": "Instrument Serif", "texto": "Manrope" },
+        { "id": "clasica", "nombre": "Clásica", "titulares": "DM Serif Display", "texto": "Source Sans 3" },
+        { "id": "cercana", "nombre": "Cercana", "titulares": "Young Serif", "texto": "Figtree" }
+      ]
+    }
+  }
+}
