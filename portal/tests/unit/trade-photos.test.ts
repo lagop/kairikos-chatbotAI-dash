@@ -50,7 +50,8 @@ describe('fotos de oficio', () => {
   });
 
   it('solo en oficios, y lo que no se reconoce cae a la del sector', () => {
-    expect(tradeHeroPhoto('beauty', 'Peluquería Solar', 'hair_salon')).toBeNull();
+    // Una peluquería que se llame «Solar» no sale con placas: sale con la suya.
+    expect(tradeHeroPhoto('beauty', 'Peluquería Solar', 'hair_salon')).toMatch(/^\/web-draft\/belleza\/peluqueria-/);
     expect(tradeHeroPhoto('trades', 'Huve', null)).toBeNull();
     for (const [set, n] of Object.entries(TRADE_PHOTO_COUNTS)) {
       for (let i = 1; i <= n; i++) expect(existsSync(join(DIR, `${set}-${i}.jpg`))).toBe(true);

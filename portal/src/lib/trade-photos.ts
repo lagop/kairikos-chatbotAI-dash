@@ -97,9 +97,36 @@ function stableIndex(text: string, size: number): number {
  * quien llama usa la foto del sector de siempre.
  */
 export function tradeHeroPhoto(family: string, businessName: string, primaryType: string | null): string | null {
+  if (family === 'beauty') return beautyHeroPhoto(businessName, primaryType);
   if (family !== 'trades') return null;
   const set = tradePhotoSet(businessName, primaryType);
   if (!set) return null;
   const n = stableIndex(normalize(businessName).trim(), TRADE_PHOTO_COUNTS[set]) + 1;
   return `/web-draft/oficios/${set}-${n}.jpg`;
+}
+
+// -----------------------------------------------------------------------------
+// Belleza (28/10/2026). Los 16 prospectos del sector eran peluquerías, alguna
+// también barbería; estética y uñas no salían. Las fotos están en
+// public/web-draft/belleza/ junto con las de la galería de ejemplo
+// (site-sector-blocks.ts), que no se usan de portada.
+// -----------------------------------------------------------------------------
+
+export const BEAUTY_PHOTO_COUNTS = Object.freeze({ peluqueria: 3, barberia: 2 } as const);
+export type BeautyPhotoSet = keyof typeof BEAUTY_PHOTO_COUNTS;
+
+/** Barbería si lo dice el nombre o Google; si no, peluquería, que en el sector
+ *  es casi todo (y una peluquería que también corta a hombres se ve bien con
+ *  la foto de peluquería). */
+export function beautyPhotoSet(businessName: string, primaryType: string | null): BeautyPhotoSet {
+  return /barber/.test(normalize(businessName)) || primaryType === 'barber_shop' ? 'barberia' : 'peluqueria';
+}
+
+function beautyHeroPhoto(businessName: string, primaryType: string | null): string | null {
+  // Estética, uñas y spa también son de la familia belleza, pero una foto de
+  // peluquería les quedaría falsa: para ellos, la del sector de siempre.
+  if (primaryType && !['hair_salon', 'barber_shop'].includes(primaryType) && !/pelu|barber|hair|estilis/.test(normalize(businessName))) return null;
+  const set = beautyPhotoSet(businessName, primaryType);
+  const n = stableIndex(normalize(businessName).trim(), BEAUTY_PHOTO_COUNTS[set]) + 1;
+  return `/web-draft/belleza/${set}-${n}.jpg`;
 }

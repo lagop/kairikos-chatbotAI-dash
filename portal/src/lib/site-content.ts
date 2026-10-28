@@ -106,6 +106,8 @@ const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** Dónde viven las imágenes que sube el cliente dentro de su web
  *  (site-uploads.ts). El nombre lo pone el servidor, nunca el cliente. */
 export const SITE_UPLOAD_PATH_RE = /^assets\/subidas\/[a-f0-9]{18}\.(?:jpg|png|webp)$/;
+/** Una foto de nuestro banco de muestra (public/web-draft/<carpeta>/…). */
+export const STOCK_IMAGE_RE = /^\/web-draft\/[a-z0-9_-]+\/[a-z0-9_-]+\.(?:jpe?g|png|webp)$/;
 const uploadPath = z.string().trim().max(60).refine((p) => p === '' || SITE_UPLOAD_PATH_RE.test(p), 'invalid_upload_path').default('');
 
 /** Las subidas que cita el contenido: las únicas que viajan con la web al
@@ -145,13 +147,15 @@ const pageSchema = z.object({
 export type SitePage = z.infer<typeof pageSchema>;
 
 /** Una foto de un bloque rico: una ruta de imagen dentro del sitio (las
- *  subidas, assets/subidas/…). Nunca una URL ajena, que la web pediría a un
- *  tercero en cada visita. */
+ *  subidas, assets/subidas/…) o una de nuestro banco (/web-draft/…, la de
+ *  los bloques de ejemplo por sector, site-sector-blocks.ts; al publicar
+ *  viaja con la web, website-build.ts). Nunca una URL ajena, que la web
+ *  pediría a un tercero en cada visita. */
 const blockImagePath = z
   .string()
   .trim()
   .max(200)
-  .refine((p) => p === '' || /^assets\/[a-z0-9/._-]+\.(?:jpe?g|png|webp)$/i.test(p), 'invalid_image_path')
+  .refine((p) => p === '' || /^assets\/[a-z0-9/._-]+\.(?:jpe?g|png|webp)$/i.test(p) || STOCK_IMAGE_RE.test(p), 'invalid_image_path')
   .default('');
 
 const blockSchema = z.object({

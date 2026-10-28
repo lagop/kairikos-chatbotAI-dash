@@ -86,8 +86,8 @@ function validate(template: SiteTemplateSource): SiteTemplateSource {
 /** Lo mismo que la vista previa del laboratorio
  *  (api/admin/portal/site-templates/[id]/preview): la foto del sector en vez
  *  de assets/portada.jpg. */
-function sampleContent(name: SiteContentSampleName): SiteContent {
-  return JSON.parse(JSON.stringify(SITE_CONTENT_SAMPLES[name]).replaceAll('"assets/portada.jpg"', '"/web-draft/trades.jpg"')) as SiteContent;
+function sampleContent(name: SiteContentSampleName, foto: string): SiteContent {
+  return JSON.parse(JSON.stringify(SITE_CONTENT_SAMPLES[name]).replaceAll('"assets/portada.jpg"', JSON.stringify(foto))) as SiteContent;
 }
 
 /** La carpeta de una variante de estilo: 'estilo-1d4ed8-x', 'estilo-x-rotulo'. */
@@ -101,17 +101,19 @@ function write(path: string, data: string | Buffer) {
 }
 
 function comprobar(dir: string, out: string) {
-  const { template, slug } = load(dir);
+  const { meta, template, slug } = load(dir);
   const clean = validate(template);
   const root = resolve(out);
   rmSync(join(root, slug), { recursive: true, force: true });
-  const ctx = { ...SAMPLE_RENDER_CONTEXT, fotos: { portada: '/web-draft/trades.jpg', equipo: null, trabajo: null } };
+  // La foto de su sector, como la vista previa del laboratorio.
+  const foto = `/web-draft/${meta.sector === 'beauty' ? 'beauty' : 'trades'}.jpg`;
+  const ctx = { ...SAMPLE_RENDER_CONTEXT, fotos: { portada: foto, equipo: null, trabajo: null } };
   const estilo = parseTemplateStyle(clean.estilo);
   const withStyle: SiteTemplateSource = { ...clean, estilo };
   const sinJs: SiteTemplateSource = { ...withStyle, marco: clean.marco.replace(/<script\b[\s\S]*?<\/script>/gi, '') };
   for (const name of Object.keys(SITE_CONTENT_SAMPLES) as SiteContentSampleName[]) {
     for (const [variant, t] of [[name, withStyle], [`${name}-sin-js`, sinJs]] as const) {
-      for (const f of renderSiteFiles(t, sampleContent(name), ctx)) write(join(root, slug, variant, f.path), f.content);
+      for (const f of renderSiteFiles(t, sampleContent(name, foto), ctx)) write(join(root, slug, variant, f.path), f.content);
     }
   }
   // Las variantes de estilo que medirá el laboratorio, con y sin script (con
@@ -119,7 +121,7 @@ function comprobar(dir: string, out: string) {
   const variants = new Map(checkPlan(estilo).filter((p) => p.acento || p.tipografia).map((p) => [variantDir(p.acento, p.tipografia), p]));
   for (const [vdir, { acento, tipografia }] of variants) {
     for (const name of Object.keys(SITE_CONTENT_SAMPLES) as SiteContentSampleName[]) {
-      const content = { ...sampleContent(name), estilo: { acento: acento ?? '', tipografia: tipografia ?? '' } };
+      const content = { ...sampleContent(name, foto), estilo: { acento: acento ?? '', tipografia: tipografia ?? '' } };
       for (const [variant, t] of [[name, withStyle], [`${name}-sin-js`, sinJs]] as const) {
         for (const f of renderSiteFiles(t, content, ctx)) write(join(root, slug, vdir, variant, f.path), f.content);
       }
@@ -129,7 +131,7 @@ function comprobar(dir: string, out: string) {
   // Lo que la vista previa sirve desde el portal.
   cpSync(join(PORTAL, 'public', 'fuentes'), join(root, 'fuentes'), { recursive: true });
   cpSync(join(PORTAL, 'public', 'google-maps'), join(root, 'google-maps'), { recursive: true });
-  write(join(root, 'web-draft', 'trades.jpg'), readFileSync(join(PORTAL, 'public', 'web-draft', 'trades.jpg')));
+  for (const f of ['trades.jpg', 'beauty.jpg']) write(join(root, 'web-draft', f), readFileSync(join(PORTAL, 'public', 'web-draft', f)));
   buildSync({
     entryPoints: [join(PORTAL, 'src', 'lib', 'site-template-checks.ts')],
     bundle: true,

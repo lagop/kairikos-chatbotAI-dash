@@ -1,0 +1,41 @@
+{
+  "nombre": "Belleza · Atelier",
+  "sector": "beauty",
+  "variante": "cálida y cuidada, nácar y rosa empolvado, fotos en arco",
+  "encargo": "Peluquerías y barberías de barrio y de autor. Cálida y cuidada, como un salón con luz natural: nácar y rosa palo de fondo, tinta café y un acento rosa empolvado. El motivo es el arco: las fotos se recortan en arco, como los espejos de un salón, acompañadas de círculos finos. Cabecera centrada con la marca arriba y el menú debajo, botón «Pedir cita» siempre a mano; servicios como una carta en dos columnas, la visita en números romanos, precios en tarjetas con arco. Titulares en Cormorant Garamond y texto en Manrope. Dinámica: el arco de la portada se abre al cargar, los círculos giran despacio, las tarjetas se elevan y las cifras cuentan. Trato de tú. Escrita a mano.",
+  "estilo": {
+    "acento": {
+      "variables": [
+        {
+          "variable": "--rosa",
+          "desde": "color",
+          "contra": ["--nacar", "--palo", "--blanco"],
+          "minimo": 4.5
+        },
+        {
+          "variable": "--rosa-claro",
+          "desde": "tono",
+          "contra": ["--cafe", "--cafe-2"],
+          "minimo": 4.5
+        }
+      ],
+      "muestras": [
+        { "nombre": "Rosa empolvado", "color": "#a8455a" },
+        { "nombre": "Ciruela", "color": "#7d3c6b" },
+        { "nombre": "Terracota", "color": "#a24a2c" },
+        { "nombre": "Salvia", "color": "#4f6b52" },
+        { "nombre": "Azul noche", "color": "#2f4b7c" },
+        { "nombre": "Oro viejo", "color": "#8a6420" }
+      ]
+    },
+    "tipografias": {
+      "titulares": "--display",
+      "texto": "--texto",
+      "parejas": [
+        { "id": "elegante", "nombre": "Elegante", "titulares": "Cormorant Garamond", "texto": "Manrope" },
+        { "id": "calida", "nombre": "Cálida", "titulares": "Fraunces", "texto": "Nunito Sans" },
+        { "id": "moderna", "nombre": "Moderna", "titulares": "Outfit", "texto": "Figtree" }
+      ]
+    }
+  }
+}

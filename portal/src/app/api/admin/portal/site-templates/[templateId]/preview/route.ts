@@ -35,10 +35,14 @@ export async function GET(req: NextRequest, props: { params: Promise<{ templateI
   if (!auth.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
   let template: SiteTemplateSource = SITE_TEMPLATE_BASE;
+  let foto = '/web-draft/trades.jpg';
   if (params.templateId !== 'base') {
     if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
-    const row = await prisma.siteTemplate.findUnique({ where: { id: params.templateId }, select: { marco: true, secciones: true, estilo: true } });
+    const row = await prisma.siteTemplate.findUnique({ where: { id: params.templateId }, select: { marco: true, secciones: true, estilo: true, sector: true } });
     if (!row || !row.marco) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+    // 28/10/2026 — con la foto de SU sector: una de belleza medida con la de
+    // una obra se ve rara y no dice nada de cómo quedará.
+    if (row.sector && ['beauty', 'trades', 'health', 'food', 'professional'].includes(row.sector)) foto = `/web-draft/${row.sector}.jpg`;
     template = { marco: row.marco, secciones: row.secciones as Partial<Record<SiteTemplatePart, string>>, estilo: parseTemplateStyle(row.estilo) };
   }
 
@@ -46,7 +50,7 @@ export async function GET(req: NextRequest, props: { params: Promise<{ templateI
   const sample = (requested in SITE_CONTENT_SAMPLES ? requested : 'normal') as SiteContentSampleName;
   // Las fotos de muestra son rutas del sitio publicado (assets/…); aquí no
   // existen, así que se sirve la del sector, como la portada.
-  const content = JSON.parse(JSON.stringify(SITE_CONTENT_SAMPLES[sample]).replaceAll('"assets/portada.jpg"', '"/web-draft/trades.jpg"')) as SiteContent;
+  const content = JSON.parse(JSON.stringify(SITE_CONTENT_SAMPLES[sample]).replaceAll('"assets/portada.jpg"', JSON.stringify(foto))) as SiteContent;
   // Entrega 5: ?pagina=blog o ?pagina=blog/entrada-1 (las comprobaciones
   // miden también la lista y el artículo). Vacío, la portada.
   const pagina = (req.nextUrl.searchParams.get('pagina') ?? '').replace(/^\/+|\/+$/g, '');
@@ -61,7 +65,7 @@ export async function GET(req: NextRequest, props: { params: Promise<{ templateI
   try {
     const files = renderSiteFiles(template, content, {
       ...SAMPLE_RENDER_CONTEXT,
-      fotos: { portada: '/web-draft/trades.jpg', equipo: null, trabajo: null },
+      fotos: { portada: foto, equipo: null, trabajo: null },
     });
     const file = files.find((f) => f.path === (pagina ? `${pagina}/index.html` : 'index.html'));
     if (!file) return NextResponse.json({ error: 'page_not_found' }, { status: 404 });

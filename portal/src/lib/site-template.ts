@@ -388,7 +388,8 @@ function renderSections(
         // (site-rich-blocks.ts).
         const rich = { ...block, tipo: block.tipo };
         if (richBlockHasContent(rich)) {
-          rendered.push({ kind: 'block', anchor: `bloque-${block.id}`, tipo: 'bloque', html: renderRichBlock(rich, pageFile(page.ruta).base) });
+          const ejemplo = content.ejemplos.some((e) => e.startsWith(`bloques.${block.id}.`));
+          rendered.push({ kind: 'block', anchor: `bloque-${block.id}`, tipo: 'bloque', html: renderRichBlock(rich, pageFile(page.ruta).base, ejemplo) });
         }
         continue;
       }
@@ -645,7 +646,7 @@ export function renderSitePage(
       .join(' · ');
     html = html.replace(/<\/body>/i, `<nav class="legales" aria-label="Legal" style="text-align:center;font-size:13px;padding:16px">${links}</nav>\n</body>`);
   }
-  if (html.includes('class="dato-ejemplo')) {
+  if (/class="[^"]*\bdato-ejemplo/.test(html)) {
     html = html.replace(/<\/body>/i, `${EXAMPLE_LEGEND_HTML}\n</body>`);
   }
   // Los bloques ricos: su aspecto base ANTES del de la plantilla (que gana si

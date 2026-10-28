@@ -6,6 +6,7 @@ import { buildSiteContentFromDraft, expandDraftToSiteContent } from './site-cont
 import { atribucionGoogleHtml, renderCitasHtml, renderResenasHtml } from './site-draft-markup';
 import { renderSitePage, type SiteRenderContext, type SiteTemplatePart, type SiteTemplateSource } from './site-template';
 import { pickSiteTemplateForSector } from './site-template-jobs';
+import { withSectorExamples } from './site-sector-blocks';
 import { editorStyleOptions, parseTemplateStyle } from './site-style';
 import type { WebDraftCopy } from './web-draft-ai';
 import {
@@ -78,7 +79,10 @@ export async function designForDraft(
       iconIds,
       estilo,
     });
-    const content = expanded.ok && !('skipped' in expanded) ? expanded.content : buildSiteContentFromDraft(input.copy, null, iconIds);
+    const base = expanded.ok && !('skipped' in expanded) ? expanded.content : buildSiteContentFromDraft(input.copy, null, iconIds);
+    // 28/10/2026 — galería, servicios por pestañas… con contenido de ejemplo,
+    // marcado como tal (site-sector-blocks.ts).
+    const content = withSectorExamples(base, { familia: input.themeKey.split('-')[0], businessName: input.businessName, primaryType: input.primaryType });
     if (!expanded.ok) logError('web_draft_design.expand_failed', new Error(expanded.error), {}, 'warn');
     return { content, templateId: picked.id };
   } catch (err) {

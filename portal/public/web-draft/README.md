@@ -97,3 +97,38 @@ el riesgo para una imagen de portada.
 La plantilla ya lo escribe en el pie: las imágenes son de muestra y en su web
 irán las suyas. Decirlo además empuja a que entregue sus fotos, que es el
 paso que luego bloquea las entregas.
+
+## Belleza (`belleza/`, 28/10/2026)
+
+Para peluquerías y barberías: los 16 prospectos de belleza de ese día eran
+peluquerías (alguna también barbería). Dos usos:
+
+- **Portada** (`peluqueria-1..3`, `barberia-1..2`): como las de oficios, por el
+  nombre o el tipo de Google (`trade-photos.ts`). Estética, uñas y spa siguen
+  con `beauty.jpg`.
+- **Bloques de ejemplo** del borrador (`trabajo-1..9`, `despues-1`): la galería,
+  las pestañas de servicios y el antes y después que trae el borrador de una
+  peluquería (`site-sector-blocks.ts`). Van marcados como datos de ejemplo:
+  no se publican hasta que el cliente los cambia o los confirma, y al publicar
+  viajan con la web (`assets/muestra/`).
+
+Todas de Unsplash («Foto gratuita»), a 1600 px, sin caras reconocibles,
+descargadas con permiso de Orlando el 28/10/2026:
+
+| Archivo | Foto (unsplash.com/es/fotos/…) | Autor |
+|---|---|---|
+| peluqueria-1 | gI9rvJK61L8 | Giorgio Trovato |
+| peluqueria-2 | T9u-Xr30FY8 | Giorgio Trovato |
+| peluqueria-3 | wSpkThmoZQc | Giorgio Trovato |
+| barberia-1 | EW_rqoSdDes | Nathon Oski |
+| barberia-2 | 1_DAlXy0wng | André Reis |
+| trabajo-1 | Re6pyBDuCAo | Charlotte Malene |
+| trabajo-2 | Obi1yM7KLqU | Alina Chernovolova |
+| trabajo-3 | tOUcSRABuRI | Daniel Miksha |
+| trabajo-4 | TBmNnhIFDeg | Paloma LaMadreInspirada |
+| trabajo-5 | NYpC-nLLxQw | mayank sharma |
+| trabajo-6 | D_1tyuWWbeY | Kimia Zarifi |
+| trabajo-7 | gWGgfIUNFuA | Chloe Zeller |
+| trabajo-8 | pu20JkUx--A | Arthur Humeau |
+| trabajo-9 | TnyHlxVnyhk | Giselle Lazcano |
+| despues-1 | GO1d_3tqkFo | Yovanka Loria Salon |

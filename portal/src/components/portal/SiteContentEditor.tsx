@@ -994,7 +994,7 @@ function ImagePicker({
       >
         {value ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={`${apiBase}/preview/${value}`} alt={label} className={kind === 'logo' ? 'max-h-full max-w-full object-contain' : 'h-full w-full object-cover'} />
+          <img src={value.startsWith('/') ? value : `${apiBase}/preview/${value}`} alt={label} className={kind === 'logo' ? 'max-h-full max-w-full object-contain' : 'h-full w-full object-cover'} />
         ) : (
           <span className="px-3 text-center text-xs text-kairikos-muted">{help}</span>
         )}
