@@ -4,8 +4,9 @@
 // Hasta hoy todas las webs de oficios —borradores y publicadas— salían con la
 // misma foto de banco (public/web-draft/trades.jpg). Con una plantilla en la
 // que la foto manda, eso daba a todas las fontanerías y todos los
-// electricistas la misma portada. Ahora hay tres fotos por oficio en
-// public/web-draft/oficios/ y cada negocio se queda con una.
+// electricistas la misma portada. Ahora hay tres fotos de portada por oficio
+// en public/web-draft/oficios/ y cada negocio se queda con una (y cinco más
+// para las pestañas del borrador; ver TRADE_HERO_PHOTOS).
 //
 // Qué oficios: los que de verdad aparecen entre los prospectos de producción
 // (28/10), no una lista de manual. La carpintería de aluminio es con mucho la
@@ -25,16 +26,23 @@
 /** Cuántas fotos hay de cada oficio. Una prueba comprueba que están todas en
  *  public/web-draft/oficios/ (<oficio>-<n>.jpg). */
 export const TRADE_PHOTO_COUNTS = Object.freeze({
-  aluminio: 3,
-  solar: 3,
-  fontaneria: 3,
-  electricidad: 3,
-  cerrajeria: 3,
-  carpinteria: 3,
-  taller: 3,
-  pintura: 3,
-  reformas: 3,
+  aluminio: 8,
+  solar: 8,
+  fontaneria: 8,
+  electricidad: 8,
+  cerrajeria: 8,
+  carpinteria: 8,
+  taller: 8,
+  pintura: 8,
+  reformas: 8,
 } as const);
+
+/** Las de portada son las 3 primeras de cada oficio; las demás (4..8, del
+ *  28/10/2026) van en las pestañas de «Qué incluye cada servicio». Separadas
+ *  a propósito: si la portada eligiera entre las 8, el índice estable
+ *  cambiaría y un prospecto que ya vio su borrador lo encontraría con otra
+ *  foto. Y así una pestaña nunca repite la foto de portada. */
+export const TRADE_HERO_PHOTOS = 3;
 
 export type TradePhotoSet = keyof typeof TRADE_PHOTO_COUNTS;
 
@@ -101,8 +109,17 @@ export function tradeHeroPhoto(family: string, businessName: string, primaryType
   if (family !== 'trades') return null;
   const set = tradePhotoSet(businessName, primaryType);
   if (!set) return null;
-  const n = stableIndex(normalize(businessName).trim(), TRADE_PHOTO_COUNTS[set]) + 1;
+  const n = stableIndex(normalize(businessName).trim(), TRADE_HERO_PHOTOS) + 1;
   return `/web-draft/oficios/${set}-${n}.jpg`;
+}
+
+/** Las fotos de oficio que no son de portada, empezando en un punto estable
+ *  según el nombre: dos aluminios de la misma zona no salen con las pestañas
+ *  en el mismo orden. */
+export function tradeDetailPhotos(set: TradePhotoSet, businessName: string): string[] {
+  const all = Array.from({ length: TRADE_PHOTO_COUNTS[set] - TRADE_HERO_PHOTOS }, (_, i) => `/web-draft/oficios/${set}-${TRADE_HERO_PHOTOS + i + 1}.jpg`);
+  const start = stableIndex(normalize(businessName).trim(), all.length);
+  return [...all.slice(start), ...all.slice(0, start)];
 }
 
 // -----------------------------------------------------------------------------

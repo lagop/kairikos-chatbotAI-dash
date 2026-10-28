@@ -65,7 +65,10 @@ describe('bloques de ejemplo del sector', () => {
     };
     const t = withSectorExamples(conDetalle(), { familia: 'trades', businessName: 'Aluminios Telde', primaryType: null });
     const fotos = t.bloques.find((b) => b.id === DETAIL_BLOCK_ID)!.pestanas.map((p) => p.foto);
-    expect(fotos).toEqual(['/web-draft/oficios/aluminio-2.jpg', '/web-draft/oficios/aluminio-3.jpg', '/web-draft/oficios/aluminio-1.jpg', '/web-draft/oficios/aluminio-2.jpg']);
+    // Cuatro distintas, ninguna de portada (1..3).
+    expect(new Set(fotos).size).toBe(4);
+    for (const f of fotos) expect(f).toMatch(/^\/web-draft\/oficios\/aluminio-[4-8]\.jpg$/);
+    expect(fotos).not.toContain(tradeHeroPhoto('trades', 'Aluminios Telde', null));
     for (const f of fotos) expect(existsSync(join(process.cwd(), 'public', f)), f).toBe(true);
     expect(parseSiteContent(t).ok).toBe(true);
     // Un oficio que no se reconoce se queda sin fotos, no con la de otro.

@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { TRADE_PHOTO_COUNTS, tradeHeroPhoto, tradePhotoSet, type TradePhotoSet } from '@/lib/trade-photos';
+import { TRADE_HERO_PHOTOS, TRADE_PHOTO_COUNTS, tradeDetailPhotos, tradeHeroPhoto, tradePhotoSet, type TradePhotoSet } from '@/lib/trade-photos';
 
 const DIR = join(process.cwd(), 'public', 'web-draft', 'oficios');
 
@@ -47,6 +47,17 @@ describe('fotos de oficio', () => {
     expect(tradeHeroPhoto('trades', 'ALUMINIOS MARRERO ', 'manufacturer')).toBe(a);
     const many = new Set(['Aluminios Marrero', 'Aluminios Beyra', 'Aluminios Armas', 'Aluminios Schamann', 'Aluminios Breval', 'Aluminios RMG'].map((n) => tradeHeroPhoto('trades', n, null)));
     expect(many.size).toBeGreaterThan(1);
+  });
+
+  it('las pestañas usan las que no son de portada, en un orden estable por negocio', () => {
+    const a = tradeDetailPhotos('aluminio', 'Aluminios Marrero');
+    expect(a).toHaveLength(TRADE_PHOTO_COUNTS.aluminio - TRADE_HERO_PHOTOS);
+    expect(new Set(a).size).toBe(a.length);
+    for (const f of a) expect(f).toMatch(/^\/web-draft\/oficios\/aluminio-[4-8]\.jpg$/);
+    expect(tradeDetailPhotos('aluminio', 'ALUMINIOS MARRERO ')).toEqual(a);
+    // La portada sigue entre las 3 de siempre aunque ahora haya 8: un borrador
+    // que ya se enseñó no cambia de foto.
+    for (const n of ['Aluminios Marrero', 'Yuba Solar', 'Desatascos Jumbo']) expect(tradeHeroPhoto('trades', n, null)).toMatch(/-[123]\.jpg$/);
   });
 
   it('solo en oficios, y lo que no se reconoce cae a la del sector', () => {

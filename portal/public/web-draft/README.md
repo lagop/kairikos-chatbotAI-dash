@@ -18,8 +18,8 @@ elegido todavía las fotos.
 
 ## Fotos por oficio (`oficios/`, 28/10/2026)
 
-Para oficios ya no hay una sola foto: hay tres por oficio en `oficios/`. Cada
-negocio se queda con una, elegida primero por su nombre y luego por su tipo de
+Para oficios ya no hay una sola foto: hay ocho por oficio en `oficios/`: tres de portada y cinco para las pestañas. Cada
+negocio se queda con una de portada, elegida primero por su nombre y luego por su tipo de
 Google (`src/lib/trade-photos.ts`). Si no se reconoce el oficio, usa
 `trades.jpg`, como antes. Los oficios elegidos son los que aparecían entre los
 prospectos de producción ese día: la carpintería de aluminio era con mucho la
@@ -61,6 +61,60 @@ Todas son de Unsplash («Foto gratuita», licencia de Unsplash), descargadas a
 | taller-1 | bEGTsOCnHro | Kate Ibragimova |
 | taller-2 | xe-e69j6-Ds | Chad Kirchoff |
 | taller-3 | 9gB7APNSquE | Sasun Bughdaryan |
+
+### Las de las pestañas (`<oficio>-4` a `-8`, 28/10/2026)
+
+Las tres primeras de cada oficio son de **portada** y no se mezclan con estas: si la portada eligiera entre las ocho, cambiaría la de los borradores que ya se han enseñado (`TRADE_HERO_PHOTOS` en `trade-photos.ts`). Estas cinco van en las pestañas de «Qué incluye cada servicio», así que ninguna pestaña repite la de portada.
+
+Mismo criterio y misma licencia. Se descartaron siete al revisarlas a 1600 px por llevar una marca legible: magnetotérmicos ABB, el logo de BMW en una llanta, un candado SQUIRE, un taladro Makita, un cartucho de silicona, una herramienta y el texto de un guante. Las cinco que pesaban más de 400 KB se pidieron con más compresión (q=50–60).
+
+| Archivo | Foto (unsplash.com/es/fotos/…) | Autor |
+|---|---|---|
+| aluminio-4 | ysgELOy_t0c | Alex Perz |
+| aluminio-5 | QmiR1c9azJY | Declan Sun |
+| aluminio-6 | iQ9_1cVOwiQ | Adam Elwan |
+| aluminio-7 | u-9dA84J0iI | Yingying LI |
+| aluminio-8 | oRm2TfiHG0U | Ricardo Resende |
+| solar-4 | 6M9OhcblUHM | Mischa Frank |
+| solar-5 | VAegToqdX3A | Sergio Martins |
+| solar-6 | 2ASQyjafflo | Evgeniy Alyoshin |
+| solar-7 | zWL_sYw10gs | Sergej ***** |
+| solar-8 | 8GS8bmor8_A | Watt A Lot |
+| fontaneria-4 | jaP5ClBdIyU | bhagya laxmi |
+| fontaneria-5 | HIBdxZQzA2Q | Supply |
+| fontaneria-6 | 1N5jjLyBafc | Alexander Schimmeck |
+| fontaneria-7 | scUBcasSvbE | Samuel Sianipar |
+| fontaneria-8 | 4CNNH2KEjhc | Compagnons |
+| electricidad-4 | NLBJ2I0lNr4 | Hobi industri |
+| electricidad-5 | KDkU44ikiko | Raymond Sime |
+| electricidad-6 | kXC6XhVL1e4 | Troy Bridges |
+| electricidad-7 | 7XaBaKwrV1E | intrapixel |
+| electricidad-8 | nt5Tjdg-9ks | Troy Bridges |
+| cerrajeria-4 | nvYIrRZAFgg | Arkadiusz Gąsiorowski |
+| cerrajeria-5 | nAZUJFrDlaY | Jorien Loman |
+| cerrajeria-6 | 7tkDoo2L_Eg | Jaye Haych |
+| cerrajeria-7 | oW-Sx33bYJk | Pawel Czerwinski |
+| cerrajeria-8 | tVIv23vcuz4 | Jan Tinneberg |
+| carpinteria-4 | v13x0qU4afA | Adam Patterson |
+| carpinteria-5 | HjFUevA2g1k | Nico Smit |
+| carpinteria-6 | S-lveyCLmHw | Ryno Marais |
+| carpinteria-7 | DfffcjQ106U | Bailey Alexander |
+| carpinteria-8 | pxybw_7H9Gg | Ryno Marais |
+| taller-4 | Fd6osyVbtG4 | Christian Buehner |
+| taller-5 | Y_t0n-T4H5M | Nina Mercado |
+| taller-6 | K5624F8cipE | Tahamie Farooqui |
+| taller-7 | xFjti9rYILo | Garett Mizunaka |
+| taller-8 | KhF58h0hTbc | Kato Blackmore |
+| pintura-4 | Cl-OpYWFFm0 | Theme Photos |
+| pintura-5 | rMVjOX8nm2U | Andrew Itaga |
+| pintura-6 | 8VH4BXkXCkU | Hugo Clément |
+| pintura-7 | DzPDs5UdnOw | Wilhelm Gunkel |
+| pintura-8 | ioOlenqfMqA | Flow Clark |
+| reformas-4 | UqNEbyRQ660 | immo RENOVATION |
+| reformas-5 | biRt6RXejuk | Stefan Lehner |
+| reformas-6 | K5sjajgbTFw | Nolan Issac |
+| reformas-7 | g51F6-WYzyU | Lotus Design N Print |
+| reformas-8 | MP0bgaS_d1c | Naomi Hébert |
 
 ## Qué foto poner
 
