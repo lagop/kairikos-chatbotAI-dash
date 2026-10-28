@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { renderRichBlock, richBlockHasContent, type RichBlockInput } from '@/lib/site-rich-blocks';
+import { parseVideoUrl, renderRichBlock, richBlockHasContent, videoPlatformsIn, type RichBlockInput } from '@/lib/site-rich-blocks';
+import { legalPageMarkdown } from '@/lib/site-legal';
 import { parseSiteContent, referencedUploads, type SiteContent } from '@/lib/site-content';
 import { renderSiteFiles } from '@/lib/site-template';
 import { SITE_TEMPLATE_BASE } from '@/lib/site-template-base';
 import { SAMPLE_RENDER_CONTEXT, SITE_CONTENT_SAMPLES } from '@/lib/site-content-samples';
 
 const foto = 'assets/subidas/0123456789abcdef01.webp';
-const block = (over: Partial<RichBlockInput>): RichBlockInput => ({ id: 'b', tipo: 'galeria', titulo: '', texto: '', fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [], ...over });
+const block = (over: Partial<RichBlockInput>): RichBlockInput => ({ id: 'b', tipo: 'galeria', titulo: '', texto: '', fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [], video: '', foto: '', fotoAlt: '', ...over });
 
 describe('renderRichBlock', () => {
   it('galería: cada foto enlaza a sí misma (sin JavaScript se abre igual) y sube de nivel en una página interior', () => {
@@ -59,7 +60,7 @@ describe('en la web', () => {
     bloques: [...SITE_CONTENT_SAMPLES.normal.bloques, ...bloques],
     paginas: [{ ...SITE_CONTENT_SAMPLES.normal.paginas[0], secciones: [...SITE_CONTENT_SAMPLES.normal.paginas[0].secciones, ...bloques.map((b) => ({ tipo: 'bloque' as const, id: b.id }))] }],
   });
-  const galeria = { id: 'obras', tipo: 'galeria' as const, titulo: 'Obras', texto: '', foto: '', fotoAlt: '', items: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [], fotos: [{ foto, alt: 'x', texto: '' }] };
+  const galeria = { id: 'obras', tipo: 'galeria' as const, titulo: 'Obras', texto: '', foto: '', fotoAlt: '', items: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [], video: '', fotos: [{ foto, alt: 'x', texto: '' }] };
 
   it('cualquier plantilla los pinta, con su estilo y su script, y solo en las páginas que los llevan', () => {
     const files = renderSiteFiles(SITE_TEMPLATE_BASE, content([galeria]), SAMPLE_RENDER_CONTEXT);
@@ -123,5 +124,57 @@ describe('tanda 2', () => {
     expect(richBlockHasContent(block({ ...vacio, tipo: 'comparativa', comparativa: { columnas: ['A'], destacada: -1, filas: [] } }))).toBe(false);
     expect(richBlockHasContent(block({ ...vacio, tipo: 'trayectoria' }))).toBe(false);
     expect(richBlockHasContent(block({ ...vacio, tipo: 'marcas' }))).toBe(false);
+  });
+});
+
+describe('tanda 3: vídeo', () => {
+  it('reconoce los enlaces de YouTube y Vimeo de verdad, y nada más', () => {
+    for (const u of [
+      'https://www.youtube.com/watch?v=M7lc1UVf-VE',
+      'https://youtu.be/M7lc1UVf-VE?si=abc',
+      'https://m.youtube.com/watch?v=M7lc1UVf-VE&t=30',
+      'https://www.youtube.com/shorts/M7lc1UVf-VE',
+      'https://www.youtube-nocookie.com/embed/M7lc1UVf-VE',
+    ]) {
+      expect(parseVideoUrl(u), u).toEqual({ plataforma: 'youtube', id: 'M7lc1UVf-VE' });
+    }
+    expect(parseVideoUrl('https://vimeo.com/76979871')).toEqual({ plataforma: 'vimeo', id: '76979871' });
+    expect(parseVideoUrl('https://player.vimeo.com/video/76979871')).toEqual({ plataforma: 'vimeo', id: '76979871' });
+    for (const u of ['https://youtube.com.evil.com/watch?v=M7lc1UVf-VE', 'javascript:alert(1)', 'https://www.youtube.com/watch?v=corto', 'https://vimeo.com/channels/staff', 'no es un enlace']) {
+      expect(parseVideoUrl(u), u).toBeNull();
+    }
+  });
+
+  it('antes de pulsar, la página no pide NADA a YouTube: ni iframe, ni miniatura, ni script', () => {
+    const html = renderRichBlock(block({ tipo: 'video', titulo: 'Obra', video: 'https://youtu.be/M7lc1UVf-VE', foto: '', fotoAlt: '' }), '');
+    expect(html).not.toMatch(/<iframe|ytimg|<script|src="https?:/);
+    // Sin JavaScript, un enlace al vídeo; con él, el script pone youtube-nocookie.
+    expect(html).toContain('href="https://www.youtube.com/watch?v=M7lc1UVf-VE"');
+    expect(html).toContain('data-k-video="youtube" data-k-id="M7lc1UVf-VE"');
+    expect(html).toContain('k-video-fondo');
+    expect(html).toContain('solo al pulsar');
+    const conPortada = renderRichBlock(block({ tipo: 'video', titulo: '', video: 'https://vimeo.com/76979871', foto, fotoAlt: 'Taller' }), '../');
+    expect(conPortada).toContain(`<img src="../${foto}" alt="Taller"`);
+    expect(conPortada).toContain('Vimeo');
+  });
+
+  it('un enlace que no es de vídeo no se guarda ni se pinta', () => {
+    expect(richBlockHasContent(block({ tipo: 'video', video: 'https://otra-web.com/v' }))).toBe(false);
+    const c = { ...SITE_CONTENT_SAMPLES.normal, bloques: [{ ...SITE_CONTENT_SAMPLES.normal.bloques[0], id: 'v', tipo: 'video' as const, video: 'https://otra-web.com/v' }] };
+    expect(parseSiteContent(c).ok).toBe(false);
+  });
+
+  it('con un vídeo, las páginas de cookies y privacidad lo explican; sin él, siguen diciendo que no hay cookies', () => {
+    const legal = { titular: 'Ana', nif: 'X', domicilio: 'Calle 1', email: 'a@b.es', registro: '' };
+    const sin = legalPageMarkdown('cookies', legal, 'Ana');
+    expect(sin.texto).toContain('**no utiliza cookies**');
+    expect(sin.texto).not.toContain('YouTube');
+    const con = legalPageMarkdown('cookies', legal, 'Ana', { videos: ['youtube'] });
+    expect(con.texto).toContain('**no instala cookies** al entrar');
+    expect(con.texto).toContain('YouTube (Google)');
+    expect(con.texto).toContain('https://policies.google.com/privacy');
+    expect(legalPageMarkdown('privacidad', legal, 'Ana', { videos: ['vimeo'] }).texto).toContain('**Vídeos.**');
+    expect(legalPageMarkdown('privacidad', legal, 'Ana').texto).not.toContain('**Vídeos.**');
+    expect(videoPlatformsIn([{ tipo: 'video', video: 'https://youtu.be/M7lc1UVf-VE' }, { tipo: 'texto', video: '' }, { tipo: 'video', video: 'https://vimeo.com/76979871' }])).toEqual(['vimeo', 'youtube']);
   });
 });

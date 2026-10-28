@@ -82,8 +82,8 @@ const normal: SiteContent = {
     horario: [{ dias: 'Todos los días', horas: '8:00 – 20:00' }],
   },
   bloques: [
-    { id: 'historia', tipo: 'texto', titulo: 'Nuestra historia', texto: 'Empezamos con una furgoneta y muchas ganas.', foto: '', fotoAlt: '', items: [], fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [] },
-    { id: 'agosto', tipo: 'aviso', titulo: 'Agosto', texto: 'Cerrado del 10 al 20 de agosto.', foto: '', fotoAlt: '', items: [], fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [] },
+    { id: 'historia', tipo: 'texto', titulo: 'Nuestra historia', texto: 'Empezamos con una furgoneta y muchas ganas.', foto: '', fotoAlt: '', items: [], fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [], video: '' },
+    { id: 'agosto', tipo: 'aviso', titulo: 'Agosto', texto: 'Cerrado del 10 al 20 de agosto.', foto: '', fotoAlt: '', items: [], fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [], video: '' },
   ],
   ejemplos: [
     'cifras.0.valor',
@@ -155,7 +155,7 @@ const bloqueVacio = (id: string, tipo: SiteContent['bloques'][number]['tipo']): 
   productos: [],
   pestanas: [],
   comparativa: { columnas: [], destacada: -1, filas: [] },
-  hitos: [],
+  hitos: [], video: '',
 });
 
 const exagerado: SiteContent = {
@@ -180,6 +180,8 @@ const exagerado: SiteContent = {
         { tipo: 'bloque', id: 'comparativa' },
         { tipo: 'bloque', id: 'trayectoria' },
         { tipo: 'bloque', id: 'marcas' },
+        { tipo: 'bloque', id: 'video' },
+        { tipo: 'bloque', id: 'video-vimeo' },
         { tipo: 'precios' },
       ],
     },
@@ -231,8 +233,8 @@ const exagerado: SiteContent = {
     ],
   },
   bloques: [
-    { id: 'historia', tipo: 'texto_foto', titulo: 'Una historia larga de verdad, contada con calma y con muchos detalles', texto: repeat('Párrafo largo de la historia.', 40).slice(0, 2000), foto: 'assets/portada.jpg', fotoAlt: 'Foto', items: [], fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [] },
-    { id: 'agosto', tipo: 'lista', titulo: 'Por qué elegirnos', texto: '', foto: '', fotoAlt: '', items: Array.from({ length: 8 }, (_, i) => ({ texto: repeat('Motivo número', (i % 3) + 1) + ` ${i + 1}`, icono: '' })), fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [] },
+    { id: 'historia', tipo: 'texto_foto', titulo: 'Una historia larga de verdad, contada con calma y con muchos detalles', texto: repeat('Párrafo largo de la historia.', 40).slice(0, 2000), foto: 'assets/portada.jpg', fotoAlt: 'Foto', items: [], fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [], video: '' },
+    { id: 'agosto', tipo: 'lista', titulo: 'Por qué elegirnos', texto: '', foto: '', fotoAlt: '', items: Array.from({ length: 8 }, (_, i) => ({ texto: repeat('Motivo número', (i % 3) + 1) + ` ${i + 1}`, icono: '' })), fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [], video: '' },
     {
       id: 'galeria',
       tipo: 'galeria',
@@ -243,7 +245,7 @@ const exagerado: SiteContent = {
       items: [],
       pestanas: [],
       comparativa: { columnas: [], destacada: -1, filas: [] },
-      hitos: [],
+      hitos: [], video: '',
       fotos: Array.from({ length: 13 }, (_, i) => ({ foto: 'assets/portada.jpg', alt: `Trabajo ${i + 1}`, texto: i % 3 ? '' : repeat('Pie de foto largo que explica el trabajo.', 3).slice(0, 160) })),
       productos: [],
     },
@@ -257,7 +259,7 @@ const exagerado: SiteContent = {
       items: [],
       pestanas: [],
       comparativa: { columnas: [], destacada: -1, filas: [] },
-      hitos: [],
+      hitos: [], video: '',
       fotos: [
         { foto: 'assets/portada.jpg', alt: 'El baño antes', texto: 'Antes de la reforma' },
         { foto: 'assets/portada.jpg', alt: 'El baño después', texto: 'Después de la reforma' },
@@ -274,7 +276,7 @@ const exagerado: SiteContent = {
       items: [],
       pestanas: [],
       comparativa: { columnas: [], destacada: -1, filas: [] },
-      hitos: [],
+      hitos: [], video: '',
       fotos: [],
       productos: Array.from({ length: 9 }, (_, i) => ({
         nombre: i % 2 ? `Modelo ${i + 1}` : 'Ventana corredera de aluminio con rotura de puente térmico y doble vidrio',
@@ -323,6 +325,17 @@ const exagerado: SiteContent = {
       titulo: 'Trabajamos con las mejores marcas y certificaciones del sector',
       fotos: Array.from({ length: 9 }, (_, i) => ({ foto: 'assets/portada.jpg', alt: `Marca ${i + 1}`, texto: i % 2 ? 'Instalador oficial certificado' : '' })),
     },
+    // Tanda 3: un vídeo con portada propia y otro sin ella. Son vídeos de
+    // muestra de las propias plataformas; no se cargan si nadie los pulsa.
+    {
+      ...bloqueVacio('video', 'video'),
+      titulo: 'Así instalamos una ventana corredera en una mañana, de principio a fin',
+      texto: repeat('Un vídeo corto del trabajo.', 3),
+      video: 'https://www.youtube.com/watch?v=M7lc1UVf-VE',
+      foto: 'assets/portada.jpg',
+      fotoAlt: 'Instalación de una ventana',
+    },
+    { ...bloqueVacio('video-vimeo', 'video'), titulo: 'Nuestro taller', video: 'https://vimeo.com/76979871' },
   ],
   ejemplos: [],
   blog: {

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SITE_RICH_BLOCK_TYPES } from './site-rich-blocks';
+import { SITE_RICH_BLOCK_TYPES, parseVideoUrl } from './site-rich-blocks';
 
 // =============================================================================
 // Webs con IA, entrega 1 (27/10/2026) — el CONTENIDO de una web, separado de
@@ -212,6 +212,9 @@ const blockSchema = z.object({
     .array(z.object({ fecha: text(30).min(1), titulo: text(90).min(1), texto: optionalText(300) }))
     .max(SITE_LIMITS.bloqueHitos)
     .default([]),
+  /** Tanda 3 (28/10/2026) — el enlace a un vídeo de YouTube o Vimeo. La
+   *  portada propia, si la hay, va en `foto`. */
+  video: optionalText(300).refine((u) => u === '' || parseVideoUrl(u) !== null, 'invalid_video_url'),
 });
 export type SiteBlock = z.infer<typeof blockSchema>;
 

@@ -10,7 +10,7 @@ import {
   type SiteSectionType,
 } from './site-content';
 import { renderSiteMarkdown } from './site-markdown';
-import { BLOQUES_CSS, BLOQUES_JS, isRichBlockType, renderRichBlock, richBlockHasContent } from './site-rich-blocks';
+import { BLOQUES_CSS, BLOQUES_JS, isRichBlockType, renderRichBlock, richBlockHasContent, videoPlatformsIn } from './site-rich-blocks';
 import { LEGAL_PAGES, legalPageMarkdown } from './site-legal';
 import { localizeGoogleFonts, replaceGoogleFontFamilies } from './site-fonts';
 import { resolveSiteStyle, siteStyleCss, type SiteTemplateStyle } from './site-style';
@@ -778,12 +778,13 @@ export function renderSiteFiles(template: SiteTemplateSource, content: SiteConte
   // ejemplo.
   if (ctx.legales) {
     for (const legal of LEGAL_PAGES) {
-      const { titulo, texto } = legalPageMarkdown(legal.ruta, content.legal, ctx.negocio.nombre);
+      // Con vídeos, cookies y privacidad lo explican (site-legal.ts).
+      const { titulo, texto } = legalPageMarkdown(legal.ruta, content.legal, ctx.negocio.nombre, { videos: videoPlatformsIn(content.bloques) });
       const page: SitePage = { ruta: legal.ruta, titulo, metaTitulo: `${titulo} · ${ctx.negocio.nombre}`, metaDescripcion: '', secciones: [{ tipo: 'bloque', id: 'legal' }] };
       const legalContent: SiteContent = {
         ...content,
         // Sin título: el h1 lo pone la cabecera de la página.
-        bloques: [{ id: 'legal', tipo: 'texto', titulo: '', texto, foto: '', fotoAlt: '', items: [], fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [] }],
+        bloques: [{ id: 'legal', tipo: 'texto', titulo: '', texto, foto: '', fotoAlt: '', items: [], fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [], video: '' }],
         ejemplos: [],
       };
       files.push(file(pageFile(legal.ruta).path, renderSitePage(template, legalContent, page, { ...ctx, formAction: null }, { menu: menuFor(legal.ruta), anchorsByPage })));

@@ -118,6 +118,7 @@ const BLOCK_LABEL: Record<SiteBlock['tipo'], string> = {
   comparativa: 'Comparativa',
   trayectoria: 'Trayectoria',
   marcas: 'Marcas y certificados',
+  video: 'Vídeo',
 };
 
 /** Qué rutas de datos de ejemplo pertenecen a cada sección. */
@@ -149,6 +150,7 @@ const ERRORS: Record<string, string> = {
   reserved_page_path: 'Esa dirección de página la usa la web para otra cosa (blog, aviso legal…). Ponle otro nombre a la página.',
   stale_content:
     'Tu web ha cambiado mientras la editabas (por ejemplo, tu servicio de SEO ha publicado un artículo). Copia lo que acabas de escribir y recarga la página para seguir sobre la versión nueva.',
+  invalid_video_url: 'El enlace de algún vídeo no es de YouTube o Vimeo. Cópialo de la barra del navegador o del botón «Compartir».',
   too_small: 'Hay un título vacío (de una página, una entrada o una sección). Escríbelo y vuelve a guardar.',
 };
 
@@ -326,7 +328,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
       let n = d.bloques.length + 1;
       while (d.bloques.some((b) => b.id === `bloque-${n}`)) n++;
       const id = `bloque-${n}`;
-      d.bloques.push({ id, tipo: newBlock, titulo: '', texto: '', foto: '', fotoAlt: '', items: newBlock === 'lista' ? [{ texto: '', icono: '' }] : [], fotos: newBlock === 'antes_despues' ? [{ foto: '', alt: '', texto: 'Antes' }, { foto: '', alt: '', texto: 'Después' }] : [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [] });
+      d.bloques.push({ id, tipo: newBlock, titulo: '', texto: '', foto: '', fotoAlt: '', items: newBlock === 'lista' ? [{ texto: '', icono: '' }] : [], fotos: newBlock === 'antes_despues' ? [{ foto: '', alt: '', texto: 'Antes' }, { foto: '', alt: '', texto: 'Después' }] : [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [], video: '' });
       const list = d.paginas[pageIndex].secciones;
       const contacto = list.findIndex((s) => s.tipo === 'contacto');
       list.splice(contacto >= 0 ? contacto : list.length, 0, { tipo: 'bloque', id });
@@ -440,6 +442,33 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
               />
               {text('Qué se ve en la foto (para quien no puede verla y para Google)', `${base}.fotoAlt`, b.fotoAlt, 160)}
             </>
+          ) : null}
+          {b.tipo === 'video' ? (
+            <div className="space-y-3">
+              <label className="block text-sm font-medium">
+                Enlace del vídeo (YouTube o Vimeo)
+                <input
+                  className={`input mt-1 w-full ${b.video && !isVideoUrl(b.video) ? 'border-kairikos-danger' : ''}`}
+                  maxLength={300}
+                  placeholder="https://www.youtube.com/watch?v=…"
+                  value={b.video}
+                  onChange={(e) => update((d) => void ((d.bloques.find((x) => x.id === b.id) as SiteBlock).video = e.target.value.trim()))}
+                />
+              </label>
+              {b.video && !isVideoUrl(b.video) ? <p className="text-xs text-kairikos-danger">Ese enlace no es de un vídeo de YouTube o Vimeo. Cópialo de la barra del navegador o del botón «Compartir».</p> : null}
+              <p className="text-xs text-kairikos-muted">
+                Tu web no carga nada de YouTube o Vimeo hasta que el visitante pulsa el vídeo; así no hace falta pedirle permiso para cookies al entrar. Las páginas de
+                cookies y privacidad de tu web lo explican solas.
+              </p>
+              <ImagePicker
+                apiBase={props.apiBase}
+                label="Portada (opcional)"
+                help="Una foto que se ve antes de pulsar. Sin ella, una portada con los colores de tu web."
+                value={b.foto}
+                kind="foto"
+                onChange={(path) => update((d) => void ((d.bloques.find((x) => x.id === b.id) as SiteBlock).foto = path))}
+              />
+            </div>
           ) : null}
           {b.tipo === 'pestanas' ? (
             <TabsEditor apiBase={props.apiBase} pestanas={b.pestanas} onChange={(pestanas) => update((d) => void ((d.bloques.find((x) => x.id === b.id) as SiteBlock).pestanas = pestanas))} />
@@ -858,6 +887,23 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
       </div>
     </section>
   );
+}
+
+/** La misma comprobación que parseVideoUrl (site-rich-blocks.ts), repetida
+ *  aquí: es componente de cliente y no importa libs del servidor. */
+function isVideoUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^(www\.|m\.)/, '');
+    if (host === 'youtu.be') return /^\/[A-Za-z0-9_-]{11}(\/|$)/.test(u.pathname);
+    if (host === 'youtube.com' || host === 'youtube-nocookie.com') {
+      return u.pathname === '/watch' ? /^[A-Za-z0-9_-]{11}$/.test(u.searchParams.get('v') ?? '') : /^\/(embed|shorts|live)\/[A-Za-z0-9_-]{11}(\/|$)/.test(u.pathname);
+    }
+    if (host === 'vimeo.com' || host === 'player.vimeo.com') return /^\/(video\/)?\d{6,12}(\/|$)/.test(u.pathname);
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 const UPLOAD_ERRORS: Record<string, string> = {
