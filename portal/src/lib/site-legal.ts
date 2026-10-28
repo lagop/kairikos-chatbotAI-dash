@@ -23,7 +23,20 @@ import type { SiteLegal } from './site-content';
 //   27/10/2026): el navegador del visitante no se conecta a Google, y por eso
 //   la política de privacidad ya no lo menciona. Si algún día una web vuelve
 //   a cargar algo de un tercero, hay que declararlo aquí.
+// - 28/10/2026: eso ya pasa con el bloque de vídeo (site-rich-blocks.ts). No
+//   carga nada de YouTube o Vimeo hasta que el visitante pulsa, y entonces lo
+//   hace en su modo más privado (youtube-nocookie.com, Vimeo con «dnt»). Pulsar
+//   es la acción con la que el visitante pide el vídeo, así que no hace falta
+//   aviso al entrar; pero cookies y privacidad lo explican cuando la web tiene
+//   algún vídeo. PENDIENTE también de la revisión del abogado.
 // =============================================================================
+
+export type LegalOptions = { videos?: ('youtube' | 'vimeo')[] };
+
+const VIDEO_PROVIDERS = {
+  youtube: { nombre: 'YouTube (Google)', politica: 'https://policies.google.com/privacy' },
+  vimeo: { nombre: 'Vimeo', politica: 'https://vimeo.com/privacy' },
+} as const;
 
 export const LEGAL_PAGES = [
   { ruta: 'aviso-legal', titulo: 'Aviso legal' },
@@ -32,8 +45,11 @@ export const LEGAL_PAGES = [
 ] as const;
 export type LegalPagePath = (typeof LEGAL_PAGES)[number]['ruta'];
 
-export function legalPageMarkdown(ruta: LegalPagePath, legal: SiteLegal, businessName: string): { titulo: string; texto: string } {
+export function legalPageMarkdown(ruta: LegalPagePath, legal: SiteLegal, businessName: string, options: LegalOptions = {}): { titulo: string; texto: string } {
   const titular = legal.titular || businessName;
+  const videos = (options.videos ?? []).map((v) => VIDEO_PROVIDERS[v]);
+  const quienes = videos.map((v) => v.nombre).join(' y ');
+  const politicas = videos.map((v) => `[${v.nombre}](${v.politica})`).join(' y ');
   const ident = [
     `**Titular:** ${titular}`,
     `**NIF:** ${legal.nif}`,
@@ -66,6 +82,11 @@ export function legalPageMarkdown(ruta: LegalPagePath, legal: SiteLegal, busines
           `**Base legal.** Su consentimiento al enviar el formulario y, cuando pide un presupuesto, la aplicación de medidas precontractuales a petición suya (art. 6.1.a y 6.1.b del RGPD).`,
           `**Encargado del tratamiento.** El alojamiento de esta web y la recepción de los mensajes del formulario los presta Kairikos, como encargado del tratamiento, con un contrato que le obliga a usar los datos solo para ese fin (art. 28 del RGPD).`,
           `**Cuánto tiempo.** Conservamos los mensajes mientras sean necesarios para atender su consulta y, después, durante los plazos que exija la ley.`,
+          ...(videos.length
+            ? [
+                `**Vídeos.** Esta web incluye vídeos de ${quienes}. No se cargan hasta que usted pulsa para reproducirlos; al hacerlo, su navegador se conecta a ${quienes}, que recibe su dirección IP y datos técnicos de su navegador y los trata según su propia política de privacidad (${politicas}). Si no pulsa, no se le envía nada.`,
+              ]
+            : []),
           `**Sus derechos.** Puede pedir acceso, rectificación, supresión, oposición, limitación y portabilidad de sus datos escribiendo a [${legal.email}](mailto:${legal.email}). Si considera que no se han atendido, puede reclamar ante la Agencia Española de Protección de Datos ([www.aepd.es](https://www.aepd.es)).`,
         ].join('\n\n'),
       };
@@ -73,7 +94,14 @@ export function legalPageMarkdown(ruta: LegalPagePath, legal: SiteLegal, busines
       return {
         titulo: 'Cookies',
         texto: [
-          `Esta web **no utiliza cookies** propias ni de terceros: ni de análisis, ni de publicidad, ni de seguimiento. Por eso no le pedimos que acepte ninguna al entrar.`,
+          videos.length
+            ? `Esta web **no instala cookies** al entrar: ni propias ni de terceros, ni de análisis, ni de publicidad, ni de seguimiento. Por eso no le pedimos que acepte ninguna.`
+            : `Esta web **no utiliza cookies** propias ni de terceros: ni de análisis, ni de publicidad, ni de seguimiento. Por eso no le pedimos que acepte ninguna al entrar.`,
+          ...(videos.length
+            ? [
+                `**Vídeos de ${quienes}.** Algunas páginas muestran vídeos de ${quienes}. Mientras no los pulse, el vídeo es solo una imagen de esta web y no se conecta con ${quienes}. Si pulsa para reproducirlo, el vídeo se carga desde ${quienes} en su modo de privacidad reforzada, y a partir de ese momento ${quienes} puede instalar cookies o guardar datos en su navegador según su propia política (${politicas}). Si prefiere evitarlo, no pulse el vídeo.`,
+              ]
+            : []),
           `Si en el futuro se añadieran cookies que no sean estrictamente necesarias, se le pedirá su consentimiento antes de instalarlas y esta página lo explicará.`,
           `Para cualquier duda puede escribir a [${legal.email}](mailto:${legal.email}).`,
         ].join('\n\n'),

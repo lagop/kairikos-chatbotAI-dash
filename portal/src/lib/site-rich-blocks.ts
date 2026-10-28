@@ -27,7 +27,8 @@ import { renderSiteMarkdown } from './site-markdown';
 // =============================================================================
 
 // Tanda 2 (28/10/2026): pestañas, comparativa, trayectoria y marcas.
-export const SITE_RICH_BLOCK_TYPES = ['galeria', 'antes_despues', 'catalogo', 'pestanas', 'comparativa', 'trayectoria', 'marcas'] as const;
+// Tanda 3 (28/10/2026): vídeo que no carga nada de fuera hasta que se pulsa.
+export const SITE_RICH_BLOCK_TYPES = ['galeria', 'antes_despues', 'catalogo', 'pestanas', 'comparativa', 'trayectoria', 'marcas', 'video'] as const;
 export type SiteRichBlockType = (typeof SITE_RICH_BLOCK_TYPES)[number];
 
 export function isRichBlockType(tipo: string): tipo is SiteRichBlockType {
@@ -44,6 +45,52 @@ export interface RichBlockInput {
   pestanas: { titulo: string; texto: string; foto: string; alt: string }[];
   comparativa: { columnas: string[]; destacada: number; filas: { concepto: string; valores: string[] }[] };
   hitos: { fecha: string; titulo: string; texto: string }[];
+  /** El enlace al vídeo (YouTube o Vimeo); `foto`, la portada propia. */
+  video: string;
+  foto: string;
+  fotoAlt: string;
+}
+
+export type VideoPlatform = 'youtube' | 'vimeo';
+
+/**
+ * De qué plataforma es un enlace de vídeo y su identificador, o null. Solo
+ * YouTube y Vimeo: son las dos que tienen un modo que no instala cookies
+ * hasta reproducir (youtube-nocookie.com y el «dnt» de Vimeo).
+ */
+export function parseVideoUrl(url: string): { plataforma: VideoPlatform; id: string } | null {
+  let u: URL;
+  try {
+    u = new URL(url.trim());
+  } catch {
+    return null;
+  }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+  const host = u.hostname.replace(/^(www\.|m\.)/, '');
+  const yt = (id: string | null | undefined) => (id && /^[A-Za-z0-9_-]{11}$/.test(id) ? { plataforma: 'youtube' as const, id } : null);
+  if (host === 'youtu.be') return yt(u.pathname.slice(1).split('/')[0]);
+  if (host === 'youtube.com' || host === 'youtube-nocookie.com') {
+    if (u.pathname === '/watch') return yt(u.searchParams.get('v'));
+    const m = u.pathname.match(/^\/(?:embed|shorts|live)\/([^/]+)/);
+    return yt(m?.[1]);
+  }
+  if (host === 'vimeo.com' || host === 'player.vimeo.com') {
+    const m = u.pathname.match(/^\/(?:video\/)?(\d{6,12})(?:\/|$)/);
+    return m ? { plataforma: 'vimeo', id: m[1] } : null;
+  }
+  return null;
+}
+
+/** Las plataformas de vídeo que usa una web: lo necesitan la política de
+ *  cookies y la de privacidad (site-legal.ts). */
+export function videoPlatformsIn(bloques: { tipo: string; video?: string }[]): VideoPlatform[] {
+  const set = new Set<VideoPlatform>();
+  for (const b of bloques) {
+    if (b.tipo !== 'video' || !b.video) continue;
+    const v = parseVideoUrl(b.video);
+    if (v) set.add(v.plataforma);
+  }
+  return [...set].sort();
 }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -65,6 +112,7 @@ export function richBlockHasContent(b: RichBlockInput): boolean {
   if (b.tipo === 'pestanas') return b.pestanas.length > 0;
   if (b.tipo === 'comparativa') return b.comparativa.columnas.length > 0 && b.comparativa.filas.length > 0;
   if (b.tipo === 'trayectoria') return b.hitos.length > 0;
+  if (b.tipo === 'video') return parseVideoUrl(b.video) !== null;
   return b.fotos.some((f) => f.foto);
 }
 
@@ -127,6 +175,25 @@ function renderMarcas(b: RichBlockInput, src: (p: string) => string): string {
   return `<div class="k-marcas k-marcas--cinta"><ul class="k-marcas-pista">${items}</ul><ul class="k-marcas-pista" aria-hidden="true">${items.replace(/ alt="[^"]*"/g, ' alt=""')}</ul></div>`;
 }
 
+/**
+ * Vídeo. Hasta que se pulsa, NADA sale de la web: la portada es la foto del
+ * cliente o una de la plantilla (nunca la miniatura de YouTube, que ya le
+ * daría a Google la IP del visitante). Sin JavaScript es un enlace al vídeo;
+ * con él, al pulsar se cambia por el reproductor en modo privado.
+ */
+function renderVideo(b: RichBlockInput, src: (p: string) => string): string {
+  const v = parseVideoUrl(b.video);
+  if (!v) return '';
+  const nombre = v.plataforma === 'youtube' ? 'YouTube' : 'Vimeo';
+  const enlace = v.plataforma === 'youtube' ? `https://www.youtube.com/watch?v=${v.id}` : `https://vimeo.com/${v.id}`;
+  const portada = b.foto ? `<img src="${src(b.foto)}" alt="${esc(b.fotoAlt)}" loading="lazy">` : '<span class="k-video-fondo" aria-hidden="true"></span>';
+  return (
+    `<div class="k-video-marco" data-k-video="${v.plataforma}" data-k-id="${esc(v.id)}" data-k-titulo="${esc(b.titulo || 'Vídeo')}">` +
+    `<a class="k-video-portada" href="${enlace}" target="_blank" rel="noopener">${portada}<span class="k-video-boton" aria-hidden="true"></span><span class="k-video-etiqueta">Reproducir el vídeo</span></a>` +
+    `<p class="k-video-aviso">El vídeo se carga desde ${nombre} solo al pulsar; a partir de ahí, ${nombre} puede usar cookies.</p></div>`
+  );
+}
+
 /** El HTML de un bloque rico. `base` es lo que se antepone a las rutas de
  *  las fotos desde esta página ('' en la portada, '../' en una interior). */
 export function renderRichBlock(b: RichBlockInput, base: string): string {
@@ -170,6 +237,7 @@ export function renderRichBlock(b: RichBlockInput, base: string): string {
   if (b.tipo === 'comparativa') return open + renderComparativa(b) + close;
   if (b.tipo === 'trayectoria') return open + renderTrayectoria(b) + close;
   if (b.tipo === 'marcas') return open + renderMarcas(b, src) + close;
+  if (b.tipo === 'video') return open + renderVideo(b, src) + close;
 
   // Catálogo
   const cats = [...new Map(b.productos.filter((p) => p.categoria).map((p) => [slug(p.categoria), p.categoria])).entries()];
@@ -300,6 +368,18 @@ export const BLOQUES_CSS = `<style id="bloques-kairikos">
 .k-marcas--cinta .k-marcas-pista{flex:none;flex-wrap:nowrap;padding-right:3rem;animation:k-cinta 32s linear infinite}
 .k-marcas--cinta:hover .k-marcas-pista{animation-play-state:paused}
 @keyframes k-cinta{to{transform:translateX(-100%)}}
+.k-video-marco{max-width:62rem}
+.k-video-portada,.k-video-marco iframe{display:block;width:100%;aspect-ratio:16/9;border:0;border-radius:var(--k-radio,8px);overflow:hidden}
+.k-video-portada{position:relative;background:#111;color:#fff;text-decoration:none}
+.k-video-portada img{width:100%;height:100%;object-fit:cover;transition:transform .5s ease,filter .3s ease}
+.k-video-portada:hover img{transform:scale(1.03);filter:brightness(.85)}
+.k-video-fondo{position:absolute;inset:0;background:radial-gradient(circle at 30% 30%,color-mix(in srgb,var(--k-acento,#444) 55%,#000),#0d0f12 70%)}
+.k-video-boton{position:absolute;left:50%;top:50%;width:4.75rem;height:4.75rem;margin:-2.375rem 0 0 -2.375rem;border-radius:50%;background:var(--k-acento,#e11);box-shadow:0 8px 30px rgba(0,0,0,.35);transition:transform .25s ease}
+.k-video-boton::after{content:"";position:absolute;left:52%;top:50%;margin:-.9rem 0 0 -.6rem;border-style:solid;border-width:.9rem 0 .9rem 1.5rem;border-color:transparent transparent transparent var(--k-sobre-acento,#fff)}
+.k-video-portada:hover .k-video-boton,.k-video-portada:focus-visible .k-video-boton{transform:scale(1.08)}
+.k-video-portada:focus-visible{outline:3px solid var(--k-acento,#222);outline-offset:3px}
+.k-video-etiqueta{position:absolute;left:1rem;bottom:1rem;padding:.4rem .75rem;border-radius:4px;background:#111;color:#fff;font:600 .9rem/1.2 system-ui,sans-serif}
+.k-video-aviso{margin:.6rem 0 0;font-size:.85rem;color:var(--k-suave,inherit)}
 .k-precio{margin-top:auto!important;padding-top:.6rem;font-weight:800;font-size:1.15rem;color:var(--k-acento-texto,var(--k-acento,inherit))}
 @media (prefers-reduced-motion:reduce){.k-galeria-foto img{transition:none}.k-js .k-hito{opacity:1;transform:none;transition:none}.k-marcas--cinta{display:block;-webkit-mask-image:none;mask-image:none}.k-marcas--cinta .k-marcas-pista{flex-wrap:wrap;animation:none;padding-right:0}.k-marcas--cinta .k-marcas-pista[aria-hidden]{display:none}}
 </style>`;
@@ -396,6 +476,22 @@ export const BLOQUES_JS = `<script>
     cont.insertBefore(lista, paneles[0]);
     cont.classList.add("k-pestanas--js");
     elegir(0, false);
+  });
+
+  // Vídeo: al pulsar, el reproductor en modo privado. Antes, nada de fuera.
+  document.addEventListener("click", function (e) {
+    var a = e.target.closest && e.target.closest(".k-video-portada");
+    if (!a || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    var marco = a.parentNode, id = marco.getAttribute("data-k-id"), yt = marco.getAttribute("data-k-video") === "youtube";
+    e.preventDefault();
+    var f = document.createElement("iframe");
+    f.src = yt ? "https://www.youtube-nocookie.com/embed/" + id + "?autoplay=1&rel=0" : "https://player.vimeo.com/video/" + id + "?autoplay=1&dnt=1";
+    f.title = marco.getAttribute("data-k-titulo") || "Vídeo";
+    f.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen";
+    f.setAttribute("allowfullscreen", "");
+    f.referrerPolicy = "strict-origin-when-cross-origin";
+    marco.replaceChild(f, a);
+    f.focus();
   });
 
   // La trayectoria aparece hito a hito al bajar.
