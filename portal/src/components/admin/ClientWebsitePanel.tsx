@@ -141,11 +141,14 @@ function WebsiteDesignControls({
 }
 
 export function ClientWebsitePanel({
+  clientId,
   clientProductId,
   website,
   draftLeads,
   templates = [],
 }: {
+  /** Para enlazar al editor de su web (28/10/2026). */
+  clientId?: string;
   clientProductId: string;
   website: ClientWebsiteView | null;
   /** Webs con IA (27/10/2026): las plantillas aprobadas que se le pueden poner. */
@@ -277,6 +280,12 @@ export function ClientWebsitePanel({
         >
           Ver cómo va a quedar
         </a>
+        {/* 28/10/2026 — el mismo editor que usa el cliente, fotos incluidas. */}
+        {clientId && website.design?.v2 ? (
+          <a href={`/admin/portal/${encodeURIComponent(clientId)}/web/${website.id}`} className="btn-primary text-sm" data-testid="client-website-edit">
+            Editar su web
+          </a>
+        ) : null}
       </div>
 
       {website.lastPublishError ? (

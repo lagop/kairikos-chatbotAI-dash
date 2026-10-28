@@ -2,6 +2,8 @@ import 'server-only';
 import { randomBytes } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import { referencedUploads } from './site-content';
+import { logError } from './observability';
+import { auditActor, type WebsiteActor } from './website-content-save';
 
 /** SITE_UPLOAD_PATH_RE sin anclas, para buscarla dentro de un texto. */
 const UPLOAD_PATH_IN_TEXT = /assets\/subidas\/[a-f0-9]{18}\.(?:jpg|png|webp)/g;
@@ -127,4 +129,46 @@ export async function referencedImageFiles(prisma: PrismaClient, websiteId: stri
   if (!paths.length) return [];
   const rows = await prisma.clientWebsiteImage.findMany({ where: { websiteId, path: { in: paths } }, select: { path: true, content: true } });
   return rows.map((r) => ({ path: r.path, content: Buffer.from(r.content) }));
+}
+
+const UPLOAD_ERROR_STATUS: Record<string, number> = { too_large: 413, not_an_image: 415, too_big_dimensions: 422, too_many_images: 409 };
+
+/**
+ * La subida entera desde una petición (multipart, campo «archivo»): la usan
+ * la ruta del cliente y la del operador, que editan con el mismo editor. En
+ * la auditoría van la ruta y el tamaño, nunca la imagen.
+ */
+export async function uploadWebsiteImage(
+  prisma: PrismaClient,
+  website: { id: string; clientId: string; tenantId: string | null; content: unknown },
+  req: Request,
+  actor: WebsiteActor,
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  if (website.content == null) return { status: 409, body: { error: 'not_v2' } };
+  // Antes de leer el cuerpo entero: un archivo enorme se rechaza por su
+  // cabecera sin cargarlo en memoria.
+  const declared = Number(req.headers.get('content-length') ?? 0);
+  if (declared > MAX_UPLOAD_BYTES + 64_000) return { status: 413, body: { error: 'too_large' } };
+  const form = await req.formData().catch(() => null);
+  const file = form?.get('archivo');
+  if (!file || typeof file === 'string') return { status: 400, body: { error: 'invalid_body' } };
+
+  try {
+    const result = await storeWebsiteImage(prisma, website, Buffer.from(await file.arrayBuffer()));
+    if (!result.ok) return { status: UPLOAD_ERROR_STATUS[result.error] ?? 400, body: { error: result.error } };
+    await prisma.clientWebsiteAudit.create({
+      data: {
+        websiteId: website.id,
+        clientId: website.clientId,
+        tenantId: website.tenantId,
+        action: 'image_uploaded',
+        after: { path: result.path, width: result.width, height: result.height, bytes: result.bytes },
+        ...auditActor(actor),
+      },
+    });
+    return { status: 200, body: { ok: true, path: result.path, width: result.width, height: result.height } };
+  } catch (err) {
+    logError('client_website.image_upload_failed', err, { websiteId: website.id, actor: actor.type });
+    return { status: 500, body: { error: 'internal_error' } };
+  }
 }
