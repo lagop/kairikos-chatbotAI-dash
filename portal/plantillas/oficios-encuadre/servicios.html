@@ -1,0 +1,4 @@
+<section class="seccion" id="{{ancla}}"><div class="contenedor">
+  <div class="cabeza"><div><p class="rotulo">Servicios</p><h2>En qué le podemos ayudar</h2></div></div>
+  <ol class="indice">{{#servicios}}<li class="servicio aparece"><div><h3>{{nombre}}</h3></div><div>{{#descripcion}}<p>{{descripcion}}</p>{{/descripcion}}</div><span class="icono"><svg aria-hidden="true"><use href="#i-{{#icono}}{{icono}}{{/icono}}{{^icono}}herramienta{{/icono}}"></use></svg></span></li>{{/servicios}}</ol>
+</div></section>

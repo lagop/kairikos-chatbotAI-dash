@@ -1,0 +1,7 @@
+<section class="llamada" id="{{ancla}}">
+  {{#fotos.portada}}<img class="llamada-foto" src="{{fotos.portada}}" alt="">{{/fotos.portada}}
+  <div class="contenedor">
+    <h2>{{#llamada_accion}}{{llamada_accion}}{{/llamada_accion}}{{^llamada_accion}}¿Hablamos?{{/llamada_accion}}</h2>
+    {{#telefono_href}}<a class="llamada-telefono" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg><span>{{telefono}}</span></a>{{/telefono_href}}
+  </div>
+</section>
