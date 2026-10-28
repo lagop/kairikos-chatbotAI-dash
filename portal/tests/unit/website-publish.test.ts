@@ -12,8 +12,11 @@
 //    127.0.0.1 convierte la publicación en una puerta a la red interna.
 // =============================================================================
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { stripDraftChrome, hasPortalReferences, buildWebsiteFiles } from '@/lib/website-build';
+import { tradeHeroPhoto } from '@/lib/trade-photos';
 import {
   isPublishableHost,
   normalizeRemotePath,
@@ -52,6 +55,15 @@ describe('buildWebsiteFiles', () => {
     expect(files.map((f) => f.path)).toContain('assets/portada.jpg');
     const html = files[0].content.toString('utf8');
     expect(html).toContain('assets/portada.jpg');
+    expect(html).not.toContain('/web-draft/');
+  });
+
+  it('la portada es la de su oficio, la misma que vio en el borrador', async () => {
+    const files = await buildWebsiteFiles(input);
+    const photo = tradeHeroPhoto('trades', input.businessName, input.primaryType) as string;
+    expect(photo).toMatch(/^\/web-draft\/oficios\/fontaneria-/);
+    const hero = files.find((f) => f.path === 'assets/portada.jpg')!;
+    expect(hero.content.equals(readFileSync(join(process.cwd(), 'public', photo)))).toBe(true);
   });
 
   it('index.html va primero: es lo que hace que el sitio funcione en cuanto sube', async () => {

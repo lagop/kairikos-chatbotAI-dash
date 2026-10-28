@@ -1,7 +1,7 @@
 import 'server-only';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { renderWebDraftHtml } from './web-draft-html';
+import { heroImageUrls, renderWebDraftHtml, themeForVariant } from './web-draft-html';
 import type { WebDraftCopy } from './web-draft-ai';
 import type { SiteContent } from './site-content';
 import { renderSiteFiles, type SiteTemplateSource } from './site-template';
@@ -103,7 +103,10 @@ export async function buildWebsiteFiles(input: WebsiteBuildInput): Promise<Websi
   });
 
   const family = input.themeKey.split('-')[0];
-  const heroSource = path.join(process.cwd(), 'public', 'web-draft', `${family}.jpg`);
+  // La MISMA foto que pintó renderWebDraftHtml: la de su oficio si se
+  // reconoce (trade-photos.ts), si no la del sector.
+  const [photoUrl] = heroImageUrls(themeForVariant(input.themeKey).theme, input);
+  const heroSource = path.join(process.cwd(), 'public', photoUrl);
   const files: WebsiteFile[] = [];
 
   let heroBundled = false;
@@ -125,7 +128,7 @@ export async function buildWebsiteFiles(input: WebsiteBuildInput): Promise<Websi
   }
 
   const localHtml = html
-    .replace(new RegExp(`/web-draft/${family}\\.jpg`, 'g'), heroBundled ? HERO_ASSET_PATH : 'assets/portada.svg')
+    .replaceAll(photoUrl, heroBundled ? HERO_ASSET_PATH : 'assets/portada.svg')
     .replace(new RegExp(`/web-draft/${family}\\.svg`, 'g'), 'assets/portada.svg')
     // Las tipografías, igual que la foto: viajan con la web (site-fonts.ts).
     .replace(/href="\/fuentes\//g, 'href="fuentes/');
@@ -159,11 +162,14 @@ async function fontFiles(pages: string[]): Promise<WebsiteFile[]> {
 
 /** La foto de portada del sector, para subirla junto al HTML. Mismo criterio
  *  que buildWebsiteFiles: el sitio publicado no le pide nada al portal. */
-async function sectorHeroFile(themeKey: string): Promise<WebsiteFile | null> {
-  const family = themeKey.split('-')[0];
-  for (const [ext, dest] of [['jpg', HERO_ASSET_PATH], ['svg', 'assets/portada.svg']] as const) {
+async function sectorHeroFile(themeKey: string, subject: { businessName: string; primaryType: string | null }): Promise<WebsiteFile | null> {
+  // La de su oficio (trade-photos.ts) si la hay, como en el borrador; luego
+  // la del sector y su degradado.
+  const [photo, fallback] = heroImageUrls(themeForVariant(themeKey).theme, subject);
+  const sector = `/web-draft/${themeKey.split('-')[0]}.jpg`;
+  for (const [source, dest] of [[photo, HERO_ASSET_PATH], [sector, HERO_ASSET_PATH], [fallback, 'assets/portada.svg']] as const) {
     try {
-      return { path: dest, content: await readFile(path.join(process.cwd(), 'public', 'web-draft', `${family}.${ext}`)) };
+      return { path: dest, content: await readFile(path.join(process.cwd(), 'public', source)) };
     } catch {
       // Sin foto del sector se prueba la siguiente; sin ninguna, la plantilla
       // no pinta la figura (fotos.portada vacío).
@@ -178,6 +184,8 @@ export interface DesignedWebsiteBuildInput {
   formToken?: string | null;
   portalOrigin?: string | null;
   businessName: string;
+  /** Para la foto de su oficio (trade-photos.ts), la misma del borrador. */
+  primaryType: string | null;
   themeKey: string;
   phone: string | null;
   address: string | null;
@@ -201,7 +209,7 @@ export async function buildDesignedWebsiteFiles(input: DesignedWebsiteBuildInput
     input.formToken && input.portalOrigin
       ? `${input.portalOrigin.replace(/\/+$/, '')}/api/public/website-form/${input.formToken}`
       : null;
-  const hero = await sectorHeroFile(input.themeKey);
+  const hero = await sectorHeroFile(input.themeKey, input);
   const reviews = input.integrations?.reviews ?? null;
   const pages = renderSiteFiles(input.template, input.content, {
     negocio: {
