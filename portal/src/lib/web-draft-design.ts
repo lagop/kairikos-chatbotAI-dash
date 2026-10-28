@@ -58,14 +58,21 @@ async function loadTemplate(prisma: PrismaClient, id: string): Promise<SiteTempl
  * Contenido y plantilla para un borrador recién generado, o null si su sector
  * no tiene plantilla aprobada. Si la ampliación con IA falla, el contenido
  * sale solo con lo que ya había (titular, servicios…): menos rico, pero con
- * el diseño de la biblioteca. Nunca lanza.
+ * el diseño de la biblioteca (`expanded: false`). Nunca lanza.
+ *
+ * `templateId` fija la plantilla en vez de dejar que la elija el sector
+ * (convertir un borrador antiguo a una concreta): tiene que estar aprobada y
+ * ser de su sector, o devuelve null.
  */
 export async function designForDraft(
   prisma: PrismaClient,
-  input: { copy: WebDraftCopy; themeKey: string; businessName: string; primaryType: string | null; city: string | null },
-): Promise<{ content: SiteContent; templateId: string } | null> {
+  input: { copy: WebDraftCopy; themeKey: string; businessName: string; primaryType: string | null; city: string | null; templateId?: string },
+): Promise<{ content: SiteContent; templateId: string; expanded: boolean } | null> {
   try {
-    const picked = await pickSiteTemplateForSector(prisma, input.themeKey.split('-')[0]);
+    const sector = input.themeKey.split('-')[0];
+    const picked = input.templateId
+      ? await prisma.siteTemplate.findFirst({ where: { id: input.templateId, sector, estado: 'aprobada' }, select: { id: true } })
+      : await pickSiteTemplateForSector(prisma, sector);
     if (!picked) return null;
     const template = await loadTemplate(prisma, picked.id);
     if (!template) return null;
@@ -82,9 +89,9 @@ export async function designForDraft(
     const base = expanded.ok && !('skipped' in expanded) ? expanded.content : buildSiteContentFromDraft(input.copy, null, iconIds);
     // 28/10/2026 — galería, servicios por pestañas… con contenido de ejemplo,
     // marcado como tal (site-sector-blocks.ts).
-    const content = withSectorExamples(base, { familia: input.themeKey.split('-')[0], businessName: input.businessName, primaryType: input.primaryType });
+    const content = withSectorExamples(base, { familia: sector, businessName: input.businessName, primaryType: input.primaryType });
     if (!expanded.ok) logError('web_draft_design.expand_failed', new Error(expanded.error), {}, 'warn');
-    return { content, templateId: picked.id };
+    return { content, templateId: picked.id, expanded: expanded.ok && !('skipped' in expanded) };
   } catch (err) {
     logError('web_draft_design.failed', err, {}, 'warn');
     return null;

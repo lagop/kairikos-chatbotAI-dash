@@ -155,6 +155,16 @@ describe('designForDraft', () => {
     expect(r?.templateId).toBe('t1');
     expect(r?.content.datos.titular).toBe(COPY.headline);
     expect(mocks.expand.mock.calls[0][0]).toMatchObject({ kind: 'Fontanería', iconIds: templateIconIds(SITE_TEMPLATE_BASE.marco) });
+    expect(r?.expanded).toBe(false);
+  });
+
+  it('una plantilla pedida (convertir) tiene que estar aprobada y ser de su sector', async () => {
+    const findFirst = vi.fn(async () => null);
+    const p = { siteTemplate: { findFirst, findUnique: vi.fn(async () => SITE_TEMPLATE_BASE) } } as unknown as PrismaClient;
+    expect(await designForDraft(p, { copy: COPY, themeKey: 'trades-2', businessName: 'X', primaryType: null, city: null, templateId: 't9' })).toBeNull();
+    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 't9', sector: 'trades', estado: 'aprobada' } }));
+    expect(mocks.pick).not.toHaveBeenCalled();
+    expect(mocks.expand).not.toHaveBeenCalled();
   });
 });
 

@@ -37,7 +37,7 @@ vi.mock('@/lib/web-draft-live', () => ({ getLiveDraftData: vi.fn(async () => nul
 vi.mock('@/lib/web-draft-design', () => ({ designForDraft: vi.fn(async () => null), renderDesignedDraft: vi.fn(async () => null) }));
 vi.mock('@/lib/observability', () => ({ logError: vi.fn() }));
 
-import { draftReadSql, draftRestoreSql, draftSaveSql, draftSearchSql, parseDraftEdit, type DraftEditFile } from '@/lib/web-draft-edit';
+import { designProposalScript, draftReadSql, draftRestoreSql, draftSaveSql, draftSearchSql, mergeDesignProposal, parseDraftEdit, type DraftEditFile } from '@/lib/web-draft-edit';
 import { SITE_CONTENT_SAMPLES } from '@/lib/site-content-samples';
 
 const LEAD = '1359d24f-ce2b-4ef7-abbc-51fc0a4f9514';
@@ -124,5 +124,73 @@ describe('regenerar desde el portal', () => {
     expect((await call()).status).toBe(200);
     expect(mockState.versionCreate).not.toHaveBeenCalled();
     expect(mockState.upsert).toHaveBeenCalledOnce();
+  });
+});
+
+describe('convertir al diseño de la biblioteca', () => {
+  const proposal = () => ({ templateId: TPL, expanded: true, content: structuredClone(SITE_CONTENT_SAMPLES.normal) });
+
+  it('se queda con el texto leído y toma diseño y plantilla de la propuesta', () => {
+    const r = mergeDesignProposal(file(), proposal());
+    if (!r.ok) throw new Error(r.errors.join());
+    expect(r.edit.copy).toEqual(COPY);
+    expect(r.edit.templateId).toBe(TPL);
+    expect(r.edit.content?.paginas.length).toBeGreaterThan(0);
+    expect(r.expanded).toBe(true);
+    expect(draftSaveSql(r.edit, 'a Señal', 'system:claude-code', 'convertido')).toContain("$b$convertido$b$");
+  });
+
+  it('una propuesta que no se pintaría, o que no es una propuesta, no pasa', () => {
+    expect(mergeDesignProposal(file(), { ...proposal(), content: { paginas: [] } }).ok).toBe(false);
+    expect(mergeDesignProposal(file(), { error: 'no_approved_template' }).ok).toBe(false);
+  });
+
+  it('el script del contenedor lee la clave de su entorno y solo admite uuids', () => {
+    const js = designProposalScript(LEAD, TPL);
+    expect(js).toContain(`/web-drafts/${LEAD}/design`);
+    expect(js).toContain('process.env.PORTAL_API_KEY');
+    expect(() => designProposalScript("x'); process.exit(0); ('", null)).toThrow();
+  });
+});
+
+describe('la ruta interna que propone el diseño', () => {
+  const KEY = 'clave-de-prueba-interna';
+  beforeEach(async () => {
+    process.env.PORTAL_API_KEY = KEY;
+    mockState.upsert.mockReset();
+    const { designForDraft } = await import('@/lib/web-draft-design');
+    vi.mocked(designForDraft).mockReset().mockResolvedValue(null);
+  });
+
+  const post = async (body: unknown = {}, key = KEY) => {
+    const { POST } = await import('@/app/api/internal/prospecting/web-drafts/[leadId]/design/route');
+    const req = new Request(`http://x/api/internal/prospecting/web-drafts/${LEAD}/design`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-kairikos-internal-key': key },
+      body: JSON.stringify(body),
+    }) as never;
+    return POST(req, { params: Promise.resolve({ leadId: LEAD }) });
+  };
+
+  it('sin la clave no hace nada', async () => {
+    expect((await post({}, 'otra')).status).toBe(401);
+  });
+
+  it('propone con el texto guardado, sin escribir', async () => {
+    const { designForDraft } = await import('@/lib/web-draft-design');
+    vi.mocked(designForDraft).mockResolvedValue({ templateId: TPL, expanded: true, content: SITE_CONTENT_SAMPLES.normal });
+    mockState.lead = { contactName: 'Peluquería', primaryType: 'hair_salon', searchLocation: 'Telde', webDraft: { copy: COPY, themeKey: 'beauty-2' } };
+    const res = await post({ templateId: TPL });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ templateId: TPL, expanded: true });
+    expect(vi.mocked(designForDraft).mock.calls[0][1]).toMatchObject({ copy: COPY, themeKey: 'beauty-2', businessName: 'Peluquería', templateId: TPL });
+    expect(mockState.upsert).not.toHaveBeenCalled();
+  });
+
+  it('sin plantilla aprobada para su sector, 409; sin borrador, 404', async () => {
+    mockState.lead = { contactName: 'Peluquería', primaryType: null, searchLocation: null, webDraft: { copy: COPY, themeKey: 'beauty-2' } };
+    expect((await post()).status).toBe(409);
+    mockState.lead = { contactName: 'Peluquería', primaryType: null, searchLocation: null, webDraft: null };
+    expect((await post()).status).toBe(404);
   });
 });
