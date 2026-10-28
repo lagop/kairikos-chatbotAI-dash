@@ -64,6 +64,38 @@ describe('buildSiteContentFromDraft', () => {
     expect(c.ejemplos).toEqual([]);
   });
 
+  it('la portada más currada: servicios ampliados, qué incluye cada uno y la comparativa, de ejemplo', () => {
+    const c = buildSiteContentFromDraft(
+      COPY,
+      {
+        servicios_detalle: [
+          { descripcion: 'Localizamos la fuga con cámara térmica y geófono, sin levantar el suelo entero. Respuesta en 24 h.', incluye: ['Visita y diagnóstico', 'Informe para el seguro'] },
+          { descripcion: 'Fregaderos, inodoros y bajantes.', incluye: ['Máquina de presión', 'Cámara de inspección'] },
+        ],
+        proceso: [{ titulo: 'Llama', texto: 'Le atendemos.' }],
+        comparativa: { titulo: 'Termo eléctrico o de gas', texto: '', columnas: ['Eléctrico', 'Gas'], filas: [{ concepto: 'Instalación', valores: ['sencilla', 'con salida de humos'] }, { concepto: 'Consumo', valores: ['mayor', 'menor'] }, { concepto: 'Sin obra', valores: ['sí', 'no'] }, { concepto: 'Mal', valores: ['solo uno'] }] },
+        ejemplos: [],
+      },
+      [],
+    );
+    expect(c.datos.servicios[0].descripcion).toMatch(/cámara térmica/);
+    expect(c.bloques.map((b) => [b.id, b.tipo])).toEqual([['detalle-servicios', 'pestanas'], ['comparativa', 'comparativa']]);
+    expect(c.bloques[0].pestanas[0]).toMatchObject({ titulo: 'Detección de fugas', texto: '- Visita y diagnóstico\n- Informe para el seguro' });
+    expect(c.bloques[1].comparativa.filas).toHaveLength(3);
+    const orden = c.paginas[0].secciones.map((s) => (s.tipo === 'bloque' ? s.id : s.tipo));
+    expect(orden[orden.indexOf('servicios') + 1]).toBe('detalle-servicios');
+    expect(orden[orden.indexOf('proceso') + 1]).toBe('comparativa');
+    // Los bloques enteros, de ejemplo; y la cifra que trajo la ampliación («24 h»).
+    expect(c.ejemplos).toEqual(expect.arrayContaining(['bloques.detalle-servicios.titulo', 'bloques.comparativa.titulo', 'servicios.0.descripcion']));
+    expect(c.ejemplos).not.toContain('servicios.1.descripcion');
+  });
+
+  it('una comparativa que no se sostiene (una opción, o menos de 3 filas completas) no sale', () => {
+    const una = buildSiteContentFromDraft(COPY, { comparativa: { columnas: ['Solo'], filas: [] } }, []);
+    const corta = buildSiteContentFromDraft(COPY, { comparativa: { columnas: ['A', 'B'], filas: [{ concepto: 'x', valores: ['1', '2'] }] } }, []);
+    expect([...una.bloques, ...corta.bloques]).toEqual([]);
+  });
+
   it('el JSON con valla de markdown se interpreta; lo que no es JSON, no', () => {
     expect(parseExpansionResponse('```json\n{"cifras":[]}\n```')).toEqual({ cifras: [] });
     expect(parseExpansionResponse('lo siento')).toBeNull();
