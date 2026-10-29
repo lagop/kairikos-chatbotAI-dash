@@ -3979,18 +3979,54 @@ model SiteTemplate {
   // 'pendiente_navegador' | 'lista' | 'fallida' (las de la IA, ver
   // site-template-jobs.ts) | 'aprobada' | 'retirada'. Solo las aprobadas se
   // ofrecen para webs nuevas; las retiradas siguen pintando las webs que ya
-  // las usan.
+  // las usan. Una corrección termina en 'aplicada' o 'descartada'.
   estado     String @default("borrador")
   // El último informe de site-template-validate.ts y de las comprobaciones
   // con navegador (entrega 2), para no repetirlas al servirla.
   validacion Json?
 
+  // 29/10/2026 — si esta fila es una CORRECCIÓN de una plantilla aprobada, cuál.
+  // Pasa las mismas comprobaciones que cualquier otra y, al aprobarla, su
+  // contenido sustituye al de la original, que conserva su id: los borradores
+  // y las webs que la usan reciben el arreglo sin moverlos a otra plantilla.
+  // Lo sustituido queda en SiteTemplateVersion. Ver site-template-jobs.ts.
+  correccionDe String? @map("correccion_de") @db.Uuid
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  websites ClientWebsite[]
+  websites     ClientWebsite[]
+  original     SiteTemplate?         @relation("Correcciones", fields: [correccionDe], references: [id], onDelete: Cascade)
+  correcciones SiteTemplate[]        @relation("Correcciones")
+  versiones    SiteTemplateVersion[]
 
   @@index([sector, estado])
+  @@index([correccionDe])
+}
+
+// 29/10/2026 — lo que tenía una plantilla aprobada antes de cada corrección
+// (o de volver a una versión anterior). Append-only: volver atrás también deja
+// aquí lo que había, así que también se puede deshacer.
+model SiteTemplateVersion {
+  id         String @id @default(uuid()) @db.Uuid
+  templateId String @map("template_id") @db.Uuid
+
+  marco     String
+  secciones Json
+  estilo    Json?
+
+  // Por qué se sustituyó: el encargo de la corrección, o «vuelta a la
+  // versión de <fecha>».
+  motivo       String?
+  // La corrección que la sustituyó, si fue una (null al volver atrás).
+  correccionId String? @map("correccion_id") @db.Uuid
+  actorEmail   String? @map("actor_email")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  template SiteTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId, createdAt])
 }
 
 // Cada publicación guarda una copia del contenido con el que salió. Es lo que

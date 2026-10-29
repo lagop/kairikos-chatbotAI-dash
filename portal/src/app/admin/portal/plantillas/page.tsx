@@ -4,7 +4,7 @@ import { getSession } from '@/lib/session';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { SiteTemplateLab, type SiteTemplateRow } from '@/components/admin/SiteTemplateLab';
-import { recoverStaleJobs } from '@/lib/site-template-jobs';
+import { listSiteTemplates } from '@/lib/site-template-library';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,25 +23,7 @@ export default async function AdminSiteTemplatesPage(props: { searchParams: Prom
 
   let templates: SiteTemplateRow[] = [];
   if (isDatabaseConfigured) {
-    await recoverStaleJobs(prisma);
-    const rows = await prisma.siteTemplate.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-      select: {
-        id: true,
-        nombre: true,
-        sector: true,
-        variante: true,
-        origen: true,
-        modelo: true,
-        estado: true,
-        validacion: true,
-        estilo: true,
-        createdAt: true,
-        _count: { select: { websites: true } },
-      },
-    });
-    templates = rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString(), validacion: r.validacion as SiteTemplateRow['validacion'], estilo: r.estilo as SiteTemplateRow['estilo'] }));
+    templates = await listSiteTemplates(prisma);
   }
 
   return (

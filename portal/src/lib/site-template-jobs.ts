@@ -1,5 +1,5 @@
 import 'server-only';
-import type { Prisma, PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import { logError } from './observability';
 import type { SiteTemplatePart, SiteTemplateSource } from './site-template';
 import { validateSiteTemplate } from './site-template-validate';
@@ -17,6 +17,9 @@ import { LOAD_FAILURE_PREFIXES, summarizeCheckRuns, type CheckRun } from './site
 //                                                       │ sin fallos
 //                                                       ▼
 //                                                     lista ──► aprobada ──► retirada
+//                                                       │ si es una corrección (29/10/2026)
+//                                                       ▼
+//                                     aplicada (su contenido pasa a la original) | descartada
 //
 // Generar tarda 2–3 minutos, así que corre en segundo plano dentro del propio
 // proceso de Node (este stack es un servidor que vive, no funciones que se
@@ -27,8 +30,19 @@ import { LOAD_FAILURE_PREFIXES, summarizeCheckRuns, type CheckRun } from './site
 // y MAX_REPAIR_ROUNDS rondas por plantilla. Una plantilla con Sonnet son unos
 // 0,26 $; el tope es para que un botón pulsado en bucle no sea una factura.
 //
-// Inmutable una vez APROBADA (ver SiteTemplate en schema.prisma): antes, las
-// rondas de corrección la reescriben; después, corregirla es encargar otra.
+// Una APROBADA no se edita a mano: de ella cuelgan borradores y webs de
+// clientes, y un CSS mal hecho llegaría a todas sin que nadie lo mire. Hasta
+// el 29/10/2026 corregirla era subir otra con otro nombre, aprobarla, retirar
+// la vieja y mover los borradores uno a uno (le pasó a Cercano por una línea
+// de CSS). Ahora se sube una CORRECCIÓN (SiteTemplate.correccionDe): pasa las
+// mismas comprobaciones, el operador ve qué cambia (site-template-diff.ts) y,
+// al aprobarla, su contenido sustituye al de la original, que conserva su id.
+// Lo sustituido queda en SiteTemplateVersion y se puede volver a ello.
+//
+// Las webs publicadas NO cambian solas: sus archivos están en el servidor del
+// cliente. Reciben la corrección la próxima vez que se publiquen. Es a
+// propósito: republicar todas las webs de golpe por un arreglo es un riesgo
+// que nadie ha pedido correr.
 // =============================================================================
 
 export const SITE_TEMPLATE_DAILY_CAP = 15;
@@ -43,7 +57,9 @@ export type SiteTemplateEstado =
   | 'lista'
   | 'fallida'
   | 'aprobada'
-  | 'retirada';
+  | 'retirada'
+  | 'aplicada'
+  | 'descartada';
 
 export interface SiteTemplateLogEntry {
   fase: 'generacion' | 'validador' | 'correccion' | 'navegador' | 'aprobacion' | 'retirada' | 'error';
@@ -319,18 +335,26 @@ async function runRepair(
 
 export type TemplateActionResult = { ok: true; estado: SiteTemplateEstado } | { ok: false; error: 'not_found' | 'wrong_state' };
 
-/** Aprobar (solo si está lista), retirar (si está aprobada) o pedir otra
- *  ronda a una fallida que aún tiene rondas. */
+/** Aprobar (solo si está lista; si es una corrección, se aplica), retirar (si
+ *  está aprobada), pedir otra ronda a una fallida que aún tiene rondas o
+ *  descartar una corrección que no se va a aplicar. */
 export async function setSiteTemplateState(
   prisma: PrismaClient,
   id: string,
-  action: 'aprobar' | 'retirar' | 'reintentar',
+  action: 'aprobar' | 'retirar' | 'reintentar' | 'descartar',
   actorEmail: string | null,
 ): Promise<TemplateActionResult> {
-  const row = await prisma.siteTemplate.findUnique({ where: { id }, select: { estado: true, validacion: true } });
+  const row = await prisma.siteTemplate.findUnique({ where: { id }, select: { estado: true, validacion: true, correccionDe: true } });
   if (!row) return { ok: false, error: 'not_found' };
+  if (row.correccionDe && action === 'aprobar') return applyCorrection(prisma, id, actorEmail);
   const validacion = asValidacion(row.validacion);
   const at = new Date().toISOString();
+  if (action === 'descartar') {
+    if (!row.correccionDe || !['pendiente_navegador', 'lista', 'fallida'].includes(row.estado)) return { ok: false, error: 'wrong_state' };
+    validacion.historial.push({ fase: 'retirada', at, detalle: `Corrección descartada por ${actorEmail ?? 'operador'}` });
+    await save(prisma, id, { estado: 'descartada', validacion });
+    return { ok: true, estado: 'descartada' };
+  }
   const allowed: Record<typeof action, string[]> = { aprobar: ['lista'], retirar: ['aprobada'], reintentar: ['fallida'] };
   if (!allowed[action].includes(row.estado)) return { ok: false, error: 'wrong_state' };
   if (action === 'reintentar' && validacion.rondas >= MAX_REPAIR_ROUNDS) return { ok: false, error: 'wrong_state' };
@@ -342,6 +366,76 @@ export async function setSiteTemplateState(
   });
   await save(prisma, id, { estado, validacion });
   return { ok: true, estado };
+}
+
+const content = (row: { marco: string; secciones: unknown; estilo: unknown }) => ({
+  marco: row.marco,
+  secciones: row.secciones as Prisma.InputJsonValue,
+  estilo: row.estilo == null ? Prisma.DbNull : (row.estilo as Prisma.InputJsonValue),
+});
+
+/**
+ * Aplica una corrección lista: lo que tenía la original pasa a
+ * SiteTemplateVersion y su contenido pasa a ser el de la corrección, en una
+ * sola transacción. La original conserva su id, su nombre y su estado; la
+ * corrección queda 'aplicada' como registro.
+ */
+async function applyCorrection(prisma: PrismaClient, id: string, actorEmail: string | null): Promise<TemplateActionResult> {
+  return prisma.$transaction(async (tx) => {
+    const fix = await tx.siteTemplate.findUnique({
+      where: { id },
+      select: { nombre: true, estado: true, correccionDe: true, marco: true, secciones: true, estilo: true, validacion: true },
+    });
+    if (!fix?.correccionDe || fix.estado !== 'lista') return { ok: false as const, error: 'wrong_state' as const };
+    const original = await tx.siteTemplate.findUnique({
+      where: { id: fix.correccionDe },
+      select: { id: true, nombre: true, estado: true, marco: true, secciones: true, estilo: true, validacion: true },
+    });
+    // Solo sobre una aprobada: corregir una retirada no llega a ningún sitio
+    // nuevo, y una que aún no se aprobó se corrige subiéndola otra vez.
+    if (!original || original.estado !== 'aprobada') return { ok: false as const, error: 'wrong_state' as const };
+    const at = new Date().toISOString();
+    const quien = actorEmail ?? 'operador';
+    const fixValidacion = asValidacion(fix.validacion);
+    await tx.siteTemplateVersion.create({
+      data: { templateId: original.id, ...content(original), motivo: fixValidacion.encargo || `Corrección «${fix.nombre}»`, correccionId: id, actorEmail },
+    });
+    const origValidacion = asValidacion(original.validacion);
+    origValidacion.historial.push({ fase: 'aprobacion', at, detalle: `Corrección «${fix.nombre}» aplicada por ${quien}` });
+    await tx.siteTemplate.update({ where: { id: original.id }, data: { ...content(fix), validacion: origValidacion as unknown as Prisma.InputJsonValue } });
+    fixValidacion.historial.push({ fase: 'aprobacion', at, detalle: `Aplicada a «${original.nombre}» por ${quien}` });
+    await tx.siteTemplate.update({ where: { id }, data: { estado: 'aplicada', validacion: fixValidacion as unknown as Prisma.InputJsonValue } });
+    return { ok: true as const, estado: 'aplicada' as const };
+  });
+}
+
+/**
+ * Vuelve una plantilla aprobada a una de sus versiones anteriores. Lo que
+ * tenía ahora pasa antes al historial: volver atrás también se deshace. Sin
+ * comprobaciones: esa versión ya las pasó cuando estuvo vigente.
+ */
+export async function restoreSiteTemplateVersion(
+  prisma: PrismaClient,
+  templateId: string,
+  versionId: string,
+  actorEmail: string | null,
+): Promise<TemplateActionResult> {
+  return prisma.$transaction(async (tx) => {
+    const tpl = await tx.siteTemplate.findUnique({
+      where: { id: templateId },
+      select: { id: true, estado: true, marco: true, secciones: true, estilo: true, validacion: true },
+    });
+    if (!tpl) return { ok: false as const, error: 'not_found' as const };
+    const version = await tx.siteTemplateVersion.findFirst({ where: { id: versionId, templateId }, select: { marco: true, secciones: true, estilo: true, createdAt: true } });
+    if (!version) return { ok: false as const, error: 'not_found' as const };
+    if (tpl.estado !== 'aprobada') return { ok: false as const, error: 'wrong_state' as const };
+    const cuando = version.createdAt.toLocaleString('es-ES', { timeZone: 'Atlantic/Canary' });
+    await tx.siteTemplateVersion.create({ data: { templateId, ...content(tpl), motivo: `Antes de volver a la versión sustituida el ${cuando}`, actorEmail } });
+    const validacion = asValidacion(tpl.validacion);
+    validacion.historial.push({ fase: 'aprobacion', at: new Date().toISOString(), detalle: `Vuelta a la versión sustituida el ${cuando}, por ${actorEmail ?? 'operador'}` });
+    await tx.siteTemplate.update({ where: { id: templateId }, data: { ...content(version), validacion: validacion as unknown as Prisma.InputJsonValue } });
+    return { ok: true as const, estado: 'aprobada' as const };
+  });
 }
 
 /** Trabajos que se quedaron a medias por un reinicio. */

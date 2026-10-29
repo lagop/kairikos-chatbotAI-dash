@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CHECK_SAMPLES, checkPlan, runSiteChecks, type CheckPlanItem, type CheckRun, type CheckStyle } from '@/lib/site-template-checks';
+import type { TemplateDiffPart } from '@/lib/site-template-diff';
 
 // =============================================================================
 // Webs con IA, entrega 2 (27/10/2026) — el taller de plantillas del operador.
@@ -20,6 +21,10 @@ import { CHECK_SAMPLES, checkPlan, runSiteChecks, type CheckPlanItem, type Check
 // cargar, la plantilla NO se da por fallida: ese día la cabecera
 // frame-ancestors dejaba los marcos en blanco y las dos de oficios cayeron
 // sin que se hubiera medido nada.
+//
+// 29/10/2026: correcciones de una aprobada. Se comprueban igual; antes de
+// aplicarla se ve qué cambia (site-template-diff.ts), y cada aprobada guarda
+// sus versiones anteriores para volver a ellas.
 // =============================================================================
 
 export interface SiteTemplateRow {
@@ -41,6 +46,13 @@ export interface SiteTemplateRow {
   /** Lo que admite del estilo de cada negocio (SiteTemplateStyle). */
   estilo?: CheckStyle | null;
   _count?: { websites: number };
+  /** Si es una corrección: de qué plantilla (id y nombre). */
+  correccionDe?: string | null;
+  corrige?: string | null;
+  /** Qué cambia respecto a la vigente (solo correcciones aún abiertas). */
+  cambios?: TemplateDiffPart[] | null;
+  /** Lo que tuvo antes de cada corrección, la más reciente primero. */
+  versiones?: { id: string; createdAt: string; motivo: string | null; actorEmail: string | null }[];
 }
 
 const ESTADOS: Record<string, { label: string; pill: string }> = {
@@ -51,6 +63,8 @@ const ESTADOS: Record<string, { label: string; pill: string }> = {
   aprobada: { label: 'Aprobada', pill: 'pill-success' },
   fallida: { label: 'Fallida', pill: 'pill-danger' },
   retirada: { label: 'Retirada', pill: 'pill-muted' },
+  aplicada: { label: 'Corrección aplicada', pill: 'pill-muted' },
+  descartada: { label: 'Corrección descartada', pill: 'pill-muted' },
   borrador: { label: 'Borrador', pill: 'pill-muted' },
 };
 
@@ -176,11 +190,11 @@ export function SiteTemplateLab({
     await refresh();
   }
 
-  async function accion(id: string, accion: 'aprobar' | 'retirar' | 'reintentar') {
+  async function accion(id: string, accion: 'aprobar' | 'retirar' | 'reintentar' | 'descartar' | 'restaurar', version?: string) {
     await fetch(`/api/admin/portal/site-templates/${id}/estado`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ accion }),
+      body: JSON.stringify(version ? { accion, version } : { accion }),
     });
     await refresh();
   }
@@ -260,6 +274,7 @@ export function SiteTemplateLab({
             <article key={t.id} className="card space-y-2" data-testid="site-template-row">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="font-semibold">{t.nombre}</p>
+                {t.corrige ? <span className="pill-warning">Corrección de «{t.corrige}»</span> : null}
                 <span className={estado.pill}>{isChecking ? `Comprobando ${checking.done}/${checking.total}…` : estado.label}</span>
                 <span className="text-xs text-kairikos-muted">
                   {t.sector ?? 'cualquier sector'}
@@ -274,7 +289,8 @@ export function SiteTemplateLab({
                   intentarlo otra vez; si se repite, el fallo es del portal, no de la plantilla.
                 </p>
               ) : null}
-              {t.estado !== 'generando' ? <Previews id={t.id} estilo={t.estilo} /> : null}
+              {t.estado !== 'generando' && t.estado !== 'aplicada' && t.estado !== 'descartada' ? <Previews id={t.id} estilo={t.estilo} /> : null}
+              {t.cambios ? <Cambios cambios={t.cambios} /> : null}
               {v.problemas?.length ? (
                 <details className="text-sm">
                   <summary className="cursor-pointer text-kairikos-danger">{v.problemas.length} problemas pendientes</summary>
@@ -298,9 +314,19 @@ export function SiteTemplateLab({
                 </details>
               ) : null}
               <div className="flex flex-wrap gap-2">
-                {t.estado === 'lista' ? (
+                {t.estado === 'lista' && !t.correccionDe ? (
                   <button type="button" className="btn-primary" onClick={() => accion(t.id, 'aprobar')}>
                     Aprobar para su sector
+                  </button>
+                ) : null}
+                {t.estado === 'lista' && t.correccionDe ? (
+                  <button type="button" className="btn-primary" onClick={() => accion(t.id, 'aprobar')}>
+                    Aplicar la corrección a «{t.corrige}»
+                  </button>
+                ) : null}
+                {t.correccionDe && ['pendiente_navegador', 'lista', 'fallida'].includes(t.estado) ? (
+                  <button type="button" className="btn-ghost" onClick={() => accion(t.id, 'descartar')}>
+                    Descartar la corrección
                   </button>
                 ) : null}
                 {t.estado === 'aprobada' ? (
@@ -308,17 +334,78 @@ export function SiteTemplateLab({
                     Retirar (las webs que la usan siguen igual)
                   </button>
                 ) : null}
-                {t.estado === 'fallida' && (v.rondas ?? 0) < 4 && !v.problemas?.includes('no_api_key') ? (
+                {t.estado === 'fallida' && !t.correccionDe && (v.rondas ?? 0) < 4 && !v.problemas?.includes('no_api_key') ? (
                   <button type="button" className="btn-ghost" onClick={() => accion(t.id, 'reintentar')}>
                     Comprobar y corregir otra vez
                   </button>
                 ) : null}
               </div>
+              {t.estado === 'lista' && t.correccionDe ? (
+                <p className="text-xs text-kairikos-muted">
+                  Al aplicarla, los borradores y el editor de las webs que usan «{t.corrige}» la ven al momento. Las webs ya publicadas la reciben la
+                  próxima vez que se publiquen. Lo que había queda guardado y se puede volver a ello.
+                </p>
+              ) : null}
+              {t.estado === 'aprobada' && t.versiones?.length ? (
+                <details className="text-xs">
+                  <summary className="cursor-pointer text-kairikos-muted">Versiones anteriores ({t.versiones.length})</summary>
+                  <ul className="mt-2 space-y-2">
+                    {t.versiones.map((ver) => (
+                      <li key={ver.id} className="flex flex-wrap items-center gap-2">
+                        <span>
+                          Sustituida el {new Date(ver.createdAt).toLocaleString('es-ES')}
+                          {ver.motivo ? ` · ${ver.motivo}` : ''}
+                          {ver.actorEmail ? ` · ${ver.actorEmail}` : ''}
+                        </span>
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          onClick={() => {
+                            if (window.confirm('¿Volver a esta versión? Lo de ahora se guarda y se puede recuperar.')) void accion(t.id, 'restaurar', ver.id);
+                          }}
+                        >
+                          Volver a esta versión
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
             </article>
           );
         })}
       </section>
     </div>
+  );
+}
+
+/** Qué cambia una corrección: por pieza, lo que se quita y lo que entra. */
+function Cambios({ cambios }: { cambios: TemplateDiffPart[] }) {
+  if (!cambios.length) return <p className="text-sm text-kairikos-muted">No cambia nada respecto a la vigente.</p>;
+  return (
+    <details className="text-sm" open>
+      <summary className="cursor-pointer font-medium">Qué cambia respecto a la vigente</summary>
+      <div className="mt-2 space-y-3">
+        {cambios.map((c) => (
+          <div key={c.pieza}>
+            <p className="text-xs font-semibold">{c.pieza}</p>
+            <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-all rounded bg-black/5 p-2 text-xs">
+              {c.quitadas.map((l, i) => (
+                <span key={`q${i}`} className="block text-kairikos-danger">
+                  − {l}
+                </span>
+              ))}
+              {c.anadidas.map((l, i) => (
+                <span key={`a${i}`} className="block text-kairikos-success">
+                  + {l}
+                </span>
+              ))}
+              {c.mas ? <span className="block text-kairikos-muted">… y {c.mas} líneas más</span> : null}
+            </pre>
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }
 

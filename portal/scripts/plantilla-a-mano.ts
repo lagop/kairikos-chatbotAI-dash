@@ -18,13 +18,18 @@
 //     estilo, pinta además cada color y cada pareja de letras que el
 //     laboratorio va a medir (checkPlan) y comprobar.html los mide todos.
 //
-//   npx tsx scripts/plantilla-a-mano.ts sql plantillas/oficios-senal > plantilla.sql
+//   npx tsx scripts/plantilla-a-mano.ts sql plantillas/oficios-senal ["motivo"] > plantilla.sql
 //     El SQL para meterla en la biblioteca, en estado «pendiente_navegador»:
 //     el laboratorio la vuelve a comprobar en el navegador del operador y,
 //     si pasa, queda «lista» para que él la apruebe. Aprobarla sigue siendo
 //     cosa suya. Si ya existe con ese nombre y no está aprobada ni retirada,
-//     la sustituye y vuelve a comprobarse; una aprobada no se toca (es
-//     inmutable: corregirla es subir otra con otro nombre).
+//     la sustituye y vuelve a comprobarse.
+//
+//     Si ya hay una APROBADA con ese nombre, no la toca: sube una CORRECCIÓN
+//     suya («<nombre> · corrección», SiteTemplate.correccionDe) con el motivo
+//     que se le dé. Se comprueba igual y el operador ve qué cambia antes de
+//     aplicarla (29/10/2026; antes había que subirla con otro nombre). Una
+//     corrección que aún no se ha aplicado se sustituye, no se duplica.
 //
 // site-template.ts arrastra seo-article-html.ts, que importa 'server-only'
 // (fuera de Next no existe): se resuelve al módulo vacío de Next antes de
@@ -180,7 +185,7 @@ const HARNESS = `<!doctype html>
 </script></body></html>
 `;
 
-function sql(dir: string) {
+function sql(dir: string, motivo?: string) {
   const { meta, template } = load(dir);
   const clean = validate(template);
   if (process.exitCode) return;
@@ -199,30 +204,48 @@ function sql(dir: string) {
       },
     ],
   };
+  // Si resulta ser una corrección, su «encargo» es el porqué del cambio: es
+  // lo que queda en el historial de la plantilla al aplicarla.
+  const fixValidacion = { ...validacion, encargo: motivo?.trim() || 'Corrección escrita a mano' };
   const estilo = clean.estilo != null ? JSON.stringify(clean.estilo) : null;
-  const all = JSON.stringify([meta, clean, validacion]);
+  const all = JSON.stringify([meta, clean, validacion, fixValidacion]);
   let tag = 'plantilla';
   while (all.includes(`$${tag}$`)) tag += '_';
   const q = (s: string) => `$${tag}$${s}$${tag}$`;
   const nombre = q(meta.nombre);
   const secciones = `${q(JSON.stringify(clean.secciones))}::jsonb`;
   const estiloSql = estilo ? `${q(estilo)}::jsonb` : 'NULL';
+  const variante = meta.variante ? q(meta.variante) : 'NULL';
+  const open = `('pendiente_navegador', 'corrigiendo', 'lista', 'fallida')`;
   console.log(`BEGIN;
-UPDATE "SiteTemplate" SET marco = ${q(clean.marco)}, secciones = ${secciones}, estilo = ${estiloSql}, sector = ${q(meta.sector)}, variante = ${meta.variante ? q(meta.variante) : 'NULL'},
+CREATE TEMP TABLE _aprobada ON COMMIT DROP AS
+  SELECT id FROM "SiteTemplate" WHERE nombre = ${nombre} AND estado = 'aprobada' AND correccion_de IS NULL LIMIT 1;
+-- Hay una aprobada con ese nombre: se sube (o se sustituye) su corrección abierta.
+UPDATE "SiteTemplate" t SET marco = ${q(clean.marco)}, secciones = ${secciones}, estilo = ${estiloSql}, variante = ${variante},
+  estado = 'pendiente_navegador', validacion = ${q(JSON.stringify(fixValidacion))}::jsonb, updated_at = now()
+  FROM _aprobada a WHERE t.correccion_de = a.id AND t.estado IN ${open};
+INSERT INTO "SiteTemplate" (nombre, sector, variante, origen, modelo, marco, secciones, estilo, estado, validacion, correccion_de, updated_at)
+  SELECT ${nombre} || ' · corrección', ${q(meta.sector)}, ${variante}, 'manual', NULL, ${q(clean.marco)}, ${secciones}, ${estiloSql},
+    'pendiente_navegador', ${q(JSON.stringify(fixValidacion))}::jsonb, a.id, now()
+  FROM _aprobada a WHERE NOT EXISTS (SELECT 1 FROM "SiteTemplate" t WHERE t.correccion_de = a.id AND t.estado IN ${open});
+-- No la hay: lo de siempre (se sustituye mientras no esté aprobada ni retirada).
+UPDATE "SiteTemplate" SET marco = ${q(clean.marco)}, secciones = ${secciones}, estilo = ${estiloSql}, sector = ${q(meta.sector)}, variante = ${variante},
   estado = 'pendiente_navegador', validacion = ${q(JSON.stringify(validacion))}::jsonb, updated_at = now()
-  WHERE nombre = ${nombre} AND origen = 'manual' AND estado NOT IN ('aprobada', 'retirada');
+  WHERE nombre = ${nombre} AND origen = 'manual' AND correccion_de IS NULL AND estado NOT IN ('aprobada', 'retirada')
+    AND NOT EXISTS (SELECT 1 FROM _aprobada);
 INSERT INTO "SiteTemplate" (nombre, sector, variante, origen, modelo, marco, secciones, estilo, estado, validacion, updated_at)
-  SELECT ${nombre}, ${q(meta.sector)}, ${meta.variante ? q(meta.variante) : 'NULL'}, 'manual', NULL, ${q(clean.marco)}, ${secciones}, ${estiloSql},
+  SELECT ${nombre}, ${q(meta.sector)}, ${variante}, 'manual', NULL, ${q(clean.marco)}, ${secciones}, ${estiloSql},
     'pendiente_navegador', ${q(JSON.stringify(validacion))}::jsonb, now()
   WHERE NOT EXISTS (SELECT 1 FROM "SiteTemplate" WHERE nombre = ${nombre});
-SELECT id, nombre, estado FROM "SiteTemplate" WHERE nombre = ${nombre};
+SELECT id, nombre, estado FROM "SiteTemplate"
+  WHERE (nombre = ${nombre} AND correccion_de IS NULL) OR (correccion_de IN (SELECT id FROM _aprobada) AND estado IN ${open});
 COMMIT;`);
 }
 
 const [cmd, dir, out] = process.argv.slice(2);
 if (cmd === 'comprobar' && dir && out) comprobar(dir, out);
-else if (cmd === 'sql' && dir) sql(dir);
+else if (cmd === 'sql' && dir) sql(dir, out);
 else {
-  console.error('Uso: plantilla-a-mano.ts comprobar <carpeta> <salida> | sql <carpeta>');
+  console.error('Uso: plantilla-a-mano.ts comprobar <carpeta> <salida> | sql <carpeta> ["motivo, si corrige una aprobada"]');
   process.exitCode = 2;
 }
