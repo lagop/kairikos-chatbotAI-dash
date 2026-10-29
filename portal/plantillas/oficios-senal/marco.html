@@ -94,7 +94,10 @@ p{margin:0 0 var(--s-4)}
 .portada::after{content:"";position:absolute;width:38rem;height:38rem;right:-12rem;top:-14rem;background:radial-gradient(circle,color-mix(in srgb,var(--amarillo) 16%,transparent),transparent 65%);z-index:-1}
 .portada-cuerpo{display:grid;gap:var(--s-7);grid-template-columns:repeat(auto-fit,minmax(min(100%,24rem),1fr));align-items:center;padding-block:var(--s-8) var(--s-7)}
 .portada-cuerpo>*{min-width:0}
-.portada h1{font-size:clamp(2.9rem,7vw,5.6rem);line-height:.92;color:var(--blanco);margin-bottom:var(--s-5)}
+/* Mínimo 2.4rem: a 2.9rem «calentadores» llenaba la línea entera a 345 px con Rótulo y el Chrome de Windows, algo más ancho, lo partía. */
+.portada h1{font-size:clamp(2.4rem,11vw,5.6rem);line-height:.92;color:var(--blanco);margin-bottom:var(--s-5)}
+/* Desde ~864 px la portada va a dos columnas y el titular solo tiene media pantalla: a 7vw «calentadores» se partía a 900 px. */
+@media (min-width:864px){.portada h1{font-size:clamp(2.9rem,5.8vw,4.6rem)}}
 .portada h1::after{content:"";display:block;width:5.5rem;height:8px;margin-top:var(--s-5);background:var(--amarillo);transform-origin:left;animation:trazo .9s .2s cubic-bezier(.2,.8,.2,1) both}
 @keyframes trazo{from{transform:scaleX(0)}}
 .entradilla{font-size:1.2rem;color:var(--claro-suave);max-width:46ch}
@@ -149,7 +152,7 @@ p{margin:0 0 var(--s-4)}
 /* Quiénes somos y bloques partidos */
 .partida{display:grid;gap:var(--s-7);grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr));align-items:start}
 .partida>*{min-width:0}
-.sobre-titulo h2{font-size:clamp(2.6rem,6vw,4.6rem);line-height:.92}
+.sobre-titulo h2{font-size:clamp(2.35rem,6vw,4.6rem);line-height:.92}
 .sobre-titulo p{font:700 1.2rem/1.3 var(--display);text-transform:uppercase;letter-spacing:.1em;color:var(--tinta-suave)}
 .texto-rico{font-size:1.15rem;overflow-wrap:anywhere}
 .texto-rico>p:first-child{font-size:1.35rem;line-height:1.5;color:var(--tinta)}
@@ -218,6 +221,8 @@ p{margin:0 0 var(--s-4)}
 /* Preguntas */
 .faq-rejilla{display:grid;gap:var(--s-6) var(--s-8);grid-template-columns:minmax(0,1fr)}
 @media (min-width:900px){.faq-rejilla{grid-template-columns:minmax(0,1fr) minmax(0,1.7fr)}.faq-lado{position:sticky;top:7rem;align-self:start}}
+/* Desde 900 px el título va en la columna estrecha (1/2,7 del ancho): a 5vw «Instalaciones» se partía con la letra Rótulo (el laboratorio lo vio a 1100 px). */
+@media (min-width:900px){.faq-lado h2{font-size:clamp(1.85rem,3.5vw,2.8rem)}}
 .faq-lado p{color:var(--tinta-suave)}
 .faq-lado a{font:800 1.6rem/1.2 var(--display);color:var(--tinta);text-decoration-color:var(--amarillo);text-decoration-thickness:4px;text-underline-offset:4px;overflow-wrap:anywhere}
 .preguntas{display:grid;gap:var(--s-3);align-content:start}
