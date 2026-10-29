@@ -297,7 +297,11 @@ export type BuildFilesResult = { ok: true; files: WebsiteFile[] } | { ok: false;
 export async function buildFilesForWebsite(
   prisma: PrismaClient,
   website: WebsiteForBuild,
-  options: { portalOrigin: string; now: Date },
+  // 29/10/2026 — edicion: para la vista previa del editor, que pinta el
+  // contenido SIN GUARDAR (website.content llega ya sustituido) y no necesita
+  // las imágenes subidas en el resultado (se piden aparte, por la vista
+  // previa de siempre).
+  options: { portalOrigin: string; now: Date; edicion?: boolean },
 ): Promise<BuildFilesResult> {
   const integrations = await resolveWebsiteIntegrations(prisma, website.clientId, options.now);
   try {
@@ -348,7 +352,8 @@ export async function buildFilesForWebsite(
         integrations,
         now: options.now,
         siteUrl: publicSiteUrl(website, parsed.content.urlPublica, options.portalOrigin),
-        uploads: await referencedImageFiles(prisma, website.id, parsed.content),
+        uploads: options.edicion ? [] : await referencedImageFiles(prisma, website.id, parsed.content),
+        edicion: options.edicion,
       }),
     };
   } catch (err) {

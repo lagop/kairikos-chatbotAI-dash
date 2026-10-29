@@ -251,7 +251,23 @@ export interface SiteRenderContext {
    *  sitio y las URL absolutas de las tarjetas para redes y de los datos
    *  estructurados. Sin ella (o en el borrador), no. */
   siteUrl?: string | null;
+  /** 29/10/2026 — la vista previa del EDITOR (el contenido sin guardar, al
+   *  lado del formulario). Nunca en lo que se publica: ver EDIT_MODE_HEAD. */
+  edicion?: boolean;
 }
+
+/**
+ * Lo que lleva la página en la vista previa del editor, al principio de
+ * <head> para que llegue antes que los scripts de la plantilla. Las
+ * plantillas esconden secciones hasta que entran en pantalla
+ * (IntersectionObserver) y animan cifras y cintas: en un editor eso deja
+ * huecos vacíos justo donde el cliente acaba de escribir, y cada vez que la
+ * vista se repinta (con cada cambio) volvería a empezar. Así que aquí todo
+ * «entra en pantalla» al momento y la página dice preferir menos movimiento.
+ * Las cinco plantillas del 29/10 lo respetan en su JS, pero no lo exige el
+ * validador: una que no lo haga se verá animada en el editor, sin más.
+ */
+export const EDIT_MODE_HEAD = `<script>(function(){var IO=function(cb){this.cb=cb;};IO.prototype.observe=function(el){var cb=this.cb,self=this;setTimeout(function(){var r=el.getBoundingClientRect();cb([{target:el,isIntersecting:true,intersectionRatio:1,boundingClientRect:r,intersectionRect:r,rootBounds:null,time:0}],self);},0);};IO.prototype.unobserve=function(){};IO.prototype.disconnect=function(){};IO.prototype.takeRecords=function(){return[];};window.IntersectionObserver=IO;var mm=window.matchMedia;window.matchMedia=function(q){if(/prefers-reduced-motion/.test(q)){return{matches:/reduce/.test(q),media:q,onchange:null,addListener:function(){},removeListener:function(){},addEventListener:function(){},removeEventListener:function(){},dispatchEvent:function(){return false;}};}return mm.call(window,q);};})();</script>`;
 
 /** La leyenda de los datos de ejemplo. La pone el motor, igual en todas las
  *  webs; la plantilla solo le da estilo (.leyenda-ejemplos). */
@@ -671,6 +687,7 @@ export function renderSitePage(
     html = html.replace(/<\/head>/i, `${siteStyleCss(estilo.variables)}\n</head>`);
     html = replaceGoogleFontFamilies(html, estilo.familias);
   }
+  if (ctx.edicion) html = html.replace(/<head>/i, `<head>\n${EDIT_MODE_HEAD}`);
   // Tipografías desde la propia web, nunca desde Google (site-fonts.ts). El
   // borrador lo sirve siempre el portal; la web publicada lleva su copia.
   return localizeGoogleFonts(html, ctx.borrador ? '/' : base);

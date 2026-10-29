@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateAdminRequest } from '@/lib/operator-session';
 import { publicOrigin } from '@/lib/public-origin';
-import { serveWebsitePreview } from '@/lib/website-preview';
+import { parsePreviewOverride, serveWebsitePreview } from '@/lib/website-preview';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -39,5 +39,28 @@ export async function GET(req: NextRequest, props: { params: Promise<{ websiteId
   return serveWebsitePreview(prisma, website, path, {
     mount: `/api/admin/portal/websites/${params.websiteId}/preview/`,
     portalOrigin: publicOrigin(req),
+  });
+}
+
+/**
+ * POST — 29/10/2026: la vista previa EN VIVO del editor, con lo que hay en el
+ * formulario sin guardar (website-preview.ts, override). Misma autorización
+ * que GET; no guarda nada.
+ */
+export async function POST(req: NextRequest, props: { params: Promise<{ websiteId: string; path?: string[] }> }) {
+  const params = await props.params;
+  const auth = await authenticateAdminRequest(req);
+  if (!auth.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
+
+  const override = parsePreviewOverride(await req.json().catch(() => null));
+  if (!override) return NextResponse.json({ error: 'invalid_body' }, { status: 400 });
+  const website = await prisma.clientWebsite.findUnique({ where: { id: params.websiteId } });
+  if (!website) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+
+  return serveWebsitePreview(prisma, website, params.path, {
+    mount: `/api/admin/portal/websites/${params.websiteId}/preview/`,
+    portalOrigin: publicOrigin(req),
+    override,
   });
 }
