@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import type { SiteBlock, SiteBlogEntry, SiteContent, SiteSectionRef, SiteSectionType } from '@/lib/site-content';
 import type { IconSymbol } from '@/lib/site-icon-symbols';
 import { SiteLivePreview, type ListAction, type PreviewDevice, type PreviewPick } from './SiteLivePreview';
+import { emptyHistory, historyCommand, recordStep, redoStep, undoStep } from './edit-history';
 
 // =============================================================================
 // Webs con IA, entrega 4 (27/10/2026) — el editor de la web con plantilla de
@@ -64,6 +65,12 @@ import { SiteLivePreview, type ListAction, type PreviewDevice, type PreviewPick 
 // cualquier otra cosa abre su campo aquí. Las listas se ordenan, se quitan y
 // se amplían desde la vista con ↑ ↓ ✕ +, con las mismas funciones que los
 // botones de aquí (que recolocan las marcas de ejemplo). Ver SiteLivePreview.
+//
+// 29/10/2026 (4) — deshacer y rehacer: ↶ ↷ en la barra y Ctrl+Z / Ctrl+Mayús+Z,
+// aquí y sobre la vista. Cada cambio pasa por update/setContacto, que guardan
+// antes lo que había (edit-history.ts). Deshacer hasta lo último guardado
+// vuelve a «Todo guardado». Una foto subida y luego deshecha se queda entre
+// las subidas sin usar: el servidor ya las limita (too_many_images).
 // =============================================================================
 
 /** Lo mismo que RESERVED_PAGE_ROOTS en lib/site-content.ts. */
@@ -91,6 +98,9 @@ function uniqueSlug(base: string, taken: string[], fallback: string): string {
 const today = () => new Date().toISOString().slice(0, 10);
 
 type View = { kind: 'pagina'; index: number } | { kind: 'blog' };
+
+/** Lo que se deshace: todo lo que guarda «Guardar». */
+type Snapshot = { content: SiteContent; phone: string; address: string };
 
 export interface SiteContentEditorProps {
   /** Dónde guarda, publica, sube y enseña la vista previa: la del cliente
@@ -275,6 +285,13 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
   const [abiertas, setAbiertas] = useState<Set<string>>(new Set());
   const [foco, setFoco] = useState<{ ruta: string | null; seccion: string; focus: boolean; n: number } | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  // Deshacer: lo que hay ahora (al día también entre dos cambios del mismo
+  // clic), lo último guardado y el historial (edit-history.ts).
+  const stateRef = useRef<Snapshot>({ content: props.initialContent, phone: props.phone ?? '', address: props.address ?? '' });
+  const savedRef = useRef(JSON.stringify(stateRef.current));
+  const historyRef = useRef(emptyHistory<Snapshot>());
+  const [historySize, setHistorySize] = useState({ past: 0, future: 0 });
+  const travelRef = useRef<(cmd: 'deshacer' | 'rehacer') => void>(() => {});
   // En una pantalla pequeña la vista enseña siempre el móvil: la de ordenador
   // reducida a 390 px no se lee.
   const [pantallaPequena, setPantallaPequena] = useState(false);
@@ -342,6 +359,21 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
       else if (nuevo && items.length < nuevo[2]) insertIn(d, list, index + 1, { ...nuevo[1] });
     });
   }
+
+  // Ctrl+Z / Ctrl+Mayús+Z en todo el editor, también con el cursor en un campo:
+  // deshace pasos del editor, no letras (las letras seguidas ya son un paso).
+  // Sobre la vista los recoge SiteLivePreview, que llama a travel igual.
+  useEffect(() => {
+    if (!abierto) return;
+    const onKey = (e: KeyboardEvent) => {
+      const cmd = historyCommand(e);
+      if (!cmd) return;
+      e.preventDefault();
+      travelRef.current(cmd);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [abierto]);
 
   function abrirEditor() {
     if (window.location.hash !== '#editar') window.history.pushState({ kEditor: true }, '', '#editar');
@@ -476,17 +508,53 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
     });
   }
 
-  function update(mutate: (draft: SiteContent) => void) {
-    setContent((prev) => {
-      const next = structuredClone(prev);
-      mutate(next);
-      return next;
-    });
+  /** Antes de cada cambio, lo que había, para deshacerlo (edit-history.ts).
+   *  Sin `key` explícito, lo que se escribe en un campo del formulario se
+   *  junta en un paso; un clic, una lista o un desplegable van cada uno solo. */
+  function record(key?: unknown) {
+    const typing = typeof window !== 'undefined' && window.event?.type === 'input' ? document.activeElement : null;
+    historyRef.current = recordStep(historyRef.current, stateRef.current, key ?? typing, Date.now());
+    setHistorySize({ past: historyRef.current.past.length, future: 0 });
+  }
+
+  // Síncrono sobre stateRef y no con setContent(prev => …): así dos cambios en
+  // el mismo clic se encadenan y el historial guarda lo que de verdad había.
+  function update(mutate: (draft: SiteContent) => void, key?: unknown) {
+    const next = structuredClone(stateRef.current.content);
+    mutate(next);
+    record(key);
+    stateRef.current = { ...stateRef.current, content: next };
+    setContent(next);
     setDirty(true);
     setMessage(null);
   }
 
-  /** Cambia un dato y, si era de ejemplo, deja de serlo: lo ha escrito él. */
+  function setContacto(patch: { phone?: string; address?: string }) {
+    record();
+    stateRef.current = { ...stateRef.current, ...patch };
+    if (patch.phone !== undefined) setPhone(patch.phone);
+    if (patch.address !== undefined) setAddress(patch.address);
+    setDirty(true);
+    setMessage(null);
+  }
+
+  /** Deshacer o rehacer. Volver justo a lo guardado deja «Todo guardado». */
+  function travel(cmd: 'deshacer' | 'rehacer') {
+    const step = (cmd === 'deshacer' ? undoStep : redoStep)(historyRef.current, stateRef.current);
+    if (!step) return;
+    historyRef.current = step.history;
+    stateRef.current = step.value;
+    setContent(step.value.content);
+    setPhone(step.value.phone);
+    setAddress(step.value.address);
+    setDirty(JSON.stringify(step.value) !== savedRef.current);
+    setMessage(null);
+    setHistorySize({ past: step.history.past.length, future: step.history.future.length });
+  }
+  travelRef.current = travel;
+
+  /** Cambia un dato y, si era de ejemplo, deja de serlo: lo ha escrito él.
+   *  Escribir seguido en el mismo dato (aquí o sobre la web) es un solo paso. */
   function setValue(path: string, value: string) {
     update((d) => {
       const parts = path.split('.');
@@ -495,7 +563,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
       for (const p of rest.slice(0, -1)) target = (target as Record<string, unknown>)[p] as Record<string, unknown>;
       (target as Record<string, unknown>)[rest[rest.length - 1]] = value;
       d.ejemplos = d.ejemplos.filter((e) => e !== path);
-    });
+    }, path);
   }
 
   function setStyle(patch: { acento?: string; tipografia?: string }) {
@@ -544,10 +612,11 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
   async function save(): Promise<boolean> {
     setBusy('save');
     setError(null);
+    const sent = stateRef.current;
     const res = await fetch(`${props.apiBase}/content`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ content, phone: phone || null, address: address || null, baseUpdatedAt }),
+      body: JSON.stringify({ content: sent.content, phone: sent.phone || null, address: sent.address || null, baseUpdatedAt }),
     });
     setBusy(null);
     if (!res.ok) {
@@ -558,7 +627,9 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
     }
     const saved = (await res.json().catch(() => ({}))) as { updatedAt?: string };
     if (saved.updatedAt) setBaseUpdatedAt(saved.updatedAt);
-    setDirty(false);
+    savedRef.current = JSON.stringify(sent);
+    // Si se siguió escribiendo mientras se guardaba, eso aún no está guardado.
+    setDirty(stateRef.current !== sent);
     setMessage('Guardado. Tu web publicada no cambia hasta que pulses «Publicar».');
     return true;
   }
@@ -1100,11 +1171,11 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-sm">
             Teléfono
-            <input className="input mt-1 w-full" maxLength={50} value={phone} onChange={(e) => { setPhone(e.target.value); setDirty(true); }} />
+            <input className="input mt-1 w-full" maxLength={50} value={phone} onChange={(e) => setContacto({ phone: e.target.value })} />
           </label>
           <label className="text-sm">
             Dirección
-            <input className="input mt-1 w-full" maxLength={300} value={address} onChange={(e) => { setAddress(e.target.value); setDirty(true); }} />
+            <input className="input mt-1 w-full" maxLength={300} value={address} onChange={(e) => setContacto({ address: e.target.value })} />
           </label>
         </div>
         <label className="block text-sm">
@@ -1237,6 +1308,15 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
               que el navegador no siempre completa; las rutas relativas de la
               vista previa ya se reescriben enteras (hosted-site-paths.ts). */}
           <div className="flex w-full shrink-0 justify-end gap-2 sm:w-auto">
+            {/* Deshacer y rehacer (también Ctrl+Z / Ctrl+Mayús+Z). */}
+            <div className="mr-auto flex gap-1 sm:mr-0" role="group" aria-label="Historial de cambios">
+              <button type="button" className="btn-ghost px-2" disabled={historySize.past === 0 || busy !== null} onClick={() => travel('deshacer')} title="Deshacer (Ctrl+Z)" aria-label="Deshacer" data-testid="site-editor-undo">
+                <span aria-hidden="true">↶</span>
+              </button>
+              <button type="button" className="btn-ghost px-2" disabled={historySize.future === 0 || busy !== null} onClick={() => travel('rehacer')} title="Rehacer (Ctrl+Mayús+Z)" aria-label="Rehacer" data-testid="site-editor-redo">
+                <span aria-hidden="true">↷</span>
+              </button>
+            </div>
             <button type="button" className="btn-ghost" disabled={busy !== null} onClick={openPreview}>
               Ver cómo queda
             </button>
@@ -1262,6 +1342,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
             onInlineChange={(ruta, value) => setValue(ruta, value)}
             maxFor={maxFor}
             onListAction={view.kind === 'pagina' ? listAction : undefined}
+            onHistory={travel}
           />
         </div>
       </div>
