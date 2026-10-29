@@ -62,7 +62,7 @@ const pages = (template: SiteTemplateSource, sample: keyof typeof SITE_CONTENT_S
 const strip = (html: string) =>
   html
     .replace(`\n${EDIT_MODE_HEAD}`, '')
-    .replace(/<k-dato data-k-ruta="[^"]*"(?: data-k-bloque style="display:block")?>|<\/k-dato>/g, '')
+    .replace(/<k-dato data-k-ruta="[^"]*"(?: data-k-bloque style="display:block"| data-k-defecto)?>|<\/k-dato>/g, '')
     .replace(/ data-k-foto="[^"]*"/g, '');
 
 describe('las marcas de edición', () => {
@@ -137,5 +137,86 @@ describe('las fotos en modo edición', () => {
       expect(deBloques.some((f) => ids.includes(f.ruta.split('.')[1])), tipo).toBe(true);
     }
     expect(fotos.every((f) => f.ruta.startsWith('bloques.') || f.ruta === 'imagenes.portada' || f.ruta === 'imagenes.logo')).toBe(true);
+  });
+});
+
+// ---- Los títulos de sección, del cliente (29/10/2026) ----------------------------------
+
+import { sectionTitle } from '@/lib/site-template';
+import { validateSiteTemplate } from '@/lib/site-template-validate';
+import { SITE_TITLED_SECTIONS } from '@/lib/site-content';
+
+describe('el título de una sección', () => {
+  const html = '<section id="faq"><span class="rotulo">Preguntas</span><h2 class="t" data-k-titulo-seccion>Lo que más nos preguntan</h2><p>…</p></section>';
+
+  it('sin título propio sale el de la plantilla, sin el atributo', () => {
+    expect(sectionTitle(html, 'faq', { faq: '' }, false)).toBe(html.replace(' data-k-titulo-seccion', ''));
+    expect(sectionTitle(html, 'faq', undefined, false)).toBe(html.replace(' data-k-titulo-seccion', ''));
+  });
+
+  it('con uno propio, el suyo, escapado; el resto de la sección igual', () => {
+    expect(sectionTitle(html, 'faq', { faq: ' Dudas <b>& respuestas</b> ' }, false)).toBe(
+      '<section id="faq"><span class="rotulo">Preguntas</span><h2 class="t">Dudas &lt;b&gt;&amp; respuestas&lt;/b&gt;</h2><p>…</p></section>',
+    );
+  });
+
+  it('cambia todo lo que hay hasta SU cierre, aunque dentro se abra otra igual', () => {
+    const anidado = '<div data-k-titulo-seccion="x"><div>Uno</div> dos</div><div>fuera</div>';
+    expect(sectionTitle(anidado, 'zona', { zona: 'Nuevo' }, false)).toBe('<div>Nuevo</div><div>fuera</div>');
+  });
+
+  it('en el editor: un <k-dato> con su ruta; el de la plantilla, marcado como tal y sin marcas dentro', () => {
+    expect(sectionTitle(html, 'faq', { faq: 'Dudas' }, true)).toContain('<h2 class="t"><k-dato data-k-ruta="titulos.faq">Dudas</k-dato></h2>');
+    const sobre = `<h2 data-k-titulo-seccion>${String.fromCharCode(0xe000)}nombre${String.fromCharCode(0xe001)}Fontanería Suárez${String.fromCharCode(0xe002)}</h2>`;
+    expect(sectionTitle(sobre, 'sobre', {}, true)).toBe('<h2><k-dato data-k-ruta="titulos.sobre" data-k-defecto>Fontanería Suárez</k-dato></h2>');
+  });
+
+  it('sin marca, o en una sección sin título propio, nada cambia salvo el atributo', () => {
+    expect(sectionTitle('<h2>Fijo</h2>', 'faq', { faq: 'Otro' }, true)).toBe('<h2>Fijo</h2>');
+    expect(sectionTitle('<h2 data-k-titulo-seccion>Cifras</h2>', 'cifras', { faq: 'Otro' }, true)).toBe('<h2>Cifras</h2>');
+  });
+});
+
+describe('los títulos de sección en las plantillas', () => {
+  const largo = SITE_CONTENT_SAMPLES.exagerado.datos.titulos.servicios;
+  const ids = (html: string) => new Set(Array.from(html.matchAll(/\sid="([a-z]+)"/g), (m) => m[1]));
+  const titleOf = (html: string, tipo: string) => html.match(new RegExp(`<k-dato data-k-ruta="titulos\.${tipo}"( data-k-defecto)?>([^<]*)</k-dato>`));
+
+  it.each(TEMPLATES)('%s: cada sección con título lo marca, y en lo publicado no queda la marca', (_, template) => {
+    expect(validateSiteTemplate(template).problems.filter((p) => p.includes('data-k-titulo-seccion'))).toEqual([]);
+    for (const sample of ['normal', 'exagerado'] as const) {
+      for (const [path, html] of pages(template, sample, false)) expect(html, `${sample} ${path}`).not.toContain('data-k-titulo-seccion');
+    }
+  });
+
+  it.each(TEMPLATES)('%s: el título del cliente sale en su sección; sin él, el de la plantilla, editable igual', (_, template) => {
+    let vistas = 0;
+    for (const [path, html] of pages(template, 'exagerado', true)) {
+      for (const tipo of SITE_TITLED_SECTIONS.filter((t) => ids(html).has(t))) {
+        const m = titleOf(html, tipo);
+        expect(m?.[2], `${path} ${tipo}`).toBe(largo);
+        expect(m?.[1], `${path} ${tipo}`).toBeUndefined();
+        vistas++;
+      }
+    }
+    expect(vistas).toBeGreaterThan(0);
+    for (const [path, html] of pages(template, 'normal', true)) {
+      for (const tipo of SITE_TITLED_SECTIONS.filter((t) => ids(html).has(t))) {
+        const m = titleOf(html, tipo);
+        expect(m?.[1], `${path} ${tipo}`).toBe(' data-k-defecto');
+        expect(m?.[2].trim(), `${path} ${tipo}`).not.toBe('');
+      }
+    }
+  });
+});
+
+describe('el validador y los títulos', () => {
+  it('pide la marca una vez en cada sección con título, y en ninguna otra', () => {
+    const sin = { ...SITE_TEMPLATE_BASE, secciones: { ...SITE_TEMPLATE_BASE.secciones, faq: SITE_TEMPLATE_BASE.secciones.faq!.replace(' data-k-titulo-seccion', '') } };
+    expect(validateSiteTemplate(sin).problems).toEqual([expect.stringMatching(/^la sección «faq»: marca su título con data-k-titulo-seccion exactamente una vez \(lleva 0\)/)]);
+    const doble = { ...SITE_TEMPLATE_BASE, secciones: { ...SITE_TEMPLATE_BASE.secciones, zona: SITE_TEMPLATE_BASE.secciones.zona!.replace('<h2 data-k-titulo-seccion>', '<h2 data-k-titulo-seccion><span data-k-titulo-seccion>') } };
+    expect(validateSiteTemplate(doble).problems).toEqual([expect.stringMatching(/«zona».*\(lleva 2\)/)]);
+    const fuera = { ...SITE_TEMPLATE_BASE, secciones: { ...SITE_TEMPLATE_BASE.secciones, cifras: SITE_TEMPLATE_BASE.secciones.cifras!.replace('<section', '<section data-k-titulo-seccion') } };
+    expect(validateSiteTemplate(fuera).problems).toEqual([expect.stringMatching(/^la sección «cifras»: quita data-k-titulo-seccion/)]);
   });
 });

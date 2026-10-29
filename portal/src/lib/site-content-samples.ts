@@ -1,4 +1,4 @@
-import { defaultHomePage, type SiteContent } from './site-content';
+import { defaultHomePage, emptySiteTitles, SITE_TITLED_SECTIONS, type SiteContent } from './site-content';
 import type { SiteRenderContext } from './site-template';
 import { SAMPLE_DRAFT_MARKUP } from './site-draft-markup';
 
@@ -80,6 +80,7 @@ const normal: SiteContent = {
       { pregunta: '¿Trabajan los fines de semana?', respuesta: 'Sí, **todos los días** en el horario indicado.' },
     ],
     horario: [{ dias: 'Todos los días', horas: '8:00 – 20:00' }],
+    titulos: emptySiteTitles(),
   },
   bloques: [
     { id: 'historia', tipo: 'texto', titulo: 'Nuestra historia', texto: 'Empezamos con una furgoneta y muchas ganas.', foto: '', fotoAlt: '', items: [], fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [], video: '' },
@@ -231,6 +232,11 @@ const exagerado: SiteContent = {
       { dias: 'Sábados', horas: '9:00 – 14:00' },
       { dias: 'Domingos y festivos', horas: 'Solo urgencias' },
     ],
+    // 29/10/2026 — los títulos de sección los puede cambiar el cliente: la
+    // plantilla tiene que aguantar uno de 90 caracteres donde puso «Precios».
+    titulos: Object.fromEntries(
+      SITE_TITLED_SECTIONS.map((t) => [t, 'Instalaciones de climatización y electrodomésticos en Las Palmas, Telde, Arucas y Gáldar']),
+    ) as SiteContent['datos']['titulos'],
   },
   bloques: [
     { id: 'historia', tipo: 'texto_foto', titulo: 'Una historia larga de verdad, contada con calma y con muchos detalles', texto: repeat('Párrafo largo de la historia.', 40).slice(0, 2000), foto: 'assets/portada.jpg', fotoAlt: 'Foto', items: [], fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [], video: '' },

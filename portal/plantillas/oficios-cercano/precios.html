@@ -1,5 +1,5 @@
 <section class="seccion" id="{{ancla}}"><div class="contenedor">
-  <div class="cabeza"><span class="rotulo">Precios</span><h2>Precios sin sorpresas</h2><svg class="garabato" viewBox="0 0 220 18" aria-hidden="true"><path d="M3 12c25-9 45 6 72-1s44-8 70 0 47 4 72-6"/></svg></div>
+  <div class="cabeza"><span class="rotulo">Precios</span><h2 data-k-titulo-seccion>Precios sin sorpresas</h2><svg class="garabato" viewBox="0 0 220 18" aria-hidden="true"><path d="M3 12c25-9 45 6 72-1s44-8 70 0 47 4 72-6"/></svg></div>
   <div class="rejilla">{{#precios.filas}}<article class="precio-tarjeta aparece"><h3>{{concepto}}</h3>{{#detalle}}<p>{{detalle}}</p>{{/detalle}}<p class="precio">{{precio}}</p></article>{{/precios.filas}}</div>
   {{#precios.nota}}<p class="nota"><svg aria-hidden="true"><use href="#i-chispa"></use></svg><span>{{precios.nota}}</span></p>{{/precios.nota}}
 </div></section>

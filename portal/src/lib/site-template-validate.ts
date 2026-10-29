@@ -1,4 +1,4 @@
-import { SITE_SECTION_TYPES } from './site-content';
+import { SITE_SECTION_TYPES, SITE_TITLED_SECTIONS } from './site-content';
 import { declaredFontFamilies, fontCatalogForPrompt } from './site-fonts';
 import { validateTemplateStyle } from './site-style';
 import { BLOQUES_VARIABLES } from './site-rich-blocks';
@@ -263,6 +263,26 @@ export function validateSiteTemplate(input: SiteTemplateSource): TemplateValidat
       [/\bid="kairikos-form-note"/, 'un elemento id="kairikos-form-note" hidden para los avisos'],
     ] as const) {
       if (!re.test(contacto)) problems.push(`la sección «contacto»: falta ${what}. El envío lo pone el sistema y busca exactamente eso.`);
+    }
+  }
+
+  // 29/10/2026 — el título de cada sección lo puede cambiar el cliente: el
+  // motor busca el elemento marcado (site-template.ts, sectionTitle). Sin la
+  // marca, ese título sería el único texto de la web que no podría tocar.
+  for (const part of SITE_TITLED_SECTIONS) {
+    const source = template.secciones[part];
+    if (!source) continue;
+    const marks = source.match(/\sdata-k-titulo-seccion(?=[\s=/>])/g)?.length ?? 0;
+    if (marks !== 1) {
+      problems.push(
+        `la sección «${part}»: marca su título con data-k-titulo-seccion exactamente una vez (lleva ${marks}), en la etiqueta que lo contiene: <h2 data-k-titulo-seccion>Tu título</h2>. El cliente puede cambiarlo y el sistema pone el suyo ahí dentro; lo que escribas tú es el que sale si no lo cambia.`,
+      );
+    }
+  }
+  for (const part of SITE_TEMPLATE_PARTS) {
+    if ((SITE_TITLED_SECTIONS as readonly string[]).includes(part)) continue;
+    if (/\sdata-k-titulo-seccion(?=[\s=/>])/.test(template.secciones[part] ?? '')) {
+      problems.push(`la sección «${part}»: quita data-k-titulo-seccion; solo lo llevan ${SITE_TITLED_SECTIONS.join(', ')}.`);
     }
   }
 

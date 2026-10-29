@@ -1,7 +1,7 @@
 import 'server-only';
 import { resolveActiveAnthropicCredentials } from './anthropic-credentials';
 import { logError } from './observability';
-import { defaultHomePage, parseSiteContent, resolveContentPath, SITE_LIMITS, type SiteBlock, type SiteContent } from './site-content';
+import { defaultHomePage, emptySiteTitles, parseSiteContent, resolveContentPath, SITE_LIMITS, type SiteBlock, type SiteContent } from './site-content';
 import { COMPARISON_BLOCK_ID, DETAIL_BLOCK_ID, vacio } from './site-sector-blocks';
 import type { WebDraftCopy } from './web-draft-ai';
 
@@ -185,6 +185,7 @@ export function buildSiteContentFromDraft(copy: WebDraftCopy, expansion: unknown
       .filter((f) => f.pregunta)
       .slice(0, SITE_LIMITS.faq),
     horario: [],
+    titulos: emptySiteTitles(),
   };
   if (!datos.servicios.length) datos.servicios = [{ nombre: 'Servicios', descripcion: '', icono: '' }];
 

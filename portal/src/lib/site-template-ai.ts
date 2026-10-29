@@ -1,7 +1,7 @@
 import 'server-only';
 import { resolveActiveAnthropicCredentials } from './anthropic-credentials';
 import { logError } from './observability';
-import { SITE_LIMITS } from './site-content';
+import { SITE_LIMITS, SITE_TITLED_SECTIONS } from './site-content';
 import { SITE_TEMPLATE_PARTS, type SiteTemplatePart, type SiteTemplateSource } from './site-template';
 import { SITE_TEMPLATE_BASE } from './site-template-base';
 import { fontCatalogForPrompt } from './site-fonts';
@@ -97,6 +97,7 @@ Las piezas, cada una precedida de su separador:
   El CSS da estilo a .dato-ejemplo (subrayado discontinuo + etiqueta «ejemplo» con ::after), .dato-ejemplo-bloque (un contorno discontinuo) y .leyenda-ejemplos (aviso fijo pequeño abajo a la izquierda): el sistema los usa para los datos de ejemplo.
 ===SECCION <nombre>===  una por cada una de: ${SITE_TEMPLATE_PARTS.join(', ')}
   Cada una es UN elemento (<section> normalmente) con id="{{ancla}}". Sin <script>, sin <html>/<head>/<body>.
+  En ${SITE_TITLED_SECTIONS.join(', ')}, la etiqueta del título de la sección lleva data-k-titulo-seccion (<h2 data-k-titulo-seccion>Lo que hacemos</h2>), una sola vez: el dueño puede cambiar ese título por el suyo y el sistema lo pone ahí dentro; el que escribas es el que sale si no lo cambia.
 
 CAMPOS (y ningún otro):
   Del negocio: {{nombre}} {{telefono}} {{telefono_href}} (en href="tel:{{telefono_href}}") {{direccion}} {{maps_url}} {{valoracion}} {{num_resenas}} {{horario_resumen}} — pueden venir vacíos: envuelve lo que dependa de ellos en {{#campo}}.

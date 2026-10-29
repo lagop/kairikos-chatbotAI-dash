@@ -45,10 +45,12 @@ const asText = (v: unknown) => (typeof v === 'string' || typeof v === 'number' ?
 
 /**
  * Qué textos de la vista cambiar ya. `shown` son los <k-dato> de una línea que
- * hay en la vista: su ruta y el texto que enseñan. Devuelve, para cada uno que
- * toca cambiar, su posición en `shown` y el texto nuevo.
+ * hay en la vista: su ruta, el texto que enseñan y si es el que pone la
+ * plantilla porque el dato está vacío (`defecto`: un título de sección sin
+ * cambiar, site-template.ts). Devuelve, para cada uno que toca cambiar, su
+ * posición en `shown` y el texto nuevo.
  */
-export function instantTextPatches(prev: Content, next: Content, shown: { ruta: string; text: string }[]): { index: number; text: string }[] {
+export function instantTextPatches(prev: Content, next: Content, shown: { ruta: string; text: string; defecto?: boolean }[]): { index: number; text: string }[] {
   const changed = new Map<string, { before: string; after: string }>();
   for (const { ruta } of shown) {
     if (changed.has(ruta)) continue;
@@ -61,5 +63,8 @@ export function instantTextPatches(prev: Content, next: Content, shown: { ruta: 
   // Vacío no: el servidor puede quitar el elemento entero, y un hueco vacío en
   // la vista engaña más que medio segundo de espera.
   if (!after.trim()) return [];
-  return shown.flatMap((s, index) => (s.ruta === ruta && s.text === before ? [{ index, text: after }] : []));
+  // El de la plantilla enseña otra cosa que el valor (vacío), pero es su
+  // sitio. Salvo si ya enseña lo nuevo: es el que se está escribiendo sobre
+  // la vista, y reescribirlo mandaría el cursor al principio.
+  return shown.flatMap((s, index) => (s.ruta === ruta && (s.text === before || (s.defecto && before === '' && s.text !== after)) ? [{ index, text: after }] : []));
 }

@@ -1,6 +1,7 @@
 import {
   SITE_BLOCK_TYPES,
   SITE_SECTION_TYPES,
+  SITE_TITLED_SECTIONS,
   publishedEntries,
   type SiteBlock,
   type SiteBlockType,
@@ -326,6 +327,66 @@ export function applyEditMarks(html: string): string {
   return out;
 }
 
+// ---- El título de una sección ------------------------------------------------
+//
+// 29/10/2026 — «En qué le podemos ayudar», «Lo que más nos preguntan»: cada
+// plantilla escribe los suyos, y hasta hoy el cliente no podía cambiarlos (no
+// eran un dato, así que el editor no tenía nada que marcar). Para Google
+// pesan, y el tono de una plantilla no siempre es el del negocio.
+//
+// La plantilla marca su título con data-k-titulo-seccion (<h2 data-k-titulo-seccion>…</h2>) y
+// el motor pone dentro el del cliente (datos.titulos) si lo hay. Si no, queda
+// el de la plantilla: así cada una conserva su texto por defecto y un cliente
+// que cambia de plantilla conserva el suyo. El atributo no llega a la web.
+// En el editor, el título va en un <k-dato> como cualquier texto; el de la
+// plantilla, con data-k-defecto, porque lo que enseña no es el valor del dato
+// (que está vacío) y la vista lo tiene que saber (SiteLivePreview).
+//
+// Se hace sobre el HTML ya pintado, no en Mustache: el título por defecto
+// puede llevar huecos ({{nombre}} en «sobre») y lo que importa es lo que
+// queda entre la etiqueta y su cierre. (No confundir con data-k-titulo, sin
+// «-seccion»: es el de cada pestaña y cada vídeo de los bloques ricos.)
+
+const TITLE_ATTR_RE = /<([a-zA-Z][a-zA-Z0-9-]*)\b([^>]*?)\s+data-k-titulo-seccion(?:=(?:"[^"]*"|'[^']*'|[^\s>]*))?(?=[\s/>])([^>]*)>/;
+
+/** Quita las marcas del modo edición con su ruta: el título por defecto va
+ *  entero en un <k-dato>, y uno dentro de otro no se podría editar. */
+function stripEditMarks(html: string): string {
+  return html.replace(new RegExp(`[${MARK_OPEN}${MARK_BLOCK}${MARK_PHOTO}][^${MARK_SEP}]*${MARK_SEP}`, 'g'), '').replace(new RegExp(MARK_CLOSE, 'g'), '');
+}
+
+/** El título de la sección `tipo`: el del cliente donde la plantilla marcó el
+ *  suyo. Sin marca, la sección sale como la escribió la plantilla. Exportada
+ *  para las pruebas. */
+export function sectionTitle(html: string, tipo: SiteSectionType, titulos: Partial<Record<string, string>> | undefined, edit: boolean): string {
+  const m = TITLE_ATTR_RE.exec(html);
+  if (!m) return html;
+  const open = `<${m[1]}${m[2]}${m[3]}>`;
+  const start = m.index + m[0].length;
+  // Su cierre, contando las del mismo nombre que se abran dentro.
+  const tags = new RegExp(`<(/?)${m[1]}(?=[\\s/>])[^>]*>`, 'gi');
+  tags.lastIndex = start;
+  let depth = 1;
+  let end = -1;
+  for (let t = tags.exec(html); t; t = tags.exec(html)) {
+    depth += t[1] ? -1 : 1;
+    if (depth === 0) {
+      end = t.index;
+      break;
+    }
+  }
+  const titled = (SITE_TITLED_SECTIONS as readonly string[]).includes(tipo);
+  if (end < 0 || !titled) return html.slice(0, m.index) + open + html.slice(start);
+  const own = (titulos?.[tipo] ?? '').trim();
+  let inner = own ? esc(own) : html.slice(start, end);
+  if (edit) {
+    inner = own
+      ? `<k-dato data-k-ruta="titulos.${tipo}">${inner}</k-dato>`
+      : `<k-dato data-k-ruta="titulos.${tipo}" data-k-defecto>${stripEditMarks(inner)}</k-dato>`;
+  }
+  return html.slice(0, m.index) + open + inner + html.slice(end);
+}
+
 /** Pinta una pieza suelta. Exportado para el validador y las pruebas. */
 export function renderMustache(source: string, view: object, examples: Iterable<string> = []): string {
   return renderNodes(parseMustache(source), [{ value: view, path: '' }], new Set(examples));
@@ -549,7 +610,7 @@ function renderSections(
       kind: 'section',
       anchor: ref.tipo,
       tipo: ref.tipo,
-      html: renderNodes(parseMustache(source), [{ value: { ...view, ancla: ref.tipo }, path: '' }], examples, edit),
+      html: sectionTitle(renderNodes(parseMustache(source), [{ value: { ...view, ancla: ref.tipo }, path: '' }], examples, edit), ref.tipo, content.datos.titulos, Boolean(edit)),
     });
   }
   return rendered;

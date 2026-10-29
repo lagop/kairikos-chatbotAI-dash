@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
-import type { SiteBlock, SiteBlogEntry, SiteContent, SiteSectionRef, SiteSectionType } from '@/lib/site-content';
+import type { SiteBlock, SiteBlogEntry, SiteContent, SiteSectionRef, SiteSectionType, SiteTitledSection } from '@/lib/site-content';
 import type { IconSymbol } from '@/lib/site-icon-symbols';
 import { SiteLivePreview, type ListAction, type PreviewDevice, type PreviewPick } from './SiteLivePreview';
 import { emptyHistory, historyCommand, recordStep, redoStep, undoStep } from './edit-history';
@@ -77,6 +77,11 @@ import { emptyHistory, historyCommand, recordStep, redoStep, undoStep } from './
 // (uploadImage) y, si es la de un bloque, se abre su descripción, que ya no
 // describe la foto nueva. Las del antes y después no se pueden pulsar: encima
 // está el deslizador que las compara; esas, desde el formulario.
+//
+// 29/10/2026 (6) — los títulos de sección («En qué le podemos ayudar») son del
+// cliente si quiere: «Título de la sección» arriba de cada una que lo lleva
+// (TITLED), y sobre la vista igual que cualquier texto. Vacío = el de la
+// plantilla (site-template.ts, sectionTitle).
 // =============================================================================
 
 /** Lo mismo que RESERVED_PAGE_ROOTS en lib/site-content.ts. */
@@ -214,7 +219,13 @@ function pendingIn(content: SiteContent, ref: SiteSectionRef): number {
   return content.ejemplos.filter((e) => prefixes.some((p) => e === p || e.startsWith(`${p}.`))).length;
 }
 
-type Field = { key: string; label: string; kind?: 'text' | 'textarea' | 'icon'; max: number };
+type Field = { key: string; label: string; kind?: 'text' | 'textarea' | 'icon'; max: number; placeholder?: string };
+
+/** Las secciones con título propio que el cliente puede cambiar: la lista de
+ *  SITE_TITLED_SECTIONS (site-content.ts), repetida aquí porque un componente
+ *  no importa libs; el tipo obliga a que estén todas. */
+const TITLED: Record<SiteTitledSection, true> = { servicios: true, sobre: true, proceso: true, garantias: true, precios: true, opiniones: true, faq: true, zona: true, contacto: true };
+const isTitled = (tipo: string): tipo is SiteTitledSection => tipo in TITLED;
 
 type Tab = 'contenido' | 'diseno' | 'datos';
 
@@ -231,6 +242,7 @@ const FIELD_MAX: [RegExp, number][] = [
   [/^titular$/, 90],
   [/^subtitulo$/, 220],
   [/^llamada_accion$/, 90],
+  [/^titulos\.[a-z]+$/, 90],
   [/^servicios\.\d+\.nombre$/, 80],
   [/\.descripcion$/, 300],
   [/^cifras\.\d+\.valor$/, 30],
@@ -603,7 +615,8 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
       const parts = path.split('.');
       let target: Record<string, unknown> | unknown[] = parts[0] === 'bloques' ? (d.bloques.find((b) => b.id === parts[1]) as unknown as Record<string, unknown>) : (d.datos as unknown as Record<string, unknown>);
       const rest = parts[0] === 'bloques' ? parts.slice(2) : parts;
-      for (const p of rest.slice(0, -1)) target = (target as Record<string, unknown>)[p] as Record<string, unknown>;
+      // ??= : un contenido guardado antes de que existiera el campo (titulos).
+      for (const p of rest.slice(0, -1)) target = ((target as Record<string, unknown>)[p] ??= {}) as Record<string, unknown>;
       (target as Record<string, unknown>)[rest[rest.length - 1]] = value;
       d.ejemplos = d.ejemplos.filter((e) => e !== path);
     }, path);
@@ -830,48 +843,67 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
         </div>
       );
     }
-    switch (ref.tipo) {
-      case 'portada':
-        return (
-          <div className="space-y-3">
-            {text('Titular', 'titular', d.titular, 90)}
-            {text('Subtítulo', 'subtitulo', d.subtitulo, 220, 'textarea')}
-            {text('Texto del botón de llamar', 'llamada_accion', d.llamada_accion, 90)}
-          </div>
-        );
-      case 'llamada':
-        return text('Frase de la llamada final', 'llamada_accion', d.llamada_accion, 90);
-      case 'sobre':
-        return text('Quiénes sois (puedes usar **negrita**, listas con «- » y enlaces)', 'sobre', d.sobre, 1200, 'textarea');
-      case 'servicios':
-        return listEditor('servicios', d.servicios, [{ key: 'nombre', label: 'Servicio', max: 80 }, { key: 'descripcion', label: 'Descripción', kind: 'textarea', max: 300 }, { key: 'icono', label: 'Icono', kind: 'icon', max: 40 }], { nombre: '', descripcion: '', icono: '' }, 12);
-      case 'cifras':
-        return listEditor('cifras', d.cifras, [{ key: 'valor', label: 'Cifra', max: 30 }, { key: 'etiqueta', label: 'Qué es', max: 90 }], { valor: '', etiqueta: '' }, 4);
-      case 'proceso':
-        return listEditor('proceso', d.proceso, [{ key: 'titulo', label: 'Paso', max: 80 }, { key: 'texto', label: 'Explicación', kind: 'textarea', max: 300 }], { titulo: '', texto: '' }, 6);
-      case 'garantias':
-        return listEditor('garantias', d.garantias, [{ key: 'titulo', label: 'Garantía', max: 80 }, { key: 'texto', label: 'Explicación', kind: 'textarea', max: 300 }], { titulo: '', texto: '' }, 4);
-      case 'precios':
-        return (
-          <div className="space-y-3">
-            {listEditor('precios.filas', d.precios.filas, [{ key: 'concepto', label: 'Concepto', max: 120 }, { key: 'precio', label: 'Precio', max: 40 }, { key: 'detalle', label: 'Detalle', max: 200 }], { concepto: '', precio: '', detalle: '' }, 12)}
-            {text('Nota bajo los precios', 'precios.nota', d.precios.nota, 200)}
-          </div>
-        );
-      case 'faq':
-        return listEditor('faq', d.faq, [{ key: 'pregunta', label: 'Pregunta', max: 160 }, { key: 'respuesta', label: 'Respuesta', kind: 'textarea', max: 1200 }], { pregunta: '', respuesta: '' }, 8);
-      case 'zona':
-        return (
-          <div className="space-y-3">
-            {text('Dónde trabajáis', 'zona.texto', d.zona.texto, 400, 'textarea')}
-            {listEditor('zona.lugares', d.zona.lugares, [{ key: 'nombre', label: 'Lugar', max: 60 }], { nombre: '' }, 12)}
-          </div>
-        );
-      case 'contacto':
-        return listEditor('horario', d.horario, [{ key: 'dias', label: 'Días', max: 40 }, { key: 'horas', label: 'Horas', max: 60 }], { dias: '', horas: '' }, 7);
-      case 'opiniones':
-        return <p className="text-sm text-kairikos-muted">Las opiniones salen de Google cuando tienes contratado el servicio de reseñas; aquí no hay nada que escribir.</p>;
-    }
+    const tipo = ref.tipo;
+    const fields = (() => {
+      switch (ref.tipo) {
+        case 'portada':
+          return (
+            <div className="space-y-3">
+              {text('Titular', 'titular', d.titular, 90)}
+              {text('Subtítulo', 'subtitulo', d.subtitulo, 220, 'textarea')}
+              {text('Texto del botón de llamar', 'llamada_accion', d.llamada_accion, 90)}
+            </div>
+          );
+        case 'llamada':
+          return text('Frase de la llamada final', 'llamada_accion', d.llamada_accion, 90);
+        case 'sobre':
+          return text('Quiénes sois (puedes usar **negrita**, listas con «- » y enlaces)', 'sobre', d.sobre, 1200, 'textarea');
+        case 'servicios':
+          return listEditor('servicios', d.servicios, [{ key: 'nombre', label: 'Servicio', max: 80 }, { key: 'descripcion', label: 'Descripción', kind: 'textarea', max: 300 }, { key: 'icono', label: 'Icono', kind: 'icon', max: 40 }], { nombre: '', descripcion: '', icono: '' }, 12);
+        case 'cifras':
+          return listEditor('cifras', d.cifras, [{ key: 'valor', label: 'Cifra', max: 30 }, { key: 'etiqueta', label: 'Qué es', max: 90 }], { valor: '', etiqueta: '' }, 4);
+        case 'proceso':
+          return listEditor('proceso', d.proceso, [{ key: 'titulo', label: 'Paso', max: 80 }, { key: 'texto', label: 'Explicación', kind: 'textarea', max: 300 }], { titulo: '', texto: '' }, 6);
+        case 'garantias':
+          return listEditor('garantias', d.garantias, [{ key: 'titulo', label: 'Garantía', max: 80 }, { key: 'texto', label: 'Explicación', kind: 'textarea', max: 300 }], { titulo: '', texto: '' }, 4);
+        case 'precios':
+          return (
+            <div className="space-y-3">
+              {listEditor('precios.filas', d.precios.filas, [{ key: 'concepto', label: 'Concepto', max: 120 }, { key: 'precio', label: 'Precio', max: 40 }, { key: 'detalle', label: 'Detalle', max: 200 }], { concepto: '', precio: '', detalle: '' }, 12)}
+              {text('Nota bajo los precios', 'precios.nota', d.precios.nota, 200)}
+            </div>
+          );
+        case 'faq':
+          return listEditor('faq', d.faq, [{ key: 'pregunta', label: 'Pregunta', max: 160 }, { key: 'respuesta', label: 'Respuesta', kind: 'textarea', max: 1200 }], { pregunta: '', respuesta: '' }, 8);
+        case 'zona':
+          return (
+            <div className="space-y-3">
+              {text('Dónde trabajáis', 'zona.texto', d.zona.texto, 400, 'textarea')}
+              {listEditor('zona.lugares', d.zona.lugares, [{ key: 'nombre', label: 'Lugar', max: 60 }], { nombre: '' }, 12)}
+            </div>
+          );
+        case 'contacto':
+          return listEditor('horario', d.horario, [{ key: 'dias', label: 'Días', max: 40 }, { key: 'horas', label: 'Horas', max: 60 }], { dias: '', horas: '' }, 7);
+        case 'opiniones':
+          return <p className="text-sm text-kairikos-muted">Las opiniones salen de Google cuando tienes contratado el servicio de reseñas; aquí solo cambias el título.</p>;
+      }
+    })();
+    if (!isTitled(tipo)) return fields;
+    // 29/10/2026 — el título de la sección. Vacío, el de la plantilla.
+    return (
+      <div className="space-y-3">
+        <FieldInput
+          ruta={`titulos.${tipo}`}
+          field={{ key: `titulos.${tipo}`, label: 'Título de la sección', max: 90, placeholder: 'El de tu diseño (escribe aquí el tuyo)' }}
+          value={d.titulos?.[tipo] ?? ''}
+          iconIds={props.iconIds}
+          icons={props.iconSymbols}
+          example={false}
+          onChange={(v) => setValue(`titulos.${tipo}`, v)}
+        />
+        {fields}
+      </div>
+    );
   }
 
   const statusCard = (
@@ -1979,7 +2011,7 @@ function FieldInput({
           ))}
         </select>
       ) : (
-        <input className={cls} data-ruta={ruta} maxLength={field.max} value={value} onChange={(e) => onChange(e.target.value)} />
+        <input className={cls} data-ruta={ruta} maxLength={field.max} placeholder={field.placeholder} value={value} onChange={(e) => onChange(e.target.value)} />
       )}
     </label>
   );

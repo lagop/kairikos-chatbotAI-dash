@@ -187,6 +187,9 @@ export function SiteLivePreview({
     if (!content) return true;
     const value = valueAt(content, dato.getAttribute('data-k-ruta') ?? '');
     if (typeof value !== 'string' && typeof value !== 'number') return false;
+    // Un título de sección sin cambiar: enseña el de la plantilla, y su dato
+    // está vacío (site-template.ts, sectionTitle).
+    if (dato.hasAttribute('data-k-defecto') && value === '') return true;
     return dato.hasAttribute('data-k-bloque') ? richTextToMarkdown(dato) === normalMarkdown(String(value)) : (dato.textContent ?? '') === String(value);
   }
 
@@ -374,6 +377,10 @@ export function SiteLivePreview({
     const win = doc.defaultView;
     const ruta = el.getAttribute('data-k-ruta') ?? '';
     const original = el.textContent ?? '';
+    // Lo que vale el dato al empezar: con el título de la plantilla a la
+    // vista, vacío. Esc lo deja así, no con una copia de ese texto (que ya no
+    // cambiaría al cambiar de plantilla).
+    const originalValue = el.hasAttribute('data-k-defecto') ? '' : original;
     try {
       el.contentEditable = 'plaintext-only';
     } catch {
@@ -426,7 +433,8 @@ export function SiteLivePreview({
         // Sin cambios, nada: si no, Esc dejaría un paso vacío en el historial.
         if (inlineRef.current?.last !== original) {
           el.textContent = original;
-          set(original);
+          sameRuta().forEach((x) => (x.textContent = original));
+          cb.current.onInlineChange?.(ruta, originalValue);
         }
         el.blur();
       }
@@ -630,8 +638,10 @@ export function SiteLivePreview({
     shownContentRef.current = next;
     const doc = frameRef.current?.contentDocument;
     if (!prev || !doc) return;
-    const els = Array.from(doc.querySelectorAll<HTMLElement>('k-dato[data-k-ruta]:not([data-k-bloque])'));
-    const shown = els.map((el) => ({ ruta: el.getAttribute('data-k-ruta') ?? '', text: el.textContent ?? '' }));
+    // El que se está escribiendo sobre la vista ya enseña lo suyo: tocarlo
+    // movería el cursor.
+    const els = Array.from(doc.querySelectorAll<HTMLElement>('k-dato[data-k-ruta]:not([data-k-bloque])')).filter((el) => el !== inlineRef.current?.el);
+    const shown = els.map((el) => ({ ruta: el.getAttribute('data-k-ruta') ?? '', text: el.textContent ?? '', defecto: el.hasAttribute('data-k-defecto') }));
     for (const { index, text } of instantTextPatches(prev, next, shown)) els[index].textContent = text;
   }, [body]);
 
