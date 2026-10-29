@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateAdminRequest } from '@/lib/operator-session';
 import { logError } from '@/lib/observability';
-import { recoverStaleJobs, startSiteTemplateGeneration } from '@/lib/site-template-jobs';
+import { startSiteTemplateGeneration } from '@/lib/site-template-jobs';
+import { listSiteTemplates } from '@/lib/site-template-library';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -21,26 +22,7 @@ export async function GET(req: NextRequest) {
   if (!auth.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
 
-  await recoverStaleJobs(prisma);
-  const templates = await prisma.siteTemplate.findMany({
-    orderBy: { createdAt: 'desc' },
-    take: 100,
-    select: {
-      id: true,
-      nombre: true,
-      sector: true,
-      variante: true,
-      origen: true,
-      modelo: true,
-      estado: true,
-      validacion: true,
-      estilo: true,
-      createdAt: true,
-      updatedAt: true,
-      _count: { select: { websites: true } },
-    },
-  });
-  return NextResponse.json({ templates });
+  return NextResponse.json({ templates: await listSiteTemplates(prisma) });
 }
 
 const BodySchema = z.object({

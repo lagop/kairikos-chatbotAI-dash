@@ -15,6 +15,7 @@ import {
   pickSiteTemplateForSector,
   recordBrowserChecks,
   recoverStaleJobs,
+  restoreSiteTemplateVersion,
   setSiteTemplateState,
   startSiteTemplateGeneration,
 } from '@/lib/site-template-jobs';
@@ -200,5 +201,62 @@ describe('estados y biblioteca', () => {
     expect(await pickSiteTemplateForSector(prisma, 'trades')).toEqual({ id: 'b' });
     expect(await pickSiteTemplateForSector(prisma, 'beauty')).toBeNull();
     expect(await pickSiteTemplateForSector(prisma, null)).toBeNull();
+  });
+});
+
+describe('correcciones de una aprobada (29/10/2026)', () => {
+  /** El Prisma en memoria de arriba, con la transacción y el historial. */
+  function withVersions(seed: Row[]) {
+    const base = fakePrisma(seed);
+    const versiones: Record<string, unknown>[] = [];
+    const p = base.prisma as unknown as Record<string, unknown>;
+    p.siteTemplateVersion = {
+      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        versiones.push({ id: `v${versiones.length + 1}`, createdAt: new Date('2026-10-29T10:00:00Z'), ...data });
+        return {};
+      }),
+      findFirst: vi.fn(async ({ where }: { where: { id: string; templateId: string } }) => versiones.find((v) => v.id === where.id && v.templateId === where.templateId) ?? null),
+    };
+    p.$transaction = vi.fn(async (fn: (tx: unknown) => unknown) => fn(p));
+    return { ...base, versiones };
+  }
+  const vigente = { id: 'cercano', nombre: 'Oficios · Cercano', estado: 'aprobada', marco: '.mapa{width:min(100%,22rem)}', secciones: { zona: '<div class="mapa">' }, estilo: { a: 1 }, validacion: {} };
+  const fix = { id: 'fix', nombre: 'Oficios · Cercano · corrección', estado: 'lista', correccionDe: 'cercano', marco: '.mapa{width:min(74%,22rem)}', secciones: { zona: '<div class="mapa">' }, estilo: { a: 1 }, validacion: { encargo: 'La mancha del mapa desbordaba en móvil' } };
+
+  it('aplicarla guarda lo que había, pone el arreglo en la original (mismo id) y la deja aplicada', async () => {
+    const { prisma, rows, versiones } = withVersions([{ ...vigente }, { ...fix }]);
+    expect(await setSiteTemplateState(prisma, 'fix', 'aprobar', 'op@k.es')).toEqual({ ok: true, estado: 'aplicada' });
+    expect(rows.get('cercano')).toMatchObject({ estado: 'aprobada', marco: fix.marco });
+    expect(rows.get('fix')?.estado).toBe('aplicada');
+    expect(versiones).toHaveLength(1);
+    expect(versiones[0]).toMatchObject({ templateId: 'cercano', marco: vigente.marco, motivo: 'La mancha del mapa desbordaba en móvil', correccionId: 'fix', actorEmail: 'op@k.es' });
+    expect(JSON.stringify(rows.get('cercano')?.validacion)).toMatch(/Corrección «Oficios · Cercano · corrección» aplicada por op@k\.es/);
+  });
+
+  it('solo si la corrección está lista y la original sigue aprobada', async () => {
+    const pendiente = withVersions([{ ...vigente }, { ...fix, estado: 'pendiente_navegador' }]);
+    expect(await setSiteTemplateState(pendiente.prisma, 'fix', 'aprobar', null)).toEqual({ ok: false, error: 'wrong_state' });
+    const retirada = withVersions([{ ...vigente, estado: 'retirada' }, { ...fix }]);
+    expect(await setSiteTemplateState(retirada.prisma, 'fix', 'aprobar', null)).toEqual({ ok: false, error: 'wrong_state' });
+    expect(retirada.rows.get('cercano')?.marco).toBe(vigente.marco);
+    expect(retirada.versiones).toHaveLength(0);
+  });
+
+  it('se puede descartar; una plantilla normal no', async () => {
+    const { prisma, rows } = withVersions([{ ...vigente }, { ...fix }]);
+    expect(await setSiteTemplateState(prisma, 'fix', 'descartar', null)).toEqual({ ok: true, estado: 'descartada' });
+    expect(rows.get('cercano')?.marco).toBe(vigente.marco);
+    expect(await setSiteTemplateState(prisma, 'cercano', 'descartar', null)).toEqual({ ok: false, error: 'wrong_state' });
+  });
+
+  it('volver a la versión anterior deja lo de ahora en el historial (se deshace igual)', async () => {
+    const { prisma, rows, versiones } = withVersions([{ ...vigente }, { ...fix }]);
+    await setSiteTemplateState(prisma, 'fix', 'aprobar', null);
+    expect(await restoreSiteTemplateVersion(prisma, 'cercano', 'v1', 'op@k.es')).toEqual({ ok: true, estado: 'aprobada' });
+    expect(rows.get('cercano')?.marco).toBe(vigente.marco);
+    expect(versiones).toHaveLength(2);
+    expect(versiones[1]).toMatchObject({ templateId: 'cercano', marco: fix.marco });
+    // Una versión de otra plantilla no vale.
+    expect(await restoreSiteTemplateVersion(prisma, 'fix', 'v1', null)).toEqual({ ok: false, error: 'not_found' });
   });
 });
