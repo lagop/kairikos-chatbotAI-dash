@@ -4,6 +4,7 @@ import { parseSiteContent, type SiteContent } from './site-content';
 import { SITE_TEMPLATE_BASE } from './site-template-base';
 import { templateIconIds } from './web-draft-design';
 import { editorStyleOptions, parseTemplateStyle } from './site-style';
+import { templateIconSymbols, type IconSymbol } from './site-icon-symbols';
 
 // Lo que necesita el editor de una web v2 (SiteContentEditor) además del
 // contenido: los iconos y los colores y letras que admite su plantilla. Lo
@@ -13,7 +14,7 @@ import { editorStyleOptions, parseTemplateStyle } from './site-style';
 export async function loadSiteEditorData(
   prisma: PrismaClient,
   site: { content: unknown; templateId: string | null },
-): Promise<{ content: SiteContent; iconIds: string[]; estilo: ReturnType<typeof editorStyleOptions> } | null> {
+): Promise<{ content: SiteContent; iconIds: string[]; iconSymbols: IconSymbol[]; estilo: ReturnType<typeof editorStyleOptions> } | null> {
   if (site.content == null) return null;
   const parsed = parseSiteContent(site.content);
   if (!parsed.ok) return null;
@@ -21,6 +22,8 @@ export async function loadSiteEditorData(
   return {
     content: parsed.content,
     iconIds: templateIconIds(tpl?.marco ?? SITE_TEMPLATE_BASE.marco),
+    // 29/10/2026 — los dibujos, para elegir el icono viéndolo.
+    iconSymbols: templateIconSymbols(tpl?.marco ?? SITE_TEMPLATE_BASE.marco),
     estilo: editorStyleOptions(parseTemplateStyle(tpl?.estilo)),
   };
 }
