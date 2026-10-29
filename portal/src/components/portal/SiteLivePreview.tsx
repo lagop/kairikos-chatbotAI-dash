@@ -40,6 +40,9 @@ import { instantTextPatches } from './preview-patch';
 //   cosa de una sección abre su campo en el formulario.
 // - Los elementos de una lista (servicios, precios, preguntas…) enseñan al
 //   pasar el ratón ↑ ↓ ✕ + para ordenarlos, quitarlos o añadir otro.
+// - Pulsar una foto del contenido (el logo, la portada, la de un bloque, las
+//   de una galería o un catálogo: data-k-foto) abre el selector para poner
+//   otra (onPhoto).
 // - Ctrl+Z / Ctrl+Mayús+Z deshacen y rehacen pasos del editor (onHistory); con
 //   un texto abierto encima, deshacen letras dentro de él, como en cualquier
 //   campo.
@@ -71,6 +74,9 @@ const PREVIEW_CSS = [
   'k-dato[data-k-ruta]{cursor:text;border-radius:3px}',
   'k-dato[data-k-ruta]:hover{outline:2px dashed rgba(124,58,237,.75);outline-offset:3px}',
   'k-dato[data-k-bloque]{cursor:pointer}',
+  // Las fotos que se cambian pulsándolas.
+  'img[data-k-foto]{cursor:pointer}',
+  'img[data-k-foto]:hover{outline:3px dashed rgba(124,58,237,.85);outline-offset:-3px}',
   'k-dato[contenteditable]{outline:2px solid #7c3aed!important;outline-offset:3px;background:rgba(124,58,237,.07)}',
   '[data-k-lista].k-lista-encima{outline:1px dashed rgba(124,58,237,.5);outline-offset:6px}',
 ].join('');
@@ -94,6 +100,7 @@ export function SiteLivePreview({
   maxFor,
   onListAction,
   onHistory,
+  onPhoto,
 }: {
   /** Igual que el editor: la del cliente o la del operador. */
   apiBase: string;
@@ -113,6 +120,10 @@ export function SiteLivePreview({
   /** Qué listas se pueden ordenar desde la vista (y cuántos elementos caben). */
   onListAction?: (list: string, index: number, action: ListAction) => void;
   onHistory?: (cmd: 'deshacer' | 'rehacer') => void;
+  /** Se pulsó una foto del contenido (data-k-foto): su dato y su sección. Se
+   *  llama dentro del clic, para que el editor pueda abrir el selector de
+   *  archivos (el navegador lo exige). */
+  onPhoto?: (ruta: string, seccion: string | null) => void;
 }) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -123,8 +134,8 @@ export function SiteLivePreview({
   // El contenido que enseña ahora la vista, pintado o cambiado al momento.
   const shownContentRef = useRef<Parameters<typeof instantTextPatches>[0] | null>(null);
   // Los oyentes se ponen al pintar: leen siempre lo último que llegó.
-  const cb = useRef({ onPick, onInlineChange, maxFor, onListAction, onHistory, sectionIds });
-  cb.current = { onPick, onInlineChange, maxFor, onListAction, onHistory, sectionIds };
+  const cb = useRef({ onPick, onInlineChange, maxFor, onListAction, onHistory, onPhoto, sectionIds });
+  cb.current = { onPick, onInlineChange, maxFor, onListAction, onHistory, onPhoto, sectionIds };
   const [estado, setEstado] = useState<'cargando' | 'listo' | 'error'>('cargando');
   const [size, setSize] = useState({ width: 0, height: 0 });
 
@@ -372,6 +383,16 @@ export function SiteLivePreview({
         // Dónde se pulsó: la sección de la página que lo contiene.
         let seccion: string | null = null;
         for (let n: Element | null = t; n && !seccion; n = n.parentElement) if (n.id && cb.current.sectionIds.includes(n.id)) seccion = n.id;
+        // Una foto: elegir otra (antes que el enlace: las de la galería van
+        // dentro de uno).
+        const foto = t?.closest?.('img[data-k-foto]');
+        if (foto && cb.current.onPhoto) {
+          e.preventDefault();
+          e.stopPropagation();
+          finishInline();
+          cb.current.onPhoto(foto.getAttribute('data-k-foto') ?? '', seccion);
+          return;
+        }
         if (dato) {
           e.preventDefault();
           e.stopPropagation();
@@ -399,6 +420,7 @@ export function SiteLivePreview({
       e.preventDefault();
       cb.current.onHistory(cmd);
     });
+    if (cb.current.onPhoto) doc.querySelectorAll('img[data-k-foto]').forEach((img) => img.setAttribute('title', 'Pulsa para cambiar esta foto'));
     if (cb.current.onListAction) {
       markListItems(doc);
       listToolbar(doc);
@@ -502,7 +524,7 @@ export function SiteLivePreview({
       </div>
       {onPick ? (
         <p className="border-t border-kairikos-border bg-kairikos-surface px-3 py-1.5 text-center text-xs text-kairikos-muted">
-          Pulsa un texto de tu web para cambiarlo ahí mismo. Intro para terminar, Esc para dejarlo como estaba. Ctrl+Z deshace el último cambio.
+          Pulsa un texto o una foto de tu web para cambiarlos ahí mismo. Intro para terminar, Esc para dejarlo como estaba. Ctrl+Z deshace el último cambio.
         </p>
       ) : null}
     </div>
