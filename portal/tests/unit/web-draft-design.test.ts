@@ -176,7 +176,7 @@ describe('designForDraft', () => {
   it('sin plantilla aprobada para el sector no hace nada (ni gasta)', async () => {
     mocks.pick.mockResolvedValue(null);
     expect(await designForDraft(prisma, { copy: COPY, themeKey: 'beauty-3', businessName: 'X', primaryType: null, city: null })).toBeNull();
-    expect(mocks.pick).toHaveBeenCalledWith(prisma, 'beauty');
+    expect(mocks.pick).toHaveBeenCalledWith(prisma, 'beauty', { exceptDraftLeadId: undefined });
     expect(mocks.expand).not.toHaveBeenCalled();
   });
 

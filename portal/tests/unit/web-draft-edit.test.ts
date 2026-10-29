@@ -113,7 +113,7 @@ describe('regenerar desde el portal', () => {
 
   it('guarda el borrador anterior, retoques incluidos, antes de sustituirlo', async () => {
     mockState.lead = { ...baseLead, webDraft: { id: 'd-1', copy: { headline: 'Retocado' }, content: null, templateId: null, themeKey: 'beauty-3', shareToken: 'tok', generatedAt: new Date() } };
-    expect((await call()).status).toBe(200);
+    expect((await call()).status).toBe(303);
     expect(mockState.transaction).toHaveBeenCalledOnce();
     const data = mockState.versionCreate.mock.calls[0][0].data;
     expect(data).toMatchObject({ draftId: 'd-1', accion: 'regenerado', actorId: 'op-1', copy: { headline: 'Retocado' }, themeKey: 'beauty-3' });
@@ -121,9 +121,43 @@ describe('regenerar desde el portal', () => {
 
   it('la primera vez no hay nada que guardar', async () => {
     mockState.lead = { ...baseLead, webDraft: null };
-    expect((await call()).status).toBe(200);
+    expect((await call()).status).toBe(303);
     expect(mockState.versionCreate).not.toHaveBeenCalled();
     expect(mockState.upsert).toHaveBeenCalledOnce();
+  });
+});
+
+describe('regenerar como la primera vez (29/10/2026)', () => {
+  beforeEach(() => {
+    mockState.versionCreate.mockReset().mockReturnValue('version-op');
+    mockState.upsert.mockReset().mockResolvedValue({ shareToken: 'tok' });
+    mockState.transaction.mockReset().mockImplementation(async (ops: unknown[]) => [{}, await ops[1]]);
+  });
+  const lead = { id: LEAD, clientId: 'c', tenantId: null, contactName: 'Fontanería', contactPhone: null, summary: null, primaryType: 'plumber', searchCategory: null, searchLocation: 'Telde', externalPlaceId: null, competitorSnapshot: null };
+
+  it('al terminar, a la dirección sin ?regenerar=1 (relativa): recargar no vuelve a generar', async () => {
+    mockState.lead = { ...lead, webDraft: null };
+    const { GET } = await import('@/app/api/admin/portal/prospecting/web-draft/[leadId]/route');
+    const res = await GET(new Request(`http://0.0.0.0:3000/api/admin/portal/prospecting/web-draft/${LEAD}?regenerar=1&x=1`) as never, { params: Promise.resolve({ leadId: LEAD }) });
+    expect(res.status).toBe(303);
+    expect(res.headers.get('location')).toBe(`/api/admin/portal/prospecting/web-draft/${LEAD}?x=1`);
+  });
+
+  it('el diseño se elige sin contar el borrador que se sustituye', async () => {
+    mockState.lead = { ...lead, webDraft: null };
+    const { designForDraft } = await import('@/lib/web-draft-design');
+    vi.mocked(designForDraft).mockClear();
+    const { GET } = await import('@/app/api/admin/portal/prospecting/web-draft/[leadId]/route');
+    await GET(new Request(`http://x/api/admin/portal/prospecting/web-draft/${LEAD}?regenerar=1`) as never, { params: Promise.resolve({ leadId: LEAD }) });
+    expect(vi.mocked(designForDraft).mock.calls[0][1]).toMatchObject({ leadId: LEAD });
+  });
+
+  it('si no se pudo guardar, enseña el que acaba de generar en vez de redirigir (y generar otro)', async () => {
+    mockState.lead = { ...lead, webDraft: null };
+    mockState.upsert.mockRejectedValue(new Error('db'));
+    const { GET } = await import('@/app/api/admin/portal/prospecting/web-draft/[leadId]/route');
+    const res = await GET(new Request(`http://x/api/admin/portal/prospecting/web-draft/${LEAD}?regenerar=1`) as never, { params: Promise.resolve({ leadId: LEAD }) });
+    expect(res.status).toBe(200);
   });
 });
 

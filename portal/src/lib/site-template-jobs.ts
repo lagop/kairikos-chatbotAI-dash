@@ -452,16 +452,36 @@ export async function recoverStaleJobs(prisma: PrismaClient, now: Date = new Dat
   return stale.length;
 }
 
-/** La plantilla aprobada de un sector para una web nueva, o null (entonces
- *  sirve la base). Entre varias, la menos usada: es el primer paso para que
- *  dos negocios del mismo sector no salgan iguales. */
-export async function pickSiteTemplateForSector(prisma: PrismaClient, sector: string | null): Promise<{ id: string } | null> {
+/** La plantilla aprobada de un sector para una web o un borrador nuevo, o
+ *  null (entonces sirve la base). Entre varias, la menos usada, para que dos
+ *  negocios del mismo sector no salgan iguales; en un empate, al azar.
+ *
+ *  29/10/2026 — «usada» cuenta webs de clientes Y borradores de prospectos.
+ *  Antes solo las webs: sin ninguna todavía, todas empataban a cero y todos
+ *  los borradores habrían ido a la misma plantilla (la primera que devolviera
+ *  Postgres) por muchas que se aprobaran. `exceptDraftLeadId`: el borrador
+ *  que se está regenerando no cuenta, para que salga como la primera vez. */
+export async function pickSiteTemplateForSector(
+  prisma: PrismaClient,
+  sector: string | null,
+  options: { exceptDraftLeadId?: string; random?: () => number } = {},
+): Promise<{ id: string } | null> {
   if (!sector) return null;
   const rows = await prisma.siteTemplate.findMany({
     where: { sector, estado: 'aprobada' },
     select: { id: true, _count: { select: { websites: true } } },
   });
   if (!rows.length) return null;
-  rows.sort((a, b) => a._count.websites - b._count.websites);
-  return { id: rows[0].id };
+  // Sin relación en el esquema (el borrador no lleva FK a la plantilla): se
+  // cuentan aparte.
+  const drafts = await prisma.prospectingWebDraft.groupBy({
+    by: ['templateId'],
+    where: { templateId: { in: rows.map((r) => r.id) }, ...(options.exceptDraftLeadId ? { leadId: { not: options.exceptDraftLeadId } } : {}) },
+    _count: { _all: true },
+  });
+  const inDrafts = new Map(drafts.map((d) => [d.templateId, d._count._all]));
+  const uses = rows.map((r) => ({ id: r.id, n: r._count.websites + (inDrafts.get(r.id) ?? 0) }));
+  const least = Math.min(...uses.map((u) => u.n));
+  const tied = uses.filter((u) => u.n === least);
+  return { id: tied[Math.min(tied.length - 1, Math.floor((options.random ?? Math.random)() * tied.length))].id };
 }

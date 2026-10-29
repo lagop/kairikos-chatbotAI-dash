@@ -60,19 +60,22 @@ async function loadTemplate(prisma: PrismaClient, id: string): Promise<SiteTempl
  * sale solo con lo que ya había (titular, servicios…): menos rico, pero con
  * el diseño de la biblioteca (`expanded: false`). Nunca lanza.
  *
+ * `leadId`: al regenerar, el borrador que se sustituye no cuenta en el
+ * reparto entre plantillas (pickSiteTemplateForSector).
+ *
  * `templateId` fija la plantilla en vez de dejar que la elija el sector
  * (convertir un borrador antiguo a una concreta): tiene que estar aprobada y
  * ser de su sector, o devuelve null.
  */
 export async function designForDraft(
   prisma: PrismaClient,
-  input: { copy: WebDraftCopy; themeKey: string; businessName: string; primaryType: string | null; city: string | null; templateId?: string },
+  input: { copy: WebDraftCopy; themeKey: string; businessName: string; primaryType: string | null; city: string | null; templateId?: string; leadId?: string },
 ): Promise<{ content: SiteContent; templateId: string; expanded: boolean } | null> {
   try {
     const sector = input.themeKey.split('-')[0];
     const picked = input.templateId
       ? await prisma.siteTemplate.findFirst({ where: { id: input.templateId, sector, estado: 'aprobada' }, select: { id: true } })
-      : await pickSiteTemplateForSector(prisma, sector);
+      : await pickSiteTemplateForSector(prisma, sector, { exceptDraftLeadId: input.leadId });
     if (!picked) return null;
     const template = await loadTemplate(prisma, picked.id);
     if (!template) return null;

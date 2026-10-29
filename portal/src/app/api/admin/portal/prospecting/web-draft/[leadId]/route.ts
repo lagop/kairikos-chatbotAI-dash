@@ -124,6 +124,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ leadId: str
       businessName,
       primaryType: lead.primaryType,
       city: lead.searchLocation,
+      leadId: lead.id,
     });
     design = { content: designed?.content ?? null, templateId: designed?.templateId ?? null };
     const payload = {
@@ -169,6 +170,14 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ leadId: str
           )[1]
         : await upsert;
       shareToken = saved.shareToken;
+      // 29/10/2026 — regenerado y guardado: a la dirección sin ?regenerar=1.
+      // Si no, recargar la pestaña (o volver a ella mañana) gastaría otra
+      // generación y cambiaría otra vez el texto sin que nadie lo pidiera.
+      // Relativa: detrás del proxy de la VPS, req.url lleva el host interno.
+      if (regenerate) {
+        url.searchParams.delete('regenerar');
+        return new NextResponse(null, { status: 303, headers: { location: `${url.pathname}${url.search}`, 'cache-control': 'private, no-store' } });
+      }
     } catch (err) {
       // La generación ya está pagada: que no se pueda guardar no debe
       // impedir que el comercial vea el borrador que acaba de pedir.
