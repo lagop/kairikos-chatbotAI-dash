@@ -226,7 +226,8 @@ p{margin:0 0 var(--s-4)}
 .contacto{display:grid;gap:var(--s-5);grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr))}
 .contacto>*{min-width:0}
 .contacto-datos{background:var(--cafe);color:var(--claro);border-radius:var(--radio);padding:clamp(1.75rem,4vw,3rem);display:flex;flex-direction:column;gap:var(--s-4)}
-.contacto-datos h2{color:var(--blanco)}
+/* Dentro de una tarjeta con relleno y a media anchura: con el tamaño de los demás h2, un título largo del cliente partía palabras con letras anchas. */
+.contacto-datos h2{color:var(--blanco);font-size:clamp(1.85rem,4vw,3rem)}
 .contacto-datos .antetitulo{color:var(--rosa-claro)}
 .dato{display:flex;gap:var(--s-3);align-items:flex-start;overflow-wrap:anywhere;margin:0}
 .dato .icono{width:2.5rem;height:2.5rem;background:var(--cafe-2);color:var(--rosa-claro);box-shadow:none}
