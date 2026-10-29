@@ -59,14 +59,18 @@ const pages = (template: SiteTemplateSource, sample: keyof typeof SITE_CONTENT_S
     .filter((f) => f.path.endsWith('.html'))
     .map((f) => [f.path, f.content.toString('utf8')] as const);
 
-const strip = (html: string) => html.replace(`\n${EDIT_MODE_HEAD}`, '').replace(/<k-dato data-k-ruta="[^"]*"(?: data-k-bloque style="display:block")?>|<\/k-dato>/g, '');
+const strip = (html: string) =>
+  html
+    .replace(`\n${EDIT_MODE_HEAD}`, '')
+    .replace(/<k-dato data-k-ruta="[^"]*"(?: data-k-bloque style="display:block")?>|<\/k-dato>/g, '')
+    .replace(/ data-k-foto="[^"]*"/g, '');
 
 describe('las marcas de edición', () => {
   it.each(TEMPLATES)('%s: quitando las marcas, cada página es idéntica a la que se publica', (_, template) => {
     for (const sample of ['normal', 'exagerado', 'minimo'] as const) {
       const publicada = new Map(pages(template, sample, false));
       for (const [path, html] of pages(template, sample, true)) {
-        expect(html, `${sample} ${path}`).not.toMatch(/[-]/);
+        expect(html, `${sample} ${path}`).not.toMatch(/[\uE000-\uE004]/);
         expect(strip(html), `${sample} ${path}`).toBe(publicada.get(path));
       }
     }
@@ -88,5 +92,50 @@ describe('las marcas de edición', () => {
     expect(applyEditMarks(html)).toBe(
       '<html><head><title>Hola</title></head><body><img alt="Grifo"><!-- y --><h1><k-dato data-k-ruta="titular">Hola</k-dato></h1><script>var t = "Hola";</script><p><k-dato data-k-ruta="sobre" data-k-bloque style="display:block"><b>Somos</b></k-dato></p></body></html>',
     );
+  });
+});
+
+// ---- Fotos pulsables: qué dato es cada foto (29/10/2026) -------------------------------
+
+import { valueAt } from '@/components/portal/preview-patch';
+
+describe('las fotos en modo edición', () => {
+  const marked = (html: string) =>
+    Array.from(html.matchAll(/<img\b[^>]*>/g), ([tag]) => ({ ruta: /data-k-foto="([^"]+)"/.exec(tag)?.[1] ?? '', src: /\ssrc="([^"]*)"/.exec(tag)?.[1] ?? '' })).filter((f) => f.ruta);
+
+  it.each(TEMPLATES)('%s: la portada y la foto de un bloque, cada una con su dato aunque sean la misma imagen', (_, template) => {
+    // En el ejemplo «exagerado» la foto de «historia» es la misma que la de la
+    // portada: reconocerlas por la imagen las confundiría.
+    const content = structuredClone(SITE_CONTENT_SAMPLES.exagerado);
+    content.paginas[0].secciones.push({ tipo: 'bloque', id: 'historia' });
+    const html = renderSiteFiles(template, content, { ...SAMPLE_RENDER_CONTEXT, edicion: true })
+      .find((f) => f.path === 'index.html')!
+      .content.toString('utf8');
+    const portada = (SAMPLE_RENDER_CONTEXT.fotos.portada ?? '').replace(/^\//, '');
+    expect(content.bloques.find((b) => b.id === 'historia')?.foto.endsWith(portada.split('/').pop()!)).toBe(true);
+    const rutas = marked(html).map((m) => m.ruta);
+    expect(rutas).toContain('imagenes.portada');
+    expect(rutas).toContain('bloques.historia.foto');
+  });
+
+  it.each(TEMPLATES)('%s: cada foto marcada es la de su dato, también en los bloques ricos', (_, template) => {
+    // Cada foto con un nombre propio, para comprobar que la ruta es la suya.
+    const content = structuredClone(SITE_CONTENT_SAMPLES.exagerado);
+    for (const b of content.bloques) {
+      if (b.foto) b.foto = `assets/${b.id}-foto.jpg`;
+      b.fotos.forEach((f, i) => f.foto && (f.foto = `assets/${b.id}-fotos-${i}.jpg`));
+      b.productos.forEach((p, i) => p.foto && (p.foto = `assets/${b.id}-productos-${i}.jpg`));
+      b.pestanas.forEach((p, i) => p.foto && (p.foto = `assets/${b.id}-pestanas-${i}.jpg`));
+    }
+    const fotos = renderSiteFiles(template, content, { ...SAMPLE_RENDER_CONTEXT, edicion: true })
+      .filter((f) => f.path.endsWith('.html'))
+      .flatMap((f) => marked(f.content.toString('utf8')));
+    const deBloques = fotos.filter((f) => f.ruta.startsWith('bloques.'));
+    for (const { ruta, src } of deBloques) expect(src.endsWith(String(valueAt(content, ruta))), ruta).toBe(true);
+    for (const tipo of ['galeria', 'catalogo', 'pestanas', 'marcas']) {
+      const ids = content.bloques.filter((b) => b.tipo === tipo).map((b) => b.id);
+      expect(deBloques.some((f) => ids.includes(f.ruta.split('.')[1])), tipo).toBe(true);
+    }
+    expect(fotos.every((f) => f.ruta.startsWith('bloques.') || f.ruta === 'imagenes.portada' || f.ruta === 'imagenes.logo')).toBe(true);
   });
 });

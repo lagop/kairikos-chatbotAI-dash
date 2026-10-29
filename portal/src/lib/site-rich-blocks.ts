@@ -133,6 +133,9 @@ export function richBlockHasContent(b: RichBlockInput): boolean {
   return b.fotos.some((f) => f.foto);
 }
 
+/** El atributo data-k-foto de una foto del bloque ('' fuera del editor). */
+type FotoAttr = (path: string) => string;
+
 function head(b: RichBlockInput): string {
   return (b.titulo ? `<h2>${esc(b.titulo)}</h2>` : '') + (b.texto ? `<div class="k-texto">${renderSiteMarkdown(b.texto)}</div>` : '');
 }
@@ -140,12 +143,12 @@ function head(b: RichBlockInput): string {
 /** Pestañas. Sin JavaScript son secciones una debajo de otra, cada una con
  *  su título; el script las convierte en pestañas (roles ARIA incluidos) y
  *  oculta los títulos repetidos. */
-function renderPestanas(b: RichBlockInput, src: (p: string) => string): string {
+function renderPestanas(b: RichBlockInput, src: (p: string) => string, foto: FotoAttr): string {
   const paneles = b.pestanas
     .map(
       (t, i) =>
         `<div class="k-panel" id="k-panel-${esc(b.id)}-${i}" data-k-titulo="${esc(t.titulo)}"><h3 class="k-panel-titulo">${esc(t.titulo)}</h3><div class="k-panel-cuerpo${t.foto ? ' k-panel-cuerpo--foto' : ''}">` +
-        (t.foto ? `<img src="${src(t.foto)}" alt="${esc(t.alt)}" loading="lazy">` : '') +
+        (t.foto ? `<img${foto(`pestanas.${i}.foto`)} src="${src(t.foto)}" alt="${esc(t.alt)}" loading="lazy">` : '') +
         `<div class="k-panel-texto">${renderSiteMarkdown(t.texto)}</div></div></div>`,
     )
     .join('');
@@ -183,10 +186,10 @@ function renderTrayectoria(b: RichBlockInput): string {
 
 /** Marcas y certificados. Con más de cuatro, pasan en cinta (la segunda copia
  *  es solo para que el bucle no tenga salto, y se oculta a los lectores). */
-function renderMarcas(b: RichBlockInput, src: (p: string) => string): string {
-  const logos = b.fotos.filter((f) => f.foto);
+function renderMarcas(b: RichBlockInput, src: (p: string) => string, foto: FotoAttr): string {
+  const logos = b.fotos.map((f, i) => ({ ...f, i })).filter((f) => f.foto);
   const items = logos
-    .map((f) => `<li><img src="${src(f.foto)}" alt="${esc(f.alt)}" loading="lazy">${f.texto ? `<span class="k-marca-texto">${esc(f.texto)}</span>` : ''}</li>`)
+    .map((f) => `<li><img${foto(`fotos.${f.i}.foto`)} src="${src(f.foto)}" alt="${esc(f.alt)}" loading="lazy">${f.texto ? `<span class="k-marca-texto">${esc(f.texto)}</span>` : ''}</li>`)
     .join('');
   if (logos.length <= 4) return `<div class="k-marcas"><ul class="k-marcas-pista">${items}</ul></div>`;
   return `<div class="k-marcas k-marcas--cinta"><ul class="k-marcas-pista">${items}</ul><ul class="k-marcas-pista" aria-hidden="true">${items.replace(/ alt="[^"]*"/g, ' alt=""')}</ul></div>`;
@@ -198,12 +201,12 @@ function renderMarcas(b: RichBlockInput, src: (p: string) => string): string {
  * daría a Google la IP del visitante). Sin JavaScript es un enlace al vídeo;
  * con él, al pulsar se cambia por el reproductor en modo privado.
  */
-function renderVideo(b: RichBlockInput, src: (p: string) => string): string {
+function renderVideo(b: RichBlockInput, src: (p: string) => string, foto: FotoAttr): string {
   const v = parseVideoUrl(b.video);
   if (!v) return '';
   const nombre = v.plataforma === 'youtube' ? 'YouTube' : 'Vimeo';
   const enlace = v.plataforma === 'youtube' ? `https://www.youtube.com/watch?v=${v.id}` : `https://vimeo.com/${v.id}`;
-  const portada = b.foto ? `<img src="${src(b.foto)}" alt="${esc(b.fotoAlt)}" loading="lazy">` : '<span class="k-video-fondo" aria-hidden="true"></span>';
+  const portada = b.foto ? `<img${foto('foto')} src="${src(b.foto)}" alt="${esc(b.fotoAlt)}" loading="lazy">` : '<span class="k-video-fondo" aria-hidden="true"></span>';
   return (
     `<div class="k-video-marco" data-k-video="${v.plataforma}" data-k-id="${esc(v.id)}" data-k-titulo="${esc(b.titulo || 'Vídeo')}">` +
     `<a class="k-video-portada" href="${enlace}" target="_blank" rel="noopener">${portada}<span class="k-video-boton" aria-hidden="true"></span><span class="k-video-etiqueta">Reproducir el vídeo</span></a>` +
@@ -213,10 +216,13 @@ function renderVideo(b: RichBlockInput, src: (p: string) => string): string {
 
 /** El HTML de un bloque rico. `base` es lo que se antepone a las rutas de
  *  las fotos desde esta página ('' en la portada, '../' en una interior). */
-export function renderRichBlock(b: RichBlockInput, base: string, ejemplo = false): string {
+export function renderRichBlock(b: RichBlockInput, base: string, ejemplo = false, edicion = false): string {
   // Solo las relativas suben de nivel: una absoluta ('/web-draft/…', la de
   // la vista previa del laboratorio) ya apunta bien desde cualquier página.
   const src = (p: string) => esc(p && !/^(?:https?:|\/)/.test(p) ? base + p : p);
+  // Solo en la vista del editor (29/10/2026): el dato de cada foto, para
+  // cambiarla pulsándola (SiteLivePreview). Lo publicado no lo lleva.
+  const foto: FotoAttr = (path) => (edicion ? ` data-k-foto="${esc(`bloques.${b.id}.${path}`)}"` : '');
   // De ejemplo (site-sector-blocks.ts): el bloque entero va resaltado con la
   // marca de la plantilla (.dato-ejemplo-bloque).
   const open = `<section class="k-bloque k-${b.tipo.replace('_', '-')}" id="bloque-${esc(b.id)}"><div class="k-dentro">${ejemplo ? '<div class="dato-ejemplo-bloque">' : ''}${head(b)}`;
@@ -224,27 +230,28 @@ export function renderRichBlock(b: RichBlockInput, base: string, ejemplo = false
 
   if (b.tipo === 'galeria') {
     const items = b.fotos
+      .map((f, i) => ({ ...f, i }))
       .filter((f) => f.foto)
       .map(
         (f) =>
-          `<li><a class="k-galeria-foto" href="${src(f.foto)}" data-k-galeria="${esc(b.id)}"${f.texto ? ` data-k-pie="${esc(f.texto)}"` : ''}><img src="${src(f.foto)}" alt="${esc(f.alt)}" loading="lazy"></a>${f.texto ? `<p class="k-pie">${esc(f.texto)}</p>` : ''}</li>`,
+          `<li><a class="k-galeria-foto" href="${src(f.foto)}" data-k-galeria="${esc(b.id)}"${f.texto ? ` data-k-pie="${esc(f.texto)}"` : ''}><img${foto(`fotos.${f.i}.foto`)} src="${src(f.foto)}" alt="${esc(f.alt)}" loading="lazy"></a>${f.texto ? `<p class="k-pie">${esc(f.texto)}</p>` : ''}</li>`,
       )
       .join('');
     return `${open}<ul class="k-galeria-rejilla">${items}</ul>${close}`;
   }
 
   if (b.tipo === 'antes_despues') {
-    const [antes, despues] = b.fotos.filter((f) => f.foto);
+    const [antes, despues] = b.fotos.map((f, i) => ({ ...f, i })).filter((f) => f.foto);
     if (!despues) {
       // Solo una foto: se enseña sola, sin comparador.
-      return `${open}<figure class="k-comparador-sola"><img src="${src(antes.foto)}" alt="${esc(antes.alt)}" loading="lazy"></figure>${close}`;
+      return `${open}<figure class="k-comparador-sola"><img${foto(`fotos.${antes.i}.foto`)} src="${src(antes.foto)}" alt="${esc(antes.alt)}" loading="lazy"></figure>${close}`;
     }
     const la = antes.texto || 'Antes';
     const ld = despues.texto || 'Después';
     return (
       `${open}<figure class="k-comparador" style="--k-pos:50%">` +
-      `<img class="k-comparador-antes" src="${src(antes.foto)}" alt="${esc(la)}: ${esc(antes.alt)}" loading="lazy">` +
-      `<div class="k-comparador-despues"><img src="${src(despues.foto)}" alt="${esc(ld)}: ${esc(despues.alt)}" loading="lazy"></div>` +
+      `<img${foto(`fotos.${antes.i}.foto`)} class="k-comparador-antes" src="${src(antes.foto)}" alt="${esc(la)}: ${esc(antes.alt)}" loading="lazy">` +
+      `<div class="k-comparador-despues"><img${foto(`fotos.${despues.i}.foto`)} src="${src(despues.foto)}" alt="${esc(ld)}: ${esc(despues.alt)}" loading="lazy"></div>` +
       `<span class="k-comparador-linea" aria-hidden="true"></span>` +
       `<span class="k-etiqueta k-etiqueta--antes" aria-hidden="true">${esc(la)}</span><span class="k-etiqueta k-etiqueta--despues" aria-hidden="true">${esc(ld)}</span>` +
       `<input class="k-comparador-control" type="range" min="0" max="100" value="50" aria-label="Desliza para comparar: ${esc(la)} y ${esc(ld)}">` +
@@ -252,11 +259,11 @@ export function renderRichBlock(b: RichBlockInput, base: string, ejemplo = false
     );
   }
 
-  if (b.tipo === 'pestanas') return open + renderPestanas(b, src) + close;
+  if (b.tipo === 'pestanas') return open + renderPestanas(b, src, foto) + close;
   if (b.tipo === 'comparativa') return open + renderComparativa(b) + close;
   if (b.tipo === 'trayectoria') return open + renderTrayectoria(b) + close;
-  if (b.tipo === 'marcas') return open + renderMarcas(b, src) + close;
-  if (b.tipo === 'video') return open + renderVideo(b, src) + close;
+  if (b.tipo === 'marcas') return open + renderMarcas(b, src, foto) + close;
+  if (b.tipo === 'video') return open + renderVideo(b, src, foto) + close;
 
   // Catálogo
   const cats = [...new Map(b.productos.filter((p) => p.categoria).map((p) => [slug(p.categoria), p.categoria])).entries()];
@@ -267,11 +274,11 @@ export function renderRichBlock(b: RichBlockInput, base: string, ejemplo = false
           .join('')}</div>`
       : '';
   const productos = b.productos
-    .map((p) => {
-      const foto = p.foto ? `<img src="${src(p.foto)}" alt="${esc(p.alt || p.nombre)}" loading="lazy">` : '<div class="k-producto-sin-foto" aria-hidden="true"></div>';
+    .map((p, i) => {
+      const img = p.foto ? `<img${foto(`productos.${i}.foto`)} src="${src(p.foto)}" alt="${esc(p.alt || p.nombre)}" loading="lazy">` : '<div class="k-producto-sin-foto" aria-hidden="true"></div>';
       const caracts = p.caracteristicas.length ? `<ul class="k-caracteristicas">${p.caracteristicas.map((c) => `<li>${esc(c)}</li>`).join('')}</ul>` : '';
       return (
-        `<li class="k-producto" data-k-categoria="${p.categoria ? esc(slug(p.categoria)) : ''}">${foto}<div class="k-producto-cuerpo">` +
+        `<li class="k-producto" data-k-categoria="${p.categoria ? esc(slug(p.categoria)) : ''}">${img}<div class="k-producto-cuerpo">` +
         (p.categoria ? `<p class="k-producto-categoria">${esc(p.categoria)}</p>` : '') +
         `<h3>${esc(p.nombre)}</h3>${p.descripcion ? `<p>${esc(p.descripcion)}</p>` : ''}${caracts}${p.precio ? `<p class="k-precio">${esc(p.precio)}</p>` : ''}</div></li>`
       );

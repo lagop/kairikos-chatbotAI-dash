@@ -190,7 +190,9 @@ function renderNodes(nodes: MustacheNode[], stack: Ctx[], examples: Set<string>,
       // Modo edición (29/10/2026): el valor, entre marcas con su ruta. Si cae
       // en texto visible acabará en un <k-dato>; si cae en un atributo o en
       // <title>, se quitan (applyEditMarks).
-      out += editable && base ? `${path !== base ? MARK_BLOCK : MARK_OPEN}${base}${MARK_SEP}${s}${MARK_CLOSE}` : s;
+      const photo = edit ? photoContentPath(path) : null;
+      if (photo) out += `${MARK_PHOTO}${photo}${MARK_SEP}${s}${MARK_CLOSE}`;
+      else out += editable && base ? `${path !== base ? MARK_BLOCK : MARK_OPEN}${base}${MARK_SEP}${s}${MARK_CLOSE}` : s;
       continue;
     }
     const empty = isEmpty(value);
@@ -231,7 +233,22 @@ const MARK_OPEN = '\uE000';
 const MARK_BLOCK = '\uE003';
 const MARK_SEP = '\uE001';
 const MARK_CLOSE = '\uE002';
-const EDIT_MARK_CHARS = /[\uE000-\uE003]/g;
+const EDIT_MARK_CHARS = /[\uE000-\uE004]/g;
+/** Una foto (29/10/2026): va en src="…", así que no acaba en un <k-dato>
+ *  sino en un data-k-foto del <img> que la contiene. */
+const MARK_PHOTO = '\uE004';
+
+/** El dato del contenido que guarda una foto de la plantilla, o null. La
+ *  portada de muestra del oficio (sin foto propia) también es «la portada»:
+ *  lo que se suba pulsándola pasa a ser la suya. Las de «equipo» y «trabajo»
+ *  son de muestra y no tienen dato. */
+function photoContentPath(path: string | null): string | null {
+  if (path === 'logo') return 'imagenes.logo';
+  if (path === 'fotos.portada') return 'imagenes.portada';
+  if (path && /^bloques\.[^.]+\.foto$/.test(path)) return path;
+  return null;
+}
+
 /** Elementos cuyo contenido no es HTML: una etiqueta dentro se vería escrita. */
 const RAW_TEXT_ELEMENTS = new Set(['script', 'style', 'title', 'textarea', 'noscript', 'iframe', 'xmp', 'option']);
 
@@ -250,14 +267,19 @@ export function applyEditMarks(html: string): string {
   let quote = '';
   let tagName = '';
   let rawTag = '';
+  let photo = '';
   const closers: string[] = [];
   for (let i = 0; i < html.length; i++) {
     const ch = html[i];
-    if (ch === MARK_OPEN || ch === MARK_BLOCK) {
+    if (ch === MARK_OPEN || ch === MARK_BLOCK || ch === MARK_PHOTO) {
       const sep = html.indexOf(MARK_SEP, i);
       const ruta = sep > i ? html.slice(i + 1, sep) : '';
       i = sep > i ? sep : i;
-      if (state === 'text' && ruta) {
+      if (ch === MARK_PHOTO) {
+        // Una foto: su ruta va en el <img> donde está, al cerrar la etiqueta.
+        if (state === 'tag' && tagName === 'img' && ruta) photo = ruta;
+        closers.push('');
+      } else if (state === 'text' && ruta) {
         out += ch === MARK_BLOCK ? `<k-dato data-k-ruta="${esc(ruta)}" data-k-bloque style="display:block">` : `<k-dato data-k-ruta="${esc(ruta)}">`;
         closers.push('</k-dato>');
       } else closers.push('');
@@ -268,12 +290,18 @@ export function applyEditMarks(html: string): string {
       continue;
     }
     if (ch === MARK_SEP) continue;
+    if (state === 'tag' && !quote && ch === '>' && photo) {
+      const attr = ` data-k-foto="${esc(photo)}"`;
+      out = out.endsWith('/') ? `${out.slice(0, -1)}${attr}/` : out + attr;
+      photo = '';
+    }
     out += ch;
     if (state === 'text') {
       if (ch === '<') {
         if (html.startsWith('!--', i + 1)) state = 'comment';
         else if (/[a-zA-Z/!]/.test(html[i + 1] ?? '')) {
           state = 'tag';
+          photo = '';
           const m = /^\/?([a-zA-Z][a-zA-Z0-9-]*)/.exec(html.slice(i + 1, i + 40));
           tagName = html[i + 1] === '/' ? '' : (m?.[1] ?? '').toLowerCase();
         }
@@ -500,7 +528,7 @@ function renderSections(
         const rich = { ...block, tipo: block.tipo };
         if (richBlockHasContent(rich)) {
           const ejemplo = content.ejemplos.some((e) => e.startsWith(`bloques.${block.id}.`));
-          rendered.push({ kind: 'block', anchor: `bloque-${block.id}`, tipo: 'bloque', html: renderRichBlock(rich, pageFile(page.ruta).base, ejemplo) });
+          rendered.push({ kind: 'block', anchor: `bloque-${block.id}`, tipo: 'bloque', html: renderRichBlock(rich, pageFile(page.ruta).base, ejemplo, Boolean(edit)) });
         }
         continue;
       }

@@ -71,6 +71,12 @@ import { emptyHistory, historyCommand, recordStep, redoStep, undoStep } from './
 // antes lo que había (edit-history.ts). Deshacer hasta lo último guardado
 // vuelve a «Todo guardado». Una foto subida y luego deshecha se queda entre
 // las subidas sin usar: el servidor ya las limita (too_many_images).
+//
+// 29/10/2026 (5) — las fotos se cambian también pulsándolas en la vista
+// (pickPhoto): se reducen y se suben igual que desde el formulario
+// (uploadImage) y, si es la de un bloque, se abre su descripción, que ya no
+// describe la foto nueva. Las del antes y después no se pueden pulsar: encima
+// está el deslizador que las compara; esas, desde el formulario.
 // =============================================================================
 
 /** Lo mismo que RESERVED_PAGE_ROOTS en lib/site-content.ts. */
@@ -292,6 +298,9 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
   const historyRef = useRef(emptyHistory<Snapshot>());
   const [historySize, setHistorySize] = useState({ past: 0, future: 0 });
   const travelRef = useRef<(cmd: 'deshacer' | 'rehacer') => void>(() => {});
+  // Fotos pulsadas en la vista: el selector de archivos y a qué dato va.
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const photoTargetRef = useRef<{ ruta: string; seccion: string | null } | null>(null);
   // En una pantalla pequeña la vista enseña siempre el móvil: la de ordenador
   // reducida a 390 px no se lee.
   const [pantallaPequena, setPantallaPequena] = useState(false);
@@ -374,6 +383,36 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [abierto]);
+
+  /** Se pulsó una foto en la vista: elegir otra. El selector se abre aquí,
+   *  dentro del mismo clic (si no, el navegador no lo deja abrir). */
+  function pickPhoto(ruta: string, seccion: string | null) {
+    photoTargetRef.current = { ruta, seccion };
+    photoInputRef.current?.click();
+  }
+
+  async function uploadPhoto(file: File) {
+    const target = photoTargetRef.current;
+    if (!target) return;
+    setBusy('foto');
+    setError(null);
+    const result = await uploadImage(props.apiBase, file, target.ruta === 'imagenes.logo' ? 'logo' : 'foto');
+    setBusy(null);
+    if ('error' in result) {
+      setError(result.error);
+      return;
+    }
+    if (target.ruta.startsWith('imagenes.')) {
+      const key = target.ruta === 'imagenes.logo' ? 'logo' : 'portada';
+      update((d) => void (d.imagenes = { logo: d.imagenes?.logo ?? '', portada: d.imagenes?.portada ?? '', [key]: result.path }));
+      return;
+    }
+    setValue(target.ruta, result.path);
+    // La descripción de la foto nueva (para quien no la ve y para Google), a
+    // mano en el formulario: la anterior describía otra foto.
+    const alt = target.ruta.replace(/\.foto$/, /\.(fotos|productos|pestanas)\.\d+\.foto$/.test(target.ruta) ? '.alt' : '.fotoAlt');
+    pickFromPreview({ ruta: alt, seccion: target.seccion, inline: false });
+  }
 
   function abrirEditor() {
     if (window.location.hash !== '#editar') window.history.pushState({ kEditor: true }, '', '#editar');
@@ -1218,6 +1257,8 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
   const statusText =
     busy === 'save' ? (
       'Guardando…'
+    ) : busy === 'foto' ? (
+      'Subiendo la foto…'
     ) : busy === 'publish' ? (
       'Publicando…'
     ) : error ? (
@@ -1343,6 +1384,19 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
             maxFor={maxFor}
             onListAction={view.kind === 'pagina' ? listAction : undefined}
             onHistory={travel}
+            onPhoto={view.kind === 'pagina' && busy === null ? pickPhoto : undefined}
+          />
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            data-testid="site-editor-photo-input"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (file) void uploadPhoto(file);
+            }}
           />
         </div>
       </div>
@@ -1408,6 +1462,23 @@ async function prepareImage(file: File, kind: 'logo' | 'foto'): Promise<Blob> {
   return fallback;
 }
 
+/** Reducir y subir una imagen: su ruta en la web, o el error para el cliente.
+ *  La usan el selector del formulario y las fotos pulsadas en la vista. */
+async function uploadImage(apiBase: string, file: File, kind: 'logo' | 'foto'): Promise<{ path: string } | { error: string }> {
+  let blob: Blob;
+  try {
+    blob = await prepareImage(file, kind);
+  } catch {
+    return { error: UPLOAD_ERRORS.unreadable };
+  }
+  const form = new FormData();
+  form.append('archivo', blob, `imagen.${blob.type.split('/')[1] ?? 'jpg'}`);
+  const res = await fetch(`${apiBase}/images`, { method: 'POST', body: form }).catch(() => null);
+  const body = (await res?.json().catch(() => ({}))) as { path?: string; error?: string };
+  if (!res?.ok || !body.path) return { error: UPLOAD_ERRORS[body.error ?? 'internal_error'] ?? UPLOAD_ERRORS.internal_error };
+  return { path: body.path };
+}
+
 /** Subir, ver y quitar una imagen. La miniatura sale de la vista previa, que
  *  sirve la subida aunque todavía no esté guardada en el contenido. */
 function ImagePicker({
@@ -1429,23 +1500,13 @@ function ImagePicker({
 
   async function upload(file: File) {
     setState({ busy: true, error: null });
-    let blob: Blob;
-    try {
-      blob = await prepareImage(file, kind);
-    } catch {
-      setState({ busy: false, error: UPLOAD_ERRORS.unreadable });
-      return;
-    }
-    const form = new FormData();
-    form.append('archivo', blob, `imagen.${blob.type.split('/')[1] ?? 'jpg'}`);
-    const res = await fetch(`${apiBase}/images`, { method: 'POST', body: form }).catch(() => null);
-    const body = (await res?.json().catch(() => ({}))) as { path?: string; error?: string };
-    if (!res?.ok || !body.path) {
-      setState({ busy: false, error: UPLOAD_ERRORS[body.error ?? 'internal_error'] ?? UPLOAD_ERRORS.internal_error });
+    const result = await uploadImage(apiBase, file, kind);
+    if ('error' in result) {
+      setState({ busy: false, error: result.error });
       return;
     }
     setState({ busy: false, error: null });
-    onChange(body.path);
+    onChange(result.path);
   }
 
   return (
