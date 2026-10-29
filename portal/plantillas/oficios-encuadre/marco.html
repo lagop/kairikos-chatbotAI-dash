@@ -252,7 +252,8 @@ p{margin:0 0 var(--s-4)}
 .contacto{display:grid;gap:0;grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr))}
 .contacto>*{min-width:0}
 .contacto-datos{background:var(--tinta);color:var(--claro);padding:clamp(1.75rem,4vw,3.5rem);display:flex;flex-direction:column;gap:var(--s-4)}
-.contacto-datos h2{color:var(--blanco)}
+/* Dentro de una tarjeta con relleno y a media anchura: con el tamaño de los demás h2, un título largo del cliente partía palabras (Instalaciones, climatización) con las letras anchas. */
+.contacto-datos h2{color:var(--blanco);font-size:clamp(1.85rem,4vw,3rem)}
 .contacto-datos .rotulo{color:var(--cobalto-claro)}
 .dato{display:flex;gap:var(--s-3);align-items:flex-start;overflow-wrap:anywhere;margin:0;padding-top:var(--s-4);border-top:1px solid var(--tinta-3)}
 .dato .icono{width:2.5rem;height:2.5rem;color:var(--cobalto-claro);border-color:var(--tinta-3)}

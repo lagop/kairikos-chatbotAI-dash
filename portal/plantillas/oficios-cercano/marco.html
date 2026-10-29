@@ -147,7 +147,8 @@ p{margin:0 0 var(--s-4)}
 .sobre-tarjeta{position:relative;display:grid;gap:var(--s-6) var(--s-7);grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr));align-items:start;background:var(--blanco);border-radius:var(--radio);padding:clamp(1.75rem,4vw,3.5rem);overflow:hidden;isolation:isolate}
 .sobre-tarjeta>*{min-width:0}
 .sobre-tarjeta::after{content:"";position:absolute;inset:auto -4rem -4rem auto;width:16rem;height:16rem;background:var(--puntos);border-radius:50%;z-index:-1}
-.sobre-tarjeta h2{font-size:clamp(2.2rem,4.6vw,3.6rem)}
+/* Mínimo más bajo que los demás h2: va dentro de la tarjeta, y el cliente puede poner un título largo (antes era siempre el nombre). */
+.sobre-tarjeta h2{font-size:clamp(1.85rem,4.6vw,3.6rem)}
 .sobre-tarjeta .saludo{display:block;font:700 1.2rem/1 var(--display);color:var(--coral);margin-bottom:var(--s-3)}
 .foto-redonda{margin:var(--s-5) 0 0}
 .foto-redonda img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:var(--radio) var(--radio) var(--radio) 120px}
