@@ -1,7 +1,7 @@
 <section class="seccion" id="{{ancla}}"><div class="contenedor contacto">
   <div class="contacto-datos aparece">
     <span class="rotulo">Contacto</span>
-    <h2>Cuéntenos qué necesita</h2>
+    <h2 data-k-titulo-seccion>Cuéntenos qué necesita</h2>
     {{#telefono}}<p class="dato dato-grande"><svg aria-hidden="true"><use href="#i-telefono"></use></svg><a href="tel:{{telefono_href}}">{{telefono}}</a></p>{{/telefono}}
     {{#direccion}}<p class="dato"><svg aria-hidden="true"><use href="#i-mapa"></use></svg><span>{{direccion}}{{#maps_url}} · <a href="{{maps_url}}">Cómo llegar</a>{{/maps_url}}</span></p>{{/direccion}}
     {{#horario.length}}<div class="dato"><svg aria-hidden="true"><use href="#i-reloj"></use></svg><table><caption class="saltar">Horario</caption><tbody>{{#horario}}<tr><th scope="row">{{dias}}</th><td>{{horas}}</td></tr>{{/horario}}</tbody></table></div>{{/horario.length}}

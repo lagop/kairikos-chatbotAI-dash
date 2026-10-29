@@ -1,6 +1,6 @@
 <section class="seccion seccion--arena" id="{{ancla}}"><div class="contenedor">
   <div class="opiniones-cabeza">
-    <div><span class="rotulo">Opiniones</span><h2>Lo que cuentan sus clientes</h2></div>
+    <div><span class="rotulo">Opiniones</span><h2 data-k-titulo-seccion>Lo que cuentan sus clientes</h2></div>
     {{#valoracion}}<div class="nota-google"><div class="circulo"><strong>{{valoracion}}</strong></div><div><span class="estrellas" aria-hidden="true"><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg></span><p>de media en Google{{#num_resenas}}, con {{num_resenas}} reseñas{{/num_resenas}}</p>{{#maps_url}}<p><a href="{{maps_url}}">Leerlas en Google Maps</a></p>{{/maps_url}}</div></div>{{/valoracion}}
   </div>
   {{#citas_html}}<ul class="rejilla citas">{{{citas_html}}}</ul>{{/citas_html}}

@@ -92,3 +92,28 @@ describe('lo que enseña la vista', () => {
     expect(distintos.map(([, ruta, inner]) => `${ruta}: ${inner}`)).toEqual([]);
   });
 });
+
+describe('un título de sección con el de la plantilla a la vista (29/10/2026)', () => {
+  const prev = { datos: { titulos: { faq: '' } } };
+  const next = { datos: { titulos: { faq: 'Dudas' } } };
+
+  it('lo escrito en el formulario sustituye al de la plantilla al momento', () => {
+    expect(instantTextPatches(prev, next, [{ ruta: 'titulos.faq', text: 'Lo que más nos preguntan', defecto: true }])).toEqual([{ index: 0, text: 'Dudas' }]);
+  });
+
+  it('sin la marca, un texto que no es el valor anterior no se toca', () => {
+    expect(instantTextPatches(prev, next, [{ ruta: 'titulos.faq', text: 'Lo que más nos preguntan' }])).toEqual([]);
+  });
+
+  it('vaciarlo espera al servidor: vuelve el de la plantilla, que la vista no sabe', () => {
+    expect(instantTextPatches(next, prev, [{ ruta: 'titulos.faq', text: 'Dudas' }])).toEqual([]);
+  });
+});
+
+describe('escribiendo sobre el título de la plantilla (29/10/2026)', () => {
+  it('no se reescribe: ya enseña lo nuevo, y reescribirlo mandaría el cursor al principio', () => {
+    const prev = { datos: { titulos: { faq: '' } } };
+    const next = { datos: { titulos: { faq: 'D' } } };
+    expect(instantTextPatches(prev, next, [{ ruta: 'titulos.faq', text: 'D', defecto: true }])).toEqual([]);
+  });
+});

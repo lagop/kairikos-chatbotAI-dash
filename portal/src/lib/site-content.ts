@@ -54,6 +54,20 @@ export const SITE_SECTION_TYPES = [
 ] as const;
 export type SiteSectionType = (typeof SITE_SECTION_TYPES)[number];
 
+/** Las secciones con un título que pone la plantilla («En qué le podemos
+ *  ayudar») y que el cliente puede cambiar por el suyo (29/10/2026). La
+ *  plantilla lo marca con data-k-titulo-seccion y el motor pone ahí el del cliente
+ *  (site-template.ts, sectionTitle). Las demás ya titulan con un dato: la
+ *  portada con el titular, la llamada con llamada_accion; las cifras no
+ *  llevan título. */
+export const SITE_TITLED_SECTIONS = ['servicios', 'sobre', 'proceso', 'garantias', 'precios', 'opiniones', 'faq', 'zona', 'contacto'] as const satisfies readonly SiteSectionType[];
+export type SiteTitledSection = (typeof SITE_TITLED_SECTIONS)[number];
+
+/** Sin ningún título propio: todos los de la plantilla. */
+export function emptySiteTitles(): Record<SiteTitledSection, string> {
+  return Object.fromEntries(SITE_TITLED_SECTIONS.map((t) => [t, ''])) as Record<SiteTitledSection, string>;
+}
+
 /** Los bloques libres: lo que el cliente añade cuando quiere decir algo que no
  *  cabe en ninguna sección («Nuestra historia», «Cerrado en agosto»). Toda
  *  plantilla tiene que traer los cuatro diseñados, para que un bloque añadido
@@ -334,6 +348,21 @@ const datosSchema = z.object({
   /** El horario es del CLIENTE, no de Google: el de Places no se puede
    *  guardar (condiciones de Google Maps, ver places-retention.ts). */
   horario: z.array(z.object({ dias: text(40).min(1), horas: text(60).min(1) })).max(SITE_LIMITS.horario).default([]),
+  /** Los títulos de sección del cliente. Vacío = el de la plantilla, que
+   *  cambia con ella; uno escrito se queda aunque cambie de plantilla. */
+  titulos: z
+    .object({
+      servicios: optionalText(90),
+      sobre: optionalText(90),
+      proceso: optionalText(90),
+      garantias: optionalText(90),
+      precios: optionalText(90),
+      opiniones: optionalText(90),
+      faq: optionalText(90),
+      zona: optionalText(90),
+      contacto: optionalText(90),
+    } satisfies Record<SiteTitledSection, unknown>)
+    .default({}),
 });
 export type SiteData = z.infer<typeof datosSchema>;
 

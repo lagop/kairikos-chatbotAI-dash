@@ -1,6 +1,6 @@
 <section class="seccion seccion--blanca" id="{{ancla}}"><div class="contenedor">
   <div class="opiniones-cabeza">
-    <div><p class="etiqueta">Opiniones</p><h2>Lo que dicen sus clientes</h2></div>
+    <div><p class="etiqueta">Opiniones</p><h2 data-k-titulo-seccion>Lo que dicen sus clientes</h2></div>
     {{#valoracion}}<div class="nota-google"><strong>{{valoracion}}</strong><div><span class="estrellas" aria-hidden="true"><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg></span><p>de media en Google{{#num_resenas}}, con {{num_resenas}} reseñas{{/num_resenas}}</p>{{#maps_url}}<p><a href="{{maps_url}}">Leerlas en Google Maps</a></p>{{/maps_url}}</div></div>{{/valoracion}}
   </div>
   {{#citas_html}}<ul class="celdas citas">{{{citas_html}}}</ul>{{/citas_html}}

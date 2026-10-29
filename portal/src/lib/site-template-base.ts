@@ -225,46 +225,46 @@ const SECCIONES: SiteTemplateSource['secciones'] = {
 </div></section>`,
   servicios: `<section class="seccion" id="{{ancla}}"><div class="contenedor">
   <span class="rotulo">Servicios</span>
-  <h2>Lo que hacemos</h2>
+  <h2 data-k-titulo-seccion>Lo que hacemos</h2>
   <div class="rejilla">
     {{#servicios}}<article class="tarjeta aparece"><span class="icono"><svg aria-hidden="true"><use href="#i-{{#icono}}{{icono}}{{/icono}}{{^icono}}check{{/icono}}"></use></svg></span><h3>{{nombre}}</h3>{{#descripcion}}<p>{{descripcion}}</p>{{/descripcion}}</article>{{/servicios}}
   </div>
 </div></section>`,
   sobre: `<section class="seccion seccion--alt" id="{{ancla}}"><div class="contenedor partida">
   {{#fotos.equipo}}<img class="aparece" src="{{fotos.equipo}}" alt="El equipo de {{nombre}}">{{/fotos.equipo}}
-  <div><span class="rotulo">Quiénes somos</span><h2>{{nombre}}</h2><div class="lead">{{{sobre_html}}}</div></div>
+  <div><span class="rotulo">Quiénes somos</span><h2 data-k-titulo-seccion>{{nombre}}</h2><div class="lead">{{{sobre_html}}}</div></div>
 </div></section>`,
   proceso: `<section class="seccion" id="{{ancla}}"><div class="contenedor">
   <span class="rotulo">Cómo trabajamos</span>
-  <h2>Del aviso al trabajo terminado</h2>
+  <h2 data-k-titulo-seccion>Del aviso al trabajo terminado</h2>
   <ol class="pasos">{{#proceso}}<li class="aparece"><h3>{{titulo}}</h3>{{#texto}}<p>{{texto}}</p>{{/texto}}</li>{{/proceso}}</ol>
 </div></section>`,
   garantias: `<section class="seccion seccion--alt" id="{{ancla}}"><div class="contenedor">
   <span class="rotulo">Garantías</span>
-  <h2>Trabajo con tranquilidad</h2>
+  <h2 data-k-titulo-seccion>Trabajo con tranquilidad</h2>
   <div class="rejilla">{{#garantias}}<article class="tarjeta aparece"><span class="icono"><svg aria-hidden="true"><use href="#i-escudo"></use></svg></span><h3>{{titulo}}</h3>{{#texto}}<p>{{texto}}</p>{{/texto}}</article>{{/garantias}}</div>
 </div></section>`,
   precios: `<section class="seccion" id="{{ancla}}"><div class="contenedor">
   <span class="rotulo">Precios</span>
-  <h2>Precios orientativos</h2>
+  <h2 data-k-titulo-seccion>Precios orientativos</h2>
   <div class="rejilla">{{#precios.filas}}<article class="tarjeta aparece"><h3>{{concepto}}</h3>{{#detalle}}<p>{{detalle}}</p>{{/detalle}}<p class="precio">{{precio}}</p></article>{{/precios.filas}}</div>
   {{#precios.nota}}<p class="nota">{{precios.nota}}</p>{{/precios.nota}}
 </div></section>`,
   opiniones: `<section class="seccion seccion--alt" id="{{ancla}}"><div class="contenedor">
   <span class="rotulo">Opiniones</span>
-  <h2>Lo que dicen sus clientes</h2>
+  <h2 data-k-titulo-seccion>Lo que dicen sus clientes</h2>
   {{#valoracion}}<p class="lead"><strong>{{valoracion}}</strong> en Google{{#num_resenas}}, con {{num_resenas}} reseñas{{/num_resenas}}{{#maps_url}} · <a href="{{maps_url}}">Ver en Google Maps</a>{{/maps_url}}</p>{{/valoracion}}
   {{#citas_html}}<ul class="rejilla citas">{{{citas_html}}}</ul>{{/citas_html}}
   {{#resenas_html}}<div class="rejilla resenas">{{{resenas_html}}}</div>{{{atribucion_google_html}}}{{/resenas_html}}
 </div></section>`,
   faq: `<section class="seccion" id="{{ancla}}"><div class="contenedor">
   <span class="rotulo">Preguntas frecuentes</span>
-  <h2>Antes de llamar</h2>
+  <h2 data-k-titulo-seccion>Antes de llamar</h2>
   <div class="preguntas">{{#faq}}<details class="aparece"><summary>{{pregunta}}</summary>{{{respuesta_html}}}</details>{{/faq}}</div>
 </div></section>`,
   zona: `<section class="seccion seccion--alt" id="{{ancla}}"><div class="contenedor">
   <span class="rotulo">Zona</span>
-  <h2>Dónde trabajamos</h2>
+  <h2 data-k-titulo-seccion>Dónde trabajamos</h2>
   {{#zona.texto}}<p class="lead">{{zona.texto}}</p>{{/zona.texto}}
   {{#zona.lugares.length}}<ul class="chips">{{#zona.lugares}}<li>{{nombre}}</li>{{/zona.lugares}}</ul>{{/zona.lugares.length}}
 </div></section>`,
@@ -275,7 +275,7 @@ const SECCIONES: SiteTemplateSource['secciones'] = {
   contacto: `<section class="seccion" id="{{ancla}}"><div class="contenedor contacto">
   <div>
     <span class="rotulo">Contacto</span>
-    <h2>Cuéntenos qué necesita</h2>
+    <h2 data-k-titulo-seccion>Cuéntenos qué necesita</h2>
     {{#telefono}}<p><a href="tel:{{telefono_href}}"><strong>{{telefono}}</strong></a></p>{{/telefono}}
     {{#direccion}}<p>{{direccion}}{{#maps_url}} · <a href="{{maps_url}}">Cómo llegar</a>{{/maps_url}}</p>{{/direccion}}
     {{#horario.length}}<table><caption class="saltar">Horario</caption><tbody>{{#horario}}<tr><th scope="row">{{dias}}</th><td>{{horas}}</td></tr>{{/horario}}</tbody></table>{{/horario.length}}

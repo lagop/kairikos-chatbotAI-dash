@@ -214,7 +214,8 @@ p{margin:0 0 var(--s-4)}
 /* Preguntas */
 .faq{display:grid;gap:var(--s-6) var(--s-8);grid-template-columns:minmax(0,1fr)}
 @media (min-width:900px){.faq{grid-template-columns:minmax(0,1fr) minmax(0,1.7fr)}}
-.faq-lado h2{max-width:12ch}
+/* La columna es estrecha: un título largo del cliente («climatización», «electrodomésticos») no cabe a 4rem sin partir palabras. */
+.faq-lado h2{max-width:min(100%,16ch);font-size:clamp(2.1rem,3.4vw,3.2rem)}
 .faq-lado p:not(.rotulo){color:var(--gris)}
 .faq-lado a{display:inline-flex;align-items:center;gap:var(--s-2);font:400 1.9rem/1.1 var(--display);color:var(--tinta);text-decoration:none;overflow-wrap:anywhere}
 .faq-lado a svg{flex:none;width:1.2rem;height:1.2rem;color:var(--cobalto)}
