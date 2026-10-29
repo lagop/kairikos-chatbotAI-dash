@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { historyCommand } from './edit-history';
 
 // =============================================================================
 // La vista previa EN VIVO del editor de la web (29/10/2026).
@@ -37,6 +38,9 @@ import { useEffect, useRef, useState } from 'react';
 //   cosa de una sección abre su campo en el formulario.
 // - Los elementos de una lista (servicios, precios, preguntas…) enseñan al
 //   pasar el ratón ↑ ↓ ✕ + para ordenarlos, quitarlos o añadir otro.
+// - Ctrl+Z / Ctrl+Mayús+Z deshacen y rehacen pasos del editor (onHistory); con
+//   un texto abierto encima, deshacen letras dentro de él, como en cualquier
+//   campo.
 // Nada de esto toca el HTML de la plantilla: los <k-dato> y la barra de la
 // lista son nuestros, y solo existen en esta vista.
 // =============================================================================
@@ -87,6 +91,7 @@ export function SiteLivePreview({
   onInlineChange,
   maxFor,
   onListAction,
+  onHistory,
 }: {
   /** Igual que el editor: la del cliente o la del operador. */
   apiBase: string;
@@ -105,6 +110,7 @@ export function SiteLivePreview({
   maxFor?: (ruta: string) => number;
   /** Qué listas se pueden ordenar desde la vista (y cuántos elementos caben). */
   onListAction?: (list: string, index: number, action: ListAction) => void;
+  onHistory?: (cmd: 'deshacer' | 'rehacer') => void;
 }) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -113,8 +119,8 @@ export function SiteLivePreview({
   const inlineRef = useRef<{ el: HTMLElement; ruta: string; original: string; last: string } | null>(null);
   const pendingRef = useRef<string | null>(null);
   // Los oyentes se ponen al pintar: leen siempre lo último que llegó.
-  const cb = useRef({ onPick, onInlineChange, maxFor, onListAction, sectionIds });
-  cb.current = { onPick, onInlineChange, maxFor, onListAction, sectionIds };
+  const cb = useRef({ onPick, onInlineChange, maxFor, onListAction, onHistory, sectionIds });
+  cb.current = { onPick, onInlineChange, maxFor, onListAction, onHistory, sectionIds };
   const [estado, setEstado] = useState<'cargando' | 'listo' | 'error'>('cargando');
   const [size, setSize] = useState({ width: 0, height: 0 });
 
@@ -225,8 +231,11 @@ export function SiteLivePreview({
         el.blur();
       } else if (ev.key === 'Escape') {
         ev.preventDefault();
-        el.textContent = original;
-        set(original);
+        // Sin cambios, nada: si no, Esc dejaría un paso vacío en el historial.
+        if (inlineRef.current?.last !== original) {
+          el.textContent = original;
+          set(original);
+        }
         el.blur();
       }
     };
@@ -379,6 +388,13 @@ export function SiteLivePreview({
       true,
     );
     doc.addEventListener('submit', (e) => e.preventDefault(), true);
+    // El foco está en el marco: el Ctrl+Z del editor no llega solo hasta aquí.
+    doc.addEventListener('keydown', (e) => {
+      const cmd = historyCommand(e);
+      if (!cmd || inlineRef.current || !cb.current.onHistory) return;
+      e.preventDefault();
+      cb.current.onHistory(cmd);
+    });
     if (cb.current.onListAction) {
       markListItems(doc);
       listToolbar(doc);
@@ -465,7 +481,7 @@ export function SiteLivePreview({
       </div>
       {onPick ? (
         <p className="border-t border-kairikos-border bg-kairikos-surface px-3 py-1.5 text-center text-xs text-kairikos-muted">
-          Pulsa un texto de tu web para cambiarlo ahí mismo. Intro para terminar, Esc para deshacer.
+          Pulsa un texto de tu web para cambiarlo ahí mismo. Intro para terminar, Esc para dejarlo como estaba. Ctrl+Z deshace el último cambio.
         </p>
       ) : null}
     </div>
