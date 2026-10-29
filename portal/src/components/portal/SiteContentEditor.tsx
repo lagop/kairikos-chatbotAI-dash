@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { createPortal } from 'react-dom';
 import type { SiteBlock, SiteBlogEntry, SiteContent, SiteSectionRef, SiteSectionType } from '@/lib/site-content';
 import type { IconSymbol } from '@/lib/site-icon-symbols';
+import { SiteLivePreview, type PreviewDevice } from './SiteLivePreview';
 
 // =============================================================================
 // Webs con IA, entrega 4 (27/10/2026) — el editor de la web con plantilla de
@@ -47,6 +49,15 @@ import type { IconSymbol } from '@/lib/site-icon-symbols';
 // antes de abrir. Y la página se parte en tres pestañas (Contenido, Diseño,
 // Mis datos): todo junto medía 4.600 px cerrado. Los iconos se eligen viéndolos
 // (lib/site-icon-symbols.ts), no por su nombre interno.
+//
+// 29/10/2026 (2) — se edita a PANTALLA COMPLETA, con la web al lado: la zona de
+// contenido del portal mide unos 670 px y ahí no caben formulario y web. En la
+// página queda el resumen («Editar mi web»); el editor ocupa toda la ventana,
+// con el formulario a la izquierda y la vista previa en vivo a la derecha
+// (SiteLivePreview), que enseña lo escrito aunque no esté guardado. Abrir una
+// sección lleva la vista hasta ella. El botón «atrás» del navegador cierra el
+// editor sin perder nada (#editar en la dirección). En el móvil no caben las
+// dos cosas: «Editar» / «Ver» cambia de una a otra.
 // =============================================================================
 
 /** Lo mismo que RESERVED_PAGE_ROOTS en lib/site-content.ts. */
@@ -185,6 +196,11 @@ type Field = { key: string; label: string; kind?: 'text' | 'textarea' | 'icon'; 
 
 type Tab = 'contenido' | 'diseno' | 'datos';
 
+/** El id con el que la plantilla pinta una sección o un bloque en la web. */
+function anchorFor(ref: SiteSectionRef): string {
+  return ref.tipo === 'bloque' ? `bloque-${ref.id}` : ref.tipo;
+}
+
 const LEAVE_WARNING = 'Tienes cambios sin guardar en tu web. Si sales ahora, se pierden.';
 
 export function SiteContentEditor(props: SiteContentEditorProps) {
@@ -203,6 +219,50 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
   const [autoSlugs, setAutoSlugs] = useState<Set<string>>(new Set());
   const [baseUpdatedAt, setBaseUpdatedAt] = useState(props.updatedAt);
   const [tab, setTab] = useState<Tab>('contenido');
+  const [abierto, setAbierto] = useState(false);
+  const [verMovil, setVerMovil] = useState(false);
+  const [device, setDevice] = useState<PreviewDevice>('ordenador');
+  const [activo, setActivo] = useState<string | null>(null);
+  // En una pantalla pequeña la vista enseña siempre el móvil: la de ordenador
+  // reducida a 390 px no se lee.
+  const [pantallaPequena, setPantallaPequena] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1023px)');
+    const sync = () => setPantallaPequena(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+
+  // Abrir el editor deja #editar en la dirección (se puede enlazar), y
+  // «atrás» lo cierra en vez de sacar al cliente de la página.
+  useEffect(() => {
+    const sync = () => setAbierto(window.location.hash === '#editar');
+    sync();
+    window.addEventListener('popstate', sync);
+    return () => window.removeEventListener('popstate', sync);
+  }, []);
+  useEffect(() => {
+    if (!abierto) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [abierto]);
+
+  function abrirEditor() {
+    if (window.location.hash !== '#editar') window.history.pushState({ kEditor: true }, '', '#editar');
+    setAbierto(true);
+  }
+
+  function cerrarEditor() {
+    if ((window.history.state as { kEditor?: boolean } | null)?.kEditor) window.history.back();
+    else {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      setAbierto(false);
+    }
+  }
 
   // Salir con cambios sin guardar. beforeunload cubre cerrar o recargar la
   // pestaña; los enlaces del portal navegan sin recargar (Next.js) y no lo
@@ -237,6 +297,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
   // existe con alguna entrada publicada.
   const previewPath = view.kind === 'blog' ? (content.blog.entradas.some((e) => e.publicada) ? '/blog' : '') : page.ruta ? `/${page.ruta}` : '';
   const legalMissing = (['titular', 'nif', 'domicilio', 'email'] as const).filter((k) => !content.legal[k].trim());
+  const previewBody = useMemo(() => JSON.stringify({ content, phone, address }), [content, phone, address]);
 
   const pendingSections = useMemo(() => {
     const labels = content.paginas.flatMap((p) =>
@@ -607,8 +668,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
     }
   }
 
-  return (
-    <section className="space-y-4" aria-label="Tu web" data-testid="site-content-editor">
+  const statusCard = (
       <div className="card space-y-3">
         {props.operador ? (
           <p className="rounded-lg bg-kairikos-warning/10 px-3 py-2 text-sm" data-testid="site-editor-operator">
@@ -636,7 +696,10 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
           </p>
         ) : null}
       </div>
+  );
 
+  const editorBody = (
+    <>
       {/* Tres pestañas: lo que se escribe, cómo se ve y los datos del negocio. */}
       <div role="tablist" aria-label="Partes de tu web" className="flex flex-wrap gap-2 border-b border-kairikos-border pb-2">
         {(
@@ -852,8 +915,8 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
               const block = ref.tipo === 'bloque' ? content.bloques.find((b) => b.id === ref.id) : null;
               const label = ref.tipo === 'bloque' ? `${block ? BLOCK_LABEL[block.tipo] : 'Bloque'}${block?.titulo ? `: ${block.titulo}` : ''}` : SECTION_LABEL[ref.tipo];
               return (
-                <li key={refKey(ref)} className={`card ${ref.oculta ? 'opacity-60' : ''}`}>
-                  <details>
+                <li key={refKey(ref)} className={`card ${ref.oculta ? 'opacity-60' : ''}`} onFocusCapture={() => setActivo(anchorFor(ref))}>
+                  <details onToggle={(e) => (e.currentTarget.open ? setActivo(anchorFor(ref)) : null)}>
                     <summary className="flex cursor-pointer flex-wrap items-center gap-2">
                       <span className="font-medium">{label}</span>
                       {ref.oculta ? <span className="pill-muted">Oculta</span> : null}
@@ -973,22 +1036,97 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
       </div>
       ) : null}
 
+    </>
+  );
+
+  const statusText =
+    busy === 'save' ? (
+      'Guardando…'
+    ) : busy === 'publish' ? (
+      'Publicando…'
+    ) : error ? (
+      <span className="text-kairikos-danger">{error}</span>
+    ) : dirty ? (
+      <span className="font-medium text-kairikos-warning">Cambios sin guardar</span>
+    ) : message ? (
+      <span className="text-kairikos-success">{message}</span>
+    ) : (
+      <span className="text-kairikos-muted">Todo guardado</span>
+    );
+
+  // Cerrado: el resumen en la página, con el botón para abrir el editor.
+  if (!abierto) {
+    return (
+      <section className="space-y-4" aria-label="Tu web" data-testid="site-content-editor">
+        {statusCard}
+        <div className="card flex flex-wrap items-center gap-x-3 gap-y-2" data-testid="site-editor-summary">
+          <p className="min-w-0 flex-1 basis-full text-sm sm:basis-auto" aria-live="polite">
+            {statusText}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn-primary" onClick={abrirEditor} data-testid="site-editor-open">
+              Editar mi web
+            </button>
+            <button type="button" className="btn-ghost" disabled={busy !== null} onClick={openPreview}>
+              Ver cómo queda
+            </button>
+            <button type="button" className="btn-ghost" disabled={busy !== null} onClick={publish}>
+              Publicar
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  // En el <body> y no aquí: algún antecesor de la página del portal crea su
+  // propio marco para lo fijo, y el editor quedaba desplazado con una franja del
+  // portal asomando por arriba.
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex flex-col bg-kairikos-bg" role="dialog" aria-modal="true" aria-label="Editar tu web" data-testid="site-content-editor">
+      <header className="flex items-center gap-2 border-b border-kairikos-border bg-kairikos-surface px-3 py-2">
+        <button type="button" className="btn-ghost" onClick={cerrarEditor} data-testid="site-editor-close">
+          ← Salir
+        </button>
+        <p className="min-w-0 truncate font-semibold">
+          {props.operador ? `Web de ${props.operador.clienteNombre}` : 'Tu web'}
+          {view.kind === 'pagina' ? <span className="font-normal text-kairikos-muted"> · {page.titulo}</span> : null}
+        </p>
+        {/* En pantalla grande, cómo se ve en cada aparato; en el móvil, cambiar
+            entre editar y ver (no caben las dos cosas). */}
+        <div className="ml-auto hidden gap-1 lg:flex" role="group" aria-label="Ver como">
+          {(
+            [
+              ['ordenador', 'Ordenador'],
+              ['movil', 'Móvil'],
+            ] as const
+          ).map(([key, label]) => (
+            <button key={key} type="button" className={device === key ? 'btn-primary' : 'btn-ghost'} aria-pressed={device === key} onClick={() => setDevice(key)}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="ml-auto flex gap-1 lg:hidden" role="group" aria-label="Editar o ver">
+          <button type="button" className={!verMovil ? 'btn-primary' : 'btn-ghost'} aria-pressed={!verMovil} onClick={() => setVerMovil(false)}>
+            Editar
+          </button>
+          <button type="button" className={verMovil ? 'btn-primary' : 'btn-ghost'} aria-pressed={verMovil} onClick={() => setVerMovil(true)} data-testid="site-editor-ver">
+            Ver
+          </button>
+        </div>
+      </header>
+      <div className="flex min-h-0 flex-1">
+        <div className={`${verMovil ? 'hidden' : 'flex'} w-full min-w-0 flex-col border-kairikos-border lg:flex lg:w-[480px] lg:shrink-0 lg:border-r`}>
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+            {statusCard}
+            {editorBody}
+          </div>
       {/* La barra de abajo, siempre a la vista: qué pasa con tus cambios y los
           tres botones. Antes estaban solo arriba y no se veían al editar. */}
-      <div className="sticky bottom-0 z-20 -mx-1 rounded-t-xl border border-kairikos-border bg-kairikos-surface/95 px-4 py-3 shadow-lg backdrop-blur" data-testid="site-editor-bar">
+      <div className="border-t border-kairikos-border bg-kairikos-surface px-4 py-3" data-testid="site-editor-bar">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <p className="min-w-0 flex-1 basis-full text-sm sm:basis-auto" aria-live="polite">
-            {busy === 'save'
-              ? 'Guardando…'
-              : busy === 'publish'
-                ? 'Publicando…'
-                : error
-                  ? <span className="text-kairikos-danger">{error}</span>
-                  : dirty
-                    ? <span className="font-medium text-kairikos-warning">Cambios sin guardar</span>
-                    : message
-                      ? <span className="text-kairikos-success">{message}</span>
-                      : <span className="text-kairikos-muted">Todo guardado</span>}
+            {statusText}
           </p>
           {/* Sin barra final en la ruta: Next.js la quita con una redirección
               que el navegador no siempre completa; las rutas relativas de la
@@ -1006,7 +1144,19 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
           </div>
         </div>
       </div>
-    </section>
+        </div>
+        <div className={`${verMovil ? 'flex' : 'hidden'} min-w-0 flex-1 flex-col lg:flex`}>
+          <SiteLivePreview
+            apiBase={props.apiBase}
+            path={previewPath}
+            body={previewBody}
+            activeAnchor={view.kind === 'pagina' ? activo : null}
+            device={pantallaPequena ? 'movil' : device}
+          />
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 

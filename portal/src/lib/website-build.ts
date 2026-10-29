@@ -196,6 +196,8 @@ export interface DesignedWebsiteBuildInput {
   /** 28/10/2026 — el logo y las fotos que subió el cliente y cita el
    *  contenido (site-uploads.ts, referencedImageFiles). */
   uploads?: WebsiteFile[];
+  /** 29/10/2026 — la vista previa del editor (site-template.ts, edicion). */
+  edicion?: boolean;
 }
 
 /**
@@ -258,6 +260,7 @@ export async function buildDesignedWebsiteFiles(input: DesignedWebsiteBuildInput
     legales: true,
     siteUrl: input.siteUrl ?? null,
     now: input.now,
+    edicion: input.edicion,
   });
   const fonts = await fontFiles(pages.map((p) => p.content.toString('utf8')));
   return [...pages, ...(hero ? [hero] : []), ...(input.uploads ?? []), ...stock.files, ...fonts];

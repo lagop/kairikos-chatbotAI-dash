@@ -16,15 +16,37 @@ import { SITE_UPLOAD_PATH_RE } from './site-content';
 // 28/10/2026, el operador (/api/admin/portal/websites/[id]/preview/…), que
 // antes solo veía el index.html sin foto. Quién puede ver qué web lo decide
 // cada ruta antes de llamar aquí.
+//
+// 29/10/2026 — y la vista previa EN VIVO del editor: con `override`, la web
+// se construye con lo que el cliente está escribiendo (sin guardar) en modo
+// edición, y se devuelve solo el HTML de la página pedida. Las fotos y las
+// tipografías de esa página se piden después por la vista previa de siempre.
 // =============================================================================
 
 type WebsiteForPreview = Parameters<typeof buildFilesForWebsite>[1];
+
+/** Lo que el editor manda para la vista previa en vivo: lo que hay en el
+ *  formulario, sin guardar. Se valida al construir (parseSiteContent). */
+export interface PreviewOverride {
+  content: unknown;
+  phone: string | null;
+  address: string | null;
+}
+
+/** El cuerpo de un POST de vista previa en vivo, o null si no es uno. */
+export function parsePreviewOverride(body: unknown): PreviewOverride | null {
+  if (!body || typeof body !== 'object') return null;
+  const b = body as Record<string, unknown>;
+  if (!b.content || typeof b.content !== 'object') return null;
+  const str = (v: unknown, max: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null);
+  return { content: b.content, phone: str(b.phone, 50), address: str(b.address, 300) };
+}
 
 export async function serveWebsitePreview(
   prisma: PrismaClient,
   website: WebsiteForPreview,
   pathSegments: string[] | undefined,
-  options: { mount: string; portalOrigin: string },
+  options: { mount: string; portalOrigin: string; override?: PreviewOverride },
 ): Promise<NextResponse> {
   // Una imagen subida (site-uploads.ts) se sirve tal cual, sin construir la
   // web entera: el editor enseña la miniatura en cuanto se sube, antes de
@@ -42,7 +64,13 @@ export async function serveWebsitePreview(
     });
   }
 
-  const built = await buildFilesForWebsite(prisma, website, { portalOrigin: options.portalOrigin, now: new Date() });
+  const built = options.override
+    ? await buildFilesForWebsite(
+        prisma,
+        { ...website, content: options.override.content, phone: options.override.phone, address: options.override.address },
+        { portalOrigin: options.portalOrigin, now: new Date(), edicion: true },
+      )
+    : await buildFilesForWebsite(prisma, website, { portalOrigin: options.portalOrigin, now: new Date() });
   if (!built.ok) return NextResponse.json({ error: built.error }, { status: 500 });
 
   const file = built.files.find((f) => f.path === requested);
