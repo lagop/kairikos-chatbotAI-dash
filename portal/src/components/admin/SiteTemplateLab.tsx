@@ -199,6 +199,13 @@ export function SiteTemplateLab({
     await refresh();
   }
 
+  // 29/10/2026: una corrección aplicada o descartada sigue como fila (es el
+  // registro de qué cambió y por qué), pero ya no cuenta para nada; mezclada
+  // con las plantillas vivas parecía que había el doble. Van al final, plegadas.
+  const cerrada = (t: SiteTemplateRow) => Boolean(t.correccionDe) && (t.estado === 'aplicada' || t.estado === 'descartada');
+  const abiertas = templates.filter((t) => !cerrada(t));
+  const cerradas = templates.filter(cerrada);
+
   return (
     <div className="space-y-6">
       <form className="card space-y-3" onSubmit={encargar} aria-label="Encargar una plantilla" data-testid="site-template-form">
@@ -266,117 +273,129 @@ export function SiteTemplateLab({
           <Previews id="base" />
         </article>
 
-        {templates.map((t) => {
-          const estado = ESTADOS[t.estado] ?? { label: t.estado, pill: 'pill-muted' };
-          const v = t.validacion ?? {};
-          const isChecking = checking?.id === t.id;
-          return (
-            <article key={t.id} className="card space-y-2" data-testid="site-template-row">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="font-semibold">{t.nombre}</p>
-                {t.corrige ? <span className="pill-warning">Corrección de «{t.corrige}»</span> : null}
-                <span className={estado.pill}>{isChecking ? `Comprobando ${checking.done}/${checking.total}…` : estado.label}</span>
-                <span className="text-xs text-kairikos-muted">
-                  {t.sector ?? 'cualquier sector'}
-                  {t.variante ? ` · ${t.variante}` : ''} · {t.origen === 'manual' ? 'hecha a mano' : (t.modelo ?? 'modelo por defecto')} · {(v.costeUsd ?? 0).toFixed(2)} $ · {v.rondas ?? 0} rondas
-                  {t._count ? ` · ${t._count.websites} webs` : ''}
-                </span>
-              </div>
-              {v.encargo ? <p className="text-sm">{v.encargo}</p> : null}
-              {unreadable.has(t.id) ? (
-                <p className="text-sm text-kairikos-danger">
-                  Este navegador no pudo cargar alguna de las vistas previas, así que no cuenta como medida y sigue pendiente. Recarga la página para
-                  intentarlo otra vez; si se repite, el fallo es del portal, no de la plantilla.
-                </p>
-              ) : null}
-              {t.estado !== 'generando' && t.estado !== 'aplicada' && t.estado !== 'descartada' ? <Previews id={t.id} estilo={t.estilo} /> : null}
-              {t.cambios ? <Cambios cambios={t.cambios} /> : null}
-              {v.problemas?.length ? (
-                <details className="text-sm">
-                  <summary className="cursor-pointer text-kairikos-danger">{v.problemas.length} problemas pendientes</summary>
-                  <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
-                    {v.problemas.map((p, i) => (
-                      <li key={i}>{p}</li>
-                    ))}
-                  </ul>
-                </details>
-              ) : null}
-              {v.historial?.length ? (
-                <details className="text-xs text-kairikos-muted">
-                  <summary className="cursor-pointer">Historial</summary>
-                  <ol className="mt-2 space-y-1">
-                    {v.historial.map((h, i) => (
-                      <li key={i}>
-                        {new Date(h.at).toLocaleString('es-ES')} · {h.fase}: {h.detalle}
-                      </li>
-                    ))}
-                  </ol>
-                </details>
-              ) : null}
-              <div className="flex flex-wrap gap-2">
-                {t.estado === 'lista' && !t.correccionDe ? (
-                  <button type="button" className="btn-primary" onClick={() => accion(t.id, 'aprobar')}>
-                    Aprobar para su sector
-                  </button>
-                ) : null}
-                {t.estado === 'lista' && t.correccionDe ? (
-                  <button type="button" className="btn-primary" onClick={() => accion(t.id, 'aprobar')}>
-                    Aplicar la corrección a «{t.corrige}»
-                  </button>
-                ) : null}
-                {t.correccionDe && ['pendiente_navegador', 'lista', 'fallida'].includes(t.estado) ? (
-                  <button type="button" className="btn-ghost" onClick={() => accion(t.id, 'descartar')}>
-                    Descartar la corrección
-                  </button>
-                ) : null}
-                {t.estado === 'aprobada' ? (
-                  <button type="button" className="btn-ghost" onClick={() => accion(t.id, 'retirar')}>
-                    Retirar (las webs que la usan siguen igual)
-                  </button>
-                ) : null}
-                {t.estado === 'fallida' && !t.correccionDe && (v.rondas ?? 0) < 4 && !v.problemas?.includes('no_api_key') ? (
-                  <button type="button" className="btn-ghost" onClick={() => accion(t.id, 'reintentar')}>
-                    Comprobar y corregir otra vez
-                  </button>
-                ) : null}
-              </div>
-              {t.estado === 'lista' && t.correccionDe ? (
-                <p className="text-xs text-kairikos-muted">
-                  Al aplicarla, los borradores y el editor de las webs que usan «{t.corrige}» la ven al momento. Las webs ya publicadas la reciben la
-                  próxima vez que se publiquen. Lo que había queda guardado y se puede volver a ello.
-                </p>
-              ) : null}
-              {t.estado === 'aprobada' && t.versiones?.length ? (
-                <details className="text-xs">
-                  <summary className="cursor-pointer text-kairikos-muted">Versiones anteriores ({t.versiones.length})</summary>
-                  <ul className="mt-2 space-y-2">
-                    {t.versiones.map((ver) => (
-                      <li key={ver.id} className="flex flex-wrap items-center gap-2">
-                        <span>
-                          Sustituida el {new Date(ver.createdAt).toLocaleString('es-ES')}
-                          {ver.motivo ? ` · ${ver.motivo}` : ''}
-                          {ver.actorEmail ? ` · ${ver.actorEmail}` : ''}
-                        </span>
-                        <button
-                          type="button"
-                          className="btn-ghost"
-                          onClick={() => {
-                            if (window.confirm('¿Volver a esta versión? Lo de ahora se guarda y se puede recuperar.')) void accion(t.id, 'restaurar', ver.id);
-                          }}
-                        >
-                          Volver a esta versión
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              ) : null}
-            </article>
-          );
-        })}
+        {abiertas.map(card)}
+
+        {cerradas.length ? (
+          <details className="space-y-3" data-testid="site-template-closed">
+            <summary className="cursor-pointer text-sm text-kairikos-muted">Correcciones cerradas ({cerradas.length})</summary>
+            <p className="my-2 text-xs text-kairikos-muted">
+              Ya aplicadas o descartadas: lo que cambiaron está en el historial y en «Versiones anteriores» de cada plantilla. Quedan solo como registro.
+            </p>
+            <div className="space-y-3">{cerradas.map(card)}</div>
+          </details>
+        ) : null}
       </section>
     </div>
   );
+
+  function card(t: SiteTemplateRow) {
+    const estado = ESTADOS[t.estado] ?? { label: t.estado, pill: 'pill-muted' };
+    const v = t.validacion ?? {};
+    const isChecking = checking?.id === t.id;
+    return (
+      <article key={t.id} className="card space-y-2" data-testid="site-template-row">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="font-semibold">{t.nombre}</p>
+          {t.corrige ? <span className="pill-warning">Corrección de «{t.corrige}»</span> : null}
+          <span className={estado.pill}>{isChecking ? `Comprobando ${checking.done}/${checking.total}…` : estado.label}</span>
+          <span className="text-xs text-kairikos-muted">
+            {t.sector ?? 'cualquier sector'}
+            {t.variante ? ` · ${t.variante}` : ''} · {t.origen === 'manual' ? 'hecha a mano' : (t.modelo ?? 'modelo por defecto')} · {(v.costeUsd ?? 0).toFixed(2)} $ · {v.rondas ?? 0} rondas
+            {t._count ? ` · ${t._count.websites} webs` : ''}
+          </span>
+        </div>
+        {v.encargo ? <p className="text-sm">{v.encargo}</p> : null}
+        {unreadable.has(t.id) ? (
+          <p className="text-sm text-kairikos-danger">
+            Este navegador no pudo cargar alguna de las vistas previas, así que no cuenta como medida y sigue pendiente. Recarga la página para
+            intentarlo otra vez; si se repite, el fallo es del portal, no de la plantilla.
+          </p>
+        ) : null}
+        {t.estado !== 'generando' && t.estado !== 'aplicada' && t.estado !== 'descartada' ? <Previews id={t.id} estilo={t.estilo} /> : null}
+        {t.cambios ? <Cambios cambios={t.cambios} /> : null}
+        {v.problemas?.length ? (
+          <details className="text-sm">
+            <summary className="cursor-pointer text-kairikos-danger">{v.problemas.length} problemas pendientes</summary>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
+              {v.problemas.map((p, i) => (
+                <li key={i}>{p}</li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
+        {v.historial?.length ? (
+          <details className="text-xs text-kairikos-muted">
+            <summary className="cursor-pointer">Historial</summary>
+            <ol className="mt-2 space-y-1">
+              {v.historial.map((h, i) => (
+                <li key={i}>
+                  {new Date(h.at).toLocaleString('es-ES')} · {h.fase}: {h.detalle}
+                </li>
+              ))}
+            </ol>
+          </details>
+        ) : null}
+        <div className="flex flex-wrap gap-2">
+          {t.estado === 'lista' && !t.correccionDe ? (
+            <button type="button" className="btn-primary" onClick={() => accion(t.id, 'aprobar')}>
+              Aprobar para su sector
+            </button>
+          ) : null}
+          {t.estado === 'lista' && t.correccionDe ? (
+            <button type="button" className="btn-primary" onClick={() => accion(t.id, 'aprobar')}>
+              Aplicar la corrección a «{t.corrige}»
+            </button>
+          ) : null}
+          {t.correccionDe && ['pendiente_navegador', 'lista', 'fallida'].includes(t.estado) ? (
+            <button type="button" className="btn-ghost" onClick={() => accion(t.id, 'descartar')}>
+              Descartar la corrección
+            </button>
+          ) : null}
+          {t.estado === 'aprobada' ? (
+            <button type="button" className="btn-ghost" onClick={() => accion(t.id, 'retirar')}>
+              Retirar (las webs que la usan siguen igual)
+            </button>
+          ) : null}
+          {t.estado === 'fallida' && !t.correccionDe && (v.rondas ?? 0) < 4 && !v.problemas?.includes('no_api_key') ? (
+            <button type="button" className="btn-ghost" onClick={() => accion(t.id, 'reintentar')}>
+              Comprobar y corregir otra vez
+            </button>
+          ) : null}
+        </div>
+        {t.estado === 'lista' && t.correccionDe ? (
+          <p className="text-xs text-kairikos-muted">
+            Al aplicarla, los borradores y el editor de las webs que usan «{t.corrige}» la ven al momento. Las webs ya publicadas la reciben la
+            próxima vez que se publiquen. Lo que había queda guardado y se puede volver a ello.
+          </p>
+        ) : null}
+        {t.estado === 'aprobada' && t.versiones?.length ? (
+          <details className="text-xs">
+            <summary className="cursor-pointer text-kairikos-muted">Versiones anteriores ({t.versiones.length})</summary>
+            <ul className="mt-2 space-y-2">
+              {t.versiones.map((ver) => (
+                <li key={ver.id} className="flex flex-wrap items-center gap-2">
+                  <span>
+                    Sustituida el {new Date(ver.createdAt).toLocaleString('es-ES')}
+                    {ver.motivo ? ` · ${ver.motivo}` : ''}
+                    {ver.actorEmail ? ` · ${ver.actorEmail}` : ''}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => {
+                      if (window.confirm('¿Volver a esta versión? Lo de ahora se guarda y se puede recuperar.')) void accion(t.id, 'restaurar', ver.id);
+                    }}
+                  >
+                    Volver a esta versión
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
+      </article>
+    );
+  }
 }
 
 /** Qué cambia una corrección: por pieza, lo que se quita y lo que entra. */
