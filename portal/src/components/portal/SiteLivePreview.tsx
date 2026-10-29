@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { historyCommand } from './edit-history';
-import { instantTextPatches } from './preview-patch';
+import { instantTextPatches, valueAt } from './preview-patch';
+import { normalMarkdown, richTextToMarkdown } from './rich-text-markdown';
 
 // =============================================================================
 // La vista previa EN VIVO del editor de la web (29/10/2026).
@@ -36,7 +37,8 @@ import { instantTextPatches } from './preview-patch';
 //   servicios que se repite), cambian todos a la vez.
 // - Mientras se escribe encima, la vista NO se repinta: perdería el cursor.
 //   Lo que llegue entretanto se pinta al terminar.
-// - Un párrafo con formato (negritas, listas: data-k-bloque) o cualquier otra
+// - Un párrafo con formato (negritas, listas: data-k-bloque) se edita ahí
+//   mismo también, con una barra de formato (startRichInline). Cualquier otra
 //   cosa de una sección abre su campo en el formulario.
 // - Los elementos de una lista (servicios, precios, preguntas…) enseñan al
 //   pasar el ratón ↑ ↓ ✕ + para ordenarlos, quitarlos o añadir otro.
@@ -131,6 +133,9 @@ export function SiteLivePreview({
   const firstRef = useRef(true);
   const inlineRef = useRef<{ el: HTMLElement; ruta: string; original: string; last: string } | null>(null);
   const pendingRef = useRef<string | null>(null);
+  // La vista de ordenador va reducida para caber: las barras de herramientas
+  // se agrandan lo mismo para verse a su tamaño (si no, se leían a 10 px).
+  const scaleRef = useRef(1);
   // El contenido que enseña ahora la vista, pintado o cambiado al momento.
   const shownContentRef = useRef<Parameters<typeof instantTextPatches>[0] | null>(null);
   // Los oyentes se ponen al pintar: leen siempre lo último que llegó.
@@ -176,6 +181,192 @@ export function SiteLivePreview({
     }
   }
 
+  /** Si un <k-dato> enseña el valor que tiene ahora su dato en el editor. */
+  function showsCurrent(dato: HTMLElement): boolean {
+    const content = shownContentRef.current;
+    if (!content) return true;
+    const value = valueAt(content, dato.getAttribute('data-k-ruta') ?? '');
+    if (typeof value !== 'string' && typeof value !== 'number') return false;
+    return dato.hasAttribute('data-k-bloque') ? richTextToMarkdown(dato) === normalMarkdown(String(value)) : (dato.textContent ?? '') === String(value);
+  }
+
+  /** El cursor donde se pulsó, no al principio. */
+  function caretAt(el: HTMLElement, e: MouseEvent) {
+    const doc = el.ownerDocument;
+    const d = doc as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null; caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null };
+    let range: Range | null = d.caretRangeFromPoint?.(e.clientX, e.clientY) ?? null;
+    if (!range && d.caretPositionFromPoint) {
+      const pos = d.caretPositionFromPoint(e.clientX, e.clientY);
+      if (pos) {
+        range = doc.createRange();
+        range.setStart(pos.offsetNode, pos.offset);
+      }
+    }
+    if (range && el.contains(range.startContainer)) {
+      const sel = doc.defaultView?.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+    }
+  }
+
+  /**
+   * Un párrafo con formato (data-k-bloque), editado sobre la vista con su
+   * formato: negrita, cursiva, listas y enlaces desde una barra encima, o
+   * Ctrl+B / Ctrl+I. Intro hace párrafo nuevo y Mayús+Intro, salto de línea;
+   * se termina pulsando fuera o «Listo», y Esc lo deja como estaba.
+   *
+   * Lo que se escribe vuelve a su texto con richTextToMarkdown, que solo deja
+   * pasar lo que el formato sabe pintar. Lo pegado entra SIEMPRE como texto:
+   * lo que se copia de Word, de una web o de WhatsApp trae estilos, tablas y
+   * fuentes que aquí no significan nada (y quitarlos después es peor que no
+   * dejarlos entrar). Arrastrar algo encima, tampoco.
+   */
+  function startRichInline(el: HTMLElement, e: MouseEvent) {
+    if (inlineRef.current?.el === el) return;
+    finishInline();
+    const doc = el.ownerDocument;
+    const win = doc.defaultView;
+    const ruta = el.getAttribute('data-k-ruta') ?? '';
+    const originalHtml = el.innerHTML;
+    const original = richTextToMarkdown(el);
+    let lastHtml = originalHtml;
+    let dialog = false;
+    el.contentEditable = 'true';
+    el.spellcheck = true;
+    inlineRef.current = { el, ruta, original, last: original };
+    // Párrafos con <p> (no <div>) y negrita con <b> (no <span style>).
+    doc.execCommand('defaultParagraphSeparator', false, 'p');
+    doc.execCommand('styleWithCSS', false, 'false');
+    el.focus();
+    caretAt(el, e);
+
+    const bar = doc.createElement('k-herramientas');
+    bar.setAttribute(
+      'style',
+      'all:initial;position:absolute;z-index:2147483647;display:flex;gap:2px;padding:3px;background:#1f2937;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.25);font:600 13px/1 system-ui,sans-serif',
+    );
+    const run = (cmd: string, value?: string) => {
+      doc.execCommand(cmd, false, value);
+      el.focus();
+    };
+    const buttons: [string, string, string, () => void][] = [
+      ['B', 'Negrita (Ctrl+B)', 'font-weight:800', () => run('bold')],
+      ['I', 'Cursiva (Ctrl+I)', 'font-style:italic', () => run('italic')],
+      ['•', 'Lista', '', () => run('insertUnorderedList')],
+      ['1.', 'Lista numerada', '', () => run('insertOrderedList')],
+      [
+        'Enlace',
+        'Enlazar lo seleccionado',
+        '',
+        () => {
+          const sel = win?.getSelection();
+          if (!sel || sel.isCollapsed) {
+            win?.alert('Selecciona primero el texto que quieres enlazar.');
+            return;
+          }
+          const range = sel.getRangeAt(0);
+          dialog = true;
+          const url = (win?.prompt('Dirección del enlace (https://…), teléfono (tel:…) o correo (mailto:…)') ?? '').trim();
+          dialog = false;
+          el.focus();
+          sel.removeAllRanges();
+          sel.addRange(range);
+          if (!url) return;
+          if (!/^(https?:\/\/\S+|mailto:\S+|tel:\+?[0-9 ]{3,20})$/.test(url)) {
+            win?.alert('Esa dirección no vale: tiene que empezar por https://, tel: o mailto:');
+            return;
+          }
+          run('createLink', url);
+        },
+      ],
+      ['Listo', 'Terminar', 'background:#7c3aed;margin-left:4px', () => el.blur()],
+    ];
+    for (const [label, title, extra, action] of buttons) {
+      const b = doc.createElement('k-boton');
+      b.textContent = label;
+      b.title = title;
+      b.setAttribute('role', 'button');
+      b.setAttribute('aria-label', title);
+      b.setAttribute('style', `all:initial;display:inline-block;cursor:pointer;color:#fff;padding:5px 8px;border-radius:6px;font:inherit;user-select:none;${extra}`);
+      // mousedown sin más: si no, el párrafo pierde el foco (y la selección)
+      // antes del clic.
+      b.addEventListener('mousedown', (ev) => ev.preventDefault());
+      b.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        action();
+      });
+      bar.appendChild(b);
+    }
+    doc.body.appendChild(bar);
+    bar.style.transformOrigin = 'left bottom';
+    bar.style.transform = `scale(${1 / scaleRef.current})`;
+    const place = () => {
+      const r = el.getBoundingClientRect();
+      bar.style.top = `${Math.max(0, r.top + (win?.scrollY ?? 0) - bar.offsetHeight - 8)}px`;
+      bar.style.left = `${Math.max(0, r.left + (win?.scrollX ?? 0))}px`;
+    };
+    place();
+
+    const onInput = () => {
+      const cur = inlineRef.current;
+      if (!cur || cur.el !== el) return;
+      const value = richTextToMarkdown(el);
+      const max = cb.current.maxFor?.(ruta) ?? 1200;
+      if (value.length > max) {
+        el.innerHTML = lastHtml;
+        const r = doc.createRange();
+        r.selectNodeContents(el);
+        r.collapse(false);
+        win?.getSelection()?.removeAllRanges();
+        win?.getSelection()?.addRange(r);
+        return;
+      }
+      lastHtml = el.innerHTML;
+      place();
+      if (value === cur.last) return;
+      cur.last = value;
+      cb.current.onInlineChange?.(ruta, value);
+    };
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') {
+        ev.preventDefault();
+        if (inlineRef.current?.last !== original) {
+          el.innerHTML = originalHtml;
+          cb.current.onInlineChange?.(ruta, original);
+        }
+        el.blur();
+      }
+    };
+    const onPaste = (ev: ClipboardEvent) => {
+      ev.preventDefault();
+      const text = (ev.clipboardData?.getData('text/plain') ?? '').replace(/\r\n?/g, '\n').trim();
+      text.split(/\n{2,}/).forEach((paragraph, i) => {
+        if (i) doc.execCommand('insertParagraph');
+        paragraph.split('\n').forEach((line, j) => {
+          if (j) doc.execCommand('insertLineBreak');
+          if (line.trim()) doc.execCommand('insertText', false, line.replace(/\s+/g, ' '));
+        });
+      });
+    };
+    const onDrop = (ev: DragEvent) => ev.preventDefault();
+    const onBlur = () => {
+      if (dialog) return;
+      el.removeEventListener('input', onInput);
+      el.removeEventListener('keydown', onKey);
+      el.removeEventListener('paste', onPaste);
+      el.removeEventListener('drop', onDrop);
+      el.removeEventListener('blur', onBlur);
+      bar.remove();
+      finishInline();
+    };
+    el.addEventListener('input', onInput);
+    el.addEventListener('keydown', onKey);
+    el.addEventListener('paste', onPaste);
+    el.addEventListener('drop', onDrop);
+    el.addEventListener('blur', onBlur);
+  }
+
   function startInline(el: HTMLElement, e: MouseEvent) {
     if (inlineRef.current?.el === el) return;
     finishInline();
@@ -192,21 +383,7 @@ export function SiteLivePreview({
     el.spellcheck = true;
     inlineRef.current = { el, ruta, original, last: original };
     el.focus();
-    // El cursor donde se pulsó, no al principio.
-    const d = doc as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null; caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null };
-    let range: Range | null = d.caretRangeFromPoint?.(e.clientX, e.clientY) ?? null;
-    if (!range && d.caretPositionFromPoint) {
-      const pos = d.caretPositionFromPoint(e.clientX, e.clientY);
-      if (pos) {
-        range = doc.createRange();
-        range.setStart(pos.offsetNode, pos.offset);
-      }
-    }
-    if (range && el.contains(range.startContainer)) {
-      const sel = win?.getSelection();
-      sel?.removeAllRanges();
-      sel?.addRange(range);
-    }
+    caretAt(el, e);
 
     const sameRuta = () => Array.from(doc.querySelectorAll<HTMLElement>('k-dato[data-k-ruta]')).filter((x) => x !== el && x.getAttribute('data-k-ruta') === ruta);
     const caretToEnd = () => {
@@ -355,6 +532,8 @@ export function SiteLivePreview({
       item.classList.add('k-lista-encima');
       const r = item.getBoundingClientRect();
       bar.style.display = 'flex';
+      bar.style.transformOrigin = 'right top';
+      bar.style.transform = `scale(${1 / scaleRef.current})`;
       bar.style.top = `${Math.max(0, r.top + win.scrollY - 14)}px`;
       bar.style.left = `${Math.max(0, r.right + win.scrollX - bar.offsetWidth - 6)}px`;
     });
@@ -396,9 +575,14 @@ export function SiteLivePreview({
         if (dato) {
           e.preventDefault();
           e.stopPropagation();
-          const bloque = dato.hasAttribute('data-k-bloque');
-          if (!bloque) startInline(dato, e);
-          cb.current.onPick?.({ ruta: dato.getAttribute('data-k-ruta'), seccion, inline: !bloque });
+          // Solo sobre la vista si enseña el dato de AHORA: justo después de
+          // deshacer, o de cambiar un párrafo en el formulario, puede quedar
+          // medio segundo lo de antes, y editar encima lo pisaría. Entonces,
+          // su campo en el formulario.
+          const fresh = inlineRef.current?.el === dato || showsCurrent(dato);
+          if (fresh && dato.hasAttribute('data-k-bloque')) startRichInline(dato, e);
+          else if (fresh) startInline(dato, e);
+          cb.current.onPick?.({ ruta: dato.getAttribute('data-k-ruta'), seccion, inline: fresh });
           return;
         }
         if (a) {
@@ -497,6 +681,7 @@ export function SiteLivePreview({
 
   const virtualWidth = device === 'movil' ? MOBILE_WIDTH : DESKTOP_WIDTH;
   const scale = size.width ? Math.min(1, size.width / virtualWidth) : 1;
+  scaleRef.current = scale;
   const frameHeight = size.height ? size.height / scale : 800;
 
   return (
@@ -524,7 +709,7 @@ export function SiteLivePreview({
       </div>
       {onPick ? (
         <p className="border-t border-kairikos-border bg-kairikos-surface px-3 py-1.5 text-center text-xs text-kairikos-muted">
-          Pulsa un texto o una foto de tu web para cambiarlos ahí mismo. Intro para terminar, Esc para dejarlo como estaba. Ctrl+Z deshace el último cambio.
+          Pulsa un texto o una foto de tu web para cambiarlos ahí mismo. Esc lo deja como estaba; Ctrl+Z deshace el último cambio.
         </p>
       ) : null}
     </div>
