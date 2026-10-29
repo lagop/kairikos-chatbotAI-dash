@@ -1,8 +1,9 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { SiteBlock, SiteBlogEntry, SiteContent, SiteSectionRef, SiteSectionType } from '@/lib/site-content';
+import type { IconSymbol } from '@/lib/site-icon-symbols';
 
 // =============================================================================
 // Webs con IA, entrega 4 (27/10/2026) — el editor de la web con plantilla de
@@ -35,6 +36,17 @@ import type { SiteBlock, SiteBlogEntry, SiteContent, SiteSectionRef, SiteSection
 // color va tal cual al contenido; el ajuste para que se lea lo hace el motor
 // al pintar (lib/site-style.ts), así que aquí no se calcula nada: lo que se
 // ve de verdad es la vista previa.
+//
+// 29/10/2026 — revisado usándolo como un cliente. Tres cosas hacían perder
+// trabajo o parecer que algo no funcionaba: «Guardar» solo estaba arriba (no se
+// veía mientras se editaba una sección, ni en escritorio ni en el móvil), salir
+// con cambios sin guardar no avisaba, y «Ver cómo queda» enseñaba lo último
+// GUARDADO, así que un cambio recién escrito no salía. Ahora hay una barra fija
+// abajo con el estado y los tres botones, se avisa al salir (también al pulsar
+// un enlace del portal, que no dispara beforeunload) y «Ver cómo queda» guarda
+// antes de abrir. Y la página se parte en tres pestañas (Contenido, Diseño,
+// Mis datos): todo junto medía 4.600 px cerrado. Los iconos se eligen viéndolos
+// (lib/site-icon-symbols.ts), no por su nombre interno.
 // =============================================================================
 
 /** Lo mismo que RESERVED_PAGE_ROOTS en lib/site-content.ts. */
@@ -78,6 +90,8 @@ export interface SiteContentEditorProps {
   status: string;
   lastPublishedAt: string | null;
   iconIds: string[];
+  /** Los dibujos de esos iconos (saneados), para elegirlos viéndolos. */
+  iconSymbols?: IconSymbol[];
   /** Entrega 6: la versión cargada, para que un «Guardar» no pise lo que
    *  el SEO haya publicado mientras tanto (el servidor responde 409). */
   updatedAt?: string;
@@ -169,6 +183,10 @@ function pendingIn(content: SiteContent, ref: SiteSectionRef): number {
 
 type Field = { key: string; label: string; kind?: 'text' | 'textarea' | 'icon'; max: number };
 
+type Tab = 'contenido' | 'diseno' | 'datos';
+
+const LEAVE_WARNING = 'Tienes cambios sin guardar en tu web. Si sales ahora, se pierden.';
+
 export function SiteContentEditor(props: SiteContentEditorProps) {
   const router = useRouter();
   const [content, setContent] = useState<SiteContent>(props.initialContent);
@@ -184,6 +202,33 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
   const [view, setView] = useState<View>({ kind: 'pagina', index: 0 });
   const [autoSlugs, setAutoSlugs] = useState<Set<string>>(new Set());
   const [baseUpdatedAt, setBaseUpdatedAt] = useState(props.updatedAt);
+  const [tab, setTab] = useState<Tab>('contenido');
+
+  // Salir con cambios sin guardar. beforeunload cubre cerrar o recargar la
+  // pestaña; los enlaces del portal navegan sin recargar (Next.js) y no lo
+  // disparan, así que se interceptan los clics en enlaces de la misma web.
+  useEffect(() => {
+    if (!dirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = LEAVE_WARNING;
+    };
+    const onClick = (e: MouseEvent) => {
+      const a = (e.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
+      if (!a || a.target === '_blank' || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey) return;
+      if (a.origin !== window.location.origin) return;
+      if (!window.confirm(LEAVE_WARNING)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    document.addEventListener('click', onClick, true);
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      document.removeEventListener('click', onClick, true);
+    };
+  }, [dirty]);
 
   const pageIndex = view.kind === 'pagina' ? Math.min(view.index, content.paginas.length - 1) : 0;
   const page = content.paginas[pageIndex];
@@ -365,6 +410,24 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
     return true;
   }
 
+  /** Abre la vista previa con lo que hay ahora: si hay cambios, guarda antes.
+   *  La pestaña se abre YA, dentro del clic (si no, el navegador la bloquea
+   *  como ventana emergente), y se lleva a la vista previa al terminar. */
+  async function openPreview() {
+    const url = `${props.apiBase}/preview${previewPath}`;
+    if (!dirty) {
+      window.open(url, '_blank', 'noopener');
+      return;
+    }
+    const win = window.open('about:blank', '_blank');
+    if (await save()) {
+      if (win) win.location.href = url;
+      else window.open(url, '_blank', 'noopener');
+    } else {
+      win?.close();
+    }
+  }
+
   async function publish() {
     if (dirty && !(await save())) return;
     setBusy('publish');
@@ -391,7 +454,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
       {items.map((item, i) => (
         <div key={i} className="rounded-lg border border-kairikos-border p-3 space-y-2">
           {fields.map((f) => (
-            <FieldInput key={f.key} field={f} value={item[f.key] ?? ''} iconIds={props.iconIds} example={content.ejemplos.includes(`${path}.${i}.${f.key}`)} onChange={(v) => setValue(`${path}.${i}.${f.key}`, v)} />
+            <FieldInput key={f.key} field={f} value={item[f.key] ?? ''} iconIds={props.iconIds} icons={props.iconSymbols} example={content.ejemplos.includes(`${path}.${i}.${f.key}`)} onChange={(v) => setValue(`${path}.${i}.${f.key}`, v)} />
           ))}
           <div className="flex gap-2 text-xs">
             <button type="button" className="btn-ghost" disabled={i === 0} onClick={() => update((d) => swapIn(d, path, i, i - 1))}>
@@ -417,7 +480,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
   function sectionEditor(ref: SiteSectionRef) {
     const d = content.datos;
     const text = (label: string, path: string, value: string, max: number, kind: Field['kind'] = 'text') => (
-      <FieldInput field={{ key: path, label, kind, max }} value={value} iconIds={props.iconIds} example={content.ejemplos.includes(path)} onChange={(v) => setValue(path, v)} />
+      <FieldInput field={{ key: path, label, kind, max }} value={value} iconIds={props.iconIds} icons={props.iconSymbols} example={content.ejemplos.includes(path)} onChange={(v) => setValue(path, v)} />
     );
     if (ref.tipo === 'bloque') {
       const b = content.bloques.find((x) => x.id === ref.id);
@@ -563,27 +626,44 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
             Quedan {pending} datos de ejemplo por revisar en: {pendingSections.join(', ')}. Cámbialos por los tuyos o confirma cada sección.
           </p>
         ) : null}
-        {legalMissing.length ? <p className="text-sm text-kairikos-warning">Faltan tus datos legales (abajo del todo): sin ellos no se puede publicar.</p> : null}
-        <div className="flex flex-wrap gap-2">
-          {/* Sin barra final: Next.js la quita con una redirección que el
-              navegador no siempre completa; las rutas relativas de la vista
-              previa ya se reescriben enteras (hosted-site-paths.ts). */}
-          <a className="btn-ghost" href={`${props.apiBase}/preview${previewPath}`} target="_blank" rel="noopener">
-            Ver cómo queda
-          </a>
-          <button type="button" className="btn-ghost" disabled={!dirty || busy !== null} onClick={save}>
-            {busy === 'save' ? 'Guardando…' : 'Guardar'}
-          </button>
-          <button type="button" className="btn-primary" disabled={busy !== null} onClick={publish}>
-            {busy === 'publish' ? 'Publicando…' : 'Publicar'}
-          </button>
-        </div>
-        {message ? <p className="text-sm text-kairikos-success">{message}</p> : null}
-        {error ? <p className="text-sm text-kairikos-danger">{error}</p> : null}
+        {legalMissing.length ? (
+          <p className="text-sm text-kairikos-warning">
+            Faltan tus datos legales:{' '}
+            <button type="button" className="underline" onClick={() => setTab('datos')}>
+              rellénalos en «Mis datos»
+            </button>
+            ; sin ellos no se puede publicar.
+          </p>
+        ) : null}
       </div>
 
-      {props.estilo ? <StyleCard estilo={props.estilo} value={content.estilo} onChange={setStyle} /> : null}
+      {/* Tres pestañas: lo que se escribe, cómo se ve y los datos del negocio. */}
+      <div role="tablist" aria-label="Partes de tu web" className="flex flex-wrap gap-2 border-b border-kairikos-border pb-2">
+        {(
+          [
+            ['contenido', 'Contenido', pending],
+            ['diseno', 'Diseño', 0],
+            ['datos', 'Mis datos', legalMissing.length],
+          ] as const
+        ).map(([key, label, aviso]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={tab === key}
+            className={tab === key ? 'btn-primary' : 'btn-ghost'}
+            onClick={() => setTab(key)}
+            data-testid={`site-editor-tab-${key}`}
+          >
+            {label}
+            {aviso ? <span className="ml-2 pill-warning">{aviso}</span> : null}
+          </button>
+        ))}
+      </div>
 
+      {tab === 'diseno' && props.estilo ? <StyleCard estilo={props.estilo} value={content.estilo} onChange={setStyle} /> : null}
+
+      {tab === 'diseno' ? (
       <div className="card space-y-4" data-testid="site-editor-images">
         <div>
           <p className="font-semibold">Logo y foto de portada</p>
@@ -611,7 +691,10 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
           />
         </div>
       </div>
+      ) : null}
 
+      {tab === 'contenido' ? (
+      <>
       {/* Las páginas y el blog. La portada siempre la primera: es la raíz. */}
       <nav className="flex flex-wrap gap-2" aria-label="Páginas de tu web">
         {content.paginas.map((p, i) => (
@@ -840,8 +923,11 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
           </div>
         </>
       )}
+      </>
+      ) : null}
 
-      <div className="card space-y-3">
+      {tab === 'datos' ? (
+      <div className="card space-y-3" data-testid="site-editor-datos">
         <p className="font-semibold">Contacto y datos legales</p>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-sm">
@@ -883,6 +969,41 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
               <input className="input mt-1 w-full" maxLength={max} value={content.legal[key]} onChange={(e) => update((d) => (d.legal[key] = e.target.value))} />
             </label>
           ))}
+        </div>
+      </div>
+      ) : null}
+
+      {/* La barra de abajo, siempre a la vista: qué pasa con tus cambios y los
+          tres botones. Antes estaban solo arriba y no se veían al editar. */}
+      <div className="sticky bottom-0 z-20 -mx-1 rounded-t-xl border border-kairikos-border bg-kairikos-surface/95 px-4 py-3 shadow-lg backdrop-blur" data-testid="site-editor-bar">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <p className="min-w-0 flex-1 basis-full text-sm sm:basis-auto" aria-live="polite">
+            {busy === 'save'
+              ? 'Guardando…'
+              : busy === 'publish'
+                ? 'Publicando…'
+                : error
+                  ? <span className="text-kairikos-danger">{error}</span>
+                  : dirty
+                    ? <span className="font-medium text-kairikos-warning">Cambios sin guardar</span>
+                    : message
+                      ? <span className="text-kairikos-success">{message}</span>
+                      : <span className="text-kairikos-muted">Todo guardado</span>}
+          </p>
+          {/* Sin barra final en la ruta: Next.js la quita con una redirección
+              que el navegador no siempre completa; las rutas relativas de la
+              vista previa ya se reescriben enteras (hosted-site-paths.ts). */}
+          <div className="flex w-full shrink-0 justify-end gap-2 sm:w-auto">
+            <button type="button" className="btn-ghost" disabled={busy !== null} onClick={openPreview}>
+              Ver cómo queda
+            </button>
+            <button type="button" className="btn-ghost" disabled={!dirty || busy !== null} onClick={save}>
+              Guardar
+            </button>
+            <button type="button" className="btn-primary" disabled={busy !== null} onClick={publish}>
+              Publicar
+            </button>
+          </div>
         </div>
       </div>
     </section>
@@ -1411,13 +1532,28 @@ function StyleCard({
           </div>
         </fieldset>
       ) : null}
-      <p className="text-xs text-kairikos-muted">Guarda y pulsa «Ver cómo queda» para verlo en tu web.</p>
+      <p className="text-xs text-kairikos-muted">Pulsa «Ver cómo queda» (abajo) para verlo en tu web.</p>
     </div>
   );
 }
 
-function FieldInput({ field, value, example, iconIds, onChange }: { field: Field; value: string; example: boolean; iconIds: string[]; onChange: (v: string) => void }) {
+function FieldInput({
+  field,
+  value,
+  example,
+  iconIds,
+  icons,
+  onChange,
+}: {
+  field: Field;
+  value: string;
+  example: boolean;
+  iconIds: string[];
+  icons?: IconSymbol[];
+  onChange: (v: string) => void;
+}) {
   const cls = `input mt-1 w-full ${example ? 'border-kairikos-warning bg-kairikos-warning/10' : ''}`;
+  if (field.kind === 'icon' && icons?.length) return <IconPicker label={field.label} value={value} icons={icons} onChange={onChange} />;
   return (
     <label className="block text-sm">
       {field.label}
@@ -1437,6 +1573,48 @@ function FieldInput({ field, value, example, iconIds, onChange }: { field: Field
         <input className={cls} maxLength={field.max} value={value} onChange={(e) => onChange(e.target.value)} />
       )}
     </label>
+  );
+}
+
+/** «herramienta» → «Herramienta», «flecha-derecha» → «Flecha derecha»: el
+ *  nombre del icono, para leerlo en voz alta y en el aviso al pasar. */
+function iconName(id: string): string {
+  const s = id.replace(/-/g, ' ');
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** Elegir un icono viéndolo: una rejilla con los dibujos de la plantilla. */
+function IconPicker({ label, value, icons, onChange }: { label: string; value: string; icons: IconSymbol[]; onChange: (v: string) => void }) {
+  return (
+    <fieldset className="text-sm">
+      <legend>{label}</legend>
+      <div className="mt-1 flex flex-wrap gap-1" role="radiogroup" aria-label={label}>
+        <button
+          type="button"
+          role="radio"
+          aria-checked={value === ''}
+          className={`flex h-10 items-center rounded-lg border px-2 text-xs ${value === '' ? 'border-kairikos-accent ring-2 ring-kairikos-accent' : 'border-kairikos-border'}`}
+          onClick={() => onChange('')}
+        >
+          Por defecto
+        </button>
+        {icons.map((icon) => (
+          <button
+            key={icon.id}
+            type="button"
+            role="radio"
+            aria-checked={value === icon.id}
+            aria-label={iconName(icon.id)}
+            title={iconName(icon.id)}
+            className={`flex h-10 w-10 items-center justify-center rounded-lg border ${value === icon.id ? 'border-kairikos-accent ring-2 ring-kairikos-accent' : 'border-kairikos-border'}`}
+            onClick={() => onChange(icon.id)}
+          >
+            {/* Saneado en el servidor (site-icon-symbols.ts): solo formas de SVG. */}
+            <svg viewBox={icon.viewBox} width="22" height="22" aria-hidden="true" dangerouslySetInnerHTML={{ __html: icon.body }} />
+          </button>
+        ))}
+      </div>
+    </fieldset>
   );
 }
 

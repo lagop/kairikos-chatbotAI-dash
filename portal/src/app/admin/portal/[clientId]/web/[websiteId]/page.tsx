@@ -63,6 +63,7 @@ export default async function AdminWebsiteEditorPage(props: { params: Promise<{ 
           status={site.status}
           lastPublishedAt={site.lastPublishedAt?.toISOString() ?? null}
           iconIds={data.iconIds}
+          iconSymbols={data.iconSymbols}
           estilo={data.estilo}
           updatedAt={site.updatedAt.toISOString()}
         />
