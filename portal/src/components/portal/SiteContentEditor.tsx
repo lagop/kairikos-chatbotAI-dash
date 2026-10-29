@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import type { SiteBlock, SiteBlogEntry, SiteContent, SiteSectionRef, SiteSectionType } from '@/lib/site-content';
 import type { IconSymbol } from '@/lib/site-icon-symbols';
-import { SiteLivePreview, type PreviewDevice } from './SiteLivePreview';
+import { SiteLivePreview, type ListAction, type PreviewDevice, type PreviewPick } from './SiteLivePreview';
 
 // =============================================================================
 // Webs con IA, entrega 4 (27/10/2026) — el editor de la web con plantilla de
@@ -58,6 +58,12 @@ import { SiteLivePreview, type PreviewDevice } from './SiteLivePreview';
 // sección lleva la vista hasta ella. El botón «atrás» del navegador cierra el
 // editor sin perder nada (#editar en la dirección). En el móvil no caben las
 // dos cosas: «Editar» / «Ver» cambia de una a otra.
+//
+// 29/10/2026 (3) — se edita también SOBRE la web: pulsar un texto en la vista
+// lo cambia ahí mismo y abre su sección aquí; un párrafo con formato o
+// cualquier otra cosa abre su campo aquí. Las listas se ordenan, se quitan y
+// se amplían desde la vista con ↑ ↓ ✕ +, con las mismas funciones que los
+// botones de aquí (que recolocan las marcas de ejemplo). Ver SiteLivePreview.
 // =============================================================================
 
 /** Lo mismo que RESERVED_PAGE_ROOTS en lib/site-content.ts. */
@@ -203,6 +209,49 @@ function anchorFor(ref: SiteSectionRef): string {
 
 const LEAVE_WARNING = 'Tienes cambios sin guardar en tu web. Si sales ahora, se pierden.';
 
+/** El tope de cada campo, el mismo que su casilla del formulario: editar
+ *  sobre la vista no puede dejar un texto que el formulario no dejaría. */
+const FIELD_MAX: [RegExp, number][] = [
+  [/^titular$/, 90],
+  [/^subtitulo$/, 220],
+  [/^llamada_accion$/, 90],
+  [/^servicios\.\d+\.nombre$/, 80],
+  [/\.descripcion$/, 300],
+  [/^cifras\.\d+\.valor$/, 30],
+  [/^cifras\.\d+\.etiqueta$/, 90],
+  [/^(proceso|garantias)\.\d+\.titulo$/, 80],
+  [/^(proceso|garantias)\.\d+\.texto$/, 300],
+  [/^precios\.filas\.\d+\.concepto$/, 120],
+  [/\.precio$/, 40],
+  [/\.detalle$/, 200],
+  [/^precios\.nota$/, 200],
+  [/^faq\.\d+\.pregunta$/, 160],
+  [/^zona\.texto$/, 400],
+  [/^zona\.lugares\.\d+\.nombre$/, 60],
+  [/^horario\.\d+\.dias$/, 40],
+  [/^horario\.\d+\.horas$/, 60],
+  [/^bloques\.[^.]+\.titulo$/, 90],
+  [/^bloques\.[^.]+\.items\.\d+\.texto$/, 160],
+];
+
+function maxFor(ruta: string): number {
+  return FIELD_MAX.find(([re]) => re.test(ruta))?.[1] ?? 300;
+}
+
+/** Lo que se añade con «+» desde la vista: con un texto de partida que se
+ *  ve (uno vacío no se podría pulsar para escribirlo), y el tope de cada lista. */
+const LIST_NEW: [RegExp, Record<string, string>, number][] = [
+  [/^servicios$/, { nombre: 'Nuevo servicio', descripcion: 'Cuéntalo en una frase.', icono: '' }, 12],
+  [/^cifras$/, { valor: 'Cifra', etiqueta: 'Qué significa' }, 4],
+  [/^proceso$/, { titulo: 'Nuevo paso', texto: 'Qué pasa en este paso.' }, 6],
+  [/^garantias$/, { titulo: 'Nueva garantía', texto: 'En qué consiste.' }, 4],
+  [/^precios\.filas$/, { concepto: 'Nuevo concepto', precio: 'Precio', detalle: '' }, 12],
+  [/^faq$/, { pregunta: '¿Nueva pregunta?', respuesta: 'La respuesta.' }, 8],
+  [/^zona\.lugares$/, { nombre: 'Nuevo lugar' }, 12],
+  [/^horario$/, { dias: 'Días', horas: 'Horas' }, 7],
+  [/^bloques\.[^.]+\.items$/, { texto: 'Nuevo punto', icono: '' }, 8],
+];
+
 export function SiteContentEditor(props: SiteContentEditorProps) {
   const router = useRouter();
   const [content, setContent] = useState<SiteContent>(props.initialContent);
@@ -223,6 +272,9 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
   const [verMovil, setVerMovil] = useState(false);
   const [device, setDevice] = useState<PreviewDevice>('ordenador');
   const [activo, setActivo] = useState<string | null>(null);
+  const [abiertas, setAbiertas] = useState<Set<string>>(new Set());
+  const [foco, setFoco] = useState<{ ruta: string | null; seccion: string; focus: boolean; n: number } | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   // En una pantalla pequeña la vista enseña siempre el móvil: la de ordenador
   // reducida a 390 px no se lee.
   const [pantallaPequena, setPantallaPequena] = useState(false);
@@ -250,6 +302,46 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
       document.body.style.overflow = prev;
     };
   }, [abierto]);
+
+  useEffect(() => {
+    if (!foco) return;
+    const id = requestAnimationFrame(() => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      const field = foco.ruta ? panel.querySelector<HTMLElement>(`[data-ruta="${CSS.escape(foco.ruta)}"]`) : null;
+      const target = field ?? panel.querySelector<HTMLElement>(`[data-seccion="${CSS.escape(foco.seccion)}"]`);
+      target?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      if (field && foco.focus) field.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [foco]);
+
+  /** Se pulsó algo en la vista: su sección, abierta aquí, y su campo a la vista
+   *  (con el cursor dentro si no se está editando sobre la web). */
+  function pickFromPreview(pick: PreviewPick) {
+    if (view.kind !== 'pagina') return;
+    const ref =
+      page.secciones.find((r) => anchorFor(r) === pick.seccion) ??
+      (pick.ruta?.startsWith('bloques.') ? page.secciones.find((r) => r.tipo === 'bloque' && r.id === pick.ruta?.split('.')[1]) : undefined);
+    if (!ref) return;
+    setTab('contenido');
+    setAbiertas((prev) => new Set(prev).add(refKey(ref)));
+    setActivo(anchorFor(ref));
+    setFoco((prev) => ({ ruta: pick.ruta, seccion: refKey(ref), focus: !pick.inline, n: (prev?.n ?? 0) + 1 }));
+  }
+
+  function listAction(list: string, index: number, action: ListAction) {
+    if (action === 'quitar' && !window.confirm('¿Quitar este elemento de tu web?')) return;
+    const nuevo = LIST_NEW.find(([re]) => re.test(list));
+    update((d) => {
+      const items = listAt(d, list);
+      if (!items) return;
+      if (action === 'subir') swapIn(d, list, index, index - 1);
+      else if (action === 'bajar') swapIn(d, list, index, index + 1);
+      else if (action === 'quitar') removeIn(d, list, index);
+      else if (nuevo && items.length < nuevo[2]) insertIn(d, list, index + 1, { ...nuevo[1] });
+    });
+  }
 
   function abrirEditor() {
     if (window.location.hash !== '#editar') window.history.pushState({ kEditor: true }, '', '#editar');
@@ -515,7 +607,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
       {items.map((item, i) => (
         <div key={i} className="rounded-lg border border-kairikos-border p-3 space-y-2">
           {fields.map((f) => (
-            <FieldInput key={f.key} field={f} value={item[f.key] ?? ''} iconIds={props.iconIds} icons={props.iconSymbols} example={content.ejemplos.includes(`${path}.${i}.${f.key}`)} onChange={(v) => setValue(`${path}.${i}.${f.key}`, v)} />
+            <FieldInput key={f.key} ruta={`${path}.${i}.${f.key}`} field={f} value={item[f.key] ?? ''} iconIds={props.iconIds} icons={props.iconSymbols} example={content.ejemplos.includes(`${path}.${i}.${f.key}`)} onChange={(v) => setValue(`${path}.${i}.${f.key}`, v)} />
           ))}
           <div className="flex gap-2 text-xs">
             <button type="button" className="btn-ghost" disabled={i === 0} onClick={() => update((d) => swapIn(d, path, i, i - 1))}>
@@ -541,7 +633,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
   function sectionEditor(ref: SiteSectionRef) {
     const d = content.datos;
     const text = (label: string, path: string, value: string, max: number, kind: Field['kind'] = 'text') => (
-      <FieldInput field={{ key: path, label, kind, max }} value={value} iconIds={props.iconIds} icons={props.iconSymbols} example={content.ejemplos.includes(path)} onChange={(v) => setValue(path, v)} />
+      <FieldInput ruta={path} field={{ key: path, label, kind, max }} value={value} iconIds={props.iconIds} icons={props.iconSymbols} example={content.ejemplos.includes(path)} onChange={(v) => setValue(path, v)} />
     );
     if (ref.tipo === 'bloque') {
       const b = content.bloques.find((x) => x.id === ref.id);
@@ -915,8 +1007,21 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
               const block = ref.tipo === 'bloque' ? content.bloques.find((b) => b.id === ref.id) : null;
               const label = ref.tipo === 'bloque' ? `${block ? BLOCK_LABEL[block.tipo] : 'Bloque'}${block?.titulo ? `: ${block.titulo}` : ''}` : SECTION_LABEL[ref.tipo];
               return (
-                <li key={refKey(ref)} className={`card ${ref.oculta ? 'opacity-60' : ''}`} onFocusCapture={() => setActivo(anchorFor(ref))}>
-                  <details onToggle={(e) => (e.currentTarget.open ? setActivo(anchorFor(ref)) : null)}>
+                <li key={refKey(ref)} className={`card ${ref.oculta ? 'opacity-60' : ''}`} onFocusCapture={() => setActivo(anchorFor(ref))} data-seccion={refKey(ref)}>
+                  <details
+                    open={abiertas.has(refKey(ref))}
+                    onToggle={(e) => {
+                      const open = e.currentTarget.open;
+                      setAbiertas((prev) => {
+                        if (prev.has(refKey(ref)) === open) return prev;
+                        const next = new Set(prev);
+                        if (open) next.add(refKey(ref));
+                        else next.delete(refKey(ref));
+                        return next;
+                      });
+                      if (open) setActivo(anchorFor(ref));
+                    }}
+                  >
                     <summary className="flex cursor-pointer flex-wrap items-center gap-2">
                       <span className="font-medium">{label}</span>
                       {ref.oculta ? <span className="pill-muted">Oculta</span> : null}
@@ -1117,7 +1222,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
       </header>
       <div className="flex min-h-0 flex-1">
         <div className={`${verMovil ? 'hidden' : 'flex'} w-full min-w-0 flex-col border-kairikos-border lg:flex lg:w-[480px] lg:shrink-0 lg:border-r`}>
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+          <div ref={panelRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
             {statusCard}
             {editorBody}
           </div>
@@ -1152,6 +1257,11 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
             body={previewBody}
             activeAnchor={view.kind === 'pagina' ? activo : null}
             device={pantallaPequena ? 'movil' : device}
+            sectionIds={view.kind === 'pagina' ? page.secciones.map(anchorFor) : []}
+            onPick={view.kind === 'pagina' ? pickFromPreview : undefined}
+            onInlineChange={(ruta, value) => setValue(ruta, value)}
+            maxFor={maxFor}
+            onListAction={view.kind === 'pagina' ? listAction : undefined}
           />
         </div>
       </div>
@@ -1688,6 +1798,7 @@ function StyleCard({
 }
 
 function FieldInput({
+  ruta,
   field,
   value,
   example,
@@ -1695,6 +1806,8 @@ function FieldInput({
   icons,
   onChange,
 }: {
+  /** La ruta del dato: la vista la usa para llevar al cliente a este campo. */
+  ruta?: string;
   field: Field;
   value: string;
   example: boolean;
@@ -1709,7 +1822,7 @@ function FieldInput({
       {field.label}
       {example ? <span className="ml-2 pill-warning">ejemplo</span> : null}
       {field.kind === 'textarea' ? (
-        <textarea className={cls} rows={3} maxLength={field.max} value={value} onChange={(e) => onChange(e.target.value)} />
+        <textarea className={cls} data-ruta={ruta} rows={3} maxLength={field.max} value={value} onChange={(e) => onChange(e.target.value)} />
       ) : field.kind === 'icon' ? (
         <select className={cls} value={value} onChange={(e) => onChange(e.target.value)}>
           <option value="">Por defecto</option>
@@ -1720,7 +1833,7 @@ function FieldInput({
           ))}
         </select>
       ) : (
-        <input className={cls} maxLength={field.max} value={value} onChange={(e) => onChange(e.target.value)} />
+        <input className={cls} data-ruta={ruta} maxLength={field.max} value={value} onChange={(e) => onChange(e.target.value)} />
       )}
     </label>
   );
@@ -1772,8 +1885,18 @@ function IconPicker({ label, value, icons, onChange }: { label: string; value: s
 function listAt(d: SiteContent, path: string): unknown[] {
   const parts = path.split('.');
   let target: unknown = parts[0] === 'bloques' ? d.bloques.find((b) => b.id === parts[1]) : d.datos;
-  for (const p of parts[0] === 'bloques' ? parts.slice(2) : parts) target = (target as Record<string, unknown>)[p];
+  for (const p of parts[0] === 'bloques' ? parts.slice(2) : parts) target = target == null ? undefined : (target as Record<string, unknown>)[p];
   return target as unknown[];
+}
+
+/** Mete un elemento en la posición `index`; las marcas de ejemplo de los de
+ *  detrás se corren una posición (van por posición, como en removeIn). */
+function insertIn(d: SiteContent, path: string, index: number, item: unknown) {
+  listAt(d, path).splice(index, 0, item);
+  d.ejemplos = d.ejemplos.map((e) => {
+    const m = e.startsWith(`${path}.`) ? e.slice(path.length + 1).match(/^(\d+)(.*)$/) : null;
+    return m && Number(m[1]) >= index ? `${path}.${Number(m[1]) + 1}${m[2]}` : e;
+  });
 }
 
 function removeIn(d: SiteContent, path: string, index: number) {

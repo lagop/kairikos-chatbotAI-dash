@@ -8,6 +8,7 @@ import {
   type SiteContent,
   type SitePage,
   type SiteSectionType,
+  resolveContentPath,
 } from './site-content';
 import { renderSiteMarkdown } from './site-markdown';
 import { BLOQUES_CSS, BLOQUES_JS, isRichBlockType, renderRichBlock, richBlockHasContent, videoPlatformsIn } from './site-rich-blocks';
@@ -163,7 +164,7 @@ function isEmpty(value: unknown): boolean {
   return false;
 }
 
-function renderNodes(nodes: MustacheNode[], stack: Ctx[], examples: Set<string>): string {
+function renderNodes(nodes: MustacheNode[], stack: Ctx[], examples: Set<string>, edit?: (path: string) => boolean): string {
   let out = '';
   for (const node of nodes) {
     if (typeof node === 'string') {
@@ -173,32 +174,125 @@ function renderNodes(nodes: MustacheNode[], stack: Ctx[], examples: Set<string>)
     const { value, path } = lookup(stack, node.name);
     if (node.t === 'var') {
       if (value == null || typeof value === 'object') continue;
-      const s = node.raw ? String(value) : esc(String(value));
       // Los *_html son la versión ya formateada de un campo de texto: la marca
       // de ejemplo es la del campo original, y va en bloque porque dentro hay
       // párrafos y listas.
       const base = path?.endsWith('_html') ? path.slice(0, -5) : path;
+      const editable = Boolean(edit && base && edit(base));
+      // En modo edición, nada del contenido puede colarse como una marca. Pero
+      // solo se limpian los valores del contenido y los escapados: {{{secciones}}}
+      // trae las secciones ya pintadas, CON sus marcas, y tienen que llegar.
+      const raw = edit && (editable || !node.raw) ? String(value).replace(EDIT_MARK_CHARS, '') : String(value);
+      let s = node.raw ? raw : esc(raw);
       if (base && examples.has(base)) {
-        out += path !== base ? `<div class="dato-ejemplo dato-ejemplo-bloque">${s}</div>` : `<span class="dato-ejemplo">${s}</span>`;
-      } else {
-        out += s;
+        s = path !== base ? `<div class="dato-ejemplo dato-ejemplo-bloque">${s}</div>` : `<span class="dato-ejemplo">${s}</span>`;
       }
+      // Modo edición (29/10/2026): el valor, entre marcas con su ruta. Si cae
+      // en texto visible acabará en un <k-dato>; si cae en un atributo o en
+      // <title>, se quitan (applyEditMarks).
+      out += editable && base ? `${path !== base ? MARK_BLOCK : MARK_OPEN}${base}${MARK_SEP}${s}${MARK_CLOSE}` : s;
       continue;
     }
     const empty = isEmpty(value);
     if (node.inverted) {
-      if (empty) out += renderNodes(node.children, stack, examples);
+      if (empty) out += renderNodes(node.children, stack, examples, edit);
       continue;
     }
     if (empty) continue;
     if (Array.isArray(value)) {
       value.forEach((item, i) => {
-        out += renderNodes(node.children, [...stack, { value: item, path: path === null ? null : `${path}.${i}` }], examples);
+        out += renderNodes(node.children, [...stack, { value: item, path: path === null ? null : `${path}.${i}` }], examples, edit);
       });
     } else if (typeof value === 'object') {
-      out += renderNodes(node.children, [...stack, { value, path }], examples);
+      out += renderNodes(node.children, [...stack, { value, path }], examples, edit);
     } else {
-      out += renderNodes(node.children, stack, examples);
+      out += renderNodes(node.children, stack, examples, edit);
+    }
+  }
+  return out;
+}
+
+// ---- Modo edición: qué dato es cada texto -----------------------------------------
+//
+// 29/10/2026 — para editar sobre la vista previa del editor, cada texto del
+// contenido que se ve en la página va dentro de <k-dato data-k-ruta="…"> con
+// su ruta ('titular', 'servicios.2.descripcion', 'bloques.historia.titulo').
+// Un elemento propio y no un <span>: las plantillas dan estilo a los span de
+// sus titulares (palabras resaltadas) y la vista dejaría de parecerse a la web.
+//
+// El motor no sabe al pintar un valor si está dentro de un atributo
+// (alt="{{nombre}}") o de <title>, donde una etiqueta rompería la página. Por
+// eso pinta marcas invisibles alrededor de cada valor y, al final, un repaso
+// del HTML (applyEditMarks) las convierte en <k-dato> solo en el texto
+// visible y las quita en lo demás. Nada de esto ocurre fuera del modo edición:
+// lo que se publica sale idéntico (hay una prueba que lo compara).
+
+const MARK_OPEN = '\uE000';
+const MARK_BLOCK = '\uE003';
+const MARK_SEP = '\uE001';
+const MARK_CLOSE = '\uE002';
+const EDIT_MARK_CHARS = /[\uE000-\uE003]/g;
+/** Elementos cuyo contenido no es HTML: una etiqueta dentro se vería escrita. */
+const RAW_TEXT_ELEMENTS = new Set(['script', 'style', 'title', 'textarea', 'noscript', 'iframe', 'xmp', 'option']);
+
+/** Si un dato del contenido se edita como texto sobre la vista. Las rutas de
+ *  fotos e iconos van en atributos y se cambian desde el formulario. */
+export function isEditablePath(content: SiteContent, path: string): boolean {
+  if (/\.(icono|foto|fotoAlt|alt)$/.test(path)) return false;
+  return resolveContentPath(content, path) !== undefined;
+}
+
+/** Convierte las marcas en <k-dato> donde son texto visible y las quita donde
+ *  no (atributos, comentarios, <title>, <script>…). Exportada para las pruebas. */
+export function applyEditMarks(html: string): string {
+  let out = '';
+  let state: 'text' | 'tag' | 'comment' | 'raw' = 'text';
+  let quote = '';
+  let tagName = '';
+  let rawTag = '';
+  const closers: string[] = [];
+  for (let i = 0; i < html.length; i++) {
+    const ch = html[i];
+    if (ch === MARK_OPEN || ch === MARK_BLOCK) {
+      const sep = html.indexOf(MARK_SEP, i);
+      const ruta = sep > i ? html.slice(i + 1, sep) : '';
+      i = sep > i ? sep : i;
+      if (state === 'text' && ruta) {
+        out += ch === MARK_BLOCK ? `<k-dato data-k-ruta="${esc(ruta)}" data-k-bloque style="display:block">` : `<k-dato data-k-ruta="${esc(ruta)}">`;
+        closers.push('</k-dato>');
+      } else closers.push('');
+      continue;
+    }
+    if (ch === MARK_CLOSE) {
+      out += closers.pop() ?? '';
+      continue;
+    }
+    if (ch === MARK_SEP) continue;
+    out += ch;
+    if (state === 'text') {
+      if (ch === '<') {
+        if (html.startsWith('!--', i + 1)) state = 'comment';
+        else if (/[a-zA-Z/!]/.test(html[i + 1] ?? '')) {
+          state = 'tag';
+          const m = /^\/?([a-zA-Z][a-zA-Z0-9-]*)/.exec(html.slice(i + 1, i + 40));
+          tagName = html[i + 1] === '/' ? '' : (m?.[1] ?? '').toLowerCase();
+        }
+      }
+    } else if (state === 'tag') {
+      if (quote) {
+        if (ch === quote) quote = '';
+      } else if (ch === '"' || ch === "'") quote = ch;
+      else if (ch === '>') {
+        state = RAW_TEXT_ELEMENTS.has(tagName) && html[i - 1] !== '/' ? 'raw' : 'text';
+        rawTag = tagName;
+      }
+    } else if (state === 'comment') {
+      if (ch === '>' && html.slice(i - 2, i) === '--') state = 'text';
+    } else if (state === 'raw') {
+      if (ch === '<' && html.slice(i + 1, i + 2 + rawTag.length).toLowerCase() === `/${rawTag}`) {
+        state = 'tag';
+        tagName = '';
+      }
     }
   }
   return out;
@@ -392,6 +486,7 @@ function renderSections(
   content: SiteContent,
   page: SitePage,
   view: View,
+  edit?: (path: string) => boolean,
 ): RenderedSection[] {
   const examples = new Set(content.ejemplos);
   const rendered: RenderedSection[] = [];
@@ -417,7 +512,7 @@ function renderSections(
         { value: { ...view, ancla: anchor }, path: '' },
         { value: blockView(block, pageFile(page.ruta).base), path: `bloques.${block.id}` },
       ];
-      rendered.push({ kind: 'block', anchor, tipo: 'bloque', html: renderNodes(parseMustache(source), stack, examples) });
+      rendered.push({ kind: 'block', anchor, tipo: 'bloque', html: renderNodes(parseMustache(source), stack, examples, edit) });
       continue;
     }
     const source = template.secciones[ref.tipo];
@@ -426,7 +521,7 @@ function renderSections(
       kind: 'section',
       anchor: ref.tipo,
       tipo: ref.tipo,
-      html: renderNodes(parseMustache(source), [{ value: { ...view, ancla: ref.tipo }, path: '' }], examples),
+      html: renderNodes(parseMustache(source), [{ value: { ...view, ancla: ref.tipo }, path: '' }], examples, edit),
     });
   }
   return rendered;
@@ -620,7 +715,8 @@ export function renderSitePage(
   ctx = withClientImages(content, ctx);
   const { base } = pageFile(page.ruta);
   const view = buildView(content, ctx, base);
-  const rendered = options.body ?? renderSections(template, content, page, view);
+  const edit = ctx.edicion ? (path: string) => isEditablePath(content, path) : undefined;
+  const rendered = options.body ?? renderSections(template, content, page, view, edit);
   if (!options.body && page.ruta !== '' && !rendered.some((r) => r.tipo === 'portada')) {
     const html = renderBlogPart(template, 'cabecera_pagina', { ...view, ancla: 'cabecera', pagina: { titulo: page.titulo } });
     rendered.unshift({ kind: 'block', anchor: 'cabecera', tipo: 'bloque', html });
@@ -644,7 +740,9 @@ export function renderSitePage(
       },
     ],
     new Set(content.ejemplos),
+    edit,
   );
+  if (edit) html = applyEditMarks(html);
 
   // Lo que pone el motor en toda página, sin depender de que la plantilla se
   // acuerde: noindex en el borrador (es una propuesta sobre un negocio de
