@@ -12,6 +12,7 @@
 // =============================================================================
 
 import { RefreshAllExpiredButton, RefreshFromGoogleButton } from '@/components/portal/RefreshFromGoogleButton';
+import { RegenerateWebDraftLink } from './RegenerateWebDraftLink';
 
 const STATUS_LABEL: Record<string, string> = {
   nuevo: 'Nuevo',
@@ -161,6 +162,8 @@ export function LeadsSummaryPanel({ leads, clientId }: { leads: LeadSummaryRow[]
                 Ver borrador de web
               </a>
             ) : null}
+            {/* 29/10/2026 — y generarlo otra vez desde cero (pide confirmación). */}
+            {lead.source === 'outbound' && lead.hasWebDraft ? <RegenerateWebDraftLink leadId={lead.id} /> : null}
             {lead.scoreReason ? (
               <p className="mt-1 text-xs italic text-kairikos-muted" data-testid="leads-summary-score-reason">
                 Por qué esta prioridad: {lead.scoreReason}

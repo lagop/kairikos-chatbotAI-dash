@@ -24,10 +24,20 @@ import { SITE_TEMPLATE_BASE } from '@/lib/site-template-base';
 type Row = Record<string, unknown> & { id: string; estado: string; validacion: Record<string, unknown> };
 
 /** Prisma en memoria, solo lo que usa site-template-jobs. */
-function fakePrisma(seed: Row[] = [], todayCount = 0) {
+function fakePrisma(seed: Row[] = [], todayCount = 0, drafts: { leadId: string; templateId: string | null }[] = []) {
   const rows = new Map<string, Row>(seed.map((r) => [r.id, r]));
   let n = 0;
   const prisma = {
+    prospectingWebDraft: {
+      groupBy: vi.fn(async ({ where }: { where: { templateId: { in: string[] }; leadId?: { not: string } } }) => {
+        const counts = new Map<string, number>();
+        for (const d of drafts) {
+          if (!d.templateId || !where.templateId.in.includes(d.templateId) || d.leadId === where.leadId?.not) continue;
+          counts.set(d.templateId, (counts.get(d.templateId) ?? 0) + 1);
+        }
+        return [...counts].map(([templateId, n]) => ({ templateId, _count: { _all: n } }));
+      }),
+    },
     siteTemplate: {
       count: vi.fn(async () => todayCount),
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
@@ -201,6 +211,39 @@ describe('estados y biblioteca', () => {
     expect(await pickSiteTemplateForSector(prisma, 'trades')).toEqual({ id: 'b' });
     expect(await pickSiteTemplateForSector(prisma, 'beauty')).toBeNull();
     expect(await pickSiteTemplateForSector(prisma, null)).toBeNull();
+  });
+
+  // 29/10/2026 — sin webs de clientes todavía, todas empataban a cero y
+  // todos los borradores habrían ido a la misma.
+  const tres = (): Row[] => ['a', 'b', 'c'].map((id) => ({ id, estado: 'aprobada', sector: 'trades', websites: 0, validacion: {} }));
+
+  it('cuenta también los borradores: va a la que menos tiene', async () => {
+    const { prisma } = fakePrisma(tres(), 0, [
+      { leadId: 'l1', templateId: 'a' },
+      { leadId: 'l2', templateId: 'a' },
+      { leadId: 'l3', templateId: 'c' },
+    ]);
+    expect(await pickSiteTemplateForSector(prisma, 'trades')).toEqual({ id: 'b' });
+  });
+
+  it('en un empate, al azar entre las empatadas (y solo entre ellas)', async () => {
+    const { prisma } = fakePrisma(tres(), 0, [{ leadId: 'l1', templateId: 'b' }]);
+    expect(await pickSiteTemplateForSector(prisma, 'trades', { random: () => 0 })).toEqual({ id: 'a' });
+    expect(await pickSiteTemplateForSector(prisma, 'trades', { random: () => 0.99 })).toEqual({ id: 'c' });
+    expect(await pickSiteTemplateForSector(prisma, 'trades', { random: () => 1 })).toEqual({ id: 'c' });
+  });
+
+  it('el borrador que se regenera no cuenta: sale como la primera vez', async () => {
+    const { prisma } = fakePrisma(tres().slice(0, 2), 0, [{ leadId: 'l1', templateId: 'a' }]);
+    expect(await pickSiteTemplateForSector(prisma, 'trades', { random: () => 0 })).toEqual({ id: 'b' });
+    expect(await pickSiteTemplateForSector(prisma, 'trades', { exceptDraftLeadId: 'l1', random: () => 0 })).toEqual({ id: 'a' });
+  });
+
+  it('repartiendo uno tras otro, los borradores quedan a partes iguales', async () => {
+    const drafts: { leadId: string; templateId: string | null }[] = [];
+    const { prisma } = fakePrisma(tres(), 0, drafts);
+    for (let i = 0; i < 12; i++) drafts.push({ leadId: `l${i}`, templateId: (await pickSiteTemplateForSector(prisma, 'trades'))!.id });
+    expect(['a', 'b', 'c'].map((id) => drafts.filter((d) => d.templateId === id).length)).toEqual([4, 4, 4]);
   });
 });
 
