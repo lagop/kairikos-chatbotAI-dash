@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { historyCommand } from './edit-history';
+import { instantTextPatches } from './preview-patch';
 
 // =============================================================================
 // La vista previa EN VIVO del editor de la web (29/10/2026).
@@ -10,7 +11,8 @@ import { historyCommand } from './edit-history';
 // escrito aunque no esté guardado: el editor manda el contenido a la vista
 // previa por POST (website-preview.ts, override) y la página que vuelve se
 // escribe en este marco. Se repinta medio segundo después de dejar de
-// escribir, no con cada tecla.
+// escribir, no con cada tecla; mientras, el texto que se escribe en el
+// formulario ya cambia en la vista (preview-patch.ts).
 //
 // Por qué escribir el documento (document.write) y no cambiar el src: así la
 // vista conserva el scroll entre un cambio y otro (se guarda y se repone), y
@@ -118,6 +120,8 @@ export function SiteLivePreview({
   const firstRef = useRef(true);
   const inlineRef = useRef<{ el: HTMLElement; ruta: string; original: string; last: string } | null>(null);
   const pendingRef = useRef<string | null>(null);
+  // El contenido que enseña ahora la vista, pintado o cambiado al momento.
+  const shownContentRef = useRef<Parameters<typeof instantTextPatches>[0] | null>(null);
   // Los oyentes se ponen al pintar: leen siempre lo último que llegó.
   const cb = useRef({ onPick, onInlineChange, maxFor, onListAction, onHistory, sectionIds });
   cb.current = { onPick, onInlineChange, maxFor, onListAction, onHistory, sectionIds };
@@ -407,6 +411,23 @@ export function SiteLivePreview({
     win.addEventListener('load', restore, { once: true });
     mark(false);
   }
+
+  // Lo escrito en el formulario, ya, sin esperar al servidor (preview-patch.ts).
+  useEffect(() => {
+    let next: Parameters<typeof instantTextPatches>[1];
+    try {
+      next = (JSON.parse(body) as { content: typeof next }).content;
+    } catch {
+      return;
+    }
+    const prev = shownContentRef.current;
+    shownContentRef.current = next;
+    const doc = frameRef.current?.contentDocument;
+    if (!prev || !doc) return;
+    const els = Array.from(doc.querySelectorAll<HTMLElement>('k-dato[data-k-ruta]:not([data-k-bloque])'));
+    const shown = els.map((el) => ({ ruta: el.getAttribute('data-k-ruta') ?? '', text: el.textContent ?? '' }));
+    for (const { index, text } of instantTextPatches(prev, next, shown)) els[index].textContent = text;
+  }, [body]);
 
   // Pedir y pintar la vista con lo que hay escrito.
   useEffect(() => {
