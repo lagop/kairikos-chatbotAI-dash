@@ -106,7 +106,8 @@ p{margin:0 0 var(--s-4)}
 .portada-texto .rotulo{background:var(--bosque-2);color:var(--claro);align-self:flex-start}
 .portada-texto .rotulo::before{background:#7ee2a8;box-shadow:0 0 0 0 rgba(126,226,168,.6);animation:punto 2s infinite}
 @keyframes punto{70%{box-shadow:0 0 0 7px rgba(126,226,168,0)}100%{box-shadow:0 0 0 0 rgba(126,226,168,0)}}
-.portada h1{font-size:clamp(2.15rem,5.4vw,4.4rem);line-height:1;color:var(--blanco);margin-bottom:0}
+/* Mínimos medidos con títulos largos a 345 px (lo que mide el laboratorio con la barra de Windows): ninguna palabra de 13–14 letras pasa del ~85 % de la línea, porque el Chrome de Windows dibuja la letra algo más ancha que el de Linux. */
+.portada h1{font-size:clamp(1.95rem,5vw,4rem);line-height:1;color:var(--blanco);margin-bottom:0}
 .portada .garabato{width:min(14rem,70%);margin:var(--s-3) 0 var(--s-5)}
 .entradilla{font-size:1.18rem;color:var(--claro-suave);max-width:46ch}
 .acciones{display:flex;flex-wrap:wrap;gap:var(--s-4) var(--s-3);margin-top:var(--s-4)}
@@ -217,6 +218,9 @@ p{margin:0 0 var(--s-4)}
 .faq-caja{background:var(--salvia);border-radius:calc(var(--radio) + 8px);padding:clamp(1.5rem,4vw,3.5rem);display:grid;gap:var(--s-6) var(--s-7);grid-template-columns:minmax(0,1fr)}
 @media (min-width:900px){.faq-caja{grid-template-columns:minmax(0,1fr) minmax(0,1.6fr)}}
 .faq-caja .rotulo{background:var(--blanco)}
+/* Desde 900 px el título va en la columna estrecha de la caja: a 4.4vw «climatización» llenaba la línea a 1085 px. */
+.faq-lado h2{font-size:clamp(1.9rem,4.4vw,3.4rem)}
+@media (min-width:900px){.faq-lado h2{font-size:clamp(1.85rem,3.2vw,2.8rem)}}
 .faq-lado p{color:var(--tinta-suave)}
 .faq-lado a{display:inline-flex;align-items:center;gap:var(--s-2);font:800 1.5rem/1.2 var(--display);color:var(--bosque);text-decoration:none;overflow-wrap:anywhere}
 .faq-lado a svg{flex:none;width:1.3rem;height:1.3rem;color:var(--coral)}
@@ -262,7 +266,7 @@ p{margin:0 0 var(--s-4)}
 .contacto{display:grid;gap:var(--s-4);grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr))}
 .contacto>*{min-width:0}
 .contacto-datos{background:var(--bosque);color:var(--claro);border-radius:var(--radio);padding:clamp(1.5rem,4vw,3rem);display:flex;flex-direction:column;gap:var(--s-4)}
-.contacto-datos h2{color:var(--blanco)}
+.contacto-datos h2{color:var(--blanco);font-size:clamp(1.9rem,4vw,3rem)}
 .contacto-datos .rotulo{background:var(--bosque-2);color:var(--claro);align-self:flex-start}
 .dato{display:flex;gap:var(--s-3);align-items:flex-start;overflow-wrap:anywhere;margin:0}
 .dato .icono{flex:none;width:2.6rem;height:2.6rem;background:var(--bosque-2);color:var(--coral-vivo);box-shadow:none}

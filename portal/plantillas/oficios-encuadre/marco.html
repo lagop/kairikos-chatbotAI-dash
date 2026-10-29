@@ -100,7 +100,8 @@ p{margin:0 0 var(--s-4)}
 .estado{display:inline-flex;align-items:center;gap:var(--s-2);font:700 .8rem/1.2 var(--texto);text-transform:uppercase;letter-spacing:.14em;color:var(--blanco);margin-bottom:var(--s-5)}
 .estado::before{content:"";flex:none;width:.55rem;height:.55rem;border-radius:50%;background:#5fd38a;box-shadow:0 0 0 0 rgba(95,211,138,.6);animation:latido 2s infinite}
 @keyframes latido{70%{box-shadow:0 0 0 8px rgba(95,211,138,0)}100%{box-shadow:0 0 0 0 rgba(95,211,138,0)}}
-.portada h1{font-size:clamp(2.75rem,7.4vw,6.6rem);line-height:.95;max-width:15ch;margin-bottom:var(--s-5);text-wrap:balance}
+/* Mínimos medidos con títulos largos a 345 px (lo que mide el laboratorio con la barra de Windows): ninguna palabra de 13–14 letras pasa del ~85 % de la línea, porque el Chrome de Windows dibuja la letra algo más ancha que el de Linux. */
+.portada h1{font-size:clamp(2.5rem,7.4vw,6.6rem);line-height:.95;max-width:15ch;margin-bottom:var(--s-5);text-wrap:balance}
 .entradilla{font-size:clamp(1.1rem,1.6vw,1.3rem);color:#e7e9ec;max-width:44ch;margin-bottom:var(--s-6)}
 .acciones{display:flex;flex-wrap:wrap;gap:var(--s-3)}
 .portada .boton--claro{background:transparent;color:var(--blanco);box-shadow:inset 0 0 0 1px rgba(255,255,255,.6)}
@@ -144,7 +145,8 @@ p{margin:0 0 var(--s-4)}
 /* Quiénes somos */
 .sobre{display:grid;gap:var(--s-6) var(--s-8);grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr));align-items:start}
 .sobre>*{min-width:0}
-.sobre h2{font-size:clamp(2.6rem,6vw,4.6rem)}
+/* 4.6vw y no 6vw: a 900 px el texto va ya a dos columnas y «climatización» llenaba la línea. */
+.sobre h2{font-size:clamp(2.35rem,4.6vw,4.6rem)}
 .sobre-firma{display:block;font:italic 400 1.5rem/1.2 var(--display);color:var(--cobalto);margin-bottom:var(--s-3)}
 .foto-marco{margin:var(--s-5) 0 0}
 .foto-marco img{width:100%;aspect-ratio:4/3;object-fit:cover;filter:grayscale(.2) contrast(1.05)}
