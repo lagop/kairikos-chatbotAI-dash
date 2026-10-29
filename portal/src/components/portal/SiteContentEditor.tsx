@@ -248,6 +248,10 @@ const FIELD_MAX: [RegExp, number][] = [
   [/^horario\.\d+\.horas$/, 60],
   [/^bloques\.[^.]+\.titulo$/, 90],
   [/^bloques\.[^.]+\.items\.\d+\.texto$/, 160],
+  // Los párrafos con formato (los mismos límites que lib/site-content.ts).
+  [/^sobre$/, 1200],
+  [/^faq\.\d+\.respuesta$/, 1200],
+  [/^bloques\.[^.]+\.texto$/, 2000],
 ];
 
 function maxFor(ruta: string): number {
