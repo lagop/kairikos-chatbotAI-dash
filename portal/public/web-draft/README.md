@@ -186,3 +186,40 @@ descargadas con permiso de Orlando el 28/10/2026:
 | trabajo-8 | pu20JkUx--A | Arthur Humeau |
 | trabajo-9 | TnyHlxVnyhk | Giselle Lazcano |
 | despues-1 | GO1d_3tqkFo | Yovanka Loria Salon |
+
+## Salud (`salud/`, 30/10/2026)
+
+Para clínicas dentales, fisioterapia, veterinaria y consultas médicas. Ese día
+no había ni un prospecto del sector: se eligieron por lo que Google mete en la
+familia `health`. Cada negocio se queda con una de portada, por el nombre y
+luego por el tipo de Google (`trade-photos.ts`); si no se reconoce, una de
+consulta genérica (`clinica-*`), no `health.jpg`.
+
+Aquí **sí salen personas**, a diferencia de oficios: una consulta vacía parece
+cerrada. Son modelos de banco, nunca el personal del prospecto.
+
+Todas de Unsplash («Foto gratuita»), a 1600 px, descargadas con permiso de
+Orlando el 30/10/2026. Las cuatro que pasaban de 400 KB se recomprimieron
+(q=74–80).
+
+| Archivo | Foto (unsplash.com/es/fotos/…) | Autor |
+|---|---|---|
+| dental-1 | Bg81yWKZlMg | Harold Hisona |
+| dental-2 | e7MJLM5VGjY | Benyamin Bohlouli |
+| dental-3 | XJptUS8nbhs | Atikah Akhtar |
+| dental-4 | 44jaETSVX2I | Katarzyna Zygnerska |
+| dental-5 | AWqHc49SU-c | Ozkan Guner |
+| fisioterapia-1 | pbUWW-CBoqY | yury kirillov |
+| fisioterapia-2 | ZzkNkbUxFMc | Julius Toltesi |
+| fisioterapia-3 | vIb5HzilzBs | Julius Toltesi |
+| fisioterapia-4 | UNRW1dD2xjI | yury kirillov |
+| fisioterapia-5 | E0xu1n9yiPk | Vitaly Gariev |
+| veterinaria-1 | e4f87NzUJsU | Alexander Mass |
+| veterinaria-2 | 5Bi6MWlWMbw | Judy Beth Morris |
+| veterinaria-3 | I3KxEBS6iOc | Alexander Mass |
+| veterinaria-4 | sdpIuIbKaQg | Alexander Mass |
+| veterinaria-5 | u2H8mUzoF2Q | Anya Prygunova |
+| clinica-1 | XqMo4OlBnh0 | Vitaly Gariev |
+| clinica-2 | 8WYkI3cEZm8 | Vitaly Gariev |
+| clinica-3 | 2kopEHjST-g | Vitaly Gariev |
+| clinica-4 | 6qN9yEK5k9U | Vitaly Gariev |

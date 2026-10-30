@@ -1,0 +1,6 @@
+<section class="llamada" id="{{ancla}}"><div class="contenedor"><div class="llamada-panel">
+  <svg class="pulso" viewBox="0 0 600 64" aria-hidden="true"><path pathLength="1" d="M2 40H200l14-22 16 40 18-54 16 46 12-18 10 8H598"/></svg>
+  <p class="antetitulo">Cita</p>
+  <h2>{{#llamada_accion}}{{llamada_accion}}{{/llamada_accion}}{{^llamada_accion}}¿Te buscamos un hueco esta semana?{{/llamada_accion}}</h2>
+  {{#telefono_href}}<a class="llamada-telefono" href="tel:{{telefono_href}}"><span><svg aria-hidden="true"><use href="#i-telefono"></use></svg></span><span>{{telefono}}</span></a>{{/telefono_href}}
+</div></div></section>

@@ -101,11 +101,13 @@ function stableIndex(text: string, size: number): number {
 
 /**
  * La ruta pública de la foto ('/web-draft/oficios/aluminio-2.jpg'), o null:
+ * (belleza y salud tienen la suya, abajo)
  * otra familia que no sea oficios, o un oficio que no se reconoce. Con null,
  * quien llama usa la foto del sector de siempre.
  */
 export function tradeHeroPhoto(family: string, businessName: string, primaryType: string | null): string | null {
   if (family === 'beauty') return beautyHeroPhoto(businessName, primaryType);
+  if (family === 'health') return healthHeroPhoto(businessName, primaryType);
   if (family !== 'trades') return null;
   const set = tradePhotoSet(businessName, primaryType);
   if (!set) return null;
@@ -146,4 +148,45 @@ function beautyHeroPhoto(businessName: string, primaryType: string | null): stri
   const set = beautyPhotoSet(businessName, primaryType);
   const n = stableIndex(normalize(businessName).trim(), BEAUTY_PHOTO_COUNTS[set]) + 1;
   return `/web-draft/belleza/${set}-${n}.jpg`;
+}
+
+// -----------------------------------------------------------------------------
+// Salud (30/10/2026). Ningún prospecto del sector todavía: las fotos se
+// eligieron por lo que Google mete en la familia (dentist, dental_clinic,
+// physiotherapist, veterinary_care, doctor). Están en public/web-draft/salud/.
+// A diferencia de oficios y belleza, aquí sí salen personas: una consulta sin
+// nadie parece cerrada, y son modelos de banco, no el personal de la clínica.
+// Lo que no se reconoce sale con la de consulta genérica (clinica-*), no con
+// health.jpg: en salud todas las fotos sirven para cualquiera del sector.
+// -----------------------------------------------------------------------------
+
+export const HEALTH_PHOTO_COUNTS = Object.freeze({ dental: 5, fisioterapia: 5, veterinaria: 5, clinica: 4 } as const);
+export type HealthPhotoSet = keyof typeof HEALTH_PHOTO_COUNTS;
+
+/** Veterinaria primero: «Clínica Dental Veterinaria» no existe, pero
+ *  «Hospital Veterinario San Bernardo» no es una consulta médica. */
+const HEALTH_BY_NAME: readonly [HealthPhotoSet, RegExp][] = [
+  ['veterinaria', /veterin|mascota|animal|canin|felin/],
+  ['dental', /dent|odonto|ortodon|sonrisa|implant/],
+  ['fisioterapia', /fisio|osteopat|quiropr|rehabilit|physio/],
+];
+
+const HEALTH_BY_PRIMARY_TYPE: Readonly<Record<string, HealthPhotoSet>> = Object.freeze({
+  dentist: 'dental',
+  dental_clinic: 'dental',
+  physiotherapist: 'fisioterapia',
+  veterinary_care: 'veterinaria',
+  doctor: 'clinica',
+});
+
+export function healthPhotoSet(businessName: string, primaryType: string | null): HealthPhotoSet {
+  const name = normalize(businessName);
+  for (const [set, pattern] of HEALTH_BY_NAME) if (pattern.test(name)) return set;
+  return (primaryType && HEALTH_BY_PRIMARY_TYPE[primaryType]) || 'clinica';
+}
+
+function healthHeroPhoto(businessName: string, primaryType: string | null): string {
+  const set = healthPhotoSet(businessName, primaryType);
+  const n = stableIndex(normalize(businessName).trim(), HEALTH_PHOTO_COUNTS[set]) + 1;
+  return `/web-draft/salud/${set}-${n}.jpg`;
 }
