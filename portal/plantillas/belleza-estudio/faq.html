@@ -1,0 +1,8 @@
+<section class="seccion" id="{{ancla}}"><div class="contenedor faq-rejilla">
+  <div class="faq-lado">
+    <p class="antetitulo">Preguntas</p>
+    <h2 data-k-titulo-seccion>Lo que más nos preguntan</h2>
+    {{#telefono}}<p>¿Te queda alguna duda? Llámanos:</p><a href="tel:{{telefono_href}}">{{telefono}}</a>{{/telefono}}
+  </div>
+  <div class="preguntas">{{#faq}}<details class="aparece"><summary>{{pregunta}}</summary><div class="respuesta">{{{respuesta_html}}}</div></details>{{/faq}}</div>
+</div></section>

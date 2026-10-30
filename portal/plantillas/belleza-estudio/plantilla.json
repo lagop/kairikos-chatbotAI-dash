@@ -1,0 +1,41 @@
+{
+  "nombre": "Belleza · Estudio",
+  "sector": "beauty",
+  "variante": "moderna y de autor, hueso y negro con un acento fuerte, fotos que pasan a color",
+  "encargo": "Peluquerías de autor, salones de color y barberías: la contraria de Atelier. Moderna y editorial, como una revista de moda en blanco y negro: papel hueso y tinta negra, secciones que se alternan con el negro y un único acento fuerte (fucsia por defecto). Esquinas rectas y filetes finos. El gesto de la plantilla son las fotos: entran en blanco y negro y toman color al verse. Cabecera con la marca a la izquierda y «Reservar» siempre a mano; portada con titular enorme y una insignia redonda «Pide tu cita» que gira; servicios en tarjetas negras que se invierten al pasar por encima; la visita en una línea que se dibuja con números en hueco; precios como etiquetas con el precio arriba; la zona como una línea de nombres. Titulares en Syne y texto en Inter; con la letra «Barbería» (Bebas Neue) y un color oscuro sirve para una barbería. Trato de tú. Escrita a mano.",
+  "estilo": {
+    "acento": {
+      "variables": [
+        {
+          "variable": "--acento",
+          "desde": "color",
+          "contra": ["--hueso", "--hueso-2", "--blanco"],
+          "minimo": 4.5
+        },
+        {
+          "variable": "--acento-claro",
+          "desde": "tono",
+          "contra": ["--noche", "--noche-2"],
+          "minimo": 4.5
+        }
+      ],
+      "muestras": [
+        { "nombre": "Fucsia", "color": "#c0265e" },
+        { "nombre": "Rojo carmín", "color": "#b3202c" },
+        { "nombre": "Cobalto", "color": "#2446c8" },
+        { "nombre": "Verde botella", "color": "#1e6b4a" },
+        { "nombre": "Violeta", "color": "#6b3fc4" },
+        { "nombre": "Cobre", "color": "#9a4a1c" }
+      ]
+    },
+    "tipografias": {
+      "titulares": "--display",
+      "texto": "--texto",
+      "parejas": [
+        { "id": "estudio", "nombre": "Estudio", "titulares": "Syne", "texto": "Inter" },
+        { "id": "barberia", "nombre": "Barbería", "titulares": "Bebas Neue", "texto": "Work Sans" },
+        { "id": "revista", "nombre": "Revista", "titulares": "DM Serif Display", "texto": "DM Sans" }
+      ]
+    }
+  }
+}
