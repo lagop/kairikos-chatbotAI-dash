@@ -68,6 +68,24 @@ export const VARIANT_SOURCES: Partial<Record<SiteSectionType, Record<string, str
       `<div class="kv-dentro">${NOTA_GOOGLE}<h1 class="kv-titular">{{titular}}</h1>{{#subtitulo}}<p class="kv-entradilla">{{subtitulo}}</p>{{/subtitulo}}${ACCIONES}{{#horario_resumen}}<p class="kv-suave">{{horario_resumen}}</p>{{/horario_resumen}}` +
       '<div class="kv-abanico">{{#kv_fotos}}<img src="{{src}}" alt="Trabajo de {{nombre}}">{{/kv_fotos}}{{^kv_fotos}}<div class="kv-foto-vacia" aria-hidden="true"></div>{{/kv_fotos}}</div></div>' +
       '</section>',
+    // P4: el mismo formulario que el de contacto (mismos campos y límites,
+    // mismo buzón, misma nota de muestra en el borrador), marcado con
+    // data-kairikos-form para que el motor lo envíe también (formScript). Las
+    // garantías hacen de lista de motivos: es lo único del contenido escrito
+    // para eso, y sin ellas la columna queda en titular y teléfono.
+    formulario:
+      open('portada', 'formulario') +
+      `<div class="kv-dentro kv-formulario-caja"><div class="kv-formulario-texto">${NOTA_GOOGLE}<h1 class="kv-titular">{{titular}}</h1>{{#subtitulo}}<p class="kv-entradilla">{{subtitulo}}</p>{{/subtitulo}}` +
+      '{{#garantias.length}}<ul class="kv-checks">{{#garantias}}<li><span class="kv-marca"><svg aria-hidden="true"><use href="#i-check"></use></svg></span><span>{{titulo}}</span></li>{{/garantias}}</ul>{{/garantias.length}}' +
+      '{{#telefono_href}}<p class="kv-o-llame">O llame al <a href="tel:{{telefono_href}}">{{telefono}}</a>{{#horario_resumen}}<span> · {{horario_resumen}}</span>{{/horario_resumen}}</p>{{/telefono_href}}</div>' +
+      '<div class="kv-formulario-lado">{{#fotos.portada}}<img class="kv-formulario-fondo" src="{{fotos.portada}}" alt="">{{/fotos.portada}}' +
+      '<form class="kv-formulario" method="post" data-kairikos-form><h2>Pida presupuesto</h2><p class="kv-form-intro">Cuéntenos qué necesita y le respondemos enseguida.</p>' +
+      '<label for="kv-p4-nombre">Nombre</label><input id="kv-p4-nombre" name="name" maxlength="200" autocomplete="name">' +
+      '<label for="kv-p4-contacto">Teléfono o email</label><input id="kv-p4-contacto" name="contact" maxlength="200" required>' +
+      '<label for="kv-p4-mensaje">¿Qué necesita?</label><textarea id="kv-p4-mensaje" name="message" rows="3" maxlength="2000"></textarea>' +
+      '<button class="kv-boton" type="submit"{{#formulario.muestra}} disabled{{/formulario.muestra}}>Pedir presupuesto</button>' +
+      '{{#formulario.muestra}}<p class="kv-form-nota">Formulario de muestra: en la web publicada, los mensajes le llegan al correo.</p>{{/formulario.muestra}}' +
+      '<p class="kv-form-nota" data-kairikos-form-note hidden></p></form></div></div></section>',
   },
   servicios: {
     zigzag:
@@ -213,6 +231,29 @@ const CSS = `
 .kv-abanico>:nth-child(1):not(:only-child){transform:rotate(-6deg) translate(16%,6%)}
 .kv-abanico>:nth-child(2){position:relative;z-index:1;width:min(38%,23rem)}
 .kv-abanico>:nth-child(3){transform:rotate(6deg) translate(-16%,6%)}
+
+/* P4 */
+.kv-formulario-caja{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:2.5rem clamp(2rem,5vw,4.5rem);align-items:center}
+.kv-portada--formulario .kv-titular{font-size:clamp(2rem,1.1rem + 3vw,3.8rem);line-height:1.04;margin:0 0 1.25rem}
+.kv-portada--formulario .kv-entradilla{font-size:1.12rem;max-width:44ch}
+.kv-checks{list-style:none;margin:1.75rem 0 0;padding:0;display:grid;gap:.75rem;font-weight:700}
+.kv-checks li{display:flex;gap:.7rem;align-items:center}
+.kv-checks .kv-marca{width:1.7rem;height:1.7rem}
+.kv-portada--formulario .kv-o-llame{margin:1.75rem 0 0;color:var(--k-suave,inherit)}
+.kv-o-llame a{font-weight:700;color:var(--k-acento-texto,inherit)}
+.kv-formulario-lado{position:relative;isolation:isolate;overflow:hidden;display:grid;place-items:center;padding:clamp(1.25rem,4vw,2.75rem);border-radius:var(--k-radio,8px);background:var(--k-acento,#333)}
+.kv-formulario-fondo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.35;z-index:-1}
+.kv-formulario{width:100%;max-width:27rem;box-sizing:border-box;padding:clamp(1.25rem,3vw,2rem);border-radius:var(--k-radio,8px);background:var(--k-superficie,#fff);border:var(--k-borde-ancho,0px) solid var(--k-borde,transparent);box-shadow:var(--k-sombra,0 30px 60px -30px rgba(0,0,0,.5))}
+.kv-formulario h2{font-size:1.55rem;margin:0 0 .3rem}
+.kv-form-intro{margin:0;color:var(--k-suave,inherit)}
+.kv-formulario label{display:block;font-weight:700;font-size:.9rem;margin:1rem 0 .35rem}
+.kv-formulario input,.kv-formulario textarea{display:block;width:100%;box-sizing:border-box;font:inherit;color:inherit;padding:.75rem .9rem;border:var(--k-borde-ancho,1px) solid var(--k-borde,rgba(127,127,127,.45));border-radius:var(--k-radio,8px);background:transparent}
+.kv-formulario textarea{resize:vertical;min-height:5.5rem}
+.kv-formulario input:focus-visible,.kv-formulario textarea:focus-visible{outline:3px solid var(--k-acento,#222);outline-offset:1px}
+.kv-formulario .kv-boton{width:100%;justify-content:center;margin-top:1.25rem;cursor:pointer;font:inherit;font-weight:700}
+.kv-formulario .kv-boton[disabled]{opacity:.65;cursor:not-allowed;transform:none;box-shadow:none}
+.kv-form-nota{margin:.85rem 0 0;font-size:.88rem;color:var(--k-suave,inherit)}
+@media (max-width:860px){.kv-formulario-caja{grid-template-columns:minmax(0,1fr)}}
 
 /* S1 */
 .kv-zigzag{list-style:none;margin:2.5rem 0 0;padding:0;counter-reset:kv-n;display:flex;flex-direction:column;gap:clamp(1.5rem,3vw,2.25rem)}

@@ -42,15 +42,16 @@ export interface SiteSectionVariant {
 }
 
 /**
- * Las variantes de cada sección. P4 («formulario a la vista») aún no: el
- * motor envía un solo formulario por página (formScript, site-template.ts) y
- * la portada con el suyo y el de contacto serían dos.
+ * Las variantes de cada sección. P4 («formulario a la vista») pone un
+ * segundo formulario en la página, además del de contacto: el motor envía
+ * los dos (formScript, site-template.ts).
  */
 export const SITE_SECTION_VARIANTS: Partial<Record<SiteSectionType, readonly SiteSectionVariant[]>> = {
   portada: [
     { id: 'panoramica', muestra: 'P1', nombre: 'Titular enorme y foto panorámica', forma: 'portada' },
     { id: 'sangre', muestra: 'P2', nombre: 'Foto a sangre con una tarjeta encima', forma: 'portada' },
     { id: 'centrada', muestra: 'P3', nombre: 'Centrada, con las fotos en abanico', forma: 'portada' },
+    { id: 'formulario', muestra: 'P4', nombre: 'Con el formulario a la vista', forma: 'portada' },
   ],
   servicios: [
     { id: 'zigzag', muestra: 'S1', nombre: 'Filas en zigzag', forma: 'zigzag' },
