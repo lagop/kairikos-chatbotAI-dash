@@ -46,3 +46,33 @@ export function withLiveData(
     highlights: renderableHighlights(copy.highlights, reviews),
   };
 }
+
+/** Lo del prospecto que hace falta para pintar su borrador. */
+export interface DraftLeadFields {
+  contactName: string | null;
+  contactPhone: string | null;
+  summary: string | null;
+  primaryType: string | null;
+  searchLocation: string | null;
+  competitorSnapshot: { subjectRating: number | null; subjectReviewCount: number | null } | null;
+}
+
+/** El sujeto de un borrador de prospecto: lo guardado más lo de Google en
+ *  vivo. Lo comparten el enlace público (/borrador) y el editor del operador
+ *  (web-draft-editor.ts, 30/10/2026): el operador tiene que ver al editar lo
+ *  mismo que verá el prospecto. */
+export function leadDraftSubject(lead: DraftLeadFields & { contactName: string }, live: PlaceDraftData | null, copy: Pick<WebDraftCopy, 'highlights'>): WebDraftSubject {
+  return withLiveData(
+    {
+      businessName: lead.contactName,
+      primaryType: lead.primaryType,
+      city: lead.searchLocation,
+      address: addressFromLeadSummary(lead.summary),
+      phone: lead.contactPhone,
+      rating: lead.competitorSnapshot?.subjectRating ?? null,
+      reviewCount: lead.competitorSnapshot?.subjectReviewCount ?? null,
+    },
+    live,
+    copy,
+  );
+}

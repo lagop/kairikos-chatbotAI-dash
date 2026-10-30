@@ -184,6 +184,9 @@ export async function renderDesignedDraft(
     purchase?: WebDraftPurchaseCta | null;
     offer?: WebDraftOffer;
     shareUrl?: string | null;
+    /** 30/10/2026 — la vista en vivo del editor del operador
+     *  (web-draft-editor.ts): los textos marcados para editarlos en sitio. */
+    edicion?: boolean;
   },
 ): Promise<string | null> {
   if (!params.templateId || params.content == null) return null;
@@ -192,7 +195,7 @@ export async function renderDesignedDraft(
     if (!parsed.ok) return null;
     const template = await loadTemplate(prisma, params.templateId);
     if (!template) return null;
-    return renderSitePage(template, parsed.content, parsed.content.paginas[0], draftRenderContext(params));
+    return renderSitePage(template, parsed.content, parsed.content.paginas[0], { ...draftRenderContext(params), edicion: params.edicion });
   } catch (err) {
     logError('web_draft_design.render_failed', err, { templateId: params.templateId }, 'warn');
     return null;

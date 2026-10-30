@@ -137,7 +137,11 @@ function quoter(...texts: string[]) {
   return (s: string) => `$${tag}$${s}$${tag}$`;
 }
 
-const HUELLA = `md5(coalesce(d.copy::text, '') || '|' || coalesce(d.content::text, ''))`;
+/** La huella de un borrador, en SQL sobre el alias `d`. La comparten esta
+ *  herramienta y el editor del operador (web-draft-editor.ts): así ninguno de
+ *  los dos pisa a ciegas lo que guardó el otro. */
+export const DRAFT_HUELLA_SQL = `md5(coalesce(d.copy::text, '') || '|' || coalesce(d.content::text, ''))`;
+const HUELLA = DRAFT_HUELLA_SQL;
 
 function assertUuid(...ids: (string | null)[]) {
   for (const id of ids) if (id !== null && !isUuid(id)) throw new Error(`no es un uuid: ${id}`);

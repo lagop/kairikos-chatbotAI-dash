@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import type { SiteBlock, SiteBlogEntry, SiteContent, SiteSectionRef, SiteSectionType, SiteTitledSection } from '@/lib/site-content';
@@ -122,6 +122,10 @@ export interface SiteContentEditorProps {
   /** El operador editando en nombre del cliente: lo dice arriba y ve el
    *  error crudo al publicar (el del servidor SFTP, que es el que le sirve). */
   operador?: { clienteNombre: string } | null;
+  /** 30/10/2026 — el borrador de un prospecto, editado por el operador
+   *  (lib/web-draft-editor.ts). Sin publicar ni «Mis datos», solo la portada
+   *  y sin subir fotos. `verUrl`: el borrador guardado, como lo ve él. */
+  borrador?: { negocio: string; verUrl: string } | null;
   initialContent: SiteContent;
   phone: string | null;
   address: string | null;
@@ -204,7 +208,15 @@ const ERRORS: Record<string, string> = {
     'Tu web ha cambiado mientras la editabas (por ejemplo, tu servicio de SEO ha publicado un artículo). Copia lo que acabas de escribir y recarga la página para seguir sobre la versión nueva.',
   invalid_video_url: 'El enlace de algún vídeo no es de YouTube o Vimeo. Cópialo de la barra del navegador o del botón «Compartir».',
   too_small: 'Hay un título vacío (de una página, una entrada o una sección). Escríbelo y vuelve a guardar.',
+  // 30/10/2026 — el editor de borradores (lib/web-draft-editor.ts).
+  stale_draft: 'El borrador ha cambiado mientras lo editabas (se ha regenerado o retocado). Copia lo que acabas de escribir y recarga la página.',
+  old_design: 'Este borrador usa el diseño antiguo y no se puede editar aquí. Regenéralo para pasarlo a una plantilla.',
 };
+
+/** Si el editor puede subir fotos. En un borrador no: no hay dónde guardarlas
+ *  (las subidas son de una web). Contexto y no prop: el selector de fotos
+ *  vive dentro de media docena de editores de bloque. */
+const SubidasContext = createContext(true);
 
 function refKey(ref: SiteSectionRef): string {
   return ref.tipo === 'bloque' ? `bloques.${ref.id}` : ref.tipo;
@@ -686,7 +698,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
     savedRef.current = JSON.stringify(sent);
     // Si se siguió escribiendo mientras se guardaba, eso aún no está guardado.
     setDirty(stateRef.current !== sent);
-    setMessage('Guardado. Tu web publicada no cambia hasta que pulses «Publicar».');
+    setMessage(props.borrador ? 'Guardado. Su enlace ya enseña el borrador así.' : 'Guardado. Tu web publicada no cambia hasta que pulses «Publicar».');
     return true;
   }
 
@@ -694,7 +706,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
    *  La pestaña se abre YA, dentro del clic (si no, el navegador la bloquea
    *  como ventana emergente), y se lleva a la vista previa al terminar. */
   async function openPreview() {
-    const url = `${props.apiBase}/preview${previewPath}`;
+    const url = props.borrador?.verUrl ?? `${props.apiBase}/preview${previewPath}`;
     if (!dirty) {
       window.open(url, '_blank', 'noopener');
       return;
@@ -906,7 +918,19 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
     );
   }
 
-  const statusCard = (
+  const statusCard = props.borrador ? (
+      <div className="card space-y-3">
+        <p className="rounded-lg bg-kairikos-warning/10 px-3 py-2 text-sm" data-testid="site-editor-borrador">
+          Estás editando el borrador de <strong>{props.borrador.negocio}</strong>. Lo que guardes lo verá en su enlace la próxima vez que lo abra. Cada
+          guardado deja la versión anterior en el historial del borrador.
+        </p>
+        {pending > 0 ? (
+          <p className="text-sm text-kairikos-warning" data-testid="site-editor-pending">
+            Lleva {pending} datos de ejemplo, resaltados en amarillo, en: {pendingSections.join(', ')}. Si sabes los de verdad, cámbialos.
+          </p>
+        ) : null}
+      </div>
+  ) : (
       <div className="card space-y-3">
         {props.operador ? (
           <p className="rounded-lg bg-kairikos-warning/10 px-3 py-2 text-sm" data-testid="site-editor-operator">
@@ -946,7 +970,10 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
             ['diseno', 'Diseño', 0],
             ['datos', 'Mis datos', legalMissing.length],
           ] as const
-        ).map(([key, label, aviso]) => (
+        )
+          // En un borrador, el teléfono y la dirección salen de Google.
+          .filter(([key]) => !(props.borrador && key === 'datos'))
+          .map(([key, label, aviso]) => (
           <button
             key={key}
             type="button"
@@ -964,7 +991,11 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
 
       {tab === 'diseno' && props.estilo ? <StyleCard estilo={props.estilo} value={content.estilo} onChange={setStyle} /> : null}
 
-      {tab === 'diseno' ? (
+      {tab === 'diseno' && props.borrador ? (
+        <p className="card text-sm text-kairikos-muted">El logo y las fotos los pone el cliente cuando compra la web: en un borrador no se suben.</p>
+      ) : null}
+
+      {tab === 'diseno' && !props.borrador ? (
       <div className="card space-y-4" data-testid="site-editor-images">
         <div>
           <p className="font-semibold">Logo y foto de portada</p>
@@ -996,7 +1027,9 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
 
       {tab === 'contenido' ? (
       <>
-      {/* Las páginas y el blog. La portada siempre la primera: es la raíz. */}
+      {/* Las páginas y el blog. La portada siempre la primera: es la raíz.
+          Un borrador es solo la portada. */}
+      {props.borrador ? null : (
       <nav className="flex flex-wrap gap-2" aria-label="Páginas de tu web">
         {content.paginas.map((p, i) => (
           <button
@@ -1013,6 +1046,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
           {content.blog.titulo} ({content.blog.entradas.filter((e) => e.publicada).length})
         </button>
       </nav>
+      )}
 
       {view.kind === 'blog' ? (
         <div className="space-y-4" data-testid="site-editor-blog">
@@ -1109,6 +1143,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
         </div>
       ) : (
         <>
+          {props.borrador ? null : (
           <div className="card space-y-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="text-sm">
@@ -1145,6 +1180,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
             ) : null}
             {content.paginas.length > 6 ? <p className="text-xs text-kairikos-warning">En el menú caben cinco enlaces: las páginas de más siguen existiendo, pero no salen en él.</p> : null}
           </div>
+          )}
 
           {page.secciones.length === 0 ? <p className="card text-sm text-kairikos-muted">Esta página está vacía: añádele secciones o bloques aquí debajo.</p> : null}
           <ol className="space-y-2">
@@ -1228,6 +1264,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
             <span className="text-xs text-kairikos-muted">Los datos de una sección son de toda la web: «Servicios» en dos páginas enseña lo mismo en las dos.</span>
           </div>
 
+          {props.borrador ? null : (
           <div className="card flex flex-wrap items-center gap-2">
             <label className="text-sm" htmlFor="nueva-pagina">Nueva página</label>
             <input id="nueva-pagina" className="input" maxLength={30} placeholder="Por ejemplo: Desatascos" value={newPageTitle} onChange={(e) => setNewPageTitle(e.target.value)} />
@@ -1235,6 +1272,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
               Crear página
             </button>
           </div>
+          )}
         </>
       )}
       </>
@@ -1318,14 +1356,16 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
           </p>
           <div className="flex flex-wrap gap-2">
             <button type="button" className="btn-primary" onClick={abrirEditor} data-testid="site-editor-open">
-              Editar mi web
+              {props.borrador ? 'Editar el borrador' : 'Editar mi web'}
             </button>
             <button type="button" className="btn-ghost" disabled={busy !== null} onClick={openPreview}>
               Ver cómo queda
             </button>
-            <button type="button" className="btn-ghost" disabled={busy !== null} onClick={publish}>
-              Publicar
-            </button>
+            {props.borrador ? null : (
+              <button type="button" className="btn-ghost" disabled={busy !== null} onClick={publish}>
+                Publicar
+              </button>
+            )}
           </div>
         </div>
       </section>
@@ -1336,13 +1376,14 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
   // propio marco para lo fijo, y el editor quedaba desplazado con una franja del
   // portal asomando por arriba.
   return createPortal(
+    <SubidasContext.Provider value={!props.borrador}>
     <div className="fixed inset-0 z-50 flex flex-col bg-kairikos-bg" role="dialog" aria-modal="true" aria-label="Editar tu web" data-testid="site-content-editor">
       <header className="flex items-center gap-2 border-b border-kairikos-border bg-kairikos-surface px-3 py-2">
         <button type="button" className="btn-ghost" onClick={cerrarEditor} data-testid="site-editor-close">
           ← Salir
         </button>
         <p className="min-w-0 truncate font-semibold">
-          {props.operador ? `Web de ${props.operador.clienteNombre}` : 'Tu web'}
+          {props.borrador ? `Borrador de ${props.borrador.negocio}` : props.operador ? `Web de ${props.operador.clienteNombre}` : 'Tu web'}
           {view.kind === 'pagina' ? <span className="font-normal text-kairikos-muted"> · {page.titulo}</span> : null}
         </p>
         {/* En pantalla grande, cómo se ve en cada aparato; en el móvil, cambiar
@@ -1400,9 +1441,11 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
             <button type="button" className="btn-ghost" disabled={!dirty || busy !== null} onClick={save}>
               Guardar
             </button>
-            <button type="button" className="btn-primary" disabled={busy !== null} onClick={publish}>
-              Publicar
-            </button>
+            {props.borrador ? null : (
+              <button type="button" className="btn-primary" disabled={busy !== null} onClick={publish}>
+                Publicar
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1420,7 +1463,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
             maxFor={maxFor}
             onListAction={view.kind === 'pagina' ? listAction : undefined}
             onHistory={travel}
-            onPhoto={view.kind === 'pagina' && busy === null ? pickPhoto : undefined}
+            onPhoto={view.kind === 'pagina' && busy === null && !props.borrador ? pickPhoto : undefined}
           />
           <input
             ref={photoInputRef}
@@ -1436,7 +1479,8 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
           />
         </div>
       </div>
-    </div>,
+    </div>
+    </SubidasContext.Provider>,
     document.body,
   );
 }
@@ -1533,6 +1577,7 @@ function ImagePicker({
   onChange: (path: string) => void;
 }) {
   const [state, setState] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null });
+  const subidas = useContext(SubidasContext);
 
   async function upload(file: File) {
     setState({ busy: true, error: null });
@@ -1559,20 +1604,24 @@ function ImagePicker({
         )}
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <label className={`btn-ghost text-sm ${state.busy ? 'pointer-events-none opacity-60' : 'cursor-pointer'}`}>
-          {state.busy ? 'Subiendo…' : value ? 'Cambiar' : 'Subir'}
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            className="sr-only"
-            disabled={state.busy}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              e.target.value = '';
-              if (file) void upload(file);
-            }}
-          />
-        </label>
+        {subidas ? (
+          <label className={`btn-ghost text-sm ${state.busy ? 'pointer-events-none opacity-60' : 'cursor-pointer'}`}>
+            {state.busy ? 'Subiendo…' : value ? 'Cambiar' : 'Subir'}
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="sr-only"
+              disabled={state.busy}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) void upload(file);
+              }}
+            />
+          </label>
+        ) : (
+          <span className="text-xs text-kairikos-muted">En un borrador no se suben fotos.</span>
+        )}
         {value ? (
           <button type="button" className="btn-ghost text-sm text-kairikos-danger" disabled={state.busy} onClick={() => onChange('')}>
             Quitar

@@ -8,7 +8,7 @@ import { logError } from '@/lib/observability';
 import { getWebDraftPurchase, purchaseCtaFor } from '@/lib/web-self-serve';
 import { KAIRIKOS_DEMO_URL } from '@/lib/portal-data';
 import { getLiveDraftData } from '@/lib/web-draft-live';
-import { addressFromLeadSummary, withLiveData } from '@/lib/web-draft-subject';
+import { leadDraftSubject } from '@/lib/web-draft-subject';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -81,19 +81,7 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ token: s
 
     const copy = draft.copy as unknown as WebDraftCopy;
     const live = await getLiveDraftData(draft.lead.externalPlaceId);
-    const subject = withLiveData(
-      {
-        businessName: draft.lead.contactName,
-        primaryType: draft.lead.primaryType,
-        city: draft.lead.searchLocation,
-        address: addressFromLeadSummary(draft.lead.summary),
-        phone: draft.lead.contactPhone,
-        rating: draft.lead.competitorSnapshot?.subjectRating ?? null,
-        reviewCount: draft.lead.competitorSnapshot?.subjectReviewCount ?? null,
-      },
-      live,
-      copy,
-    );
+    const subject = leadDraftSubject({ ...draft.lead, contactName: draft.lead.contactName }, live, copy);
 
     // Webs con IA (27/10/2026): con plantilla de la biblioteca, ese diseño;
     // si no la tiene o algo falla al pintarla, el borrador de siempre.
