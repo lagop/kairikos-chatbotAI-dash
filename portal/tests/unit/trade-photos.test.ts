@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { TRADE_HERO_PHOTOS, TRADE_PHOTO_COUNTS, tradeDetailPhotos, tradeHeroPhoto, tradePhotoSet, type TradePhotoSet } from '@/lib/trade-photos';
+import { HEALTH_PHOTO_COUNTS, TRADE_HERO_PHOTOS, TRADE_PHOTO_COUNTS, healthPhotoSet, tradeDetailPhotos, tradeHeroPhoto, tradePhotoSet, type HealthPhotoSet, type TradePhotoSet } from '@/lib/trade-photos';
 
 const DIR = join(process.cwd(), 'public', 'web-draft', 'oficios');
 
@@ -67,5 +67,41 @@ describe('fotos de oficio', () => {
     for (const [set, n] of Object.entries(TRADE_PHOTO_COUNTS)) {
       for (let i = 1; i <= n; i++) expect(existsSync(join(DIR, `${set}-${i}.jpg`))).toBe(true);
     }
+  });
+});
+
+describe('fotos de salud', () => {
+  const SALUD = join(process.cwd(), 'public', 'web-draft', 'salud');
+
+  it('están todas en public/ y ninguna sobra ni pesa de más', () => {
+    const expected = Object.entries(HEALTH_PHOTO_COUNTS).flatMap(([set, n]) => Array.from({ length: n }, (_, i) => `${set}-${i + 1}.jpg`));
+    expect(readdirSync(SALUD).filter((f) => f.endsWith('.jpg')).sort()).toEqual(expected.sort());
+    for (const f of expected) expect(statSync(join(SALUD, f)).size).toBeLessThan(400 * 1024);
+  });
+
+  const cases: [string, string | null, HealthPhotoSet][] = [
+    ['Clínica Dental Sonrisas', 'dentist', 'dental'],
+    ['Ortodoncia Pérez', null, 'dental'],
+    ['Hospital Veterinario San Bernardo', 'veterinary_care', 'veterinaria'],
+    ['Fisioterapia Atlántico', 'physiotherapist', 'fisioterapia'],
+    ['Osteopatía y Rehabilitación Ana', 'doctor', 'fisioterapia'],
+    // El nombre no dice nada: manda el tipo de Google.
+    ['Centro Médico Las Palmas', 'dental_clinic', 'dental'],
+    ['Ana Suárez', 'veterinary_care', 'veterinaria'],
+    // Ni una cosa ni otra: la consulta genérica, no la foto del sector.
+    ['Centro Médico Triana', 'doctor', 'clinica'],
+    ['Huve', null, 'clinica'],
+  ];
+  it.each(cases)('%s (%s) → %s', (name, type, set) => {
+    expect(healthPhotoSet(name, type)).toBe(set);
+  });
+
+  it('el mismo negocio, la misma foto; siempre hay una', () => {
+    const a = tradeHeroPhoto('health', 'Clínica Dental Sonrisas', 'dentist');
+    expect(a).toMatch(/^\/web-draft\/salud\/dental-[1-5]\.jpg$/);
+    expect(tradeHeroPhoto('health', 'CLÍNICA DENTAL SONRISAS ', 'dentist')).toBe(a);
+    expect(tradeHeroPhoto('health', 'Huve', null)).toMatch(/^\/web-draft\/salud\/clinica-[1-4]\.jpg$/);
+    // Un oficio que se llame «Dental» no sale con sillones: no es de salud.
+    expect(tradeHeroPhoto('trades', 'Dental Hermanos', null)).toBeNull();
   });
 });

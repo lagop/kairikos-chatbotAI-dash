@@ -111,7 +111,7 @@ function comprobar(dir: string, out: string) {
   const root = resolve(out);
   rmSync(join(root, slug), { recursive: true, force: true });
   // La foto de su sector, como la vista previa del laboratorio.
-  const foto = `/web-draft/${meta.sector === 'beauty' ? 'beauty' : 'trades'}.jpg`;
+  const foto = `/web-draft/${['beauty', 'health', 'food', 'professional'].includes(meta.sector) ? meta.sector : 'trades'}.jpg`;
   const ctx = { ...SAMPLE_RENDER_CONTEXT, fotos: { portada: foto, equipo: null, trabajo: null } };
   const estilo = parseTemplateStyle(clean.estilo);
   const withStyle: SiteTemplateSource = { ...clean, estilo };
@@ -136,7 +136,7 @@ function comprobar(dir: string, out: string) {
   // Lo que la vista previa sirve desde el portal.
   cpSync(join(PORTAL, 'public', 'fuentes'), join(root, 'fuentes'), { recursive: true });
   cpSync(join(PORTAL, 'public', 'google-maps'), join(root, 'google-maps'), { recursive: true });
-  for (const f of ['trades.jpg', 'beauty.jpg']) write(join(root, 'web-draft', f), readFileSync(join(PORTAL, 'public', 'web-draft', f)));
+  for (const f of ['trades.jpg', 'beauty.jpg', 'health.jpg', 'food.jpg', 'professional.jpg']) write(join(root, 'web-draft', f), readFileSync(join(PORTAL, 'public', 'web-draft', f)));
   buildSync({
     entryPoints: [join(PORTAL, 'src', 'lib', 'site-template-checks.ts')],
     bundle: true,

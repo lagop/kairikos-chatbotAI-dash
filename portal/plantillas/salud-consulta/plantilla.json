@@ -1,0 +1,41 @@
+{
+  "nombre": "Salud · Consulta",
+  "sector": "health",
+  "variante": "clara y tranquila, esquinas redondeadas y una línea de pulso",
+  "encargo": "Clínicas dentales, fisioterapia, veterinarias y consultas médicas: lo que tiene que transmitir es calma y confianza, no moda. Fondo blanco verdoso muy pálido, tinta azul petróleo y un acento verde azulado (o el color de la clínica). Esquinas redondeadas en todo: tarjetas, fotos y botones en píldora, con sombras suaves. El gesto de la plantilla es una línea de pulso que se dibuja bajo la foto de portada y en la banda de la llamada. Cabecera blanca con «Pedir cita» siempre a mano; portada con la foto redondeada y una tarjeta flotante «Pide tu cita» con el teléfono; servicios en tarjetas blancas con el icono en un círculo (diente, huella, mano, estetoscopio…); la primera visita en números dentro de círculos unidos por una línea; garantías en un panel suave; precios como la lista de tarifas de recepción; opiniones en azul petróleo; preguntas en tarjetas desplegables; la zona en etiquetas. Titulares en Plus Jakarta Sans y texto en Inter; con la letra «Cercana» (Fraunces) sirve para un veterinario o un fisio con un aire más cálido. Trato de tú. Escrita a mano.",
+  "estilo": {
+    "acento": {
+      "variables": [
+        {
+          "variable": "--acento",
+          "desde": "color",
+          "contra": ["--fondo", "--fondo-2", "--blanco"],
+          "minimo": 4.5
+        },
+        {
+          "variable": "--acento-claro",
+          "desde": "tono",
+          "contra": ["--profundo", "--profundo-2"],
+          "minimo": 4.5
+        }
+      ],
+      "muestras": [
+        { "nombre": "Verde azulado", "color": "#0a6f68" },
+        { "nombre": "Azul clínico", "color": "#1d5fbf" },
+        { "nombre": "Azul marino", "color": "#24408f" },
+        { "nombre": "Verde salvia", "color": "#3c7a50" },
+        { "nombre": "Lavanda", "color": "#6a4fb3" },
+        { "nombre": "Coral", "color": "#c2452d" }
+      ]
+    },
+    "tipografias": {
+      "titulares": "--display",
+      "texto": "--texto",
+      "parejas": [
+        { "id": "consulta", "nombre": "Consulta", "titulares": "Plus Jakarta Sans", "texto": "Inter" },
+        { "id": "cercana", "nombre": "Cercana", "titulares": "Fraunces", "texto": "Figtree" },
+        { "id": "clasica", "nombre": "Clásica", "titulares": "Lora", "texto": "Source Sans 3" }
+      ]
+    }
+  }
+}

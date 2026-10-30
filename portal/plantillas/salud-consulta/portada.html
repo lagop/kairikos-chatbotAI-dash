@@ -1,0 +1,17 @@
+<section class="portada" id="{{ancla}}"><div class="contenedor portada-rejilla">
+  <div>
+    {{#horario_resumen}}<p class="estado">{{horario_resumen}}</p>{{/horario_resumen}}
+    <h1>{{titular}}</h1>
+    {{#subtitulo}}<p class="entradilla">{{subtitulo}}</p>{{/subtitulo}}
+    <div class="acciones">
+      {{#telefono_href}}<a class="boton boton--acento" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-calendario"></use></svg>Pedir cita</a>{{/telefono_href}}
+      <a class="boton boton--linea" href="#contacto">Escríbenos</a>
+    </div>
+    {{#valoracion}}<div class="tarjeta-valoracion"><strong>{{valoracion}}</strong><div><span class="estrellas" role="img" aria-label="Valoración en Google"><svg aria-hidden="true"><use href="#i-estrella"></use></svg><svg aria-hidden="true"><use href="#i-estrella"></use></svg><svg aria-hidden="true"><use href="#i-estrella"></use></svg><svg aria-hidden="true"><use href="#i-estrella"></use></svg><svg aria-hidden="true"><use href="#i-estrella"></use></svg></span><small>en Google{{#num_resenas}} · {{num_resenas}} reseñas{{/num_resenas}}</small></div></div>{{/valoracion}}
+  </div>
+  {{#fotos.portada}}<figure class="portada-foto">
+    <img src="{{fotos.portada}}" alt="La consulta de {{nombre}}">
+    {{#telefono_href}}<a class="tarjeta-cita" href="tel:{{telefono_href}}"><span class="icono"><svg aria-hidden="true"><use href="#i-telefono"></use></svg></span><span><strong>Pide tu cita</strong><small>{{telefono}}</small></span></a>{{/telefono_href}}
+    <svg class="pulso" viewBox="0 0 600 64" aria-hidden="true"><path pathLength="1" d="M2 40H200l14-22 16 40 18-54 16 46 12-18 10 8H598"/></svg>
+  </figure>{{/fotos.portada}}
+</div></section>
