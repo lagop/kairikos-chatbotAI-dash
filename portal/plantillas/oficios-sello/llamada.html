@@ -1,0 +1,7 @@
+<section class="llamada" id="{{ancla}}">
+  <svg class="llamada-aro" viewBox="0 0 200 200" aria-hidden="true"><defs><path id="llamada-circulo" d="M100 100m-80 0a80 80 0 1 1 160 0a80 80 0 1 1-160 0"></path></defs><text><textPath href="#llamada-circulo" textLength="500" lengthAdjust="spacing">Trabajo bien hecho · cerca de usted · </textPath></text></svg>
+  <div class="contenedor">
+    <h2>{{#llamada_accion}}{{llamada_accion}}{{/llamada_accion}}{{^llamada_accion}}¿Hablamos?{{/llamada_accion}}</h2>
+    {{#telefono_href}}<a class="llamada-telefono" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg><span>{{telefono}}</span></a>{{/telefono_href}}
+  </div>
+</section>

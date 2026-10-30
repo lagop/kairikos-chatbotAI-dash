@@ -1,0 +1,21 @@
+<section class="seccion seccion--crema" id="{{ancla}}"><div class="contenedor contacto">
+  <div class="contacto-datos aparece">
+    <p class="rotulo">Contacto</p>
+    <h2 data-k-titulo-seccion>Cuéntenos qué necesita</h2>
+    {{#telefono}}<p class="dato dato-grande"><span class="estampa"><svg aria-hidden="true"><use href="#i-telefono"></use></svg></span><span><a href="tel:{{telefono_href}}">{{telefono}}</a></span></p>{{/telefono}}
+    {{#direccion}}<p class="dato"><span class="estampa"><svg aria-hidden="true"><use href="#i-mapa"></use></svg></span><span>{{direccion}}{{#maps_url}} · <a href="{{maps_url}}">Cómo llegar</a>{{/maps_url}}</span></p>{{/direccion}}
+    {{#horario.length}}<div class="dato"><span class="estampa"><svg aria-hidden="true"><use href="#i-reloj"></use></svg></span><div><table><caption class="saltar">Horario</caption><tbody>{{#horario}}<tr><th scope="row">{{dias}}</th><td>{{horas}}</td></tr>{{/horario}}</tbody></table></div></div>{{/horario.length}}
+  </div>
+  <form id="kairikos-form" class="formulario aparece" method="post">
+    <h3>Escríbanos</h3>
+    <label for="kf-name">Nombre</label>
+    <input id="kf-name" name="name" maxlength="200" autocomplete="name">
+    <label for="kf-contact">Teléfono o email</label>
+    <input id="kf-contact" name="contact" maxlength="200" required>
+    <label for="kf-message">¿Qué necesita?</label>
+    <textarea id="kf-message" name="message" rows="4" maxlength="2000"></textarea>
+    <button class="boton" type="submit"{{#formulario.muestra}} disabled{{/formulario.muestra}}>Enviar mensaje</button>
+    {{#formulario.muestra}}<p class="form-nota">Formulario de muestra: en la web publicada, los mensajes le llegan al correo.</p>{{/formulario.muestra}}
+    <p class="form-nota" id="kairikos-form-note" hidden></p>
+  </form>
+</div></section>

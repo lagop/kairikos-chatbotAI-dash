@@ -1,0 +1,41 @@
+{
+  "nombre": "Oficios · Bloque",
+  "sector": "trades",
+  "variante": "obra y taller, bordes negros gruesos, sombras duras y un color vivo de relleno",
+  "encargo": "Oficios de obra y taller que quieren parecer resolutivos y con carácter (reformas, albañilería, carpintería, cerrajería, aluminio, pintura, electricidad). Estilo neo-brutalista: fondo hueso, bordes negros gruesos, sombras duras sin difuminar y un solo color de relleno, vivo (amarillo de obra, o el del negocio), con el texto siempre en negro encima. La foto del oficio va enmarcada con la sombra del color y la nota de Google es una pegatina torcida pegada a ella; las cifras son bloques del color; los servicios, baldosas numeradas; las garantías ocupan una franja entera del color; los precios son una tabla con etiquetas negras; la zona son etiquetas, y la llamada final es una banda negra con la cinta de obra arriba y abajo y el teléfono en un bloque del color. Titulares en Syne, ancha y con carácter; texto en Work Sans. Dinámica: la pegatina se pega al cargar, los botones se hunden al pulsarlos, las baldosas se levantan al pasar por encima, la cinta de obra corre y las cifras cuentan. Escrita a mano.",
+  "estilo": {
+    "acento": {
+      "variables": [
+        {
+          "variable": "--amarillo",
+          "desde": "color",
+          "contra": ["--tinta", "--tinta-2"],
+          "minimo": 4.5
+        },
+        {
+          "variable": "--amarillo-oscuro",
+          "desde": "tono",
+          "contra": ["--hueso", "--blanco"],
+          "minimo": 4.5
+        }
+      ],
+      "muestras": [
+        { "nombre": "Amarillo", "color": "#ffc72c" },
+        { "nombre": "Naranja", "color": "#ff8a3d" },
+        { "nombre": "Verde", "color": "#3fcf8e" },
+        { "nombre": "Azul", "color": "#5aa9ff" },
+        { "nombre": "Rosa", "color": "#ff7eb6" },
+        { "nombre": "Lima", "color": "#c6e84a" }
+      ]
+    },
+    "tipografias": {
+      "titulares": "--display",
+      "texto": "--texto",
+      "parejas": [
+        { "id": "obra", "nombre": "Obra", "titulares": "Syne", "texto": "Work Sans" },
+        { "id": "rotulada", "nombre": "Rotulada", "titulares": "Oswald", "texto": "Rubik" },
+        { "id": "moderna", "nombre": "Moderna", "titulares": "Bricolage Grotesque", "texto": "Plus Jakarta Sans" }
+      ]
+    }
+  }
+}
