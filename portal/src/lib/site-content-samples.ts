@@ -505,22 +505,27 @@ const healthExagerado: SiteContent = {
   blog: { ...exagerado.blog, intro: repeat('Todo lo que conviene saber para cuidar tu boca, explicado con calma.', 4).slice(0, 300) },
 };
 
-const healthMinimo: SiteContent = {
-  ...healthNormal,
-  datos: {
-    ...healthNormal.datos,
-    sobre: '',
-    servicios: healthNormal.datos.servicios.slice(0, 1),
-    cifras: healthNormal.datos.cifras.slice(0, 1),
-    proceso: healthNormal.datos.proceso.slice(0, 1),
-    precios: { nota: '', filas: healthNormal.datos.precios.filas.slice(0, 1) },
-    garantias: healthNormal.datos.garantias.slice(0, 1),
-    zona: { texto: '', lugares: healthNormal.datos.zona.lugares.slice(0, 1) },
-    faq: healthNormal.datos.faq.slice(0, 1),
-  },
-  ejemplos: ['cifras.0.valor', 'precios.filas.0.precio'],
-  blog: { titulo: 'Blog', intro: '', entradas: [{ ...healthNormal.blog.entradas[1], extracto: '', texto: 'Una línea.' }] },
-};
+/** El «mínimo» de un sector, recortado de su «normal» igual que el de oficios. */
+function minimoDe(n: SiteContent): SiteContent {
+  return {
+    ...n,
+    datos: {
+      ...n.datos,
+      sobre: '',
+      servicios: n.datos.servicios.slice(0, 1),
+      cifras: n.datos.cifras.slice(0, 1),
+      proceso: n.datos.proceso.slice(0, 1),
+      precios: { nota: '', filas: n.datos.precios.filas.slice(0, 1) },
+      garantias: n.datos.garantias.slice(0, 1),
+      zona: { texto: '', lugares: n.datos.zona.lugares.slice(0, 1) },
+      faq: n.datos.faq.slice(0, 1),
+    },
+    ejemplos: ['cifras.0.valor', 'precios.filas.0.precio'],
+    blog: { titulo: 'Blog', intro: '', entradas: [{ ...n.blog.entradas[1], extracto: '', texto: 'Una línea.' }] },
+  };
+}
+
+const healthMinimo = minimoDe(healthNormal);
 
 const HEALTH_RENDER_CONTEXT: SiteRenderContext = {
   ...SAMPLE_RENDER_CONTEXT,
@@ -537,8 +542,129 @@ const HEALTH_RENDER_CONTEXT: SiteRenderContext = {
   ]),
 };
 
+// Belleza (30/10/2026): Atelier y Estudio también se veían con la fontanería.
+// Una peluquería, que es lo que son todos los prospectos del sector.
+const beautyNormal: SiteContent = {
+  ...normal,
+  paginas: [defaultHomePage()],
+  datos: {
+    ...normal.datos,
+    titular: 'Tu pelo como lo imaginas, sin prisas y sin sorpresas',
+    subtitulo: 'Cortes, color, mechas y peinados. Te asesoramos antes de empezar y te decimos el precio de entrada.',
+    sobre:
+      'Somos un salón de barrio donde **escuchamos antes de cortar** y te explicamos qué le va a tu pelo.\n\nTrabajamos con:\n- Color sin amoniaco\n- Tratamientos para cabello dañado',
+    llamada_accion: 'Pide tu cita y te buscamos hueco esta semana',
+    servicios: [
+      { nombre: 'Corte y peinado', descripcion: 'Para mujer, hombre y niños.', icono: 'tijeras' },
+      { nombre: 'Color y mechas', descripcion: 'Balayage, mechas y tinte sin amoniaco.', icono: 'gota' },
+      { nombre: 'Tratamientos', descripcion: 'Hidratación y keratina para recuperar el brillo.', icono: 'hoja' },
+      { nombre: 'Recogidos y novias', descripcion: 'Peinados para bodas y ocasiones especiales.', icono: 'chispa' },
+    ],
+    cifras: [
+      { valor: 'Sin esperas', etiqueta: 'trabajamos siempre con cita' },
+      { valor: '12 años', etiqueta: 'cuidando melenas en el barrio' },
+    ],
+    proceso: [
+      { titulo: 'Pides cita', texto: 'Por teléfono o por el formulario, a la hora que te venga bien.' },
+      { titulo: 'Te asesoramos', texto: 'Vemos tu pelo y te proponemos lo que mejor te va.' },
+      { titulo: 'Sales como querías', texto: 'Y con consejos para mantenerlo en casa.' },
+    ],
+    precios: {
+      nota: 'Precios orientativos; según el largo te decimos el precio antes de empezar.',
+      filas: [
+        { concepto: 'Corte y peinado', precio: 'Desde 25 €', detalle: '' },
+        { concepto: 'Color', precio: 'Desde 35 €', detalle: 'Raíz o completo, según el largo.' },
+        { concepto: 'Mechas balayage', precio: 'Desde 70 €', detalle: 'Con matiz y peinado.' },
+      ],
+    },
+    garantias: [
+      { titulo: 'Asesoramiento sin compromiso', texto: 'Te decimos qué le va a tu pelo antes de empezar.' },
+      { titulo: 'Productos profesionales', texto: 'Y te recomendamos los que te van para casa.' },
+    ],
+    zona: { texto: 'Clientes de toda la ciudad y de los municipios cercanos.', lugares: normal.datos.zona.lugares },
+    faq: [
+      { pregunta: '¿Hace falta cita?', respuesta: 'Sí, así **no esperas**. Llámanos o escríbenos.' },
+      { pregunta: '¿Cortáis a niños?', respuesta: 'Sí, a partir de los dos años.' },
+    ],
+    horario: [
+      { dias: 'Martes a viernes', horas: '9:30 – 19:30' },
+      { dias: 'Sábados', horas: '9:00 – 14:00' },
+    ],
+  },
+  bloques: [
+    { ...bloqueVacio('historia', 'texto'), titulo: 'Nuestra historia', texto: 'Abrimos en 2014 con dos sillones y las mismas ganas que hoy.' },
+    { ...bloqueVacio('agosto', 'aviso'), titulo: 'Agosto', texto: 'Cerrado del 10 al 20 de agosto.' },
+  ],
+  legal: { titular: 'Peluquería Ejemplo S.L.', nif: 'B00000000', domicilio: 'Calle de Muestra, 1, Las Palmas de Gran Canaria', email: 'hola@peluqueria-ejemplo.invalid', registro: '' },
+  blog: {
+    titulo: 'Blog',
+    intro: 'Consejos para cuidar tu pelo entre visita y visita.',
+    entradas: [
+      {
+        ...normal.blog.entradas[0],
+        slug: 'cada-cuanto-cortar-las-puntas',
+        titulo: '¿Cada cuánto hay que cortar las puntas?',
+        extracto: 'Depende de tu pelo y de cómo lo lleves: te contamos cómo saberlo.',
+        texto:
+          'Para la mayoría, cada dos o tres meses.\n\n## Cuándo conviene antes\n\n- Si se te abren las puntas\n- Si usas plancha a diario\n- Si te has hecho mechas\n\nSi tienes dudas, [escríbenos](mailto:hola@peluqueria-ejemplo.invalid).',
+      },
+      {
+        ...normal.blog.entradas[1],
+        slug: 'mechas-o-balayage',
+        titulo: 'Mechas o balayage: en qué se diferencian',
+        texto: 'Las dos aclaran; cambia cómo se reparte el color.\n\nEl balayage se pinta a mano y crece sin que se note la raíz; las mechas marcan más.',
+      },
+    ],
+  },
+};
+beautyNormal.paginas[0].secciones.splice(4, 0, { tipo: 'bloque', id: 'historia' });
+beautyNormal.paginas[0].secciones.unshift({ tipo: 'bloque', id: 'agosto' });
+
+const beautyExagerado: SiteContent = {
+  ...exagerado,
+  datos: {
+    ...exagerado.datos,
+    titular: 'Cortes, color, mechas balayage, keratina, recogidos y peinados de novia en toda la isla',
+    subtitulo: repeat('Asesoramiento personalizado antes de empezar y precio cerrado según el largo de tu pelo,', 3).slice(0, 220),
+    sobre: repeat('Somos un salón familiar que escucha antes de cortar, cuida cada melena y explica cada tratamiento.', 12).slice(0, 1200),
+    llamada_accion: 'Llámanos ahora y te buscamos un hueco esta semana para tu corte, color o tratamiento',
+    servicios: exagerado.datos.servicios.map((s, i) => ({
+      ...s,
+      nombre: i % 3 === 0 ? 'Alisado de keratina con tratamiento hidratante y peinado profesional incluido' : `Servicio número ${i + 1}`,
+      icono: i % 2 ? 'tijeras' : '',
+    })),
+    precios: {
+      ...exagerado.datos.precios,
+      filas: exagerado.datos.precios.filas.map((f, i) => ({ ...f, concepto: i % 2 ? f.concepto : 'Mechas balayage con matiz, tratamiento reparador y peinado en melena muy larga' })),
+    },
+    garantias: exagerado.datos.garantias.map((g) => ({ ...g, titulo: 'Asesoramiento personalizado antes de cada servicio' })),
+    faq: exagerado.datos.faq.map((f, i) => ({ ...f, pregunta: i % 2 ? '¿Cuánto tarda?' : '¿Qué pasa si el color no queda como esperabas después de la primera sesión en el salón?' })),
+    titulos: Object.fromEntries(
+      SITE_TITLED_SECTIONS.map((t) => [t, 'Peluquería, coloración y tratamientos capilares en Las Palmas, Telde, Arucas y Gáldar']),
+    ) as SiteContent['datos']['titulos'],
+  },
+  legal: beautyNormal.legal,
+  blog: { ...exagerado.blog, intro: repeat('Todo lo que conviene saber para cuidar tu pelo, explicado con calma.', 4).slice(0, 300) },
+};
+
+const BEAUTY_RENDER_CONTEXT: SiteRenderContext = {
+  ...SAMPLE_RENDER_CONTEXT,
+  negocio: { ...SAMPLE_RENDER_CONTEXT.negocio, nombre: 'Peluquería Ejemplo' },
+  citasHtml: renderCitasHtml([
+    { title: 'Te escuchan', quote: 'Me escucharon antes de cortar.', author: 'Clienta A.' },
+    { title: 'El color perfecto', quote: 'El color quedó justo como lo quería.', author: 'Clienta B.' },
+    { title: 'Sin prisas', quote: 'Un sitio agradable donde no te meten prisa.', author: 'Cliente C.' },
+  ]),
+  resenasHtml: renderResenasHtml([
+    { ref: 'a', rating: 5, text: 'Me escucharon antes de cortar y salí con el pelo que quería. Muy recomendable.', translated: false, author: 'Clienta A.', authorUri: null, relativeTime: 'Hace un año' },
+    { ref: 'b', rating: 5, text: 'El color quedó justo como lo quería y me explicaron cómo cuidarlo en casa.', translated: false, author: 'Clienta B.', authorUri: null, relativeTime: 'Hace 10 meses' },
+    { ref: 'c', rating: 4, text: 'Buen corte y buen ambiente; volveré.', translated: true, author: 'Cliente C.', authorUri: null, relativeTime: 'Hace 2 meses' },
+  ]),
+};
+
 const BY_SECTOR: Readonly<Record<string, { samples: Record<SiteContentSampleName, SiteContent>; context: SiteRenderContext }>> = {
   health: { samples: { normal: healthNormal, exagerado: healthExagerado, minimo: healthMinimo }, context: HEALTH_RENDER_CONTEXT },
+  beauty: { samples: { normal: beautyNormal, exagerado: beautyExagerado, minimo: minimoDe(beautyNormal) }, context: BEAUTY_RENDER_CONTEXT },
 };
 
 /** Los contenidos de muestra y el contexto con los que se ve una plantilla de
