@@ -1,6 +1,6 @@
 import { defaultHomePage, emptySiteTitles, SITE_TITLED_SECTIONS, type SiteContent } from './site-content';
 import type { SiteRenderContext } from './site-template';
-import { SAMPLE_DRAFT_MARKUP } from './site-draft-markup';
+import { renderCitasHtml, renderResenasHtml, SAMPLE_DRAFT_MARKUP } from './site-draft-markup';
 
 // =============================================================================
 // Webs con IA, entrega 1 (27/10/2026) — contenidos de muestra para probar una
@@ -389,3 +389,160 @@ const minimo: SiteContent = {
 
 export const SITE_CONTENT_SAMPLES = { normal, exagerado, minimo } as const;
 export type SiteContentSampleName = keyof typeof SITE_CONTENT_SAMPLES;
+
+// -----------------------------------------------------------------------------
+// 30/10/2026 — el contenido de muestra de cada sector. Hasta hoy todas las
+// plantillas se veían en el laboratorio con «Fontanería Ejemplo»: con la de
+// salud, Orlando vio un fontanero con colores de clínica («Localizamos la
+// avería…» junto a un sillón de dentista) y no había forma de juzgarla. Ahora
+// la vista previa y plantilla-a-mano.ts usan el del sector de la plantilla.
+//
+// SITE_CONTENT_SAMPLES se queda como estaba (lo usan muchas pruebas y es el de
+// oficios). El «exagerado» de salud cambia los textos, no las medidas: los
+// mismos topes, los mismos títulos de tres líneas.
+// -----------------------------------------------------------------------------
+
+const healthNormal: SiteContent = {
+  ...normal,
+  paginas: [defaultHomePage()],
+  datos: {
+    ...normal.datos,
+    titular: 'Tu sonrisa en buenas manos, sin prisas y sin sustos',
+    subtitulo: 'Revisiones, limpiezas, implantes y ortodoncia. Te explicamos cada tratamiento y su precio antes de empezar.',
+    sobre:
+      'Somos una clínica de barrio donde te atiende **siempre el mismo equipo** y te explicamos cada paso.\n\nEn la primera visita revisamos:\n- Dientes y encías, con radiografía si hace falta\n- Lo que te preocupa y las opciones que tienes',
+    llamada_accion: 'Llámanos y te damos cita esta misma semana',
+    servicios: [
+      { nombre: 'Limpieza y revisión', descripcion: 'Una vez al año, para evitar problemas mayores.', icono: 'diente' },
+      { nombre: 'Implantes', descripcion: 'Recupera la pieza que falta con un plan claro.', icono: 'escudo' },
+      { nombre: 'Ortodoncia', descripcion: 'Brackets o alineadores transparentes.', icono: 'chispa' },
+      { nombre: 'Urgencias dentales', descripcion: 'Dolor, un golpe o una pieza rota: te vemos el mismo día.', icono: 'reloj' },
+    ],
+    cifras: [
+      { valor: 'Mismo día', etiqueta: 'en urgencias, siempre que se pueda' },
+      { valor: '20 años', etiqueta: 'cuidando sonrisas en el barrio' },
+    ],
+    proceso: [
+      { titulo: 'Pides cita', texto: 'Por teléfono o por el formulario, a la hora que te venga bien.' },
+      { titulo: 'Primera visita', texto: 'Revisamos tu boca y te contamos qué vemos, sin compromiso.' },
+      { titulo: 'Tu plan', texto: 'Te damos el tratamiento por escrito, con su precio y sus plazos.' },
+    ],
+    precios: {
+      nota: 'Precios orientativos; el plan con su precio cerrado te lo damos en la primera visita.',
+      filas: [
+        { concepto: 'Primera visita y revisión', precio: 'Gratis', detalle: '' },
+        { concepto: 'Limpieza dental', precio: 'Desde 45 €', detalle: 'Con pulido y revisión de encías.' },
+        { concepto: 'Empaste', precio: 'Desde 50 €', detalle: 'Según la pieza y el tamaño.' },
+      ],
+    },
+    garantias: [
+      { titulo: 'Primera visita sin compromiso', texto: 'Te explicamos lo que vemos y las opciones, y decides con calma.' },
+      { titulo: 'Financiación sin intereses', texto: 'Los tratamientos largos, en cómodos plazos.' },
+    ],
+    zona: { texto: 'Pacientes de toda la ciudad y de los municipios cercanos.', lugares: normal.datos.zona.lugares },
+    faq: [
+      { pregunta: '¿La primera visita tiene coste?', respuesta: 'No: la revisión y el presupuesto son **gratis** y sin compromiso.' },
+      { pregunta: '¿Trabajáis con mutuas?', respuesta: 'Sí, con las principales aseguradoras. Pregúntanos por la tuya.' },
+    ],
+    horario: [
+      { dias: 'Lunes a viernes', horas: '9:00 – 20:00' },
+      { dias: 'Sábados', horas: '9:00 – 13:00' },
+    ],
+  },
+  bloques: [
+    { ...bloqueVacio('historia', 'texto'), titulo: 'Nuestra historia', texto: 'Abrimos en 2006 con un solo sillón y las mismas ganas que hoy.' },
+    { ...bloqueVacio('agosto', 'aviso'), titulo: 'Agosto', texto: 'Cerrado del 10 al 20 de agosto. Para urgencias, llámanos y te indicamos.' },
+  ],
+  legal: { titular: 'Clínica Dental Ejemplo S.L.', nif: 'B00000000', domicilio: 'Calle de Muestra, 1, Las Palmas de Gran Canaria', email: 'hola@clinica-ejemplo.invalid', registro: '' },
+  blog: {
+    titulo: 'Blog',
+    intro: 'Consejos para cuidar tus dientes, contados sin tecnicismos.',
+    entradas: [
+      {
+        ...normal.blog.entradas[0],
+        slug: 'cada-cuanto-una-limpieza',
+        titulo: '¿Cada cuánto hay que hacerse una limpieza dental?',
+        extracto: 'Depende de tus encías más que del calendario: te contamos cómo saberlo.',
+        texto:
+          'Para la mayoría basta con una al año.\n\n## Cuándo conviene antes\n\n- Si te sangran las encías al cepillarte\n- Si fumas\n- Si llevas ortodoncia\n\nSi tienes dudas, [escríbenos](mailto:hola@clinica-ejemplo.invalid).',
+      },
+      {
+        ...normal.blog.entradas[1],
+        slug: 'brackets-o-alineadores',
+        titulo: 'Brackets o alineadores transparentes: cuál te conviene',
+        texto: 'Los dos corrigen lo mismo; cambian la comodidad y el precio.\n\nLos alineadores se quitan para comer; los brackets no dependen de que te acuerdes de ponerlos.',
+      },
+    ],
+  },
+};
+healthNormal.paginas[0].secciones.splice(4, 0, { tipo: 'bloque', id: 'historia' });
+healthNormal.paginas[0].secciones.unshift({ tipo: 'bloque', id: 'agosto' });
+
+const healthExagerado: SiteContent = {
+  ...exagerado,
+  datos: {
+    ...exagerado.datos,
+    titular: 'Odontología, implantes, ortodoncia invisible, periodoncia y estética dental en la isla',
+    subtitulo: repeat('Primera visita y presupuesto sin compromiso, con financiación para tratamientos largos,', 3).slice(0, 220),
+    sobre: repeat('Somos una clínica familiar que atiende con calma, explica cada tratamiento y cuida cada detalle.', 12).slice(0, 1200),
+    llamada_accion: 'Llámanos ahora y te buscamos un hueco esta semana para tu primera visita sin compromiso',
+    servicios: exagerado.datos.servicios.map((s, i) => ({
+      ...s,
+      nombre: i % 3 === 0 ? 'Implantología avanzada y rehabilitación oral completa con carga inmediata' : `Tratamiento número ${i + 1}`,
+      icono: i % 2 ? 'diente' : '',
+    })),
+    precios: {
+      ...exagerado.datos.precios,
+      filas: exagerado.datos.precios.filas.map((f, i) => ({ ...f, concepto: i % 2 ? f.concepto : 'Implante dental de titanio con corona de zirconio y estudio radiológico incluido' })),
+    },
+    garantias: exagerado.datos.garantias.map((g) => ({ ...g, titulo: 'Garantía por escrito de todos los tratamientos' })),
+    faq: exagerado.datos.faq.map((f, i) => ({ ...f, pregunta: i % 2 ? '¿Duele?' : '¿Qué pasa si en la primera visita vemos que el tratamiento es más largo de lo que esperabas?' })),
+    titulos: Object.fromEntries(
+      SITE_TITLED_SECTIONS.map((t) => [t, 'Tratamientos de implantología y ortodoncia invisible en Las Palmas, Telde, Arucas y Gáldar']),
+    ) as SiteContent['datos']['titulos'],
+  },
+  legal: healthNormal.legal,
+  blog: { ...exagerado.blog, intro: repeat('Todo lo que conviene saber para cuidar tu boca, explicado con calma.', 4).slice(0, 300) },
+};
+
+const healthMinimo: SiteContent = {
+  ...healthNormal,
+  datos: {
+    ...healthNormal.datos,
+    sobre: '',
+    servicios: healthNormal.datos.servicios.slice(0, 1),
+    cifras: healthNormal.datos.cifras.slice(0, 1),
+    proceso: healthNormal.datos.proceso.slice(0, 1),
+    precios: { nota: '', filas: healthNormal.datos.precios.filas.slice(0, 1) },
+    garantias: healthNormal.datos.garantias.slice(0, 1),
+    zona: { texto: '', lugares: healthNormal.datos.zona.lugares.slice(0, 1) },
+    faq: healthNormal.datos.faq.slice(0, 1),
+  },
+  ejemplos: ['cifras.0.valor', 'precios.filas.0.precio'],
+  blog: { titulo: 'Blog', intro: '', entradas: [{ ...healthNormal.blog.entradas[1], extracto: '', texto: 'Una línea.' }] },
+};
+
+const HEALTH_RENDER_CONTEXT: SiteRenderContext = {
+  ...SAMPLE_RENDER_CONTEXT,
+  negocio: { ...SAMPLE_RENDER_CONTEXT.negocio, nombre: 'Clínica Dental Ejemplo' },
+  citasHtml: renderCitasHtml([
+    { title: 'Te lo explican todo', quote: 'Me explicaron todo con mucha paciencia.', author: 'Paciente A.' },
+    { title: 'Sin miedo', quote: 'Venía con miedo y no sentí nada.', author: 'Paciente B.' },
+    { title: 'Trato cercano', quote: 'Un trato muy cercano y profesional.', author: 'Paciente C.' },
+  ]),
+  resenasHtml: renderResenasHtml([
+    { ref: 'a', rating: 5, text: 'Me explicaron todo con mucha paciencia y sin prisas. Muy recomendable.', translated: false, author: 'Paciente A.', authorUri: null, relativeTime: 'Hace un año' },
+    { ref: 'b', rating: 5, text: 'Venía con miedo después de una mala experiencia y no sentí nada. Un equipo encantador.', translated: false, author: 'Paciente B.', authorUri: null, relativeTime: 'Hace 10 meses' },
+    { ref: 'c', rating: 4, text: 'Buen trato y puntuales con la cita; volveré.', translated: true, author: 'Paciente C.', authorUri: null, relativeTime: 'Hace 2 meses' },
+  ]),
+};
+
+const BY_SECTOR: Readonly<Record<string, { samples: Record<SiteContentSampleName, SiteContent>; context: SiteRenderContext }>> = {
+  health: { samples: { normal: healthNormal, exagerado: healthExagerado, minimo: healthMinimo }, context: HEALTH_RENDER_CONTEXT },
+};
+
+/** Los contenidos de muestra y el contexto con los que se ve una plantilla de
+ *  ese sector. Un sector sin muestra propia usa la de oficios. */
+export function sectorSamples(sector: string | null | undefined): { samples: Record<SiteContentSampleName, SiteContent>; context: SiteRenderContext } {
+  return (sector && BY_SECTOR[sector]) || { samples: SITE_CONTENT_SAMPLES, context: SAMPLE_RENDER_CONTEXT };
+}

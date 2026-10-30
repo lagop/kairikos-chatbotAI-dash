@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateAdminRequest } from '@/lib/operator-session';
-import { SAMPLE_RENDER_CONTEXT, SITE_CONTENT_SAMPLES, type SiteContentSampleName } from '@/lib/site-content-samples';
+import { sectorSamples, SITE_CONTENT_SAMPLES, type SiteContentSampleName } from '@/lib/site-content-samples';
 import { renderSiteFiles, type SiteTemplatePart, type SiteTemplateSource } from '@/lib/site-template';
 import type { SiteContent } from '@/lib/site-content';
 import { SITE_TEMPLATE_BASE } from '@/lib/site-template-base';
@@ -36,6 +36,7 @@ export async function GET(req: NextRequest, props: { params: Promise<{ templateI
 
   let template: SiteTemplateSource = SITE_TEMPLATE_BASE;
   let foto = '/web-draft/trades.jpg';
+  let sector: string | null = null;
   if (params.templateId !== 'base') {
     if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
     const row = await prisma.siteTemplate.findUnique({ where: { id: params.templateId }, select: { marco: true, secciones: true, estilo: true, sector: true } });
@@ -43,6 +44,9 @@ export async function GET(req: NextRequest, props: { params: Promise<{ templateI
     // 28/10/2026 — con la foto de SU sector: una de belleza medida con la de
     // una obra se ve rara y no dice nada de cómo quedará.
     if (row.sector && ['beauty', 'trades', 'health', 'food', 'professional'].includes(row.sector)) foto = `/web-draft/${row.sector}.jpg`;
+    // 30/10/2026 — y con el texto de su sector (sectorSamples): una de salud
+    // con «Fontanería Ejemplo» no se podía juzgar.
+    sector = row.sector;
     template = { marco: row.marco, secciones: row.secciones as Partial<Record<SiteTemplatePart, string>>, estilo: parseTemplateStyle(row.estilo) };
   }
 
@@ -50,7 +54,8 @@ export async function GET(req: NextRequest, props: { params: Promise<{ templateI
   const sample = (requested in SITE_CONTENT_SAMPLES ? requested : 'normal') as SiteContentSampleName;
   // Las fotos de muestra son rutas del sitio publicado (assets/…); aquí no
   // existen, así que se sirve la del sector, como la portada.
-  const content = JSON.parse(JSON.stringify(SITE_CONTENT_SAMPLES[sample]).replaceAll('"assets/portada.jpg"', JSON.stringify(foto))) as SiteContent;
+  const muestra = sectorSamples(sector);
+  const content = JSON.parse(JSON.stringify(muestra.samples[sample]).replaceAll('"assets/portada.jpg"', JSON.stringify(foto))) as SiteContent;
   // Entrega 5: ?pagina=blog o ?pagina=blog/entrada-1 (las comprobaciones
   // miden también la lista y el artículo). Vacío, la portada.
   const pagina = (req.nextUrl.searchParams.get('pagina') ?? '').replace(/^\/+|\/+$/g, '');
@@ -64,7 +69,7 @@ export async function GET(req: NextRequest, props: { params: Promise<{ templateI
   let html: string;
   try {
     const files = renderSiteFiles(template, content, {
-      ...SAMPLE_RENDER_CONTEXT,
+      ...muestra.context,
       fotos: { portada: foto, equipo: null, trabajo: null },
     });
     const file = files.find((f) => f.path === (pagina ? `${pagina}/index.html` : 'index.html'));

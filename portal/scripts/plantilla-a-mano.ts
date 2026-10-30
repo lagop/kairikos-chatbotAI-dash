@@ -54,7 +54,7 @@ mod._resolveFilename = (request, ...rest) =>
 // require y no import: tiene que cargar DESPUÉS del parche de arriba.
 const { renderSiteFiles, SITE_TEMPLATE_PARTS } = require('../src/lib/site-template') as typeof import('../src/lib/site-template');
 const { validateSiteTemplate } = require('../src/lib/site-template-validate') as typeof import('../src/lib/site-template-validate');
-const { SAMPLE_RENDER_CONTEXT, SITE_CONTENT_SAMPLES } = require('../src/lib/site-content-samples') as typeof import('../src/lib/site-content-samples');
+const { SITE_CONTENT_SAMPLES, sectorSamples } = require('../src/lib/site-content-samples') as typeof import('../src/lib/site-content-samples');
 const { parseTemplateStyle } = require('../src/lib/site-style') as typeof import('../src/lib/site-style');
 const { checkPlan } = require('../src/lib/site-template-checks') as typeof import('../src/lib/site-template-checks');
 
@@ -91,8 +91,8 @@ function validate(template: SiteTemplateSource): SiteTemplateSource {
 /** Lo mismo que la vista previa del laboratorio
  *  (api/admin/portal/site-templates/[id]/preview): la foto del sector en vez
  *  de assets/portada.jpg. */
-function sampleContent(name: SiteContentSampleName, foto: string): SiteContent {
-  return JSON.parse(JSON.stringify(SITE_CONTENT_SAMPLES[name]).replaceAll('"assets/portada.jpg"', JSON.stringify(foto))) as SiteContent;
+function sampleContent(sector: string, name: SiteContentSampleName, foto: string): SiteContent {
+  return JSON.parse(JSON.stringify(sectorSamples(sector).samples[name]).replaceAll('"assets/portada.jpg"', JSON.stringify(foto))) as SiteContent;
 }
 
 /** La carpeta de una variante de estilo: 'estilo-1d4ed8-x', 'estilo-x-rotulo'. */
@@ -112,13 +112,14 @@ function comprobar(dir: string, out: string) {
   rmSync(join(root, slug), { recursive: true, force: true });
   // La foto de su sector, como la vista previa del laboratorio.
   const foto = `/web-draft/${['beauty', 'health', 'food', 'professional'].includes(meta.sector) ? meta.sector : 'trades'}.jpg`;
-  const ctx = { ...SAMPLE_RENDER_CONTEXT, fotos: { portada: foto, equipo: null, trabajo: null } };
+  // Y el texto de su sector (sectorSamples), como la vista previa.
+  const ctx = { ...sectorSamples(meta.sector).context, fotos: { portada: foto, equipo: null, trabajo: null } };
   const estilo = parseTemplateStyle(clean.estilo);
   const withStyle: SiteTemplateSource = { ...clean, estilo };
   const sinJs: SiteTemplateSource = { ...withStyle, marco: clean.marco.replace(/<script\b[\s\S]*?<\/script>/gi, '') };
   for (const name of Object.keys(SITE_CONTENT_SAMPLES) as SiteContentSampleName[]) {
     for (const [variant, t] of [[name, withStyle], [`${name}-sin-js`, sinJs]] as const) {
-      for (const f of renderSiteFiles(t, sampleContent(name, foto), ctx)) write(join(root, slug, variant, f.path), f.content);
+      for (const f of renderSiteFiles(t, sampleContent(meta.sector, name, foto), ctx)) write(join(root, slug, variant, f.path), f.content);
     }
   }
   // Las variantes de estilo que medirá el laboratorio, con y sin script (con
@@ -126,7 +127,7 @@ function comprobar(dir: string, out: string) {
   const variants = new Map(checkPlan(estilo).filter((p) => p.acento || p.tipografia).map((p) => [variantDir(p.acento, p.tipografia), p]));
   for (const [vdir, { acento, tipografia }] of variants) {
     for (const name of Object.keys(SITE_CONTENT_SAMPLES) as SiteContentSampleName[]) {
-      const content = { ...sampleContent(name, foto), estilo: { acento: acento ?? '', tipografia: tipografia ?? '' } };
+      const content = { ...sampleContent(meta.sector, name, foto), estilo: { acento: acento ?? '', tipografia: tipografia ?? '' } };
       for (const [variant, t] of [[name, withStyle], [`${name}-sin-js`, sinJs]] as const) {
         for (const f of renderSiteFiles(t, content, ctx)) write(join(root, slug, vdir, variant, f.path), f.content);
       }

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { SITE_TEMPLATE_PARTS, renderSiteFiles, type SiteTemplatePart, type SiteTemplateSource } from '@/lib/site-template';
 import { validateSiteTemplate } from '@/lib/site-template-validate';
-import { SAMPLE_RENDER_CONTEXT, SITE_CONTENT_SAMPLES } from '@/lib/site-content-samples';
+import { SAMPLE_RENDER_CONTEXT, SITE_CONTENT_SAMPLES, sectorSamples } from '@/lib/site-content-samples';
 import { templateIconIds } from '@/lib/web-draft-design';
 
 // Las plantillas escritas a mano (portal/plantillas/, scripts/plantilla-a-mano.ts)
@@ -58,6 +58,19 @@ describe('plantillas escritas a mano', () => {
           expect(home).not.toMatch(/\{\{/);
         }
         expect(templateIconIds(template.marco)).toEqual(expect.arrayContaining(['check', 'telefono', 'estrella', 'herramienta', 'casa', 'reloj']));
+      });
+
+      // 30/10/2026 — el laboratorio la enseña con el texto de su sector: los
+      // iconos de ese texto (un diente en salud) tienen que existir en ella.
+      it('pinta los contenidos de muestra de su sector con iconos que tiene', () => {
+        const { samples, context } = sectorSamples(String(meta.sector));
+        const icons = templateIconIds(template.marco);
+        for (const sample of Object.values(samples)) {
+          const home = renderSiteFiles(template, sample, context).find((f) => f.path === 'index.html')?.content.toString('utf8') ?? '';
+          expect(home).toContain('id="kairikos-form"');
+          expect(home).not.toMatch(/\{\{/);
+          for (const s of sample.datos.servicios) if (s.icono) expect(icons).toContain(s.icono);
+        }
       });
 
       it('con logo subido, la cabecera lo enseña en vez del nombre, también en las páginas interiores', () => {
