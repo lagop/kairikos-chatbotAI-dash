@@ -7,6 +7,7 @@ import type { SiteBlock, SiteBlogEntry, SiteContent, SiteSectionRef, SiteSection
 import type { IconSymbol } from '@/lib/site-icon-symbols';
 import { SiteLivePreview, type ListAction, type PreviewDevice, type PreviewPick } from './SiteLivePreview';
 import { emptyHistory, historyCommand, recordStep, redoStep, undoStep } from './edit-history';
+import { SITE_BLOCK_VARIANTS, SITE_SECTION_VARIANTS, alternarVariantes, type SiteSectionVariant } from '@/lib/site-section-variants';
 
 // =============================================================================
 // Webs con IA, entrega 4 (27/10/2026) — el editor de la web con plantilla de
@@ -32,7 +33,10 @@ import { emptyHistory, historyCommand, recordStep, redoStep, undoStep } from './
 //
 // Este archivo no importa nada de lib/ que no sean tipos: es un componente de
 // cliente (ver «Rutas y libs» en CLAUDE.md). Por eso las rutas reservadas y la
-// forma de un slug se repiten aquí (lib/site-content.ts es la regla).
+// forma de un slug se repiten aquí (lib/site-content.ts es la regla). La
+// excepción es lib/site-section-variants.ts (30/10/2026): solo datos y
+// funciones puras, escrito para que lo importe este editor, y la lista de
+// variantes no se puede repetir aquí sin que se desincronice.
 //
 // 27/10/2026: «Color y letra». El cliente elige el color de su marca (una
 // muestra o el que quiera) y una de las parejas de letras de su plantilla. El
@@ -298,6 +302,13 @@ const LIST_NEW: [RegExp, Record<string, string>, number][] = [
   [/^horario$/, { dias: 'Días', horas: 'Horas' }, 7],
   [/^bloques\.[^.]+\.items$/, { texto: 'Nuevo punto', icono: '' }, 8],
 ];
+
+/** Las disposiciones que se pueden elegir para una sección, o el estilo de un
+ *  bloque (las pestañas). Vacío: no tiene. */
+function variantOptions(ref: SiteSectionRef, blockTipo: string | undefined): readonly SiteSectionVariant[] {
+  if (ref.tipo === 'bloque') return (blockTipo && SITE_BLOCK_VARIANTS[blockTipo]) || [];
+  return SITE_SECTION_VARIANTS[ref.tipo] ?? [];
+}
 
 export function SiteContentEditor(props: SiteContentEditorProps) {
   const router = useRouter();
@@ -1222,6 +1233,29 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
                         <button type="button" className="btn-ghost" disabled={i === page.secciones.length - 1} onClick={() => move(i, 1)}>
                           Bajar sección
                         </button>
+                        {variantOptions(ref, block?.tipo).length ? (
+                          <label className="flex items-center gap-2">
+                            {ref.tipo === 'bloque' ? 'Estilo' : 'Disposición'}
+                            <select
+                              className="input"
+                              value={ref.variante ?? ''}
+                              onChange={(e) =>
+                                update((d) => {
+                                  const r = d.paginas[pageIndex].secciones[i];
+                                  if (e.target.value) r.variante = e.target.value;
+                                  else delete r.variante;
+                                })
+                              }
+                            >
+                              <option value="">{ref.tipo === 'bloque' ? 'El de siempre' : 'La de la plantilla'}</option>
+                              {variantOptions(ref, block?.tipo).map((v) => (
+                                <option key={v.id} value={v.id}>
+                                  {v.nombre}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : null}
                         {ref.tipo !== 'portada' && ref.tipo !== 'contacto' ? (
                           <button type="button" className="btn-ghost" onClick={() => update((d) => (d.paginas[pageIndex].secciones[i].oculta = !ref.oculta))}>
                             {ref.oculta ? 'Mostrar en la web' : 'Ocultar de la web'}
@@ -1239,6 +1273,19 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
               );
             })}
           </ol>
+
+          {page.secciones.filter((r) => !r.oculta).length > 2 ? (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => update((d) => (d.paginas[pageIndex].secciones = alternarVariantes(d.paginas[pageIndex].secciones)))}
+              >
+                Alternar disposiciones
+              </button>
+              <span className="text-kairikos-muted">Cambia la de las secciones seguidas que se ven iguales, para que la página no se repita.</span>
+            </div>
+          ) : null}
 
           <div className="card flex flex-wrap items-center gap-2">
             <span className="text-sm">Añadir a esta página</span>

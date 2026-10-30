@@ -9,7 +9,9 @@ import {
   parseMustache,
   type SiteTemplatePart,
   type SiteTemplateSource,
+  type SiteVariantPart,
 } from './site-template';
+import { SITE_VARIANT_PARTS } from './site-section-variants';
 
 // =============================================================================
 // Webs con IA, entrega 1 (27/10/2026) — lo que una plantilla tiene que cumplir
@@ -92,7 +94,7 @@ function lineOf(source: string, index: number): number {
   return source.slice(0, index).split('\n').length;
 }
 
-function checkPart(name: 'marco' | SiteTemplatePart, source: string, problems: string[]): void {
+function checkPart(name: 'marco' | SiteTemplatePart | SiteVariantPart, source: string, problems: string[]): void {
   const where = name === 'marco' ? 'el marco' : `la sección «${name}»`;
   let tags: ReturnType<typeof collectTags>;
   try {
@@ -232,7 +234,20 @@ export function validateSiteTemplate(input: SiteTemplateSource): TemplateValidat
     checkPart(part, source, problems);
   }
   for (const extra of Object.keys(template.secciones)) {
-    if (!(SITE_TEMPLATE_PARTS as readonly string[]).includes(extra)) problems.push(`sobra la sección «${extra}»: no existe en el esquema.`);
+    if ((SITE_TEMPLATE_PARTS as readonly string[]).includes(extra)) continue;
+    // 30/10/2026 — la versión propia de una variante (servicios@indice) es
+    // opcional; sin ella la pinta el motor (site-section-variants.ts).
+    if (SITE_VARIANT_PARTS.includes(extra)) {
+      const source = template.secciones[extra as SiteVariantPart] ?? '';
+      checkPart(extra as SiteVariantPart, source, problems);
+      const tipo = extra.split('@')[0];
+      const marks = source.match(/\sdata-k-titulo-seccion(?=[\s=/>])/g)?.length ?? 0;
+      const titled = (SITE_TITLED_SECTIONS as readonly string[]).includes(tipo);
+      if (titled && marks !== 1) problems.push(`la sección «${extra}»: marca su título con data-k-titulo-seccion exactamente una vez (lleva ${marks}), como en «${tipo}».`);
+      if (!titled && marks) problems.push(`la sección «${extra}»: quita data-k-titulo-seccion; solo lo llevan ${SITE_TITLED_SECTIONS.join(', ')}.`);
+      continue;
+    }
+    problems.push(`sobra la sección «${extra}»: no existe en el esquema.`);
   }
 
   // El blog (entrega 5): la lista enlaza cada entrada y el artículo pinta su

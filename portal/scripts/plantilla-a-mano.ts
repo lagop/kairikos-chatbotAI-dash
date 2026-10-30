@@ -56,6 +56,7 @@ const { renderSiteFiles, SITE_TEMPLATE_PARTS } = require('../src/lib/site-templa
 const { validateSiteTemplate } = require('../src/lib/site-template-validate') as typeof import('../src/lib/site-template-validate');
 const { SITE_CONTENT_SAMPLES, sectorSamples } = require('../src/lib/site-content-samples') as typeof import('../src/lib/site-content-samples');
 const { parseTemplateStyle } = require('../src/lib/site-style') as typeof import('../src/lib/site-style');
+const { SITE_VARIANT_PARTS, withVariantSet } = require('../src/lib/site-section-variants') as typeof import('../src/lib/site-section-variants');
 const { checkPlan } = require('../src/lib/site-template-checks') as typeof import('../src/lib/site-template-checks');
 
 interface Meta {
@@ -70,8 +71,10 @@ function load(dir: string): { meta: Meta; template: SiteTemplateSource; slug: st
   const abs = resolve(dir);
   const meta = JSON.parse(readFileSync(join(abs, 'plantilla.json'), 'utf8')) as Meta;
   const read = (name: string) => (existsSync(join(abs, `${name}.html`)) ? readFileSync(join(abs, `${name}.html`), 'utf8').replace(/\r\n/g, '\n').trim() : '');
-  const secciones: Partial<Record<SiteTemplatePart, string>> = {};
-  for (const part of SITE_TEMPLATE_PARTS) {
+  const secciones: SiteTemplateSource['secciones'] = {};
+  // 30/10/2026 — y las versiones propias de las variantes, si las trae
+  // (servicios@indice.html; site-section-variants.ts).
+  for (const part of [...SITE_TEMPLATE_PARTS, ...SITE_VARIANT_PARTS] as SiteTemplatePart[]) {
     const body = read(part);
     if (body) secciones[part] = body;
   }
@@ -133,6 +136,15 @@ function comprobar(dir: string, out: string) {
       }
     }
   }
+  // Los juegos de variantes de sección (variantes-<k>/), igual.
+  for (const k of new Set(checkPlan(estilo).flatMap((p) => (p.variantes === undefined ? [] : [p.variantes])))) {
+    for (const name of Object.keys(SITE_CONTENT_SAMPLES) as SiteContentSampleName[]) {
+      const content = withVariantSet(sampleContent(meta.sector, name, foto), k);
+      for (const [variant, t] of [[name, withStyle], [`${name}-sin-js`, sinJs]] as const) {
+        for (const f of renderSiteFiles(t, content, ctx)) write(join(root, slug, `variantes-${k}`, variant, f.path), f.content);
+      }
+    }
+  }
   write(join(root, slug, 'estilo.json'), JSON.stringify(estilo));
   // Lo que la vista previa sirve desde el portal.
   cpSync(join(PORTAL, 'public', 'fuentes'), join(root, 'fuentes'), { recursive: true });
@@ -168,7 +180,7 @@ const HARNESS = `<!doctype html>
     document.getElementById("estado").textContent = (i + 1) + " / " + plan.length;
     var iframe = document.createElement("iframe");
     Object.assign(iframe.style, { position: "fixed", left: "-20000px", top: "0", width: p.ancho + "px", height: "900px", border: "0" });
-    var vdir = p.acento || p.tipografia ? "estilo-" + (p.acento ? p.acento.slice(1) : "x") + "-" + (p.tipografia || "x") + "/" : "";
+    var vdir = p.acento || p.tipografia ? "estilo-" + (p.acento ? p.acento.slice(1) : "x") + "-" + (p.tipografia || "x") + "/" : p.variantes !== undefined ? "variantes-" + p.variantes + "/" : "";
     iframe.src = "/" + slug + "/" + vdir + p.contenido + "-sin-js/" + (p.pagina ? p.pagina + "/" : "") + "index.html";
     document.body.appendChild(iframe);
     await new Promise(function (r) { iframe.onload = r; });

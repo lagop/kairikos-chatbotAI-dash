@@ -80,8 +80,8 @@ const BUSY = new Set(['generando', 'corrigiendo']);
 
 /** Pinta la plantilla en un marco fuera de la vista y la mide. */
 async function measure(templateId: string, item: CheckPlanItem): Promise<CheckRun> {
-  const { ancho, contenido, pagina = '', acento, tipografia } = item;
-  const variant = `${acento ? `&acento=${encodeURIComponent(acento)}` : ''}${tipografia ? `&tipografia=${tipografia}` : ''}`;
+  const { ancho, contenido, pagina = '', acento, tipografia, variantes } = item;
+  const variant = `${acento ? `&acento=${encodeURIComponent(acento)}` : ''}${tipografia ? `&tipografia=${tipografia}` : ''}${variantes !== undefined ? `&variantes=${variantes}` : ''}`;
   const iframe = document.createElement('iframe');
   iframe.setAttribute('aria-hidden', 'true');
   iframe.tabIndex = -1;

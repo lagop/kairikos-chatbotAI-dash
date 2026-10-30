@@ -182,7 +182,8 @@ describe('el contenido guarda la elección', () => {
 
 describe('qué mide el laboratorio', () => {
   it('sin estilo, las de siempre; con estilo, además cada color y cada pareja', () => {
-    const base = CHECK_PAGES.length * CHECK_WIDTHS.length;
+    // Más las de los juegos de variantes de sección (30/10/2026), con o sin estilo.
+    const base = CHECK_PAGES.length * CHECK_WIDTHS.length + checkPlan(null).filter((p) => p.variantes !== undefined).length;
     expect(checkPlan(null)).toHaveLength(base);
     const plan = checkPlan(STYLE);
     const colores = new Set(plan.filter((p) => p.acento).map((p) => p.acento));

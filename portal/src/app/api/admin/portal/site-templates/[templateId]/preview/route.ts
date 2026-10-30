@@ -6,6 +6,7 @@ import { renderSiteFiles, type SiteTemplatePart, type SiteTemplateSource } from 
 import type { SiteContent } from '@/lib/site-content';
 import { SITE_TEMPLATE_BASE } from '@/lib/site-template-base';
 import { parseTemplateStyle } from '@/lib/site-style';
+import { SITE_VARIANT_SETS, withVariantSet } from '@/lib/site-section-variants';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -55,13 +56,18 @@ export async function GET(req: NextRequest, props: { params: Promise<{ templateI
   // Las fotos de muestra son rutas del sitio publicado (assets/…); aquí no
   // existen, así que se sirve la del sector, como la portada.
   const muestra = sectorSamples(sector);
-  const content = JSON.parse(JSON.stringify(muestra.samples[sample]).replaceAll('"assets/portada.jpg"', JSON.stringify(foto))) as SiteContent;
+  let content = JSON.parse(JSON.stringify(muestra.samples[sample]).replaceAll('"assets/portada.jpg"', JSON.stringify(foto))) as SiteContent;
   // Entrega 5: ?pagina=blog o ?pagina=blog/entrada-1 (las comprobaciones
   // miden también la lista y el artículo). Vacío, la portada.
   const pagina = (req.nextUrl.searchParams.get('pagina') ?? '').replace(/^\/+|\/+$/g, '');
   const acento = (req.nextUrl.searchParams.get('acento') ?? '').toLowerCase();
   const tipografia = req.nextUrl.searchParams.get('tipografia') ?? '';
   content.estilo = { acento: /^#[0-9a-f]{6}$/.test(acento) ? acento : '', tipografia: /^[a-z0-9-]{1,30}$/.test(tipografia) ? tipografia : '' };
+  // 30/10/2026 — ?variantes=k: el juego k de variantes de sección en todas
+  // (site-section-variants.ts), como lo mide el laboratorio.
+  const variantesParam = req.nextUrl.searchParams.get('variantes') ?? '';
+  const variantes = /^\d{1,2}$/.test(variantesParam) ? Number(variantesParam) : -1;
+  if (Number.isInteger(variantes) && variantes >= 0 && variantes < SITE_VARIANT_SETS) content = withVariantSet(content, variantes);
   if (req.nextUrl.searchParams.get('comprobar') === '1') {
     template = { ...template, marco: template.marco.replace(/<script\b[\s\S]*?<\/script>/gi, '') };
   }
