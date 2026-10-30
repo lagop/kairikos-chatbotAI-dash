@@ -1,0 +1,41 @@
+{
+  "nombre": "Oficios · Sello",
+  "sector": "trades",
+  "variante": "cercana y de confianza, papel cálido, azul marino y rojo de tampón",
+  "encargo": "Oficios de barrio donde lo que vende es la confianza y las opiniones (fontanería, electricidad, cerrajería, pintura, climatización, reformas pequeñas). Todo gira en torno a un sello: la nota de Google es un sello rojo redondo estampado sobre la foto de su oficio, recortada en arco; las garantías son sellos sobre azul marino; los precios son tickets con el importe en una píldora; las opiniones son bocadillos; la zona son matasellos con el nombre de cada pueblo, y la llamada final es la banda roja de un tampón con su teléfono en grande. Papel cálido, azul marino y un solo acento (rojo, o el color del negocio). Titulares en Fraunces, una serifa amable, y texto en Nunito Sans. Dinámica: el sello cae y se estampa al cargar y gira al pasar por encima, los iconos se enderezan, la ruta del proceso se dibuja a trazos y las cifras cuentan. Transmite el profesional de confianza del barrio. Escrita a mano.",
+  "estilo": {
+    "acento": {
+      "variables": [
+        {
+          "variable": "--rojo",
+          "desde": "color",
+          "contra": ["--papel", "--crema", "--blanco"],
+          "minimo": 4.5
+        },
+        {
+          "variable": "--rojo-claro",
+          "desde": "tono",
+          "contra": ["--tinta", "--tinta-2"],
+          "minimo": 4.5
+        }
+      ],
+      "muestras": [
+        { "nombre": "Rojo", "color": "#c8341e" },
+        { "nombre": "Azul", "color": "#1f5fbf" },
+        { "nombre": "Verde", "color": "#1f7a4d" },
+        { "nombre": "Naranja", "color": "#b14a00" },
+        { "nombre": "Morado", "color": "#6a3fb5" },
+        { "nombre": "Petróleo", "color": "#0e6a74" }
+      ]
+    },
+    "tipografias": {
+      "titulares": "--display",
+      "texto": "--texto",
+      "parejas": [
+        { "id": "amable", "nombre": "Amable", "titulares": "Fraunces", "texto": "Nunito Sans" },
+        { "id": "solida", "nombre": "Sólida", "titulares": "Bitter", "texto": "Source Sans 3" },
+        { "id": "cercana", "nombre": "Cercana", "titulares": "Young Serif", "texto": "Outfit" }
+      ]
+    }
+  }
+}
