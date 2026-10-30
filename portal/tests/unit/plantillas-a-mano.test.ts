@@ -57,7 +57,13 @@ describe('plantillas escritas a mano', () => {
           expect(home).toContain('id="kairikos-form"');
           expect(home).not.toMatch(/\{\{/);
         }
-        expect(templateIconIds(template.marco)).toEqual(expect.arrayContaining(['check', 'telefono', 'estrella', 'herramienta', 'casa', 'reloj']));
+        const icons = templateIconIds(template.marco);
+        expect(icons).toEqual(expect.arrayContaining(['check', 'telefono', 'estrella', 'reloj']));
+        // 30/10/2026 — los iconos de oficios, solo en oficios: la IA elige los
+        // de los servicios de esta lista y el editor se la ofrece al cliente.
+        const DE_OFICIO = ['herramienta', 'rayo', 'llave', 'sierra', 'termometro', 'copo', 'panel', 'brocha'];
+        if (meta.sector === 'trades') expect(icons).toEqual(expect.arrayContaining(['herramienta', 'casa']));
+        else expect(icons.filter((i) => DE_OFICIO.includes(i))).toEqual([]);
       });
 
       // 30/10/2026 — el laboratorio la enseña con el texto de su sector: los
