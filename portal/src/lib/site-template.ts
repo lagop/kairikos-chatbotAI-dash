@@ -789,7 +789,13 @@ function renderBlogPart(template: SiteTemplateSource, part: (typeof SITE_BLOG_PA
 
 /** El envío del formulario: el mismo comportamiento que web-draft-html.ts, que
  *  es el que ya funciona en producción. Si el envío falla se enseña el
- *  teléfono: un formulario mudo es peor que no tenerlo. */
+ *  teléfono: un formulario mudo es peor que no tenerlo.
+ *
+ *  30/10/2026 — P4 (portada con formulario, site-section-variants.ts) pone un
+ *  segundo formulario en la página: además del de contacto (#kairikos-form,
+ *  el que exige el validador a toda plantilla), cualquier <form
+ *  data-kairikos-form> con su aviso dentro ([data-kairikos-form-note]). Los
+ *  mismos campos y el mismo buzón. */
 function formScript(action: string, phone: string | null, href: string | null): string {
   const fallback =
     phone && href
@@ -797,29 +803,33 @@ function formScript(action: string, phone: string | null, href: string | null): 
       : 'No hemos podido enviarlo. Inténtelo de nuevo en un momento.';
   return `<script>
 (function () {
-  var form = document.getElementById("kairikos-form");
-  var note = document.getElementById("kairikos-form-note");
-  if (!form || !note) return;
-  form.addEventListener("submit", function (event) {
-    event.preventDefault();
-    var data = new FormData(form);
-    note.hidden = false;
-    note.textContent = "Enviando…";
-    fetch(${JSON.stringify(action)}, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        name: String(data.get("name") || ""),
-        contact: String(data.get("contact") || ""),
-        message: String(data.get("message") || "")
+  function conectar(form, note) {
+    if (!form || !note) return;
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      var data = new FormData(form);
+      note.hidden = false;
+      note.textContent = "Enviando…";
+      fetch(${JSON.stringify(action)}, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: String(data.get("name") || ""),
+          contact: String(data.get("contact") || ""),
+          message: String(data.get("message") || "")
+        })
       })
-    })
-      .then(function (res) {
-        if (!res.ok) throw new Error("bad_status");
-        form.reset();
-        note.textContent = "Recibido. Le respondemos enseguida.";
-      })
-      .catch(function () { note.innerHTML = ${JSON.stringify(fallback)}; });
+        .then(function (res) {
+          if (!res.ok) throw new Error("bad_status");
+          form.reset();
+          note.textContent = "Recibido. Le respondemos enseguida.";
+        })
+        .catch(function () { note.innerHTML = ${JSON.stringify(fallback)}; });
+    });
+  }
+  conectar(document.getElementById("kairikos-form"), document.getElementById("kairikos-form-note"));
+  document.querySelectorAll("form[data-kairikos-form]").forEach(function (form) {
+    conectar(form, form.querySelector("[data-kairikos-form-note]"));
   });
 })();
 </script>`;
@@ -908,7 +918,7 @@ export function renderSitePage(
   if (html.includes('class="kv ')) {
     html = html.replace(/<head>/i, `<head>\n${variantesCss(template.estilo?.tipografias?.titulares)}`).replace(/<\/body>/i, `${VARIANTES_JS}\n</body>`);
   }
-  if (ctx.formAction && rendered.some((r) => r.tipo === 'contacto')) {
+  if (ctx.formAction && (rendered.some((r) => r.tipo === 'contacto') || html.includes('data-kairikos-form'))) {
     html = html.replace(/<\/body>/i, `${formScript(ctx.formAction, ctx.negocio.telefono, phoneHref(ctx.negocio.telefono))}\n</body>`);
   }
   if (options.anchorsByPage) {

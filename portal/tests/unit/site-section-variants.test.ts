@@ -33,9 +33,9 @@ describe('variantes de sección: la lista', () => {
     expect(Object.keys(VARIANT_SOURCES).sort()).toEqual(Object.keys(SITE_SECTION_VARIANTS).sort());
   });
 
-  it('las 23 elegidas por Orlando el 30/10, menos P4 (dos formularios en una página)', () => {
+  it('las 23 elegidas por Orlando el 30/10', () => {
     const muestras = [...Object.values(SITE_SECTION_VARIANTS).flatMap((vs) => vs!.map((v) => v.muestra))].sort();
-    expect(muestras).toEqual(['F1', 'F2', 'L1', 'L2', 'L3', 'L4', 'O1', 'O2', 'O3', 'P1', 'P2', 'P3', 'Q1', 'Q2', 'Q3', 'S1', 'S2', 'S3', 'S4'].sort());
+    expect(muestras).toEqual(['F1', 'F2', 'L1', 'L2', 'L3', 'L4', 'O1', 'O2', 'O3', 'P1', 'P2', 'P3', 'P4', 'Q1', 'Q2', 'Q3', 'S1', 'S2', 'S3', 'S4'].sort());
   });
 
   it('una variante que no existe no es ninguna', () => {
@@ -158,6 +158,39 @@ describe('variantes de sección: el validador', () => {
   it('las piezas de variante son las de la lista', () => {
     expect(SITE_VARIANT_PARTS).toContain('portada@sangre');
     expect(SITE_VARIANT_PARTS).toContain('faq@dos-columnas');
+  });
+});
+
+describe('P4: la portada con formulario', () => {
+  const p4 = () => withVariant(normal(), 'portada', 'formulario');
+
+  it('en el borrador es de muestra, como el de contacto, y no se envía', () => {
+    const html = render(SITE_TEMPLATE_BASE, p4());
+    expect(html).toContain('data-kairikos-form');
+    expect(html.match(/type="submit" disabled/g)?.length).toBe(2);
+    expect(html.match(/Formulario de muestra/g)?.length).toBe(2);
+    expect(html).not.toContain('data-kairikos-form]');
+  });
+
+  it('publicada, el motor envía los dos formularios al mismo buzón', () => {
+    const action = 'https://portal.kairikos.cloud/api/public/website-form/tok';
+    const c = p4();
+    const html = renderSitePage(SITE_TEMPLATE_BASE, c, c.paginas[0], { ...SAMPLE_RENDER_CONTEXT, borrador: false, formAction: action });
+    expect(html).not.toContain('Formulario de muestra');
+    expect(html).not.toMatch(/type="submit" disabled/);
+    expect(html.split(JSON.stringify(action)).length - 1).toBe(1);
+    expect(html).toContain('querySelectorAll("form[data-kairikos-form]")');
+    expect(html).toContain('getElementById("kairikos-form")');
+    for (const name of ['name', 'contact', 'message']) expect(html.match(new RegExp(`name="${name}"`, 'g'))?.length).toBe(2);
+  });
+
+  it('sin contacto en la página, el de la portada se envía igual', () => {
+    const action = 'https://portal.kairikos.cloud/api/public/website-form/tok';
+    const c = p4();
+    c.paginas[0].secciones = c.paginas[0].secciones.filter((r) => r.tipo !== 'contacto');
+    const html = renderSitePage(SITE_TEMPLATE_BASE, c, c.paginas[0], { ...SAMPLE_RENDER_CONTEXT, borrador: false, formAction: action });
+    expect(html).not.toContain('id="kairikos-form"');
+    expect(html).toContain('querySelectorAll("form[data-kairikos-form]")');
   });
 });
 
