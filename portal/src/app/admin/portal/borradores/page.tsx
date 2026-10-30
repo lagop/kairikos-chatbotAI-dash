@@ -7,6 +7,9 @@ import { EmptyState } from '@/components/portal/EmptyState';
 import { PUBLIC_SECTORS } from '@/lib/public-draft-request';
 import { MarkContactedButton } from '@/components/admin/MarkContactedButton';
 import { emailFromContact } from '@/lib/inbound-follow-up';
+import { SendPublicDraftButton } from '@/components/admin/SendPublicDraftButton';
+import { deliveryDueAt } from '@/lib/public-draft-delivery';
+import { MAX_GENERATION_ATTEMPTS } from '@/lib/public-draft-request';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +31,11 @@ export const metadata: Metadata = {
 // pantalla. La única acción es «Marcar contactado» (25/10/2026), que llegó con
 // el seguimiento por correo: es lo que lo corta en cuanto se ha hablado con
 // alguien. Cada fila enseña también qué correos de seguimiento ha recibido.
+//
+// 30/10/2026 — y es donde se revisa el borrador antes de que le llegue
+// (lib/public-draft-delivery.ts): «Revisar» lo enseña como lo verá, «Editar»
+// abre el editor y «Enviar ahora» se lo manda sin esperar al plazo. Si nadie
+// lo toca, sale solo a las 23 horas.
 // =============================================================================
 
 const FECHA = new Intl.DateTimeFormat('es-ES', {
@@ -93,7 +101,9 @@ export default async function PublicDraftsPage() {
                   <h2 className="mt-1 text-base font-semibold">{row.businessName}</h2>
                   <p className="text-sm text-kairikos-muted">
                     {row.city} · {row.contact}
+                    {row.phone ? ` · ${row.phone}` : ''}
                   </p>
+                  <DeliveryLine row={row} />
                   <FollowUpLine
                     sends={followUpsBySource.get(row.id) ?? []}
                     unsubscribedAt={row.unsubscribedAt}
@@ -111,9 +121,21 @@ export default async function PublicDraftsPage() {
                       <MarkContactedButton source="web_draft" id={row.id} />
                     </>
                   )}
-                  <a href={`/mi-web/${row.token}`} target="_blank" rel="noreferrer" className="btn-ghost text-sm">
-                    Ver su borrador
-                  </a>
+                  {row.copy ? (
+                    <>
+                      <a href={`/api/admin/portal/borradores/${row.id}/ver`} target="_blank" rel="noreferrer" className="btn-ghost text-sm">
+                        {row.sentAt ? 'Ver su borrador' : 'Revisar'}
+                      </a>
+                      {row.templateId ? (
+                        <a href={`/admin/portal/borradores/${row.id}`} className="btn-ghost text-sm" data-testid="public-draft-edit">
+                          Editar
+                        </a>
+                      ) : null}
+                      {!row.sentAt || row.deliveryError ? (
+                        <SendPublicDraftButton id={row.id} label={row.sentAt ? 'Reintentar correo' : 'Enviar ahora'} />
+                      ) : null}
+                    </>
+                  ) : null}
                 </div>
               </div>
             </li>
@@ -174,6 +196,40 @@ export default async function PublicDraftsPage() {
         )}
       </section>
     </div>
+  );
+}
+
+/** En qué punto está la entrega de su borrador (lib/public-draft-delivery.ts). */
+function DeliveryLine({
+  row,
+}: {
+  row: { copy: unknown; sentAt: Date | null; createdAt: Date; generationAttempts: number; deliveryError: string | null; contact: string };
+}) {
+  let text: string;
+  let tone = 'text-kairikos-muted';
+  if (!row.copy) {
+    if (row.generationAttempts >= MAX_GENERATION_ATTEMPTS) {
+      text = 'No se pudo escribir su borrador tras varios intentos: escríbele tú.';
+      tone = 'text-kairikos-danger';
+    } else {
+      text = 'Escribiendo su borrador…';
+    }
+  } else if (!row.sentAt) {
+    text = `Sin enviar: sale solo el ${FECHA.format(deliveryDueAt(row.createdAt))} si no lo mandas antes.`;
+    tone = 'text-kairikos-warning';
+  } else if (row.deliveryError) {
+    text = `Enlace abierto el ${FECHA.format(row.sentAt)}, pero el correo falló: ${row.deliveryError}`;
+    tone = 'text-kairikos-danger';
+  } else if (!emailFromContact(row.contact)) {
+    text = `Enlace abierto el ${FECHA.format(row.sentAt)}. No dejó correo: llámale para mandárselo.`;
+    tone = 'text-kairikos-warning';
+  } else {
+    text = `Enviado el ${FECHA.format(row.sentAt)}.`;
+  }
+  return (
+    <p className={`mt-1 text-xs ${tone}`} data-testid="public-draft-delivery">
+      {text}
+    </p>
   );
 }
 

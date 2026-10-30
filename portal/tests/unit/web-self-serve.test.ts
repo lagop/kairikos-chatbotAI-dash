@@ -50,6 +50,8 @@ const PUBLIC_DRAFT = {
   primaryType: 'plumber',
   themeKey: 'trades-2',
   copy: COPY,
+  phone: null,
+  sentAt: new Date('2026-10-25T10:00:00Z'),
 };
 const WEB_PRODUCT = { id: 'p-web', setupFeeCents: 79900, currency: 'eur', stripeSetupPriceId: 'price_web' };
 
@@ -94,6 +96,16 @@ describe('resolveWebDraft', () => {
     expect(seed).toMatchObject({ kind: 'public', businessName: 'Fontanería Pérez', phone: '+34 600 11 22 33' });
     const byEmail = await resolveWebDraft(prismaWith({ publicDraft: { ...PUBLIC_DRAFT, contact: 'a@b.es' } }), TOKEN);
     expect(byEmail?.phone).toBeNull();
+    // 30/10/2026 — el teléfono que deja aparte del correo.
+    const withPhone = await resolveWebDraft(prismaWith({ publicDraft: { ...PUBLIC_DRAFT, contact: 'a@b.es', phone: '600 11 22 33' } }), TOKEN);
+    expect(withPhone?.phone).toBe('600 11 22 33');
+  });
+
+  // 30/10/2026 — hasta que se le envía, su enlace dice «la estamos
+  // preparando» (public-draft-delivery.ts): no hay nada que comprar.
+  it('un borrador de kairikos.com sin enviar, o sin escribir, no se puede comprar', async () => {
+    expect(await resolveWebDraft(prismaWith({ publicDraft: { ...PUBLIC_DRAFT, sentAt: null } }), TOKEN)).toBeNull();
+    expect(await resolveWebDraft(prismaWith({ publicDraft: { ...PUBLIC_DRAFT, copy: null } }), TOKEN)).toBeNull();
   });
 
   it('un borrador de prospección solo si el prospecto es de una cuenta interna', async () => {

@@ -124,8 +124,11 @@ export interface SiteContentEditorProps {
   operador?: { clienteNombre: string } | null;
   /** 30/10/2026 — el borrador de un prospecto, editado por el operador
    *  (lib/web-draft-editor.ts). Sin publicar ni «Mis datos», solo la portada
-   *  y sin subir fotos. `verUrl`: el borrador guardado, como lo ve él. */
-  borrador?: { negocio: string; verUrl: string } | null;
+   *  y sin subir fotos. `verUrl`: el borrador guardado, como lo ve él.
+   *  `aviso` y `guardado` sustituyen a los textos de prospección: un
+   *  borrador de kairikos.com sin enviar no se ve en su enlace todavía y no
+   *  tiene historial (lib/public-draft-editor.ts). */
+  borrador?: { negocio: string; verUrl: string; aviso?: string; guardado?: string } | null;
   initialContent: SiteContent;
   phone: string | null;
   address: string | null;
@@ -698,7 +701,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
     savedRef.current = JSON.stringify(sent);
     // Si se siguió escribiendo mientras se guardaba, eso aún no está guardado.
     setDirty(stateRef.current !== sent);
-    setMessage(props.borrador ? 'Guardado. Su enlace ya enseña el borrador así.' : 'Guardado. Tu web publicada no cambia hasta que pulses «Publicar».');
+    setMessage(props.borrador ? (props.borrador.guardado ?? 'Guardado. Su enlace ya enseña el borrador así.') : 'Guardado. Tu web publicada no cambia hasta que pulses «Publicar».');
     return true;
   }
 
@@ -921,8 +924,9 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
   const statusCard = props.borrador ? (
       <div className="card space-y-3">
         <p className="rounded-lg bg-kairikos-warning/10 px-3 py-2 text-sm" data-testid="site-editor-borrador">
-          Estás editando el borrador de <strong>{props.borrador.negocio}</strong>. Lo que guardes lo verá en su enlace la próxima vez que lo abra. Cada
-          guardado deja la versión anterior en el historial del borrador.
+          Estás editando el borrador de <strong>{props.borrador.negocio}</strong>.{' '}
+          {props.borrador.aviso ??
+            'Lo que guardes lo verá en su enlace la próxima vez que lo abra. Cada guardado deja la versión anterior en el historial del borrador.'}
         </p>
         {pending > 0 ? (
           <p className="text-sm text-kairikos-warning" data-testid="site-editor-pending">

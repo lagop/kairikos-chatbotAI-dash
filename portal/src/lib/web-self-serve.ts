@@ -152,14 +152,17 @@ export async function resolveWebDraft(prisma: PrismaClient, token: string): Prom
 
   const request = await prisma.publicDraftRequest.findUnique({
     where: { token },
-    select: { businessName: true, city: true, contact: true, primaryType: true, themeKey: true, copy: true, content: true, templateId: true },
+    select: { businessName: true, city: true, contact: true, phone: true, primaryType: true, themeKey: true, copy: true, content: true, templateId: true, sentAt: true },
   });
   if (request) {
+    // 30/10/2026 — hasta que se le envía no hay nada que comprar: su enlace
+    // enseña «la estamos preparando» (public-draft-delivery.ts).
+    if (!request.sentAt || !request.copy) return null;
     return {
       kind: 'public',
       token,
       businessName: request.businessName,
-      phone: phoneOrNull(request.contact),
+      phone: request.phone ?? phoneOrNull(request.contact),
       address: null,
       city: request.city,
       primaryType: request.primaryType,

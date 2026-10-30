@@ -1,10 +1,11 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import { after, NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
-import { createPublicDraft, PUBLIC_SECTORS } from '@/lib/public-draft-request';
+import { createPublicDraft, generatePublicDraft, PUBLIC_SECTORS } from '@/lib/public-draft-request';
 import { publicOrigin } from '@/lib/public-origin';
 import { logError } from '@/lib/observability';
 import { clientIpFromHeaders } from '@/lib/client-ip';
+import { emailFromContact } from '@/lib/inbound-follow-up';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -21,6 +22,12 @@ export const maxDuration = 60;
 // Los frenos viven en el lib (tope global del día, tope por IP, contacto
 // obligatorio y campo trampa). Aquí solo se traduce el resultado a una
 // respuesta que el formulario pueda enseñar sin asustar a nadie.
+//
+// 30/10/2026 — contesta al momento y el borrador se escribe DESPUÉS de
+// contestar (after), para entregarlo en menos de 24 horas
+// (public-draft-delivery.ts). Pide correo, que es por donde le llega; el
+// teléfono es opcional. Mientras kairikos.com no cambie su formulario, sigue
+// aceptando el campo de antes («contact», teléfono o correo).
 // =============================================================================
 
 const CORS = {
@@ -33,7 +40,10 @@ const CORS = {
 const BodySchema = z.object({
   businessName: z.string().trim().min(2).max(200),
   city: z.string().trim().min(2).max(120),
-  contact: z.string().trim().min(6).max(200),
+  email: z.string().trim().email().max(200).optional(),
+  phone: z.string().trim().max(50).optional(),
+  /** El campo del formulario antiguo: teléfono o correo. */
+  contact: z.string().trim().min(6).max(200).optional(),
   sector: z.string().trim().max(40),
   /** 20/10/2026 — la casilla de comunicaciones comerciales, desmarcada por
    *  defecto. El contacto obligatorio sirve para seguir la conversación sobre
@@ -84,8 +94,15 @@ export async function POST(req: NextRequest) {
   const ip = clientIpFromHeaders(req.headers);
 
   try {
-    const { consent, ...draft } = body.data;
-    const result = await createPublicDraft(prisma, { ...draft, marketingConsent: consent === true, ip });
+    const { consent, email, phone, contact, ...draft } = body.data;
+    const legacyEmail = contact ? emailFromContact(contact) : null;
+    const result = await createPublicDraft(prisma, {
+      ...draft,
+      email: email || legacyEmail,
+      phone: phone || (contact && !legacyEmail ? contact : null),
+      marketingConsent: consent === true,
+      ip,
+    });
     if (!result.ok) {
       // Al visitante no se le explica cuál de los topes saltó: no puede
       // hacer nada con esa información y saberlo solo ayuda a quien intenta
@@ -99,6 +116,10 @@ export async function POST(req: NextRequest) {
             : 'rate_limited';
       return NextResponse.json({ error: message }, { status, headers: CORS });
     }
+
+    // Se escribe después de contestar; si falla, lo reintenta el barrido.
+    const id = result.id;
+    after(() => generatePublicDraft(prisma, id));
 
     return NextResponse.json(
       { ok: true, url: `${publicOrigin(req)}/mi-web/${result.token}` },

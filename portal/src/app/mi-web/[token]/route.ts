@@ -1,9 +1,9 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import type { PublicDraftRequest } from '@prisma/client';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { isShareToken } from '@/lib/prospecting-share';
-import { renderWebDraftHtml } from '@/lib/web-draft-html';
-import type { WebDraftCopy } from '@/lib/web-draft-ai';
-import { renderDesignedDraft } from '@/lib/web-draft-design';
+import { renderPublicDraft } from '@/lib/public-draft-page';
+import { deliveryDueAt, renderPreparingPage } from '@/lib/public-draft-delivery';
 import { logError } from '@/lib/observability';
 import { getWebDraftPurchase, purchaseCtaFor } from '@/lib/web-self-serve';
 import { KAIRIKOS_DEMO_URL } from '@/lib/portal-data';
@@ -20,6 +20,10 @@ export const runtime = 'nodejs';
  *
  * Solo LEE lo ya generado. Recargar no vuelve a llamar al modelo, así que un
  * enlace compartido no cuesta dinero por mucho que corra.
+ *
+ * 30/10/2026 — hasta que se le envía (lib/public-draft-delivery.ts) enseña
+ * «la estamos preparando» con el plazo, aunque el borrador ya esté escrito: es
+ * el rato que tiene el operador para revisarlo.
  */
 export async function GET(_req: NextRequest, props: { params: Promise<{ token: string }> }) {
   const params = await props.params;
@@ -45,43 +49,9 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ token: s
       });
     }
 
-    // 25/10/2026 — «La quiero»: comprarla sin llamada (lib/web-self-serve.ts).
-    // Si mirarlo falla, el borrador se enseña igual, sin el botón.
-    const purchase = await getWebDraftPurchase(prisma, params.token, new Date()).catch(() => null);
-    const { cta, offer } = purchaseCtaFor(purchase, params.token, KAIRIKOS_DEMO_URL);
-
-    const subject = {
-      businessName: request.businessName,
-      primaryType: request.primaryType,
-      city: request.city,
-      address: null,
-      // El teléfono solo se pinta si lo que dejó ES un teléfono: en la
-      // portada de su propia web, un email donde debería ir el número
-      // queda raro y delata que esto se ha montado solo.
-      phone: /^[+0-9][0-9 ]{7,}$/.test(request.contact) ? request.contact : null,
-      rating: null,
-      reviewCount: null,
-    };
-    // Webs con IA (27/10/2026): con plantilla de la biblioteca, ese diseño;
-    // si no, o si algo falla al pintarla, el borrador de siempre.
-    const designed = await renderDesignedDraft(prisma, {
-      templateId: request.templateId,
-      content: request.content,
-      subject,
-      themeKey: request.themeKey,
-      purchase: cta,
-      offer,
-    });
-    const html =
-      designed ??
-      renderWebDraftHtml({
-        purchase: cta,
-        offer,
-        subject,
-        copy: request.copy as unknown as WebDraftCopy,
-        themeKey: request.themeKey,
-        generatedAt: request.createdAt,
-      });
+    const html = request.sentAt && request.copy
+      ? await renderSent(request, params.token)
+      : renderPreparingPage({ businessName: request.businessName, dueAt: deliveryDueAt(request.createdAt) });
 
     return new NextResponse(html, {
       status: 200,
@@ -98,4 +68,14 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ token: s
       headers: { 'content-type': 'text/plain; charset=utf-8' },
     });
   }
+}
+
+async function renderSent(request: PublicDraftRequest, token: string) {
+  // 25/10/2026 — «La quiero»: comprarla sin llamada (lib/web-self-serve.ts).
+  // Si mirarlo falla, el borrador se enseña igual, sin el botón.
+  const purchase = await getWebDraftPurchase(prisma, token, new Date()).catch(() => null);
+  const { cta, offer } = purchaseCtaFor(purchase, token, KAIRIKOS_DEMO_URL);
+  const html = await renderPublicDraft(prisma, request, { purchase: cta, offer });
+  if (!html) throw new Error('public_draft_without_copy');
+  return html;
 }

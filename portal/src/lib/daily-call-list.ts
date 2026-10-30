@@ -145,7 +145,7 @@ export async function loadWebContacts(prisma: PrismaClient, origin: string, now:
       where,
       orderBy: { createdAt: 'desc' },
       take: WEB_CONTACT_LIMIT,
-      select: { token: true, businessName: true, city: true, contact: true, marketingConsentAt: true, createdAt: true },
+      select: { id: true, token: true, businessName: true, city: true, contact: true, phone: true, marketingConsentAt: true, createdAt: true, sentAt: true },
     }),
     prisma.calculatorLead.findMany({
       where,
@@ -159,10 +159,13 @@ export async function loadWebContacts(prisma: PrismaClient, origin: string, now:
       source: 'borrador' as const,
       businessName: d.businessName,
       city: d.city,
-      contact: d.contact,
+      // 30/10/2026 — el correo y, si lo dejó, el teléfono: es a quien se llama.
+      contact: d.phone ? `${d.contact} · ${d.phone}` : d.contact,
       consent: d.marketingConsentAt !== null,
       createdAt: d.createdAt,
-      draftUrl: `${origin}/mi-web/${d.token}`,
+      // Sin enviar todavía (public-draft-delivery.ts), su enlace solo dice «la
+      // estamos preparando»: al operador le sirve la vista de revisión.
+      draftUrl: d.sentAt ? `${origin}/mi-web/${d.token}` : `${origin}/api/admin/portal/borradores/${d.id}/ver`,
     })),
     ...calcs.map((c) => ({
       source: 'calculadora' as const,
