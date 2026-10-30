@@ -55,6 +55,48 @@ describe('bloques de ejemplo del sector', () => {
     expect(withSectorExamples(base(), { familia: 'beauty', businessName: 'Nails Bar', primaryType: 'nail_salon' })).toEqual(base());
   });
 
+  it('una clínica trae su equipo y sus seguros, de su especialidad, colocados tras sus secciones', () => {
+    const dental = withSectorExamples(base(), { familia: 'health', businessName: 'Clínica Dental Sonrisa', primaryType: 'dentist' });
+    const equipo = dental.bloques.find((b) => b.id === 'equipo')!;
+    expect(equipo.tipo).toBe('catalogo');
+    expect(equipo.productos.map((p) => p.descripcion.split('.')[0])).toEqual(['Odontología general', 'Ortodoncia', 'Higiene bucodental']);
+    // Sin fotos ni categorías: ni retratos de banco con nombre, ni filtros.
+    expect(equipo.productos.every((p) => !p.foto && !p.categoria)).toBe(true);
+    expect(dental.bloques.find((b) => b.id === 'seguros')?.tipo).toBe('lista');
+    const orden = dental.paginas[0].secciones.map((s) => (s.tipo === 'bloque' ? s.id : s.tipo));
+    expect(orden[orden.indexOf('sobre') + 1]).toBe('equipo');
+    expect(orden[orden.indexOf('precios') + 1]).toBe('seguros');
+    expect(parseSiteContent(dental).ok).toBe(true);
+
+    const vet = withSectorExamples(base(), { familia: 'health', businessName: 'Hospital Veterinario San Bernardo', primaryType: 'veterinary_care' });
+    expect(vet.bloques.find((b) => b.id === 'seguros')?.titulo).toBe('Seguros y planes de salud');
+    const fisio = withSectorExamples(base(), { familia: 'health', businessName: 'Fisio Arena', primaryType: 'physiotherapist' });
+    expect(fisio.bloques.find((b) => b.id === 'seguros')?.items.some((i) => /tráfico/.test(i.texto))).toBe(true);
+    // Ningún nombre de aseguradora real, ni de persona inventada.
+    const todo = JSON.stringify([dental, vet, fisio].map((c) => c.bloques));
+    expect(todo).not.toMatch(/Sanitas|Adeslas|DKV|Asisa|Mapfre|Caser|Mutua Madrile/i);
+    for (const c of [dental, vet, fisio]) for (const p of c.bloques.find((b) => b.id === 'equipo')!.productos) expect(p.nombre).toMatch(/Nombre Apellido$/);
+  });
+
+  it('en salud se marca cada línea de la lista, que la plantilla solo resalta lo marcado', () => {
+    const c = withSectorExamples(base(), { familia: 'health', businessName: 'Consultorio Médico Ejemplo', primaryType: 'doctor' });
+    const seguros = c.bloques.find((b) => b.id === 'seguros')!;
+    expect(pendingExampleData(c)).toEqual([
+      'bloques.equipo.titulo',
+      'bloques.seguros.titulo',
+      'bloques.seguros.texto',
+      ...seguros.items.map((_, i) => `bloques.seguros.items.${i}.texto`),
+    ]);
+    const home = renderSiteFiles(SITE_TEMPLATE_BASE, c, SAMPLE_RENDER_CONTEXT).find((f) => f.path === 'index.html')!.content.toString('utf8');
+    expect(home).toMatch(/id="bloque-equipo"><div class="k-dentro"><div class="dato-ejemplo-bloque">/);
+    // Tarjetas solo de texto: sin el hueco rayado de la foto que falta.
+    const equipo = home.slice(home.indexOf('id="bloque-equipo"'), home.indexOf('</section>', home.indexOf('id="bloque-equipo"')));
+    expect(equipo).not.toContain('k-producto-sin-foto');
+    expect(equipo).toContain('Nº de colegiado');
+    const lista = home.slice(home.indexOf('id="bloque-seguros"'));
+    for (const item of seguros.items) expect(lista).toContain(`<span class="dato-ejemplo">${item.texto}</span>`);
+  });
+
   it('lo que incluye cada servicio: en oficios lleva fotos de su oficio; en peluquería lo sustituyen las pestañas del sector', () => {
     const conDetalle = () => {
       const c = base();

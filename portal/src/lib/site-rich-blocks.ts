@@ -273,9 +273,18 @@ export function renderRichBlock(b: RichBlockInput, base: string, ejemplo = false
           .map(([k, label]) => `<button type="button" data-k-filtro="${esc(k)}" aria-pressed="false">${esc(label)}</button>`)
           .join('')}</div>`
       : '';
+  // 30/10/2026 — si ninguno tiene foto (el equipo de una clínica, site-sector-
+  // blocks.ts), tarjetas solo de texto: una fila de cuadros rayados parecía
+  // una web a medio hacer. El hueco rayado queda para el que le falta la suya
+  // entre otros que sí la tienen, para que la rejilla no se descuadre.
+  const conFotos = b.productos.some((p) => p.foto);
   const productos = b.productos
     .map((p, i) => {
-      const img = p.foto ? `<img${foto(`productos.${i}.foto`)} src="${src(p.foto)}" alt="${esc(p.alt || p.nombre)}" loading="lazy">` : '<div class="k-producto-sin-foto" aria-hidden="true"></div>';
+      const img = p.foto
+        ? `<img${foto(`productos.${i}.foto`)} src="${src(p.foto)}" alt="${esc(p.alt || p.nombre)}" loading="lazy">`
+        : conFotos
+          ? '<div class="k-producto-sin-foto" aria-hidden="true"></div>'
+          : '';
       const caracts = p.caracteristicas.length ? `<ul class="k-caracteristicas">${p.caracteristicas.map((c) => `<li>${esc(c)}</li>`).join('')}</ul>` : '';
       return (
         `<li class="k-producto" data-k-categoria="${p.categoria ? esc(slug(p.categoria)) : ''}">${img}<div class="k-producto-cuerpo">` +
