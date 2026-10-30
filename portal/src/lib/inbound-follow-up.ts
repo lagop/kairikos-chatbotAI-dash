@@ -22,7 +22,9 @@ import { logError } from './observability';
 // EMAIL (un teléfono queda fuera: escribir por WhatsApp pide plantillas
 // aprobadas por Meta y el alta como Tech Provider, que no tenemos):
 //   - día 0: lo que pidió — el enlace a su borrador, o su cálculo con sus
-//     propios números—, y cómo seguir.
+//     propios números—, y cómo seguir. Desde el 30/10/2026 el del borrador lo
+//     manda la entrega (public-draft-delivery.ts) a todos los que dejaron
+//     correo, y la secuencia de un borrador cuenta desde que se envió.
 //   - día 3: un empujón corto con la llamada de 20 minutos y el WhatsApp.
 //   - día 7: el último, y lo dice.
 //
@@ -79,7 +81,7 @@ const SEND_UNTIL_MINUTES = 20 * 60;
 const MAX_SENDS_PER_SWEEP = 20;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const KAIRIKOS_CONTACT_EMAIL = 'contacto@kairikos.com';
+export const KAIRIKOS_CONTACT_EMAIL = 'contacto@kairikos.com';
 
 // --- Puras -------------------------------------------------------------------
 
@@ -180,11 +182,11 @@ export interface FollowUpLinks {
 
 const EUR = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 0 });
 
-function euros(cents: number): string {
+export function euros(cents: number): string {
   return `${EUR.format(Math.round(cents / 100))} €`;
 }
 
-function footer(links: FollowUpLinks): string[] {
+export function followUpFooter(links: Pick<FollowUpLinks, 'unsubscribeUrl'>): string[] {
   return [
     '',
     '—',
@@ -293,7 +295,7 @@ export function buildFollowUpEmail(
     }
   }
 
-  lines.push(...footer(links));
+  lines.push(...followUpFooter(links));
   return { subject, text: lines.join('\n') };
 }
 
@@ -371,9 +373,11 @@ export async function sweepInboundFollowUps(
   const base = portalBaseUrl();
 
   const [drafts, calcs] = await Promise.all([
+    // 30/10/2026 — un borrador cuenta desde que se le ENVIÓ, no desde que lo
+    // pidió (public-draft-delivery.ts): hasta entonces no tiene nada que ver.
     prisma.publicDraftRequest.findMany({
-      where: { marketingConsentAt: { not: null }, createdAt: { gte: since } },
-      select: { id: true, token: true, contact: true, businessName: true, city: true, createdAt: true, unsubscribeToken: true },
+      where: { marketingConsentAt: { not: null }, sentAt: { gte: since } },
+      select: { id: true, token: true, contact: true, businessName: true, city: true, sentAt: true, unsubscribeToken: true },
     }),
     prisma.calculatorLead.findMany({
       where: { marketingConsentAt: { not: null }, createdAt: { gte: since } },
@@ -393,12 +397,12 @@ export async function sweepInboundFollowUps(
   const candidates: Candidate[] = [];
   for (const d of drafts) {
     const email = emailFromContact(d.contact);
-    if (!email) continue;
+    if (!email || !d.sentAt) continue;
     candidates.push({
       source: 'web_draft',
       id: d.id,
       email,
-      createdAt: d.createdAt,
+      createdAt: d.sentAt,
       unsubscribeToken: d.unsubscribeToken,
       contact: { kind: 'web_draft', businessName: d.businessName, city: d.city, draftUrl: `${base}/mi-web/${d.token}` },
     });
@@ -512,7 +516,12 @@ export async function sweepInboundFollowUps(
       continue;
     }
 
-    const done = doneBySource.get(`${primary.source}:${primary.id}`) ?? new Set<string>();
+    const done = new Set(doneBySource.get(`${primary.source}:${primary.id}`) ?? []);
+    // 30/10/2026 — el día 0 de un borrador es el correo que lo entrega
+    // (public-draft-delivery.ts), no uno de esta secuencia: aquí nunca se
+    // manda, aunque esa entrega no haya dejado fila (salió sin consentimiento,
+    // o falló y el operador ya lo sabe por la cola).
+    if (primary.source === 'web_draft') done.add('dia_0');
     const decision = nextFollowUpStep(
       { createdAt: primary.createdAt, done, lastSentAt: lastSentByEmail.get(email) ?? null },
       now,
@@ -549,7 +558,7 @@ async function sealSkipped(
   return res.count;
 }
 
-async function readWebPriceCents(prisma: PrismaClient): Promise<number | null> {
+export async function readWebPriceCents(prisma: PrismaClient): Promise<number | null> {
   try {
     const web = await prisma.product.findFirst({
       where: { code: 'web', isActive: true, kind: 'plan' },
@@ -604,7 +613,7 @@ async function sendStep(
     recallUrl: 'https://kairikos.com/llamadas/',
   });
 
-  const error = await deliver(c.email, email, unsubscribeUrl);
+  const error = await deliverInboundEmail(c.email, email, unsubscribeUrl);
   await prisma.inboundFollowUpEmail.update({
     where: { id: claimId },
     data: error ? { status: 'failed', error: error.slice(0, 500) } : { status: 'sent', sentAt: now },
@@ -612,11 +621,13 @@ async function sendStep(
   return error ? 'failed' : 'sent';
 }
 
-/** Devuelve null si salió, o el motivo si no. */
-async function deliver(
+/** Devuelve null si salió, o el motivo si no. Sin enlace de baja es un correo
+ *  de servicio (el borrador que pidió, public-draft-delivery.ts) y no lleva la
+ *  cabecera List-Unsubscribe. */
+export async function deliverInboundEmail(
   to: string,
   email: { subject: string; text: string },
-  unsubscribeUrl: string,
+  unsubscribeUrl: string | null,
 ): Promise<string | null> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) return 'no_api_key';
@@ -629,10 +640,14 @@ async function deliver(
       replyTo: KAIRIKOS_CONTACT_EMAIL,
       subject: email.subject,
       text: email.text,
-      headers: {
-        'List-Unsubscribe': `<${unsubscribeUrl}>`,
-        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-      },
+      ...(unsubscribeUrl
+        ? {
+            headers: {
+              'List-Unsubscribe': `<${unsubscribeUrl}>`,
+              'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+            },
+          }
+        : {}),
     });
     if (sent.error) {
       logError('inbound_follow_up.send_failed', new Error(sent.error.message), { to }, 'warn');

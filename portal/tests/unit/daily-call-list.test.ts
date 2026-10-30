@@ -210,7 +210,7 @@ describe('sendDailyCallList', () => {
   });
 
   // 20/10/2026 — los contactos que deja la gente en kairikos.com.
-  const DRAFT = { token: 'tk1', businessName: 'Fontanería Pérez', city: 'Telde', contact: '600 000 111', marketingConsentAt: new Date('2026-10-05T09:00:00Z'), createdAt: new Date('2026-10-05T09:00:00Z') };
+  const DRAFT = { id: 'd-1', token: 'tk1', businessName: 'Fontanería Pérez', city: 'Telde', contact: '600 000 111', phone: null, marketingConsentAt: new Date('2026-10-05T09:00:00Z'), createdAt: new Date('2026-10-05T09:00:00Z'), sentAt: new Date('2026-10-05T09:00:00Z') };
   const CALC = { businessName: null, city: null, contact: 'ana@example.com', marketingConsentAt: null, createdAt: new Date('2026-10-05T10:00:00Z') };
 
   it('los contactos de la web van arriba, con su consentimiento a la vista', async () => {
@@ -224,6 +224,17 @@ describe('sendDailyCallList', () => {
     expect(text).toContain('No marcó la casilla');
     expect(text).toContain('/mi-web/tk1');
     expect(html).toContain('Te han dejado su contacto en la web');
+  });
+
+  // 30/10/2026 — sin enviar todavía, su enlace solo dice «la estamos
+  // preparando»: el operador recibe el de revisión, y el teléfono aparte.
+  it('un borrador sin enviar lleva a la revisión del operador, con su teléfono', async () => {
+    const pending = { ...DRAFT, contact: 'ana@perez.es', phone: '600 000 111', sentAt: null };
+    await sendDailyCallList(makePrisma({ drafts: [pending] }) as never, TUESDAY_10_MADRID);
+    const { text } = mockState.send.mock.calls[0][0] as { text: string };
+    expect(text).toContain('ana@perez.es · 600 000 111');
+    expect(text).toContain('/api/admin/portal/borradores/d-1/ver');
+    expect(text).not.toContain('/mi-web/tk1');
   });
 
   it('solo los no contactados de los últimos 7 días', async () => {

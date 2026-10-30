@@ -1,6 +1,6 @@
 import 'server-only';
 import { createHash } from 'node:crypto';
-import type { PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import { generateWebDraftCopy } from './web-draft-ai';
 import { themeFor } from './web-draft-html';
 import { createShareToken } from './prospecting-share';
@@ -50,7 +50,11 @@ export function hashIp(ip: string): string {
 export interface PublicDraftInput {
   businessName: string;
   city: string;
-  contact: string;
+  /** 30/10/2026 — obligatorio: es por donde le llega el borrador. */
+  email: string | null;
+  /** Opcional: es a quien se llama. Una petición del formulario antiguo
+   *  puede traer solo esto (la ruta lo acepta mientras dure el cambio). */
+  phone: string | null;
   /** Categoría que elige el visitante de una lista corta; decide plantilla,
    *  paleta y qué servicios propone el modelo. */
   sector: string;
@@ -62,7 +66,7 @@ export interface PublicDraftInput {
 }
 
 export type PublicDraftResult =
-  | { ok: true; token: string }
+  | { ok: true; id: string; token: string }
   | { ok: false; error: 'rate_limited_global' | 'rate_limited_ip' | 'invalid' | 'unavailable' };
 
 /** Los sectores de la lista pública, con su categoría de Google detrás. La
@@ -88,6 +92,14 @@ function startOfDay(now: Date): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 }
 
+/**
+ * Guarda la petición, sin borrador todavía. 30/10/2026: antes se escribía
+ * aquí mismo, con el visitante esperando hasta un minuto, y se le enseñaba en
+ * segundos. Ahora se le promete en menos de 24 horas (public-draft-delivery.ts):
+ * da tiempo a revisarlo, y algo que llega en segundos no parece que valga
+ * cientos de euros. La ruta lo genera justo después de contestar
+ * (generatePublicDraft) y el barrido reintenta si falla.
+ */
 export async function createPublicDraft(
   prisma: PrismaClient,
   input: PublicDraftInput,
@@ -96,7 +108,9 @@ export async function createPublicDraft(
   // El campo trampa se mira ANTES que nada: un bot no llega a costarnos ni
   // una consulta de más.
   if (input.website && input.website.trim().length > 0) return { ok: false, error: 'invalid' };
-  if (!input.businessName.trim() || !input.city.trim() || !input.contact.trim()) {
+  const email = input.email?.trim() || null;
+  const phone = input.phone?.trim() || null;
+  if (!input.businessName.trim() || !input.city.trim() || !(email || phone)) {
     return { ok: false, error: 'invalid' };
   }
 
@@ -111,52 +125,92 @@ export async function createPublicDraft(
   if (globalCount >= MAX_DRAFTS_PER_DAY_GLOBAL) return { ok: false, error: 'rate_limited_global' };
   if (ipCount >= MAX_DRAFTS_PER_IP_PER_DAY) return { ok: false, error: 'rate_limited_ip' };
 
-  const generated = await generateWebDraftCopy({
-    businessName: input.businessName.trim().slice(0, 200),
-    primaryType: sector.primaryType,
-    category: sector.label,
-    city: input.city.trim().slice(0, 120),
-    address: null,
-    phone: null,
-    rating: null,
-    reviewCount: null,
-  });
-
-  if ('skipped' in generated) return { ok: false, error: 'unavailable' };
-  if (!generated.ok) {
-    logError('public_draft.generate_failed', new Error(generated.error), {}, 'warn');
-    return { ok: false, error: 'unavailable' };
-  }
-
-  // Webs con IA (27/10/2026): con plantilla aprobada para su sector, diseño
-  // de la biblioteca (web-draft-design.ts); si no, null y como siempre.
-  const themeKey = `${themeFor(sector.primaryType).key}-1`;
-  const design = await designForDraft(prisma, {
-    copy: generated.copy,
-    themeKey,
-    businessName: input.businessName.trim().slice(0, 200),
-    primaryType: sector.primaryType,
-    city: input.city.trim().slice(0, 120),
-  });
-
   const token = createShareToken();
-  await prisma.publicDraftRequest.create({
+  const row = await prisma.publicDraftRequest.create({
     data: {
       token,
       ipHash,
       businessName: input.businessName.trim().slice(0, 200),
       city: input.city.trim().slice(0, 120),
-      contact: input.contact.trim().slice(0, 200),
+      // El correo, que es por donde se entrega; sin él (formulario antiguo),
+      // el teléfono, como antes.
+      contact: (email ?? phone ?? '').slice(0, 200),
+      phone: email && phone ? phone.slice(0, 50) : null,
       sector: input.sector.slice(0, 40),
-      themeKey,
+      themeKey: `${themeFor(sector.primaryType).key}-1`,
       primaryType: sector.primaryType,
-      copy: generated.copy as unknown as object,
-      ...(design ? { content: design.content as unknown as object, templateId: design.templateId } : {}),
-      model: generated.model,
       marketingConsentAt: input.marketingConsent === true ? now : null,
       createdAt: now,
     },
+    select: { id: true },
   });
 
-  return { ok: true, token };
+  return { ok: true, id: row.id, token };
+}
+
+/** Los intentos de escribir un borrador antes de dejarlo para el operador.
+ *  Cada uno es una llamada al modelo: sin tope, un fallo que se repite
+ *  gastaría cada cinco minutos. El barrido además espera una hora más por
+ *  cada intento (public-draft-delivery.ts), así que cinco cubren una caída
+ *  de varias horas sin salirse del plazo de 24. */
+export const MAX_GENERATION_ATTEMPTS = 5;
+
+export type GeneratePublicDraftResult = 'generated' | 'already' | 'gave_up' | 'failed';
+
+/**
+ * Escribe el borrador de una petición guardada. Idempotente: si ya tiene
+ * borrador no hace nada, y el intento se reserva ANTES de llamar al modelo
+ * (dos llamadas a la vez, la de la ruta y la del barrido, no pagan dos).
+ * Nunca lanza.
+ */
+export async function generatePublicDraft(prisma: PrismaClient, id: string): Promise<GeneratePublicDraftResult> {
+  try {
+    const claimed = await prisma.publicDraftRequest.updateMany({
+      where: { id, copy: { equals: Prisma.DbNull }, generationAttempts: { lt: MAX_GENERATION_ATTEMPTS } },
+      data: { generationAttempts: { increment: 1 } },
+    });
+    if (claimed.count === 0) {
+      const row = await prisma.publicDraftRequest.findUnique({ where: { id }, select: { model: true } });
+      return row?.model ? 'already' : 'gave_up';
+    }
+    const row = await prisma.publicDraftRequest.findUniqueOrThrow({ where: { id } });
+    const sector = Object.values(PUBLIC_SECTORS).find((s) => s.primaryType === row.primaryType) ?? PUBLIC_SECTORS.otro;
+
+    const generated = await generateWebDraftCopy({
+      businessName: row.businessName,
+      primaryType: row.primaryType,
+      category: sector.label,
+      city: row.city,
+      address: null,
+      phone: null,
+      rating: null,
+      reviewCount: null,
+    });
+    if ('skipped' in generated || !generated.ok) {
+      logError('public_draft.generate_failed', new Error('skipped' in generated ? generated.reason : generated.error), { id }, 'warn');
+      return 'failed';
+    }
+
+    // Webs con IA (27/10/2026): con plantilla aprobada para su sector, diseño
+    // de la biblioteca (web-draft-design.ts); si no, null y como siempre.
+    const design = await designForDraft(prisma, {
+      copy: generated.copy,
+      themeKey: row.themeKey,
+      businessName: row.businessName,
+      primaryType: row.primaryType,
+      city: row.city,
+    });
+    await prisma.publicDraftRequest.update({
+      where: { id },
+      data: {
+        copy: generated.copy as unknown as Prisma.InputJsonValue,
+        model: generated.model,
+        ...(design ? { content: design.content as unknown as Prisma.InputJsonValue, templateId: design.templateId } : {}),
+      },
+    });
+    return 'generated';
+  } catch (err) {
+    logError('public_draft.generate_failed', err, { id }, 'warn');
+    return 'failed';
+  }
 }

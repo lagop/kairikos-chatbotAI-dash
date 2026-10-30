@@ -4187,16 +4187,22 @@ model PublicDraftRequest {
 
   ipHash String @map("ip_hash")
 
-  businessName String @map("business_name")
+  businessName String  @map("business_name")
   city         String
-  // Teléfono o email que dejó. Es el lead.
+  // El correo que dejó (desde el 30/10/2026, obligatorio). Antes podía ser un
+  // teléfono: las filas viejas lo conservan, y una petición que llegue aún
+  // del formulario antiguo con solo teléfono, también.
   contact      String
+  // 30/10/2026 — el teléfono, opcional, aparte del correo: es a quien se llama.
+  phone        String?
   sector       String
-  primaryType  String @map("primary_type")
-  themeKey     String @map("theme_key")
+  primaryType  String  @map("primary_type")
+  themeKey     String  @map("theme_key")
 
-  copy       Json
-  model      String
+  // 30/10/2026 — null mientras se escribe: la petición se guarda al momento
+  // y el borrador se genera después (lib/public-draft-delivery.ts).
+  copy       Json?
+  model      String?
   // Webs con IA, entrega 3 (27/10/2026): igual que en ProspectingWebDraft.
   content    Json?
   templateId String? @map("template_id") @db.Uuid
@@ -4216,7 +4222,19 @@ model PublicDraftRequest {
   unsubscribeToken   String?   @unique @map("unsubscribe_token")
   createdAt          DateTime  @default(now()) @map("created_at")
 
+  // 30/10/2026 — entrega en menos de 24 horas en vez de en segundos
+  // (lib/public-draft-delivery.ts). Hasta sentAt el enlace enseña «lo estamos
+  // preparando» y el operador puede revisarlo y retocarlo; lo envía él, o sale
+  // solo al cumplirse el plazo. Los intentos de generar acotan el gasto si el
+  // modelo falla una y otra vez.
+  sentAt             DateTime? @map("sent_at")
+  generationAttempts Int       @default(0) @map("generation_attempts")
+  // Por qué no salió el correo de «ya está», si no salió (el enlace queda
+  // abierto igual). El operador lo ve en la cola y puede reintentarlo.
+  deliveryError      String?   @map("delivery_error")
+
   @@index([createdAt])
+  @@index([sentAt])
   @@index([ipHash, createdAt])
 }
 

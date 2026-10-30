@@ -233,17 +233,31 @@ describe('sweepInboundFollowUps', () => {
     businessName: 'Fontanería Pérez',
     city: 'Las Palmas',
     createdAt: ALTA,
+    // 30/10/2026 — un borrador cuenta desde que se le envió.
+    sentAt: ALTA,
     unsubscribeToken: null,
     ...over,
   });
 
-  it('un contacto nuevo con email recibe el día 0: reserva, testigo de baja y envío con List-Unsubscribe', async () => {
+  // 30/10/2026 — el día 0 de un borrador es el correo que lo entrega
+  // (public-draft-delivery.ts); el barrido empieza en el día 3.
+  it('el día 0 de un borrador no lo manda el barrido: es el correo que lo entrega', async () => {
     const prisma = makePrisma();
     prisma.publicDraftRequest.findMany.mockResolvedValueOnce([draftRow()]).mockResolvedValueOnce([]);
     const r = await sweepInboundFollowUps(prisma as never, dias(0.01));
+    expect(r).toMatchObject({ candidates: 1, sent: 0 });
+    expect(sendMock).not.toHaveBeenCalled();
+    // Y solo mira los que ya se enviaron, contando desde entonces.
+    expect(prisma.publicDraftRequest.findMany.mock.calls[0][0].where.sentAt).toBeDefined();
+  });
+
+  it('un contacto con email recibe el día 3: reserva, testigo de baja y envío con List-Unsubscribe', async () => {
+    const prisma = makePrisma();
+    prisma.publicDraftRequest.findMany.mockResolvedValueOnce([draftRow()]).mockResolvedValueOnce([]);
+    const r = await sweepInboundFollowUps(prisma as never, dias(3));
     expect(r.sent).toBe(1);
     expect(prisma.inboundFollowUpEmail.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ step: 'dia_0', status: 'sending', email: 'ana@ejemplo.es' }) }),
+      expect.objectContaining({ data: expect.objectContaining({ step: 'dia_3', status: 'sending', email: 'ana@ejemplo.es' }) }),
     );
     expect(prisma.publicDraftRequest.update).toHaveBeenCalled(); // testigo de baja
     const args = sendMock.mock.calls[0][0];
@@ -305,16 +319,16 @@ describe('sweepInboundFollowUps', () => {
     prisma.inboundFollowUpEmail.create.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: '5.22.0' }),
     );
-    const r = await sweepInboundFollowUps(prisma as never, dias(0.01));
+    const r = await sweepInboundFollowUps(prisma as never, dias(3));
     expect(r.sent).toBe(0);
     expect(sendMock).not.toHaveBeenCalled();
   });
 
   it('dos peticiones de la misma persona: una sola secuencia, la más reciente', async () => {
     const prisma = makePrisma();
-    const vieja = draftRow({ id: '22222222-2222-4222-8222-222222222222', createdAt: dias(-1) });
+    const vieja = draftRow({ id: '22222222-2222-4222-8222-222222222222', createdAt: dias(-1), sentAt: dias(-1) });
     prisma.publicDraftRequest.findMany.mockResolvedValueOnce([vieja, draftRow()]).mockResolvedValueOnce([]);
-    const r = await sweepInboundFollowUps(prisma as never, dias(0.01));
+    const r = await sweepInboundFollowUps(prisma as never, dias(3));
     expect(r.sent).toBe(1);
     expect(sendMock).toHaveBeenCalledTimes(1);
     expect(prisma.inboundFollowUpEmail.create).toHaveBeenCalledWith(
@@ -332,7 +346,7 @@ describe('sweepInboundFollowUps', () => {
     const prisma = makePrisma();
     prisma.publicDraftRequest.findMany.mockResolvedValueOnce([draftRow()]).mockResolvedValueOnce([]);
     sendMock.mockResolvedValue({ data: null, error: { message: 'The domain is invalid' } });
-    const r = await sweepInboundFollowUps(prisma as never, dias(0.01));
+    const r = await sweepInboundFollowUps(prisma as never, dias(3));
     expect(r.failed).toBe(1);
     expect(prisma.inboundFollowUpEmail.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ status: 'failed' }) }),
