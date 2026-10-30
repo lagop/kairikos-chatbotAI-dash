@@ -143,7 +143,7 @@ function head(b: RichBlockInput): string {
 /** Pestañas. Sin JavaScript son secciones una debajo de otra, cada una con
  *  su título; el script las convierte en pestañas (roles ARIA incluidos) y
  *  oculta los títulos repetidos. */
-function renderPestanas(b: RichBlockInput, src: (p: string) => string, foto: FotoAttr): string {
+function renderPestanas(b: RichBlockInput, src: (p: string) => string, foto: FotoAttr, variante?: string): string {
   const paneles = b.pestanas
     .map(
       (t, i) =>
@@ -152,7 +152,9 @@ function renderPestanas(b: RichBlockInput, src: (p: string) => string, foto: Fot
         `<div class="k-panel-texto">${renderSiteMarkdown(t.texto)}</div></div></div>`,
     )
     .join('');
-  return `<div class="k-pestanas" data-k-pestanas>${paneles}</div>`;
+  // 30/10/2026 — el estilo elegido (T1–T3, site-section-variants.ts).
+  const estilo = variante && ['subrayado', 'pildora', 'tarjetas'].includes(variante) ? ` k-pestanas--${variante}` : '';
+  return `<div class="k-pestanas${estilo}" data-k-pestanas>${paneles}</div>`;
 }
 
 /** Una celda de la comparativa: «sí» y «no» se pintan como marca; lo demás,
@@ -216,7 +218,7 @@ function renderVideo(b: RichBlockInput, src: (p: string) => string, foto: FotoAt
 
 /** El HTML de un bloque rico. `base` es lo que se antepone a las rutas de
  *  las fotos desde esta página ('' en la portada, '../' en una interior). */
-export function renderRichBlock(b: RichBlockInput, base: string, ejemplo = false, edicion = false): string {
+export function renderRichBlock(b: RichBlockInput, base: string, ejemplo = false, edicion = false, variante?: string): string {
   // Solo las relativas suben de nivel: una absoluta ('/web-draft/…', la de
   // la vista previa del laboratorio) ya apunta bien desde cualquier página.
   const src = (p: string) => esc(p && !/^(?:https?:|\/)/.test(p) ? base + p : p);
@@ -259,7 +261,7 @@ export function renderRichBlock(b: RichBlockInput, base: string, ejemplo = false
     );
   }
 
-  if (b.tipo === 'pestanas') return open + renderPestanas(b, src, foto) + close;
+  if (b.tipo === 'pestanas') return open + renderPestanas(b, src, foto, variante) + close;
   if (b.tipo === 'comparativa') return open + renderComparativa(b) + close;
   if (b.tipo === 'trayectoria') return open + renderTrayectoria(b) + close;
   if (b.tipo === 'marcas') return open + renderMarcas(b, src, foto) + close;
@@ -353,6 +355,17 @@ export const BLOQUES_CSS = `<style id="bloques-kairikos">
 .k-pestanas-lista button{font:inherit;font-weight:600;padding:.7rem 1.1rem;margin-bottom:-2px;border:0;border-bottom:2px solid transparent;background:transparent;color:inherit;cursor:pointer;transition:color .2s ease,border-color .2s ease}
 .k-pestanas-lista button[aria-selected="true"]{border-bottom-color:var(--k-acento,#222);color:var(--k-acento-texto,var(--k-acento,inherit))}
 .k-pestanas-lista button:focus-visible{outline:2px solid var(--k-acento,#222);outline-offset:2px}
+.k-pestanas--subrayado .k-pestanas-lista{position:relative}
+.k-pestanas--subrayado .k-pestanas-lista button[aria-selected="true"]{border-bottom-color:transparent}
+.k-pestanas-raya{position:absolute;left:0;bottom:-2px;height:3px;width:0;border-radius:3px;background:var(--k-acento,#222);transition:transform .35s cubic-bezier(.3,.7,.2,1),width .35s cubic-bezier(.3,.7,.2,1)}
+.k-pestanas--pildora .k-pestanas-lista{display:inline-flex;max-width:100%;padding:.3rem;gap:.25rem;border:1px solid var(--k-borde,rgba(127,127,127,.3));border-radius:1.6rem;background:var(--k-superficie,transparent)}
+.k-pestanas--pildora .k-pestanas-lista button{margin:0;border:0;border-radius:1.3rem;padding:.6rem 1.15rem}
+.k-pestanas--pildora .k-pestanas-lista button[aria-selected="true"]{background:var(--k-acento,#222);color:var(--k-sobre-acento,#fff)}
+.k-pestanas--tarjetas .k-pestanas-lista{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,10rem),1fr));gap:.6rem;border:0}
+.k-pestanas--tarjetas .k-pestanas-lista button{margin:0;padding:1rem;border:1px solid var(--k-borde,rgba(127,127,127,.3));border-radius:var(--k-radio,8px);background:var(--k-superficie,transparent);text-align:left;transition:transform .2s ease,background .2s ease}
+.k-pestanas--tarjetas .k-pestanas-lista button:hover{transform:translateY(-2px)}
+.k-pestanas--tarjetas .k-pestanas-lista button[aria-selected="true"]{background:var(--k-acento,#222);border-color:var(--k-acento,#222);color:var(--k-sobre-acento,#fff)}
+.k-pestanas--tarjetas.k-pestanas--js .k-panel{padding:1.5rem;border:1px solid var(--k-borde,rgba(127,127,127,.3));border-radius:var(--k-radio,8px)}
 .k-panel+.k-panel{margin-top:2rem}
 .k-pestanas--js .k-panel+.k-panel{margin-top:0}
 .k-pestanas--js .k-panel-titulo{display:none}
@@ -510,6 +523,20 @@ export const BLOQUES_JS = `<script>
     });
     cont.insertBefore(lista, paneles[0]);
     cont.classList.add("k-pestanas--js");
+    // T1: la raya que se desliza hasta la pestaña elegida.
+    if (cont.classList.contains("k-pestanas--subrayado")) {
+      var raya = document.createElement("span");
+      raya.className = "k-pestanas-raya"; raya.setAttribute("aria-hidden", "true");
+      lista.appendChild(raya);
+      var mover = function () {
+        var b = lista.querySelector('[aria-selected="true"]');
+        if (!b) return;
+        raya.style.width = b.offsetWidth + "px";
+        raya.style.transform = "translate(" + b.offsetLeft + "px," + (b.offsetTop + b.offsetHeight - lista.offsetHeight) + "px)";
+      };
+      lista.addEventListener("click", mover); lista.addEventListener("keyup", mover); window.addEventListener("resize", mover);
+      requestAnimationFrame(mover);
+    }
     elegir(0, false);
   });
 

@@ -18,7 +18,17 @@
 // CSS que le aplican.
 // =============================================================================
 
+import { SITE_SECTION_VARIANTS, SITE_VARIANT_SETS } from './site-section-variants';
+
 export const CHECK_WIDTHS = [360, 1100, 1280] as const;
+
+/** «P1, S1, Q1…»: qué variantes llevaba una pasada, para el que corrige. */
+export function variantSetLabel(k: number): string {
+  return Object.values(SITE_SECTION_VARIANTS)
+    .map((vs) => (vs?.length ? vs[k % vs.length].muestra : ''))
+    .filter(Boolean)
+    .join(', ');
+}
 export const CHECK_SAMPLES = ['normal', 'exagerado', 'minimo'] as const;
 export type CheckSample = (typeof CHECK_SAMPLES)[number];
 
@@ -42,6 +52,9 @@ export interface CheckRun {
   /** Con el color o la tipografía de un negocio (site-style.ts). */
   acento?: string;
   tipografia?: string;
+  /** 30/10/2026 — con el juego de variantes k en todas las secciones
+   *  (site-section-variants.ts, withVariantSet). */
+  variantes?: number;
   problemas: string[];
 }
 
@@ -81,6 +94,14 @@ export function checkPlan(style: CheckStyle | null | undefined): CheckPlanItem[]
   for (const { id: tipografia } of style?.tipografias?.parejas.slice(1) ?? []) {
     for (const ancho of CHECK_WIDTHS) plan.push({ ancho, contenido: 'exagerado', pagina: '', tipografia });
     plan.push({ ancho: 360, contenido: 'exagerado', pagina: 'blog/entrada-1', tipografia });
+  }
+  // 30/10/2026 — cada juego de variantes: el exagerado a los tres anchos y su
+  // página de servicios (las pestañas y los precios) en móvil, y el normal
+  // (con las reseñas de Google) en móvil y escritorio. La plantilla puede no
+  // traer ninguna propia: las del motor también tienen que verse bien en ella.
+  for (let variantes = 0; variantes < SITE_VARIANT_SETS; variantes++) {
+    for (const ancho of CHECK_WIDTHS) plan.push({ ancho, contenido: 'exagerado', pagina: '', variantes });
+    plan.push({ ancho: 360, contenido: 'exagerado', pagina: 'servicios', variantes }, { ancho: 360, contenido: 'normal', pagina: '', variantes }, { ancho: 1280, contenido: 'normal', pagina: '', variantes });
   }
   return plan;
 }
@@ -373,7 +394,7 @@ export function summarizeCheckRuns(runs: CheckRun[], max = 20): string[] {
     for (const p of run.problemas) {
       // Las medidas cambian con el ancho; se agrupa por la frase sin números.
       const key = p.replace(/\d+([.,]\d+)?/g, '#').slice(0, 160);
-      const where = `${run.ancho} px, contenido ${run.contenido}${run.pagina ? `, página ${run.pagina}` : ''}${run.acento ? `, color ${run.acento}` : ''}${run.tipografia ? `, letra «${run.tipografia}»` : ''}`;
+      const where = `${run.ancho} px, contenido ${run.contenido}${run.pagina ? `, página ${run.pagina}` : ''}${run.acento ? `, color ${run.acento}` : ''}${run.tipografia ? `, letra «${run.tipografia}»` : ''}${run.variantes !== undefined ? `, variantes ${variantSetLabel(run.variantes)}` : ''}`;
       if (!seen.has(key)) seen.set(key, [p, where]);
       else seen.get(key)?.push(where);
     }

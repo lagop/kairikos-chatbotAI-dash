@@ -17,6 +17,8 @@ import { LEGAL_PAGES, legalPageMarkdown } from './site-legal';
 import { localizeGoogleFonts, replaceGoogleFontFamilies } from './site-fonts';
 import { resolveSiteStyle, siteStyleCss, type SiteTemplateStyle } from './site-style';
 import { sanitizeArticleHtml, toPlainText } from './seo-article-html';
+import { blockVariant, sectionVariant, variantPart } from './site-section-variants';
+import { VARIANT_DEFAULT_TITLES, VARIANT_SOURCES, VARIANTES_JS, variantesCss } from './site-section-variants-markup';
 
 // =============================================================================
 // Webs con IA, entrega 1 (27/10/2026) — el motor que convierte una PLANTILLA
@@ -66,9 +68,14 @@ export type SiteTemplatePart =
   | (typeof SITE_PAGE_PARTS)[number];
 export const SITE_TEMPLATE_PARTS: readonly SiteTemplatePart[] = [...SITE_SECTION_TYPES, ...SITE_BLOCK_PARTS, ...SITE_BLOG_PARTS, ...SITE_PAGE_PARTS];
 
+/** 30/10/2026 — la versión PROPIA de una variante de sección
+ *  ('servicios@indice', site-section-variants.ts). Opcional: sin ella sale
+ *  la del motor (site-section-variants-markup.ts). */
+export type SiteVariantPart = `${SiteSectionType}@${string}`;
+
 export interface SiteTemplateSource {
   marco: string;
-  secciones: Partial<Record<SiteTemplatePart, string>>;
+  secciones: Partial<Record<SiteTemplatePart | SiteVariantPart, string>>;
   /** Qué colores y tipografías puede cambiar cada negocio (site-style.ts).
    *  Sin esto, la plantilla se pinta siempre tal cual. */
   estilo?: SiteTemplateStyle | null;
@@ -358,10 +365,9 @@ function stripEditMarks(html: string): string {
 /** El título de la sección `tipo`: el del cliente donde la plantilla marcó el
  *  suyo. Sin marca, la sección sale como la escribió la plantilla. Exportada
  *  para las pruebas. */
-export function sectionTitle(html: string, tipo: SiteSectionType, titulos: Partial<Record<string, string>> | undefined, edit: boolean): string {
+function titleSpan(html: string): { m: RegExpExecArray; start: number; end: number } | null {
   const m = TITLE_ATTR_RE.exec(html);
-  if (!m) return html;
-  const open = `<${m[1]}${m[2]}${m[3]}>`;
+  if (!m) return null;
   const start = m.index + m[0].length;
   // Su cierre, contando las del mismo nombre que se abran dentro.
   const tags = new RegExp(`<(/?)${m[1]}(?=[\\s/>])[^>]*>`, 'gi');
@@ -375,6 +381,21 @@ export function sectionTitle(html: string, tipo: SiteSectionType, titulos: Parti
       break;
     }
   }
+  return { m, start, end };
+}
+
+/** Lo que pone el título marcado de una pieza ya pintada, o null. Con esto,
+ *  una variante del motor lleva el título de la plantilla y no uno genérico. */
+export function markedTitle(html: string): string | null {
+  const t = titleSpan(html);
+  return t && t.end >= 0 ? html.slice(t.start, t.end).trim() || null : null;
+}
+
+export function sectionTitle(html: string, tipo: SiteSectionType, titulos: Partial<Record<string, string>> | undefined, edit: boolean): string {
+  const t = titleSpan(html);
+  if (!t) return html;
+  const { m, start, end } = t;
+  const open = `<${m[1]}${m[2]}${m[3]}>`;
   const titled = (SITE_TITLED_SECTIONS as readonly string[]).includes(tipo);
   if (end < 0 || !titled) return html.slice(0, m.index) + open + html.slice(start);
   const own = (titulos?.[tipo] ?? '').trim();
@@ -570,6 +591,17 @@ function blockView(block: SiteBlock, base: string): View {
   return { ...block, foto, texto_html: renderSiteMarkdown(block.texto) };
 }
 
+/** Lo que necesitan algunas variantes del motor y no está en la vista: las
+ *  fotos distintas que haya (el abanico de P3) y la de «quiénes somos» (la
+ *  del equipo, la de un trabajo o, si no hay otra, la de portada). */
+function variantExtras(view: View): View {
+  const f = view.fotos as { portada: string; equipo: string; trabajo: string };
+  return {
+    kv_fotos: [...new Set([f.trabajo, f.portada, f.equipo].filter(Boolean))].map((src) => ({ src })),
+    kv_foto_sobre: f.equipo || f.trabajo || f.portada,
+  };
+}
+
 function renderSections(
   template: SiteTemplateSource,
   content: SiteContent,
@@ -589,7 +621,7 @@ function renderSections(
         const rich = { ...block, tipo: block.tipo };
         if (richBlockHasContent(rich)) {
           const ejemplo = content.ejemplos.some((e) => e.startsWith(`bloques.${block.id}.`));
-          rendered.push({ kind: 'block', anchor: `bloque-${block.id}`, tipo: 'bloque', html: renderRichBlock(rich, pageFile(page.ruta).base, ejemplo, Boolean(edit)) });
+          rendered.push({ kind: 'block', anchor: `bloque-${block.id}`, tipo: 'bloque', html: renderRichBlock(rich, pageFile(page.ruta).base, ejemplo, Boolean(edit), blockVariant(block.tipo, ref.variante)?.id) });
         }
         continue;
       }
@@ -604,13 +636,26 @@ function renderSections(
       rendered.push({ kind: 'block', anchor, tipo: 'bloque', html: renderNodes(parseMustache(source), stack, examples, edit) });
       continue;
     }
-    const source = template.secciones[ref.tipo];
-    if (!source || !sectionHasContent(ref.tipo, view)) continue;
+    const own = template.secciones[ref.tipo];
+    if (!own || !sectionHasContent(ref.tipo, view)) continue;
+    // 30/10/2026 — la variante elegida: la de la plantilla si la trae, si no
+    // la del motor. La del motor lleva el título que marca la pieza propia de
+    // la plantilla, para que cambiar de disposición no cambie lo que dice.
+    const variante = sectionVariant(ref.tipo, ref.variante);
+    const ownVariant = variante ? template.secciones[variantPart(ref.tipo, variante.id)] : undefined;
+    const engineVariant = variante && !ownVariant ? VARIANT_SOURCES[ref.tipo]?.[variante.id] : undefined;
+    const source = ownVariant ?? engineVariant ?? own;
+    const sectionView: View = { ...view, ancla: ref.tipo };
+    if (engineVariant) {
+      sectionView.kv_titulo =
+        markedTitle(renderNodes(parseMustache(own), [{ value: sectionView, path: '' }], new Set())) ?? esc(VARIANT_DEFAULT_TITLES[ref.tipo] ?? '');
+      Object.assign(sectionView, variantExtras(view));
+    }
     rendered.push({
       kind: 'section',
       anchor: ref.tipo,
       tipo: ref.tipo,
-      html: sectionTitle(renderNodes(parseMustache(source), [{ value: { ...view, ancla: ref.tipo }, path: '' }], examples, edit), ref.tipo, content.datos.titulos, Boolean(edit)),
+      html: sectionTitle(renderNodes(parseMustache(source), [{ value: sectionView, path: '' }], examples, edit), ref.tipo, content.datos.titulos, Boolean(edit)),
     });
   }
   return rendered;
@@ -857,6 +902,11 @@ export function renderSitePage(
   // llevan.
   if (html.includes('class="k-bloque')) {
     html = html.replace(/<head>/i, `<head>\n${BLOQUES_CSS}`).replace(/<\/body>/i, `${BLOQUES_JS}\n</body>`);
+  }
+  // 30/10/2026 — y las variantes del motor (site-section-variants-markup.ts),
+  // igual: su hoja antes de la de la plantilla, su script al final.
+  if (html.includes('class="kv ')) {
+    html = html.replace(/<head>/i, `<head>\n${variantesCss(template.estilo?.tipografias?.titulares)}`).replace(/<\/body>/i, `${VARIANTES_JS}\n</body>`);
   }
   if (ctx.formAction && rendered.some((r) => r.tipo === 'contacto')) {
     html = html.replace(/<\/body>/i, `${formScript(ctx.formAction, ctx.negocio.telefono, phoneHref(ctx.negocio.telefono))}\n</body>`);

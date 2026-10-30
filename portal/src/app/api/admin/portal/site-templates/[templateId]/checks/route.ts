@@ -26,12 +26,14 @@ const BodySchema = z.object({
         pagina: z.string().max(80).regex(/^[a-z0-9/-]*$/).optional(),
         acento: z.string().regex(/^#[0-9a-f]{6}$/).optional(),
         tipografia: z.string().max(30).regex(/^[a-z0-9-]+$/).optional(),
+        variantes: z.number().int().min(0).max(20).optional(),
         problemas: z.array(z.string().max(2000)).max(40),
       }),
     )
     .min(1)
-    // 21 de siempre más las de cada color y pareja de letras (checkPlan).
-    .max(120),
+    // 21 de siempre, las de cada color y pareja de letras y, desde el
+    // 30/10/2026, las de cada juego de variantes (checkPlan).
+    .max(160),
 });
 
 export async function POST(req: NextRequest, props: { params: Promise<{ templateId: string }> }) {

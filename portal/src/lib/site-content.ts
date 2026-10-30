@@ -141,9 +141,13 @@ export function referencedUploads(content: {
   return [...new Set(all.filter((p) => SITE_UPLOAD_PATH_RE.test(p)))];
 }
 
+/** 30/10/2026 — la disposición elegida para la sección (site-section-variants.ts).
+ *  Sin ella, la pieza propia de la plantilla. Una que no existe (se quitó) se
+ *  acepta y se pinta como si no estuviera: no rompe un contenido guardado. */
+const variantField = z.string().regex(SLUG_RE).max(30).optional();
 const sectionRefSchema = z.union([
-  z.object({ tipo: z.enum(SITE_SECTION_TYPES), oculta: z.boolean().optional() }),
-  z.object({ tipo: z.literal('bloque'), id: z.string().regex(SLUG_RE).max(40), oculta: z.boolean().optional() }),
+  z.object({ tipo: z.enum(SITE_SECTION_TYPES), oculta: z.boolean().optional(), variante: variantField }),
+  z.object({ tipo: z.literal('bloque'), id: z.string().regex(SLUG_RE).max(40), oculta: z.boolean().optional(), variante: variantField }),
 ]);
 export type SiteSectionRef = z.infer<typeof sectionRefSchema>;
 
