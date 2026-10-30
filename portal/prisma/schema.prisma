@@ -3826,10 +3826,11 @@ model ProspectingWebDraftVersion {
 
   /// Qué sustituyó a este estado: 'retoque' (a mano, con la herramienta) |
   /// 'restaurado' (se volvió a otra versión) | 'regenerado' (el operador pidió
-  /// uno nuevo desde el portal).
+  /// uno nuevo desde el portal) | 'editado' (el operador lo guardó desde el
+  /// editor de webs, 30/10/2026, lib/web-draft-editor.ts).
   accion  String
   nota    String?
-  /// 'system:claude-code' para la herramienta; el id del operador al regenerar.
+  /// 'system:claude-code' para la herramienta; el id del operador al regenerar o editar.
   actorId String  @map("actor_id")
 
   copy       Json

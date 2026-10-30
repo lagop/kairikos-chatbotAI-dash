@@ -164,6 +164,12 @@ export function LeadsSummaryPanel({ leads, clientId }: { leads: LeadSummaryRow[]
             ) : null}
             {/* 29/10/2026 — y generarlo otra vez desde cero (pide confirmación). */}
             {lead.source === 'outbound' && lead.hasWebDraft ? <RegenerateWebDraftLink leadId={lead.id} /> : null}
+            {/* 30/10/2026 — ajustarlo a mano antes de mandarlo (el editor de webs). */}
+            {lead.source === 'outbound' && lead.hasWebDraft ? (
+              <a href={`/admin/portal/leads/${lead.id}/borrador`} className="ml-2 mt-2 inline-block text-sm btn-ghost" data-testid="leads-summary-web-draft-edit">
+                Editar borrador
+              </a>
+            ) : null}
             {lead.scoreReason ? (
               <p className="mt-1 text-xs italic text-kairikos-muted" data-testid="leads-summary-score-reason">
                 Por qué esta prioridad: {lead.scoreReason}
