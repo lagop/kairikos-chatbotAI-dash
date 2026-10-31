@@ -1,0 +1,8 @@
+<section class="seccion" id="{{ancla}}"><div class="contenedor">
+  <div class="opiniones-cabeza">
+    <div><p class="rotulo">Opiniones</p><h2 data-k-titulo-seccion>Lo que dicen en la mesa</h2></div>
+    {{#valoracion}}<div class="nota-google"><span class="nota-pizarra"><strong>{{valoracion}}</strong><span class="estrellas" aria-hidden="true"><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg></span></span><div><p>de media en Google{{#num_resenas}}, con {{num_resenas}} reseñas{{/num_resenas}}</p>{{#maps_url}}<p><a href="{{maps_url}}">Leerlas en Google Maps</a></p>{{/maps_url}}</div></div>{{/valoracion}}
+  </div>
+  {{#citas_html}}<ul class="rejilla citas">{{{citas_html}}}</ul>{{/citas_html}}
+  {{#resenas_html}}<div class="rejilla resenas">{{{resenas_html}}}</div>{{{atribucion_google_html}}}{{/resenas_html}}
+</div></section>

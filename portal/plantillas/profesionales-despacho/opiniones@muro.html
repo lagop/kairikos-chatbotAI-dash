@@ -1,0 +1,5 @@
+<section class="kv kv-opiniones kv-opiniones--muro despacho-variante seccion--crema" id="{{ancla}}"><div class="kv-dentro">
+  <div class="cabeza dibuja"><p class="rotulo">Opiniones</p><h2 data-k-titulo-seccion>Lo que dicen los clientes</h2></div>
+  <ul class="kv-muro">{{#valoracion}}<li class="kv-muro-nota"><span class="folio-nota-titulo">Valoración en Google</span><strong>{{valoracion}}</strong><span class="kv-estrellas" aria-hidden="true"><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg></span><span>de media{{#num_resenas}}, con {{num_resenas}} reseñas{{/num_resenas}}</span>{{#maps_url}}<a href="{{maps_url}}">Leerlas en Google Maps</a>{{/maps_url}}</li>{{/valoracion}}{{{citas_html}}}</ul>
+  {{#resenas_html}}<div class="kv-muro">{{{resenas_html}}}</div>{{{atribucion_google_html}}}{{/resenas_html}}
+</div></section>

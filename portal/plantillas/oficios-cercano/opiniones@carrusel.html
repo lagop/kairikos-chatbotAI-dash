@@ -1,0 +1,8 @@
+<section class="kv kv-opiniones kv-opiniones--carrusel kv-oscura cercano-variante" id="{{ancla}}"><div class="kv-dentro" data-kv-carrusel>
+  <div class="kv-cabeza">
+    <div><span class="rotulo">Opiniones</span><h2 data-k-titulo-seccion>Lo que cuentan sus clientes</h2></div>
+    {{#valoracion}}<p class="kv-nota-google"><strong>{{valoracion}}</strong><span class="kv-estrellas" aria-hidden="true"><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg></span><span>de media en Google{{#num_resenas}} · {{num_resenas}} reseñas{{/num_resenas}}</span></p>{{/valoracion}}
+  </div>
+  {{#citas_html}}<ul class="kv-pista">{{{citas_html}}}</ul>{{/citas_html}}
+  {{#resenas_html}}<div class="kv-pista">{{{resenas_html}}}</div>{{{atribucion_google_html}}}{{/resenas_html}}
+</div></section>

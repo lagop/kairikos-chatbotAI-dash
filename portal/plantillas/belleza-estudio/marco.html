@@ -402,6 +402,183 @@ time{font-size:.8rem;font-weight:600;letter-spacing:.1em;text-transform:uppercas
 .estudio-variante .kv-mosaico>li:first-child .icono{color:var(--blanco)}
 .estudio-variante .kv-zigzag>li:hover .icono,.estudio-variante .kv-indice>li:hover .icono,.estudio-variante .kv-mosaico>li:not(:first-child):hover .icono,.estudio-variante .kv-panel:hover>.icono{background:var(--acento);border-color:var(--acento);color:var(--blanco)}
 @media (max-width:640px){.kv-portada--sangre.estudio-variante{padding-top:11rem}.kv-portada--sangre.estudio-variante>.insignia{width:6.2rem;height:6.2rem}.estudio-variante .kv-panoramica-foto .insignia{width:5.5rem;height:5.5rem}.estudio-variante .kv-indice .icono{display:none}.estudio-variante .kv-indice>li{grid-template-columns:2.75rem minmax(0,1fr)}}
+/* El resto de secciones (31/10/2026), a la manera de Estudio: esquinas
+   rectas y filetes de tinta, las secciones que se alternan con el negro, la
+   foto que entra en blanco y negro y toma color, los números en Syne y un
+   único acento. Las cifras de «sobre» van macizas y no en hueco como los
+   pasos de la pieza propia: en hueco el laboratorio las mide como texto
+   transparente (contraste 1,1). Las de fondo de noche (proceso, sobre a
+   media foto, opiniones) usan las --k-* de noche de arriba. */
+.kv.estudio-variante{overflow-x:clip}
+.estudio-variante.kv-sobre--cita .antetitulo{justify-content:center}
+.estudio-cita-foto{position:relative;width:max-content;margin:0 auto var(--s-6)}
+.estudio-cita-foto::after{content:"";position:absolute;inset:.75rem -.75rem -.75rem .75rem;z-index:0;border:1.5px solid var(--acento)}
+.estudio-variante .kv-cita-foto{position:relative;z-index:1;width:9rem;height:11rem;margin:0;border-radius:0;border:0;box-shadow:none}
+.estudio-variante .kv-cita-texto>p:first-child{font:600 clamp(1.3rem,1rem + 1.1vw,1.85rem)/1.3 var(--display);font-style:normal;letter-spacing:-.02em;color:var(--tinta)}
+.estudio-variante .kv-cita-texto>p:first-child::before{font:700 3.4em/1 var(--display);color:var(--acento);height:.55em}
+.estudio-variante .kv-cita-texto>p:first-child strong{font-weight:inherit;color:var(--acento)}
+.estudio-variante .kv-cita-texto>:not(:first-child){color:var(--gris)}
+.kv-garantias--marcas.estudio-variante .cabeza{border-bottom:0;padding-bottom:0}
+.kv-garantias--iconos.estudio-variante .cabeza{text-align:left}
+/* La cita propia no lleva relleno lateral (es un filete sobre el negro); en
+   las variantes el motor le pone fondo de tarjeta y el texto tocaba el borde. */
+.kv-opiniones.estudio-variante .cita{padding:var(--s-5)}
+.kv-opiniones.estudio-variante .cita::before{right:var(--s-3)}
+.estudio-variante .kv-media-texto{background:none}
+.estudio-variante .kv-cifras{border-top-color:var(--noche-3)}
+.estudio-variante .kv-cifras strong{font:700 clamp(2.4rem,1.8rem + 1.8vw,3.4rem)/1 var(--display);letter-spacing:-.04em;color:var(--acento-claro)}
+.estudio-variante .kv-cifras li>span{color:var(--claro-suave)}
+.estudio-variante .kv-revista-cabeza{border-bottom:2px solid var(--tinta)}
+.estudio-variante .kv-revista-cabeza .antetitulo{font-style:normal;color:var(--acento);margin-bottom:var(--s-3)}
+.estudio-variante .kv-revista-cabeza h2{max-width:14ch}
+.estudio-variante .kv-revista-cabeza>p{font-style:normal;font-size:.85rem;text-transform:uppercase;letter-spacing:.14em}
+.estudio-variante .kv-revista-columnas{column-rule:1px solid var(--linea)}
+.estudio-variante .kv-revista-columnas>p:first-child::first-letter{font:700 4.6em/.8 var(--display);color:var(--acento)}
+.estudio-variante .kv-linea>li{padding-left:4.75rem}
+.estudio-variante .kv-linea>li::before{content:counter(kv-n,decimal-leading-zero);width:3.1rem;height:3.1rem;border-radius:0;background:none;border:1.5px solid var(--acento-claro);color:var(--acento-claro);font:700 1.1rem/1 var(--display)}
+.estudio-variante .kv-linea>li:not(:last-child)::after{left:calc(1.55rem - 1px);top:3.6rem;border-left:2px solid var(--noche-3)}
+.estudio-variante .kv-linea>li:hover::before{background:var(--acento-claro);color:var(--noche)}
+.estudio-variante .kv-linea h3{padding-top:.6rem}
+.estudio-variante .kv-marcas{gap:0 var(--s-7)}
+.estudio-variante .kv-marcas>li{padding:var(--s-5) 0;border-bottom:0;border-top:1px solid var(--linea)}
+.estudio-variante .kv-marca{border-radius:0;width:2.2rem;height:2.2rem;background:var(--tinta);color:var(--blanco);transition:background .3s ease}
+.estudio-variante .kv-marcas>li:hover .kv-marca{background:var(--acento)}
+.estudio-variante .kv-marcas p,.estudio-variante .kv-iconos p{color:var(--gris)}
+.estudio-variante .kv-icono-grande{border-radius:0;width:5rem;height:5rem;background:none;border:1.5px solid var(--tinta);color:var(--acento)}
+.estudio-variante .kv-icono-grande svg{width:2rem;height:2rem}
+.estudio-variante .kv-iconos>li:hover .kv-icono-grande{background:var(--acento);border-color:var(--acento);color:var(--blanco);transform:translateY(-4px)}
+.estudio-variante .kv-tabla{border:1.5px solid var(--tinta);box-shadow:none}
+.estudio-variante .kv-fila-precio:not(:last-child){border-bottom-color:var(--linea)}
+.estudio-variante .kv-concepto>span:first-child{font-weight:600}
+.estudio-variante .kv-fila-precio>strong{font:700 1.35rem/1.1 var(--display);letter-spacing:-.02em;color:var(--tinta)}
+.estudio-variante .kv-fila-precio:hover>strong{color:var(--acento)}
+.estudio-variante .kv-info{border-radius:0;color:var(--acento)}
+.estudio-variante .kv-info[aria-expanded="true"]{background:var(--acento);border-color:var(--acento);color:var(--blanco)}
+.estudio-variante .kv-globo{border:1.5px solid var(--tinta);box-shadow:6px 6px 0 var(--acento)}
+.estudio-variante .kv-lado .kv-suave{color:var(--gris)}
+.kv-oscura.estudio-variante{background:var(--noche);color:var(--claro)}
+.kv-oscura.estudio-variante .antetitulo{color:var(--acento-claro)!important}
+.kv-oscura.estudio-variante .nota-google strong{color:var(--blanco)!important}
+.estudio-variante .nota-google strong{flex:none;white-space:nowrap}
+.kv-oscura.estudio-variante .nota-google .kv-estrellas{color:var(--oro-claro)!important}
+.kv-oscura.estudio-variante .nota-google a{color:var(--acento-claro)!important}
+.kv-oscura.estudio-variante .cita::before{color:var(--noche-3)!important}
+.estudio-variante .kv-cabeza{padding-bottom:var(--s-5);border-bottom:1px solid var(--noche-3)}
+.estudio-variante .kv-carrusel-nav button{border-radius:0;border:1.5px solid var(--noche-3)}
+.estudio-variante .kv-carrusel-nav button:hover,.estudio-variante .kv-carrusel-nav button:focus-visible{background:var(--acento);border-color:var(--acento)}
+.estudio-variante .kv-muro{margin-top:var(--s-6)}
+.estudio-variante .kv-muro-nota{background:var(--noche);color:var(--claro);padding:var(--s-6) var(--s-5)}
+.estudio-variante .kv-muro-nota strong{font:700 4.6rem/1 var(--display);letter-spacing:-.05em;color:var(--blanco)}
+.estudio-variante .kv-muro-nota .kv-estrellas{color:var(--oro-claro)}
+.estudio-variante .kv-muro-nota a{color:var(--acento-claro)}
+.estudio-variante .kv-lado-tarjeta{border:1px solid var(--noche-3);background:var(--noche-2)}
+.estudio-variante .kv-nota-grande strong{font:700 clamp(3.6rem,2.4rem + 3vw,5rem)/1 var(--display);letter-spacing:-.05em;color:var(--blanco)}
+.estudio-variante .kv-nota-grande .kv-estrellas{color:var(--oro-claro)}
+.estudio-variante.seccion--noche .kv-lado-tarjeta a{color:var(--acento-claro)}
+.estudio-variante.seccion--noche .kv-suave{color:var(--claro-suave)}
+.estudio-variante .estudio-faq-llamar{margin:0;color:var(--gris)}
+.estudio-variante .estudio-faq-llamar a{font:700 1.15rem/1.2 var(--display);color:var(--tinta);text-decoration-color:var(--acento);text-decoration-thickness:3px;text-underline-offset:5px}
+.estudio-variante .kv-acordeon{margin-top:var(--s-6)}
+.estudio-variante .kv-acordeon details{border:0;border-top:1.5px solid var(--tinta);background:none;padding:0}
+.estudio-variante .kv-acordeon summary{font:700 1.1rem/1.3 var(--display);letter-spacing:-.01em}
+.estudio-variante .kv-acordeon summary::after{font:700 1.6rem/1 var(--display);color:var(--acento)}
+.estudio-variante .kv-respuesta{color:var(--gris)}
+.estudio-variante .kv-pestanas--preguntas .kv-pestanas-lista button{font:700 1.05rem/1.3 var(--display);text-align:left;border-left:3px solid transparent;padding-left:1rem}
+.estudio-variante .kv-pestanas--preguntas .kv-pestanas-lista button:first-child{border-top-color:var(--tinta)}
+.estudio-variante .kv-pestanas--preguntas .kv-pestanas-lista button[aria-selected="true"]{color:var(--acento);border-left-color:var(--acento);background:var(--blanco)}
+.estudio-variante.kv-faq--panel .kv-panel{border:1.5px solid var(--tinta);box-shadow:8px 8px 0 var(--acento)}
+.estudio-variante .kv-panel-titulo{font-size:1.4rem}
+.estudio-variante .kv-ayuda{color:var(--gris)}
+.estudio-variante .kv-ayuda a{color:var(--tinta);text-decoration-color:var(--acento);text-decoration-thickness:3px;text-underline-offset:5px}
+@media (min-width:861px){.estudio-variante .kv-lado-tarjeta h2{font-size:clamp(1.5rem,.9rem + 1.2vw,2rem)}}
+@media (max-width:860px){.estudio-variante .kv-lado-tarjeta{padding:var(--s-5) var(--s-4)}.estudio-variante .kv-lado-tarjeta h2{font-size:clamp(1.6rem,1.1rem + 2vw,2.1rem)}}
+@media (max-width:820px){.estudio-variante .kv-media-foto img,.estudio-variante .kv-media-foto .kv-foto-vacia{aspect-ratio:4/5;min-height:0}}
+
+/* La lista del «sobre» (31/10/2026): desde #375 «Trabajamos con:» seguido de
+   guiones sin línea en blanco sale como lista de verdad. En la cita, centrada
+   y en una fila; en la revista, con la raya del texto-rico. */
+.estudio-variante .kv-cita-texto ul{list-style:none;padding:0;margin:0 auto var(--s-4);display:flex;flex-wrap:wrap;justify-content:center;gap:var(--s-2) var(--s-5)}
+.estudio-variante .kv-cita-texto li,.estudio-variante .kv-revista-columnas li{position:relative;padding-left:var(--s-5)}
+.estudio-variante .kv-cita-texto li::before,.estudio-variante .kv-revista-columnas li::before{content:"";position:absolute;left:0;top:.7em;width:.8rem;height:2px;background:var(--acento)}
+.estudio-variante .kv-revista-columnas ul{list-style:none;padding:0;margin:0 0 var(--s-4);display:grid;gap:var(--s-2)}
+
+/* Los bloques ricos con marco propio (31/10/2026, bloque_*.html). El cuerpo
+   lo pinta el motor con sus clases k-*; aquí solo se viste, acotado a
+   .estudio-bloque: esquinas rectas, filetes de tinta, números 01, 02…, la
+   letra ancha en pestañas y fechas, y de noche la trayectoria y el vídeo. La
+   galería va dentro de un .foto, así que pasa a color al verse como el resto
+   de fotos de la plantilla; el antes y después no, que es un cambio de color.
+   Las fechas van macizas, no huecas: el laboratorio mide el contraste del
+   texto y uno transparente con contorno no lo pasa. */
+.estudio-bloque{overflow-x:clip}
+.estudio-bloque.seccion--noche{--k-superficie:var(--noche-2);--k-borde:var(--noche-3);--k-suave:var(--claro-suave);--k-acento:var(--acento-claro);--k-acento-texto:var(--acento-claro);--k-sobre-acento:var(--noche)}
+.estudio-bloque .cabeza>div:empty{display:none}
+/* Galería: rejilla cuadrada y apretada, pies numerados en mayúsculas. */
+.estudio-bloque .k-galeria-rejilla{counter-reset:k-foto;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s-4) var(--s-2)}
+.estudio-bloque .k-galeria-rejilla>li{counter-increment:k-foto}
+.estudio-bloque .k-galeria-foto{position:relative}
+.estudio-bloque .k-galeria-foto img{aspect-ratio:1}
+.estudio-bloque .k-galeria-foto::after{content:"";position:absolute;left:0;right:0;bottom:0;height:4px;background:var(--acento);transform:scaleX(0);transform-origin:left;transition:transform .4s cubic-bezier(.7,0,.2,1)}
+.estudio-bloque .k-galeria-foto:hover::after,.estudio-bloque .k-galeria-foto:focus-visible::after{transform:scaleX(1)}
+.estudio-bloque .k-pie{margin-top:var(--s-2);font:600 .72rem/1.35 var(--texto);letter-spacing:.14em;text-transform:uppercase;color:var(--tinta)}
+.estudio-bloque .k-pie::before{content:counter(k-foto,decimal-leading-zero) " — ";color:var(--acento)}
+@media (min-width:760px){.estudio-bloque .k-galeria-rejilla{grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s-5) var(--s-3)}}
+@media (min-width:1100px){.estudio-bloque .k-galeria-rejilla{grid-template-columns:repeat(4,minmax(0,1fr))}}
+/* Antes y después: recto, con un filete de tinta alrededor y etiquetas en
+   la letra ancha. */
+.estudio-bloque .k-comparador,.estudio-bloque .k-comparador-sola{max-width:58rem;margin:.6rem;outline:1.5px solid var(--tinta);outline-offset:.6rem}
+.estudio-bloque--pestanas .cabeza,.estudio-bloque--marcas .cabeza{border-bottom:0;padding-bottom:0}
+.estudio-bloque .k-etiqueta{border-radius:0;padding:.5rem .8rem;background:var(--tinta);font:700 .72rem/1 var(--display);letter-spacing:.14em}
+.estudio-bloque .k-etiqueta--despues{background:var(--acento)}
+.estudio-bloque .k-comparador-linea::after{border-radius:0}
+/* Pestañas: letra ancha en mayúsculas; píldora y tarjetas, rectas. */
+.estudio-bloque .k-pestanas-lista button{font:700 .9rem/1.2 var(--display);letter-spacing:.08em;text-transform:uppercase;padding:.85rem 1.2rem}
+.estudio-bloque .k-pestanas-lista{border-bottom-color:var(--linea)}
+.estudio-bloque .k-pestanas-raya{border-radius:0;height:4px;bottom:-3px}
+.estudio-bloque .k-pestanas--pildora .k-pestanas-lista{border-radius:0;background:var(--blanco);border-color:var(--tinta)}
+.estudio-bloque .k-pestanas--pildora .k-pestanas-lista button{border-radius:0}
+.estudio-bloque .k-pestanas--pildora .k-pestanas-lista button[aria-selected="true"]{background:var(--tinta)}
+.estudio-bloque .k-pestanas--tarjetas .k-pestanas-lista{counter-reset:k-pestana}
+.estudio-bloque .k-pestanas--tarjetas .k-pestanas-lista button{counter-increment:k-pestana;border:1.5px solid var(--tinta);padding:1rem 1.1rem 1.1rem;background:transparent}
+.estudio-bloque .k-pestanas--tarjetas .k-pestanas-lista button::before{content:counter(k-pestana,decimal-leading-zero);display:block;margin-bottom:.6rem;font:600 .72rem/1 var(--texto);letter-spacing:.14em;color:var(--acento)}
+.estudio-bloque .k-pestanas--tarjetas .k-pestanas-lista button[aria-selected="true"]{background:var(--tinta);border-color:var(--tinta)}
+.estudio-bloque .k-pestanas--tarjetas .k-pestanas-lista button[aria-selected="true"]::before{color:var(--acento-claro)}
+.estudio-bloque .k-pestanas--tarjetas .k-pestanas-lista button:hover{transform:none}
+.estudio-bloque .k-panel{background:var(--blanco);padding:clamp(1.25rem,3.5vw,2.5rem)}
+.estudio-bloque .k-pestanas--tarjetas.k-pestanas--js .k-panel{border:1.5px solid var(--tinta);padding:clamp(1.25rem,3.5vw,2.5rem)}
+.estudio-bloque .k-panel-titulo{margin:0 0 var(--s-4);font-size:1.5rem;text-transform:uppercase;letter-spacing:.02em}
+.estudio-bloque .k-panel-cuerpo img{aspect-ratio:1}
+.estudio-bloque .k-panel-texto ul{list-style:none;margin:0;padding:0;counter-reset:k-linea}
+.estudio-bloque .k-panel-texto li{counter-increment:k-linea;display:grid;grid-template-columns:2.25rem minmax(0,1fr);padding:var(--s-3) 0;border-bottom:1px solid var(--linea);color:var(--gris)}
+.estudio-bloque .k-panel-texto li::before{content:counter(k-linea,decimal-leading-zero);grid-row:span 2;padding-top:.3rem;font:600 .72rem/1 var(--texto);letter-spacing:.1em;color:var(--acento)}
+.estudio-bloque .k-panel-texto li:last-child{border-bottom:0}
+.estudio-bloque .k-panel-texto li>strong:first-child{display:block;font:700 1.05rem/1.3 var(--display);color:var(--tinta)}
+/* Catálogo: tarjetas rectas con filete de tinta y sombra dura al pasar. */
+.estudio-bloque .k-filtros button{border-radius:0;border-color:var(--tinta);font-size:.8rem;letter-spacing:.08em;text-transform:uppercase}
+.estudio-bloque .k-filtros button[aria-pressed="true"]{background:var(--tinta);border-color:var(--tinta)}
+.estudio-bloque .k-producto{border:1.5px solid var(--tinta);transition:transform .3s ease,box-shadow .3s ease}
+.estudio-bloque .k-producto:hover{transform:translate(-3px,-3px);box-shadow:6px 6px 0 var(--tinta)}
+.estudio-bloque .k-producto-cuerpo h3{font-size:1.2rem}
+.estudio-bloque .k-precio{font:700 1.25rem/1.1 var(--display)}
+/* Comparativa: filete de tinta y cabeza en la letra ancha. */
+.estudio-bloque .k-comparativa{outline:1.5px solid var(--tinta);outline-offset:-1.5px}
+.estudio-bloque .k-comparativa thead th{font:700 .9rem/1.2 var(--display);letter-spacing:.06em;text-transform:uppercase;background:var(--hueso-2)}
+.estudio-bloque .k-comparativa thead .k-destacada{background:var(--acento)}
+/* Trayectoria, de noche: puntos cuadrados y fechas grandes. */
+.estudio-bloque .k-trayectoria{max-width:62rem}
+.estudio-bloque .k-hito::before{border-radius:0;box-shadow:0 0 0 5px var(--noche)}
+.estudio-bloque .k-hito-fecha{font:700 1.6rem/1.05 var(--display);letter-spacing:-.01em}
+.estudio-bloque .k-hito-cuerpo h3{color:var(--blanco)}
+@media (min-width:760px){.estudio-bloque .k-hito{grid-template-columns:11rem minmax(0,1fr)}}
+/* Marcas: entre filetes de tinta, los nombres en mayúsculas. */
+.estudio-bloque .k-marcas{padding-block:var(--s-6);border-block:1.5px solid var(--tinta)}
+.estudio-bloque .k-marca-texto{font-size:.72rem;letter-spacing:.14em;text-transform:uppercase}
+/* Vídeo, de noche: recto, con el botón cuadrado en acento. */
+.estudio-bloque .k-video-marco{max-width:none}
+.estudio-bloque .k-video-boton{border-radius:0;background:var(--acento)}
+.estudio-bloque .k-video-boton::after{border-left-color:var(--blanco)}
+.estudio-bloque .k-video-etiqueta{border-radius:0;background:var(--blanco);color:var(--tinta);font:700 .72rem/1.2 var(--display);letter-spacing:.12em;text-transform:uppercase;padding:.5rem .8rem}
+@media (max-width:640px){.estudio-bloque .k-pestanas--tarjetas .k-pestanas-lista{grid-template-columns:repeat(auto-fit,minmax(min(100%,6.5rem),1fr))}.estudio-bloque .k-pestanas-lista button{padding:.75rem .85rem;font-size:.82rem}}
 </style>
 </head>
 <body>

@@ -1,0 +1,26 @@
+<section class="portada" id="{{ancla}}"><div class="contenedor portada-rejilla">
+  <div class="pizarra portada-pizarra">
+    {{#horario_resumen}}<p class="estado">{{horario_resumen}}</p>{{/horario_resumen}}
+    <p class="pizarra-hoy" aria-hidden="true">Hoy en la pizarra</p>
+    <h1 class="escribe">{{titular}}</h1>
+    <svg class="trazo" viewBox="0 0 300 18" preserveAspectRatio="none" aria-hidden="true"><path d="M3 11c40-6 80-8 120-5s70 6 110 1 50-4 64-2"></path></svg>
+    {{#subtitulo}}<p class="entradilla">{{subtitulo}}</p>{{/subtitulo}}
+    <div class="acciones">
+      {{#telefono_href}}<a class="boton" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg>Llamar y reservar</a>{{/telefono_href}}
+      <a class="boton boton--tiza" href="#contacto">Escríbenos</a>
+    </div>
+    <ul class="portada-datos">
+      {{#telefono}}<li><svg aria-hidden="true"><use href="#i-telefono"></use></svg><a href="tel:{{telefono_href}}">{{telefono}}</a></li>{{/telefono}}
+      {{#direccion}}<li><svg aria-hidden="true"><use href="#i-mapa"></use></svg><span>{{direccion}}</span></li>{{/direccion}}
+    </ul>
+  </div>
+  <div class="portada-foto">
+    <figure class="cinta">
+      {{#fotos.portada}}<img src="{{fotos.portada}}" alt="El local de {{nombre}}">{{/fotos.portada}}
+      {{^fotos.portada}}<div class="foto-vacia" aria-hidden="true"><svg><use href="#i-plato"></use></svg></div>{{/fotos.portada}}
+    </figure>
+    <div class="colgante" role="img" aria-label="{{#valoracion}}{{valoracion}} de 5 en Google{{/valoracion}}{{^valoracion}}Cocina de mercado{{/valoracion}}">
+      <span class="colgante-cuerpo" aria-hidden="true">{{#valoracion}}<strong>{{valoracion}}</strong><span class="colgante-estrellas"><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg></span><small>en Google</small>{{/valoracion}}{{^valoracion}}<svg class="colgante-icono"><use href="#i-cubiertos"></use></svg><small>De mercado</small>{{/valoracion}}</span>
+    </div>
+  </div>
+</div></section>

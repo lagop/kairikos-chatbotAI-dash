@@ -399,6 +399,200 @@ time{font-size:.85rem;font-weight:700;text-transform:uppercase;letter-spacing:.1
 .encuadre-variante .kv-mosaico>li:first-child .icono{color:var(--blanco);border-color:rgba(255,255,255,.55)}
 .encuadre-variante .kv-zigzag>li:hover .icono,.encuadre-variante .kv-indice>li:hover .icono,.encuadre-variante .kv-mosaico>li:not(:first-child):hover .icono{background:var(--cobalto);color:var(--blanco);border-color:var(--cobalto);transform:rotate(-12deg)}
 @media (max-width:640px){.encuadre-variante .kv-indice .icono{display:none}.encuadre-variante .kv-indice>li{grid-template-columns:2.75rem minmax(0,1fr)}.kv-portada--panoramica.encuadre-variante .ficha{margin-top:-1.5rem}}
+/* El resto de variantes (31/10/2026): quiénes somos, proceso, garantías,
+   precios, opiniones y preguntas, con la misma firma. Nada de tarjetas:
+   filetes de tinta, el «Somos» en cursiva sobre el nombre, los números en
+   serifa cursiva, la carta de precios con sus puntos guía y los iconos en
+   círculo de línea. Las garantías con marcas van sobre tinta, como la
+   sección propia; el carrusel, sobre la misma tinta y no sobre el negro del
+   motor. */
+@media (min-width:861px){.encuadre-variante .kv-lado h2{font-size:clamp(2rem,1rem + 2.2vw,3rem)}}
+.kv-sobre--cita.encuadre-variante .rotulo{justify-content:center}
+.kv-sobre--cita.encuadre-variante .kv-cita-foto{width:8.5rem;height:8.5rem;padding:5px;border:1px solid var(--tinta);background:var(--papel);box-shadow:none;filter:grayscale(.2) contrast(1.05)}
+.kv-sobre--cita.encuadre-variante h2{font-size:clamp(2.35rem,4.6vw,4.4rem);margin-bottom:var(--s-6)}
+.kv-sobre--cita.encuadre-variante .kv-cita-texto>p:first-child{font:italic 400 clamp(1.5rem,1.1rem + 1.4vw,2.2rem)/1.25 var(--display)}
+.kv-sobre--media.encuadre-variante .kv-media-texto{background:var(--papel-2)}
+.kv-sobre--media.encuadre-variante .kv-media-foto img{filter:grayscale(.2) contrast(1.05)}
+.kv-sobre--media.encuadre-variante h2{font-size:clamp(2.2rem,1.4rem + 2.6vw,3.8rem)}
+.encuadre-variante .kv-cifras{border-top-color:var(--tinta)}
+.encuadre-variante .kv-cifras strong{font-style:italic;font-weight:400;font-size:clamp(2.4rem,1.8rem + 1.6vw,3.2rem);color:var(--cobalto)}
+.kv-sobre--revista.encuadre-variante .kv-revista-cabeza{border-bottom:1px solid var(--tinta)}
+.kv-sobre--revista.encuadre-variante .kv-revista-cabeza h2{max-width:16ch}
+.kv-sobre--revista.encuadre-variante .kv-revista-cabeza>p{font:italic 400 1.4rem/1.2 var(--display)}
+.kv-sobre--revista.encuadre-variante .kv-revista-cabeza .rotulo{font-style:normal;color:var(--cobalto);margin-bottom:var(--s-4)}
+.kv-sobre--revista.encuadre-variante .kv-revista-columnas>p:first-child{font:inherit;color:inherit}
+.kv-sobre--revista.encuadre-variante .kv-revista-columnas>p:first-child::first-letter{font-weight:400;font-size:4.6em;color:var(--cobalto)}
+.kv-proceso--linea.encuadre-variante .kv-linea>li{padding:0 0 var(--s-7) 5rem}
+.kv-proceso--linea.encuadre-variante .kv-linea>li::before{content:counter(kv-n,decimal-leading-zero);width:3.4rem;height:3.4rem;background:var(--papel);border:1px solid var(--tinta);color:var(--cobalto);font:italic 400 1.6rem/1 var(--display)}
+.kv-proceso--linea.encuadre-variante .kv-linea>li:not(:last-child)::after{left:calc(1.7rem - .5px);top:3.4rem;bottom:0;border-left:1px solid var(--tinta);transform-origin:top;transition:transform 1s cubic-bezier(.6,.1,.2,1) .2s}
+.js .kv-proceso--linea.encuadre-variante .kv-linea>li:not(.visto)::after{transform:scaleY(0)}
+.kv-proceso--linea.encuadre-variante .kv-linea h3{font-size:clamp(1.5rem,1.2rem + .8vw,2rem);padding-top:.7rem}
+.kv-garantias--marcas.encuadre-variante .kv-marcas{margin-top:var(--s-6);gap:0 var(--s-7)}
+.kv-garantias--marcas.encuadre-variante .kv-marcas>li{gap:var(--s-4);padding:var(--s-5) 0;border-bottom:1px solid var(--tinta-3)}
+.kv-garantias--marcas.encuadre-variante .icono{width:2.6rem;height:2.6rem;color:var(--cobalto-claro);border-color:var(--tinta-3)}
+.kv-garantias--marcas.encuadre-variante .icono svg{width:1.1rem;height:1.1rem}
+.kv-garantias--marcas.encuadre-variante .kv-marcas>li:hover .icono{background:var(--cobalto-claro);color:var(--tinta);border-color:var(--cobalto-claro);transform:rotate(-12deg)}
+.kv-garantias--marcas.encuadre-variante h3{color:var(--blanco);font-size:1.5rem}
+.kv-garantias--marcas.encuadre-variante .kv-marcas p{color:var(--claro-suave)}
+.kv-garantias--iconos.encuadre-variante .rotulo{justify-content:center}
+.kv-garantias--iconos.encuadre-variante h2{max-width:18ch;margin-inline:auto}
+.kv-garantias--iconos.encuadre-variante .kv-iconos{margin-top:var(--s-6);padding-top:var(--s-7);border-top:1px solid var(--tinta)}
+.kv-garantias--iconos.encuadre-variante .kv-icono-grande{width:5.5rem;height:5.5rem;background:transparent;border:1px solid var(--filete);color:var(--cobalto)}
+.kv-garantias--iconos.encuadre-variante .kv-icono-grande svg{width:2.4rem;height:2.4rem}
+.kv-garantias--iconos.encuadre-variante .kv-iconos>li:hover .kv-icono-grande{background:var(--cobalto);color:var(--blanco);border-color:var(--cobalto)}
+.kv-garantias--iconos.encuadre-variante h3{font-size:1.6rem}
+.kv-precios--ventanitas.encuadre-variante .kv-tabla{padding:0;background:none;border:0;border-top:1px solid var(--tinta);border-radius:0;box-shadow:none}
+.kv-precios--ventanitas.encuadre-variante .kv-fila-precio{padding:var(--s-5) 0}
+.kv-precios--ventanitas.encuadre-variante .kv-fila-precio:last-child{border-bottom:1px solid var(--filete)}
+.kv-precios--ventanitas.encuadre-variante .kv-fila-precio::after{content:"";order:1;flex:1 1 1.5rem;min-width:1.5rem;border-bottom:2px dotted var(--filete);transform:translateY(-.3rem)}
+.kv-precios--ventanitas.encuadre-variante .kv-fila-precio>strong{order:2;font-weight:400;font-size:1.6rem;line-height:1.1;color:var(--cobalto)}
+.kv-precios--ventanitas.encuadre-variante .kv-concepto>span:first-child{font:400 1.5rem/1.15 var(--display)}
+.kv-precios--ventanitas.encuadre-variante .kv-info{font-family:var(--display);font-size:1rem}
+.kv-precios--ventanitas.encuadre-variante .kv-globo{border:1px solid var(--tinta);border-radius:0;box-shadow:0 18px 36px -18px rgba(0,0,0,.35);color:var(--gris)}
+.kv-opiniones--carrusel.encuadre-variante{background:var(--tinta)}
+.kv-opiniones--carrusel.encuadre-variante .kv-cabeza{padding-bottom:var(--s-5);border-bottom:1px solid var(--tinta-3);margin-bottom:var(--s-6)}
+.kv-opiniones--carrusel.encuadre-variante .kv-cabeza h2{max-width:16ch}
+.kv-opiniones--carrusel.encuadre-variante .kv-cabeza{row-gap:var(--s-5)}
+.kv-opiniones--carrusel.encuadre-variante .rotulo{color:var(--cobalto-claro)!important}
+.kv-opiniones--carrusel.encuadre-variante .nota-google p{color:var(--claro-suave)!important}
+.kv-opiniones--carrusel.encuadre-variante :is(.cita,.resena){padding:var(--s-5)!important;border-width:0!important;border-top:2px solid var(--cobalto-claro)!important;border-radius:0!important}
+.kv-opiniones--muro.encuadre-variante{background:var(--papel-2)}
+.kv-opiniones--muro.encuadre-variante .kv-muro-nota{background:var(--tinta);border-radius:0;padding:var(--s-6) var(--s-5)}
+.kv-opiniones--muro.encuadre-variante .kv-muro-nota strong{font:400 clamp(4.5rem,8vw,6rem)/.85 var(--display)}
+.kv-opiniones--muro.encuadre-variante .kv-muro-nota .kv-estrellas{color:var(--oro-claro)}
+.kv-opiniones--muro.encuadre-variante .kv-muro-nota a{color:var(--cobalto-claro)}
+.encuadre-variante.kv-opiniones:not(.kv-oscura) :is(.cita,.resena){padding:var(--s-5)!important;border-width:0!important;border-top:2px solid var(--tinta)!important;border-radius:0!important}
+.kv-opiniones--destacada.encuadre-variante .kv-lado-tarjeta{padding:var(--s-5) 0 0;background:none;border:0;border-top:2px solid var(--tinta);border-radius:0;box-shadow:none}
+.kv-opiniones--destacada.encuadre-variante .kv-nota-grande strong{font-size:clamp(4.5rem,8vw,6.5rem);font-weight:400;line-height:.85}
+.kv-opiniones--destacada.encuadre-variante .kv-nota-grande .kv-estrellas{color:var(--oro)}
+.kv-opiniones--destacada.encuadre-variante .kv-lado-tarjeta a{color:var(--cobalto)}
+.kv-faq--dos-columnas.encuadre-variante .kv-acordeon{column-gap:var(--s-7);margin-top:var(--s-5)}
+.kv-faq--dos-columnas.encuadre-variante .kv-acordeon details{margin:0;padding:0;background:none;border:0;border-bottom:1px solid var(--filete);border-radius:0;box-shadow:none}
+.encuadre-variante .kv-acordeon summary{align-items:center;padding:var(--s-5) 0;font-size:1.1rem}
+.encuadre-variante .kv-acordeon summary::after{content:"";width:1.4rem;height:1.4rem;background:linear-gradient(var(--cobalto),var(--cobalto)) center/100% 2px no-repeat,linear-gradient(var(--cobalto),var(--cobalto)) center/2px 100% no-repeat;transition:transform .3s ease}
+.encuadre-variante .kv-acordeon summary:hover{color:var(--cobalto)}
+.encuadre-variante .kv-acordeon .kv-respuesta{padding-bottom:var(--s-5)}
+.encuadre-variante .kv-respuesta{color:var(--gris)}
+.kv-faq--panel.encuadre-variante .kv-pestanas{margin-top:var(--s-6)}
+.kv-faq--panel.encuadre-variante .kv-panel{padding:var(--s-5) 0;background:none;border:0;border-top:1px solid var(--tinta);border-radius:0;box-shadow:none}
+.kv-faq--panel.encuadre-variante .kv-pestanas--js .kv-panel{padding:var(--s-5) 0 0}
+.kv-faq--panel.encuadre-variante .kv-panel-titulo{font-size:clamp(1.6rem,1.2rem + 1.2vw,2.3rem)}
+.kv-faq--panel.encuadre-variante .kv-pestanas-lista button{padding:var(--s-4) 0;border-bottom-color:var(--filete)}
+.kv-faq--panel.encuadre-variante .kv-pestanas-lista button:first-child{border-top-color:var(--tinta)}
+.kv-faq--panel.encuadre-variante .kv-pestanas-lista button:hover{background:none;color:var(--cobalto)}
+.kv-faq--panel.encuadre-variante .kv-pestanas-lista button[aria-selected="true"]::before{content:"";flex:none;width:1.5rem;height:2px;background:currentColor}
+.encuadre-variante .kv-ayuda{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--s-2) var(--s-4);margin-top:var(--s-6);padding-top:var(--s-5);border-top:1px solid var(--filete);color:var(--gris)}
+.encuadre-variante .kv-ayuda a{display:inline-flex;align-items:center;gap:var(--s-2);font:400 1.9rem/1.1 var(--display);color:var(--tinta);text-decoration:none}
+.encuadre-variante .kv-ayuda a svg{width:1.2rem;height:1.2rem;color:var(--cobalto)}
+.encuadre-variante .kv-ayuda a:hover{color:var(--cobalto)}
+/* El panel ya abre con el filete de tinta de la lista: sin el de la cabeza
+   no salen dos rayas seguidas en el móvil. */
+.kv-faq--panel.encuadre-variante .cabeza{padding-bottom:0;border-bottom:0}
+/* .kv parte cualquier palabra (overflow-wrap:anywhere) y en el móvil la
+   nota grande salía «4,» arriba y «9» abajo. */
+.encuadre-variante :is(.nota-google,.kv-muro-nota,.kv-nota-grande) strong{white-space:nowrap;overflow-wrap:normal}
+.kv-opiniones--carrusel.encuadre-variante .nota-google strong{font-size:clamp(3.6rem,2rem + 5vw,6.5rem)}
+/* En el móvil el concepto parte en dos líneas y los puntos guía quedaban
+   colgando a media altura: ahí, sin ellos. */
+@media (max-width:640px){.kv-precios--ventanitas.encuadre-variante .kv-fila-precio::after{display:none}.kv-proceso--linea.encuadre-variante .kv-linea>li{padding-left:4.25rem}.kv-proceso--linea.encuadre-variante .kv-linea>li::before{width:2.9rem;height:2.9rem;font-size:1.35rem}.kv-proceso--linea.encuadre-variante .kv-linea>li:not(:last-child)::after{left:calc(1.45rem - .5px);top:2.9rem}}
+/* Desde #375 «Vamos preparados…:» con su lista debajo sale como lista. En la
+   cita, la lista iba pegada a la izquierda de un bloque centrado: ahí se ciñe
+   a su texto y se centra. En la revista, el break-after:avoid-column del
+   motor no lo respeta Chrome y la lista se iba sola a la segunda columna;
+   break-before:avoid en la lista sí la deja con su frase. */
+.kv-sobre--cita.encuadre-variante .kv-cita-texto>:is(ul,ol){width:fit-content;max-width:100%;margin-inline:auto}
+.kv-sobre--revista.encuadre-variante .kv-revista-columnas>:is(ul,ol){break-before:avoid}
+/* Los bloques ricos a la manera de Encuadre (31/10/2026): las piezas
+   bloque_galeria.html y demás ponen el marco (rótulo con su raya, título en
+   serif, la cabeza con su filete de tinta) y el motor sigue pintando el
+   cuerpo (site-rich-blocks.ts). Aquí solo se retoca ese cuerpo, acotado a
+   .encuadre-bloque: las fotos con el mismo tratamiento que la del «Quiénes
+   somos», un filete de tinta separado de la foto como un paspartú, los
+   números y precios en serif cursiva y las etiquetas como un pie de foto.
+   Nada de esto toca los ganchos del script (visor, filtros, arrastre). */
+.encuadre-bloque-texto>:last-child{margin-bottom:0}
+/* El motor pone a la <section> las clases de su cuerpo (k-trayectoria,
+   k-comparativa) y le llegaban la raya y el ancho de la lista o el fondo y
+   las esquinas de la tabla: a la sección se le quitan. */
+section.encuadre-bloque.k-trayectoria{display:block;max-width:none;padding-left:0;isolation:auto}
+section.encuadre-bloque.k-trayectoria::before{content:none}
+section.encuadre-bloque.k-comparativa{display:block;width:auto;background:transparent;border-radius:0;overflow:visible}
+.encuadre-bloque-partido{display:grid;gap:var(--s-6) var(--s-8);grid-template-columns:minmax(0,1fr);align-items:center}
+.encuadre-bloque-partido>*{min-width:0}
+.encuadre-bloque-lado h2{font-size:clamp(2.1rem,1.2rem + 2.6vw,3.4rem);max-width:16ch}
+.encuadre-bloque-lado .lead{margin-top:var(--s-5)}
+@media (min-width:900px){.encuadre-bloque-partido{grid-template-columns:minmax(0,1fr) minmax(0,1.75fr)}}
+/* Galería: numeradas en serif cursiva, como las láminas de un libro */
+.encuadre-bloque .k-galeria-rejilla{counter-reset:lamina;gap:var(--s-6) var(--s-5)}
+.encuadre-bloque .k-galeria-rejilla>li{position:relative;counter-increment:lamina}
+.encuadre-bloque .k-galeria-rejilla>li::before{content:counter(lamina,decimal-leading-zero);position:absolute;z-index:1;left:0;top:0;padding:.3rem .6rem .35rem;background:var(--papel);color:var(--tinta);font:italic 400 1.3rem/1 var(--display);pointer-events:none}
+.encuadre-bloque .k-galeria-foto{border-radius:0;background:var(--tinta)}
+.encuadre-bloque .k-galeria-foto img{filter:grayscale(.2) contrast(1.05);transition:transform .6s ease,filter .4s ease}
+.encuadre-bloque .k-galeria-foto:hover img,.encuadre-bloque .k-galeria-foto:focus-visible img{filter:none}
+.encuadre-bloque .k-pie{margin-top:var(--s-3);padding-top:var(--s-2);border-top:1px solid var(--tinta);font:italic 400 1.15rem/1.3 var(--display);color:var(--tinta)}
+/* Antes y después: la foto con su filete separado y las etiquetas como pie */
+.encuadre-bloque .k-comparador,.encuadre-bloque .k-comparador-sola{border-radius:0;outline:1px solid var(--tinta);outline-offset:10px;margin:10px}
+.encuadre-bloque .k-comparador img,.encuadre-bloque .k-comparador-sola img{filter:contrast(1.05)}
+.encuadre-bloque .k-etiqueta{top:var(--s-4);padding:.45rem .75rem;border-radius:0;background:var(--papel);color:var(--tinta);font:italic 400 1.15rem/1 var(--display);letter-spacing:0;text-transform:none}
+.encuadre-bloque .k-etiqueta--antes{left:var(--s-4)}
+.encuadre-bloque .k-etiqueta--despues{right:var(--s-4);background:var(--cobalto);color:var(--blanco)}
+/* Catálogo: los filtros como un índice subrayado, no como botones */
+.encuadre-bloque .k-filtros{gap:0 var(--s-5);margin-bottom:var(--s-6);border-bottom:1px solid var(--filete)}
+.encuadre-bloque .k-filtros button{margin-bottom:-1px;padding:.55rem 0;border:0;border-bottom:2px solid transparent;border-radius:0;background:none;font:400 1.4rem/1.1 var(--display);color:var(--gris)}
+.encuadre-bloque .k-filtros button:hover{color:var(--tinta)}
+.encuadre-bloque .k-filtros button[aria-pressed="true"]{background:none;color:var(--tinta);border-color:var(--cobalto)}
+.encuadre-bloque .k-catalogo-rejilla{gap:var(--s-5)}
+.encuadre-bloque .k-producto{border-radius:0;border-color:var(--filete);transition:border-color .25s ease,transform .3s ease}
+.encuadre-bloque .k-producto:hover{border-color:var(--tinta);transform:translateY(-3px)}
+.encuadre-bloque .k-producto img{filter:grayscale(.2) contrast(1.05)}
+.encuadre-bloque .k-producto-cuerpo{padding:var(--s-5)}
+.encuadre-bloque .k-producto-categoria{letter-spacing:.16em}
+.encuadre-bloque .k-precio{padding-top:var(--s-3);font:italic 400 1.75rem/1 var(--display);color:var(--cobalto)}
+.encuadre-bloque :is(.k-caracteristicas,.k-panel-texto ul) li::before{top:.75em;width:1.1rem;height:2px;border:0;background:var(--cobalto);transform:none}
+/* Pestañas: los nombres en serif; la foto del oficio, con su filete */
+.encuadre-bloque .k-pestanas-lista button{font-family:var(--display);font-weight:400;font-size:1.35rem;line-height:1.15}
+.encuadre-bloque .k-pestanas:not(.k-pestanas--pildora):not(.k-pestanas--tarjetas) .k-pestanas-lista{gap:0 var(--s-5);border-bottom:1px solid var(--tinta)}
+.encuadre-bloque .k-pestanas:not(.k-pestanas--pildora):not(.k-pestanas--tarjetas) .k-pestanas-lista button{padding-inline:0;margin-bottom:-1px;color:var(--gris)}
+.encuadre-bloque .k-pestanas:not(.k-pestanas--pildora):not(.k-pestanas--tarjetas) .k-pestanas-lista button[aria-selected="true"]{color:var(--tinta)}
+.encuadre-bloque .k-panel-titulo{font-size:2rem}
+.encuadre-bloque .k-panel-cuerpo{gap:var(--s-6) var(--s-8);font-size:1.1rem}
+.encuadre-bloque .k-panel-cuerpo img{border-radius:0;outline:1px solid var(--tinta);outline-offset:8px;filter:grayscale(.2) contrast(1.05);width:calc(100% - 16px);margin:8px}
+.encuadre-bloque .k-panel-texto ul{list-style:none;padding:0;display:grid;gap:var(--s-2)}
+.encuadre-bloque .k-panel-texto li{position:relative;padding-left:var(--s-6)}
+.encuadre-bloque .k-panel-texto li::before{content:"";position:absolute;left:0}
+/* Comparativa: una tabla de libro, con la columna elegida en tinta */
+.encuadre-bloque .k-comparativa{background:none;border-radius:0;border-top:1px solid var(--tinta)}
+.encuadre-bloque .k-comparativa th,.encuadre-bloque .k-comparativa td{border-color:var(--filete)}
+.encuadre-bloque .k-comparativa thead th{font:400 1.45rem/1.1 var(--display);padding-block:var(--s-4)}
+.encuadre-bloque .k-comparativa thead .k-destacada{background:var(--tinta);color:var(--papel)}
+.encuadre-bloque .k-comparativa .k-destacada{background:color-mix(in srgb,var(--cobalto) 7%,var(--papel))}
+.encuadre-bloque .k-comparativa tbody th{font-weight:700}
+/* Trayectoria, en tinta: los años en serif cursiva y los hitos como círculos de línea */
+.encuadre-bloque--trayectoria .k-trayectoria::before{background:var(--tinta-3)}
+.encuadre-bloque--trayectoria .k-hito::before{top:.45rem;background:var(--tinta);border:2px solid var(--cobalto-claro);box-shadow:0 0 0 5px var(--tinta)}
+.encuadre-bloque--trayectoria .k-hito-fecha{font:italic 400 1.9rem/1.05 var(--display);color:var(--cobalto-claro)}
+.encuadre-bloque--trayectoria .k-hito-cuerpo h3{color:var(--blanco)}
+.encuadre-bloque--trayectoria .k-hito-cuerpo p{color:var(--claro-suave)}
+@media (min-width:760px){.encuadre-bloque--trayectoria .k-hito{grid-template-columns:12rem minmax(0,1fr)}}
+/* Marcas: una franja entre dos filetes, con el título centrado */
+.encuadre-bloque--marcas{padding-block:var(--s-7)}
+.encuadre-bloque-centro{text-align:center;margin-bottom:var(--s-6)}
+.encuadre-bloque-centro .rotulo{justify-content:center}
+.encuadre-bloque-centro h2{font-size:clamp(2rem,1.2rem + 2.4vw,3.2rem);max-width:22ch;margin-inline:auto}
+.encuadre-bloque-centro .lead{margin-inline:auto}
+.encuadre-bloque .k-marcas{padding-block:var(--s-6);border-block:1px solid var(--tinta)}
+.encuadre-bloque .k-marca-texto{font:italic 400 1.05rem/1.2 var(--display);color:var(--gris)}
+/* Vídeo, en tinta: la portada con su filete y la etiqueta como pie */
+.encuadre-bloque .k-video-marco{max-width:none}
+.encuadre-bloque :is(.k-video-portada,.k-video-marco iframe){border-radius:0;outline:1px solid var(--tinta-3);outline-offset:10px;width:calc(100% - 20px);margin:10px}
+.encuadre-bloque .k-video-portada img{filter:grayscale(.2) contrast(1.05)}
+.encuadre-bloque .k-video-boton{background:var(--cobalto)}
+.encuadre-bloque .k-video-etiqueta{left:var(--s-4);bottom:var(--s-4);border-radius:0;background:var(--papel);color:var(--tinta);font:italic 400 1.15rem/1 var(--display)}
+.encuadre-bloque .k-video-aviso{margin-top:var(--s-4);color:var(--gris)}
+.seccion--tinta.encuadre-bloque .k-video-aviso{color:var(--claro-suave)}
+/* En el móvil las dos etiquetas no caben en la misma línea y «Después» tapaba
+   a «Antes»: ahí, una arriba a la izquierda y la otra abajo a la derecha. */
+@media (max-width:640px){.encuadre-bloque .k-comparador,.encuadre-bloque .k-comparador-sola{outline-offset:6px;margin:6px}.encuadre-bloque :is(.k-video-portada,.k-video-marco iframe){outline-offset:6px;width:calc(100% - 12px);margin:6px}.encuadre-bloque .k-panel-cuerpo img{outline-offset:6px;width:calc(100% - 12px);margin:6px}.encuadre-bloque .k-filtros button{font-size:1.2rem}.encuadre-bloque .k-etiqueta{font-size:1rem}.encuadre-bloque .k-etiqueta--despues{top:auto;bottom:var(--s-4)}}
 </style>
 </head>
 <body>

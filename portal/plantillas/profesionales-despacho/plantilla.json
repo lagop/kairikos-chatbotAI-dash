@@ -1,0 +1,41 @@
+{
+  "nombre": "Profesionales · Despacho",
+  "sector": "professional",
+  "variante": "sobria y editorial, papel marfil, tinta azul noche y verde botella",
+  "encargo": "Despachos donde lo que se vende es la seriedad y la claridad (asesorías y gestorías, abogados, inmobiliarias, corredurías de seguros). Todo se lee como un buen documento con membrete: cada sección es una cláusula numerada (§ 1, § 2…), los servicios son carpetas de expediente con su pestaña y su número, los precios son una minuta de honorarios en una tabla limpia con doble filete, las garantías son cláusulas a), b)… junto a un sello de lacre en relieve y una firma a mano, el proceso es un índice con números romanos colgados de una línea vertical, la zona es una relación de municipios a filetes y la nota de Google va en una ficha sobre la foto del despacho. Papel marfil, tinta azul noche y un solo acento (verde botella, o el color del negocio); filetes finos y márgenes amplios, nada de esquinas redondas ni degradados de agencia. Titulares en Libre Baskerville, una serifa de libro, y texto en Source Sans 3. Movimiento contenido: el trazo de pluma bajo el titular y el subrayado de cada título se dibujan solos, la firma se escribe al aparecer, la línea del índice baja y la pestaña de cada expediente asoma al pasar por encima. Transmite el profesional serio y cercano que explica las cosas por escrito. Escrita a mano.",
+  "estilo": {
+    "acento": {
+      "variables": [
+        {
+          "variable": "--acento",
+          "desde": "color",
+          "contra": ["--marfil", "--marfil-2", "--blanco"],
+          "minimo": 4.5
+        },
+        {
+          "variable": "--acento-claro",
+          "desde": "tono",
+          "contra": ["--noche", "--noche-2"],
+          "minimo": 4.5
+        }
+      ],
+      "muestras": [
+        { "nombre": "Verde botella", "color": "#1f5c46" },
+        { "nombre": "Burdeos", "color": "#8a1f35" },
+        { "nombre": "Azul tinta", "color": "#1d4e89" },
+        { "nombre": "Petróleo", "color": "#0f5f66" },
+        { "nombre": "Ciruela", "color": "#5b2a6e" },
+        { "nombre": "Tabaco", "color": "#8a4b12" }
+      ]
+    },
+    "tipografias": {
+      "titulares": "--display",
+      "texto": "--texto",
+      "parejas": [
+        { "id": "clasica", "nombre": "Clásica", "titulares": "Libre Baskerville", "texto": "Source Sans 3" },
+        { "id": "editorial", "nombre": "Editorial", "titulares": "Playfair Display", "texto": "Manrope" },
+        { "id": "serena", "nombre": "Serena", "titulares": "Lora", "texto": "Work Sans" }
+      ]
+    }
+  }
+}

@@ -1,0 +1,21 @@
+<section class="portada" id="{{ancla}}"><div class="contenedor portada-rejilla">
+  <div class="portada-texto">
+    {{#horario_resumen}}<p class="estado">{{horario_resumen}}</p>{{/horario_resumen}}
+    <h1>{{titular}}</h1>
+    <svg class="trazo" viewBox="0 0 300 14" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M3 9.5C48 4.5 96 3.5 150 6.5s104 4 147-1.5"></path></svg>
+    {{#subtitulo}}<p class="entradilla">{{subtitulo}}</p>{{/subtitulo}}
+    <div class="acciones">
+      {{#telefono_href}}<a class="boton" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg>Llamar</a>{{/telefono_href}}
+      <a class="boton boton--borde" href="#contacto">Pedir una consulta</a>
+    </div>
+    <ul class="portada-datos">
+      {{#telefono}}<li><svg aria-hidden="true"><use href="#i-telefono"></use></svg><a href="tel:{{telefono_href}}">{{telefono}}</a></li>{{/telefono}}
+      {{#direccion}}<li><svg aria-hidden="true"><use href="#i-mapa"></use></svg><span>{{direccion}}</span></li>{{/direccion}}
+    </ul>
+  </div>
+  <figure class="portada-folio">
+    {{#fotos.portada}}<img src="{{fotos.portada}}" alt="Despacho de {{nombre}}">{{/fotos.portada}}
+    {{^fotos.portada}}<div class="folio-vacio" aria-hidden="true"><svg><use href="#i-documento"></use></svg></div>{{/fotos.portada}}
+    {{#valoracion}}<div class="folio-nota"><span class="folio-nota-titulo">Valoración en Google</span><strong>{{valoracion}}</strong><span class="estrellas" aria-hidden="true"><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg></span>{{#num_resenas}}<span class="folio-nota-resenas">{{num_resenas}} reseñas</span>{{/num_resenas}}</div>{{/valoracion}}
+  </figure>
+</div></section>

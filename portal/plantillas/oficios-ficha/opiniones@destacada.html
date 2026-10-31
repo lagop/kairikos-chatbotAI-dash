@@ -1,0 +1,8 @@
+<section class="kv kv-opiniones kv-opiniones--destacada ficha-variante" id="{{ancla}}"><div class="kv-dentro kv-partida">
+  <div class="kv-lado"><div class="kv-lado-tarjeta">
+    <p class="ref"><span>Ficha</span><span>Opiniones</span></p>
+    <h2 data-k-titulo-seccion>Lo que dicen sus clientes</h2>
+    {{#valoracion}}<p class="kv-nota-grande"><strong>{{valoracion}}</strong><span class="kv-estrellas" aria-hidden="true"><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg></span></p><p class="kv-suave">de media en Google{{#num_resenas}}, con {{num_resenas}} reseñas{{/num_resenas}}</p>{{#maps_url}}<p><a href="{{maps_url}}">Leerlas en Google Maps</a></p>{{/maps_url}}{{/valoracion}}
+  </div></div>
+  <div class="kv-destacada-lista">{{#citas_html}}<ul class="kv-citas">{{{citas_html}}}</ul>{{/citas_html}}{{#resenas_html}}<div class="kv-resenas">{{{resenas_html}}}</div>{{{atribucion_google_html}}}{{/resenas_html}}</div>
+</div></section>

@@ -1,0 +1,8 @@
+<section id="{{ancla}}" class="blog-pagina">
+  <div class="cabecera-pagina"><div class="contenedor">
+    <p class="rotulo">{{nombre}}</p>
+    <h1>{{blog.titulo}}</h1>
+    {{#blog.intro}}<p class="lead">{{blog.intro}}</p>{{/blog.intro}}
+  </div></div>
+  <div class="contenedor entradas">{{#entradas}}<article class="entrada aparece">{{#foto}}<img src="{{foto}}" alt="{{foto_alt}}">{{/foto}}{{^foto}}<div class="entrada-motivo" aria-hidden="true"></div>{{/foto}}<div class="entrada-cuerpo"><time datetime="{{fecha_iso}}">{{fecha}}</time><h2><a href="{{href}}">{{titulo}}</a></h2>{{#extracto}}<p>{{extracto}}</p>{{/extracto}}<span class="leer" aria-hidden="true">Leer</span></div></article>{{/entradas}}</div>
+</section>

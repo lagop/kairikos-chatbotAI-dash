@@ -1,0 +1,18 @@
+<section class="kv kv-portada kv-portada--sangre pizarra-variante" id="{{ancla}}">
+  {{#fotos.portada}}<img class="kv-sangre-fondo" src="{{fotos.portada}}" alt="El local de {{nombre}}">{{/fotos.portada}}
+  <div class="colgante" role="img" aria-label="{{#valoracion}}{{valoracion}} de 5 en Google{{/valoracion}}{{^valoracion}}Cocina de mercado{{/valoracion}}">
+    <span class="colgante-cuerpo" aria-hidden="true">{{#valoracion}}<strong>{{valoracion}}</strong><span class="colgante-estrellas"><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg></span><small>en Google</small>{{/valoracion}}{{^valoracion}}<svg class="colgante-icono"><use href="#i-cubiertos"></use></svg><small>De mercado</small>{{/valoracion}}</span>
+  </div>
+  <div class="kv-dentro">
+    <div class="kv-tarjeta pizarra">
+      {{#horario_resumen}}<p class="estado">{{horario_resumen}}</p>{{/horario_resumen}}
+      <h1 class="kv-titular escribe">{{titular}}</h1>
+      {{#subtitulo}}<p class="kv-entradilla">{{subtitulo}}</p>{{/subtitulo}}
+      <div class="acciones">
+        {{#telefono_href}}<a class="boton" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg>Llamar y reservar</a>{{/telefono_href}}
+        <a class="boton boton--tiza" href="#contacto">Escríbenos</a>
+      </div>
+      {{#direccion}}<ul class="portada-datos"><li><svg aria-hidden="true"><use href="#i-mapa"></use></svg><span>{{direccion}}</span></li></ul>{{/direccion}}
+    </div>
+  </div>
+</section>

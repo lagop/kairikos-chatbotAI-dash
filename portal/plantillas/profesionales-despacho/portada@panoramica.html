@@ -1,0 +1,23 @@
+<section class="kv kv-portada kv-portada--panoramica despacho-variante" id="{{ancla}}">
+  <div class="kv-dentro">
+    {{#horario_resumen}}<p class="estado">{{horario_resumen}}</p>{{/horario_resumen}}
+    <h1 class="kv-titular">{{titular}}</h1>
+    <svg class="trazo" viewBox="0 0 300 14" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M3 9.5C48 4.5 96 3.5 150 6.5s104 4 147-1.5"></path></svg>
+    <div class="kv-fila">
+      {{#subtitulo}}<p class="kv-entradilla">{{subtitulo}}</p>{{/subtitulo}}
+      <div class="acciones">
+      {{#telefono_href}}<a class="boton" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg>Llamar</a>{{/telefono_href}}
+      <a class="boton boton--borde" href="#contacto">Pedir una consulta</a>
+      </div>
+    </div>
+  </div>
+  <div class="kv-panoramica-foto">
+    {{#fotos.portada}}<img src="{{fotos.portada}}" alt="Despacho de {{nombre}}">{{/fotos.portada}}
+    {{^fotos.portada}}<div class="kv-foto-vacia folio-vacio" aria-hidden="true"><svg><use href="#i-documento"></use></svg></div>{{/fotos.portada}}
+    {{#valoracion}}<div class="folio-nota"><span class="folio-nota-titulo">Valoración en Google</span><strong>{{valoracion}}</strong><span class="estrellas" aria-hidden="true"><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg></span>{{#num_resenas}}<span class="folio-nota-resenas">{{num_resenas}} reseñas</span>{{/num_resenas}}</div>{{/valoracion}}
+  </div>
+  <ul class="kv-datos">
+    {{#telefono}}<li><strong>Teléfono</strong><a href="tel:{{telefono_href}}">{{telefono}}</a></li>{{/telefono}}
+    {{#direccion}}<li><strong>Despacho</strong><span>{{direccion}}</span></li>{{/direccion}}
+  </ul>
+</section>

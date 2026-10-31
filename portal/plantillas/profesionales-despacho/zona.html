@@ -1,0 +1,7 @@
+<section class="seccion" id="{{ancla}}"><div class="contenedor zona">
+  <div class="zona-texto">
+    <div class="cabeza dibuja"><p class="rotulo">Ámbito</p><h2 data-k-titulo-seccion>Dónde atendemos</h2></div>
+    {{#zona.texto}}<p class="lead">{{zona.texto}}</p>{{/zona.texto}}
+  </div>
+  {{#zona.lugares.length}}<ul class="municipios">{{#zona.lugares}}<li class="aparece"><svg aria-hidden="true"><use href="#i-mapa"></use></svg><span>{{nombre}}</span></li>{{/zona.lugares}}</ul>{{/zona.lugares.length}}
+</div></section>

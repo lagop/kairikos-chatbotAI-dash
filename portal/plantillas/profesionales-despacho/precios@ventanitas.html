@@ -1,0 +1,8 @@
+<section class="kv kv-precios kv-precios--ventanitas despacho-variante" id="{{ancla}}"><div class="kv-dentro kv-partida">
+  <div class="kv-lado">
+    <div class="cabeza dibuja"><p class="rotulo">Honorarios</p><h2 data-k-titulo-seccion>Honorarios claros desde el principio</h2></div>
+    {{#precios.nota}}<p class="nota"><svg aria-hidden="true"><use href="#i-chispa"></use></svg><span>{{precios.nota}}</span></p>{{/precios.nota}}
+    {{#telefono_href}}<p class="acciones"><a class="boton" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg>Pedir una consulta</a></p>{{/telefono_href}}
+  </div>
+  <div class="kv-tabla"><p class="minuta-cabeza"><svg aria-hidden="true"><use href="#i-documento"></use></svg><span>Minuta de honorarios</span><span class="minuta-de">{{nombre}}</span></p>{{#precios.filas}}<div class="kv-fila-precio"><div class="kv-concepto"><span>{{concepto}}</span>{{#detalle}}<span class="kv-detalle">{{detalle}}</span>{{/detalle}}</div><strong>{{precio}}</strong></div>{{/precios.filas}}</div>
+</div></section>

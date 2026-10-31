@@ -1,0 +1,9 @@
+<section class="kv kv-precios kv-precios--ventanitas encuadre-variante" id="{{ancla}}"><div class="kv-dentro kv-partida">
+  <div class="kv-lado">
+    <p class="rotulo">Precios</p>
+    <h2 data-k-titulo-seccion>Precios claros</h2>
+    {{#precios.nota}}<p class="kv-suave">{{precios.nota}}</p>{{/precios.nota}}
+    {{#telefono_href}}<p class="acciones"><a class="boton" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg>Pedir presupuesto</a></p>{{/telefono_href}}
+  </div>
+  <div class="kv-tabla">{{#precios.filas}}<div class="kv-fila-precio"><div class="kv-concepto"><span>{{concepto}}</span>{{#detalle}}<span class="kv-detalle">{{detalle}}</span>{{/detalle}}</div><strong>{{precio}}</strong></div>{{/precios.filas}}</div>
+</div></section>

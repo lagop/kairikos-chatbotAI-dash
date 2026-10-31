@@ -1,0 +1,8 @@
+<section class="kv kv-proceso kv-proceso--linea consulta-variante" id="{{ancla}}"><div class="kv-dentro kv-partida">
+  <div class="kv-lado">
+    <p class="antetitulo">Tu primera visita</p>
+    <h2 data-k-titulo-seccion>Cómo es la consulta</h2>
+    {{#telefono_href}}<p class="acciones"><a class="boton boton--acento" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-calendario"></use></svg>Pedir cita</a></p>{{/telefono_href}}
+  </div>
+  <ol class="kv-linea">{{#proceso}}<li class="aparece"><div class="consulta-paso"><h3>{{titulo}}</h3>{{#texto}}<p>{{texto}}</p>{{/texto}}</div></li>{{/proceso}}</ol>
+</div></section>
