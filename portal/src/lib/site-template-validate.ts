@@ -1,7 +1,7 @@
 import { SITE_SECTION_TYPES, SITE_TITLED_SECTIONS } from './site-content';
 import { declaredFontFamilies, fontCatalogForPrompt } from './site-fonts';
 import { validateTemplateStyle } from './site-style';
-import { BLOQUES_VARIABLES } from './site-rich-blocks';
+import { BLOQUES_VARIABLES, SITE_RICH_BLOCK_PARTS, type SiteRichBlockPart } from './site-rich-blocks';
 import {
   SITE_TEMPLATE_PARTS,
   TemplateSyntaxError,
@@ -56,10 +56,13 @@ const ITEM_FIELDS = new Set([
 /** Lo que el motor añade a la vista de una variante (variantExtras,
  *  site-template.ts): solo existe en las piezas seccion@variante. */
 const VARIANT_FIELDS = new Set(['kv_fotos', 'kv_foto_sobre', 'src']);
+/** Lo que el motor da al marco propio de un bloque rico (richBlockFrameView,
+ *  site-rich-blocks.ts): solo existe en las piezas bloque_galeria y demás. */
+const RICH_FRAME_FIELDS = new Set(['clase', 'cuerpo_html', 'ejemplo']);
 /** Solo estos van con triple llave: son HTML que ya produjo el motor. Un
  *  campo de texto del cliente con triple llave sería una puerta a inyectar
  *  HTML en su propia web. */
-const RAW_FIELDS = new Set(['secciones', 'sobre_html', 'respuesta_html', 'texto_html', 'resenas_html', 'citas_html', 'atribucion_google_html']);
+const RAW_FIELDS = new Set(['secciones', 'sobre_html', 'respuesta_html', 'texto_html', 'resenas_html', 'citas_html', 'atribucion_google_html', 'cuerpo_html']);
 const LIST_FIELDS = ['legales', 'servicios', 'cifras', 'proceso', 'garantias', 'faq', 'horario', 'precios.filas', 'zona.lugares', 'items', 'menu', 'entradas'];
 
 const ALLOWED_HOSTS = new Set(['fonts.googleapis.com', 'fonts.gstatic.com']);
@@ -97,7 +100,31 @@ function lineOf(source: string, index: number): number {
   return source.slice(0, index).split('\n').length;
 }
 
-function checkPart(name: 'marco' | SiteTemplatePart | SiteVariantPart, source: string, problems: string[]): void {
+/** Lo que un marco propio de bloque rico no puede perder (el ancla ya la
+ *  pide la comprobación de todas las piezas): las clases (el script busca
+ *  .k-catalogo para los filtros), el cuerpo del motor una sola vez y la
+ *  marca de ejemplo alrededor de él, que es lo que impide publicar fotos de
+ *  banco sin revisarlas. */
+function checkRichFrame(name: string, source: string, problems: string[]): void {
+  const where = `la sección «${name}»`;
+  if (!/<section\b[^>]*\bclass="[^"]*\{\{clase\}\}/.test(source)) problems.push(`${where}: la <section> lleva {{clase}} en su class; el script de los bloques busca esas clases.`);
+  const cuerpos = source.match(/\{\{\{cuerpo_html\}\}\}/g)?.length ?? 0;
+  if (cuerpos !== 1) {
+    problems.push(`${where}: tiene que llevar {{{cuerpo_html}}} exactamente una vez (lleva ${cuerpos}); es la galería, el comparador o las pestañas, con su comportamiento.`);
+    return;
+  }
+  const abre = source.indexOf('{{#ejemplo}}<div class="dato-ejemplo-bloque">{{/ejemplo}}');
+  const cierra = source.lastIndexOf('{{#ejemplo}}</div>{{/ejemplo}}');
+  const cuerpo = source.indexOf('{{{cuerpo_html}}}');
+  if (abre < 0 || cierra < 0 || !(abre < cuerpo && cuerpo < cierra)) {
+    problems.push(
+      `${where}: envuelve el título y {{{cuerpo_html}}} en {{#ejemplo}}<div class="dato-ejemplo-bloque">{{/ejemplo}} … {{#ejemplo}}</div>{{/ejemplo}}. Un bloque de ejemplo va resaltado entero y no se publica sin revisarlo.`,
+    );
+  }
+}
+
+function checkPart(name: 'marco' | SiteTemplatePart | SiteVariantPart | SiteRichBlockPart, source: string, problems: string[]): void {
+  const richFrame = (SITE_RICH_BLOCK_PARTS as readonly string[]).includes(name);
   const where = name === 'marco' ? 'el marco' : `la sección «${name}»`;
   let tags: ReturnType<typeof collectTags>;
   try {
@@ -108,7 +135,7 @@ function checkPart(name: 'marco' | SiteTemplatePart | SiteVariantPart, source: s
   }
   for (const tag of tags) {
     const head = tag.name.split('.')[0];
-    if (!ROOT_FIELDS.has(head) && !ITEM_FIELDS.has(head) && !(name.includes('@') && VARIANT_FIELDS.has(head))) {
+    if (!ROOT_FIELDS.has(head) && !ITEM_FIELDS.has(head) && !(name.includes('@') && VARIANT_FIELDS.has(head)) && !(richFrame && RICH_FRAME_FIELDS.has(head))) {
       problems.push(`${where}: el hueco {{${tag.name}}} no existe. Usa solo los campos del esquema.`);
     }
     if (tag.raw && !RAW_FIELDS.has(tag.name.split('.').pop() as string)) {
@@ -248,6 +275,14 @@ export function validateSiteTemplate(input: SiteTemplateSource): TemplateValidat
       const titled = (SITE_TITLED_SECTIONS as readonly string[]).includes(tipo);
       if (titled && marks !== 1) problems.push(`la sección «${extra}»: marca su título con data-k-titulo-seccion exactamente una vez (lleva ${marks}), como en «${tipo}».`);
       if (!titled && marks) problems.push(`la sección «${extra}»: quita data-k-titulo-seccion; solo lo llevan ${SITE_TITLED_SECTIONS.join(', ')}.`);
+      continue;
+    }
+    // 31/10/2026 — el marco propio de un bloque rico, también opcional; sin
+    // él pone el suyo el motor (richBlockFrameView, site-rich-blocks.ts).
+    if ((SITE_RICH_BLOCK_PARTS as readonly string[]).includes(extra)) {
+      const source = template.secciones[extra as SiteRichBlockPart] ?? '';
+      checkPart(extra as SiteRichBlockPart, source, problems);
+      checkRichFrame(extra, source, problems);
       continue;
     }
     problems.push(`sobra la sección «${extra}»: no existe en el esquema.`);

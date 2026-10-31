@@ -216,19 +216,64 @@ function renderVideo(b: RichBlockInput, src: (p: string) => string, foto: FotoAt
   );
 }
 
+/** Las clases de la <section> de un bloque rico. El script las busca
+ *  (.k-catalogo, para los filtros), así que también las lleva la pieza propia
+ *  de una plantilla ({{clase}}). */
+export function richBlockClass(tipo: SiteRichBlockType): string {
+  return `k-bloque k-${tipo.replace('_', '-')}`;
+}
+
 /** El HTML de un bloque rico. `base` es lo que se antepone a las rutas de
  *  las fotos desde esta página ('' en la portada, '../' en una interior). */
 export function renderRichBlock(b: RichBlockInput, base: string, ejemplo = false, edicion = false, variante?: string): string {
+  // De ejemplo (site-sector-blocks.ts): el bloque entero va resaltado con la
+  // marca de la plantilla (.dato-ejemplo-bloque).
+  return (
+    `<section class="${richBlockClass(b.tipo)}" id="bloque-${esc(b.id)}"><div class="k-dentro">${ejemplo ? '<div class="dato-ejemplo-bloque">' : ''}` +
+    `${head(b)}${richBlockBody(b, base, edicion, variante)}${ejemplo ? '</div>' : ''}</div></section>`
+  );
+}
+
+/**
+ * 31/10/2026 — lo que recibe la pieza PROPIA de una plantilla para un bloque
+ * rico (`bloque_galeria`, SITE_RICH_BLOCK_PARTS). La plantilla pone el marco
+ * —dónde va el título, el fondo, una numeración, una columna al lado— y el
+ * motor sigue pintando el cuerpo (`cuerpo_html`): la rejilla, el comparador,
+ * las pestañas, con los ganchos de BLOQUES_JS y las fotos que se cambian
+ * pulsándolas en el editor. Así una galería de Atelier puede parecer de
+ * Atelier sin que cada plantilla reescriba el visor, los filtros o el
+ * arrastre del antes y después, que es donde están los fallos difíciles.
+ *
+ * Límite aceptado: la plantilla no recibe las fotos ni los productos sueltos
+ * para escribir su propio cuerpo. El cuerpo se retoca con CSS desde su marco
+ * (.k-galeria-rejilla, .k-panel…), que va después de BLOQUES_CSS y gana.
+ * `ejemplo` lo pone quien llama.
+ */
+export function richBlockFrameView(b: RichBlockInput, base: string, edicion = false, variante?: string) {
+  return {
+    id: b.id,
+    tipo: b.tipo,
+    clase: richBlockClass(b.tipo),
+    titulo: b.titulo,
+    texto_html: b.texto ? renderSiteMarkdown(b.texto) : '',
+    cuerpo_html: richBlockBody(b, base, edicion, variante),
+  };
+}
+
+/** Las piezas con las que una plantilla pone su marco a un bloque rico.
+ *  Opcionales: sin ellas sale el del motor. */
+export const SITE_RICH_BLOCK_PARTS = SITE_RICH_BLOCK_TYPES.map((t) => `bloque_${t}` as const);
+export type SiteRichBlockPart = (typeof SITE_RICH_BLOCK_PARTS)[number];
+
+/** El cuerpo de un bloque rico: todo menos la <section>, el título y el
+ *  texto. */
+function richBlockBody(b: RichBlockInput, base: string, edicion: boolean, variante?: string): string {
   // Solo las relativas suben de nivel: una absoluta ('/web-draft/…', la de
   // la vista previa del laboratorio) ya apunta bien desde cualquier página.
   const src = (p: string) => esc(p && !/^(?:https?:|\/)/.test(p) ? base + p : p);
   // Solo en la vista del editor (29/10/2026): el dato de cada foto, para
   // cambiarla pulsándola (SiteLivePreview). Lo publicado no lo lleva.
   const foto: FotoAttr = (path) => (edicion ? ` data-k-foto="${esc(`bloques.${b.id}.${path}`)}"` : '');
-  // De ejemplo (site-sector-blocks.ts): el bloque entero va resaltado con la
-  // marca de la plantilla (.dato-ejemplo-bloque).
-  const open = `<section class="k-bloque k-${b.tipo.replace('_', '-')}" id="bloque-${esc(b.id)}"><div class="k-dentro">${ejemplo ? '<div class="dato-ejemplo-bloque">' : ''}${head(b)}`;
-  const close = `${ejemplo ? '</div>' : ''}</div></section>`;
 
   if (b.tipo === 'galeria') {
     const items = b.fotos
@@ -239,33 +284,33 @@ export function renderRichBlock(b: RichBlockInput, base: string, ejemplo = false
           `<li><a class="k-galeria-foto" href="${src(f.foto)}" data-k-galeria="${esc(b.id)}"${f.texto ? ` data-k-pie="${esc(f.texto)}"` : ''}><img${foto(`fotos.${f.i}.foto`)} src="${src(f.foto)}" alt="${esc(f.alt)}" loading="lazy"></a>${f.texto ? `<p class="k-pie">${esc(f.texto)}</p>` : ''}</li>`,
       )
       .join('');
-    return `${open}<ul class="k-galeria-rejilla">${items}</ul>${close}`;
+    return `<ul class="k-galeria-rejilla">${items}</ul>`;
   }
 
   if (b.tipo === 'antes_despues') {
     const [antes, despues] = b.fotos.map((f, i) => ({ ...f, i })).filter((f) => f.foto);
     if (!despues) {
       // Solo una foto: se enseña sola, sin comparador.
-      return `${open}<figure class="k-comparador-sola"><img${foto(`fotos.${antes.i}.foto`)} src="${src(antes.foto)}" alt="${esc(antes.alt)}" loading="lazy"></figure>${close}`;
+      return `<figure class="k-comparador-sola"><img${foto(`fotos.${antes.i}.foto`)} src="${src(antes.foto)}" alt="${esc(antes.alt)}" loading="lazy"></figure>`;
     }
     const la = antes.texto || 'Antes';
     const ld = despues.texto || 'Después';
     return (
-      `${open}<figure class="k-comparador" style="--k-pos:50%">` +
+      `<figure class="k-comparador" style="--k-pos:50%">` +
       `<img${foto(`fotos.${antes.i}.foto`)} class="k-comparador-antes" src="${src(antes.foto)}" alt="${esc(la)}: ${esc(antes.alt)}" loading="lazy">` +
       `<div class="k-comparador-despues"><img${foto(`fotos.${despues.i}.foto`)} src="${src(despues.foto)}" alt="${esc(ld)}: ${esc(despues.alt)}" loading="lazy"></div>` +
       `<span class="k-comparador-linea" aria-hidden="true"></span>` +
       `<span class="k-etiqueta k-etiqueta--antes" aria-hidden="true">${esc(la)}</span><span class="k-etiqueta k-etiqueta--despues" aria-hidden="true">${esc(ld)}</span>` +
       `<input class="k-comparador-control" type="range" min="0" max="100" value="50" aria-label="Desliza para comparar: ${esc(la)} y ${esc(ld)}">` +
-      `</figure>${close}`
+      `</figure>`
     );
   }
 
-  if (b.tipo === 'pestanas') return open + renderPestanas(b, src, foto, variante) + close;
-  if (b.tipo === 'comparativa') return open + renderComparativa(b) + close;
-  if (b.tipo === 'trayectoria') return open + renderTrayectoria(b) + close;
-  if (b.tipo === 'marcas') return open + renderMarcas(b, src, foto) + close;
-  if (b.tipo === 'video') return open + renderVideo(b, src, foto) + close;
+  if (b.tipo === 'pestanas') return renderPestanas(b, src, foto, variante);
+  if (b.tipo === 'comparativa') return renderComparativa(b);
+  if (b.tipo === 'trayectoria') return renderTrayectoria(b);
+  if (b.tipo === 'marcas') return renderMarcas(b, src, foto);
+  if (b.tipo === 'video') return renderVideo(b, src, foto);
 
   // Catálogo
   const cats = [...new Map(b.productos.filter((p) => p.categoria).map((p) => [slug(p.categoria), p.categoria])).entries()];
@@ -295,7 +340,7 @@ export function renderRichBlock(b: RichBlockInput, base: string, ejemplo = false
       );
     })
     .join('');
-  return `${open}${filtros}<ul class="k-catalogo-rejilla">${productos}</ul>${close}`;
+  return `${filtros}<ul class="k-catalogo-rejilla">${productos}</ul>`;
 }
 
 /**

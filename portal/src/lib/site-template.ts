@@ -12,7 +12,7 @@ import {
   resolveContentPath,
 } from './site-content';
 import { renderSiteMarkdown } from './site-markdown';
-import { BLOQUES_CSS, BLOQUES_JS, isRichBlockType, renderRichBlock, richBlockHasContent, videoPlatformsIn } from './site-rich-blocks';
+import { BLOQUES_CSS, BLOQUES_JS, isRichBlockType, renderRichBlock, richBlockFrameView, richBlockHasContent, videoPlatformsIn, type SiteRichBlockPart } from './site-rich-blocks';
 import { LEGAL_PAGES, legalPageMarkdown } from './site-legal';
 import { localizeGoogleFonts, replaceGoogleFontFamilies } from './site-fonts';
 import { resolveSiteStyle, siteStyleCss, type SiteTemplateStyle } from './site-style';
@@ -75,7 +75,7 @@ export type SiteVariantPart = `${SiteSectionType}@${string}`;
 
 export interface SiteTemplateSource {
   marco: string;
-  secciones: Partial<Record<SiteTemplatePart | SiteVariantPart, string>>;
+  secciones: Partial<Record<SiteTemplatePart | SiteVariantPart | SiteRichBlockPart, string>>;
   /** Qué colores y tipografías puede cambiar cada negocio (site-style.ts).
    *  Sin esto, la plantilla se pinta siempre tal cual. */
   estilo?: SiteTemplateStyle | null;
@@ -621,7 +621,26 @@ function renderSections(
         const rich = { ...block, tipo: block.tipo };
         if (richBlockHasContent(rich)) {
           const ejemplo = content.ejemplos.some((e) => e.startsWith(`bloques.${block.id}.`));
-          rendered.push({ kind: 'block', anchor: `bloque-${block.id}`, tipo: 'bloque', html: renderRichBlock(rich, pageFile(page.ruta).base, ejemplo, Boolean(edit), blockVariant(block.tipo, ref.variante)?.id) });
+          const base = pageFile(page.ruta).base;
+          const variante = blockVariant(block.tipo, ref.variante)?.id;
+          // 31/10/2026 — si la plantilla trae su marco (bloque_galeria), el
+          // marco es suyo y el cuerpo sigue siendo del motor
+          // (richBlockFrameView). Lo de ejemplo se marca entero con
+          // .dato-ejemplo-bloque, como en el del motor: sin quitar sus rutas
+          // de examples, el título saldría resaltado dos veces.
+          const frame = template.secciones[`bloque_${block.tipo}`];
+          const html = frame
+            ? renderNodes(
+                parseMustache(frame),
+                [
+                  { value: { ...view, ancla: `bloque-${block.id}` }, path: '' },
+                  { value: { ...richBlockFrameView(rich, base, Boolean(edit), variante), ejemplo }, path: `bloques.${block.id}` },
+                ],
+                new Set([...examples].filter((e) => !e.startsWith(`bloques.${block.id}.`))),
+                edit,
+              )
+            : renderRichBlock(rich, base, ejemplo, Boolean(edit), variante);
+          rendered.push({ kind: 'block', anchor: `bloque-${block.id}`, tipo: 'bloque', html });
         }
         continue;
       }
