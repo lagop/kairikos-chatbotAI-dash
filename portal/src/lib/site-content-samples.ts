@@ -662,9 +662,252 @@ const BEAUTY_RENDER_CONTEXT: SiteRenderContext = {
   ]),
 };
 
+// 31/10/2026 — restauración y profesionales, para sus primeras plantillas.
+// Hasta entonces esos dos sectores no tenían ninguna aprobada y sus borradores
+// (también los de las casillas «Restaurante o bar» y «Asesoría o despacho» de
+// kairikos.com) salían con el diseño antiguo. Mismo molde que los de arriba.
+
+const foodNormal: SiteContent = {
+  ...normal,
+  paginas: [defaultHomePage()],
+  datos: {
+    ...normal.datos,
+    titular: 'Cocina de mercado, con producto de la isla y sin prisas',
+    subtitulo: 'Menú del día de lunes a viernes, carta de temporada y celebraciones. Reserva tu mesa o pásate a recoger.',
+    sobre:
+      'Somos un restaurante de barrio donde **cocinamos cada día con lo que trae el mercado**.\n\nLo que no falta:\n- Pescado del día\n- Postres caseros',
+    llamada_accion: 'Reserva tu mesa y te la guardamos',
+    servicios: [
+      { nombre: 'Menú del día', descripcion: 'Primero, segundo, postre y bebida, de lunes a viernes.', icono: 'plato' },
+      { nombre: 'Carta de temporada', descripcion: 'Cambia con el mercado: pescado, carnes y verduras de aquí.', icono: 'hoja' },
+      { nombre: 'Celebraciones y grupos', descripcion: 'Cumpleaños, comidas de empresa y reuniones familiares.', icono: 'copa' },
+      { nombre: 'Para llevar', descripcion: 'Encarga por teléfono y pásate a recogerlo.', icono: 'bolsa' },
+    ],
+    cifras: [
+      { valor: '14 €', etiqueta: 'el menú del día, con bebida y postre' },
+      { valor: '25 años', etiqueta: 'dando de comer al barrio' },
+    ],
+    proceso: [
+      { titulo: 'Reservas', texto: 'Por teléfono o por el formulario, para hoy o para otro día.' },
+      { titulo: 'Te sentamos', texto: 'Con la mesa lista y la carta del día explicada.' },
+      { titulo: 'Repites', texto: 'Que es lo que suele pasar.' },
+    ],
+    precios: {
+      nota: 'Precios orientativos; la carta cambia con el mercado.',
+      filas: [
+        { concepto: 'Menú del día', precio: '14 €', detalle: 'De lunes a viernes, al mediodía.' },
+        { concepto: 'Menú de grupo', precio: 'Desde 28 €', detalle: 'A partir de 10 personas, con entrantes para compartir.' },
+        { concepto: 'Pescado del día', precio: 'Según mercado', detalle: '' },
+      ],
+    },
+    garantias: [
+      { titulo: 'Producto de aquí', texto: 'Pescado, verduras y quesos de productores de la isla.' },
+      { titulo: 'Alérgenos a la vista', texto: 'Te decimos qué lleva cada plato y lo adaptamos si se puede.' },
+    ],
+    zona: { texto: 'Estamos a dos calles del mercado. Hacemos encargos para recoger.', lugares: normal.datos.zona.lugares },
+    faq: [
+      { pregunta: '¿Hace falta reservar?', respuesta: 'Para el mediodía, **mejor sí**: se llena pronto.' },
+      { pregunta: '¿Tenéis opciones sin gluten?', respuesta: 'Sí, varias; pregúntanos al reservar.' },
+    ],
+    horario: [
+      { dias: 'Lunes a viernes', horas: '12:30 – 16:30' },
+      { dias: 'Viernes y sábados', horas: '20:00 – 23:30' },
+    ],
+  },
+  bloques: [
+    { ...bloqueVacio('historia', 'texto'), titulo: 'Nuestra historia', texto: 'Abrimos en 2001 con seis mesas y la receta de potaje de la abuela.' },
+    { ...bloqueVacio('agosto', 'aviso'), titulo: 'Agosto', texto: 'Cerrado por vacaciones del 10 al 20 de agosto.' },
+  ],
+  legal: { titular: 'Restaurante Ejemplo S.L.', nif: 'B00000000', domicilio: 'Calle de Muestra, 1, Las Palmas de Gran Canaria', email: 'hola@restaurante-ejemplo.invalid', registro: '' },
+  blog: {
+    titulo: 'Blog',
+    intro: 'Lo que pasa en la cocina: platos nuevos, temporada y recetas.',
+    entradas: [
+      {
+        ...normal.blog.entradas[0],
+        slug: 'que-pescado-hay-esta-semana',
+        titulo: '¿Qué pescado hay esta semana?',
+        extracto: 'Cada lunes vamos al mercado: esto es lo que hay y cómo lo cocinamos.',
+        texto:
+          'Esta semana ha llegado vieja y cherne.\n\n## Cómo lo hacemos\n\n- A la espalda, con mojo verde\n- Sancochado, con papas arrugadas\n- En caldo, los viernes\n\nSi quieres reservar, [escríbenos](mailto:hola@restaurante-ejemplo.invalid).',
+      },
+      {
+        ...normal.blog.entradas[1],
+        slug: 'la-receta-del-potaje',
+        titulo: 'La receta del potaje de berros',
+        texto: 'Es el plato que más nos piden en invierno.\n\nEl secreto es el tiempo: dos horas a fuego lento y los berros al final.',
+      },
+    ],
+  },
+};
+foodNormal.paginas[0].secciones.splice(4, 0, { tipo: 'bloque', id: 'historia' });
+foodNormal.paginas[0].secciones.unshift({ tipo: 'bloque', id: 'agosto' });
+
+const foodExagerado: SiteContent = {
+  ...exagerado,
+  datos: {
+    ...exagerado.datos,
+    titular: 'Cocina canaria de mercado, menú del día, carta de temporada y celebraciones en la isla',
+    subtitulo: repeat('Producto de productores locales, alérgenos señalados en cada plato y reserva sin esperas,', 3).slice(0, 220),
+    sobre: repeat('Somos un restaurante familiar que cocina cada día con producto del mercado y recetas de siempre.', 12).slice(0, 1200),
+    llamada_accion: 'Llámanos ahora y te guardamos mesa para hoy o para el fin de semana con tu grupo',
+    servicios: exagerado.datos.servicios.map((s, i) => ({
+      ...s,
+      nombre: i % 3 === 0 ? 'Menú degustación de temporada con maridaje de vinos de bodegas de la isla' : `Servicio número ${i + 1}`,
+      icono: i % 2 ? 'plato' : '',
+    })),
+    precios: {
+      ...exagerado.datos.precios,
+      filas: exagerado.datos.precios.filas.map((f, i) => ({ ...f, concepto: i % 2 ? f.concepto : 'Menú de celebración para grupos con entrantes, principal, postre y bebida incluida' })),
+    },
+    garantias: exagerado.datos.garantias.map((g) => ({ ...g, titulo: 'Producto fresco de productores de la isla' })),
+    faq: exagerado.datos.faq.map((f, i) => ({ ...f, pregunta: i % 2 ? '¿Abrís domingos?' : '¿Podemos traer nuestra propia tarta para una celebración y que la sirváis vosotros en la mesa?' })),
+    titulos: Object.fromEntries(
+      SITE_TITLED_SECTIONS.map((t) => [t, 'Cocina canaria de mercado y celebraciones en Las Palmas, Telde, Arucas y Gáldar']),
+    ) as SiteContent['datos']['titulos'],
+  },
+  legal: foodNormal.legal,
+  blog: { ...exagerado.blog, intro: repeat('Lo que pasa en nuestra cocina cada semana, contado con calma.', 4).slice(0, 300) },
+};
+
+const FOOD_RENDER_CONTEXT: SiteRenderContext = {
+  ...SAMPLE_RENDER_CONTEXT,
+  negocio: { ...SAMPLE_RENDER_CONTEXT.negocio, nombre: 'Restaurante Ejemplo' },
+  citasHtml: renderCitasHtml([
+    { title: 'Como en casa', quote: 'Se come como en casa.', author: 'Cliente A.' },
+    { title: 'El pescado', quote: 'El pescado, fresquísimo.', author: 'Clienta B.' },
+    { title: 'Buen trato', quote: 'Nos trataron de maravilla con el grupo.', author: 'Cliente C.' },
+  ]),
+  resenasHtml: renderResenasHtml([
+    { ref: 'a', rating: 5, text: 'Se come como en casa y a buen precio. El menú del día, de diez.', translated: false, author: 'Cliente A.', authorUri: null, relativeTime: 'Hace un año' },
+    { ref: 'b', rating: 5, text: 'El pescado fresquísimo y el trato muy cercano. Volveremos.', translated: false, author: 'Clienta B.', authorUri: null, relativeTime: 'Hace 10 meses' },
+    { ref: 'c', rating: 4, text: 'Buena comida; los fines de semana, mejor reservar.', translated: true, author: 'Cliente C.', authorUri: null, relativeTime: 'Hace 2 meses' },
+  ]),
+};
+
+const professionalNormal: SiteContent = {
+  ...normal,
+  paginas: [defaultHomePage()],
+  datos: {
+    ...normal.datos,
+    titular: 'Tus impuestos y tus papeles en orden, sin sustos ni letra pequeña',
+    subtitulo: 'Asesoría fiscal, laboral y contable para autónomos y pequeñas empresas. Te explicamos cada trámite y su coste antes de empezar.',
+    sobre:
+      'Somos una asesoría de barrio donde **te atiende siempre la misma persona** y te contesta el mismo día.\n\nTe llevamos:\n- Declaraciones trimestrales y renta\n- Nóminas y contratos',
+    llamada_accion: 'Llámanos y te decimos cómo podemos ayudarte',
+    servicios: [
+      { nombre: 'Asesoría fiscal', descripcion: 'IVA, IRPF, IGIC y sociedades, presentados a tiempo.', icono: 'documento' },
+      { nombre: 'Laboral', descripcion: 'Nóminas, altas, contratos y seguros sociales.', icono: 'personas' },
+      { nombre: 'Contabilidad', descripcion: 'Tus libros al día y tus cuentas claras cada trimestre.', icono: 'grafica' },
+      { nombre: 'Trámites y altas', descripcion: 'Te damos de alta como autónomo o constituimos tu empresa.', icono: 'balanza' },
+    ],
+    cifras: [
+      { valor: 'Mismo día', etiqueta: 'te contestamos las dudas' },
+      { valor: '18 años', etiqueta: 'asesorando a autónomos y pymes' },
+    ],
+    proceso: [
+      { titulo: 'Nos cuentas', texto: 'Una primera charla, por teléfono o en el despacho, sin compromiso.' },
+      { titulo: 'Te decimos el precio', texto: 'Una cuota mensual cerrada, por escrito.' },
+      { titulo: 'Nos ocupamos', texto: 'Y te avisamos antes de cada plazo.' },
+    ],
+    precios: {
+      nota: 'Precios orientativos; la cuota cerrada te la damos después de la primera charla.',
+      filas: [
+        { concepto: 'Autónomos', precio: 'Desde 45 €/mes', detalle: 'Fiscal y contable, con la renta incluida.' },
+        { concepto: 'Sociedades', precio: 'Desde 120 €/mes', detalle: 'Según el volumen de facturas.' },
+        { concepto: 'Nóminas', precio: 'Desde 12 €', detalle: 'Por trabajador y mes.' },
+      ],
+    },
+    garantias: [
+      { titulo: 'Primera consulta sin compromiso', texto: 'Te escuchamos y te decimos si podemos ayudarte.' },
+      { titulo: 'Plazos vigilados', texto: 'Te avisamos antes de cada presentación; nada se pasa.' },
+    ],
+    zona: { texto: 'Atendemos en el despacho y a distancia a clientes de toda la isla.', lugares: normal.datos.zona.lugares },
+    faq: [
+      { pregunta: '¿Hace falta ir al despacho?', respuesta: 'No: casi todo se puede hacer **por correo y teléfono**.' },
+      { pregunta: '¿Y si ya tengo otro gestor?', respuesta: 'Nos encargamos del cambio y de pedirle tu documentación.' },
+    ],
+    horario: [
+      { dias: 'Lunes a jueves', horas: '9:00 – 14:00 y 16:00 – 19:00' },
+      { dias: 'Viernes', horas: '9:00 – 14:00' },
+    ],
+  },
+  bloques: [
+    { ...bloqueVacio('historia', 'texto'), titulo: 'Nuestra historia', texto: 'Abrimos en 2008 para llevar los papeles de los negocios del barrio.' },
+    { ...bloqueVacio('agosto', 'aviso'), titulo: 'Agosto', texto: 'En agosto, horario de mañana. Los plazos de julio, presentados antes del día 20.' },
+  ],
+  legal: { titular: 'Asesoría Ejemplo S.L.', nif: 'B00000000', domicilio: 'Calle de Muestra, 1, Las Palmas de Gran Canaria', email: 'hola@asesoria-ejemplo.invalid', registro: '' },
+  blog: {
+    titulo: 'Blog',
+    intro: 'Plazos, cambios de normativa y trucos para autónomos, explicados sin jerga.',
+    entradas: [
+      {
+        ...normal.blog.entradas[0],
+        slug: 'que-gastos-puede-deducir-un-autonomo',
+        titulo: '¿Qué gastos puede deducir un autónomo?',
+        extracto: 'Los que están relacionados con tu actividad y puedes justificar: te contamos cuáles.',
+        texto:
+          'La regla es sencilla: el gasto tiene que estar ligado a tu actividad y tener factura.\n\n## Los más habituales\n\n- Material y herramientas\n- Cuota de autónomos\n- Parte de los suministros si trabajas en casa\n\nSi tienes dudas, [escríbenos](mailto:hola@asesoria-ejemplo.invalid).',
+      },
+      {
+        ...normal.blog.entradas[1],
+        slug: 'calendario-del-trimestre',
+        titulo: 'El calendario del trimestre, en una hoja',
+        texto: 'Los plazos que no se pueden pasar.\n\nDel 1 al 20 del mes siguiente al trimestre: IVA o IGIC y pagos a cuenta.',
+      },
+    ],
+  },
+};
+professionalNormal.paginas[0].secciones.splice(4, 0, { tipo: 'bloque', id: 'historia' });
+professionalNormal.paginas[0].secciones.unshift({ tipo: 'bloque', id: 'agosto' });
+
+const professionalExagerado: SiteContent = {
+  ...exagerado,
+  datos: {
+    ...exagerado.datos,
+    titular: 'Asesoría fiscal, laboral, contable y jurídica para autónomos, pymes y comunidades en Telde',
+    subtitulo: repeat('Cuota mensual cerrada por escrito, aviso antes de cada plazo y respuesta el mismo día,', 3).slice(0, 220),
+    sobre: repeat('Somos una asesoría familiar que explica cada trámite, vigila cada plazo y contesta el mismo día.', 12).slice(0, 1200),
+    llamada_accion: 'Llámanos y te explicamos sin compromiso cómo llevar tus papeles este trimestre',
+    servicios: exagerado.datos.servicios.map((s, i) => ({
+      ...s,
+      nombre: i % 3 === 0 ? 'Constitución de sociedades limitadas con escritura, alta censal y registro' : `Servicio número ${i + 1}`,
+      icono: i % 2 ? 'documento' : '',
+    })),
+    precios: {
+      ...exagerado.datos.precios,
+      filas: exagerado.datos.precios.filas.map((f, i) => ({ ...f, concepto: i % 2 ? f.concepto : 'Cuota mensual de sociedad limitada con contabilidad, impuestos y cuentas anuales' })),
+    },
+    garantias: exagerado.datos.garantias.map((g) => ({ ...g, titulo: 'Te avisamos antes de cada plazo de presentación' })),
+    faq: exagerado.datos.faq.map((f, i) => ({ ...f, pregunta: i % 2 ? '¿Hacéis la renta?' : '¿Qué pasa si Hacienda me envía un requerimiento por un trimestre que me llevaba otro gestor?' })),
+    titulos: Object.fromEntries(
+      SITE_TITLED_SECTIONS.map((t) => [t, 'Asesoría fiscal, laboral y contable para autónomos en Las Palmas, Telde, Arucas y Gáldar']),
+    ) as SiteContent['datos']['titulos'],
+  },
+  legal: professionalNormal.legal,
+  blog: { ...exagerado.blog, intro: repeat('Plazos, normativa y consejos para tu negocio, explicados con calma.', 4).slice(0, 300) },
+};
+
+const PROFESSIONAL_RENDER_CONTEXT: SiteRenderContext = {
+  ...SAMPLE_RENDER_CONTEXT,
+  negocio: { ...SAMPLE_RENDER_CONTEXT.negocio, nombre: 'Asesoría Ejemplo' },
+  citasHtml: renderCitasHtml([
+    { title: 'Te lo explican', quote: 'Por fin entiendo lo que pago.', author: 'Cliente A.' },
+    { title: 'Siempre contestan', quote: 'Contestan el mismo día.', author: 'Clienta B.' },
+    { title: 'Sin sustos', quote: 'Ni un plazo pasado en cinco años.', author: 'Cliente C.' },
+  ]),
+  resenasHtml: renderResenasHtml([
+    { ref: 'a', rating: 5, text: 'Por fin entiendo lo que pago y por qué. Muy claros y muy cercanos.', translated: false, author: 'Cliente A.', authorUri: null, relativeTime: 'Hace un año' },
+    { ref: 'b', rating: 5, text: 'Contestan el mismo día y me avisan antes de cada plazo. Un descanso.', translated: false, author: 'Clienta B.', authorUri: null, relativeTime: 'Hace 10 meses' },
+    { ref: 'c', rating: 4, text: 'Buen servicio y buen precio; recomendables.', translated: true, author: 'Cliente C.', authorUri: null, relativeTime: 'Hace 2 meses' },
+  ]),
+};
+
 const BY_SECTOR: Readonly<Record<string, { samples: Record<SiteContentSampleName, SiteContent>; context: SiteRenderContext }>> = {
   health: { samples: { normal: healthNormal, exagerado: healthExagerado, minimo: healthMinimo }, context: HEALTH_RENDER_CONTEXT },
   beauty: { samples: { normal: beautyNormal, exagerado: beautyExagerado, minimo: minimoDe(beautyNormal) }, context: BEAUTY_RENDER_CONTEXT },
+  food: { samples: { normal: foodNormal, exagerado: foodExagerado, minimo: minimoDe(foodNormal) }, context: FOOD_RENDER_CONTEXT },
+  professional: { samples: { normal: professionalNormal, exagerado: professionalExagerado, minimo: minimoDe(professionalNormal) }, context: PROFESSIONAL_RENDER_CONTEXT },
 };
 
 /** Los contenidos de muestra y el contexto con los que se ve una plantilla de

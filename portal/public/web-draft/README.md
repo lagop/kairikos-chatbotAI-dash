@@ -7,8 +7,8 @@ Cada familia de sector tiene aquí su imagen de portada. La plantilla
 beauty.jpg        belleza que no se reconoce (ver belleza/, abajo)
 trades.jpg        fontanería, electricidad, reformas, cerrajería, taller
 health.jpg        clínicas dentales, fisioterapia, veterinaria
-food.jpg          restaurantes, cafeterías, panaderías
-professional.jpg  abogados, asesorías, inmobiliarias, seguros
+food.jpg          ya no sale en ningún borrador (ver restauracion/, abajo)
+professional.jpg  ya no sale en ningún borrador (ver profesionales/, abajo)
 ```
 
 Las cinco están puestas (Unsplash, 1600×900, ~200-350 KB). Si un `.jpg` faltara, **la plantilla no se rompe**: cae a un degradado
@@ -252,3 +252,35 @@ Orlando el 30/10/2026. Las cuatro que pasaban de 400 KB se recomprimieron
 | clinica-2 | 8WYkI3cEZm8 | Vitaly Gariev |
 | clinica-3 | 2kopEHjST-g | Vitaly Gariev |
 | clinica-4 | 6qN9yEK5k9U | Vitaly Gariev |
+
+## Restauración y profesionales (`restauracion/`, `profesionales/`, 31/10/2026)
+
+Para las primeras plantillas de los dos sectores. Solo de portada, por el
+nombre y luego por el tipo de Google (`trade-photos.ts`); lo que no se
+reconoce sale con la de restaurante o la de despacho, no con `food.jpg` ni
+`professional.jpg`. Ese día no había ningún borrador de estas familias en
+producción: ninguno cambió de foto.
+
+Local, producto y manos, sin caras. Unsplash («Foto gratuita»), a 1600×900,
+revisadas a tamaño completo y descargadas el 31/10/2026 dentro del encargo de
+Orlando de esa mañana (plantillas para restauración y profesionales). Se
+descartaron cuatro: una «G» de una marca en las copas de un restaurante, una
+caja de «Glamorous Planning» y un vaso de una cadena de cafés en un escritorio,
+una pared de cuadros con gente en una cafetería y un surtido de panes con
+pinta de foto de catálogo resubida. Por eso hay dos de cafetería, panadería y
+despacho, y no tres.
+
+| Archivo | Foto (unsplash.com/es/fotos/…) | Autor |
+|---|---|---|
+| restauracion/restaurante-1 | 3qtt3xTFHoQ | Erik Binggeser |
+| restauracion/restaurante-2 | 3BuL04h2KCc | laura adai |
+| restauracion/restaurante-3 | kGP7rp2gWbc | Andrius Budrikas |
+| restauracion/cafeteria-1 | CqVS_klTib4 | Louis Hansel |
+| restauracion/cafeteria-2 | yr9l_xQPDL0 | 99.films |
+| restauracion/panaderia-1 | rsWZ-P9FbQ4 | Wesual Click |
+| restauracion/panaderia-2 | tOYiQxF9-Ys | Nadya Spetnitskaya |
+| profesionales/despacho-1 | J1rNS2qv8BQ | Nastuh Abootalebi |
+| profesionales/despacho-2 | vLjAoVXpjm0 | Becomes Co |
+| profesionales/inmobiliaria-1 | rgJ1J8SDEAY | Tierra Mallorca |
+| profesionales/inmobiliaria-2 | 3HfGnyPfWqQ | Jakub Żerdzicki |
+| profesionales/inmobiliaria-3 | LvDY2D-FmAA | Konstantin Evdokimov |

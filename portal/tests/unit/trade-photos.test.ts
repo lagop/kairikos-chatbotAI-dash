@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { HEALTH_PHOTO_COUNTS, TRADE_HERO_PHOTOS, TRADE_PHOTO_COUNTS, healthPhotoSet, tradeDetailPhotos, tradeHeroPhoto, tradePhotoSet, type HealthPhotoSet, type TradePhotoSet } from '@/lib/trade-photos';
+import { FOOD_PHOTO_COUNTS, HEALTH_PHOTO_COUNTS, PROFESSIONAL_PHOTO_COUNTS, TRADE_HERO_PHOTOS, TRADE_PHOTO_COUNTS, foodPhotoSet, healthPhotoSet, professionalPhotoSet, tradeDetailPhotos, tradeHeroPhoto, tradePhotoSet, type FoodPhotoSet, type HealthPhotoSet, type TradePhotoSet } from '@/lib/trade-photos';
 
 const DIR = join(process.cwd(), 'public', 'web-draft', 'oficios');
 
@@ -103,5 +103,49 @@ describe('fotos de salud', () => {
     expect(tradeHeroPhoto('health', 'Huve', null)).toMatch(/^\/web-draft\/salud\/clinica-[1-4]\.jpg$/);
     // Un oficio que se llame «Dental» no sale con sillones: no es de salud.
     expect(tradeHeroPhoto('trades', 'Dental Hermanos', null)).toBeNull();
+  });
+});
+
+describe('fotos de restauración y profesionales', () => {
+  it('están todas en public/ y ninguna sobra ni pesa de más', () => {
+    for (const [carpeta, counts] of [['restauracion', FOOD_PHOTO_COUNTS], ['profesionales', PROFESSIONAL_PHOTO_COUNTS]] as const) {
+      const dir = join(process.cwd(), 'public', 'web-draft', carpeta);
+      const expected = Object.entries(counts).flatMap(([set, n]) => Array.from({ length: n }, (_, i) => `${set}-${i + 1}.jpg`));
+      expect(readdirSync(dir).filter((f) => f.endsWith('.jpg')).sort()).toEqual(expected.sort());
+      for (const f of expected) expect(statSync(join(dir, f)).size).toBeLessThan(400 * 1024);
+    }
+  });
+
+  const food: [string, string | null, FoodPhotoSet][] = [
+    ['Panadería Cafetería La Espiga', 'cafe', 'panaderia'],
+    ['Dulcería Ana', null, 'panaderia'],
+    ['Café del Puerto', 'restaurant', 'cafeteria'],
+    ['La Esquina', 'bakery', 'panaderia'],
+    ['La Esquina', 'cafe', 'cafeteria'],
+    // «Horno» no basta: es una pizzería.
+    ['Pizzería Horno de Leña', 'restaurant', 'restaurante'],
+    ['Huve', null, 'restaurante'],
+  ];
+  it.each(food)('%s (%s) → %s', (name, type, set) => {
+    expect(foodPhotoSet(name, type)).toBe(set);
+  });
+
+  it('inmobiliarias aparte; asesorías, abogados y seguros en despacho', () => {
+    expect(professionalPhotoSet('Inmobiliaria Atlántico', null)).toBe('inmobiliaria');
+    expect(professionalPhotoSet('Administración de Fincas Pérez', 'accounting')).toBe('inmobiliaria');
+    expect(professionalPhotoSet('Grupo Sur', 'real_estate_agency')).toBe('inmobiliaria');
+    expect(professionalPhotoSet('Asesoría Ejemplo', 'accounting')).toBe('despacho');
+    expect(professionalPhotoSet('Bufete Ruiz', 'lawyer')).toBe('despacho');
+    expect(professionalPhotoSet('Huve', null)).toBe('despacho');
+  });
+
+  it('el mismo negocio, la misma foto; siempre hay una, de su carpeta', () => {
+    const a = tradeHeroPhoto('food', 'Café del Puerto', 'cafe');
+    expect(a).toMatch(/^\/web-draft\/restauracion\/cafeteria-[12]\.jpg$/);
+    expect(tradeHeroPhoto('food', 'CAFÉ DEL PUERTO ', 'cafe')).toBe(a);
+    expect(tradeHeroPhoto('food', 'Huve', null)).toMatch(/^\/web-draft\/restauracion\/restaurante-[1-3]\.jpg$/);
+    expect(tradeHeroPhoto('professional', 'Huve', null)).toMatch(/^\/web-draft\/profesionales\/despacho-[12]\.jpg$/);
+    // Un taller que se llame «Café» no sale con tazas.
+    expect(tradeHeroPhoto('trades', 'Café Motor', null)).toBeNull();
   });
 });
