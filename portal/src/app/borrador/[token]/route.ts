@@ -4,6 +4,7 @@ import { isShareToken } from '@/lib/prospecting-share';
 import { renderWebDraftHtml } from '@/lib/web-draft-html';
 import type { WebDraftCopy } from '@/lib/web-draft-ai';
 import { renderDesignedDraft } from '@/lib/web-draft-design';
+import { draftUploadsBase } from '@/lib/web-draft-images';
 import { logError } from '@/lib/observability';
 import { getWebDraftPurchase, purchaseCtaFor } from '@/lib/web-self-serve';
 import { KAIRIKOS_DEMO_URL } from '@/lib/portal-data';
@@ -92,6 +93,7 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ token: s
       themeKey: draft.themeKey,
       purchase: cta,
       offer,
+      subidasBase: draftUploadsBase(params.token),
     });
     const html =
       designed ??

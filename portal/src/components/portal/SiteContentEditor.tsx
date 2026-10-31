@@ -127,12 +127,14 @@ export interface SiteContentEditorProps {
    *  error crudo al publicar (el del servidor SFTP, que es el que le sirve). */
   operador?: { clienteNombre: string } | null;
   /** 30/10/2026 — el borrador de un prospecto, editado por el operador
-   *  (lib/web-draft-editor.ts). Sin publicar ni «Mis datos», solo la portada
-   *  y sin subir fotos. `verUrl`: el borrador guardado, como lo ve él.
+   *  (lib/web-draft-editor.ts). Sin publicar ni «Mis datos» y solo la
+   *  portada. `verUrl`: el borrador guardado, como lo ve él.
    *  `aviso` y `guardado` sustituyen a los textos de prospección: un
    *  borrador de kairikos.com sin enviar no se ve en su enlace todavía y no
-   *  tiene historial (lib/public-draft-editor.ts). */
-  borrador?: { negocio: string; verUrl: string; aviso?: string; guardado?: string } | null;
+   *  tiene historial (lib/public-draft-editor.ts). `subidas` (31/10/2026):
+   *  el borrador tiene dónde guardar fotos — los de prospección sí
+   *  (lib/web-draft-images.ts), los de kairikos.com todavía no. */
+  borrador?: { negocio: string; verUrl: string; aviso?: string; guardado?: string; subidas?: boolean } | null;
   initialContent: SiteContent;
   phone: string | null;
   address: string | null;
@@ -220,8 +222,8 @@ const ERRORS: Record<string, string> = {
   old_design: 'Este borrador usa el diseño antiguo y no se puede editar aquí. Regenéralo para pasarlo a una plantilla.',
 };
 
-/** Si el editor puede subir fotos. En un borrador no: no hay dónde guardarlas
- *  (las subidas son de una web). Contexto y no prop: el selector de fotos
+/** Si el editor puede subir fotos: en una web sí; en un borrador, solo si tiene
+ *  dónde guardarlas (borrador.subidas). Contexto y no prop: el selector de fotos
  *  vive dentro de media docena de editores de bloque. */
 const SubidasContext = createContext(true);
 
@@ -317,6 +319,8 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
   const [address, setAddress] = useState(props.address ?? '');
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  /** Si se pueden subir fotos: en una web siempre; en un borrador, si tiene dónde. */
+  const subidas = !props.borrador || Boolean(props.borrador.subidas);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [newBlock, setNewBlock] = useState<SiteBlock['tipo']>('texto');
@@ -1006,18 +1010,25 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
 
       {tab === 'diseno' && props.estilo ? <StyleCard estilo={props.estilo} value={content.estilo} onChange={setStyle} /> : null}
 
-      {tab === 'diseno' && props.borrador ? (
+      {tab === 'diseno' && !subidas ? (
         <p className="card text-sm text-kairikos-muted">El logo y las fotos los pone el cliente cuando compra la web: en un borrador no se suben.</p>
       ) : null}
 
-      {tab === 'diseno' && !props.borrador ? (
+      {tab === 'diseno' && subidas ? (
       <div className="card space-y-4" data-testid="site-editor-images">
         <div>
           <p className="font-semibold">Logo y foto de portada</p>
-          <p className="text-sm text-kairikos-muted">
-            Con tu logo, la cabecera de tu web lo enseña en vez de tu nombre escrito. Con tu foto, la portada lleva la tuya en vez de la de muestra
-            de tu oficio. Las reducimos al subirlas y les quitamos los datos de la cámara (como el lugar donde se hizo la foto).
-          </p>
+          {props.borrador ? (
+            <p className="text-sm text-kairikos-muted">
+              Con su logo, la cabecera lo enseña en vez del nombre escrito; con una foto suya, la portada la lleva en vez de la de muestra de su
+              oficio. Si compra la web, pasan con ella. Usa las suyas (su web, sus redes), no las de Google Maps: esas no se pueden guardar.
+            </p>
+          ) : (
+            <p className="text-sm text-kairikos-muted">
+              Con tu logo, la cabecera de tu web lo enseña en vez de tu nombre escrito. Con tu foto, la portada lleva la tuya en vez de la de muestra
+              de tu oficio. Las reducimos al subirlas y les quitamos los datos de la cámara (como el lugar donde se hizo la foto).
+            </p>
+          )}
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <ImagePicker
@@ -1427,7 +1438,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
   // propio marco para lo fijo, y el editor quedaba desplazado con una franja del
   // portal asomando por arriba.
   return createPortal(
-    <SubidasContext.Provider value={!props.borrador}>
+    <SubidasContext.Provider value={subidas}>
     <div className="fixed inset-0 z-50 flex flex-col bg-kairikos-bg" role="dialog" aria-modal="true" aria-label="Editar tu web" data-testid="site-content-editor">
       <header className="flex items-center gap-2 border-b border-kairikos-border bg-kairikos-surface px-3 py-2">
         <button type="button" className="btn-ghost" onClick={cerrarEditor} data-testid="site-editor-close">
@@ -1514,7 +1525,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
             maxFor={maxFor}
             onListAction={view.kind === 'pagina' ? listAction : undefined}
             onHistory={travel}
-            onPhoto={view.kind === 'pagina' && busy === null && !props.borrador ? pickPhoto : undefined}
+            onPhoto={view.kind === 'pagina' && busy === null && subidas ? pickPhoto : undefined}
           />
           <input
             ref={photoInputRef}

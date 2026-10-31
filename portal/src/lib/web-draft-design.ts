@@ -10,6 +10,7 @@ import { pickSiteTemplateForSector } from './site-template-jobs';
 import { withSectorExamples } from './site-sector-blocks';
 import { editorStyleOptions, parseTemplateStyle } from './site-style';
 import type { WebDraftCopy } from './web-draft-ai';
+import { withDraftUploadsBase } from './web-draft-images';
 import {
   DEFAULT_WEB_DRAFT_OFFER,
   MIN_RATING_TO_SHOW,
@@ -217,6 +218,9 @@ export async function renderDesignedDraft(
     /** 30/10/2026 — la vista en vivo del editor del operador
      *  (web-draft-editor.ts): los textos marcados para editarlos en sitio. */
     edicion?: boolean;
+    /** 31/10/2026 — dónde se sirven las fotos subidas al borrador
+     *  (draftUploadsBase, web-draft-images.ts). Sin él, se quedan relativas. */
+    subidasBase?: string | null;
   },
 ): Promise<string | null> {
   if (!params.templateId || params.content == null) return null;
@@ -225,7 +229,8 @@ export async function renderDesignedDraft(
     if (!parsed.ok) return null;
     const template = await loadTemplate(prisma, params.templateId);
     if (!template) return null;
-    return renderSitePage(template, parsed.content, parsed.content.paginas[0], { ...draftRenderContext(params), edicion: params.edicion });
+    const html = renderSitePage(template, parsed.content, parsed.content.paginas[0], { ...draftRenderContext(params), edicion: params.edicion });
+    return params.subidasBase ? withDraftUploadsBase(html, params.subidasBase) : html;
   } catch (err) {
     logError('web_draft_design.render_failed', err, { templateId: params.templateId }, 'warn');
     return null;

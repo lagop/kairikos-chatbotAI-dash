@@ -6,6 +6,7 @@ import { themeFor } from '@/lib/web-draft-html';
 import { createFormToken } from '@/lib/website-form';
 import { slugify } from '@/lib/website-publish';
 import type { WebDraftCopy } from '@/lib/web-draft-ai';
+import { copyDraftImagesToWebsite } from '@/lib/web-draft-images';
 import { logError } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
@@ -149,6 +150,10 @@ export async function POST(req: NextRequest) {
           actorEmail: operator?.email ?? null,
         },
       });
+      // 31/10/2026 — las fotos subidas al borrador viajan con su contenido.
+      if (body.data.fromLeadId && seed?.content != null) {
+        await copyDraftImagesToWebsite(tx, { leadId: body.data.fromLeadId }, row.id, seed.content);
+      }
       return row;
     });
     return NextResponse.json({ ok: true, websiteId: website.id }, { status: 201 });

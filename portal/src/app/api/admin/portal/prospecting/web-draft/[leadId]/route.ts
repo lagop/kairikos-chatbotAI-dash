@@ -10,6 +10,7 @@ import { getLiveDraftData } from '@/lib/web-draft-live';
 import { addressFromLeadSummary, withLiveData } from '@/lib/web-draft-subject';
 import { filterDraftReviews } from '@/lib/web-draft-reviews';
 import { designForDraft, renderDesignedDraft } from '@/lib/web-draft-design';
+import { draftUploadsBase } from '@/lib/web-draft-images';
 import { Prisma } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
@@ -197,6 +198,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ leadId: str
     subject,
     themeKey,
     shareUrl,
+    subidasBase: shareToken ? draftUploadsBase(shareToken) : null,
   });
 
   return new NextResponse(

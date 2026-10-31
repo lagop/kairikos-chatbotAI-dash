@@ -86,16 +86,47 @@ export type StoreImageResult =
   | { ok: true; path: string; width: number; height: number; bytes: number }
   | { ok: false; error: 'too_large' | 'not_an_image' | 'too_big_dimensions' | 'too_many_images' };
 
+/** Lo que se comprueba de una imagen antes de guardarla, sea de una web o
+ *  del borrador de un prospecto (web-draft-images.ts). */
+export function checkUploadedImage(buf: Buffer): { ok: true; info: UploadImageType } | { ok: false; error: 'too_large' | 'not_an_image' | 'too_big_dimensions' } {
+  if (buf.length > MAX_UPLOAD_BYTES) return { ok: false, error: 'too_large' };
+  const info = inspectImage(buf);
+  if (!info || !info.width || !info.height) return { ok: false, error: 'not_an_image' };
+  if (info.width > MAX_UPLOAD_SIDE || info.height > MAX_UPLOAD_SIDE) return { ok: false, error: 'too_big_dimensions' };
+  return { ok: true, info };
+}
+
+/** Las rutas de subida que aparecen en un contenido, buscadas en bruto (ver
+ *  storeWebsiteImage: nunca a través del esquema). */
+export function uploadPathsIn(content: unknown): string[] {
+  return [...new Set(JSON.stringify(content ?? null).match(UPLOAD_PATH_IN_TEXT) ?? [])];
+}
+
+/** El nombre lo pone el servidor, nunca quien sube. */
+export function newUploadPath(ext: UploadImageType['ext']): string {
+  return `assets/subidas/${randomBytes(9).toString('hex')}.${ext}`;
+}
+
+/** La subida de una petición multipart (campo «archivo»), leída con tope: un
+ *  archivo enorme se rechaza por su cabecera sin cargarlo en memoria. */
+export async function readUploadedFile(req: Request): Promise<{ ok: true; buf: Buffer } | { ok: false; status: number; error: string }> {
+  const declared = Number(req.headers.get('content-length') ?? 0);
+  if (declared > MAX_UPLOAD_BYTES + 64_000) return { ok: false, status: 413, error: 'too_large' };
+  const form = await req.formData().catch(() => null);
+  const file = form?.get('archivo');
+  if (!file || typeof file === 'string') return { ok: false, status: 400, error: 'invalid_body' };
+  return { ok: true, buf: Buffer.from(await file.arrayBuffer()) };
+}
+
 /** Guarda una imagen de la web y devuelve su ruta dentro del sitio. */
 export async function storeWebsiteImage(
   prisma: PrismaClient,
   website: { id: string; content: unknown },
   buf: Buffer,
 ): Promise<StoreImageResult> {
-  if (buf.length > MAX_UPLOAD_BYTES) return { ok: false, error: 'too_large' };
-  const info = inspectImage(buf);
-  if (!info || !info.width || !info.height) return { ok: false, error: 'not_an_image' };
-  if (info.width > MAX_UPLOAD_SIDE || info.height > MAX_UPLOAD_SIDE) return { ok: false, error: 'too_big_dimensions' };
+  const checked = checkUploadedImage(buf);
+  if (!checked.ok) return checked;
+  const { info } = checked;
 
   const count = await prisma.clientWebsiteImage.count({ where: { websiteId: website.id } });
   if (count >= MAX_IMAGES_PER_WEBSITE) {
@@ -105,7 +136,7 @@ export async function storeWebsiteImage(
     // conserva sale del contenido EN BRUTO y no del esquema: un contenido que
     // por lo que sea no pasara la validación no puede llevarse por delante
     // las fotos que sí usa (lo encontró la prueba con 30 bloques).
-    const keep = [...new Set(JSON.stringify(website.content ?? null).match(UPLOAD_PATH_IN_TEXT) ?? [])];
+    const keep = uploadPathsIn(website.content);
     const unused = await prisma.clientWebsiteImage.findMany({
       where: { websiteId: website.id, path: { notIn: keep } },
       orderBy: { createdAt: 'asc' },
@@ -116,7 +147,7 @@ export async function storeWebsiteImage(
     await prisma.clientWebsiteImage.deleteMany({ where: { id: { in: unused.map((u) => u.id) } } });
   }
 
-  const path = `assets/subidas/${randomBytes(9).toString('hex')}.${info.ext}`;
+  const path = newUploadPath(info.ext);
   await prisma.clientWebsiteImage.create({
     data: { websiteId: website.id, path, contentType: info.contentType, content: buf, width: info.width, height: info.height },
   });
@@ -131,7 +162,7 @@ export async function referencedImageFiles(prisma: PrismaClient, websiteId: stri
   return rows.map((r) => ({ path: r.path, content: Buffer.from(r.content) }));
 }
 
-const UPLOAD_ERROR_STATUS: Record<string, number> = { too_large: 413, not_an_image: 415, too_big_dimensions: 422, too_many_images: 409 };
+export const UPLOAD_ERROR_STATUS: Record<string, number> = { too_large: 413, not_an_image: 415, too_big_dimensions: 422, too_many_images: 409 };
 
 /**
  * La subida entera desde una petición (multipart, campo «archivo»): la usan
@@ -145,16 +176,11 @@ export async function uploadWebsiteImage(
   actor: WebsiteActor,
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   if (website.content == null) return { status: 409, body: { error: 'not_v2' } };
-  // Antes de leer el cuerpo entero: un archivo enorme se rechaza por su
-  // cabecera sin cargarlo en memoria.
-  const declared = Number(req.headers.get('content-length') ?? 0);
-  if (declared > MAX_UPLOAD_BYTES + 64_000) return { status: 413, body: { error: 'too_large' } };
-  const form = await req.formData().catch(() => null);
-  const file = form?.get('archivo');
-  if (!file || typeof file === 'string') return { status: 400, body: { error: 'invalid_body' } };
+  const file = await readUploadedFile(req);
+  if (!file.ok) return { status: file.status, body: { error: file.error } };
 
   try {
-    const result = await storeWebsiteImage(prisma, website, Buffer.from(await file.arrayBuffer()));
+    const result = await storeWebsiteImage(prisma, website, file.buf);
     if (!result.ok) return { status: UPLOAD_ERROR_STATUS[result.error] ?? 400, body: { error: result.error } };
     await prisma.clientWebsiteAudit.create({
       data: {
