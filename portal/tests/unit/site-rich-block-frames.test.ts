@@ -93,3 +93,12 @@ describe('las clases de la <section> de un bloque', () => {
     }
   });
 });
+
+describe('los filtros del catálogo sin JavaScript', () => {
+  // 31/10/2026 — salen con hidden y el script los enseña; el display:flex de
+  // .k-filtros le ganaba al atributo y sin JS se veían botones que no hacían
+  // nada (Señal, Atelier, Sello, Bloque). Lo vio la bifurcación de Sello.
+  it('el motor respeta hidden aunque la plantilla los reestile', () => {
+    expect(BLOQUES_CSS).toContain('.k-filtros[hidden]{display:none!important}');
+  });
+});

@@ -386,6 +386,10 @@ export const BLOQUES_CSS = `<style id="bloques-kairikos">
 .k-comparador-control{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:ew-resize;touch-action:pan-y}
 .k-comparador:has(.k-comparador-control:focus-visible) .k-comparador-linea{box-shadow:0 0 0 3px var(--k-acento,#222)}
 .k-filtros{display:flex;flex-wrap:wrap;gap:.5rem;margin:0 0 1.5rem}
+/* 31/10/2026 — los filtros salen con hidden y el script los enseña: sin JS no
+   harían nada. El display:flex de arriba le ganaba al atributo, y una plantilla
+   que los reestile tampoco debe sacarlos (de ahí el !important). */
+.k-filtros[hidden]{display:none!important}
 .k-filtros button{font:inherit;font-weight:600;font-size:.95rem;padding:.55rem 1rem;border-radius:999px;border:1px solid var(--k-borde,rgba(127,127,127,.35));background:transparent;color:inherit;cursor:pointer;transition:background .2s ease,color .2s ease,border-color .2s ease}
 .k-filtros button[aria-pressed="true"]{background:var(--k-acento,#222);border-color:var(--k-acento,#222);color:var(--k-sobre-acento,#fff)}
 .k-catalogo-rejilla{grid-template-columns:repeat(auto-fill,minmax(min(100%,16.5rem),1fr))}
