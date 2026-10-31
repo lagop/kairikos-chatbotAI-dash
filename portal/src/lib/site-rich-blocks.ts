@@ -421,7 +421,7 @@ export const BLOQUES_CSS = `<style id="bloques-kairikos">
 .k-panel-cuerpo img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:var(--k-radio,8px)}
 .k-panel-texto>:first-child{margin-top:0}
 .k-comparativa-marco{max-width:100%}
-.k-comparativa{width:100%;border-collapse:collapse;background:var(--k-superficie,transparent);border-radius:var(--k-radio,8px);overflow:hidden}
+.k-comparativa:where(table){width:100%;border-collapse:collapse;background:var(--k-superficie,transparent);border-radius:var(--k-radio,8px);overflow:hidden}
 .k-comparativa th,.k-comparativa td{padding:.85rem 1rem;text-align:center;border-bottom:1px solid var(--k-borde,rgba(127,127,127,.25));overflow-wrap:break-word;hyphens:auto}
 .k-comparativa thead th{font-weight:700;font-size:1.05rem}
 .k-comparativa tbody th{text-align:left;font-weight:600}
@@ -433,15 +433,15 @@ export const BLOQUES_CSS = `<style id="bloques-kairikos">
 .k-no::after{content:"";position:absolute;left:.35rem;right:.35rem;top:50%;height:2px;margin-top:-1px;background:currentColor;opacity:.45}
 @media (max-width:640px){
 .k-comparativa thead{display:none}
-.k-comparativa,.k-comparativa tbody,.k-comparativa tr,.k-comparativa th,.k-comparativa td{display:block;width:100%}
+.k-comparativa:where(table),.k-comparativa tbody,.k-comparativa tr,.k-comparativa th,.k-comparativa td{display:block;width:100%}
 .k-comparativa tr{border-bottom:1px solid var(--k-borde,rgba(127,127,127,.25));padding:.75rem 1rem}
 .k-comparativa th,.k-comparativa td{padding:.3rem 0;border:0;text-align:left}
 .k-comparativa tbody th{font-size:1.05rem;padding-bottom:.4rem}
 .k-comparativa td{display:flex;justify-content:space-between;gap:1rem}
 .k-comparativa td::before{content:attr(data-k-columna);font-weight:600}
 .k-comparativa .k-destacada{background:transparent}}
-.k-trayectoria{position:relative;isolation:isolate;list-style:none;margin:0;padding:0 0 0 1.75rem;display:grid;gap:2rem;max-width:56rem}
-.k-trayectoria::before{content:"";position:absolute;z-index:-1;left:.45rem;top:.5rem;bottom:.5rem;width:2px;background:var(--k-borde,rgba(127,127,127,.35))}
+.k-trayectoria:where(ol){position:relative;isolation:isolate;list-style:none;margin:0;padding:0 0 0 1.75rem;display:grid;gap:2rem;max-width:56rem}
+.k-trayectoria:where(ol)::before{content:"";position:absolute;z-index:-1;left:.45rem;top:.5rem;bottom:.5rem;width:2px;background:var(--k-borde,rgba(127,127,127,.35))}
 .k-hito{position:relative;display:grid;gap:.25rem 2rem;min-width:0}
 .k-hito::before{content:"";position:absolute;z-index:-1;left:-1.75rem;top:.35rem;width:1rem;height:1rem;border-radius:50%;background:var(--k-acento,#222);box-shadow:0 0 0 4px var(--k-superficie,#fff)}
 .k-hito-fecha{margin:0;font-weight:800;font-size:1.15rem;color:var(--k-acento-texto,var(--k-acento,inherit));overflow-wrap:anywhere}
@@ -451,7 +451,7 @@ export const BLOQUES_CSS = `<style id="bloques-kairikos">
 @media (min-width:760px){.k-hito{grid-template-columns:9rem minmax(0,1fr)}}
 .k-js .k-hito{opacity:0;transform:translateY(16px);transition:opacity .6s ease,transform .7s ease}
 .k-js .k-hito.k-visto{opacity:1;transform:none}
-.k-marcas{overflow:hidden}
+.k-marcas:where(div){overflow:hidden}
 .k-marcas-pista{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:1.5rem 3rem}
 .k-marcas-pista li{display:flex;flex-direction:column;align-items:center;gap:.4rem;min-width:0}
 .k-marcas-pista img{height:3.25rem;width:auto;max-width:11rem;object-fit:contain;filter:grayscale(1);opacity:.8;transition:filter .3s ease,opacity .3s ease}

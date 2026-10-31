@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { renderSiteFiles, type SiteTemplateSource } from '@/lib/site-template';
 import { SITE_TEMPLATE_BASE } from '@/lib/site-template-base';
 import { validateSiteTemplate } from '@/lib/site-template-validate';
+import { BLOQUES_CSS, SITE_RICH_BLOCK_TYPES } from '@/lib/site-rich-blocks';
 import { SAMPLE_RENDER_CONTEXT, SITE_CONTENT_SAMPLES } from '@/lib/site-content-samples';
 import { withSectorExamples } from '@/lib/site-sector-blocks';
 
@@ -76,5 +77,19 @@ describe('el validador, con un marco propio', () => {
   it('sus campos solo existen en esas piezas', () => {
     const t = { ...SITE_TEMPLATE_BASE, secciones: { ...SITE_TEMPLATE_BASE.secciones, bloque_lista: `${SITE_TEMPLATE_BASE.secciones.bloque_lista}{{{cuerpo_html}}}` } };
     expect(validateSiteTemplate(t).problems).toEqual([expect.stringContaining('{{cuerpo_html}} no existe')]);
+  });
+});
+
+describe('las clases de la <section> de un bloque', () => {
+  // 31/10/2026 — la <section> lleva k-comparativa, k-trayectoria y k-marcas,
+  // las mismas clases que la tabla, la lista y la cinta de dentro: la sección
+  // heredaba el sangrado, el ancho máximo y la línea de la trayectoria, y el
+  // fondo y las esquinas de la tabla. Lo vio la bifurcación de Pizarra.
+  it('ninguna regla del motor para esas clases alcanza la <section>', () => {
+    for (const tipo of SITE_RICH_BLOCK_TYPES) {
+      const cls = `k-${tipo.replace('_', '-')}`;
+      const suelta = new RegExp(`(^|[},\n])\s*\.${cls}(?=[{,:]|::)(?!:where)`, 'm');
+      expect(BLOQUES_CSS, cls).not.toMatch(suelta);
+    }
   });
 });
