@@ -129,22 +129,53 @@ export function tradeDetailPhotos(set: TradePhotoSet, businessName: string): str
 // también barbería; estética y uñas no salían. Las fotos están en
 // public/web-draft/belleza/ junto con las de la galería de ejemplo
 // (site-sector-blocks.ts), que no se usan de portada.
+//
+// 31/10/2026 — también uñas, estética y spa, que hasta entonces salían con la
+// genérica (beauty.jpg) porque una foto de pelo les quedaba falsa. La casilla
+// «Estética» del formulario de kairikos.com (beauty_salon) caía ahí entera.
+// Mismo criterio que las de pelo: manos, producto y local, sin caras.
 // -----------------------------------------------------------------------------
 
-export const BEAUTY_PHOTO_COUNTS = Object.freeze({ peluqueria: 3, barberia: 2 } as const);
+export const BEAUTY_PHOTO_COUNTS = Object.freeze({ peluqueria: 3, barberia: 2, unas: 4, estetica: 3, spa: 3 } as const);
 export type BeautyPhotoSet = keyof typeof BEAUTY_PHOTO_COUNTS;
 
-/** Barbería si lo dice el nombre o Google; si no, peluquería, que en el sector
- *  es casi todo (y una peluquería que también corta a hombres se ve bien con
- *  la foto de peluquería). */
+/** El nombre manda sobre Google, como en oficios: «Barbería Toni» puede estar
+ *  dada de alta como hair_salon. Barbería antes que peluquería, porque
+ *  «Peluquería y Barbería» se ve mejor con la de barbería; uñas y spa antes
+ *  que estética, que es la palabra más genérica de las tres. «Belleza» no
+ *  cuenta: lo usan peluquerías y centros de estética por igual, y ahí decide
+ *  el tipo de Google. */
+const BEAUTY_BY_NAME: readonly [BeautyPhotoSet, RegExp][] = [
+  ['barberia', /barber/],
+  ['unas', /\bunas?\b|nail|manicur|pedicur/],
+  ['spa', /\bspa\b|masaj|wellness|balneari|termal|hammam|\bzen\b/],
+  ['peluqueria', /pelu|hair|estilis/],
+  ['estetica', /estetic|facial|depila|cosmet/],
+];
+
+const BEAUTY_BY_PRIMARY_TYPE: Readonly<Record<string, BeautyPhotoSet>> = Object.freeze({
+  barber_shop: 'barberia',
+  hair_salon: 'peluqueria',
+  nail_salon: 'unas',
+  spa: 'spa',
+  beauty_salon: 'estetica',
+});
+
+/** Sin nombre que lo diga ni tipo conocido, peluquería, que en el sector es
+ *  casi todo. */
 export function beautyPhotoSet(businessName: string, primaryType: string | null): BeautyPhotoSet {
-  return /barber/.test(normalize(businessName)) || primaryType === 'barber_shop' ? 'barberia' : 'peluqueria';
+  const name = normalize(businessName);
+  for (const [set, pattern] of BEAUTY_BY_NAME) if (pattern.test(name)) return set;
+  return (primaryType && BEAUTY_BY_PRIMARY_TYPE[primaryType]) || 'peluqueria';
 }
 
-function beautyHeroPhoto(businessName: string, primaryType: string | null): string | null {
-  // Estética, uñas y spa también son de la familia belleza, pero una foto de
-  // peluquería les quedaría falsa: para ellos, la del sector de siempre.
-  if (primaryType && !['hair_salon', 'barber_shop'].includes(primaryType) && !/pelu|barber|hair|estilis/.test(normalize(businessName))) return null;
+/** Las de pelo: solo a esas les valen los bloques de ejemplo de
+ *  site-sector-blocks.ts (galería de cortes, antes y después de color). */
+export function isHairPhotoSet(set: BeautyPhotoSet): set is 'peluqueria' | 'barberia' {
+  return set === 'peluqueria' || set === 'barberia';
+}
+
+function beautyHeroPhoto(businessName: string, primaryType: string | null): string {
   const set = beautyPhotoSet(businessName, primaryType);
   const n = stableIndex(normalize(businessName).trim(), BEAUTY_PHOTO_COUNTS[set]) + 1;
   return `/web-draft/belleza/${set}-${n}.jpg`;

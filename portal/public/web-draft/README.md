@@ -4,7 +4,7 @@ Cada familia de sector tiene aquí su imagen de portada. La plantilla
 (`src/lib/web-draft-html.ts`) las referencia por nombre fijo:
 
 ```
-beauty.jpg        peluquerías, barberías, estética, uñas, spa
+beauty.jpg        belleza que no se reconoce (ver belleza/, abajo)
 trades.jpg        fontanería, electricidad, reformas, cerrajería, taller
 health.jpg        clínicas dentales, fisioterapia, veterinaria
 food.jpg          restaurantes, cafeterías, panaderías
@@ -158,8 +158,9 @@ Para peluquerías y barberías: los 16 prospectos de belleza de ese día eran
 peluquerías (alguna también barbería). Dos usos:
 
 - **Portada** (`peluqueria-1..3`, `barberia-1..2`): como las de oficios, por el
-  nombre o el tipo de Google (`trade-photos.ts`). Estética, uñas y spa siguen
-  con `beauty.jpg`.
+  nombre o el tipo de Google (`trade-photos.ts`). Desde el 31/10/2026 también
+  uñas, estética y spa (abajo); `beauty.jpg` ya no sale en ningún borrador de
+  belleza.
 - **Bloques de ejemplo** del borrador (`trabajo-1..9`, `despues-1`): la galería,
   las pestañas de servicios y el antes y después que trae el borrador de una
   peluquería (`site-sector-blocks.ts`). Van marcados como datos de ejemplo:
@@ -186,6 +187,34 @@ descargadas con permiso de Orlando el 28/10/2026:
 | trabajo-8 | pu20JkUx--A | Arthur Humeau |
 | trabajo-9 | TnyHlxVnyhk | Giselle Lazcano |
 | despues-1 | GO1d_3tqkFo | Yovanka Loria Salon |
+
+### Uñas, estética y spa (31/10/2026)
+
+Solo de portada: `unas-1..4`, `estetica-1..3`, `spa-1..3`. Hasta ese día
+salían con `beauty.jpg`, también la casilla «Estética» del formulario de
+kairikos.com. Manos, producto y local; ninguna cara reconocible (la de
+`estetica-3` es una silueta a contraluz). No traen bloques de ejemplo: los
+que hay son de pelo.
+
+Unsplash («Foto gratuita»), recortadas a 1600×900, todas por debajo de
+200 KB, revisadas a tamaño completo. Descargadas el 31/10/2026 dentro del
+encargo de Orlando de esa mañana («fotos de banco para uñas, estética y spa»).
+Se descartaron tres por llevar una marca legible: «AirStream» en las mesas de
+un salón de uñas, «CND» en una lámpara de secado y «doTERRA» en un frasco de
+aceite.
+
+| Archivo | Foto (unsplash.com/es/fotos/…) | Autor |
+|---|---|---|
+| unas-1 | LZmPAULkFUc | Anna Keibalo |
+| unas-2 | Xf7o2W7qgP0 | Element5 Digital |
+| unas-3 | IYa5Dnj9qWE | Stefan Lehner |
+| unas-4 | jzC0pvbXdN8 | Maria Lupan |
+| estetica-1 | 0BEqLfQwVzM | Towfiqu barbhuiya |
+| estetica-2 | VxAwTeiqDao | Camille Brodard |
+| estetica-3 | WAm_HaI4W2E | Katherine Hanlon |
+| spa-1 | SMwCQZWayj0 | engin akyurt |
+| spa-2 | 9qYFu1NzpS8 | Dominik Neuner |
+| spa-3 | uWiQaLrQDMM | Jakub Klucký |
 
 ## Salud (`salud/`, 30/10/2026)
 
