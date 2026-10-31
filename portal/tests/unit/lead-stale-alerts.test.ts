@@ -93,6 +93,14 @@ describe('sweepStaleLeadAlerts — a quién avisa', () => {
     );
   });
 
+  it('no avisa de prospectos que nunca contestaron — el mismo filtro que la cola del operador', async () => {
+    await sweepStaleLeadAlerts(prismaMock, NOW);
+    expect(prismaState.leadFindMany.mock.calls[0][0].where.OR).toEqual([
+      { source: { not: 'outbound' } },
+      { repliedAt: { not: null } },
+    ]);
+  });
+
   it('respeta los umbrales que ya usaba la cola del operador', async () => {
     // 'nuevo' se considera frío a los 2 días; 1 día todavía no.
     prismaState.leadFindMany.mockResolvedValue([lead({ createdAt: daysAgo(1) })]);
