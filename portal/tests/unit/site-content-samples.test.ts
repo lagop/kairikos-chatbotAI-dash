@@ -23,7 +23,7 @@ describe('contenidos de muestra por sector', () => {
   });
 
   it('un sector sin muestra propia usa la de siempre', () => {
-    for (const sector of ['trades', 'food', null, undefined, 'otro']) {
+    for (const sector of ['trades', null, undefined, 'otro']) {
       expect(sectorSamples(sector).samples).toBe(SITE_CONTENT_SAMPLES);
       expect(sectorSamples(sector).context).toBe(SAMPLE_RENDER_CONTEXT);
     }
@@ -34,6 +34,21 @@ describe('belleza', () => {
   it('tiene los suyos, válidos y sin rastro de la fontanería', () => {
     const { samples, context } = sectorSamples('beauty');
     expect(context.negocio.nombre).toBe('Peluquería Ejemplo');
+    for (const [name, sample] of Object.entries(samples)) {
+      expect(parseSiteContent(sample).ok, name).toBe(true);
+      const texto = JSON.stringify(sample) + (context.citasHtml ?? '') + (context.resenasHtml ?? '');
+      expect(texto, name).not.toMatch(/fontaner|aver[ií]a|desatasc|grifo/i);
+    }
+  });
+});
+
+describe('restauración y profesionales', () => {
+  it.each([
+    ['food', 'Restaurante Ejemplo'],
+    ['professional', 'Asesoría Ejemplo'],
+  ])('%s tiene los suyos, válidos y sin rastro de la fontanería', (sector, nombre) => {
+    const { samples, context } = sectorSamples(sector);
+    expect(context.negocio.nombre).toBe(nombre);
     for (const [name, sample] of Object.entries(samples)) {
       expect(parseSiteContent(sample).ok, name).toBe(true);
       const texto = JSON.stringify(sample) + (context.citasHtml ?? '') + (context.resenasHtml ?? '');

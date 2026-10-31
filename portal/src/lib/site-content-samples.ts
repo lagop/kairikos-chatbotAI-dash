@@ -865,13 +865,13 @@ const professionalExagerado: SiteContent = {
   ...exagerado,
   datos: {
     ...exagerado.datos,
-    titular: 'Asesoría fiscal, laboral, contable y jurídica para autónomos, pymes y comunidades en la isla',
+    titular: 'Asesoría fiscal, laboral, contable y jurídica para autónomos, pymes y comunidades en Telde',
     subtitulo: repeat('Cuota mensual cerrada por escrito, aviso antes de cada plazo y respuesta el mismo día,', 3).slice(0, 220),
     sobre: repeat('Somos una asesoría familiar que explica cada trámite, vigila cada plazo y contesta el mismo día.', 12).slice(0, 1200),
-    llamada_accion: 'Llámanos ahora y te explicamos sin compromiso cómo podemos llevar tus papeles este trimestre',
+    llamada_accion: 'Llámanos y te explicamos sin compromiso cómo llevar tus papeles este trimestre',
     servicios: exagerado.datos.servicios.map((s, i) => ({
       ...s,
-      nombre: i % 3 === 0 ? 'Constitución de sociedades limitadas con escritura, alta censal y registro mercantil' : `Servicio número ${i + 1}`,
+      nombre: i % 3 === 0 ? 'Constitución de sociedades limitadas con escritura, alta censal y registro' : `Servicio número ${i + 1}`,
       icono: i % 2 ? 'documento' : '',
     })),
     precios: {
