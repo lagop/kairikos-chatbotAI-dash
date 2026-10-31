@@ -4,7 +4,8 @@ import { logError } from './observability';
 import { parseSiteContent, type SiteContent } from './site-content';
 import { buildSiteContentFromDraft, expandDraftToSiteContent } from './site-content-ai';
 import { atribucionGoogleHtml, renderCitasHtml, renderResenasHtml } from './site-draft-markup';
-import { renderSitePage, type SiteRenderContext, type SiteTemplatePart, type SiteTemplateSource } from './site-template';
+import { renderSitePage, sectionHasContent, type SiteRenderContext, type SiteTemplatePart, type SiteTemplateSource } from './site-template';
+import { alternarVariantes } from './site-section-variants';
 import { pickSiteTemplateForSector } from './site-template-jobs';
 import { withSectorExamples } from './site-sector-blocks';
 import { editorStyleOptions, parseTemplateStyle } from './site-style';
@@ -45,6 +46,32 @@ import {
 /** Los iconos del sprite de una plantilla, sin el «i-». */
 export function templateIconIds(marco: string): string[] {
   return Array.from(new Set(Array.from(marco.matchAll(/<symbol[^>]*\sid="i-([a-z0-9-]+)"/g), (m) => m[1])));
+}
+
+/**
+ * 31/10/2026 — el borrador nuevo sale con las disposiciones ya alternadas,
+ * lo mismo que el botón «Alternar disposiciones» del editor
+ * (alternarVariantes): dos secciones seguidas no se ven iguales.
+ *
+ * Una sección sale si tiene contenido (sectionHasContent, la misma regla que
+ * al pintar). Las opiniones no se pueden saber aquí: las reseñas llegan de
+ * Google al servir el borrador. Se cuentan como visibles, que es lo habitual
+ * en un prospecto de Places. La semilla, del nombre del negocio: estable al
+ * regenerar el mismo borrador, distinta entre negocios.
+ */
+export function conDisposicionesAlternadas(content: SiteContent, businessName: string): SiteContent {
+  const view = { ...content.datos, valoracion: '1', resenas_html: '' };
+  const semilla = Array.from(businessName).reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+  return {
+    ...content,
+    paginas: content.paginas.map((p) => ({
+      ...p,
+      secciones: alternarVariantes(p.secciones, {
+        semilla,
+        seVe: (r) => r.tipo === 'bloque' || sectionHasContent(r.tipo, view),
+      }),
+    })),
+  };
 }
 
 async function loadTemplate(prisma: PrismaClient, id: string): Promise<SiteTemplateSource | null> {
@@ -92,7 +119,10 @@ export async function designForDraft(
     const base = expanded.ok && !('skipped' in expanded) ? expanded.content : buildSiteContentFromDraft(input.copy, null, iconIds);
     // 28/10/2026 — galería, servicios por pestañas… con contenido de ejemplo,
     // marcado como tal (site-sector-blocks.ts).
-    const content = withSectorExamples(base, { familia: sector, businessName: input.businessName, primaryType: input.primaryType });
+    const content = conDisposicionesAlternadas(
+      withSectorExamples(base, { familia: sector, businessName: input.businessName, primaryType: input.primaryType }),
+      input.businessName,
+    );
     if (!expanded.ok) logError('web_draft_design.expand_failed', new Error(expanded.error), {}, 'warn');
     return { content, templateId: picked.id, expanded: expanded.ok && !('skipped' in expanded) };
   } catch (err) {

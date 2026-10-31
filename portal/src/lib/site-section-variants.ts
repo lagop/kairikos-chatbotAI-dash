@@ -177,12 +177,24 @@ function shapeOf(ref: Ref): SiteLayoutShape | 'bloque' {
  *
  * Es un botón del editor y no algo que haga el motor al pintar: así lo que se
  * publica es lo que el cliente vio, y no cambia al añadir una variante nueva.
+ *
+ * 31/10/2026 — también se aplica al crear un borrador (designForDraft,
+ * web-draft-design.ts), que por eso pasa:
+ * - `seVe`: qué secciones salen de verdad. En el borrador una sección sin
+ *   contenido (zona sin lugares) no se pinta aunque no esté oculta, y si
+ *   contara, dos rejillas separadas solo por ella parecerían no tocarse.
+ * - `semilla`: por dónde empieza a elegir. Sin ella, todos los borradores
+ *   de una plantilla saldrían con las mismas disposiciones.
  */
-export function alternarVariantes<T extends Ref>(secciones: readonly T[]): T[] {
+export function alternarVariantes<T extends Ref>(
+  secciones: readonly T[],
+  opciones: { seVe?: (ref: T) => boolean; semilla?: number } = {},
+): T[] {
   const out = secciones.map((r) => ({ ...r }));
-  const visible = out.filter((r) => !r.oculta);
+  const seVe = opciones.seVe ?? ((r: T) => !r.oculta);
+  const visible = out.filter((r) => !r.oculta && seVe(r));
   const used = new Set(visible.map(shapeOf));
-  let turn = 0;
+  let turn = Math.max(0, Math.floor(opciones.semilla ?? 0));
   for (let i = 1; i < visible.length; i++) {
     const ref = visible[i];
     const prev = shapeOf(visible[i - 1]);

@@ -1,0 +1,23 @@
+<section class="kv kv-portada kv-portada--panoramica consulta-variante" id="{{ancla}}">
+  <div class="kv-dentro">
+    {{#horario_resumen}}<p class="estado">{{horario_resumen}}</p>{{/horario_resumen}}
+    <h1 class="kv-titular">{{titular}}</h1>
+    <div class="kv-fila">
+      {{#subtitulo}}<p class="kv-entradilla">{{subtitulo}}</p>{{/subtitulo}}
+      <div class="acciones">
+        {{#telefono_href}}<a class="boton boton--acento" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-calendario"></use></svg>Pedir cita</a>{{/telefono_href}}
+        <a class="boton boton--linea" href="#contacto">Escríbenos</a>
+      </div>
+    </div>
+  </div>
+  <div class="kv-panoramica-foto">
+    {{#fotos.portada}}<img src="{{fotos.portada}}" alt="La consulta de {{nombre}}">{{/fotos.portada}}
+    {{^fotos.portada}}<div class="kv-foto-vacia" aria-hidden="true"></div>{{/fotos.portada}}
+    {{#telefono_href}}<a class="tarjeta-cita" href="tel:{{telefono_href}}"><span class="icono"><svg aria-hidden="true"><use href="#i-telefono"></use></svg></span><span><strong>Pide tu cita</strong><small>{{telefono}}</small></span></a>{{/telefono_href}}
+  </div>
+  <ul class="kv-datos">
+    {{#valoracion}}<li><strong>{{valoracion}}</strong><span>en Google{{#num_resenas}} · {{num_resenas}} reseñas{{/num_resenas}}</span></li>{{/valoracion}}
+    {{#telefono}}<li><strong>Teléfono</strong><a href="tel:{{telefono_href}}">{{telefono}}</a></li>{{/telefono}}
+    {{#direccion}}<li><strong>Dónde</strong><span>{{direccion}}</span></li>{{/direccion}}
+  </ul>
+</section>

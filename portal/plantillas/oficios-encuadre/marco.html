@@ -347,6 +347,58 @@ time{font-size:.85rem;font-weight:700;text-transform:uppercase;letter-spacing:.1
 .js .servicio.aparece{transform:translateX(-24px)}
 .js .servicio.aparece.visto{transform:none}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.js .aparece,.js .servicio.aparece{opacity:1;transform:none}.js .paso::after{transform:none}}
+/* Las variantes de sección a la manera de Encuadre (30/10/2026): las piezas
+   seccion@variante.html usan el esqueleto del motor (clases kv-*, que traen
+   el diseño de cada disposición) y le ponen lo que hace a Encuadre: la portada
+   oscura con la foto bajo un degradado, la franja de datos (.ficha) pegada a
+   su pie, el «abierto» en versalitas, el rótulo con su raya, la cabeza con
+   filete, los números en cursiva y los iconos en círculo de línea. */
+.encuadre-variante .cabeza{margin-bottom:0}
+.encuadre-variante .estado{color:var(--tinta);margin-bottom:var(--s-5)}
+.encuadre-variante .acciones{margin-top:var(--s-6)}
+.encuadre-variante .boton--claro{box-shadow:inset 0 0 0 1px var(--tinta)}
+.kv-portada--panoramica.encuadre-variante .acciones{margin:0}
+.kv-portada--panoramica.encuadre-variante .ficha{position:relative;margin-top:-2.75rem;border:1px solid var(--filete);background:var(--blanco)}
+/* Sangre y centrada: oscuras, como la portada propia, con la franja de datos
+   pegada al pie. */
+.kv-portada--sangre.encuadre-variante,.kv-portada--centrada.encuadre-variante{color:var(--blanco);background:var(--tinta) radial-gradient(circle at 80% 20%,var(--tinta-3),transparent 55%);padding-bottom:0}
+.kv-portada--sangre.encuadre-variante{flex-direction:column;align-items:stretch;justify-content:flex-end}
+.kv-portada--sangre.encuadre-variante::before{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(to top,rgba(14,15,17,.94) 0%,rgba(14,15,17,.72) 38%,rgba(14,15,17,.25) 72%,rgba(14,15,17,.35) 100%),linear-gradient(to right,rgba(14,15,17,.55),transparent 65%)}
+.encuadre-variante .kv-sangre-fondo{z-index:-2}
+.encuadre-variante .kv-tarjeta{background:none;box-shadow:none;border:0;padding:0;max-width:46rem;margin-bottom:var(--s-7)}
+.kv-portada--sangre.encuadre-variante .kv-titular{font-size:clamp(2.3rem,1rem + 4.6vw,5rem);line-height:.98}
+.kv-portada--sangre.encuadre-variante .estado,.kv-portada--centrada.encuadre-variante .estado{color:var(--blanco)}
+.kv-portada--sangre.encuadre-variante .kv-entradilla,.kv-portada--centrada.encuadre-variante .kv-entradilla{color:rgba(255,255,255,.86)}
+.kv-portada--sangre.encuadre-variante .boton--claro,.kv-portada--centrada.encuadre-variante .boton--claro{background:transparent;color:var(--blanco);box-shadow:inset 0 0 0 1px rgba(255,255,255,.6)}
+.kv-portada--sangre.encuadre-variante .boton--claro:hover,.kv-portada--centrada.encuadre-variante .boton--claro:hover{background:rgba(255,255,255,.12)}
+.kv-portada--centrada.encuadre-variante .acciones{justify-content:center}
+.kv-portada--centrada.encuadre-variante .kv-abanico{margin-bottom:var(--s-7)}
+.encuadre-variante .kv-abanico img,.encuadre-variante .kv-abanico .kv-foto-vacia{border-color:var(--tinta-3)}
+.kv-portada--sangre.encuadre-variante .ficha,.kv-portada--centrada.encuadre-variante .ficha{text-align:left}
+.encuadre-variante .kv-checks .icono{width:2.2rem;height:2.2rem}
+.encuadre-variante .kv-checks .icono svg{width:1rem;height:1rem}
+.encuadre-variante .kv-o-llame a{color:var(--cobalto)}
+.encuadre-variante .kv-formulario{border:0;border-radius:var(--radio)}
+.encuadre-variante .kv-formulario .rotulo{margin-bottom:var(--s-3)}
+.encuadre-variante .kv-formulario h2{font-size:clamp(1.8rem,1.2rem + 1.6vw,2.4rem)}
+.encuadre-variante .kv-formulario .boton{align-self:stretch;margin-top:var(--s-5)}
+.encuadre-variante .kv-num{font:italic 400 clamp(1.6rem,1.2rem + 1.2vw,2.3rem)/1 var(--display);color:var(--cobalto)}
+.encuadre-variante .kv-indice .kv-num{font-size:1.5rem}
+.encuadre-variante .kv-zigzag-icono{background:none;border:0;box-shadow:none}
+.encuadre-variante .kv-zigzag-icono .icono{width:100%;height:100%;border-color:var(--tinta)}
+.encuadre-variante .kv-zigzag-icono .icono svg{width:36%;height:36%}
+.encuadre-variante .kv-panel-icono{background:none;color:var(--cobalto);border:1px solid var(--filete);border-radius:50%;width:3rem;height:3rem}
+.encuadre-variante .kv-pestanas-lista .kv-panel-icono{width:2.1rem;height:2.1rem;margin:0;border-color:currentColor;color:inherit}
+.encuadre-variante .kv-pestanas-lista .kv-panel-icono svg{width:1rem;height:1rem}
+.encuadre-variante .kv-indice>li{align-items:center}
+.encuadre-variante .kv-indice .icono{width:2.6rem;height:2.6rem}
+.encuadre-variante .kv-indice .icono svg{width:1.1rem;height:1.1rem}
+.encuadre-variante .kv-mosaico .icono{margin-bottom:auto}
+.encuadre-variante .kv-mosaico .icono svg{width:1.35rem;height:1.35rem;margin:0;padding:0;box-sizing:border-box;color:inherit}
+.encuadre-variante .kv-mosaico h3{margin-top:var(--s-5)}
+.encuadre-variante .kv-mosaico>li:first-child .icono{color:var(--blanco);border-color:rgba(255,255,255,.55)}
+.encuadre-variante .kv-zigzag>li:hover .icono,.encuadre-variante .kv-indice>li:hover .icono,.encuadre-variante .kv-mosaico>li:not(:first-child):hover .icono{background:var(--cobalto);color:var(--blanco);border-color:var(--cobalto);transform:rotate(-12deg)}
+@media (max-width:640px){.encuadre-variante .kv-indice .icono{display:none}.encuadre-variante .kv-indice>li{grid-template-columns:2.75rem minmax(0,1fr)}.kv-portada--panoramica.encuadre-variante .ficha{margin-top:-1.5rem}}
 </style>
 </head>
 <body>

@@ -1,0 +1,16 @@
+<section class="kv kv-portada kv-portada--sangre bloque-variante" id="{{ancla}}">
+  {{#fotos.portada}}<img class="kv-sangre-fondo" src="{{fotos.portada}}" alt="Trabajo de {{nombre}}">{{/fotos.portada}}
+  <div class="kv-dentro">
+    <div class="kv-tarjeta">
+      {{#valoracion}}<p class="pegatina"><strong>{{valoracion}}</strong><span class="pegatina-estrellas" aria-hidden="true"><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg></span><span>en Google{{#num_resenas}} · {{num_resenas}} reseñas{{/num_resenas}}</span></p>{{/valoracion}}
+      {{#horario_resumen}}<p class="etiqueta"><svg aria-hidden="true"><use href="#i-reloj"></use></svg>{{horario_resumen}}</p>{{/horario_resumen}}
+      <h1 class="kv-titular">{{titular}}</h1>
+      {{#subtitulo}}<p class="kv-entradilla">{{subtitulo}}</p>{{/subtitulo}}
+      <div class="acciones">
+      {{#telefono_href}}<a class="boton" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg>Llamar ahora</a>{{/telefono_href}}
+      <a class="boton boton--claro" href="#contacto">Pedir presupuesto<svg aria-hidden="true"><use href="#i-flecha"></use></svg></a>
+    </div>
+      {{#direccion}}<p class="bloque-donde"><svg aria-hidden="true"><use href="#i-mapa"></use></svg><span>{{direccion}}</span></p>{{/direccion}}
+    </div>
+  </div>
+</section>

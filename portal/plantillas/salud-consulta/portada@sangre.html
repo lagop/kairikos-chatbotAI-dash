@@ -1,0 +1,16 @@
+<section class="kv kv-portada kv-portada--sangre consulta-variante" id="{{ancla}}">
+  {{#fotos.portada}}<img class="kv-sangre-fondo" src="{{fotos.portada}}" alt="La consulta de {{nombre}}">{{/fotos.portada}}
+  <div class="kv-dentro">
+    <div class="kv-tarjeta">
+      {{#horario_resumen}}<p class="estado">{{horario_resumen}}</p>{{/horario_resumen}}
+      <h1 class="kv-titular">{{titular}}</h1>
+      {{#subtitulo}}<p class="kv-entradilla">{{subtitulo}}</p>{{/subtitulo}}
+      <div class="acciones">
+        {{#telefono_href}}<a class="boton boton--acento" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-calendario"></use></svg>Pedir cita</a>{{/telefono_href}}
+        <a class="boton boton--linea" href="#contacto">Escríbenos</a>
+      </div>
+      {{#valoracion}}<div class="tarjeta-valoracion"><strong>{{valoracion}}</strong><div><span class="estrellas" role="img" aria-label="Valoración en Google"><svg aria-hidden="true"><use href="#i-estrella"></use></svg><svg aria-hidden="true"><use href="#i-estrella"></use></svg><svg aria-hidden="true"><use href="#i-estrella"></use></svg><svg aria-hidden="true"><use href="#i-estrella"></use></svg><svg aria-hidden="true"><use href="#i-estrella"></use></svg></span><small>en Google{{#num_resenas}} · {{num_resenas}} reseñas{{/num_resenas}}</small></div></div>{{/valoracion}}
+      <svg class="pulso" viewBox="0 0 600 64" aria-hidden="true"><path pathLength="1" d="M2 40H200l14-22 16 40 18-54 16 46 12-18 10 8H598"/></svg>
+    </div>
+  </div>
+</section>

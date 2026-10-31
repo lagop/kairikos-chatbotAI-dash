@@ -649,8 +649,10 @@ function renderSections(
     if (engineVariant) {
       sectionView.kv_titulo =
         markedTitle(renderNodes(parseMustache(own), [{ value: sectionView, path: '' }], new Set())) ?? esc(VARIANT_DEFAULT_TITLES[ref.tipo] ?? '');
-      Object.assign(sectionView, variantExtras(view));
     }
+    // Las fotos extra, también a la versión propia de la plantilla: la de
+    // Sello del abanico (P3) las necesita igual que la del motor.
+    if (variante) Object.assign(sectionView, variantExtras(view));
     rendered.push({
       kind: 'section',
       anchor: ref.tipo,

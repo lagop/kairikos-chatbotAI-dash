@@ -1,0 +1,17 @@
+<section class="kv kv-portada kv-portada--centrada estudio-variante" id="{{ancla}}">
+  <div class="kv-dentro">
+    {{#horario_resumen}}<p class="estado">{{horario_resumen}}</p>{{/horario_resumen}}
+    <h1 class="kv-titular">{{titular}}</h1>
+    {{#subtitulo}}<p class="kv-entradilla">{{subtitulo}}</p>{{/subtitulo}}
+    <div class="acciones">
+        {{#telefono_href}}<a class="boton boton--acento" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg>Pedir cita</a>{{/telefono_href}}
+        <a class="boton boton--linea" href="#contacto">Escríbenos</a>
+      </div>
+    <div class="estudio-abanico"><div class="kv-abanico">
+      {{#kv_fotos}}<img src="{{src}}" alt="El salón de {{nombre}}">{{/kv_fotos}}
+      {{^kv_fotos}}<div class="kv-foto-vacia" aria-hidden="true"></div>{{/kv_fotos}}
+      </div>
+      {{#telefono_href}}<a class="insignia" href="tel:{{telefono_href}}" aria-label="Pide tu cita por teléfono"><svg class="texto-giro" viewBox="0 0 120 120" aria-hidden="true"><defs><path id="giro" d="M60 60m-46 0a46 46 0 1 1 92 0a46 46 0 1 1-92 0"/></defs><text><textPath href="#giro">Pide tu cita · Pide tu cita · Pide tu cita ·</textPath></text></svg><svg aria-hidden="true"><use href="#i-tijeras"></use></svg></a>{{/telefono_href}}
+    </div>
+  </div>
+</section>

@@ -1,0 +1,14 @@
+<section class="kv kv-portada kv-portada--sangre ficha-variante" id="{{ancla}}">
+  {{#fotos.portada}}<img class="kv-sangre-fondo" src="{{fotos.portada}}" alt="Trabajo de {{nombre}}">{{/fotos.portada}}
+  <div class="kv-dentro">
+    <div class="kv-tarjeta">
+      <p class="ref"><span>Ficha</span><span>{{nombre}}</span></p>
+      <h1 class="kv-titular">{{titular}}</h1>
+      {{#subtitulo}}<p class="kv-entradilla">{{subtitulo}}</p>{{/subtitulo}}
+      <div class="acciones">
+      {{#telefono_href}}<a class="boton" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg>Llamar ahora</a>{{/telefono_href}}
+      <a class="boton boton--borde" href="#contacto">Pedir presupuesto</a>
+      </div>
+    </div>
+  </div>
+</section>

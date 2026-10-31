@@ -1,0 +1,25 @@
+<section class="kv kv-portada kv-portada--panoramica sello-variante" id="{{ancla}}">
+  <div class="kv-dentro">
+    {{#horario_resumen}}<p class="estado">{{horario_resumen}}</p>{{/horario_resumen}}
+    <h1 class="kv-titular">{{titular}}</h1>
+    <div class="kv-fila">
+      {{#subtitulo}}<p class="kv-entradilla">{{subtitulo}}</p>{{/subtitulo}}
+      <div class="acciones">
+        {{#telefono_href}}<a class="boton" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg>Llamar ahora</a>{{/telefono_href}}
+        <a class="boton boton--borde" href="#contacto">Pedir presupuesto</a>
+      </div>
+    </div>
+  </div>
+  <div class="kv-panoramica-foto">
+    {{#fotos.portada}}<img src="{{fotos.portada}}" alt="Trabajo de {{nombre}}">{{/fotos.portada}}
+    {{^fotos.portada}}<div class="kv-foto-vacia arco-vacio" aria-hidden="true"><svg><use href="#i-herramienta"></use></svg></div>{{/fotos.portada}}
+    <div class="sello" role="img" aria-label="{{#valoracion}}{{valoracion}} de 5 en Google{{/valoracion}}{{^valoracion}}Trabajo de confianza{{/valoracion}}">
+      <svg class="sello-aro" viewBox="0 0 200 200" aria-hidden="true"><defs><path id="sello-circulo" d="M100 100m-74 0a74 74 0 1 1 148 0a74 74 0 1 1-148 0"></path></defs><text><textPath href="#sello-circulo" textLength="462" lengthAdjust="spacing">{{#valoracion}}Valorado en Google · {{#num_resenas}}{{num_resenas}} reseñas · {{/num_resenas}}{{^num_resenas}}de confianza · {{/num_resenas}}{{/valoracion}}{{^valoracion}}Trabajo de confianza · cerca de usted · {{/valoracion}}</textPath></text></svg>
+      <span class="sello-centro" aria-hidden="true">{{#valoracion}}<strong>{{valoracion}}</strong><svg><use href="#i-estrella"></use></svg>{{/valoracion}}{{^valoracion}}<svg class="sello-icono"><use href="#i-casa"></use></svg>{{/valoracion}}</span>
+    </div>
+  </div>
+  <ul class="kv-datos">
+    {{#telefono}}<li><strong>Teléfono</strong><a href="tel:{{telefono_href}}">{{telefono}}</a></li>{{/telefono}}
+    {{#direccion}}<li><strong>Dónde</strong><span>{{direccion}}</span></li>{{/direccion}}
+  </ul>
+</section>

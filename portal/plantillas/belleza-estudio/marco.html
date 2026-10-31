@@ -355,6 +355,53 @@ time{font-size:.8rem;font-weight:600;letter-spacing:.1em;text-transform:uppercas
 .js .aparece{opacity:0;transform:translateY(24px);transition:opacity .7s ease,transform .8s cubic-bezier(.2,.8,.2,1);transition-delay:calc(var(--i,0) * 70ms)}
 .js .aparece.visto{opacity:1;transform:none}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.js .aparece{opacity:1;transform:none}.js .foto img{filter:none}.paso::after{transform:scaleX(1)}}
+/* Las variantes de sección a la manera de Estudio (30/10/2026): las piezas
+   seccion@variante.html usan el esqueleto del motor (clases kv-*, que traen
+   el diseño de cada disposición) y le ponen lo que hace a Estudio: la
+   insignia que gira con «Pide tu cita», el antetítulo con su raya, la nota
+   de Google en grande, los botones en mayúsculas, los iconos en cuadro y los
+   servicios sobre el fondo de noche. */
+.estudio-variante .estado{margin-bottom:var(--s-5)}
+.estudio-variante .antetitulo{margin-bottom:var(--s-4)}
+.estudio-variante .acciones{margin-top:var(--s-6)}
+.kv-portada--panoramica.estudio-variante .acciones{margin:0}
+.kv-portada--centrada.estudio-variante .acciones{justify-content:center}
+.estudio-variante .kv-titular{letter-spacing:-.035em}
+.estudio-variante .insignia svg.texto-giro{width:100%;height:100%}
+.estudio-variante .insignia>svg:not(.texto-giro){width:1.6rem;height:1.6rem}
+.estudio-variante .estrellas svg{width:1rem;height:1rem}
+.estudio-variante .kv-panoramica-foto{position:relative}
+.estudio-variante .kv-panoramica-foto .insignia{left:auto;right:clamp(1rem,5vw,4rem);top:clamp(1rem,3vw,2rem);bottom:auto}
+.kv-portada--sangre.estudio-variante>.insignia{left:auto;right:clamp(1rem,5vw,4rem);top:clamp(1.5rem,4vw,3rem);bottom:auto;z-index:1;width:7.5rem;height:7.5rem}
+.kv-portada--sangre.estudio-variante:not(:has(.kv-sangre-fondo))>.insignia{background:var(--tinta)}
+.estudio-variante .kv-tarjeta{box-shadow:none;border:1.5px solid var(--tinta)}
+.estudio-abanico{position:relative}
+.estudio-abanico .insignia{left:clamp(0rem,8vw,7rem);top:auto;bottom:-1.5rem;z-index:2}
+.estudio-variante .kv-checks .icono{width:2.2rem;height:2.2rem}
+.estudio-variante .kv-checks .icono svg{width:1rem;height:1rem}
+.estudio-variante .kv-formulario-texto .tarjeta-valoracion{margin-top:var(--s-6)}
+.estudio-variante .kv-formulario{border-radius:0}
+.estudio-variante .kv-formulario .antetitulo{margin-bottom:var(--s-3)}
+.estudio-variante .kv-formulario h2{font-size:clamp(1.6rem,1.2rem + 1.2vw,2.1rem)}
+.estudio-variante .kv-formulario .boton{margin-top:var(--s-5);align-self:stretch}
+/* Los servicios, de noche como en la pieza propia: las variables --k-* del
+   motor se cambian solo dentro, para que sus tarjetas tomen el fondo oscuro. */
+.kv.estudio-variante.seccion--noche{--k-superficie:var(--noche-2);--k-borde:var(--noche-3);--k-suave:var(--claro-suave);--k-acento-texto:var(--acento-claro);--k-sombra:none}
+.estudio-variante .cabeza{margin-bottom:0}
+.estudio-variante.seccion--noche h2,.estudio-variante.seccion--noche h3{color:var(--blanco)}
+.estudio-variante .kv-zigzag-icono{background:none;border:0;box-shadow:none}
+.estudio-variante .kv-zigzag-icono .icono{width:100%;height:100%;border-width:2px}
+.estudio-variante .kv-zigzag-icono .icono svg{width:36%;height:36%}
+.estudio-variante .kv-panel>.icono{margin-bottom:var(--s-4)}
+.estudio-variante .kv-indice>li{align-items:center}
+.estudio-variante .kv-indice .icono{width:2.6rem;height:2.6rem}
+.estudio-variante .kv-indice .icono svg{width:1.1rem;height:1.1rem}
+.estudio-variante .kv-mosaico .icono{margin-bottom:auto}
+.estudio-variante .kv-mosaico .icono svg{width:1.3rem;height:1.3rem;margin:0;padding:0;box-sizing:border-box;color:inherit}
+.estudio-variante .kv-mosaico h3{margin-top:var(--s-5)}
+.estudio-variante .kv-mosaico>li:first-child .icono{color:var(--blanco)}
+.estudio-variante .kv-zigzag>li:hover .icono,.estudio-variante .kv-indice>li:hover .icono,.estudio-variante .kv-mosaico>li:not(:first-child):hover .icono,.estudio-variante .kv-panel:hover>.icono{background:var(--acento);border-color:var(--acento);color:var(--blanco)}
+@media (max-width:640px){.kv-portada--sangre.estudio-variante{padding-top:11rem}.kv-portada--sangre.estudio-variante>.insignia{width:6.2rem;height:6.2rem}.estudio-variante .kv-panoramica-foto .insignia{width:5.5rem;height:5.5rem}.estudio-variante .kv-indice .icono{display:none}.estudio-variante .kv-indice>li{grid-template-columns:2.75rem minmax(0,1fr)}}
 </style>
 </head>
 <body>

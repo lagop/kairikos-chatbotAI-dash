@@ -12,7 +12,9 @@ vi.mock('@/lib/site-content-ai', async (orig) => ({
 import type { PrismaClient } from '@prisma/client';
 import { buildSiteContentFromDraft, parseExpansionResponse } from '@/lib/site-content-ai';
 import { renderResenasHtml, renderCitasHtml } from '@/lib/site-draft-markup';
-import { designForDraft, draftBannerHtml, draftOfferHtml, draftRenderContext, renderDesignedDraft, templateIconIds } from '@/lib/web-draft-design';
+import { conDisposicionesAlternadas, designForDraft, draftBannerHtml, draftOfferHtml, draftRenderContext, renderDesignedDraft, templateIconIds } from '@/lib/web-draft-design';
+import { SITE_CONTENT_SAMPLES } from '@/lib/site-content-samples';
+import { alternarVariantes } from '@/lib/site-section-variants';
 import { SITE_TEMPLATE_BASE } from '@/lib/site-template-base';
 import { validateSiteTemplate } from '@/lib/site-template-validate';
 import type { WebDraftCopy } from '@/lib/web-draft-ai';
@@ -188,6 +190,22 @@ describe('designForDraft', () => {
     expect(r?.content.datos.titular).toBe(COPY.headline);
     expect(mocks.expand.mock.calls[0][0]).toMatchObject({ kind: 'Fontanería', iconIds: templateIconIds(SITE_TEMPLATE_BASE.marco) });
     expect(r?.expanded).toBe(false);
+  });
+
+  it('el borrador nuevo sale con las disposiciones alternadas', async () => {
+    mocks.pick.mockResolvedValue({ id: 't1' });
+    mocks.expand.mockResolvedValue({ ok: true, content: JSON.parse(JSON.stringify(SITE_CONTENT_SAMPLES.normal)), model: 'm' });
+    const r = await designForDraft(prisma, { copy: COPY, themeKey: 'trades-1', businessName: 'Fontanería Pérez', primaryType: 'plumber', city: 'Telde' });
+    const secciones = r!.content.paginas[0].secciones;
+    expect(secciones.some((s) => s.variante)).toBe(true);
+    // Ya alternadas: volver a alternar no cambia nada.
+    expect(alternarVariantes(secciones)).toEqual(secciones);
+  });
+
+  it('las mismas al regenerar el mismo negocio', () => {
+    const c = JSON.parse(JSON.stringify(SITE_CONTENT_SAMPLES.normal));
+    expect(conDisposicionesAlternadas(c, 'Fontanería Pérez')).toEqual(conDisposicionesAlternadas(c, 'Fontanería Pérez'));
+    expect(c.paginas[0].secciones.some((s: { variante?: string }) => s.variante)).toBe(false);
   });
 
   it('una plantilla pedida (convertir) tiene que estar aprobada y ser de su sector', async () => {
