@@ -14,6 +14,6 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   if (!auth.ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
 
-  const result = await savePublicDraftContent(prisma, params.id, await req.json().catch(() => null));
+  const result = await savePublicDraftContent(prisma, params.id, await req.json().catch(() => null), auth.operatorId);
   return NextResponse.json(result.body, { status: result.status });
 }

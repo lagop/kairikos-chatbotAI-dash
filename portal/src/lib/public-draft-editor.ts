@@ -7,6 +7,7 @@ import { DRAFT_HUELLA_SQL, isUuid } from './web-draft-edit';
 import { renderPublicDraft } from './public-draft-page';
 import type { PreviewOverride } from './website-preview';
 import type { DraftEditorLoad } from './web-draft-editor';
+import { snapshotPublicDraft } from './draft-versions';
 
 // =============================================================================
 // 30/10/2026 — el borrador que pidió un negocio en kairikos.com, editado por
@@ -16,11 +17,9 @@ import type { DraftEditorLoad } from './web-draft-editor';
 // tabla, con lo mismo dentro: se guarda solo `content`, la versión del editor
 // es la huella de copy+content, y la vista en vivo pinta como /mi-web.
 //
-// LIMITACIÓN ACEPTADA: aquí no hay historial. ProspectingWebDraftVersion es de
-// los borradores de prospección y PublicDraftRequest no tiene uno propio;
-// para un retoque antes de la primera entrega, «Deshacer» del editor cubre lo
-// que hace falta. Si estos borradores empiezan a editarse después de enviados,
-// es el momento de darles su tabla de versiones.
+// Desde el 31/10/2026 con historial: cada guardado deja el estado anterior en
+// PublicDraftVersion y el editor lo enseña en «Versiones anteriores»
+// (draft-versions.ts). Hasta entonces era una limitación aceptada.
 // =============================================================================
 
 async function huellaOf(db: Prisma.TransactionClient | PrismaClient, id: string): Promise<string | null> {
@@ -48,6 +47,7 @@ export async function savePublicDraftContent(
   prisma: PrismaClient,
   id: string,
   input: unknown,
+  operatorId: string,
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   if (!isUuid(id)) return { status: 404, body: { error: 'not_found' } };
   const raw = (input ?? {}) as Record<string, unknown>;
@@ -65,6 +65,7 @@ export async function savePublicDraftContent(
       return exists ? { status: 409, body: { error: 'stale_draft' } } : { status: 404, body: { error: 'not_found' } };
     }
     if (!locked[0].template_id) return { status: 409, body: { error: 'old_design' } };
+    await snapshotPublicDraft(tx, id, 'editado', operatorId);
     await tx.publicDraftRequest.update({ where: { id }, data: { content: parsed.content as unknown as Prisma.InputJsonValue } });
     return { status: 200, body: { ok: true, updatedAt: await huellaOf(tx, id) } };
   });

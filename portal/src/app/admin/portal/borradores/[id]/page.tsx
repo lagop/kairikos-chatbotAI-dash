@@ -6,6 +6,7 @@ import { getSession } from '@/lib/session';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { SiteContentEditor } from '@/components/portal/SiteContentEditor';
 import { loadPublicDraftEditor } from '@/lib/public-draft-editor';
+import { DraftVersionsPanel } from '@/components/admin/DraftVersionsPanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,8 +53,8 @@ export default async function AdminPublicDraftEditorPage(props: { params: Promis
             negocio: loaded.negocio,
             verUrl: `${apiBase}/ver`,
             aviso: sent
-              ? 'Ya se le envió: lo que guardes lo verá en su enlace la próxima vez que lo abra. Aquí no hay historial; «Deshacer» sí funciona mientras no cierres la página.'
-              : 'Todavía no se le ha enviado: lo que guardes es lo que recibirá. Aquí no hay historial; «Deshacer» sí funciona mientras no cierres la página.',
+              ? 'Ya se le envió: lo que guardes lo verá en su enlace la próxima vez que lo abra. Lo que había queda en «Versiones anteriores», debajo del editor.'
+              : 'Todavía no se le ha enviado: lo que guardes es lo que recibirá. Lo que había queda en «Versiones anteriores», debajo del editor.',
             guardado: sent ? 'Guardado. Su enlace ya enseña el borrador así.' : 'Guardado. Es lo que recibirá cuando se envíe.',
             // 31/10/2026 — con sus fotos (PublicDraftImage, lib/web-draft-images.ts).
             subidas: true,
@@ -75,6 +76,9 @@ export default async function AdminPublicDraftEditorPage(props: { params: Promis
             : 'El contenido de este borrador no se puede leer.'}
         </p>
       )}
+      {/* 31/10/2026 — también si no se puede editar: volver a una versión
+          buena es justo lo que arregla un contenido ilegible. */}
+      <DraftVersionsPanel apiBase={apiBase} />
     </div>
   );
 }

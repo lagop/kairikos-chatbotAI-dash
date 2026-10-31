@@ -4260,7 +4260,8 @@ model PublicDraftRequest {
   // abierto igual). El operador lo ve en la cola y puede reintentarlo.
   deliveryError      String?   @map("delivery_error")
 
-  images PublicDraftImage[]
+  images   PublicDraftImage[]
+  versions PublicDraftVersion[]
 
   @@index([createdAt])
   @@index([sentAt])
@@ -4287,6 +4288,34 @@ model PublicDraftImage {
   request PublicDraftRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@unique([requestId, path])
+  @@index([requestId, createdAt])
+}
+
+/// 31/10/2026 — lo que tenía el borrador pedido en kairikos.com antes de cada
+/// guardado del operador, como ProspectingWebDraftVersion para los de
+/// prospección (lib/draft-versions.ts). Append-only: volver a una versión
+/// también deja aquí lo que había. Se borra con la petición (Cascade), igual
+/// que sus fotos: retention-purge.ts tiene que llevárselo todo.
+model PublicDraftVersion {
+  id        String @id @default(uuid()) @db.Uuid
+  requestId String @map("request_id") @db.Uuid
+
+  /// Qué sustituyó a este estado: 'editado' (el operador lo guardó desde el
+  /// editor) | 'restaurado' (se volvió a otra versión).
+  accion  String
+  nota    String?
+  /// El id del operador.
+  actorId String  @map("actor_id")
+
+  copy       Json?
+  content    Json?
+  templateId String? @map("template_id") @db.Uuid
+  themeKey   String  @map("theme_key")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  request PublicDraftRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
   @@index([requestId, createdAt])
 }
 

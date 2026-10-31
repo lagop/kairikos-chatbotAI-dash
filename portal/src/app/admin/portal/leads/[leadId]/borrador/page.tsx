@@ -6,6 +6,7 @@ import { getSession } from '@/lib/session';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { SiteContentEditor } from '@/components/portal/SiteContentEditor';
 import { loadDraftEditor } from '@/lib/web-draft-editor';
+import { DraftVersionsPanel } from '@/components/admin/DraftVersionsPanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,6 +69,8 @@ export default async function AdminDraftEditorPage(props: { params: Promise<{ le
             : 'El contenido de este borrador no se puede leer. Regéneralo desde la lista de prospectos.'}
         </p>
       )}
+      {/* 31/10/2026 — el historial que antes solo veía borrador-web.ts. */}
+      <DraftVersionsPanel apiBase={verUrl} />
     </div>
   );
 }
