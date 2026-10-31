@@ -378,6 +378,11 @@ export const BLOQUES_CSS = `<style id="bloques-kairikos">
 .k-etiqueta{position:absolute;top:.75rem;padding:.3rem .65rem;border-radius:4px;background:#111;color:#fff;font:600 .8rem/1.2 system-ui,sans-serif;letter-spacing:.04em;text-transform:uppercase;pointer-events:none}
 .k-etiqueta--antes{left:.75rem}
 .k-etiqueta--despues{right:.75rem}
+/* 31/10/2026 — cada etiqueta cabe en su mitad; en el móvil «después» baja a
+   la esquina de abajo: «Antes de la reforma» y «Después de la reforma» se
+   pisaban a 390 px (lo vio la bifurcación de Consulta). */
+.k-etiqueta{max-width:calc(50% - 1.15rem)}
+@media (max-width:600px){.k-etiqueta{max-width:calc(100% - 1.5rem)}.k-etiqueta--despues{top:auto;bottom:.75rem}}
 .k-comparador-control{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:ew-resize;touch-action:pan-y}
 .k-comparador:has(.k-comparador-control:focus-visible) .k-comparador-linea{box-shadow:0 0 0 3px var(--k-acento,#222)}
 .k-filtros{display:flex;flex-wrap:wrap;gap:.5rem;margin:0 0 1.5rem}
