@@ -385,6 +385,188 @@ time{font-size:.85rem;font-weight:800;text-transform:uppercase;letter-spacing:.1
 .sello-variante .kv-panel>.estampa{margin-bottom:var(--s-4)}
 .sello-variante .kv-zigzag>li:hover .estampa,.sello-variante .kv-indice>li:hover .estampa,.sello-variante .kv-mosaico>li:not(:first-child):hover .estampa{transform:rotate(0);background:var(--rojo);color:var(--blanco);border-style:solid}
 @media (max-width:640px){.kv-portada--sangre.sello-variante{padding-top:11.5rem}.sello-variante .kv-indice .estampa{display:none}.sello-variante .kv-indice>li{grid-template-columns:2.75rem minmax(0,1fr)}}
+/* El resto de secciones (31/10/2026), igual: el retrato y la nota de Google
+   como sellos, las marcas y las garantías como estampas, el precio en su
+   píldora roja, las opiniones en bocadillos y los filetes a trazos. Las
+   reseñas sobre fondo claro las normaliza el motor a la superficie de la
+   página: aquí solo se le pone la cola al bocadillo del mismo color. */
+.sello-retrato{position:relative;display:block;width:9rem;height:9rem;margin:0 auto var(--s-6)}
+.sello-retrato::before{content:"";position:absolute;inset:-.7rem;border-radius:50%;border:2px dashed var(--rojo)}
+.sello-variante .kv-cita-foto{width:100%;height:100%;margin:0;transform:rotate(-4deg);transition:transform .4s ease}
+.sello-retrato:hover .kv-cita-foto{transform:rotate(0)}
+.sello-variante .kv-cita-texto>p:first-child{font-style:italic}
+.kv-sobre--cita.sello-variante h2{margin-bottom:var(--s-6)}
+.kv-sobre--media.sello-variante .kv-media-foto>*{border-radius:0 min(40vw,22rem) 0 0}
+.kv-sobre--media.sello-variante .kv-media-texto{background:var(--crema)}
+.sello-variante .kv-cifras{border-top:2px dashed var(--filete)}
+.kv-sobre--revista.sello-variante .kv-revista-cabeza{border-bottom:2px dashed var(--rojo)}
+.kv-sobre--revista.sello-variante .kv-revista-cabeza h2{max-width:20ch}
+.kv-sobre--revista.sello-variante .kv-revista-cabeza .rotulo{font-style:normal;color:var(--rojo);margin-bottom:var(--s-4)}
+.kv-sobre--revista.sello-variante .kv-revista-columnas>p:first-child{font:inherit;color:inherit}
+.revista-sitio{display:flex;align-items:center;gap:var(--s-3)}
+.revista-sitio .estampa{width:2.6rem;height:2.6rem}
+.revista-sitio .estampa svg{width:1.15rem;height:1.15rem}
+.kv-proceso--linea.sello-variante .kv-linea>li{padding-left:4.75rem}
+.kv-proceso--linea.sello-variante .kv-linea>li::before{width:3.25rem;height:3.25rem;font-size:1.3rem;box-shadow:0 0 0 6px var(--papel);outline:1.5px dashed rgba(255,255,255,.65);outline-offset:-6px;transform:rotate(-8deg);transition:transform .4s cubic-bezier(.3,1.6,.5,1)}
+.kv-proceso--linea.sello-variante .kv-linea>li:hover::before{transform:rotate(0)}
+.kv-proceso--linea.sello-variante .kv-linea>li:not(:last-child)::after{left:calc(1.625rem - 1px);top:3.75rem;border-left-color:var(--filete)}
+.kv-proceso--linea.sello-variante .kv-linea h3{padding-top:.7rem}
+.sello-variante .kv-marca{width:2.6rem;height:2.6rem}
+.sello-variante .kv-marca svg{width:1.15rem;height:1.15rem}
+.sello-variante .kv-marcas>li{border-bottom:2px dashed var(--filete)}
+.sello-variante .kv-marcas>li:hover .estampa{transform:rotate(0);background:var(--rojo);color:var(--blanco);border-style:solid}
+.sello-variante .kv-marcas>li>div{padding-top:.35rem}
+.kv-garantias--iconos.sello-variante .kv-icono-grande{position:relative;width:6rem;height:6rem;background:var(--rojo);border:0;color:var(--blanco);transform:rotate(-8deg);box-shadow:0 14px 30px -10px rgba(0,0,0,.5);transition:transform .4s cubic-bezier(.3,1.6,.5,1)}
+.kv-garantias--iconos.sello-variante .kv-icono-grande::before{content:"";position:absolute;inset:.45rem;border-radius:50%;border:1.5px dashed rgba(255,255,255,.6)}
+.kv-garantias--iconos.sello-variante .kv-iconos>li:hover .kv-icono-grande{transform:rotate(0) scale(1.05)}
+.kv-garantias--iconos.sello-variante h3{color:var(--blanco)}
+.kv-garantias--iconos.sello-variante .kv-iconos p{color:var(--claro-suave)}
+.kv-precios--ventanitas.sello-variante .kv-tabla{background:var(--blanco);border:0;border-left:5px solid var(--rojo);box-shadow:0 10px 24px -18px rgba(27,42,65,.4)}
+.sello-variante .kv-fila-precio{border-bottom:0}
+.sello-variante .kv-fila-precio:not(:last-child){border-bottom:2px dashed var(--filete)}
+.sello-variante .kv-concepto>span:first-child{font:600 1.2rem/1.25 var(--display)}
+.sello-variante .kv-fila-precio>strong{align-self:center;text-align:center;background:var(--rojo);color:var(--blanco);font:800 1rem/1.25 var(--texto);border-radius:999px;padding:.4rem .95rem}
+.sello-variante .kv-info{border:2px dashed currentColor;color:var(--rojo);font:800 .8rem/1 var(--texto)}
+.sello-variante .kv-info[aria-expanded="true"]{border-style:solid}
+.sello-variante .kv-globo{border:2px dashed var(--filete);border-radius:1rem;color:var(--gris)}
+.kv-oscura.sello-variante{background:var(--tinta)}
+.kv-oscura.sello-variante .rotulo{color:var(--rojo-claro)!important}
+.kv-oscura.sello-variante .nota-google a{color:var(--rojo-claro)!important}
+.kv-oscura.sello-variante .estrellas{color:var(--oro-claro)!important}
+.kv-oscura.sello-variante .nota-sello{background:transparent;border-color:var(--rojo-claro)}
+.kv-oscura.sello-variante :is(.cita,.resena){background:var(--tinta-2)!important;border:1px solid var(--tinta-3)!important}
+.kv-oscura.sello-variante .cita::after{background:var(--tinta-2)}
+.kv-oscura.sello-variante .kv-pista{padding-bottom:var(--s-5)}
+.kv-opiniones.sello-variante:not(.kv-oscura) .cita::after{background:var(--k-superficie);border-right:1px solid var(--filete);border-bottom:1px solid var(--filete)}
+.kv-opiniones--muro.sello-variante .kv-muro-nota{position:relative;border-radius:var(--radio);transform:rotate(-1deg)}
+.kv-opiniones--muro.sello-variante .kv-muro-nota::before{content:"";position:absolute;inset:.5rem;border:1.5px dashed rgba(255,255,255,.6);border-radius:calc(var(--radio) - .35rem);pointer-events:none}
+.kv-opiniones--muro.sello-variante .kv-muro-nota .kv-estrellas{color:var(--oro-claro)}
+/* En el muro, sin cola: va en columnas CSS, y lo que sobresale por debajo de
+   una tarjeta al final de una columna se pinta arriba de la siguiente. */
+.kv-opiniones--muro.sello-variante .cita::after{display:none}
+.kv-opiniones--destacada.sello-variante .kv-lado-tarjeta{background:var(--tinta);color:var(--claro);border:0;box-shadow:0 30px 60px -30px rgba(27,42,65,.6)}
+.kv-opiniones--destacada.sello-variante .kv-lado-tarjeta h2{color:var(--blanco)}
+.kv-opiniones--destacada.sello-variante .kv-lado-tarjeta .rotulo{color:var(--rojo-claro)}
+.kv-opiniones--destacada.sello-variante .nota-google{flex-wrap:wrap;margin-top:var(--s-5)}
+.kv-opiniones--destacada.sello-variante .nota-google p{color:var(--claro-suave)}
+.kv-opiniones--destacada.sello-variante .nota-google a{color:var(--rojo-claro)}
+.kv-opiniones--destacada.sello-variante .kv-citas{gap:var(--s-5)}
+.kv-faq--dos-columnas.sello-variante .kv-acordeon details{padding:0 var(--s-5);border-radius:1rem;border:1px solid var(--filete);background:var(--blanco)}
+.kv-faq--dos-columnas.sello-variante .kv-acordeon summary{font-weight:800;font-size:1.08rem;align-items:center}
+.kv-faq--dos-columnas.sello-variante .kv-acordeon summary:hover{color:var(--rojo)}
+.kv-faq--dos-columnas.sello-variante .kv-acordeon summary::after{content:"";width:1.8rem;height:1.8rem;border-radius:50%;background:linear-gradient(var(--blanco),var(--blanco)) center/.8rem 2px no-repeat,linear-gradient(var(--blanco),var(--blanco)) center/2px .8rem no-repeat,var(--rojo);transition:transform .3s ease}
+.sello-variante .kv-ayuda{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s-2) var(--s-4);color:var(--gris)}
+.sello-variante .kv-ayuda .faq-telefono{color:var(--tinta)}
+.sello-variante .kv-ayuda .faq-telefono:hover{color:var(--rojo)}
+.kv-faq--panel.sello-variante .kv-panel{background:var(--blanco);border:0;border-left:5px solid var(--rojo);box-shadow:0 10px 24px -18px rgba(27,42,65,.4)}
+.kv-faq--panel.sello-variante .kv-pestanas-lista button{font-weight:800;border-bottom-style:dashed;border-color:var(--filete)}
+.kv-faq--panel.sello-variante .kv-pestanas-lista button::before{content:"";flex:none;width:.7rem;height:.7rem;border-radius:50%;border:2px solid currentColor}
+.kv-faq--panel.sello-variante .kv-pestanas-lista button[aria-selected="true"]::before{background:currentColor}
+/* Bloques ricos con marco propio (31/10/2026, como #374 en Señal). El marco es
+   de Sello —rótulo con su círculo, estampa en la columna lateral, fondos papel,
+   crema y tinta alternados—; el cuerpo lo pinta el motor (BLOQUES_CSS) y aquí
+   solo se retoca, siempre bajo .sello-bloque. Solo aspecto: el visor, los
+   filtros, el arrastre del comparador, las pestañas y la vista sin JavaScript
+   siguen siendo los del motor. Las etiquetas del antes y después no cambian de
+   sitio: el motor ya manda «después» abajo en el móvil para que no se pisen.
+   Las rayas discontinuas son el trazo de la estampa, el sello de la casa. */
+.sello-bloque .cabeza{margin-bottom:var(--s-6)}
+.sello-bloque-texto{max-width:62ch;margin:0 0 var(--s-6)}
+.sello-bloque-texto.texto-rico>p:first-child{font-size:clamp(1.2rem,1.05rem + .6vw,1.45rem)}
+.sello-bloque-texto>:last-child{margin-bottom:0}
+.sello-bloque.seccion--tinta{--k-superficie:var(--tinta-2);--k-borde:rgba(255,255,255,.18);--k-suave:var(--claro-suave);--k-acento-texto:var(--rojo-claro)}
+.sello-bloque-rejilla{display:grid;gap:var(--s-6) var(--s-8);align-items:start}
+@media (min-width:900px){.sello-bloque-rejilla{grid-template-columns:minmax(0,1fr) minmax(0,1.6fr)}}
+.sello-bloque-lado .estampa{margin-bottom:var(--s-5)}
+.sello-bloque-lado h2{font-size:clamp(2rem,3.4vw,2.9rem);margin:0 0 var(--s-5)}
+.sello-bloque-lado .sello-bloque-texto{margin:0}
+.sello-bloque-cuerpo{min-width:0}
+/* Galería: cada foto es una polaroid, un poco torcida hasta que se señala. */
+.sello-bloque .k-galeria-rejilla{gap:var(--s-6) var(--s-5)}
+.sello-bloque .k-galeria-rejilla>li{padding:.6rem .6rem .85rem;background:var(--blanco);border-radius:.4rem;box-shadow:0 18px 34px -22px rgba(27,42,65,.45);transform:rotate(-1.2deg);transition:transform .35s ease}
+.sello-bloque .k-galeria-rejilla>li:nth-child(even){transform:rotate(1deg)}
+.sello-bloque .k-galeria-rejilla>li:hover,.sello-bloque .k-galeria-rejilla>li:focus-within{transform:none}
+.sello-bloque .k-galeria-foto{border-radius:.2rem}
+.sello-bloque .k-galeria-foto:focus-visible{outline:3px solid var(--rojo);outline-offset:3px}
+.sello-bloque .k-pie{margin-top:var(--s-3);font:italic 400 1.02rem/1.35 var(--display);color:var(--tinta-3);text-align:center}
+/* Antes y después: sobre tinta, dentro del anillo discontinuo de la estampa. */
+.sello-bloque--antes-despues .sello-bloque-cuerpo{padding:10px;border:2px dashed rgba(255,159,138,.55);border-radius:calc(var(--radio) + 10px)}
+.sello-bloque .k-comparador,.sello-bloque .k-comparador-sola{max-width:none;border-radius:var(--radio)}
+.sello-bloque .k-comparador-linea{width:2px;margin-left:-1px;background:var(--blanco)}
+.sello-bloque .k-comparador-linea::after{width:3rem;height:3rem;margin:-1.5rem 0 0 -1.5rem;outline:2px dashed var(--blanco);outline-offset:4px}
+.sello-bloque .k-comparador:has(.k-comparador-control:focus-visible) .k-comparador-linea{box-shadow:0 0 0 3px var(--rojo-claro)}
+.sello-bloque .k-etiqueta{border-radius:1rem;padding:.4rem .8rem;background:var(--papel);color:var(--tinta);font:800 .78rem/1.2 var(--texto);letter-spacing:.12em}
+.sello-bloque .k-etiqueta--despues{background:var(--rojo);color:var(--blanco)}
+/* Catálogo: filtros con el trazo discontinuo, fichas blancas sobre crema. */
+.sello-bloque .k-filtros{gap:var(--s-2)}
+.sello-bloque .k-filtros button{border:2px dashed color-mix(in oklab,var(--tinta),transparent 65%);background:var(--blanco);color:var(--tinta);font-weight:800}
+.sello-bloque .k-filtros button:hover{border-color:var(--rojo);color:var(--rojo)}
+.sello-bloque .k-filtros button[aria-pressed="true"]{background:var(--tinta);border:2px solid var(--tinta);color:var(--blanco)}
+.sello-bloque .k-filtros button:focus-visible{outline:3px solid var(--rojo);outline-offset:2px}
+.sello-bloque .k-catalogo-rejilla{gap:var(--s-5)}
+.sello-bloque .k-producto{border:0;box-shadow:0 18px 34px -24px rgba(27,42,65,.5);transition:transform .3s ease}
+.sello-bloque .k-producto:hover{transform:translateY(-4px)}
+.sello-bloque .k-producto-sin-foto{background:repeating-linear-gradient(135deg,var(--filete) 0 1px,transparent 1px 12px),var(--crema)}
+.sello-bloque .k-producto-cuerpo{gap:var(--s-2);padding:var(--s-5)}
+.sello-bloque .k-producto-cuerpo h3{font-size:1.4rem}
+.sello-bloque .k-producto-categoria{display:inline-flex;align-items:center;gap:.45rem;font-weight:800;letter-spacing:.14em;color:var(--rojo)}
+.sello-bloque .k-producto-categoria::before{content:"";flex:none;width:.55rem;height:.55rem;border-radius:50%;border:2px solid currentColor}
+.sello-bloque .k-caracteristicas{margin-bottom:var(--s-2)}
+.sello-bloque .k-precio{margin-top:auto;padding-top:var(--s-3);border-top:2px dashed var(--filete);font:600 1.6rem/1.1 var(--display);color:var(--tinta)}
+/* Pestañas: las del estilo por defecto son píldoras con el círculo del rótulo;
+   las de los estilos T1–T3 conservan su forma y solo cogen la letra. */
+.sello-bloque .k-pestanas-lista button{font-weight:800}
+.sello-bloque .k-pestanas:not(.k-pestanas--subrayado,.k-pestanas--pildora,.k-pestanas--tarjetas) .k-pestanas-lista{gap:var(--s-2);margin-bottom:var(--s-5);padding-bottom:var(--s-4);border-bottom:2px dashed var(--filete)}
+.sello-bloque .k-pestanas:not(.k-pestanas--subrayado,.k-pestanas--pildora,.k-pestanas--tarjetas) .k-pestanas-lista button{display:inline-flex;align-items:center;gap:.5rem;margin:0;padding:.6rem 1.1rem;border:2px solid var(--filete);border-radius:999px;background:var(--blanco);color:var(--tinta)}
+.sello-bloque .k-pestanas:not(.k-pestanas--subrayado,.k-pestanas--pildora,.k-pestanas--tarjetas) .k-pestanas-lista button::before{content:"";flex:none;width:.65rem;height:.65rem;border-radius:50%;border:2px solid currentColor}
+.sello-bloque .k-pestanas:not(.k-pestanas--subrayado,.k-pestanas--pildora,.k-pestanas--tarjetas) .k-pestanas-lista button:hover{border-color:var(--rojo);color:var(--rojo)}
+.sello-bloque .k-pestanas:not(.k-pestanas--subrayado,.k-pestanas--pildora,.k-pestanas--tarjetas) .k-pestanas-lista button[aria-selected="true"]{background:var(--tinta);border-color:var(--tinta);color:var(--blanco)}
+.sello-bloque .k-pestanas:not(.k-pestanas--subrayado,.k-pestanas--pildora,.k-pestanas--tarjetas) .k-pestanas-lista button[aria-selected="true"]::before{background:var(--rojo-claro);border-color:var(--rojo-claro)}
+.sello-bloque .k-pestanas:not(.k-pestanas--subrayado,.k-pestanas--pildora,.k-pestanas--tarjetas) .k-pestanas-lista button:focus-visible{outline:3px solid var(--rojo);outline-offset:2px}
+.sello-bloque .k-pestanas--js:not(.k-pestanas--subrayado,.k-pestanas--pildora,.k-pestanas--tarjetas) .k-panel{padding:clamp(1.5rem,4vw,2.5rem);background:var(--blanco);border-radius:var(--radio);box-shadow:0 18px 40px -26px rgba(27,42,65,.45)}
+.sello-bloque .k-pestanas:not(.k-pestanas--js) .k-panel{padding:var(--s-5);background:var(--blanco);border-radius:var(--radio);border-left:5px solid var(--rojo)}
+.sello-bloque .k-panel-titulo{font-size:1.6rem}
+.sello-bloque .k-panel-texto{font-size:1.08rem}
+.sello-bloque .k-panel-texto ul{list-style:none;padding:0;display:grid;gap:var(--s-2)}
+.sello-bloque .k-panel-texto li{position:relative;padding-left:var(--s-6)}
+.sello-bloque .k-panel-texto li::before{content:"";position:absolute;left:0;top:.45em;width:.85rem;height:.85rem;border-radius:50%;border:2px solid var(--rojo)}
+.sello-bloque .k-panel-texto strong{font-weight:800}
+.sello-bloque .k-panel-cuerpo img{border-radius:calc(var(--radio) - .5rem)}
+/* Comparativa: cabecera tinta, la columna destacada en rojo y filetes de trazo. */
+.sello-bloque .k-comparativa{border-radius:var(--radio);box-shadow:0 18px 40px -28px rgba(27,42,65,.5)}
+.sello-bloque .k-comparativa th,.sello-bloque .k-comparativa td{border-bottom:1px dashed var(--filete)}
+.sello-bloque .k-comparativa thead th,.sello-bloque .k-comparativa thead td{background:var(--tinta);color:var(--claro);font:600 1.2rem/1.15 var(--display);padding-block:1rem;border-bottom:0}
+.sello-bloque .k-comparativa thead .k-destacada{background:var(--rojo);color:var(--blanco)}
+.sello-bloque .k-comparativa tbody tr:nth-child(even){background:color-mix(in oklab,var(--crema),var(--blanco) 50%)}
+.sello-bloque .k-comparativa tbody .k-destacada{background:color-mix(in oklab,var(--rojo),var(--blanco) 92%);font-weight:800}
+.sello-bloque .k-si{background:var(--rojo)}
+.sello-bloque .k-si::after{border-color:var(--blanco)}
+@media (max-width:640px){.sello-bloque .k-comparativa th,.sello-bloque .k-comparativa td{border:0}.sello-bloque .k-comparativa tr{border-bottom:2px dashed var(--filete)}.sello-bloque .k-comparativa tbody tr:last-child{border-bottom:0}.sello-bloque .k-comparativa tbody th{font:600 1.3rem/1.15 var(--display)}.sello-bloque .k-comparativa tbody .k-destacada{background:transparent}}
+/* Trayectoria: la línea es un trazo discontinuo rojo y cada hito una estampa. */
+.sello-bloque .k-trayectoria{padding-left:2.4rem;gap:var(--s-6)}
+.sello-bloque .k-trayectoria::before{left:calc(.8rem - 1px);width:2px;background:repeating-linear-gradient(to bottom,var(--rojo) 0 7px,transparent 7px 13px)}
+.sello-bloque .k-hito::before{left:-2.4rem;top:.15rem;width:1.6rem;height:1.6rem;border:2px dashed var(--rojo);background:radial-gradient(circle,var(--rojo) 0 .28rem,var(--papel) .3rem);box-shadow:0 0 0 4px var(--papel)}
+.sello-bloque .k-hito-fecha{font:italic 600 1.45rem/1.1 var(--display);color:var(--rojo)}
+.sello-bloque .k-hito-cuerpo{padding-bottom:var(--s-5);border-bottom:1px dashed var(--filete)}
+.sello-bloque .k-hito-cuerpo h3{font-size:1.35rem}
+/* Marcas: una franja corta, centrada, entre dos trazos. */
+.sello-bloque.sello-bloque--marcas{padding-block:var(--s-7)}
+.sello-marcas-cabeza{max-width:40rem;margin:0 auto var(--s-6);text-align:center}
+.sello-marcas-cabeza h2{font-size:clamp(1.8rem,3.2vw,2.6rem);margin:0}
+.sello-bloque--marcas .sello-bloque-texto{margin-inline:auto;text-align:center}
+.sello-bloque .k-marcas{padding-block:var(--s-5);border-block:2px dashed color-mix(in oklab,var(--tinta),transparent 78%)}
+.sello-bloque .k-marca-texto{font-weight:800;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--gris)}
+/* Vídeo: sobre tinta, centrado, con el anillo de la estampa alrededor. Va en
+   outline y no en borde para que el anillo no ocupe sitio ni cambie el 16:9. */
+.sello-bloque--video .cabeza,.sello-bloque--video .sello-bloque-texto{margin-inline:auto;text-align:center}
+.sello-bloque .k-video-marco{margin-inline:auto;padding:10px}
+.sello-bloque .k-video-portada,.sello-bloque .k-video-marco iframe{border-radius:var(--radio);outline:2px dashed rgba(255,159,138,.6);outline-offset:8px}
+.sello-bloque .k-video-portada:focus-visible{outline:3px solid var(--blanco);outline-offset:8px}
+.sello-bloque .k-video-fondo{background:radial-gradient(circle at 30% 30%,var(--tinta-3),var(--tinta-2) 70%)}
+.sello-bloque .k-video-boton{outline:2px dashed var(--blanco);outline-offset:6px}
+.sello-bloque .k-video-etiqueta{border-radius:1rem;padding:.45rem .85rem;background:var(--papel);color:var(--tinta);font:800 .8rem/1.2 var(--texto);letter-spacing:.1em;text-transform:uppercase}
+.sello-bloque .k-video-aviso{margin-top:calc(var(--s-3) + 12px);text-align:center;color:var(--claro-suave)}
+@media (max-width:640px){.sello-bloque-lado h2{font-size:clamp(1.9rem,8vw,2.4rem)}.sello-bloque .k-hito-fecha{font-size:1.3rem}.sello-bloque--antes-despues .sello-bloque-cuerpo{padding:6px}}
 </style>
 </head>
 <body>
