@@ -53,6 +53,9 @@ const ITEM_FIELDS = new Set([
   'foto', 'fotoAlt', 'items', 'id', 'tipo', 'portada', 'equipo', 'trabajo', 'muestra', 'meta_titulo', 'meta_descripcion',
   'ruta', 'inicio', 'fecha', 'fecha_iso', 'extracto', 'foto_alt', 'intro',
 ]);
+/** Lo que el motor añade a la vista de una variante (variantExtras,
+ *  site-template.ts): solo existe en las piezas seccion@variante. */
+const VARIANT_FIELDS = new Set(['kv_fotos', 'kv_foto_sobre', 'src']);
 /** Solo estos van con triple llave: son HTML que ya produjo el motor. Un
  *  campo de texto del cliente con triple llave sería una puerta a inyectar
  *  HTML en su propia web. */
@@ -105,7 +108,7 @@ function checkPart(name: 'marco' | SiteTemplatePart | SiteVariantPart, source: s
   }
   for (const tag of tags) {
     const head = tag.name.split('.')[0];
-    if (!ROOT_FIELDS.has(head) && !ITEM_FIELDS.has(head)) {
+    if (!ROOT_FIELDS.has(head) && !ITEM_FIELDS.has(head) && !(name.includes('@') && VARIANT_FIELDS.has(head))) {
       problems.push(`${where}: el hueco {{${tag.name}}} no existe. Usa solo los campos del esquema.`);
     }
     if (tag.raw && !RAW_FIELDS.has(tag.name.split('.').pop() as string)) {

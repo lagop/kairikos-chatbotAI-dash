@@ -1,0 +1,18 @@
+<section class="kv kv-portada kv-portada--centrada ficha-variante" id="{{ancla}}">
+  <div class="kv-dentro">
+    <p class="ref"><span>Ficha</span><span>{{nombre}}</span></p>
+    <h1 class="kv-titular">{{titular}}</h1>
+    {{#subtitulo}}<p class="kv-entradilla">{{subtitulo}}</p>{{/subtitulo}}
+    <div class="acciones">
+      {{#telefono_href}}<a class="boton" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg>Llamar ahora</a>{{/telefono_href}}
+      <a class="boton boton--borde" href="#contacto">Pedir presupuesto</a>
+    </div>
+    <div class="ficha-abanico">
+      <span class="cota cota--h" aria-hidden="true"></span>
+      <div class="kv-abanico">
+        {{#kv_fotos}}<img src="{{src}}" alt="Trabajo de {{nombre}}">{{/kv_fotos}}
+        {{^kv_fotos}}<div class="kv-foto-vacia" aria-hidden="true"></div>{{/kv_fotos}}
+      </div>
+    </div>
+  </div>
+</section>

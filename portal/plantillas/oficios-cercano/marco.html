@@ -355,6 +355,76 @@ time{font-size:.92rem;font-weight:500;color:var(--tinta-suave)}
 .js .aparece{opacity:0;transform:translateY(24px) scale(.98);transition:opacity .7s ease,transform .8s cubic-bezier(.2,.9,.3,1.2);transition-delay:calc(var(--i,0) * 80ms)}
 .js .aparece.visto{opacity:1;transform:none}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.js .aparece{opacity:1;transform:none}.js .garabato path{stroke-dashoffset:0}.js .paso::after{transform:none}}
+/* Las variantes de sección a la manera de Cercano (31/10/2026): las piezas
+   seccion@variante.html usan el esqueleto del motor (clases kv-*, que traen
+   el diseño de cada disposición) y le ponen lo que hace a Cercano: el panel
+   verde bosque con su mancha que respira, la pastilla del horario con el
+   punto verde, el garabato coral bajo el titular, la pegatina redonda de la
+   nota de Google, la tarjeta mantequilla, los botones coral con relieve, las
+   fotos en arco y los iconos en círculo con fondos que se alternan. */
+.kv-portada.cercano-variante{overflow-x:clip}
+.cercano-variante .cabeza{margin-bottom:0}
+.cercano-variante .acciones{margin-top:var(--s-6)}
+.cercano-variante .garabato{width:min(14rem,70%);margin:var(--s-2) 0 var(--s-5)}
+.cercano-variante .kv-titular{margin-bottom:0}
+.cercano-variante .pegatina .estrellas svg{width:.9rem;height:.9rem}
+.cercano-variante .horario-tarjeta svg{width:1.4rem;height:1.4rem}
+.cercano-variante .horario-tarjeta a{color:inherit;white-space:nowrap}
+.kv-portada--panoramica.cercano-variante .acciones{margin:0}
+.kv-portada--panoramica.cercano-variante .kv-panoramica-foto{position:relative;width:min(100% - 2*var(--s-5),var(--ancho));margin-inline:auto}
+.kv-portada--panoramica.cercano-variante .kv-panoramica-foto img,.kv-portada--panoramica.cercano-variante .kv-panoramica-foto .kv-foto-vacia{border-radius:var(--radio)}
+.cercano-variante .kv-panoramica-foto .pegatina{top:auto;bottom:clamp(3.5rem,6vw,4.5rem)}
+.cercano-variante .kv-datos{background:var(--mantequilla);color:var(--bosque);border:0;box-shadow:0 10px 24px rgba(18,51,47,.18)}
+.cercano-variante .kv-datos li{color:var(--bosque)}
+.cercano-variante .kv-datos li+li{border-color:rgba(18,51,47,.18)}
+.cercano-variante .kv-datos strong{color:var(--coral)}
+.kv-portada--sangre.cercano-variante>.pegatina{right:clamp(1rem,5vw,4rem);top:clamp(1.5rem,4vw,3rem);z-index:1}
+.cercano-variante .kv-tarjeta,.cercano-variante .kv-formulario-texto{position:relative;overflow:hidden;isolation:isolate;background:var(--bosque);color:var(--claro);border-radius:var(--radio);box-shadow:none}
+.cercano-variante .kv-tarjeta::before,.cercano-variante .kv-formulario-texto::before{content:"";position:absolute;width:22rem;height:22rem;right:-8rem;bottom:-10rem;border-radius:43% 57% 61% 39%/45% 41% 59% 55%;background:var(--bosque-2);z-index:-1;animation:mancha 14s ease-in-out infinite alternate}
+.cercano-variante .kv-tarjeta .kv-titular,.cercano-variante .kv-formulario-texto .kv-titular{color:var(--blanco)}
+.cercano-variante .kv-tarjeta .kv-entradilla,.cercano-variante .kv-formulario-texto .kv-entradilla{color:var(--claro-suave)}
+.cercano-variante .kv-tarjeta .rotulo,.cercano-variante .kv-formulario-texto .rotulo{background:var(--bosque-2);color:var(--claro)}
+.cercano-variante .kv-tarjeta .rotulo::before,.cercano-variante .kv-formulario-texto .rotulo::before{background:#7ee2a8}
+.kv-portada--centrada.cercano-variante .acciones{justify-content:center}
+.kv-portada--centrada.cercano-variante .garabato{margin-inline:auto}
+.cercano-abanico{position:relative}
+.cercano-abanico .pegatina{top:auto;bottom:-1.5rem;right:clamp(0rem,8vw,7rem);z-index:2}
+.cercano-variante .kv-abanico>:not(:only-child){border-radius:999px 999px var(--radio) var(--radio)}
+.cercano-variante .kv-abanico>:only-child{border-radius:var(--radio)}
+/* El panel verde cuenta como tarjeta: misma altura que la del formulario. */
+.cercano-variante .kv-formulario-caja{align-items:stretch}
+.cercano-variante .kv-formulario-texto{padding:clamp(1.75rem,4vw,3.5rem);display:flex;flex-direction:column;justify-content:center;align-items:flex-start}
+.cercano-variante .kv-formulario-texto>*{max-width:100%}
+.cercano-variante .kv-checks .icono{width:2.2rem;height:2.2rem;flex:none}
+.cercano-variante .kv-checks .icono svg{width:1.05rem;height:1.05rem}
+.cercano-variante .kv-formulario-texto .horario-tarjeta{margin:var(--s-6) 0 0}
+.cercano-variante .kv-formulario-lado{background:var(--salvia)}
+.cercano-variante .kv-formulario .rotulo{align-self:flex-start}
+.cercano-variante .kv-formulario h2{font-size:clamp(1.5rem,1.1rem + 1.2vw,1.8rem)}
+.cercano-variante .kv-formulario input,.cercano-variante .kv-formulario textarea{border:2px solid transparent;border-radius:var(--radio-s);background:var(--crema);color:var(--tinta)}
+.cercano-variante .kv-formulario input:focus,.cercano-variante .kv-formulario textarea:focus{outline:none;border-color:var(--bosque);background:var(--blanco)}
+.cercano-variante .kv-formulario .boton{align-self:stretch}
+.cercano-variante .kv-zigzag-icono{border-radius:50%;background:var(--salvia);color:var(--bosque);border:0;box-shadow:none}
+.cercano-variante .kv-zigzag>li:nth-child(even) .kv-zigzag-icono{background:var(--mantequilla)}
+.cercano-variante .kv-zigzag>li:hover .kv-zigzag-icono{transform:rotate(-14deg) scale(1.05)}
+.cercano-variante .kv-num{color:var(--coral)}
+.cercano-variante .kv-panel>.icono{margin-bottom:var(--s-4);background:var(--salvia)}
+.cercano-variante .kv-indice>li{align-items:center}
+.cercano-variante .kv-indice .icono{width:2.6rem;height:2.6rem;background:var(--salvia)}
+.cercano-variante .kv-indice .icono svg{width:1.2rem;height:1.2rem}
+.cercano-variante .kv-indice>li:hover .icono{transform:rotate(-14deg) scale(1.1)}
+.cercano-variante .kv-mosaico>li{border:0;box-shadow:none;border-radius:var(--radio)}
+.cercano-variante .kv-mosaico>li:nth-child(4n+2){background:var(--salvia)}
+.cercano-variante .kv-mosaico>li:nth-child(4n+4){background:var(--mantequilla)}
+.cercano-variante .kv-mosaico>li:first-child{background:var(--bosque);color:var(--claro)}
+.cercano-variante .kv-mosaico>li:first-child h3{color:var(--blanco)}
+.cercano-variante .kv-mosaico .icono{margin-bottom:auto}
+.cercano-variante .kv-mosaico>li:nth-child(4n+1) .icono{background:var(--salvia)}
+.cercano-variante .kv-mosaico .icono svg{width:1.55rem;height:1.55rem;margin:0;padding:0;box-sizing:border-box;color:inherit}
+.cercano-variante .kv-mosaico h3{margin-top:var(--s-5)}
+.cercano-variante .kv-mosaico>li:hover{transform:translateY(-6px) rotate(-1deg);box-shadow:var(--sombra)}
+.cercano-variante .kv-mosaico>li:hover .icono{transform:rotate(-14deg) scale(1.1)}
+@media (max-width:640px){.cercano-variante .pegatina{width:6.5rem;height:6.5rem}.cercano-variante .pegatina strong{font-size:1.8rem}.kv-portada--sangre.cercano-variante{padding-top:11rem}.cercano-variante .kv-indice .icono{display:none}.cercano-variante .kv-indice>li{grid-template-columns:2.75rem minmax(0,1fr)}}
 </style>
 </head>
 <body>

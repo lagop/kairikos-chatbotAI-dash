@@ -344,6 +344,47 @@ time{font-size:.85rem;font-weight:800;text-transform:uppercase;letter-spacing:.1
 .js .matasellos li.aparece.visto:nth-child(3n+2){transform:rotate(1.5deg)}
 .js .matasellos li.aparece.visto:nth-child(3n){transform:none}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.js .aparece{opacity:1;transform:none}.js .paso::after{transform:none}.sello{transform:rotate(-8deg)}}
+/* Las variantes de sección a la manera de Sello (30/10/2026): las piezas
+   seccion@variante.html usan el esqueleto del motor (clases kv-*, que traen
+   el diseño de cada disposición) y le ponen lo que hace a Sello: el sello
+   redondo con la nota de Google, el rótulo sobre el título, la pastilla de
+   «abierto», los botones redondos y las estampas de los iconos. */
+.sello-variante .sello-aro{width:100%;height:100%}
+/* El sello entra estampándose, desde 1,6 veces su tamaño: a la derecha haría
+   scroll lateral mientras dura. clip, no hidden: no crea otra caja de scroll. */
+.kv-portada.sello-variante{overflow-x:clip}
+.sello-variante .cabeza{margin-bottom:0}
+.sello-variante .estado{margin-bottom:var(--s-5)}
+.sello-variante .acciones{margin-top:var(--s-6)}
+.kv-portada--panoramica.sello-variante .acciones{margin:0}
+.kv-portada--centrada.sello-variante .acciones{justify-content:center}
+.sello-variante .arco-vacio{border-radius:var(--radio)}
+.sello-variante .kv-panoramica-foto{position:relative}
+.sello-variante .kv-panoramica-foto .sello{left:auto;right:clamp(1rem,5vw,4rem);top:clamp(1rem,3vw,2rem);bottom:auto}
+.kv-portada--sangre.sello-variante>.sello{left:auto;right:clamp(1rem,5vw,4rem);top:clamp(1.5rem,4vw,3rem);bottom:auto;z-index:1}
+.sello-variante .kv-tarjeta .portada-datos{margin-top:var(--s-5);padding-top:var(--s-4)}
+.sello-abanico{position:relative}
+.sello-abanico .sello{left:clamp(0rem,8vw,7rem);bottom:-1rem;z-index:2}
+.sello-variante .kv-checks .estampa{width:2.2rem;height:2.2rem}
+.sello-variante .kv-checks .estampa svg{width:1rem;height:1rem}
+.sello-variante .kv-formulario-texto .portada-datos{margin-top:var(--s-6)}
+.sello-variante .kv-formulario .rotulo{margin-bottom:var(--s-2)}
+.sello-variante .kv-formulario h2{font-size:clamp(1.5rem,1.1rem + 1.2vw,2rem)}
+.sello-variante .kv-formulario .boton{margin-top:var(--s-5);align-self:stretch}
+.sello-variante .kv-zigzag-icono{background:none;border:0;box-shadow:none}
+.sello-variante .kv-zigzag-icono .estampa{width:100%;height:100%;border-width:3px}
+.sello-variante .kv-zigzag-icono .estampa svg{width:38%;height:38%}
+.sello-variante .kv-indice>li{align-items:center}
+.sello-variante .kv-indice .estampa{width:2.6rem;height:2.6rem}
+.sello-variante .kv-indice .estampa svg{width:1.15rem;height:1.15rem}
+.sello-variante .kv-mosaico .estampa{margin-bottom:auto}
+.sello-variante .kv-mosaico .estampa svg{width:1.45rem;height:1.45rem;margin:0;padding:0;box-sizing:border-box;color:inherit}
+.sello-variante .kv-mosaico h3{margin-top:var(--s-5)}
+.sello-variante .kv-mosaico>li:first-child .estampa{color:var(--blanco);background:transparent}
+.sello-variante .kv-pestanas-lista .estampa{border:0;transform:none;width:auto;height:auto}
+.sello-variante .kv-panel>.estampa{margin-bottom:var(--s-4)}
+.sello-variante .kv-zigzag>li:hover .estampa,.sello-variante .kv-indice>li:hover .estampa,.sello-variante .kv-mosaico>li:not(:first-child):hover .estampa{transform:rotate(0);background:var(--rojo);color:var(--blanco);border-style:solid}
+@media (max-width:640px){.kv-portada--sangre.sello-variante{padding-top:11.5rem}.sello-variante .kv-indice .estampa{display:none}.sello-variante .kv-indice>li{grid-template-columns:2.75rem minmax(0,1fr)}}
 </style>
 </head>
 <body>

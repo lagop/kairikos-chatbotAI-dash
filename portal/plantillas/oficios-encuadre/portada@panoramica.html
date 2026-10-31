@@ -1,0 +1,22 @@
+<section class="kv kv-portada kv-portada--panoramica encuadre-variante" id="{{ancla}}">
+  <div class="kv-dentro">
+    {{#horario_resumen}}<p class="estado">{{horario_resumen}}</p>{{/horario_resumen}}
+    <h1 class="kv-titular">{{titular}}</h1>
+    <div class="kv-fila">
+      {{#subtitulo}}<p class="kv-entradilla">{{subtitulo}}</p>{{/subtitulo}}
+      <div class="acciones">
+      {{#telefono_href}}<a class="boton" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg>Llamar ahora</a>{{/telefono_href}}
+      <a class="boton boton--claro" href="#contacto">Pedir presupuesto</a>
+      </div>
+    </div>
+  </div>
+  <div class="kv-panoramica-foto">
+    {{#fotos.portada}}<img src="{{fotos.portada}}" alt="Trabajo de {{nombre}}">{{/fotos.portada}}
+    {{^fotos.portada}}<div class="kv-foto-vacia" aria-hidden="true"></div>{{/fotos.portada}}
+  </div>
+  <div class="contenedor ficha">
+    {{#valoracion}}<div class="ficha-dato"><strong>{{valoracion}}</strong><div><span class="estrellas" role="img" aria-label="Valoración en Google"><svg aria-hidden="true"><use href="#i-estrella"></use></svg><svg aria-hidden="true"><use href="#i-estrella"></use></svg><svg aria-hidden="true"><use href="#i-estrella"></use></svg><svg aria-hidden="true"><use href="#i-estrella"></use></svg><svg aria-hidden="true"><use href="#i-estrella"></use></svg></span><small>en Google{{#num_resenas}} · {{num_resenas}} reseñas{{/num_resenas}}</small></div></div>{{/valoracion}}
+    {{#telefono}}<div class="ficha-dato"><svg aria-hidden="true"><use href="#i-telefono"></use></svg><a href="tel:{{telefono_href}}">{{telefono}}</a></div>{{/telefono}}
+    {{#direccion}}<div class="ficha-dato"><svg aria-hidden="true"><use href="#i-mapa"></use></svg><span>{{direccion}}</span></div>{{/direccion}}
+  </div>
+</section>

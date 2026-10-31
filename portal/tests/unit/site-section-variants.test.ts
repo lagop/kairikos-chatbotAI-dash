@@ -235,3 +235,31 @@ describe('alternarVariantes', () => {
     expect(out[0]).not.toBe(input[0]);
   });
 });
+
+describe('alternarVariantes al crear un borrador', () => {
+  it('seVe: una sección sin contenido no separa a las que se tocan de verdad', () => {
+    const refs = [{ tipo: 'servicios' }, { tipo: 'cifras' }, { tipo: 'garantias' }];
+    // Contando las cifras (franja), garantías no repite la forma de servicios…
+    expect(alternarVariantes(refs)[2].variante).toBeUndefined();
+    // …pero si no salen, sí.
+    expect(alternarVariantes(refs, { seVe: (r) => r.tipo !== 'cifras' })[2].variante).toBeDefined();
+  });
+
+  it('semilla: dos negocios no sacan por fuerza las mismas', () => {
+    const refs = [{ tipo: 'portada' }, { tipo: 'servicios' }, { tipo: 'garantias' }];
+    const picks = new Set([0, 1, 2, 3].map((semilla) => alternarVariantes(refs, { semilla })[2].variante));
+    expect(picks).toEqual(new Set(['marcas', 'iconos']));
+  });
+});
+
+describe('la versión propia de una variante', () => {
+  it('lee las fotos extra del motor; una pieza normal no', () => {
+    const t = clone(SITE_TEMPLATE_BASE) as SiteTemplateSource;
+    t.secciones['portada@centrada'] = '<section id="{{ancla}}"><h1>{{titular}}</h1>{{#kv_fotos}}<img src="{{src}}" alt="">{{/kv_fotos}}</section>';
+    expect(validateSiteTemplate(t).problems).toEqual([]);
+    const html = render(t, withVariant(normal(), 'portada', 'centrada'));
+    expect(html).toMatch(/<img src="[^"]+" alt="">/);
+    t.secciones.portada = (t.secciones.portada as string).replace('</section>', '{{#kv_fotos}}{{src}}{{/kv_fotos}}</section>');
+    expect(validateSiteTemplate(t).problems.join(' ')).toMatch(/kv_fotos/);
+  });
+});

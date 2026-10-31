@@ -1,0 +1,28 @@
+<section class="kv kv-portada kv-portada--formulario cercano-variante" id="{{ancla}}">
+  <div class="kv-dentro kv-formulario-caja">
+    <div class="kv-formulario-texto">
+      {{#horario_resumen}}<span class="rotulo">{{horario_resumen}}</span>{{/horario_resumen}}
+      <h1 class="kv-titular">{{titular}}</h1>
+      <svg class="garabato" viewBox="0 0 220 18" aria-hidden="true"><path d="M3 12c25-9 45 6 72-1s44-8 70 0 47 4 72-6"/></svg>
+      {{#subtitulo}}<p class="kv-entradilla">{{subtitulo}}</p>{{/subtitulo}}
+      {{#garantias.length}}<ul class="kv-checks">{{#garantias}}<li><span class="icono"><svg aria-hidden="true"><use href="#i-check"></use></svg></span><span>{{titulo}}</span></li>{{/garantias}}</ul>{{/garantias.length}}
+      {{#telefono_href}}<p class="horario-tarjeta"><svg aria-hidden="true"><use href="#i-telefono"></use></svg><span>O llame al <a href="tel:{{telefono_href}}">{{telefono}}</a></span></p>{{/telefono_href}}
+    </div>
+    <div class="kv-formulario-lado">
+      {{#fotos.portada}}<img class="kv-formulario-fondo" src="{{fotos.portada}}" alt="">{{/fotos.portada}}
+      <form class="kv-formulario formulario" method="post" data-kairikos-form>
+        <span class="rotulo">Presupuesto sin compromiso</span>
+        <h2>Cuéntenos qué necesita</h2>
+        <label for="kv-p4-nombre">Nombre</label>
+        <input id="kv-p4-nombre" name="name" maxlength="200" autocomplete="name">
+        <label for="kv-p4-contacto">Teléfono o email</label>
+        <input id="kv-p4-contacto" name="contact" maxlength="200" required>
+        <label for="kv-p4-mensaje">¿Qué necesita?</label>
+        <textarea id="kv-p4-mensaje" name="message" rows="3" maxlength="2000"></textarea>
+        <button class="boton" type="submit"{{#formulario.muestra}} disabled{{/formulario.muestra}}>Pedir presupuesto</button>
+        {{#formulario.muestra}}<p class="form-nota">Formulario de muestra: en la web publicada, los mensajes le llegan al correo.</p>{{/formulario.muestra}}
+        <p class="form-nota" data-kairikos-form-note hidden></p>
+      </form>
+    </div>
+  </div>
+</section>

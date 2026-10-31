@@ -365,6 +365,51 @@ time{font-size:.85rem;font-weight:600;color:var(--gris)}
 .js .aparece{opacity:0;transform:translateY(20px);transition:opacity .7s ease,transform .8s cubic-bezier(.2,.8,.2,1);transition-delay:calc(var(--i,0) * 70ms)}
 .js .aparece.visto{opacity:1;transform:none}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.js .aparece{opacity:1;transform:none}.js .pulso path{stroke-dashoffset:0}.paso::after{transform:scaleX(1)}.paso::before{background:var(--acento);color:var(--blanco)}}
+/* Las variantes de sección a la manera de Consulta (30/10/2026): las piezas
+   seccion@variante.html usan el esqueleto del motor (clases kv-*, que traen
+   el diseño de cada disposición) y le ponen lo que hace a Consulta: el halo
+   del acento detrás de la portada, la pastilla de «abierto», la tarjeta
+   flotante de «Pide tu cita», la línea del pulso, la nota de Google en
+   grande, los botones redondos y los iconos en círculo. */
+.kv-portada.consulta-variante{background:radial-gradient(60rem 30rem at 85% 10%,color-mix(in srgb,var(--acento) 10%,transparent),transparent 70%),var(--fondo);overflow-x:clip}
+.consulta-variante .estado{margin-bottom:var(--s-5)}
+.consulta-variante .antetitulo{margin-bottom:var(--s-4)}
+.consulta-variante .acciones{margin-top:var(--s-6)}
+.kv-portada--panoramica.consulta-variante .acciones{margin:0}
+.kv-portada--centrada.consulta-variante .acciones{justify-content:center}
+.consulta-variante .kv-titular{font-weight:800;letter-spacing:-.035em}
+.consulta-variante .pulso{width:100%;height:auto}
+.consulta-variante .estrellas svg{width:1rem;height:1rem}
+.consulta-variante .kv-panoramica-foto{position:relative}
+.consulta-variante .kv-panoramica-foto .tarjeta-cita{left:clamp(1rem,5vw,4rem);top:clamp(1rem,3vw,2rem);bottom:auto}
+.consulta-variante .kv-tarjeta{border-radius:var(--radio-grande)}
+.consulta-variante .kv-tarjeta .tarjeta-valoracion{margin-top:var(--s-5)}
+.consulta-variante .kv-tarjeta .pulso{margin-top:var(--s-4);color:var(--acento)}
+.consulta-abanico{position:relative}
+.consulta-abanico .pulso{position:absolute;z-index:2;left:-2%;bottom:-1.4rem;width:104%;color:var(--acento);pointer-events:none}
+.consulta-abanico .tarjeta-cita{left:auto;right:clamp(0rem,6vw,5rem);top:auto;bottom:clamp(1rem,4vw,2.5rem);z-index:3;text-align:left}
+.consulta-variante .kv-abanico img,.consulta-variante .kv-abanico .kv-foto-vacia{border-radius:var(--radio-grande)}
+.consulta-variante .kv-checks .icono{width:2.2rem;height:2.2rem}
+.consulta-variante .kv-checks .icono svg{width:1rem;height:1rem}
+.consulta-variante .kv-formulario-texto .tarjeta-valoracion{margin-top:var(--s-6)}
+.consulta-variante .kv-formulario-lado,.consulta-variante .kv-formulario{border-radius:var(--radio-grande)}
+.consulta-variante .kv-formulario .antetitulo{margin-bottom:var(--s-3);align-self:flex-start}
+.consulta-variante .kv-formulario h2{font-size:clamp(1.5rem,1.1rem + 1.2vw,1.9rem)}
+.consulta-variante .kv-formulario .boton{margin-top:var(--s-5);align-self:stretch}
+.consulta-variante .cabeza{margin-bottom:0}
+.consulta-variante .kv-zigzag-icono{background:none;border:0;box-shadow:none}
+.consulta-variante .kv-zigzag-icono .icono{width:100%;height:100%}
+.consulta-variante .kv-zigzag-icono .icono svg{width:36%;height:36%}
+.consulta-variante .kv-panel>.icono{margin-bottom:var(--s-4)}
+.consulta-variante .kv-indice>li{align-items:center}
+.consulta-variante .kv-indice .icono{width:2.6rem;height:2.6rem}
+.consulta-variante .kv-indice .icono svg{width:1.1rem;height:1.1rem}
+.consulta-variante .kv-mosaico .icono{margin-bottom:auto}
+.consulta-variante .kv-mosaico .icono svg{width:1.3rem;height:1.3rem;margin:0;padding:0;box-sizing:border-box;color:inherit}
+.consulta-variante .kv-mosaico h3{margin-top:var(--s-5)}
+.consulta-variante .kv-mosaico>li:first-child .icono{background:rgba(255,255,255,.16);color:var(--blanco)}
+.consulta-variante .kv-zigzag>li:hover .icono,.consulta-variante .kv-indice>li:hover .icono,.consulta-variante .kv-mosaico>li:not(:first-child):hover .icono,.consulta-variante .kv-panel:hover>.icono{background:var(--acento);color:var(--blanco)}
+@media (max-width:640px){.consulta-variante .kv-panoramica-foto .tarjeta-cita{display:none}.consulta-abanico .tarjeta-cita{right:var(--s-3);bottom:var(--s-3)}.consulta-variante .kv-indice .icono{display:none}.consulta-variante .kv-indice>li{grid-template-columns:2.75rem minmax(0,1fr)}}
 </style>
 </head>
 <body>

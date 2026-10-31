@@ -366,6 +366,61 @@ time{font:600 .78rem/1.2 var(--texto);text-transform:uppercase;letter-spacing:.1
 .js .aparece{opacity:0;transform:translateY(18px);transition:opacity .6s ease,transform .7s cubic-bezier(.2,.8,.2,1);transition-delay:calc(var(--i,0) * 60ms)}
 .js .aparece.visto{opacity:1;transform:none}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.js .aparece{opacity:1;transform:none}.js .cabeza::after,.js .paso::after,.js .cifra::before{transform:none}}
+/* Las variantes de sección a la manera de Ficha (30/10/2026): las piezas
+   seccion@variante.html usan el esqueleto del motor (clases kv-*, que traen
+   el diseño de cada disposición) y le ponen lo que hace a Ficha: el papel
+   milimetrado de la portada, la referencia «Ficha | nombre», la tabla de
+   datos, las fotos enmarcadas con su cota, la etiqueta con su cuadrado, la
+   numeración «S-01», los iconos en cuadrado tintado y las celdas de un
+   píxel. */
+.ficha-variante.kv-portada:not(.kv-portada--sangre){background-color:var(--fondo);background-image:linear-gradient(var(--rejilla) 1px,transparent 1px),linear-gradient(90deg,var(--rejilla) 1px,transparent 1px);background-size:32px 32px;background-position:-1px -1px}
+/* Las cifras suben --s-7 sobre la portada (.cifras): el mismo colchón que la
+   portada propia, o tapan su último renglón. */
+.ficha-variante.kv-portada{padding-bottom:var(--s-8)}
+.ficha-variante .cabeza{margin-bottom:0}
+.ficha-variante .kv-entradilla{color:var(--gris)}
+.ficha-variante .acciones{margin-top:var(--s-6)}
+.kv-portada--panoramica.ficha-variante .acciones{margin:0}
+.kv-portada--centrada.ficha-variante .acciones{justify-content:center}
+.kv-portada--centrada.ficha-variante .ref{margin-inline:auto}
+.ficha-variante .kv-panoramica-foto img,.ficha-variante .kv-panoramica-foto .kv-foto-vacia{border-block:1px solid var(--tinta)}
+.kv-portada--panoramica.ficha-variante .datos-ficha{position:relative;margin-top:-2.5rem;grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr));gap:1px;background:var(--filete)}
+.kv-portada--panoramica.ficha-variante .datos-ficha>div{grid-template-columns:minmax(0,1fr);gap:.2rem;border:0;background:var(--blanco)}
+.ficha-variante .kv-tarjeta{border-radius:var(--radio);border:1px solid var(--tinta);box-shadow:8px 8px 0 color-mix(in srgb,var(--tinta) 85%,transparent)}
+.ficha-abanico{position:relative;max-width:64rem;margin:3rem auto 0;padding-top:var(--s-6)}
+.ficha-abanico .kv-abanico{margin-top:0}
+.ficha-variante .kv-abanico img,.ficha-variante .kv-abanico .kv-foto-vacia{border:1px solid var(--tinta);padding:6px;background:var(--blanco);border-radius:var(--radio);box-shadow:0 20px 40px -24px rgba(15,23,32,.45)}
+.ficha-variante .kv-checks .icono{width:2.2rem;height:2.2rem}
+.ficha-variante .kv-checks .icono svg{width:1rem;height:1rem}
+.ficha-variante .kv-o-llame a{color:var(--acento)}
+.ficha-variante .kv-formulario{border:1px solid var(--tinta);border-radius:var(--radio)}
+.ficha-variante .kv-formulario h2{font-size:1.6rem}
+.ficha-variante .kv-formulario .boton{align-self:stretch;margin-top:var(--s-5)}
+/* La numeración de las fichas de servicio: «S-01». */
+.ficha-variante .kv-num{font:600 .78rem/1 var(--texto);letter-spacing:.12em;color:var(--gris);margin-bottom:var(--s-2)}
+.ficha-variante .kv-num::before{content:"S-" counter(kv-n,decimal-leading-zero)}
+.ficha-variante .kv-indice .kv-num{padding-top:.35rem}
+.ficha-variante .kv-zigzag-icono{background:none;border:0;box-shadow:none}
+.ficha-variante .kv-zigzag-icono .icono{width:100%;height:100%;box-shadow:inset 0 0 0 1px var(--tinta)}
+.ficha-variante .kv-zigzag-icono .icono svg{width:36%;height:36%}
+.ficha-variante .kv-panel-icono{width:2.75rem;height:2.75rem;color:var(--acento);background:color-mix(in srgb,var(--acento) 9%,var(--blanco));border-radius:var(--radio)}
+.ficha-variante .kv-pestanas-lista .kv-panel-icono{width:2rem;height:2rem;margin:0}
+.ficha-variante .kv-pestanas-lista .kv-panel-icono svg{width:1rem;height:1rem}
+.ficha-variante .kv-indice>li{align-items:center}
+.ficha-variante .kv-indice .icono svg{width:1.15rem;height:1.15rem}
+/* El mosaico, en celdas de un píxel como las fichas de la plantilla. Con
+   filetes por borde y no con el truco del hueco de 1px sobre fondo gris: la
+   última fila suele ir incompleta y el truco la rellena de gris. */
+.ficha-variante .kv-mosaico{gap:0;border-top:1px solid var(--filete);border-left:1px solid var(--filete);counter-reset:kvf}
+.ficha-variante .kv-mosaico>li{counter-increment:kvf;border:0;border-right:1px solid var(--filete);border-bottom:1px solid var(--filete);border-radius:0;box-shadow:none;gap:var(--s-3)}
+.ficha-variante .kv-mosaico>li:hover{transform:none}
+.ficha-variante .kv-mosaico .ficha-cabeza{margin-bottom:auto}
+.ficha-variante .kv-mosaico .ficha-cabeza::before{content:"S-" counter(kvf,decimal-leading-zero)}
+.ficha-variante .kv-mosaico>li:first-child .ficha-cabeza::before{color:rgba(255,255,255,.85)}
+.ficha-variante .kv-mosaico .icono svg{width:1.3rem;height:1.3rem;margin:0;padding:0;box-sizing:border-box;color:inherit}
+.ficha-variante .kv-mosaico h3{margin:var(--s-5) 0 0}
+.ficha-variante .kv-zigzag>li:hover .icono,.ficha-variante .kv-indice>li:hover .icono,.ficha-variante .kv-mosaico>li:not(:first-child):hover .icono{background:var(--acento);color:var(--blanco);transform:rotate(-8deg)}
+@media (max-width:640px){.ficha-variante .kv-indice .icono{display:none}.ficha-variante .kv-indice>li{grid-template-columns:2.75rem minmax(0,1fr)}.kv-portada--panoramica.ficha-variante .datos-ficha{margin-top:-1.5rem}.ficha-variante .kv-tarjeta{box-shadow:5px 5px 0 color-mix(in srgb,var(--tinta) 85%,transparent)}}
 </style>
 </head>
 <body>

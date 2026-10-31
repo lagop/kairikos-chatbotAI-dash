@@ -349,6 +349,71 @@ time{font:600 .95rem/1.2 var(--display);letter-spacing:.1em;text-transform:upper
 .js .aparece{opacity:0;transform:translateY(26px);transition:opacity .7s ease,transform .7s cubic-bezier(.2,.8,.2,1);transition-delay:calc(var(--i,0) * 70ms)}
 .js .aparece.visto{opacity:1;transform:none}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.js .aparece{opacity:1;transform:none}}
+
+/* Las variantes de sección a la manera de Señal (30/10/2026): las piezas
+   seccion@variante.html usan el esqueleto del motor (clases kv-*, que traen
+   el diseño de cada disposición) y le ponen lo que hace a Señal: la portada
+   de noche con su rejilla (la clase portada), la cinta de servicios al pie,
+   la insignia que gira para llamar, la tarjeta de la nota de Google, la
+   pastilla de «abierto», los botones achaflanados, el rótulo con su
+   cuadrado, la cabeza con franjas y los iconos en cuadrado achaflanado. */
+.senal-variante .estado{margin-bottom:var(--s-5)}
+.senal-variante .acciones{margin-top:var(--s-6)}
+.kv-portada--panoramica.senal-variante .acciones{margin:0}
+.kv-portada.senal-variante .kv-titular{color:var(--blanco)}
+.kv-portada.senal-variante .kv-entradilla{color:var(--claro)}
+.senal-variante .insignia svg{width:100%;height:100%}
+.senal-variante .icono svg{width:1.4rem;height:1.4rem}
+.kv-portada--panoramica.senal-variante,.kv-portada--sangre.senal-variante,.kv-portada--centrada.senal-variante,.kv-portada--formulario.senal-variante{padding-bottom:0}
+.senal-variante .kv-panoramica-foto{position:relative}
+.senal-variante .kv-panoramica-foto img{filter:saturate(1.05) contrast(1.05)}
+.senal-variante .kv-panoramica-foto .insignia{left:clamp(1rem,5vw,4rem);top:clamp(1rem,3vw,2rem)}
+.senal-variante .kv-panoramica-foto .tarjeta-valoracion{right:clamp(1rem,5vw,4rem);bottom:var(--s-5)}
+.kv-portada--sangre.senal-variante{flex-direction:column;justify-content:flex-end;align-items:stretch}
+.kv-portada--sangre.senal-variante .kv-dentro{margin-bottom:clamp(2rem,5vw,3.5rem)}
+.kv-portada--sangre.senal-variante>.insignia{left:auto;right:clamp(1rem,5vw,4rem);top:clamp(1.5rem,4vw,3rem)}
+.senal-variante .kv-tarjeta{position:relative;background:var(--noche);color:var(--claro);border-radius:0;padding-top:clamp(2.25rem,5vw,3rem)}
+.senal-variante .kv-tarjeta::before{content:"";position:absolute;left:0;right:0;top:0;height:10px;background:var(--franjas)}
+.senal-variante .kv-tarjeta .sello{margin:var(--s-5) 0 0}
+.kv-portada--centrada.senal-variante .acciones{justify-content:center}
+.kv-portada--centrada.senal-variante .kv-titular::after{margin-inline:auto}
+.kv-portada--centrada.senal-variante .kv-dentro{padding-bottom:clamp(3rem,6vw,4.5rem)}
+.senal-abanico{position:relative}
+.senal-abanico .tarjeta-valoracion{right:clamp(0rem,6vw,5rem);bottom:-1rem;z-index:2;text-align:left}
+.senal-variante .kv-abanico img,.senal-variante .kv-abanico .kv-foto-vacia{border:0;border-radius:0;clip-path:polygon(var(--chaflan) 0,100% 0,100% calc(100% - var(--chaflan)),calc(100% - var(--chaflan)) 100%,0 100%,0 var(--chaflan))}
+.kv-portada--formulario.senal-variante .kv-formulario-caja{padding-bottom:clamp(3rem,7vw,5.5rem)}
+.senal-variante .kv-checks{color:var(--blanco)}
+.senal-variante .kv-checks .icono{width:2rem;height:2rem;background:var(--amarillo);color:var(--noche)}
+.senal-variante .kv-checks .icono svg{width:1rem;height:1rem}
+.kv-portada--formulario.senal-variante .kv-o-llame{color:var(--claro)}
+.kv-portada--formulario.senal-variante .kv-o-llame a{color:var(--amarillo)}
+.senal-variante .kv-formulario-lado{border-radius:0;clip-path:polygon(var(--chaflan) 0,100% 0,100% calc(100% - 48px),calc(100% - 48px) 100%,0 100%,0 var(--chaflan))}
+.senal-variante .formulario{color:var(--tinta);border-radius:0}
+.senal-variante .formulario .rotulo{color:var(--tinta);margin-bottom:var(--s-2)}
+.senal-variante .formulario h2{font-size:clamp(1.6rem,1.2rem + 1.2vw,2.1rem);color:var(--tinta)}
+.senal-variante .formulario .boton{align-self:stretch}
+.senal-variante .cabeza{margin-bottom:0}
+.senal-variante .kv-zigzag-icono{border-radius:0;background:var(--noche);color:var(--amarillo);box-shadow:none;clip-path:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px)}
+.senal-variante .kv-zigzag-icono svg{width:42%;height:42%}
+.senal-variante .kv-zigzag .kv-num{font-family:var(--display);color:transparent;-webkit-text-stroke:1.5px var(--tinta)}
+.senal-variante .kv-panel{border-radius:0}
+.senal-variante .kv-pestanas-lista button{border-radius:0}
+.senal-variante .kv-pestanas-lista .icono{clip-path:none}
+.senal-variante .kv-indice{border-top:4px solid var(--noche)}
+.senal-variante .kv-indice>li{align-items:center}
+.senal-variante .kv-indice .kv-num{font:800 1.4rem/1 var(--display);color:var(--tinta)}
+.senal-variante .kv-indice .icono{width:2.6rem;height:2.6rem;background:var(--noche);color:var(--amarillo)}
+.senal-variante .kv-indice .icono svg{width:1.2rem;height:1.2rem}
+.senal-variante .kv-indice>li:hover .icono{transform:rotate(-8deg) scale(1.08)}
+.senal-variante .kv-lado .acciones{margin-top:var(--s-6)}
+.senal-variante .kv-mosaico>li{border-radius:0;position:relative;overflow:hidden}
+.senal-variante .kv-mosaico>li::after{content:"";position:absolute;left:0;right:0;bottom:0;height:5px;background:var(--amarillo);transform:scaleX(0);transform-origin:left;transition:transform .35s ease}
+.senal-variante .kv-mosaico>li:hover::after{transform:scaleX(1)}
+.senal-variante .kv-mosaico>li:first-child::after{background:var(--noche)}
+.senal-variante .kv-mosaico .icono{margin-bottom:auto;background:var(--noche);color:var(--amarillo)}
+.senal-variante .kv-mosaico .icono svg{width:1.4rem;height:1.4rem;margin:0;padding:0;box-sizing:border-box;color:inherit}
+.senal-variante .kv-mosaico h3{margin-top:var(--s-5)}
+@media (max-width:640px){.kv-portada--sangre.senal-variante{padding-top:10rem}.senal-variante .kv-indice .icono{display:none}.senal-variante .kv-indice>li{grid-template-columns:2.75rem minmax(0,1fr)}.senal-variante .kv-panoramica-foto .insignia{width:5.5rem;height:5.5rem}}
 </style>
 </head>
 <body>

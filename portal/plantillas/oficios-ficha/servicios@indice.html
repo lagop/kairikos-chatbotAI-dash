@@ -1,0 +1,8 @@
+<section class="kv kv-servicios kv-servicios--indice ficha-variante" id="{{ancla}}"><div class="kv-dentro kv-partida">
+  <div class="kv-lado">
+    <p class="etiqueta">Servicios</p>
+    <h2 data-k-titulo-seccion>Qué hacemos</h2>
+    {{#telefono_href}}<p class="acciones"><a class="boton boton--borde" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg>{{telefono}}</a></p>{{/telefono_href}}
+  </div>
+  <ol class="kv-indice">{{#servicios}}<li><span class="kv-num" aria-hidden="true"></span><div><h3>{{nombre}}</h3>{{#descripcion}}<p>{{descripcion}}</p>{{/descripcion}}</div><span class="icono"><svg aria-hidden="true"><use href="#i-{{#icono}}{{icono}}{{/icono}}{{^icono}}herramienta{{/icono}}"></use></svg></span></li>{{/servicios}}</ol>
+</div></section>

@@ -1,0 +1,17 @@
+<section class="kv kv-portada kv-portada--sangre portada senal-variante" id="{{ancla}}">
+  {{#fotos.portada}}<img class="kv-sangre-fondo" src="{{fotos.portada}}" alt="Trabajo de {{nombre}}">{{/fotos.portada}}
+  {{#telefono_href}}<a class="insignia" href="tel:{{telefono_href}}" aria-label="Llamar a {{nombre}}"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="insignia-fondo" cx="60" cy="60" r="58"/><g class="giro"><path id="insignia-circulo" d="M60 60m-43 0a43 43 0 1 1 86 0a43 43 0 1 1-86 0" fill="none"/><text><textPath href="#insignia-circulo" textLength="268" lengthAdjust="spacing">Llamar ahora · Le atendemos ·</textPath></text></g><circle class="insignia-centro" cx="60" cy="60" r="24"/><use class="insignia-icono" href="#i-telefono" x="48" y="48" width="24" height="24"></use></svg></a>{{/telefono_href}}
+  <div class="kv-dentro">
+    <div class="kv-tarjeta">
+      {{#horario_resumen}}<p class="estado">{{horario_resumen}}</p>{{/horario_resumen}}
+      <h1 class="kv-titular">{{titular}}</h1>
+      {{#subtitulo}}<p class="kv-entradilla">{{subtitulo}}</p>{{/subtitulo}}
+      <div class="acciones">
+        {{#telefono_href}}<a class="boton llamar" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg>Llamar ahora</a>{{/telefono_href}}
+        <a class="boton boton--hueco" href="#contacto">Pedir presupuesto</a>
+      </div>
+      {{#valoracion}}<p class="sello"><strong>{{valoracion}}</strong><span class="estrellas" aria-hidden="true"><svg aria-hidden="true"><use href="#i-estrella"></use></svg><svg aria-hidden="true"><use href="#i-estrella"></use></svg><svg aria-hidden="true"><use href="#i-estrella"></use></svg><svg aria-hidden="true"><use href="#i-estrella"></use></svg><svg aria-hidden="true"><use href="#i-estrella"></use></svg></span><span>en Google{{#num_resenas}} · {{num_resenas}} reseñas{{/num_resenas}}</span></p>{{/valoracion}}
+    </div>
+  </div>
+  {{#servicios.length}}<div class="cinta" role="region" aria-label="Servicios"><div class="cinta-pista"><ul>{{#servicios}}<li>{{nombre}}</li>{{/servicios}}</ul><ul aria-hidden="true">{{#servicios}}<li>{{nombre}}</li>{{/servicios}}</ul></div></div>{{/servicios.length}}
+</section>
