@@ -21,8 +21,24 @@ describe('fotos de belleza', () => {
     expect(beautyPhotoSet('Liso & Rizo', 'barber_shop')).toBe('barberia');
     expect(beautyPhotoSet('Liso & Rizo Peluquería', 'hair_salon')).toBe('peluqueria');
     expect(tradeHeroPhoto('beauty', 'Liso & Rizo Peluquería', 'hair_salon')).toMatch(/^\/web-draft\/belleza\/peluqueria-[123]\.jpg$/);
-    // Uñas o estética: la del sector de siempre, no una de pelo.
-    expect(tradeHeroPhoto('beauty', 'Nails Bar', 'nail_salon')).toBeNull();
+    // 31/10/2026 — uñas, estética y spa tienen las suyas: nada de pelo.
+    expect(tradeHeroPhoto('beauty', 'Nails Bar', 'nail_salon')).toMatch(/^\/web-draft\/belleza\/unas-[1-4]\.jpg$/);
+    expect(tradeHeroPhoto('beauty', 'Centro Lola', 'beauty_salon')).toMatch(/^\/web-draft\/belleza\/estetica-[1-3]\.jpg$/);
+    expect(tradeHeroPhoto('beauty', 'Oasis', 'spa')).toMatch(/^\/web-draft\/belleza\/spa-[1-3]\.jpg$/);
+  });
+
+  it('el nombre manda sobre Google, y «belleza» no decide nada', () => {
+    expect(beautyPhotoSet('Uñas Marta', 'hair_salon')).toBe('unas');
+    expect(beautyPhotoSet('Masajes Zen', 'beauty_salon')).toBe('spa');
+    expect(beautyPhotoSet('Estética Ana', null)).toBe('estetica');
+    expect(beautyPhotoSet('Peluquería y Estética Ana', 'beauty_salon')).toBe('peluqueria');
+    expect(beautyPhotoSet('Salón de Belleza Carmen', 'hair_salon')).toBe('peluqueria');
+    expect(beautyPhotoSet('Belleza Lola', 'beauty_salon')).toBe('estetica');
+    // «spa» y «uñas» como palabras, no dentro de otra: «España», «Lunas».
+    expect(beautyPhotoSet('Peluquería España', null)).toBe('peluqueria');
+    expect(beautyPhotoSet('Lunas', 'hair_salon')).toBe('peluqueria');
+    // Sin nada, peluquería, que en el sector es casi todo.
+    expect(beautyPhotoSet('Liso & Rizo', null)).toBe('peluqueria');
   });
 });
 
@@ -53,6 +69,8 @@ describe('bloques de ejemplo del sector', () => {
     expect(b.bloques.some((x) => x.tipo === 'antes_despues')).toBe(false);
     expect(withSectorExamples(base(), { familia: 'trades', businessName: 'Aluminios', primaryType: null })).toEqual(base());
     expect(withSectorExamples(base(), { familia: 'beauty', businessName: 'Nails Bar', primaryType: 'nail_salon' })).toEqual(base());
+    // Ni sin tipo de Google, si el nombre lo dice (31/10/2026).
+    expect(withSectorExamples(base(), { familia: 'beauty', businessName: 'Nails Bar', primaryType: null })).toEqual(base());
   });
 
   it('una clínica trae su equipo y sus seguros, de su especialidad, colocados tras sus secciones', () => {

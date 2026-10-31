@@ -1,5 +1,5 @@
 import type { SiteBlock, SiteContent, SiteSectionRef } from './site-content';
-import { beautyPhotoSet, healthPhotoSet, tradeDetailPhotos, tradePhotoSet, type HealthPhotoSet } from './trade-photos';
+import { beautyPhotoSet, healthPhotoSet, isHairPhotoSet, tradeDetailPhotos, tradePhotoSet, type HealthPhotoSet } from './trade-photos';
 
 // =============================================================================
 // Bloques de ejemplo por sector (28/10/2026).
@@ -234,9 +234,12 @@ export function withSectorExamples(content: SiteContent, input: SectorInput): Si
   if (input.familia === 'trades') return withTradePhotos(content, input);
   if (input.familia === 'health') return withBlocks(structuredClone(content), salud(healthPhotoSet(input.businessName, input.primaryType)));
   if (input.familia !== 'beauty') return content;
-  // Estética, uñas o spa: estas fotos (todas de pelo) no les valen.
-  if (input.primaryType && !['hair_salon', 'barber_shop'].includes(input.primaryType)) return content;
-  const set = beautyPhotoSet(input.businessName, input.primaryType) === 'barberia' ? barberia() : peluqueria();
+  // Estética, uñas o spa: estas fotos (todas de pelo) no les valen. Desde el
+  // 31/10/2026 lo decide el mismo reparto que la portada, así que un «Nails
+  // Bar» sin tipo de Google ya no recibe la galería de cortes.
+  const photoSet = beautyPhotoSet(input.businessName, input.primaryType);
+  if (!isHairPhotoSet(photoSet)) return content;
+  const set = photoSet === 'barberia' ? barberia() : peluqueria();
   return withBlocks(withoutBlock(structuredClone(content), DETAIL_BLOCK_ID), set);
 }
 
