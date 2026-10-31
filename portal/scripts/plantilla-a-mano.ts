@@ -57,6 +57,7 @@ const { validateSiteTemplate } = require('../src/lib/site-template-validate') as
 const { SITE_CONTENT_SAMPLES, sectorSamples } = require('../src/lib/site-content-samples') as typeof import('../src/lib/site-content-samples');
 const { parseTemplateStyle } = require('../src/lib/site-style') as typeof import('../src/lib/site-style');
 const { SITE_VARIANT_PARTS, withVariantSet } = require('../src/lib/site-section-variants') as typeof import('../src/lib/site-section-variants');
+const { SITE_RICH_BLOCK_PARTS } = require('../src/lib/site-rich-blocks') as typeof import('../src/lib/site-rich-blocks');
 const { checkPlan } = require('../src/lib/site-template-checks') as typeof import('../src/lib/site-template-checks');
 
 interface Meta {
@@ -74,7 +75,8 @@ function load(dir: string): { meta: Meta; template: SiteTemplateSource; slug: st
   const secciones: SiteTemplateSource['secciones'] = {};
   // 30/10/2026 — y las versiones propias de las variantes, si las trae
   // (servicios@indice.html; site-section-variants.ts).
-  for (const part of [...SITE_TEMPLATE_PARTS, ...SITE_VARIANT_PARTS] as SiteTemplatePart[]) {
+  // 31/10/2026 — y el marco propio de los bloques ricos (bloque_galeria.html).
+  for (const part of [...SITE_TEMPLATE_PARTS, ...SITE_VARIANT_PARTS, ...SITE_RICH_BLOCK_PARTS] as SiteTemplatePart[]) {
     const body = read(part);
     if (body) secciones[part] = body;
   }
