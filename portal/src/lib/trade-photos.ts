@@ -101,13 +101,15 @@ function stableIndex(text: string, size: number): number {
 
 /**
  * La ruta pública de la foto ('/web-draft/oficios/aluminio-2.jpg'), o null:
- * (belleza y salud tienen la suya, abajo)
+ * (belleza, salud, restauración y profesionales tienen la suya, abajo)
  * otra familia que no sea oficios, o un oficio que no se reconoce. Con null,
  * quien llama usa la foto del sector de siempre.
  */
 export function tradeHeroPhoto(family: string, businessName: string, primaryType: string | null): string | null {
   if (family === 'beauty') return beautyHeroPhoto(businessName, primaryType);
   if (family === 'health') return healthHeroPhoto(businessName, primaryType);
+  if (family === 'food') return foodHeroPhoto(businessName, primaryType);
+  if (family === 'professional') return professionalHeroPhoto(businessName, primaryType);
   if (family !== 'trades') return null;
   const set = tradePhotoSet(businessName, primaryType);
   if (!set) return null;
@@ -220,4 +222,64 @@ function healthHeroPhoto(businessName: string, primaryType: string | null): stri
   const set = healthPhotoSet(businessName, primaryType);
   const n = stableIndex(normalize(businessName).trim(), HEALTH_PHOTO_COUNTS[set]) + 1;
   return `/web-draft/salud/${set}-${n}.jpg`;
+}
+
+// -----------------------------------------------------------------------------
+// Restauración y profesionales (31/10/2026), para las primeras plantillas de
+// los dos sectores. Hasta ese día salían con food.jpg y professional.jpg, una
+// para todos, y kairikos.com ya ofrecía «Restaurante o bar» y «Asesoría o
+// despacho». Ningún borrador de producción era de estas familias, así que
+// ninguno cambia de foto. Como en salud, lo que no se reconoce sale con la del
+// grueso del sector (restaurante, despacho) y no con la genérica.
+//
+// Menos fotos que en otros sectores: de las quince que se bajaron se
+// descartaron tres (un logo en las copas, una caja de una marca de agendas y
+// un vaso de una cadena de cafés, y una pared de cuadros con gente). Con dos
+// por grupo, dos cafeterías vecinas pueden coincidir: se acepta mientras no
+// haya prospectos del sector que pidan más. Ver public/web-draft/README.md.
+// -----------------------------------------------------------------------------
+
+export const FOOD_PHOTO_COUNTS = Object.freeze({ restaurante: 3, cafeteria: 2, panaderia: 2 } as const);
+export type FoodPhotoSet = keyof typeof FOOD_PHOTO_COUNTS;
+
+/** Panadería antes que cafetería: «Panadería Cafetería La Espiga» vende pan.
+ *  «Horno» no cuenta: también lo dice «Pizzería Horno de Leña». */
+const FOOD_BY_NAME: readonly [FoodPhotoSet, RegExp][] = [
+  ['panaderia', /panader|pasteler|bakery|obrador|reposter|bolleri|dulceri|confiter/],
+  ['cafeteria', /cafe|coffee|churrer/],
+];
+
+const FOOD_BY_PRIMARY_TYPE: Readonly<Record<string, FoodPhotoSet>> = Object.freeze({
+  bakery: 'panaderia',
+  cafe: 'cafeteria',
+  coffee_shop: 'cafeteria',
+});
+
+export function foodPhotoSet(businessName: string, primaryType: string | null): FoodPhotoSet {
+  const name = normalize(businessName);
+  for (const [set, pattern] of FOOD_BY_NAME) if (pattern.test(name)) return set;
+  return (primaryType && FOOD_BY_PRIMARY_TYPE[primaryType]) || 'restaurante';
+}
+
+export const PROFESSIONAL_PHOTO_COUNTS = Object.freeze({ despacho: 2, inmobiliaria: 3 } as const);
+export type ProfessionalPhotoSet = keyof typeof PROFESSIONAL_PHOTO_COUNTS;
+
+/** Asesorías, abogados y seguros comparten despacho; las inmobiliarias (y las
+ *  administraciones de fincas, que viven de llaves y pisos) van aparte. */
+export function professionalPhotoSet(businessName: string, primaryType: string | null): ProfessionalPhotoSet {
+  return /inmobiliar|real estate|realty|fincas|propiedades|viviendas/.test(normalize(businessName)) || primaryType === 'real_estate_agency'
+    ? 'inmobiliaria'
+    : 'despacho';
+}
+
+function foodHeroPhoto(businessName: string, primaryType: string | null): string {
+  const set = foodPhotoSet(businessName, primaryType);
+  const n = stableIndex(normalize(businessName).trim(), FOOD_PHOTO_COUNTS[set]) + 1;
+  return `/web-draft/restauracion/${set}-${n}.jpg`;
+}
+
+function professionalHeroPhoto(businessName: string, primaryType: string | null): string {
+  const set = professionalPhotoSet(businessName, primaryType);
+  const n = stableIndex(normalize(businessName).trim(), PROFESSIONAL_PHOTO_COUNTS[set]) + 1;
+  return `/web-draft/profesionales/${set}-${n}.jpg`;
 }
