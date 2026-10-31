@@ -42,6 +42,20 @@ describe('belleza', () => {
   });
 });
 
+describe('los bloques del exagerado', () => {
+  it.each(['health', 'beauty', 'food', 'professional'])('%s los trae con sus palabras y las mismas medidas que oficios', (sector) => {
+    const bloques = sectorSamples(sector).samples.exagerado.bloques;
+    const oficio = SITE_CONTENT_SAMPLES.exagerado.bloques;
+    // 31/10/2026: «Así quedó el baño de la calle Triana» en un restaurante.
+    expect(JSON.stringify(bloques)).not.toMatch(/Triana|baño|ventana|mampara|aluminio|reforma completa|taller|Sebadal|instalador/i);
+    expect(bloques.map((b) => [b.id, b.fotos.length, b.productos.length, b.pestanas.length, b.comparativa.filas.length, b.hitos.length])).toEqual(
+      oficio.map((b) => [b.id, b.fotos.length, b.productos.length, b.pestanas.length, b.comparativa.filas.length, b.hitos.length]),
+    );
+    for (const [i, b] of bloques.entries()) if (oficio[i].titulo.length > 60) expect(b.titulo.length, b.id).toBeGreaterThanOrEqual(60);
+    expect(parseSiteContent(sectorSamples(sector).samples.exagerado).ok).toBe(true);
+  });
+});
+
 describe('restauración y profesionales', () => {
   it.each([
     ['food', 'Restaurante Ejemplo'],

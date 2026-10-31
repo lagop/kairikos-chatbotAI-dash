@@ -370,6 +370,63 @@ const exagerado: SiteContent = {
   },
 };
 
+// 31/10/2026 — los bloques del exagerado, con las palabras de otro sector.
+// Hasta hoy los cuatro sectores heredaban los de la fontanería, y la plantilla
+// de restaurante salía en el laboratorio con «Así quedó el baño de la calle
+// Triana». Cambian los textos, no las medidas: mismos títulos largos, mismo
+// número de fotos, productos, pestañas, filas e hitos.
+type TextosBloques = {
+  galeria: string;
+  antes: [titulo: string, antes: string, despues: string];
+  catalogo: { titulo: string; producto: string; categorias: [string, string, string]; caracteristicas: [string, string, string]; precio: string };
+  pestanas: [titulo: string, pestana: string];
+  comparativa: { titulo: string; columnas: [string, string, string, string]; concepto: string };
+  trayectoria: [titulo: string, hito: string];
+  marcas: [titulo: string, pie: string];
+  video: [titulo: string, alt: string];
+};
+
+function bloquesDe(t: TextosBloques): SiteContent['bloques'] {
+  return exagerado.bloques.map((b) => {
+    switch (b.id) {
+      case 'galeria':
+        return { ...b, titulo: t.galeria, texto: repeat('Una selección de lo que hacemos cada día.', 4) };
+      case 'antes-despues':
+        return { ...b, titulo: t.antes[0], fotos: [{ ...b.fotos[0], alt: t.antes[1], texto: t.antes[1] }, { ...b.fotos[1], alt: t.antes[2], texto: t.antes[2] }] };
+      case 'catalogo':
+        return {
+          ...b,
+          titulo: t.catalogo.titulo,
+          productos: b.productos.map((p, i) => ({
+            ...p,
+            nombre: i % 2 ? p.nombre : t.catalogo.producto,
+            categoria: t.catalogo.categorias[i % 3],
+            caracteristicas: t.catalogo.caracteristicas.slice(0, p.caracteristicas.length),
+            precio: p.precio && !(i % 2) ? t.catalogo.precio : p.precio,
+          })),
+        };
+      case 'pestanas':
+        return { ...b, titulo: t.pestanas[0], pestanas: b.pestanas.map((p, i) => ({ ...p, titulo: i % 2 ? p.titulo : t.pestanas[1] })) };
+      case 'comparativa':
+        return {
+          ...b,
+          titulo: t.comparativa.titulo,
+          comparativa: { ...b.comparativa, columnas: t.comparativa.columnas, filas: b.comparativa.filas.map((f, i) => ({ ...f, concepto: i % 2 ? f.concepto : t.comparativa.concepto })) },
+        };
+      case 'trayectoria':
+        return { ...b, titulo: t.trayectoria[0], hitos: b.hitos.map((h, i) => ({ ...h, titulo: i % 2 ? h.titulo : t.trayectoria[1] })) };
+      case 'marcas':
+        return { ...b, titulo: t.marcas[0], fotos: b.fotos.map((f, i) => ({ ...f, texto: i % 2 ? t.marcas[1] : '' })) };
+      case 'video':
+        return { ...b, titulo: t.video[0], fotoAlt: t.video[1] };
+      case 'video-vimeo':
+        return { ...b, titulo: 'Así trabajamos' };
+      default:
+        return b;
+    }
+  });
+}
+
 const minimo: SiteContent = {
   ...normal,
   datos: {
@@ -502,6 +559,26 @@ const healthExagerado: SiteContent = {
     ) as SiteContent['datos']['titulos'],
   },
   legal: healthNormal.legal,
+  bloques: bloquesDe({
+    galeria: 'Nuestras instalaciones, gabinetes y sala de espera en el centro de la ciudad',
+    antes: ['Así quedó la sonrisa de una paciente después del tratamiento de ortodoncia', 'Antes del tratamiento', 'Después del tratamiento'],
+    catalogo: {
+      titulo: 'Tratamientos de odontología, ortodoncia e implantología que ofrecemos',
+      producto: 'Implante dental de titanio con corona de cerámica y revisiones incluidas',
+      categorias: ['Implantes', 'Ortodoncia invisible y con brackets', 'Estética dental'],
+      caracteristicas: ['Estudio con escáner 3D', 'Revisiones anuales incluidas durante cinco años', 'Financiación sin intereses'],
+      precio: 'desde 1.250,00 € por pieza',
+    },
+    pestanas: ['Tratamientos para niños, adultos y pacientes con necesidades especiales', 'Odontopediatría'],
+    comparativa: {
+      titulo: 'Ortodoncia invisible frente a brackets metálicos, cerámicos y linguales',
+      columnas: ['Invisible', 'Brackets metálicos', 'Brackets cerámicos', 'Lingual'],
+      concepto: 'Comodidad y estética durante todo el tratamiento en el día a día',
+    },
+    trayectoria: ['Más de veinte años cuidando la sonrisa de toda la ciudad', 'Abrimos la primera consulta con un solo sillón en el centro'],
+    marcas: ['Trabajamos con los mejores laboratorios y materiales del sector', 'Laboratorio dental certificado'],
+    video: ['Así es una primera visita en la clínica, de la recepción a la revisión', 'Primera visita en la clínica'],
+  }),
   blog: { ...exagerado.blog, intro: repeat('Todo lo que conviene saber para cuidar tu boca, explicado con calma.', 4).slice(0, 300) },
 };
 
@@ -644,6 +721,26 @@ const beautyExagerado: SiteContent = {
     ) as SiteContent['datos']['titulos'],
   },
   legal: beautyNormal.legal,
+  bloques: bloquesDe({
+    galeria: 'Trabajos recientes de color, corte y peinado para bodas y eventos especiales',
+    antes: ['Así quedó la melena de una clienta después del cambio de color completo', 'Antes del cambio de color', 'Después del cambio de color'],
+    catalogo: {
+      titulo: 'Productos de cuidado del cabello que usamos y recomendamos en el salón',
+      producto: 'Mascarilla reparadora con aceite de argán para cabellos teñidos y dañados',
+      categorias: ['Champús', 'Mascarillas y tratamientos', 'Peinado'],
+      caracteristicas: ['Sin sulfatos ni parabenos', 'Para todo tipo de cabellos, también teñidos', 'Formato de salón de 500 ml'],
+      precio: 'desde 24,90 € el bote',
+    },
+    pestanas: ['Servicios para mujer, hombre, niños y novias que preparan su gran día', 'Novias e invitadas'],
+    comparativa: {
+      titulo: 'Mechas tradicionales frente a balayage, babylights y tinte completo',
+      columnas: ['Balayage', 'Mechas', 'Babylights', 'Tinte completo'],
+      concepto: 'Cuánto se nota la raíz cuando el pelo crece entre visita y visita',
+    },
+    trayectoria: ['Más de diez años cuidando el pelo de todo el barrio', 'Abrimos el primer salón con dos sillones en la calle principal'],
+    marcas: ['Trabajamos con las mejores marcas profesionales de color y cuidado', 'Salón con formación oficial'],
+    video: ['Así hacemos un balayage en una mañana, del primer mechón al peinado final', 'Balayage en el salón'],
+  }),
   blog: { ...exagerado.blog, intro: repeat('Todo lo que conviene saber para cuidar tu pelo, explicado con calma.', 4).slice(0, 300) },
 };
 
@@ -767,6 +864,26 @@ const foodExagerado: SiteContent = {
     ) as SiteContent['datos']['titulos'],
   },
   legal: foodNormal.legal,
+  bloques: bloquesDe({
+    galeria: 'Platos de temporada, menús de celebración y nuestro comedor junto al mercado',
+    antes: ['Así quedó nuestro comedor después de la reforma de la sala principal', 'El comedor antes de la reforma', 'El comedor después de la reforma'],
+    catalogo: {
+      titulo: 'Vinos de la isla y de otras denominaciones que servimos en la mesa',
+      producto: 'Vino tinto joven de la isla con denominación de origen y crianza en barrica',
+      categorias: ['Tintos', 'Blancos y rosados de la isla', 'Espumosos'],
+      caracteristicas: ['Denominación de origen', 'Crianza de seis meses en barrica de roble', 'Botella de 75 cl'],
+      precio: 'desde 18,00 € la botella',
+    },
+    pestanas: ['Menú del día, carta de temporada, celebraciones y comida para llevar', 'Menú del día'],
+    comparativa: {
+      titulo: 'Menú del día frente a menú degustación, carta y menú para grupos',
+      columnas: ['Menú del día', 'Degustación', 'Carta', 'Grupos'],
+      concepto: 'Primer plato, segundo plato, postre y bebida incluidos en el precio',
+    },
+    trayectoria: ['Más de veinte años cocinando con producto de la isla', 'Abrimos con seis mesas y la receta de potaje de la abuela'],
+    marcas: ['Trabajamos con productores, bodegas y queserías de toda la isla', 'Productor local de confianza'],
+    video: ['Así preparamos el pescado del día en la cocina, del mercado al plato', 'Preparando el pescado del día'],
+  }),
   blog: { ...exagerado.blog, intro: repeat('Lo que pasa en nuestra cocina cada semana, contado con calma.', 4).slice(0, 300) },
 };
 
@@ -885,6 +1002,26 @@ const professionalExagerado: SiteContent = {
     ) as SiteContent['datos']['titulos'],
   },
   legal: professionalNormal.legal,
+  bloques: bloquesDe({
+    galeria: 'Nuestro despacho, la sala de reuniones y el equipo en el día a día',
+    antes: ['Así quedó nuestro despacho después de la reforma de la oficina', 'El despacho antes de la reforma', 'El despacho después de la reforma'],
+    catalogo: {
+      titulo: 'Planes de asesoría para autónomos, sociedades y comunidades de vecinos',
+      producto: 'Plan completo para sociedades limitadas con contabilidad, impuestos y nóminas',
+      categorias: ['Autónomos', 'Sociedades y empresas familiares', 'Comunidades'],
+      caracteristicas: ['Cuota mensual cerrada', 'Aviso antes de cada plazo de presentación', 'Asesor personal asignado'],
+      precio: 'desde 120,00 € al mes',
+    },
+    pestanas: ['Servicios para autónomos, pequeñas empresas y comunidades de propietarios', 'Autónomos'],
+    comparativa: {
+      titulo: 'Autónomo frente a sociedad limitada, comunidad de bienes y cooperativa',
+      columnas: ['Autónomo', 'Sociedad limitada', 'Comunidad de bienes', 'Cooperativa'],
+      concepto: 'Responsabilidad con el patrimonio personal ante las deudas del negocio',
+    },
+    trayectoria: ['Más de veinte años asesorando a autónomos y pymes de la isla', 'Abrimos el despacho para llevar los papeles de los negocios del barrio'],
+    marcas: ['Colaboramos con los principales colegios y asociaciones profesionales', 'Miembro colegiado'],
+    video: ['Así preparamos la declaración trimestral de un autónomo, paso a paso', 'Preparando una declaración trimestral'],
+  }),
   blog: { ...exagerado.blog, intro: repeat('Plazos, normativa y consejos para tu negocio, explicados con calma.', 4).slice(0, 300) },
 };
 

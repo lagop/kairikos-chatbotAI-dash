@@ -74,7 +74,7 @@ const BY_PRIMARY_TYPE: Readonly<Record<string, TradePhotoSet>> = Object.freeze({
   car_repair: 'taller',
 });
 
-function normalize(name: string): string {
+export function normalize(name: string): string {
   return name
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
