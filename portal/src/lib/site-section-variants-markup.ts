@@ -345,6 +345,7 @@ const CSS = `
 .kv-revista-columnas{columns:2 20rem;column-gap:3rem;font-size:1.05rem}
 .kv-revista-columnas>*{break-inside:avoid-column}
 .kv-revista-columnas>p:has(+ul,+ol){break-after:avoid-column}
+.kv-revista-columnas>p+:is(ul,ol){break-before:avoid-column}
 .kv-revista-columnas>p:first-child::first-letter{float:left;font-size:4.2em;line-height:.8;font-weight:700;margin:.08em .12em 0 0;color:var(--k-acento-texto,inherit)}
 
 /* L2 */
