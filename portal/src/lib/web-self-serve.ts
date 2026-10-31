@@ -4,6 +4,7 @@ import { createFormToken } from './website-form';
 import { slugify } from './website-publish';
 import { isShareToken } from './prospecting-share';
 import type { WebDraftCopy } from './web-draft-ai';
+import { copyDraftImagesToWebsite } from './web-draft-images';
 import { DEFAULT_WEB_DRAFT_OFFER, type WebDraftOffer, type WebDraftPurchaseCta } from './web-draft-html';
 import { logError } from './observability';
 
@@ -357,6 +358,11 @@ export async function createClientWebsiteFromDraft(
           actorEmail: 'stripe:checkout.session.completed',
         },
       });
+      // 31/10/2026 — las fotos que el operador subió al borrador viajan con su
+      // contenido (web-draft-images.ts). Los de kairikos.com no tienen.
+      if (seed.kind === 'prospecting' && seed.content != null) {
+        await copyDraftImagesToWebsite(tx, { shareToken: seed.token }, row.id, seed.content);
+      }
       return row;
     });
     return { ok: true, websiteId: website.id };

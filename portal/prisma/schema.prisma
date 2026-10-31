@@ -3803,9 +3803,36 @@ model ProspectingWebDraft {
   client   ChatbotClient                @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant   Tenant?                      @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   versions ProspectingWebDraftVersion[]
+  images   ProspectingWebDraftImage[]
 
   @@index([clientId, generatedAt])
   @@index([tenantId])
+}
+
+/// 31/10/2026 — el logo y las fotos que el operador sube al borrador de un
+/// prospecto desde el editor (lib/web-draft-images.ts). Mismo formato que
+/// ClientWebsiteImage: el contenido las cita por su ruta `assets/subidas/…`,
+/// el enlace público las sirve en /borrador/<testigo>/assets/subidas/…, y al
+/// comprar la web se copian las citadas a ClientWebsiteImage.
+///
+/// Se borran CON el borrador (Cascade), por lo mismo que su historial: si el
+/// prospecto se opone, retention-purge.ts borra el borrador y con él sus fotos.
+model ProspectingWebDraftImage {
+  id      String @id @default(uuid()) @db.Uuid
+  draftId String @map("draft_id") @db.Uuid
+  path    String
+
+  contentType String @map("content_type")
+  content     Bytes
+  width       Int
+  height      Int
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  draft ProspectingWebDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+
+  @@unique([draftId, path])
+  @@index([draftId, createdAt])
 }
 
 /// 28/10/2026 — el historial de un borrador de prospecto: cada fila es el

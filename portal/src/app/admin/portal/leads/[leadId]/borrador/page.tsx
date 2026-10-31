@@ -39,7 +39,10 @@ export default async function AdminDraftEditorPage(props: { params: Promise<{ le
         title={loaded.ok ? `Borrador de ${loaded.negocio}` : 'Borrador de web'}
         description="El mismo editor que usa el cliente con su web, para ajustar el borrador antes de mandárselo."
         actions={
-          <Link href="/admin/portal/leads" className="btn-ghost">
+          // 31/10/2026 — a la lista de prospectos de su campaña. Antes iba a
+          // /admin/portal/leads, que desde #368 ya no enseña prospectos sin
+          // respuesta (LEADS_AWAITING_CLIENT_WHERE).
+          <Link href={loaded.ok && loaded.clientId ? `/admin/portal/${loaded.clientId}?product=prospecting` : '/admin/portal/clients'} className="btn-ghost">
             Volver a prospectos
           </Link>
         }
@@ -47,7 +50,7 @@ export default async function AdminDraftEditorPage(props: { params: Promise<{ le
       {loaded.ok ? (
         <SiteContentEditor
           apiBase={`/api/admin/portal/prospecting/web-draft/${leadId}`}
-          borrador={{ negocio: loaded.negocio, verUrl }}
+          borrador={{ negocio: loaded.negocio, verUrl, subidas: true }}
           initialContent={loaded.data.content}
           phone={null}
           address={null}

@@ -6,6 +6,7 @@ import { loadSiteEditorData } from './site-editor-data';
 import type { WebDraftCopy } from './web-draft-ai';
 import { renderDesignedDraft } from './web-draft-design';
 import { DRAFT_HUELLA_SQL, isUuid } from './web-draft-edit';
+import { draftUploadsBase } from './web-draft-images';
 import { getLiveDraftData } from './web-draft-live';
 import { leadDraftSubject } from './web-draft-subject';
 import type { PreviewOverride } from './website-preview';
@@ -34,9 +35,11 @@ import type { PreviewOverride } from './website-preview';
 //   una consulta por tecla.
 //
 // Lo que el editor de borradores NO hace, a propósito: publicar, «Mis datos»
-// (el teléfono y la dirección salen de Google), páginas interiores ni blog
-// (el borrador es solo la portada, ver borrador-solo-portada) y subir fotos
-// (no hay dónde guardarlas: las subidas son de una web, ClientWebsiteImage).
+// (el teléfono y la dirección salen de Google) ni páginas interiores ni blog
+// (el borrador es solo la portada, ver borrador-solo-portada).
+//
+// 31/10/2026 — y sí sube fotos: el borrador tiene las suyas
+// (web-draft-images.ts). Hasta hoy no, porque las subidas eran de una web.
 // =============================================================================
 
 const LEAD_SELECT = {
@@ -47,13 +50,15 @@ const LEAD_SELECT = {
   searchLocation: true,
   externalPlaceId: true,
   competitorSnapshot: { select: { subjectRating: true, subjectReviewCount: true } },
-  webDraft: { select: { id: true, copy: true, content: true, templateId: true, themeKey: true } },
+  webDraft: { select: { id: true, clientId: true, copy: true, content: true, templateId: true, themeKey: true, shareToken: true } },
 } as const;
 
 type EditorData = NonNullable<Awaited<ReturnType<typeof loadSiteEditorData>>>;
 
 export type DraftEditorLoad =
-  | { ok: true; negocio: string; huella: string; data: EditorData }
+  /** clientId: de quién es la campaña, para volver a su lista de prospectos
+   *  (no lo tienen los de kairikos.com, public-draft-editor.ts). */
+  | { ok: true; negocio: string; clientId?: string; huella: string; data: EditorData }
   /** not_found: ni prospecto ni borrador. old_design: el borrador sale del
    *  diseño antiguo (sin plantilla), que no tiene contenido que editar. */
   | { ok: false; reason: 'not_found' | 'old_design' | 'invalid_content' };
@@ -74,7 +79,7 @@ export async function loadDraftEditor(prisma: PrismaClient, leadId: string): Pro
   if (!draft.templateId || draft.content == null) return { ok: false, reason: 'old_design' };
   const [data, huella] = await Promise.all([loadSiteEditorData(prisma, { content: draft.content, templateId: draft.templateId }), huellaOf(prisma, leadId)]);
   if (!data || !huella) return { ok: false, reason: 'invalid_content' };
-  return { ok: true, negocio: lead.contactName, huella, data };
+  return { ok: true, negocio: lead.contactName, clientId: draft.clientId, huella, data };
 }
 
 /**
@@ -140,6 +145,7 @@ export async function serveDraftPreview(prisma: PrismaClient, leadId: string, ov
     subject: leadDraftSubject({ ...lead, contactName: lead.contactName }, live, copy),
     themeKey: draft.themeKey,
     edicion: true,
+    subidasBase: draftUploadsBase(draft.shareToken),
   });
   // Null: el contenido no valida (el editor lo enseña como «algún campo no
   // cuadra») o la plantilla ya no está.
