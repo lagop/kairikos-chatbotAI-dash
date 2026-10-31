@@ -152,7 +152,7 @@ export async function POST(req: NextRequest) {
       });
       // 31/10/2026 — las fotos subidas al borrador viajan con su contenido.
       if (body.data.fromLeadId && seed?.content != null) {
-        await copyDraftImagesToWebsite(tx, { leadId: body.data.fromLeadId }, row.id, seed.content);
+        await copyDraftImagesToWebsite(tx, { kind: 'prospecting', where: { leadId: body.data.fromLeadId } }, row.id, seed.content);
       }
       return row;
     });

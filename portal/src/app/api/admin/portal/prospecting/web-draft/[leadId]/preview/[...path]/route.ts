@@ -22,5 +22,5 @@ export async function GET(req: NextRequest, props: { params: Promise<{ leadId: s
   if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
   if (!isUuid(params.leadId)) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
-  return serveDraftImage(prisma, { leadId: params.leadId }, params.path.join('/'));
+  return serveDraftImage(prisma, { kind: 'prospecting', where: { leadId: params.leadId } }, params.path.join('/'));
 }
