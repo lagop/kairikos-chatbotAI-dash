@@ -377,6 +377,207 @@ time{font-size:.85rem;font-weight:700;text-transform:uppercase;letter-spacing:.1
 .bloque-variante .kv-mosaico>li:hover .icono{transform:rotate(-8deg) scale(1.08)}
 .bloque-variante .portada-barra{text-align:left}
 @media (max-width:640px){.bloque-variante .kv-indice>li{grid-template-columns:3.25rem minmax(0,1fr) auto}.bloque-variante .kv-indice .kv-num{font-size:1.3rem}}
+/* El resto de secciones (31/10/2026), igual: filetes de 3 px y no de 1, las
+   marcas en cuadrado del color, las cifras y la nota de Google como bloques
+   y pegatinas con sombra dura, el precio en su etiqueta negra y la pregunta
+   abierta en la franja del color. Sobre el color, todo el texto en negro: es
+   el único contraste que garantiza el acento del negocio (plantilla.json). */
+.bloque-variante .kv-cita-foto{border:var(--linea);border-radius:var(--radio);box-shadow:8px 8px 0 var(--amarillo),8px 8px 0 3px var(--tinta);transform:rotate(-3deg)}
+.bloque-variante .kv-cita-texto>p:first-child{font-style:normal}
+.bloque-variante .kv-cita-texto>p:first-child::before{font:800 3em/1 var(--display);height:.55em;color:var(--tinta)}
+.kv-sobre--cita.bloque-variante h2{margin-bottom:var(--s-5)}
+.kv-sobre--media.bloque-variante{border-block:var(--linea)}
+.kv-sobre--media.bloque-variante .kv-media-foto{border-right:var(--linea)}
+.kv-sobre--media.bloque-variante .kv-media-texto{background:var(--hueso)}
+.bloque-variante .kv-cifras{border-top:0;padding-top:var(--s-3);gap:var(--s-4)}
+.bloque-variante .kv-cifras li{padding:var(--s-3) var(--s-4);background:var(--amarillo);border:var(--linea);border-radius:var(--radio);box-shadow:4px 4px 0 var(--tinta)}
+.bloque-variante .kv-cifras li:nth-child(even){transform:rotate(-2deg)}
+.bloque-variante .kv-cifras strong{font-weight:800;color:var(--tinta)}
+.bloque-variante .kv-cifras li>span{color:var(--tinta);font-weight:600}
+.kv-sobre--revista.bloque-variante .kv-revista-cabeza{border-bottom:var(--linea)}
+.kv-sobre--revista.bloque-variante .kv-revista-cabeza .rotulo{font-style:normal;color:var(--amarillo);margin-bottom:var(--s-4)}
+.kv-sobre--revista.bloque-variante .kv-revista-cabeza h2{max-width:20ch}
+.kv-sobre--revista.bloque-variante .kv-revista-columnas>p:first-child{font:inherit;color:inherit}
+.kv-sobre--revista.bloque-variante .kv-revista-columnas>p:first-child::first-letter{font-weight:800;color:var(--tinta);background:var(--amarillo);border:var(--linea);padding:.08em .14em;margin:.1em .2em 0 0;box-shadow:4px 4px 0 var(--tinta)}
+.revista-sitio{display:flex;align-items:center;gap:var(--s-3)}
+.kv-sobre--revista.bloque-variante .revista-sitio{font-style:normal;font-weight:600;color:var(--tinta)}
+.revista-sitio .icono{width:2.5rem;height:2.5rem}
+.revista-sitio .icono svg{width:1.15rem;height:1.15rem}
+.kv-proceso--linea.bloque-variante .kv-linea>li{padding-left:4.75rem}
+.kv-proceso--linea.bloque-variante .kv-linea>li::before{width:3.25rem;height:3.25rem;background:var(--tinta);color:var(--amarillo);font-size:1.4rem;font-weight:800;transition:transform .3s ease}
+.kv-proceso--linea.bloque-variante .kv-linea>li:hover::before{transform:rotate(-12deg) scale(1.08)}
+.kv-proceso--linea.bloque-variante .kv-linea>li:not(:last-child)::after{left:calc(1.625rem - 1.5px);top:3.25rem;bottom:0;border-left:var(--linea)}
+.kv-proceso--linea.bloque-variante .kv-linea h3{padding-top:.75rem}
+.bloque-variante .kv-marca{width:2.6rem;height:2.6rem;border-radius:var(--radio)}
+.bloque-variante .kv-marca svg{width:1.15rem;height:1.15rem}
+.bloque-variante .kv-marcas>li{border-bottom:var(--linea)}
+.bloque-variante .kv-marcas>li:nth-child(even) .kv-marca{transform:rotate(-6deg)}
+.bloque-variante .kv-marcas>li:hover .kv-marca{transform:rotate(8deg)}
+.bloque-variante .kv-marcas>li>div{padding-top:.4rem}
+.kv-garantias--iconos.bloque-variante .rotulo{transform:rotate(1.5deg)}
+.kv-garantias--iconos.bloque-variante .kv-icono-grande{width:5.5rem;height:5.5rem;border-radius:var(--radio);background:var(--tinta);color:var(--amarillo);border:var(--linea);box-shadow:6px 6px 0 var(--blanco),6px 6px 0 3px var(--tinta);transform:rotate(-4deg)}
+.kv-garantias--iconos.bloque-variante .kv-iconos>li:hover .kv-icono-grande{transform:rotate(4deg) scale(1.05)}
+.kv-garantias--iconos.bloque-variante .kv-iconos p{color:var(--tinta)}
+.kv-precios--ventanitas.bloque-variante .kv-tabla{padding:0}
+.bloque-variante .kv-fila-precio{padding:var(--s-4) var(--s-5);border-bottom:0;transition:background .2s ease}
+.bloque-variante .kv-fila-precio+.kv-fila-precio{border-top:var(--linea)}
+.bloque-variante .kv-fila-precio:hover{background:var(--hueso)}
+.bloque-variante .kv-concepto>span:first-child{font:700 1.2rem/1.2 var(--display)}
+.bloque-variante .kv-fila-precio>strong{align-self:center;text-align:center;background:var(--tinta);color:var(--amarillo);font:700 1.05rem/1.25 var(--texto);border-radius:var(--radio);padding:.5rem .9rem;transform:rotate(-1.5deg)}
+.bloque-variante .kv-info{border:2px solid var(--tinta);border-radius:var(--radio);background:var(--amarillo);color:var(--tinta);font:700 .8rem/1 var(--texto)}
+.bloque-variante .kv-info[aria-expanded="true"]{background:var(--tinta);border-color:var(--tinta);color:var(--amarillo)}
+.bloque-variante .kv-globo{left:var(--s-4);right:var(--s-4);border:var(--linea);box-shadow:4px 4px 0 var(--tinta);color:var(--tinta)}
+.kv-oscura.bloque-variante{background:var(--tinta);border-block:var(--linea)}
+.kv-oscura.bloque-variante .rotulo{background:var(--amarillo);color:var(--tinta)!important}
+.kv-oscura.bloque-variante .nota-cifra{color:var(--tinta)!important}
+.kv-oscura.bloque-variante .nota-google a{text-decoration-color:var(--amarillo)}
+.kv-oscura.bloque-variante :is(.cita,.resena){background:var(--tinta-2)!important;border:3px solid var(--claro)!important;box-shadow:6px 6px 0 var(--amarillo)!important}
+.kv-oscura.bloque-variante .cita::before{color:var(--amarillo)!important}
+.kv-oscura.bloque-variante .resena-estrellas{color:var(--amarillo)!important}
+.kv-oscura.bloque-variante .kv-pista{padding:0 .5rem 1.25rem 0}
+.kv-oscura.bloque-variante .kv-carrusel-nav button{border:3px solid var(--claro);border-radius:var(--radio)}
+.kv-oscura.bloque-variante .kv-carrusel-nav button:hover{background:var(--amarillo);color:var(--tinta)!important}
+.kv-opiniones--muro.bloque-variante .kv-muro-nota{border:var(--linea);border-radius:var(--radio);box-shadow:var(--sombra);transform:rotate(-2deg)}
+.kv-opiniones--muro.bloque-variante .kv-muro-nota strong{font-weight:800}
+.kv-opiniones--muro.bloque-variante .kv-muro-nota a{text-decoration-thickness:3px}
+.kv-opiniones--muro.bloque-variante .kv-muro>*{margin-bottom:var(--s-5)!important}
+.kv-opiniones--destacada.bloque-variante .kv-lado-tarjeta{background:var(--amarillo);color:var(--tinta)}
+.kv-opiniones--destacada.bloque-variante .nota-google{margin-top:var(--s-5)}
+.kv-opiniones--destacada.bloque-variante .nota-cifra{background:var(--blanco)}
+.kv-opiniones--destacada.bloque-variante .nota-google p{color:var(--tinta)}
+.kv-opiniones--destacada.bloque-variante .nota-google a{text-decoration-color:var(--tinta)}
+.kv-opiniones--destacada.bloque-variante .kv-citas,.kv-opiniones--destacada.bloque-variante .kv-resenas{gap:var(--s-5)}
+.kv-faq--dos-columnas.bloque-variante .kv-acordeon details{padding:0;margin-bottom:var(--s-5)}
+.kv-faq--dos-columnas.bloque-variante .kv-acordeon summary{align-items:center;padding:var(--s-4) var(--s-5);font-size:1.08rem;transition:background .15s ease}
+.kv-faq--dos-columnas.bloque-variante .kv-acordeon summary:hover{background:var(--hueso)}
+.kv-faq--dos-columnas.bloque-variante .kv-acordeon details[open] summary{background:var(--amarillo);border-bottom:var(--linea)}
+.kv-faq--dos-columnas.bloque-variante .kv-acordeon summary::after{content:"";width:1.9rem;height:1.9rem;border:2px solid var(--tinta);border-radius:var(--radio);background:linear-gradient(var(--tinta),var(--tinta)) center/.8rem 3px no-repeat,linear-gradient(var(--tinta),var(--tinta)) center/3px .8rem no-repeat,var(--blanco)}
+.kv-faq--dos-columnas.bloque-variante .kv-respuesta{padding:var(--s-4) var(--s-5) var(--s-5)}
+.bloque-variante .kv-ayuda{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s-2) var(--s-4);color:var(--gris)}
+.bloque-variante .kv-ayuda .faq-telefono{color:var(--tinta)}
+.kv-faq--panel.bloque-variante .kv-pestanas-lista button{border-bottom:var(--linea)}
+.kv-faq--panel.bloque-variante .kv-pestanas-lista button:first-child{border-top:var(--linea)}
+.kv-faq--panel.bloque-variante .kv-pestanas-lista button:hover{background:var(--hueso)}
+.kv-faq--panel.bloque-variante .kv-pestanas-lista button[aria-selected="true"]{background:var(--amarillo);color:var(--tinta)}
+.kv-faq--panel.bloque-variante .kv-panel{border-radius:var(--radio)}
+/* Bloques ricos con marco propio (31/10/2026, como #374 en Señal). El marco es
+   de Bloque —cabeza partida con el título a un lado y el texto al otro, rótulo
+   negro, trazo de 3 px y sombra dura—; el cuerpo lo pinta el motor
+   (BLOQUES_CSS) y aquí solo se retoca, siempre bajo .bloque-bloque. Solo
+   aspecto: el visor, los filtros, el arrastre del comparador, las pestañas y
+   la vista sin JavaScript siguen siendo los del motor. Las etiquetas del antes
+   y después no cambian de sitio: el motor ya manda «después» abajo en el móvil
+   para que no se pisen. La plantilla no tenía sección oscura (el carrusel usa
+   la kv-oscura del motor), así que los bloques traen la suya:
+   .bloque-bloque--oscura. Sobre el amarillo todo el texto va en tinta. */
+.bloque-bloque--oscura{background:var(--tinta);color:var(--claro);--k-superficie:var(--tinta-2);--k-borde:rgba(255,255,255,.22);--k-suave:var(--claro-suave);--k-acento-texto:var(--amarillo)}
+.bloque-bloque--oscura .rotulo{background:var(--amarillo);color:var(--tinta)}
+.bloque-bloque--oscura .texto-rico{color:var(--claro-suave)}
+.bloque-bloque--oscura .texto-rico>p:first-child{color:var(--blanco)}
+.bloque-bloque--oscura .texto-rico>p:first-child strong{background:none;color:var(--amarillo)}
+.bloque-bloque--oscura .texto-rico a{color:var(--amarillo)}
+.bloque-bloque--oscura .dato-ejemplo-bloque{outline-color:var(--amarillo)}
+.seccion--acento.bloque-bloque .texto-rico{color:var(--tinta)}
+.bloque-bloque-cabeza{display:grid;gap:var(--s-4) var(--s-7);align-items:end;margin-bottom:var(--s-6)}
+@media (min-width:900px){.bloque-bloque-cabeza:has(.bloque-bloque-texto){grid-template-columns:minmax(0,1.1fr) minmax(0,1fr)}}
+.bloque-bloque-cabeza h2{max-width:46rem;margin:0}
+.bloque-bloque-texto{max-width:56ch;margin:0}
+.bloque-bloque-texto.texto-rico>p:first-child{font-size:clamp(1.15rem,1rem + .5vw,1.35rem)}
+.bloque-bloque-texto>:last-child{margin-bottom:0}
+.bloque-bloque-rejilla{display:grid;gap:var(--s-6) var(--s-8);align-items:start}
+@media (min-width:900px){.bloque-bloque-rejilla{grid-template-columns:minmax(0,1fr) minmax(0,1.6fr)}}
+.bloque-bloque-lado .icono{margin-bottom:var(--s-5)}
+.bloque-bloque--oscura .bloque-bloque-lado .icono{border-color:var(--amarillo)}
+.bloque-bloque-lado h2{font-size:clamp(2rem,3.4vw,2.9rem);margin:0 0 var(--s-5)}
+.bloque-bloque-cuerpo{min-width:0}
+/* Galería: fotos con el trazo y la sombra dura, que se levantan al señalarlas. */
+.bloque-bloque .k-galeria-rejilla{gap:var(--s-6) var(--s-5)}
+.bloque-bloque .k-galeria-foto{border:var(--linea);box-shadow:var(--sombra);transition:transform .2s ease,box-shadow .2s ease}
+.bloque-bloque .k-galeria-foto:hover{transform:translate(-3px,-3px);box-shadow:9px 9px 0 var(--tinta)}
+.bloque-bloque .k-galeria-foto:focus-visible{outline:3px dashed var(--tinta);outline-offset:5px}
+.bloque-bloque .k-pie{margin-top:var(--s-4);font-weight:600;color:var(--tinta)}
+.bloque-bloque .k-pie::before{content:"";display:inline-block;width:.7rem;height:.7rem;margin-right:.5rem;background:var(--amarillo);border:2px solid var(--tinta);vertical-align:-.05em}
+/* Antes y después: sobre tinta, con el trazo claro y la sombra amarilla. */
+.bloque-bloque .k-comparador,.bloque-bloque .k-comparador-sola{border:3px solid var(--claro);box-shadow:8px 8px 0 var(--amarillo)}
+.bloque-bloque .k-comparador-linea{width:4px;margin-left:-2px;background:var(--amarillo);box-shadow:0 0 0 2px var(--tinta)}
+.bloque-bloque .k-comparador-linea::after{border-radius:var(--radio);background-color:var(--amarillo);border:3px solid var(--tinta);box-shadow:4px 4px 0 var(--tinta)}
+.bloque-bloque .k-comparador:has(.k-comparador-control:focus-visible) .k-comparador-linea{box-shadow:0 0 0 3px var(--claro)}
+.bloque-bloque .k-etiqueta{border-radius:var(--radio);border:2px solid var(--tinta);padding:.35rem .65rem;background:var(--claro);color:var(--tinta);font:700 .8rem/1.2 var(--texto);letter-spacing:.12em}
+.bloque-bloque .k-etiqueta--despues{background:var(--amarillo)}
+/* Catálogo: filtros como bloques que se levantan, fichas con trazo y sombra. */
+.bloque-bloque .k-filtros{gap:var(--s-3)}
+.bloque-bloque .k-filtros button{border:var(--linea);border-radius:var(--radio);background:var(--blanco);color:var(--tinta);font-weight:700;transition:transform .15s ease,box-shadow .15s ease,background .15s ease}
+.bloque-bloque .k-filtros button:hover{transform:translate(-2px,-2px);box-shadow:4px 4px 0 var(--tinta)}
+.bloque-bloque .k-filtros button[aria-pressed="true"]{background:var(--amarillo);border-color:var(--tinta);color:var(--tinta);box-shadow:4px 4px 0 var(--tinta)}
+.bloque-bloque .k-filtros button:focus-visible{outline:3px dashed var(--tinta);outline-offset:3px}
+.bloque-bloque .k-catalogo-rejilla{gap:var(--s-6) var(--s-5)}
+.bloque-bloque .k-producto{border:var(--linea);box-shadow:var(--sombra)}
+.bloque-bloque .k-producto img,.bloque-bloque .k-producto-sin-foto{border-bottom:var(--linea)}
+.bloque-bloque .k-producto-sin-foto{background:repeating-linear-gradient(135deg,var(--tinta) 0 2px,transparent 2px 14px),var(--amarillo)}
+.bloque-bloque .k-producto-cuerpo{gap:var(--s-2);padding:var(--s-5)}
+.bloque-bloque .k-producto-cuerpo h3{font-size:1.35rem}
+.bloque-bloque .k-producto-categoria{align-self:flex-start;padding:.3rem .55rem;background:var(--tinta);color:var(--amarillo);font:700 .72rem/1.2 var(--texto);letter-spacing:.14em;transform:rotate(-1.5deg)}
+.bloque-bloque .k-caracteristicas{margin-bottom:var(--s-3)}
+.bloque-bloque .k-caracteristicas li::before{top:.4em;width:.7rem;height:.7rem;border:2px solid var(--tinta);background:var(--amarillo);transform:none}
+.bloque-bloque .k-precio{align-self:flex-start;margin-top:auto;padding:.45rem .85rem;border-radius:var(--radio);background:var(--tinta);color:var(--amarillo);font:700 1.1rem/1.25 var(--texto);overflow-wrap:anywhere;transform:rotate(-1.5deg)}
+/* Pestañas: las del estilo por defecto son bloques sueltos y la elegida, la
+   amarilla; las de los estilos T1–T3 conservan su forma y solo cogen la letra. */
+.bloque-bloque .k-pestanas-lista button{font-weight:700}
+.bloque-bloque .k-pestanas--pildora .k-pestanas-lista,.bloque-bloque .k-pestanas--pildora .k-pestanas-lista button{border-radius:var(--radio)}
+.bloque-bloque .k-pestanas-raya{height:4px;border-radius:0;background:var(--tinta)}
+.bloque-bloque .k-pestanas:not(.k-pestanas--subrayado,.k-pestanas--pildora,.k-pestanas--tarjetas) .k-pestanas-lista{gap:var(--s-3);margin-bottom:var(--s-5);border:0}
+.bloque-bloque .k-pestanas:not(.k-pestanas--subrayado,.k-pestanas--pildora,.k-pestanas--tarjetas) .k-pestanas-lista button{margin:0;padding:.7rem 1.15rem;border:var(--linea);border-radius:var(--radio);background:var(--blanco);color:var(--tinta);transition:transform .15s ease,box-shadow .15s ease}
+.bloque-bloque .k-pestanas:not(.k-pestanas--subrayado,.k-pestanas--pildora,.k-pestanas--tarjetas) .k-pestanas-lista button:hover{transform:translate(-2px,-2px);box-shadow:4px 4px 0 var(--tinta)}
+.bloque-bloque .k-pestanas:not(.k-pestanas--subrayado,.k-pestanas--pildora,.k-pestanas--tarjetas) .k-pestanas-lista button[aria-selected="true"]{background:var(--amarillo);border-color:var(--tinta);color:var(--tinta);box-shadow:4px 4px 0 var(--tinta)}
+.bloque-bloque .k-pestanas:not(.k-pestanas--subrayado,.k-pestanas--pildora,.k-pestanas--tarjetas) .k-pestanas-lista button:focus-visible{outline:3px dashed var(--tinta);outline-offset:3px}
+.bloque-bloque .k-pestanas--js:not(.k-pestanas--subrayado,.k-pestanas--pildora,.k-pestanas--tarjetas) .k-panel,.bloque-bloque .k-pestanas:not(.k-pestanas--js) .k-panel{padding:clamp(1.5rem,4vw,2.5rem);background:var(--blanco);border:var(--linea);border-radius:var(--radio);box-shadow:var(--sombra)}
+.bloque-bloque .k-panel-titulo{font-size:1.5rem}
+.bloque-bloque .k-panel-texto{font-size:1.08rem}
+.bloque-bloque .k-panel-texto ul{list-style:none;padding:0;display:grid;gap:var(--s-2)}
+.bloque-bloque .k-panel-texto li{position:relative;padding-left:var(--s-6)}
+.bloque-bloque .k-panel-texto li::before{content:"";position:absolute;left:0;top:.4em;width:.8rem;height:.8rem;background:var(--amarillo);border:2px solid var(--tinta)}
+.bloque-bloque .k-panel-texto li>strong:first-child{background:linear-gradient(transparent 58%,var(--amarillo) 58%)}
+.bloque-bloque .k-panel-cuerpo img{border:var(--linea);border-radius:var(--radio)}
+/* Comparativa: el trazo y la sombra van en el marco de la tabla, porque una
+   tabla con border-collapse no redondea su propio borde. */
+.bloque-bloque .k-comparativa-marco{border:var(--linea);border-radius:var(--radio);box-shadow:var(--sombra);overflow:hidden}
+.bloque-bloque .k-comparativa{border-radius:0;background:var(--blanco)}
+.bloque-bloque .k-comparativa th,.bloque-bloque .k-comparativa td{border-bottom:2px solid var(--tinta)}
+.bloque-bloque .k-comparativa tbody tr:last-child>*{border-bottom:0}
+.bloque-bloque .k-comparativa thead th,.bloque-bloque .k-comparativa thead td{background:var(--tinta);color:var(--claro);font:700 1.15rem/1.1 var(--display);padding-block:1rem}
+.bloque-bloque .k-comparativa thead .k-destacada{background:var(--amarillo);color:var(--tinta)}
+.bloque-bloque .k-comparativa tbody tr:nth-child(even){background:var(--hueso)}
+.bloque-bloque .k-comparativa tbody .k-destacada{background:color-mix(in srgb,var(--amarillo) 22%,var(--blanco));font-weight:700}
+.bloque-bloque .k-si{border-radius:var(--radio);background:var(--amarillo);box-shadow:inset 0 0 0 2px var(--tinta)}
+.bloque-bloque .k-si::after{border-color:var(--tinta)}
+@media (max-width:640px){.bloque-bloque .k-comparativa th,.bloque-bloque .k-comparativa td{border:0}.bloque-bloque .k-comparativa tr{border-bottom:2px solid var(--tinta)}.bloque-bloque .k-comparativa tbody tr:last-child{border-bottom:0}.bloque-bloque .k-comparativa tbody th{font:700 1.25rem/1.1 var(--display)}.bloque-bloque .k-comparativa tbody .k-destacada{background:transparent}.bloque-bloque .k-comparativa-marco{box-shadow:4px 4px 0 var(--tinta)}}
+/* Trayectoria: línea de trazo, cada hito un cuadrado amarillo y su ficha. La
+   ficha es el hito entero, fecha incluida: con la fecha en una etiqueta aparte
+   y el texto en otra caja, las dos de una fila medían distinto (lo vio lab). */
+.bloque-bloque .k-trayectoria{padding-left:2.6rem;gap:var(--s-5)}
+.bloque-bloque .k-trayectoria::before{left:calc(.9rem - 1.5px);width:3px;background:var(--tinta)}
+.bloque-bloque .k-hito{padding:var(--s-4) var(--s-5);background:var(--blanco);border:var(--linea);border-radius:var(--radio);box-shadow:4px 4px 0 var(--tinta)}
+.bloque-bloque .k-hito::before{left:calc(-2.6rem - 3px);top:var(--s-4);width:1.8rem;height:1.8rem;border-radius:var(--radio);background:var(--amarillo);border:3px solid var(--tinta);box-shadow:3px 3px 0 var(--tinta)}
+.bloque-bloque .k-hito-fecha{justify-self:start;align-self:start;max-width:100%;padding:.35rem .6rem;border-radius:var(--radio);background:var(--tinta);color:var(--amarillo);font:700 .95rem/1.25 var(--texto);letter-spacing:.02em;overflow-wrap:break-word;transform:rotate(-1.5deg)}
+.bloque-bloque .k-hito-cuerpo h3{font-size:1.3rem}
+.bloque-bloque .k-hito-cuerpo p{color:var(--gris)}
+/* Marcas: franja amarilla corta; multiply funde el blanco de los logos. */
+.bloque-bloque.bloque-bloque--marcas{padding-block:var(--s-7)}
+.bloque-marcas-cabeza{max-width:40rem;margin:0 auto var(--s-6);text-align:center}
+.bloque-marcas-cabeza h2{font-size:clamp(1.7rem,3vw,2.5rem);margin:0}
+.bloque-bloque--marcas .bloque-bloque-texto{margin:0 auto var(--s-6);text-align:center}
+.bloque-bloque .k-marcas-pista img{mix-blend-mode:multiply;opacity:.9}
+.bloque-bloque .k-marca-texto{font-weight:700;font-size:.75rem;letter-spacing:.1em;text-transform:uppercase;color:var(--tinta)}
+/* Vídeo: sobre tinta, con el trazo claro y la sombra amarilla del comparador. */
+.bloque-bloque--video .bloque-bloque-cuerpo{padding-right:10px}
+.bloque-bloque .k-video-marco{max-width:none}
+.bloque-bloque .k-video-portada,.bloque-bloque .k-video-marco iframe{border:3px solid var(--claro);box-shadow:10px 10px 0 var(--amarillo)}
+.bloque-bloque .k-video-portada:focus-visible{outline:3px dashed var(--amarillo);outline-offset:6px}
+.bloque-bloque .k-video-fondo{background:repeating-linear-gradient(135deg,rgba(255,199,44,.14) 0 2px,transparent 2px 16px),var(--tinta-2)}
+.bloque-bloque .k-video-boton{border-radius:var(--radio);border:3px solid var(--tinta);box-shadow:5px 5px 0 var(--tinta)}
+.bloque-bloque .k-video-etiqueta{border-radius:var(--radio);border:2px solid var(--tinta);background:var(--amarillo);color:var(--tinta);font:700 .85rem/1.2 var(--texto);letter-spacing:.06em;text-transform:uppercase}
+.bloque-bloque .k-video-aviso{margin-top:calc(10px + var(--s-3));color:var(--claro-suave)}
+@media (max-width:640px){.bloque-bloque-lado h2{font-size:clamp(1.9rem,8vw,2.4rem)}.bloque-bloque .k-comparador,.bloque-bloque .k-comparador-sola{box-shadow:5px 5px 0 var(--amarillo)}.bloque-bloque .k-video-portada,.bloque-bloque .k-video-marco iframe{box-shadow:6px 6px 0 var(--amarillo)}.bloque-bloque--video .bloque-bloque-cuerpo{padding-right:6px}.bloque-bloque .k-video-aviso{margin-top:calc(6px + var(--s-3))}}
 </style>
 </head>
 <body>
