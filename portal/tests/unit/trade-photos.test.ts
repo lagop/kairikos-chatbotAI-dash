@@ -2,6 +2,7 @@ import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { FOOD_PHOTO_COUNTS, HEALTH_PHOTO_COUNTS, PROFESSIONAL_PHOTO_COUNTS, TRADE_HERO_PHOTOS, TRADE_PHOTO_COUNTS, foodPhotoSet, healthPhotoSet, professionalPhotoSet, tradeDetailPhotos, tradeHeroPhoto, tradePhotoSet, type FoodPhotoSet, type HealthPhotoSet, type TradePhotoSet } from '@/lib/trade-photos';
+import { EXAMPLE_PHOTOS_PER_SET, FOOD_EXAMPLE_PHOTOS } from '@/lib/site-sector-blocks';
 
 const DIR = join(process.cwd(), 'public', 'web-draft', 'oficios');
 
@@ -107,10 +108,13 @@ describe('fotos de salud', () => {
 });
 
 describe('fotos de restauración y profesionales', () => {
-  it('están todas en public/ y ninguna sobra ni pesa de más', () => {
+  it('están todas en public/ (portada y ejemplos) y ninguna sobra ni pesa de más', () => {
     for (const [carpeta, counts] of [['restauracion', FOOD_PHOTO_COUNTS], ['profesionales', PROFESSIONAL_PHOTO_COUNTS]] as const) {
       const dir = join(process.cwd(), 'public', 'web-draft', carpeta);
       const expected = Object.entries(counts).flatMap(([set, n]) => Array.from({ length: n }, (_, i) => `${set}-${i + 1}.jpg`));
+      // Y las de los bloques de ejemplo del sector (site-sector-blocks.ts).
+      const ejemplos = carpeta === 'restauracion' ? Object.values(FOOD_EXAMPLE_PHOTOS) : ['inmueble'];
+      expected.push(...ejemplos.flatMap((p) => Array.from({ length: EXAMPLE_PHOTOS_PER_SET }, (_, i) => `${p}-${i + 1}.jpg`)));
       expect(readdirSync(dir).filter((f) => f.endsWith('.jpg')).sort()).toEqual(expected.sort());
       for (const f of expected) expect(statSync(join(dir, f)).size).toBeLessThan(400 * 1024);
     }

@@ -63,7 +63,7 @@ describe('bloques de ejemplo del sector', () => {
     expect(home).toContain('class="leyenda-ejemplos"');
   });
 
-  it('una barbería trae los suyos; otros sectores y las uñas, nada', () => {
+  it('una barbería trae los suyos; los oficios y las uñas, nada', () => {
     const b = withSectorExamples(base(), { familia: 'beauty', businessName: 'Barbería El Puerto', primaryType: 'barber_shop' });
     expect(b.bloques.find((x) => x.id === 'servicios-por-persona')?.pestanas.map((p) => p.titulo)).toEqual(['Cortes', 'Barba', 'Combos']);
     expect(b.bloques.some((x) => x.tipo === 'antes_despues')).toBe(false);
@@ -113,6 +113,88 @@ describe('bloques de ejemplo del sector', () => {
     expect(equipo).toContain('Nº de colegiado');
     const lista = home.slice(home.indexOf('id="bloque-seguros"'));
     for (const item of seguros.items) expect(lista).toContain(`<span class="dato-ejemplo">${item.texto}</span>`);
+  });
+
+  it('un restaurante trae su carta por apartados y su galería de platos, sin repetir la portada', () => {
+    const c = withSectorExamples(base(), { familia: 'food', businessName: 'Casa Pepe', primaryType: 'restaurant' });
+    const carta = c.bloques.find((b) => b.id === 'carta')!;
+    expect(carta.tipo).toBe('pestanas');
+    expect(carta.pestanas.map((p) => p.titulo)).toEqual(['Para empezar', 'Principales', 'Postres']);
+    // Cada línea, un plato con su precio.
+    for (const p of carta.pestanas) for (const linea of p.texto.split('\n')) expect(linea).toMatch(/^- \*\*.+\*\* — .+$/);
+    const platos = c.bloques.find((b) => b.id === 'platos')!;
+    expect(platos.fotos).toHaveLength(6);
+    for (const f of platos.fotos) expect(f.foto).toMatch(/^\/web-draft\/restauracion\/plato-[1-6]\.jpg$/);
+    const fotos = c.bloques.flatMap((b) => [...b.fotos.map((f) => f.foto), ...b.pestanas.map((p) => p.foto)]).filter(Boolean);
+    for (const f of fotos) expect(existsSync(join(process.cwd(), 'public', f)), f).toBe(true);
+    expect(fotos).not.toContain(tradeHeroPhoto('food', 'Casa Pepe', 'restaurant'));
+    const orden = c.paginas[0].secciones.map((s) => (s.tipo === 'bloque' ? s.id : s.tipo));
+    expect(orden[orden.indexOf('servicios') + 1]).toBe('carta');
+    expect(orden[orden.indexOf('sobre') + 1]).toBe('platos');
+    expect(pendingExampleData(c)).toEqual(['bloques.carta.titulo', 'bloques.platos.titulo']);
+    expect(parseSiteContent(c).ok).toBe(true);
+  });
+
+  it('una cafetería y una panadería traen la suya; la carta sustituye a lo que incluye cada servicio', () => {
+    const cafe = withSectorExamples(base(), { familia: 'food', businessName: 'Café del Puerto', primaryType: 'cafe' });
+    expect(cafe.bloques.find((b) => b.id === 'carta')?.pestanas.map((p) => p.titulo)).toEqual(['Cafés', 'Desayunos', 'Dulces']);
+    expect(cafe.bloques.find((b) => b.id === 'platos')?.fotos.every((f) => /\/cafe-\d\.jpg$/.test(f.foto))).toBe(true);
+    const pan = withSectorExamples(base(), { familia: 'food', businessName: 'Panadería La Espiga', primaryType: 'cafe' });
+    expect(pan.bloques.find((b) => b.id === 'carta')?.pestanas.map((p) => p.titulo)).toEqual(['Panes', 'Bollería', 'Pasteles y encargos']);
+    expect(pan.bloques.find((b) => b.id === 'platos')?.fotos.every((f) => /\/obrador-\d\.jpg$/.test(f.foto))).toBe(true);
+
+    const c = base();
+    c.bloques.push({ ...vacio(DETAIL_BLOCK_ID, 'pestanas', 'Qué incluye cada servicio'), pestanas: [{ titulo: 'Menú', texto: '- x', foto: '', alt: '' }] });
+    c.paginas[0].secciones.splice(3, 0, { tipo: 'bloque', id: DETAIL_BLOCK_ID });
+    c.ejemplos = [`bloques.${DETAIL_BLOCK_ID}.titulo`];
+    const r = withSectorExamples(c, { familia: 'food', businessName: 'Casa Pepe', primaryType: null });
+    expect(r.bloques.some((b) => b.id === DETAIL_BLOCK_ID)).toBe(false);
+    expect(r.ejemplos.some((e) => e.includes(DETAIL_BLOCK_ID))).toBe(false);
+  });
+
+  it('un despacho trae su equipo y su trayectoria, sin nombres ni años inventados', () => {
+    const casos = [
+      ['Asesoría Gómez', 'accounting', 'Asesoría fiscal', false],
+      ['Bufete Álvarez', null, 'Socia directora', true],
+      ['Pérez Abogados', 'lawyer', 'Socia directora', true],
+      ['Correduría de Seguros Insular', 'insurance_agency', 'Mediadora de seguros', false],
+    ] as const;
+    for (const [nombre, tipo, primero, colegiado] of casos) {
+      const c = withSectorExamples(base(), { familia: 'professional', businessName: nombre, primaryType: tipo });
+      const equipo = c.bloques.find((b) => b.id === 'equipo')!;
+      expect(equipo.tipo, nombre).toBe('catalogo');
+      expect(equipo.productos[0].descripcion.startsWith(primero), nombre).toBe(true);
+      expect(equipo.productos.every((p) => p.nombre === 'Nombre Apellido' && !p.foto && !p.categoria), nombre).toBe(true);
+      expect(equipo.productos.every((p) => p.caracteristicas.some((x) => /colegiado nº 0000/.test(x))), nombre).toBe(colegiado);
+      const hitos = c.bloques.find((b) => b.id === 'trayectoria')!.hitos;
+      expect(hitos.map((h) => h.fecha), nombre).toEqual(['20XX', '20XX', 'Hoy']);
+      // Ni «Hoy / Hoy»: la fecha y el título del hito no se repiten.
+      expect(hitos.every((h) => h.titulo !== h.fecha), nombre).toBe(true);
+      const orden = c.paginas[0].secciones.map((s) => (s.tipo === 'bloque' ? s.id : s.tipo));
+      expect(orden.slice(orden.indexOf('sobre') + 1, orden.indexOf('sobre') + 3)).toEqual(['trayectoria', 'equipo']);
+      expect(pendingExampleData(c)).toEqual(['bloques.equipo.titulo', 'bloques.trayectoria.titulo']);
+      expect(parseSiteContent(c).ok).toBe(true);
+    }
+  });
+
+  it('una inmobiliaria trae un catálogo de inmuebles en venta y alquiler, con fotos y precios de ejemplo', () => {
+    const c = withSectorExamples(base(), { familia: 'professional', businessName: 'Inmobiliaria Costa', primaryType: null });
+    expect(c.bloques.some((b) => b.id === 'equipo')).toBe(false);
+    const inmuebles = c.bloques.find((b) => b.id === 'inmuebles')!;
+    expect(inmuebles.tipo).toBe('catalogo');
+    expect(new Set(inmuebles.productos.map((p) => p.categoria))).toEqual(new Set(['Venta', 'Alquiler']));
+    for (const p of inmuebles.productos) {
+      expect(p.precio).toMatch(/€/);
+      expect(existsSync(join(process.cwd(), 'public', p.foto)), p.foto).toBe(true);
+    }
+    const orden = c.paginas[0].secciones.map((s) => (s.tipo === 'bloque' ? s.id : s.tipo));
+    expect(orden[orden.indexOf('servicios') + 1]).toBe('inmuebles');
+    expect(pendingExampleData(c)).toEqual(['bloques.inmuebles.titulo']);
+    expect(parseSiteContent(c).ok).toBe(true);
+    // Y se pinta entero de ejemplo, con sus filtros.
+    const home = renderSiteFiles(SITE_TEMPLATE_BASE, c, SAMPLE_RENDER_CONTEXT).find((f) => f.path === 'index.html')!.content.toString('utf8');
+    expect(home).toMatch(/id="bloque-inmuebles"><div class="k-dentro"><div class="dato-ejemplo-bloque">/);
+    expect(home).toContain('k-filtros');
   });
 
   it('lo que incluye cada servicio: en oficios lleva fotos de su oficio; en peluquería lo sustituyen las pestañas del sector', () => {

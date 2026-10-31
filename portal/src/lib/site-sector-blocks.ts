@@ -1,5 +1,16 @@
 import type { SiteBlock, SiteContent, SiteSectionRef } from './site-content';
-import { beautyPhotoSet, healthPhotoSet, isHairPhotoSet, tradeDetailPhotos, tradePhotoSet, type HealthPhotoSet } from './trade-photos';
+import {
+  beautyPhotoSet,
+  foodPhotoSet,
+  healthPhotoSet,
+  isHairPhotoSet,
+  normalize,
+  professionalPhotoSet,
+  tradeDetailPhotos,
+  tradePhotoSet,
+  type FoodPhotoSet,
+  type HealthPhotoSet,
+} from './trade-photos';
 
 // =============================================================================
 // Bloques de ejemplo por sector (28/10/2026).
@@ -21,6 +32,17 @@ import { beautyPhotoSet, healthPhotoSet, isHairPhotoSet, tradeDetailPhotos, trad
 // van como «Dra. Nombre Apellido», no inventados: una clínica real con un
 // médico que no existe engaña más que un precio orientativo. Y los seguros,
 // sin nombres de aseguradoras, por lo mismo que las marcas de abajo.
+//
+// Restauración y profesionales (31/10/2026), con sus primeras plantillas
+// (Pizarra y Despacho). Un restaurante se elige por la carta: la suya va por
+// apartados, con precios de ejemplo y una galería de platos, y sustituye a «Qué
+// incluye cada servicio» de la IA, que en un restaurante no dice nada. Una
+// asesoría o un despacho se eligen por quién te atiende: el equipo, con
+// nombres de relleno como en salud, y la trayectoria, con «20XX» en vez de
+// años inventados (una fecha falsa en una web real es una afirmación falsa).
+// Una inmobiliaria, por lo que tiene a la venta: un catálogo de inmuebles con
+// Venta y Alquiler. Las fotos de los inmuebles son de banco y de estancias
+// sueltas: el catálogo entero sale de ejemplo y nadie lo publica sin cambiarlo.
 //
 // Sin vídeo de ejemplo (no hay vídeo «de muestra» que no sea de un tercero) ni
 // marcas (los logos de marcas reales no se pueden usar de relleno).
@@ -226,6 +248,179 @@ function salud(set: HealthPhotoSet): SectorSet {
   };
 }
 
+/** Las fotos de la carta y de la galería: seis por grupo, aparte de las de
+ *  portada (`restaurante-N`…), para que la galería no repita la de arriba. */
+export const FOOD_EXAMPLE_PHOTOS: Readonly<Record<FoodPhotoSet, string>> = Object.freeze({ restaurante: 'plato', cafeteria: 'cafe', panaderia: 'obrador' });
+export const EXAMPLE_PHOTOS_PER_SET = 6;
+
+const fotoComida = (nombre: string) => `/web-draft/restauracion/${nombre}.jpg`;
+
+type Apartado = { titulo: string; platos: [string, string][]; foto: string; alt: string };
+type Carta = { titulo: string; texto: string; apartados: Apartado[]; galeria: string; pies: string[] };
+
+const CARTA: Record<FoodPhotoSet, Carta> = {
+  restaurante: {
+    titulo: 'Nuestra carta',
+    texto: 'Precios orientativos: la carta cambia con la temporada y el mercado.',
+    apartados: [
+      {
+        titulo: 'Para empezar',
+        platos: [['Croquetas caseras (6 unidades)', '7,50 €'], ['Ensalada de tomate de la tierra', '8,00 €'], ['Pimientos asados', '6,50 €'], ['Tostas del día', '9,00 €']],
+        foto: 'plato-1',
+        alt: 'Pimientos asados en cazuela',
+      },
+      {
+        titulo: 'Principales',
+        platos: [['Pescado del día a la plancha', 'según mercado'], ['Sardinas a la brasa', '11,00 €'], ['Paella de marisco (mínimo 2 personas)', '16,00 € por persona'], ['Entrecot a la brasa', '18,50 €']],
+        foto: 'plato-3',
+        alt: 'Sardinas a la brasa',
+      },
+      {
+        titulo: 'Postres',
+        platos: [['Tarta de queso casera', '5,00 €'], ['Flan de huevo', '4,00 €'], ['Fruta de temporada', '3,50 €']],
+        foto: '',
+        alt: '',
+      },
+    ],
+    galeria: 'Algunos de nuestros platos',
+    pies: ['Pimientos asados', 'Tostas variadas', 'Sardinas a la brasa', 'Pescado al horno con limón', 'Ensalada de tomate', 'Paella'],
+  },
+  cafeteria: {
+    titulo: 'Nuestra carta',
+    texto: 'Precios orientativos: pregúntenos por los dulces del día.',
+    apartados: [
+      { titulo: 'Cafés', platos: [['Café solo', '1,30 €'], ['Cortado', '1,40 €'], ['Café con leche', '1,60 €'], ['Capuchino', '2,20 €'], ['Infusiones', '1,50 €']], foto: 'cafe-1', alt: 'Café con leche con dibujo en la espuma' },
+      { titulo: 'Desayunos', platos: [['Tostada con tomate y aceite', '2,50 €'], ['Tostada de aguacate', '4,50 €'], ['Cruasán', '1,80 €'], ['Desayuno completo: café, zumo y tostada', '4,90 €']], foto: 'cafe-2', alt: 'Tostadas con tomate y aguacate' },
+      { titulo: 'Dulces', platos: [['Tarta de queso', '3,80 €'], ['Tarta de chocolate', '3,80 €'], ['Bizcocho casero', '2,50 €']], foto: 'cafe-4', alt: 'Porción de tarta de queso con arándanos' },
+    ],
+    galeria: 'De nuestra barra',
+    pies: ['Café con leche', 'Tostada con tomate', 'Cruasán y café', 'Tarta de queso', 'Tarta de chocolate', 'Tostada de aguacate'],
+  },
+  panaderia: {
+    titulo: 'Lo que hacemos cada día',
+    texto: 'Precios orientativos. Los encargos, con un día de antelación.',
+    apartados: [
+      { titulo: 'Panes', platos: [['Barra tradicional', '1,10 €'], ['Hogaza de masa madre', '3,90 €'], ['Pan integral', '2,40 €'], ['Pan de pasas y nueces', '4,20 €']], foto: 'obrador-1', alt: 'Dos barras de pan recién hechas' },
+      { titulo: 'Bollería', platos: [['Cruasán de mantequilla', '1,50 €'], ['Napolitana de chocolate', '1,60 €'], ['Magdalenas (4 unidades)', '2,80 €']], foto: 'obrador-4', alt: 'Bandeja de cruasanes' },
+      { titulo: 'Pasteles y encargos', platos: [['Tartaleta de frutas', '3,20 €'], ['Tarta por encargo', 'desde 18,00 €']], foto: 'obrador-6', alt: 'Tartaletas de frutas en la vitrina' },
+    ],
+    galeria: 'De nuestro obrador',
+    pies: ['Barras recién hechas', 'Pan recién salido del horno', 'Pan rústico', 'Cruasanes', 'Formando cruasanes en el obrador', 'Tartaletas de frutas'],
+  },
+};
+
+function restauracion(set: FoodPhotoSet): SectorSet {
+  const c = CARTA[set];
+  const carta: SiteBlock = {
+    ...vacio('carta', 'pestanas', c.titulo),
+    texto: c.texto,
+    pestanas: c.apartados.map((a) => ({
+      titulo: a.titulo,
+      texto: a.platos.map(([plato, precio]) => `- **${plato}** — ${precio}`).join('\n'),
+      foto: a.foto ? fotoComida(a.foto) : '',
+      alt: a.alt,
+    })),
+  };
+  const galeria: SiteBlock = {
+    ...vacio('platos', 'galeria', c.galeria),
+    fotos: c.pies.map((pie, i) => ({ foto: fotoComida(`${FOOD_EXAMPLE_PHOTOS[set]}-${i + 1}`), alt: pie, texto: pie })),
+  };
+  return { bloques: [carta, galeria], tras: { servicios: ['carta'], sobre: ['platos'] } };
+}
+
+type Despacho = 'abogados' | 'seguros' | 'asesoria';
+
+/** Abogados y corredurías tienen su equipo; lo demás (asesorías, gestorías,
+ *  lo que no se reconoce) es el grueso del sector. */
+function despacho(businessName: string, primaryType: string | null): Despacho {
+  const name = normalize(businessName);
+  if (/abogad|bufete|juridic|letrad|legal/.test(name) || primaryType === 'lawyer') return 'abogados';
+  if (/seguros|corredur|insurance/.test(name) || primaryType === 'insurance_agency') return 'seguros';
+  return 'asesoria';
+}
+
+const EQUIPO_DESPACHO: Record<Despacho, { texto: string; personas: { papel: string; detalle: string }[]; colegiado: string | null }> = {
+  abogados: {
+    texto: 'Le atiende siempre un abogado del despacho, desde la primera consulta hasta el final del asunto.',
+    personas: [
+      { papel: 'Socia directora. Derecho civil y de familia', detalle: 'Herencias, divorcios, contratos y reclamaciones.' },
+      { papel: 'Derecho laboral', detalle: 'Despidos, reclamaciones de salarios y negociación con la empresa.' },
+      { papel: 'Derecho mercantil', detalle: 'Sociedades, contratos entre empresas y deudas de clientes.' },
+    ],
+    colegiado: 'Abogado colegiado nº 0000',
+  },
+  seguros: {
+    texto: 'Le atiende siempre la misma persona, también cuando hay un siniestro.',
+    personas: [
+      { papel: 'Mediadora de seguros', detalle: 'Compara las pólizas y le explica qué cubre cada una.' },
+      { papel: 'Siniestros', detalle: 'Se ocupa del parte y habla con la aseguradora por usted.' },
+      { papel: 'Seguros para empresas', detalle: 'Responsabilidad civil, flotas y seguros de comercio.' },
+    ],
+    colegiado: null,
+  },
+  asesoria: {
+    texto: 'Cada cliente tiene un asesor que conoce su negocio y le contesta el mismo día.',
+    personas: [
+      { papel: 'Asesoría fiscal', detalle: 'Impuestos trimestrales, renta y sociedades.' },
+      { papel: 'Asesoría laboral', detalle: 'Nóminas, contratos, altas y seguros sociales.' },
+      { papel: 'Contabilidad', detalle: 'Libros al día y cuentas anuales.' },
+    ],
+    colegiado: null,
+  },
+};
+
+const TRAYECTORIA: Record<Despacho, [string, string][]> = {
+  abogados: [['Abrimos el despacho', 'Empezamos atendiendo a los vecinos del barrio.'], ['Crece el equipo', 'Se incorporan las áreas laboral y mercantil.'], ['Seguimos aquí', 'En el mismo sitio y con el mismo trato.']],
+  seguros: [['Abrimos la correduría', 'Empezamos con los seguros de los negocios del barrio.'], ['Empresas', 'Empezamos a asegurar comercios y flotas.'], ['Seguimos aquí', 'En el mismo sitio y con el mismo trato.']],
+  asesoria: [['Abrimos la asesoría', 'Empezamos llevando los papeles de los negocios del barrio.'], ['Área laboral', 'Empezamos a llevar nóminas y contratos.'], ['Seguimos aquí', 'En el mismo sitio y con el mismo trato.']],
+};
+
+function profesionales(kind: Despacho): SectorSet {
+  const e = EQUIPO_DESPACHO[kind];
+  const equipo: SiteBlock = {
+    ...vacio('equipo', 'catalogo', 'Nuestro equipo'),
+    texto: e.texto,
+    // Sin foto ni categoría, como en salud: ni retratos de banco con nombre,
+    // ni filtros.
+    productos: e.personas.map((p) => ({
+      nombre: 'Nombre Apellido',
+      categoria: '',
+      foto: '',
+      alt: '',
+      descripcion: `${p.papel}. ${p.detalle}`,
+      caracteristicas: e.colegiado ? [e.colegiado] : [],
+      precio: '',
+    })),
+  };
+  const trayectoria: SiteBlock = {
+    ...vacio('trayectoria', 'trayectoria', 'Nuestra trayectoria'),
+    hitos: TRAYECTORIA[kind].map(([titulo, texto], i, all) => ({ fecha: i === all.length - 1 ? 'Hoy' : '20XX', titulo, texto })),
+  };
+  // La trayectoria antes que el equipo: detrás suele venir «Cómo trabajamos»,
+  // otra línea con hitos, y las dos seguidas se ven repetidas.
+  return { bloques: [equipo, trayectoria], tras: { sobre: ['trayectoria', 'equipo'] } };
+}
+
+/** Seis inmuebles de ejemplo, uno por foto (`inmueble-N`). Sin calles ni
+ *  barrios: un piso en una calle real que no está a la venta engaña. */
+const INMUEBLES: { nombre: string; categoria: 'Venta' | 'Alquiler'; alt: string; descripcion: string; caracteristicas: string[]; precio: string }[] = [
+  { nombre: 'Piso de tres dormitorios con balcón', categoria: 'Venta', alt: 'Salón con balcón y mucha luz', descripcion: 'Luminoso, exterior y listo para entrar a vivir.', caracteristicas: ['3 dormitorios', '2 baños', '95 m²'], precio: '189.000 €' },
+  { nombre: 'Apartamento con vistas', categoria: 'Alquiler', alt: 'Salón con sofá y vistas desde el balcón', descripcion: 'Amueblado, con aire acondicionado y vistas despejadas.', caracteristicas: ['2 dormitorios', '1 baño', '70 m²'], precio: '950 €/mes' },
+  { nombre: 'Estudio reformado', categoria: 'Alquiler', alt: 'Dormitorio con cama de matrimonio', descripcion: 'Recién reformado, ideal para una o dos personas.', caracteristicas: ['1 dormitorio', '1 baño', '45 m²'], precio: '650 €/mes' },
+  { nombre: 'Ático con terraza', categoria: 'Venta', alt: 'Terraza de madera con sillas', descripcion: 'Terraza de 30 m² para comer fuera todo el año.', caracteristicas: ['2 dormitorios', '2 baños', '85 m²'], precio: '265.000 €' },
+  { nombre: 'Casa con piscina y jardín', categoria: 'Venta', alt: 'Casa de campo con piscina', descripcion: 'Una planta, con jardín, piscina y porche.', caracteristicas: ['4 dormitorios', '3 baños', '210 m²'], precio: '420.000 €' },
+  { nombre: 'Chalet con jardín', categoria: 'Venta', alt: 'Chalet blanco entre palmeras', descripcion: 'Zona tranquila, cerca de todos los servicios.', caracteristicas: ['3 dormitorios', '2 baños', '160 m²'], precio: '310.000 €' },
+];
+
+function inmobiliaria(): SectorSet {
+  const inmuebles: SiteBlock = {
+    ...vacio('inmuebles', 'catalogo', 'Inmuebles destacados'),
+    texto: 'Una selección de lo que tenemos ahora. Pregúntenos por lo que busca.',
+    productos: INMUEBLES.map((p, i) => ({ ...p, foto: `/web-draft/profesionales/inmueble-${i + 1}.jpg` })),
+  };
+  return { bloques: [inmuebles], tras: { servicios: ['inmuebles'] } };
+}
+
 /**
  * Añade al contenido de un borrador los bloques de ejemplo de su sector, si
  * los tiene. Devuelve el contenido nuevo (no toca el que recibe).
@@ -233,6 +428,14 @@ function salud(set: HealthPhotoSet): SectorSet {
 export function withSectorExamples(content: SiteContent, input: SectorInput): SiteContent {
   if (input.familia === 'trades') return withTradePhotos(content, input);
   if (input.familia === 'health') return withBlocks(structuredClone(content), salud(healthPhotoSet(input.businessName, input.primaryType)));
+  if (input.familia === 'food') {
+    return withBlocks(withoutBlock(structuredClone(content), DETAIL_BLOCK_ID), restauracion(foodPhotoSet(input.businessName, input.primaryType)));
+  }
+  if (input.familia === 'professional') {
+    const set =
+      professionalPhotoSet(input.businessName, input.primaryType) === 'inmobiliaria' ? inmobiliaria() : profesionales(despacho(input.businessName, input.primaryType));
+    return withBlocks(structuredClone(content), set);
+  }
   if (input.familia !== 'beauty') return content;
   // Estética, uñas o spa: estas fotos (todas de pelo) no les valen. Desde el
   // 31/10/2026 lo decide el mismo reparto que la portada, así que un «Nails

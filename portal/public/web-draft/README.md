@@ -284,3 +284,48 @@ despacho, y no tres.
 | profesionales/inmobiliaria-1 | rgJ1J8SDEAY | Tierra Mallorca |
 | profesionales/inmobiliaria-2 | 3HfGnyPfWqQ | Jakub Żerdzicki |
 | profesionales/inmobiliaria-3 | LvDY2D-FmAA | Konstantin Evdokimov |
+
+### La carta, la galería y los inmuebles (31/10/2026)
+
+Para los bloques de ejemplo de restauración y profesionales
+(`src/lib/site-sector-blocks.ts`): la carta por apartados y la galería de
+platos (`plato-N` para restaurantes, `cafe-N` para cafeterías y `obrador-N` para
+panaderías) y el catálogo de inmuebles de las inmobiliarias (`inmueble-N`).
+Seis por grupo, aparte de las de portada, para que la galería no repita la
+foto de arriba. Salen marcadas de ejemplo: ninguna se publica sin que el
+cliente la cambie o la confirme.
+
+Mismo criterio y misma licencia (Unsplash, «Foto gratuita»), revisadas a
+1600 px y descargadas el 31/10/2026 dentro del encargo de Orlando de esa tarde
+(la carta y la galería de los restaurantes y el catálogo de las
+inmobiliarias). Se descartó una cocina con la marca del horno y un cartel
+legibles. Las cinco que pasaban de 400 KB se recomprimieron (sharp, q=72).
+Los inmuebles son estancias sueltas y casas de otros países: van sin calle ni
+barrio, para que nadie las tome por un piso real a la venta.
+
+| Archivo | Foto (unsplash.com/es/fotos/…) | Autor |
+|---|---|---|
+| restauracion/plato-1 | 6_n2zVOCyhU | Dina Spencer |
+| restauracion/plato-2 | Q9-fkDRRvAk | Farhad Ibrahimzade |
+| restauracion/plato-3 | N8-bMqUMS8g | Alex Teixeira |
+| restauracion/plato-4 | KRbF_wsztBE | Keesha's Kitchen |
+| restauracion/plato-5 | fhuPrCwAzaw | Grooveland Designs |
+| restauracion/plato-6 | 4B0cLMtJxWw | Douglas Lopez |
+| restauracion/cafe-1 | T3fFz5W0Foc | nameless 3791 |
+| restauracion/cafe-2 | 0RbF2qupdRc | Ryan Quintal |
+| restauracion/cafe-3 | Th_crcvH8xg | montatip lilitsanong |
+| restauracion/cafe-4 | LGNxQzYmeUk | Mink Mingle |
+| restauracion/cafe-5 | 5-vwhoWr2vk | Crazy Cake |
+| restauracion/cafe-6 | qaU6n8rX8TQ | Bakd&Raw by Karolin Baitinger |
+| restauracion/obrador-1 | USg-3Z9T4uY | Tommaso Urli |
+| restauracion/obrador-2 | JJSIg8xwKkQ | freestocks |
+| restauracion/obrador-3 | U5fLHzsT2gY | Holly Spangler |
+| restauracion/obrador-4 | sqkXyyj4WdE | Conor Brown |
+| restauracion/obrador-5 | pvS41lbngd8 | Jhunelle Francis Sardido |
+| restauracion/obrador-6 | o9kswzHrvMs | Natalia Y. |
+| profesionales/inmueble-1 | AgK_XAqSbfk | Danilo Rios |
+| profesionales/inmueble-2 | QGxBeUDkeWk | Huy Nguyen |
+| profesionales/inmueble-3 | 8qNuR1lIv_k | Lotus Design N Print |
+| profesionales/inmueble-4 | L6qeLZGySzM | Hardik Panchal |
+| profesionales/inmueble-5 | ar6XJWyZKqw | Babi Kacharava |
+| profesionales/inmueble-6 | _KP6mk2Iz8k | Frames For Your Heart |
