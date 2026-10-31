@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { renderSiteFiles, type SiteTemplateSource } from '@/lib/site-template';
 import { SITE_TEMPLATE_BASE } from '@/lib/site-template-base';
 import { validateSiteTemplate } from '@/lib/site-template-validate';
-import { BLOQUES_CSS, SITE_RICH_BLOCK_TYPES } from '@/lib/site-rich-blocks';
+import { BLOQUES_CSS, BLOQUES_JS, SITE_RICH_BLOCK_TYPES } from '@/lib/site-rich-blocks';
 import { SAMPLE_RENDER_CONTEXT, SITE_CONTENT_SAMPLES } from '@/lib/site-content-samples';
 import { withSectorExamples } from '@/lib/site-sector-blocks';
 
@@ -100,5 +100,19 @@ describe('los filtros del catálogo sin JavaScript', () => {
   // nada (Señal, Atelier, Sello, Bloque). Lo vio la bifurcación de Sello.
   it('el motor respeta hidden aunque la plantilla los reestile', () => {
     expect(BLOQUES_CSS).toContain('.k-filtros[hidden]{display:none!important}');
+  });
+});
+
+describe('las pestañas en el móvil', () => {
+  // 31/10/2026 — una sola fila que se desliza, en vez de un botón por línea
+  // con nombres largos (Sello). Se desliza un envoltorio: con overflow en la
+  // propia lista, la raya de la elegida, que sobresale 2px, se recortaba.
+  it('el script mete la lista en un envoltorio que se desliza', () => {
+    expect(BLOQUES_JS).toContain('desliza.className = "k-pestanas-desliza"');
+    expect(BLOQUES_JS).toContain('desliza.appendChild(lista)');
+  });
+  it('se desliza el envoltorio, nunca la lista', () => {
+    expect(BLOQUES_CSS).toMatch(/\.k-pestanas-desliza\{overflow-x:auto/);
+    expect(BLOQUES_CSS).not.toMatch(/\.k-pestanas-lista\{[^}]*overflow/);
   });
 });

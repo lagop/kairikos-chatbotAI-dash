@@ -420,6 +420,20 @@ export const BLOQUES_CSS = `<style id="bloques-kairikos">
 .k-pestanas--tarjetas .k-pestanas-lista button:hover{transform:translateY(-2px)}
 .k-pestanas--tarjetas .k-pestanas-lista button[aria-selected="true"]{background:var(--k-acento,#222);border-color:var(--k-acento,#222);color:var(--k-sobre-acento,#fff)}
 .k-pestanas--tarjetas.k-pestanas--js .k-panel{padding:1.5rem;border:1px solid var(--k-borde,rgba(127,127,127,.3));border-radius:var(--k-radio,8px)}
+/* 31/10/2026 — en el móvil, las pestañas van en una sola fila que se desliza
+   con el dedo. Antes se partían en varias líneas y con nombres largos salía
+   una por línea: seis botones apilados antes de llegar al contenido. Se desliza
+   el envoltorio y no la lista: la raya de la elegida sobresale 2px por debajo
+   de la lista y un overflow en ella la recortaba. El relleno con margen
+   negativo deja sitio a sombras y saltos de las plantillas (Bloque). Las
+   tarjetas (T3) ya se reparten en rejilla y no entran. */
+@media (max-width:600px){
+.k-pestanas-desliza{overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;margin:-.3rem -.5rem -.5rem;padding:.3rem .5rem .5rem}
+.k-pestanas-desliza::-webkit-scrollbar{display:none}
+.k-pestanas:where(div):not(.k-pestanas--tarjetas) .k-pestanas-lista{flex-wrap:nowrap;width:max-content;max-width:none}
+.k-pestanas:where(div):not(.k-pestanas--tarjetas,.k-pestanas--pildora) .k-pestanas-lista{min-width:100%}
+.k-pestanas:where(div):not(.k-pestanas--tarjetas) .k-pestanas-lista button{flex:none;white-space:nowrap}
+}
 .k-panel+.k-panel{margin-top:2rem}
 .k-pestanas--js .k-panel+.k-panel{margin-top:0}
 .k-pestanas--js .k-panel-titulo{display:none}
@@ -567,7 +581,12 @@ export const BLOQUES_JS = `<script>
     });
     function elegir(i, foco) {
       botones.forEach(function (b, j) { b.setAttribute("aria-selected", j === i ? "true" : "false"); b.tabIndex = j === i ? 0 : -1; paneles[j].hidden = j !== i; });
-      if (foco) botones[i].focus();
+      if (foco) botones[i].focus({ preventScroll: true });
+      // En el móvil la fila se desliza: la elegida (con las flechas, o medio
+      // tapada en el borde) se trae a la vista sin mover la página.
+      var r = botones[i].getBoundingClientRect(), d = desliza.getBoundingClientRect();
+      if (r.left < d.left) desliza.scrollLeft -= d.left - r.left + 16;
+      else if (r.right > d.right) desliza.scrollLeft += r.right - d.right + 16;
     }
     lista.addEventListener("keydown", function (e) {
       var i = botones.indexOf(document.activeElement);
@@ -575,7 +594,10 @@ export const BLOQUES_JS = `<script>
       if (e.key === "ArrowRight") { e.preventDefault(); elegir((i + 1) % botones.length, true); }
       if (e.key === "ArrowLeft") { e.preventDefault(); elegir((i - 1 + botones.length) % botones.length, true); }
     });
-    cont.insertBefore(lista, paneles[0]);
+    var desliza = document.createElement("div");
+    desliza.className = "k-pestanas-desliza";
+    desliza.appendChild(lista);
+    cont.insertBefore(desliza, paneles[0]);
     cont.classList.add("k-pestanas--js");
     // T1: la raya que se desliza hasta la pestaña elegida.
     if (cont.classList.contains("k-pestanas--subrayado")) {
