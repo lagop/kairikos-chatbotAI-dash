@@ -34,6 +34,13 @@ describe('renderSiteMarkdown', () => {
     );
   });
 
+  it('una lista justo debajo de una línea, sin línea en blanco, también es lista', () => {
+    expect(renderSiteMarkdown('Te llevamos:\n- Nóminas\n- Renta\nY lo demás.')).toBe('<p>Te llevamos:</p>\n<ul><li>Nóminas</li><li>Renta</li></ul>\n<p>Y lo demás.</p>');
+    expect(renderSiteMarkdown('Pasos:\n1. Llamas\n2. Vamos')).toBe('<p>Pasos:</p>\n<ol><li>Llamas</li><li>Vamos</li></ol>');
+    // Una numerada solo corta el párrafo si empieza por 1: esto es una dirección.
+    expect(renderSiteMarkdown('Calle Mayor\n12. bajo')).toBe('<p>Calle Mayor<br>12. bajo</p>');
+  });
+
   it('enlaces solo https, mailto y tel; javascript: se queda como texto', () => {
     expect(renderSiteMarkdown('[web](https://ejemplo.es) [correo](mailto:a@b.es) [llamar](tel:+34 600 000 000)')).toBe(
       '<p><a href="https://ejemplo.es" rel="noopener">web</a> <a href="mailto:a@b.es">correo</a> <a href="tel:+34600000000">llamar</a></p>',

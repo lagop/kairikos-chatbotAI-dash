@@ -50,13 +50,40 @@ export function renderSiteMarkdown(source: string): string {
         const tag = heading[1].length === 2 ? 'h2' : 'h3';
         return `<${tag}>${inline(escapeHtml(heading[2]))}</${tag}>`;
       }
-      if (lines.length > 0 && lines.every((l) => /^[-*] +\S/.test(l))) {
-        return `<ul>${lines.map((l) => `<li>${inline(escapeHtml(l.replace(/^[-*] +/, '')))}</li>`).join('')}</ul>`;
-      }
-      if (lines.length > 0 && lines.every((l) => /^\d{1,2}[.)] +\S/.test(l))) {
-        return `<ol>${lines.map((l) => `<li>${inline(escapeHtml(l.replace(/^\d{1,2}[.)] +/, '')))}</li>`).join('')}</ol>`;
-      }
-      return `<p>${lines.map((l) => inline(escapeHtml(l))).join('<br>')}</p>`;
+      return listsAndParagraphs(lines);
     })
     .join('\n');
+}
+
+const UL_ITEM = /^[-*] +\S/;
+const OL_ITEM = /^\d{1,2}[.)] +\S/;
+
+/**
+ * 31/10/2026 — una lista puede ir justo debajo de una línea de texto
+ * («Te llevamos:» y, en la línea siguiente, «- Nóminas»), como en el Markdown
+ * de siempre. Antes tenía que ocupar el bloque entero: sin la línea en blanco
+ * salían los guiones como texto, y es como lo escribe casi todo el mundo (y
+ * todas las muestras del laboratorio). Una numerada solo corta el párrafo si
+ * empieza por «1.»: «Calle Mayor» y debajo «12. bajo» sigue siendo texto.
+ */
+function listsAndParagraphs(lines: string[]): string {
+  const parts: string[] = [];
+  let i = 0;
+  const run = (test: (l: string) => boolean) => {
+    const out: string[] = [];
+    while (i < lines.length && test(lines[i])) out.push(lines[i++]);
+    return out;
+  };
+  const opensOl = (l: string, first: boolean) => OL_ITEM.test(l) && (first || /^1[.)]/.test(l));
+  while (i < lines.length) {
+    if (UL_ITEM.test(lines[i])) {
+      parts.push(`<ul>${run((l) => UL_ITEM.test(l)).map((l) => `<li>${inline(escapeHtml(l.replace(/^[-*] +/, '')))}</li>`).join('')}</ul>`);
+    } else if (opensOl(lines[i], i === 0)) {
+      parts.push(`<ol>${run((l) => OL_ITEM.test(l)).map((l) => `<li>${inline(escapeHtml(l.replace(/^\d{1,2}[.)] +/, '')))}</li>`).join('')}</ol>`);
+    } else {
+      const text = [lines[i++], ...run((l) => !UL_ITEM.test(l) && !opensOl(l, false))];
+      parts.push(`<p>${text.map((l) => inline(escapeHtml(l))).join('<br>')}</p>`);
+    }
+  }
+  return parts.join('\n');
 }

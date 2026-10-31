@@ -127,9 +127,29 @@ export function normalMarkdown(text: string): string {
     .replace(/\r\n?/g, '\n')
     .trim()
     .split(/\n{2,}/)
-    .map((b) => b.split('\n').map((l) => l.replace(/ {2,}/g, ' ').trim()).filter(Boolean).join('\n'))
+    .flatMap((b) => splitLists(b.split('\n').map((l) => l.replace(/ {2,}/g, ' ').trim()).filter(Boolean)).map((g) => g.join('\n')))
     .filter(Boolean)
     .join('\n\n');
+}
+
+const UL_ITEM = /^[-*] +\S/;
+const OL_ITEM = /^\d{1,2}[.)] +\S/;
+
+/** 31/10/2026 — la misma regla que renderSiteMarkdown (site-markdown.ts,
+ *  repetida aquí porque esto corre en el navegador): una lista pegada a una
+ *  línea de texto es su propio bloque, y una numerada solo corta el párrafo
+ *  si empieza por 1. Así «Te llevamos:» con la lista debajo, sin línea en
+ *  blanco, no cuenta como cambiado al editarlo sobre la vista. */
+function splitLists(lines: string[]): string[][] {
+  const groups: string[][] = [];
+  let kind = '';
+  lines.forEach((l, i) => {
+    const k = UL_ITEM.test(l) ? 'ul' : OL_ITEM.test(l) && (i === 0 || kind === 'ol' || /^1[.)]/.test(l)) ? 'ol' : 'p';
+    if (k !== kind) groups.push([]);
+    groups[groups.length - 1].push(l);
+    kind = k;
+  });
+  return groups;
 }
 
 /** El texto con formato de lo que hay dentro de `root`. */
