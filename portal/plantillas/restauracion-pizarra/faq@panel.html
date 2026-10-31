@@ -1,0 +1,5 @@
+<section class="kv kv-faq kv-faq--panel pizarra-variante" id="{{ancla}}"><div class="kv-dentro">
+  <div class="cabeza"><p class="rotulo">Preguntas frecuentes</p><h2 data-k-titulo-seccion>Lo que más nos preguntan</h2></div>
+  <div class="kv-pestanas kv-pestanas--preguntas" data-kv-pestanas>{{#faq}}<article class="kv-panel pizarra"><h3 class="kv-panel-titulo">{{pregunta}}</h3><div class="kv-respuesta">{{{respuesta_html}}}</div></article>{{/faq}}</div>
+  {{#telefono_href}}<p class="kv-ayuda">¿No está tu pregunta? <a class="faq-telefono" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg>{{telefono}}</a></p>{{/telefono_href}}
+</div></section>

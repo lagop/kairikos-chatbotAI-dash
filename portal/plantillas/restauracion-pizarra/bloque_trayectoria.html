@@ -1,0 +1,11 @@
+<section class="{{clase}} seccion pizarra-fondo pizarra-bloque pizarra-bloque--trayectoria" id="{{ancla}}"><div class="contenedor">
+  {{#ejemplo}}<div class="dato-ejemplo-bloque">{{/ejemplo}}
+  <div class="pizarra-bloque-rejilla"><div class="pizarra-bloque-lado">
+    <p class="rotulo">Nuestra historia</p>
+    {{#titulo}}<h2>{{titulo}}</h2>{{/titulo}}
+    <svg class="trazo" viewBox="0 0 300 18" preserveAspectRatio="none" aria-hidden="true"><path d="M3 11c40-6 80-8 120-5s70 6 110 1 50-4 64-2"></path></svg>
+    {{#texto_html}}<div class="pizarra-bloque-texto texto-rico">{{{texto_html}}}</div>{{/texto_html}}
+  </div>
+  <div class="pizarra-bloque-cuerpo">{{{cuerpo_html}}}</div></div>
+  {{#ejemplo}}</div>{{/ejemplo}}
+</div></section>

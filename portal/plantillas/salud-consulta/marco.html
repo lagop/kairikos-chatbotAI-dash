@@ -410,6 +410,249 @@ time{font-size:.85rem;font-weight:600;color:var(--gris)}
 .consulta-variante .kv-mosaico>li:first-child .icono{background:rgba(255,255,255,.16);color:var(--blanco)}
 .consulta-variante .kv-zigzag>li:hover .icono,.consulta-variante .kv-indice>li:hover .icono,.consulta-variante .kv-mosaico>li:not(:first-child):hover .icono,.consulta-variante .kv-panel:hover>.icono{background:var(--acento);color:var(--blanco)}
 @media (max-width:640px){.consulta-variante .kv-panoramica-foto .tarjeta-cita{display:none}.consulta-abanico .tarjeta-cita{right:var(--s-3);bottom:var(--s-3)}.consulta-variante .kv-indice .icono{display:none}.consulta-variante .kv-indice>li{grid-template-columns:2.75rem minmax(0,1fr)}}
+/* El resto de secciones (31/10/2026), con las mismas señas: el pulso bajo la
+   cita y en la nota de Google, los números en círculos que se rellenan al
+   verse, el panel suave de las garantías, la lista de tarifas de recepción,
+   el azul petróleo de las opiniones y las preguntas en tarjetas con el «+»
+   en un círculo. En salud las garantías y las preguntas hablan de seguros y
+   de la primera visita: van a buen tamaño y con la respuesta a 64ch. */
+.kv.consulta-variante{overflow-x:clip}
+.kv-sobre.consulta-variante h2{font-size:clamp(1.85rem,3.6vw,2.8rem)}
+.consulta-variante .kv-lado .acciones,.consulta-variante .kv-lado .nota{margin-top:var(--s-5)}
+/* Q1: la foto con un aro discontinuo, la primera frase en la letra de los titulares y el pulso debajo */
+.kv-sobre--cita.consulta-variante{background:var(--blanco)}
+.kv-sobre--cita.consulta-variante .kv-dentro{max-width:50rem}
+.consulta-cita-foto{position:relative;width:8.5rem;margin:0 auto var(--s-6)}
+.consulta-cita-foto::after{content:"";position:absolute;inset:-.6rem;border-radius:50%;border:2px dashed color-mix(in srgb,var(--acento) 45%,transparent)}
+.consulta-variante .kv-cita-foto{width:8.5rem;height:8.5rem;margin:0;border:5px solid var(--blanco);box-shadow:var(--sombra-alta)}
+.consulta-variante .kv-cita-texto>p:first-child{font-weight:600;font-style:normal;font-size:clamp(1.25rem,1rem + 1vw,1.7rem);line-height:1.45;letter-spacing:-.015em;color:var(--tinta)}
+.consulta-variante .kv-cita-texto>p:first-child::before{font-family:var(--display);font-weight:800;color:var(--acento)}
+.kv-sobre--cita.consulta-variante .pulso{max-width:20rem;margin:var(--s-6) auto 0}
+/* Q2: la foto redondeada hacia dentro y las cifras en pastillas blancas */
+.kv-sobre--media.consulta-variante{padding-block:var(--s-7);gap:0}
+.consulta-variante .kv-media-foto img,.consulta-variante .kv-media-foto .kv-foto-vacia{border-radius:0 var(--radio-grande) var(--radio-grande) 0}
+.consulta-variante .kv-media-texto{background:transparent;align-self:center}
+.consulta-variante .kv-cifras{border-top:0;padding-top:0;gap:var(--s-3)}
+.consulta-variante .kv-cifras li{padding:var(--s-3) var(--s-5);border-radius:var(--radio);background:var(--blanco);box-shadow:var(--sombra)}
+.consulta-variante .kv-cifras strong{font-weight:800;font-size:1.9rem;letter-spacing:-.03em;color:var(--acento)}
+@media (max-width:820px){.consulta-variante .kv-media-foto{padding-inline:var(--s-5)}.consulta-variante .kv-media-foto img,.consulta-variante .kv-media-foto .kv-foto-vacia{border-radius:var(--radio-grande)}}
+/* Q3: la revista en una hoja blanca, con el pulso en lugar del filete */
+.consulta-revista{background:var(--blanco);border-radius:var(--radio-grande);box-shadow:var(--sombra);padding:clamp(1.5rem,5vw,4rem)}
+.consulta-variante .kv-revista-cabeza{border-bottom:0;padding-bottom:0;margin-bottom:var(--s-2)}
+.consulta-variante .kv-revista-cabeza h2{max-width:20ch}
+.consulta-variante .kv-revista-cabeza .antetitulo{font-style:normal;color:var(--acento);margin-bottom:var(--s-4)}
+.consulta-variante .kv-revista-cabeza .consulta-direccion{display:inline-flex;align-items:center;gap:var(--s-2);padding:.5rem 1rem;border-radius:999px;background:var(--fondo);font-style:normal;font-size:.95rem;color:var(--gris)}
+.consulta-direccion svg{color:var(--acento)}
+.consulta-revista>.pulso{height:2.5rem;margin-bottom:var(--s-6)}
+.consulta-variante .kv-revista-columnas>p:first-child{font-size:1.06rem;line-height:1.7}
+.consulta-variante .kv-revista-columnas>p:first-child::first-letter{font-weight:800;color:var(--acento)}
+/* Desde #375 una lista pegada a su línea de entrada sale como lista, y el reparto
+   en columnas dejaba «En la primera visita revisamos:» al pie de una columna y la
+   lista arriba de la otra. La línea que presenta una lista va con ella. */
+.consulta-variante .kv-revista-columnas>p:has(+ul,+ol){break-after:avoid-column}
+/* L2: los círculos de la primera visita, que se rellenan al verse, y cada paso en una tarjeta */
+.kv-proceso--linea.consulta-variante{background:var(--blanco)}
+.consulta-variante .kv-linea>li{padding:0 0 var(--s-5) 4.5rem}
+.consulta-variante .kv-linea>li::before{width:3.2rem;height:3.2rem;background:var(--blanco);box-shadow:inset 0 0 0 2px var(--acento);color:var(--acento);font:800 1.2rem/1 var(--display);transition:background .4s ease .25s,color .4s ease .25s}
+.js .consulta-variante .kv-linea>li.visto::before,html:not(.js) .consulta-variante .kv-linea>li::before{background:var(--acento);color:var(--blanco)}
+.consulta-variante .kv-linea>li:not(:last-child)::after{left:calc(1.6rem - 1px);top:3.6rem;bottom:.4rem;border-left:2px dashed color-mix(in srgb,var(--acento) 45%,transparent)}
+.consulta-paso{padding:var(--s-5);border-radius:var(--radio);background:var(--fondo)}
+.consulta-variante .kv-linea h3{padding-top:0}
+/* L1: el panel suave de siempre, con las marcas en círculos blancos */
+.consulta-variante .garantias-panel .antetitulo{background:var(--blanco)}
+.consulta-variante .kv-marcas{gap:var(--s-4) var(--s-7)}
+.consulta-variante .kv-marcas>li{border-bottom:1px solid color-mix(in srgb,var(--acento) 18%,var(--linea));padding-bottom:var(--s-4)}
+.consulta-variante .kv-marca{width:2.6rem;height:2.6rem;background:var(--blanco);color:var(--acento);transition:background .3s ease,color .3s ease}
+.consulta-variante .kv-marca svg{width:1.15rem;height:1.15rem}
+.consulta-variante .kv-marcas>li:hover .kv-marca{background:var(--acento);color:var(--blanco)}
+.consulta-variante .kv-marcas h3{padding-top:.45rem;margin-bottom:var(--s-1)}
+/* L3: el escudo en un círculo con halo, en tarjetas que suben */
+.kv-garantias--iconos.consulta-variante{background:var(--blanco)}
+.kv-garantias--iconos.consulta-variante h2{max-width:20ch;margin-inline:auto}
+.consulta-variante .kv-iconos{gap:var(--s-5)}
+.consulta-variante .kv-iconos>li{padding:var(--s-6) var(--s-5);border-radius:var(--radio-grande);background:var(--fondo);transition:transform .3s ease,box-shadow .3s ease,background .3s ease}
+.consulta-variante .kv-iconos>li:hover{transform:translateY(-4px);background:var(--blanco);box-shadow:var(--sombra-alta)}
+.consulta-variante .kv-icono-grande{width:4.5rem;height:4.5rem;border:0;background:color-mix(in srgb,var(--acento) 11%,var(--blanco));color:var(--acento);box-shadow:0 0 0 .6rem color-mix(in srgb,var(--acento) 6%,transparent);transition:background .3s ease,color .3s ease}
+.consulta-variante .kv-iconos>li:hover .kv-icono-grande{transform:none;background:var(--acento);color:var(--blanco)}
+.consulta-variante .kv-icono-grande svg{width:2rem;height:2rem}
+.consulta-variante .kv-iconos h3{margin-top:var(--s-4)}
+/* L4: la lista de tarifas de recepción, con la «i» en un círculo suave */
+.consulta-variante .kv-tabla{border:0;border-radius:var(--radio-grande);box-shadow:var(--sombra);padding:var(--s-3) clamp(1.25rem,4vw,2.5rem)}
+.consulta-variante .kv-fila-precio{padding:var(--s-5) 0;align-items:center;border-bottom-color:var(--linea)}
+.consulta-variante .kv-concepto>span:first-child{font:700 1.12rem/1.3 var(--display);letter-spacing:-.01em}
+.consulta-variante .kv-fila-precio>strong{font-weight:800;font-size:1.4rem;letter-spacing:-.02em;color:var(--acento)}
+.consulta-variante .kv-info{border:0;background:color-mix(in srgb,var(--acento) 11%,var(--blanco));color:var(--acento);font:700 .8rem/1 var(--texto)}
+.consulta-variante .kv-info[aria-expanded="true"]{background:var(--acento);color:var(--blanco)}
+.consulta-variante .kv-globo{border-color:var(--linea);border-radius:var(--radio);box-shadow:var(--sombra-alta);color:var(--gris)}
+/* O1: el azul petróleo de las opiniones de Consulta, con su nota de Google */
+.kv-oscura.consulta-variante{background:var(--profundo);color:var(--claro)}
+.kv-oscura.consulta-variante .antetitulo{background:var(--profundo-2);color:var(--acento-claro)!important}
+.kv-oscura.consulta-variante .nota-google strong{color:var(--blanco)!important}
+.kv-oscura.consulta-variante .nota-google p{color:var(--claro-suave)!important}
+.kv-oscura.consulta-variante :is(.nota-google a,.cita-autor){color:var(--acento-claro)!important}
+.kv-oscura.consulta-variante :is(.estrellas,.resena-estrellas){color:var(--oro-claro)!important}
+.kv-oscura.consulta-variante .resena-estrellas{color:var(--oro)!important}
+.kv-oscura.consulta-variante .cita{background:var(--profundo-2)!important;border:0!important}
+.kv-oscura.consulta-variante .cita::before{color:var(--profundo-3)!important}
+.kv-oscura.consulta-variante .resena{background:var(--blanco)!important;color:var(--tinta)!important}
+.kv-oscura.consulta-variante .resena figcaption{color:var(--gris)!important}
+.kv-oscura.consulta-variante .atribucion-google{color:var(--claro-suave)!important}
+.consulta-variante .kv-cabeza{margin-bottom:var(--s-6);align-items:end}
+.consulta-variante .nota-google strong{white-space:nowrap}
+/* Tres por vista justas en escritorio: con 24rem fijos la tercera se cortaba 4 px y no salían las flechas. */
+.consulta-variante .kv-pista{grid-auto-columns:max(min(85%,19rem),calc((100% - 2rem) / 3))}
+.consulta-variante .kv-carrusel-nav button{border-color:color-mix(in srgb,var(--acento-claro) 55%,transparent);color:var(--acento-claro)!important;transition:background .25s ease}
+.consulta-variante .kv-carrusel-nav button:hover,.consulta-variante .kv-carrusel-nav button:focus-visible{background:var(--profundo-2)}
+/* O2: la nota de Google en un azulejo petróleo con el pulso, y las reseñas en tarjetas blancas */
+.consulta-variante .kv-muro-nota{padding:var(--s-6) var(--s-5);border-radius:var(--radio-grande);background:var(--profundo);color:var(--blanco)}
+.consulta-variante .kv-muro-nota strong{font-weight:800;font-size:clamp(3.4rem,6vw,4.4rem);letter-spacing:-.04em}
+.consulta-variante .kv-muro-nota .estrellas{display:flex;justify-content:center;margin:var(--s-2) 0;color:var(--oro-claro)}
+.consulta-variante .kv-muro-nota>span:not(.estrellas){color:var(--claro-suave)}
+.consulta-variante .kv-muro-nota>a{color:var(--acento-claro)}
+.consulta-variante .kv-muro-nota .pulso{margin-top:var(--s-4);color:var(--acento-claro)}
+.consulta-variante :is(.kv-muro,.kv-destacada-lista) :is(.cita,.resena){border-radius:var(--radio)!important;border-color:var(--linea)!important}
+/* O3: la tarjeta fija en petróleo, con la nota grande y el pulso */
+.consulta-variante .kv-lado-tarjeta{border:0;border-radius:var(--radio-grande);background:var(--profundo);color:var(--claro);box-shadow:var(--sombra-alta)}
+.consulta-variante .kv-lado-tarjeta .antetitulo{background:var(--profundo-2);color:var(--acento-claro)}
+.consulta-variante .kv-lado-tarjeta h2{color:var(--blanco)}
+.consulta-variante .kv-nota-grande strong{font-weight:800;color:var(--blanco)}
+.consulta-variante .kv-lado-tarjeta .estrellas{color:var(--oro-claro)}
+.consulta-variante .kv-lado-tarjeta .estrellas svg{width:1.2rem;height:1.2rem}
+.consulta-nota-pie{color:var(--claro-suave)}
+.consulta-variante .kv-lado-tarjeta a{color:var(--acento-claro)}
+.consulta-variante .kv-lado-tarjeta .pulso{margin-top:var(--s-3);color:var(--acento-claro)}
+/* F1: las tarjetas desplegables de Consulta, a dos columnas */
+.consulta-variante .kv-acordeon.preguntas{display:block;column-gap:var(--s-4)}
+.consulta-variante .kv-acordeon details{margin:0 0 var(--s-3);padding:0;border:1px solid var(--linea);box-shadow:none}
+.consulta-variante .kv-acordeon details[open]{border-color:transparent;box-shadow:var(--sombra)}
+.consulta-variante .kv-acordeon summary{padding:var(--s-4) var(--s-5);font-weight:600}
+.consulta-variante .kv-acordeon .kv-respuesta{padding:0 var(--s-5) var(--s-5)}
+.consulta-ayuda{margin:0;color:var(--gris)}
+.consulta-ayuda a{font:700 1.15rem/1.3 var(--display);color:var(--acento);text-decoration:none}
+/* F2: cada pregunta con su «?» en un círculo y la respuesta en una tarjeta grande */
+.consulta-variante .kv-pestanas{margin-top:var(--s-6)}
+.consulta-variante .kv-panel{border:0;border-radius:var(--radio-grande);box-shadow:var(--sombra)}
+.consulta-variante .kv-panel-titulo{font-size:1.3rem}
+.consulta-variante.kv-faq--panel .kv-respuesta{max-width:64ch;font-size:1.05rem}
+.consulta-variante .kv-pestanas--preguntas .kv-pestanas-lista{gap:var(--s-2)}
+.consulta-variante .kv-pestanas--preguntas .kv-pestanas-lista button,.consulta-variante .kv-pestanas--preguntas .kv-pestanas-lista button:first-child{border:1px solid var(--linea);border-radius:var(--radio);background:var(--blanco);padding:var(--s-3) var(--s-4);font-weight:600}
+.consulta-variante .kv-pestanas--preguntas .kv-pestanas-lista button::before{content:"?";flex:none;display:grid;place-items:center;width:1.9rem;height:1.9rem;border-radius:50%;background:color-mix(in srgb,var(--acento) 11%,var(--blanco));color:var(--acento);font:800 .9rem/1 var(--display);transition:background .25s ease,color .25s ease}
+.consulta-variante .kv-pestanas--preguntas .kv-pestanas-lista button[aria-selected="true"]{border-color:transparent;background:color-mix(in srgb,var(--acento) 11%,var(--blanco));color:var(--tinta)}
+.consulta-variante .kv-pestanas--preguntas .kv-pestanas-lista button[aria-selected="true"]::before{background:var(--acento);color:var(--blanco)}
+.consulta-variante .kv-ayuda{display:flex;align-items:center;gap:var(--s-2);color:var(--gris)}
+.consulta-variante .kv-ayuda svg{color:var(--acento)}
+.consulta-variante .kv-ayuda a,.consulta-ayuda a{white-space:nowrap}
+/* Los bloques ricos con el marco de Consulta (31/10/2026): el motor pinta el
+   cuerpo (visor, filtros, comparador, pestañas, cinta) y aquí solo se le pone
+   la ropa de la plantilla —rótulo en pastilla, tarjetas blancas redondeadas,
+   el pulso y el azul petróleo—, siempre acotado a .consulta-bloque para no
+   tocar los ganchos del script ni los estilos T1–T3 de las pestañas. En salud
+   el catálogo suele ser el equipo, sin fotos (site-sector-blocks.ts): esas
+   tarjetas llevan el pulso en un círculo arriba, en vez de un hueco vacío. */
+.consulta-bloque{padding-block:var(--s-8);overflow-x:clip}
+.consulta-bloque--blanca{background:var(--blanco)}
+/* La section lleva k-trayectoria / k-comparativa (el hueco «clase» del motor), que son también
+   las clases del <ol> y de la <table> del cuerpo: las reglas del motor para la
+   lista y la tabla caían sobre la section entera (56rem de ancho máximo, rejilla,
+   raya a la izquierda; fondo blanco y esquinas redondeadas). Se deshacen aquí. */
+section.consulta-bloque.k-trayectoria,section.consulta-bloque.k-comparativa{display:block;width:auto;max-width:none;margin:0;padding-inline:0;border-radius:0;overflow:visible;overflow-x:clip}
+section.consulta-bloque.k-trayectoria::before{content:none}
+section.consulta-bloque.k-comparativa{background:transparent;border-collapse:separate}
+.consulta-bloque--profunda{background:var(--profundo);color:var(--claro)}
+.consulta-bloque .cabeza h2{max-width:22ch}
+.consulta-bloque .lead>:last-child{margin-bottom:0}
+.consulta-bloque-partido{display:grid;gap:var(--s-6) var(--s-8);grid-template-columns:minmax(0,1fr)}
+.consulta-bloque-partido>*{min-width:0}
+@media (min-width:900px){.consulta-bloque-partido{grid-template-columns:minmax(0,1fr) minmax(0,1.6fr);align-items:center}.consulta-bloque-lado--fijo{position:sticky;top:7rem;align-self:start}}
+.consulta-bloque-lado h2{font-size:clamp(1.8rem,4vw,2.8rem)}
+@media (min-width:900px){.consulta-bloque-lado h2{font-size:clamp(1.7rem,2.8vw,2.4rem)}}
+.consulta-bloque-lado .pulso{margin-top:var(--s-5);max-width:22rem}
+.consulta-bloque-pista{display:flex;gap:var(--s-2);align-items:center;margin:var(--s-5) 0 0;font-size:.95rem;color:var(--gris)}
+.consulta-bloque-pista svg{flex:none;width:1.2rem;height:1.2rem;color:var(--acento)}
+html:not(.js) .consulta-bloque-pista,.consulta-bloque:not(:has(.k-comparador)) .consulta-bloque-pista{display:none}
+.consulta-bloque--profunda .antetitulo{background:var(--profundo-2);color:var(--acento-claro)}
+.consulta-bloque--profunda h2{color:var(--blanco)}
+.consulta-bloque--profunda .lead,.consulta-bloque--profunda .texto-rico>p:first-child{color:var(--claro-suave)}
+.consulta-bloque--profunda .pulso{color:var(--acento-claro)}
+/* Galería: fotos redondeadas que suben un poco al pasar por encima */
+.consulta-bloque .k-galeria-rejilla{gap:var(--s-5)}
+.consulta-bloque .k-galeria-foto{border-radius:var(--radio);box-shadow:var(--sombra);transition:transform .3s ease,box-shadow .3s ease}
+.consulta-bloque .k-galeria-foto:hover{transform:translateY(-4px);box-shadow:var(--sombra-alta)}
+.consulta-bloque .k-pie{margin-top:var(--s-3);color:var(--gris)}
+/* Antes y después: el comparador en marco redondo y las etiquetas en pastilla */
+.consulta-bloque .k-comparador,.consulta-bloque .k-comparador-sola{border-radius:var(--radio-grande);box-shadow:var(--sombra-alta)}
+.consulta-bloque .k-etiqueta{top:var(--s-4);padding:.4rem .85rem;border-radius:999px;background:var(--blanco);color:var(--tinta);font:600 .78rem/1.2 var(--texto);letter-spacing:.06em;box-shadow:var(--sombra)}
+.consulta-bloque .k-etiqueta--antes{left:var(--s-4)}
+.consulta-bloque .k-etiqueta--despues{right:var(--s-4);background:var(--acento);color:var(--blanco)}
+/* Con etiquetas largas («Antes de la reforma») las dos se pisaban a 390 px: cada
+   una cabe en su mitad y, en el móvil, «después» baja a la esquina de abajo. */
+.consulta-bloque .k-etiqueta{max-width:calc(50% - var(--s-4) - .4rem);border-radius:1rem}
+@media (max-width:600px){.consulta-bloque .k-etiqueta{max-width:calc(100% - 2 * var(--s-4))}.consulta-bloque .k-etiqueta--despues{top:auto;bottom:var(--s-4)}}
+.consulta-bloque .k-comparador-linea::after{box-shadow:0 0 0 6px color-mix(in srgb,var(--blanco) 35%,transparent),0 2px 10px rgba(0,0,0,.3)}
+/* Catálogo: tarjetas blancas como las de servicios; los filtros, en pastilla */
+.consulta-bloque .k-catalogo-rejilla{gap:var(--s-5)}
+.consulta-bloque .k-producto{border-color:var(--linea);border-radius:var(--radio);transition:transform .3s ease,box-shadow .3s ease,border-color .3s ease}
+.consulta-bloque .k-producto:hover{transform:translateY(-4px);box-shadow:var(--sombra-alta);border-color:transparent}
+.consulta-bloque .k-producto-cuerpo{gap:var(--s-2);padding:var(--s-5)}
+.consulta-bloque .k-producto-cuerpo h3{font-size:1.18rem}
+.consulta-bloque .k-producto-categoria{color:var(--acento)}
+/* El círculo y el pulso van en dos capas: el pulso es una máscara para que tome el color de la clínica. */
+.consulta-bloque .k-producto:not(:has(img,.k-producto-sin-foto)) .k-producto-cuerpo{position:relative;padding-top:var(--s-6)}
+.consulta-bloque .k-producto:not(:has(img,.k-producto-sin-foto)) .k-producto-cuerpo::before{content:"";flex:none;width:3.1rem;height:3.1rem;margin-bottom:var(--s-2);border-radius:50%;background:color-mix(in srgb,var(--acento) 11%,var(--blanco));transition:background .3s ease}
+.consulta-bloque .k-producto:not(:has(img,.k-producto-sin-foto)) .k-producto-cuerpo::after{content:"";position:absolute;top:calc(var(--s-6) + .7rem);left:calc(var(--s-5) + .7rem);width:1.7rem;height:1.7rem;background:var(--acento);-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 12h4l2-4 3 8 2-5 1.5 1H21' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 12h4l2-4 3 8 2-5 1.5 1H21' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat;transition:background .3s ease}
+.consulta-bloque .k-producto:not(:has(img,.k-producto-sin-foto)):hover .k-producto-cuerpo::before{background:var(--acento)}
+.consulta-bloque .k-producto:not(:has(img,.k-producto-sin-foto)):hover .k-producto-cuerpo::after{background:var(--blanco)}
+.consulta-bloque .k-precio{font:800 1.25rem/1.2 var(--display);letter-spacing:-.02em;color:var(--acento)}
+.consulta-bloque .k-filtros{gap:var(--s-2)}
+.consulta-bloque .k-filtros button{background:var(--blanco);border-color:var(--linea);padding:.6rem 1.15rem}
+.consulta-bloque .k-filtros button:hover{border-color:var(--acento)}
+.consulta-bloque .k-filtros button[aria-pressed="true"]{background:var(--acento);border-color:var(--acento);color:var(--blanco)}
+/* Pestañas: en una tarjeta blanca grande; las listas del texto, con la marca de Consulta */
+.consulta-bloque-tarjeta{background:var(--blanco);border-radius:var(--radio-grande);box-shadow:var(--sombra);padding:clamp(1.25rem,4vw,2.75rem)}
+.consulta-bloque .k-pestanas-lista button{font-family:var(--display);font-weight:700}
+.consulta-bloque .k-panel-titulo{font-size:1.3rem}
+.consulta-bloque .k-panel-cuerpo img{border-radius:var(--radio)}
+.consulta-bloque .k-panel-texto{color:var(--gris)}
+.consulta-bloque .k-panel-texto strong{color:var(--tinta)}
+.consulta-bloque .k-panel-texto ul{list-style:none;padding:0;display:grid;gap:var(--s-2)}
+.consulta-bloque .k-panel-texto li{position:relative;padding-left:var(--s-6)}
+.consulta-bloque .k-panel-texto li::before{content:"";position:absolute;left:0;top:.35em;width:1.1rem;height:1.1rem;background:var(--acento);-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat}
+/* Comparativa: la tabla en una tarjeta, con la columna destacada en el acento */
+.consulta-bloque .k-comparativa-marco{background:var(--blanco);border-radius:var(--radio-grande);box-shadow:var(--sombra);padding:var(--s-3) clamp(.75rem,2.5vw,1.75rem)}
+.consulta-bloque .k-comparativa{background:transparent;border-radius:0}
+.consulta-bloque .k-comparativa th,.consulta-bloque .k-comparativa td{border-bottom-color:var(--linea)}
+.consulta-bloque .k-comparativa tbody tr:last-child>*{border-bottom:0}
+.consulta-bloque .k-comparativa thead th{font-family:var(--display);letter-spacing:-.01em}
+.consulta-bloque .k-comparativa thead .k-destacada{border-radius:var(--radio) var(--radio) 0 0}
+.consulta-bloque .k-comparativa tbody td{color:var(--gris)}
+@media (max-width:640px){.consulta-bloque .k-comparativa-marco{padding:var(--s-2) var(--s-4)}.consulta-bloque .k-comparativa tr{padding:var(--s-4) 0}.consulta-bloque .k-comparativa tbody tr:last-child{border-bottom:0}.consulta-bloque .k-comparativa td::before{color:var(--tinta)}}
+/* Trayectoria: como la primera visita, con aros que se rellenan y la fecha en grande */
+.consulta-bloque .k-trayectoria{gap:var(--s-6);padding-left:2.25rem}
+.consulta-bloque .k-trayectoria::before{left:.6rem;width:0;background:none;border-left:2px dashed color-mix(in srgb,var(--acento) 45%,transparent)}
+.consulta-bloque .k-hito::before{left:-2.25rem;top:.2rem;width:1.4rem;height:1.4rem;background:var(--blanco);box-shadow:inset 0 0 0 3px var(--acento),0 0 0 5px var(--blanco);transition:background .4s ease .2s}
+.consulta-bloque .k-hito.k-visto::before,html:not(.js) .consulta-bloque .k-hito::before{background:var(--acento)}
+.consulta-bloque .k-hito-fecha{font-family:var(--display);color:var(--acento)}
+.consulta-bloque .k-hito-cuerpo h3{font-size:1.15rem}
+@media (min-width:760px){.consulta-bloque .k-hito{grid-template-columns:8rem minmax(0,1fr)}}
+/* Marcas: el panel suave de las garantías, con cada logo en una pastilla blanca */
+.consulta-bloque-panel{background:var(--fondo-2);border-radius:var(--radio-grande);padding:clamp(1.75rem,5vw,4rem) clamp(1rem,4vw,3rem)}
+.consulta-bloque-centro{text-align:center;margin-bottom:var(--s-6)}
+.consulta-bloque-centro h2{max-width:24ch;margin-inline:auto;font-size:clamp(1.75rem,3.6vw,2.6rem)}
+.consulta-bloque-centro .lead{margin-inline:auto}
+.consulta-bloque-panel .antetitulo{background:var(--blanco)}
+.consulta-bloque .k-marcas-pista{gap:var(--s-4)}
+.consulta-bloque .k-marcas-pista li{padding:var(--s-4) var(--s-5);border-radius:var(--radio);background:var(--blanco);box-shadow:var(--sombra)}
+.consulta-bloque .k-marcas--cinta .k-marcas-pista{padding-right:var(--s-4)}
+.consulta-bloque .k-marcas--cinta{padding-block:var(--s-3)}
+.consulta-bloque .k-marca-texto{color:var(--gris)}
+/* Vídeo: sobre el azul petróleo, con el botón en el acento y un halo */
+.consulta-bloque-partido--video{align-items:center}
+.consulta-bloque .k-video-portada,.consulta-bloque .k-video-marco iframe{border-radius:var(--radio-grande)}
+.consulta-bloque .k-video-portada{box-shadow:0 30px 60px -30px rgba(0,0,0,.6)}
+.consulta-bloque .k-video-boton{box-shadow:0 0 0 .7rem color-mix(in srgb,var(--blanco) 22%,transparent),0 8px 30px rgba(0,0,0,.35)}
+.consulta-bloque .k-video-etiqueta{left:var(--s-4);bottom:var(--s-4);padding:.45rem .9rem;border-radius:999px;background:var(--blanco);color:var(--tinta);font:600 .85rem/1.2 var(--texto)}
+.consulta-bloque--profunda .k-video-aviso{color:var(--claro-suave)}
+.consulta-bloque .k-video-fondo{background:radial-gradient(circle at 30% 30%,var(--profundo-3),var(--profundo-2) 70%)}
 </style>
 </head>
 <body>

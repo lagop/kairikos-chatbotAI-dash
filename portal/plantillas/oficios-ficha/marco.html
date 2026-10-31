@@ -421,6 +421,198 @@ time{font:600 .78rem/1.2 var(--texto);text-transform:uppercase;letter-spacing:.1
 .ficha-variante .kv-mosaico h3{margin:var(--s-5) 0 0}
 .ficha-variante .kv-zigzag>li:hover .icono,.ficha-variante .kv-indice>li:hover .icono,.ficha-variante .kv-mosaico>li:not(:first-child):hover .icono{background:var(--acento);color:var(--blanco);transform:rotate(-8deg)}
 @media (max-width:640px){.ficha-variante .kv-indice .icono{display:none}.ficha-variante .kv-indice>li{grid-template-columns:2.75rem minmax(0,1fr)}.kv-portada--panoramica.ficha-variante .datos-ficha{margin-top:-1.5rem}.ficha-variante .kv-tarjeta{box-shadow:5px 5px 0 color-mix(in srgb,var(--tinta) 85%,transparent)}}
+/* El resto de variantes (31/10/2026): quiénes somos, proceso, garantías,
+   precios, opiniones y preguntas, como piezas de la misma ficha técnica.
+   Celdas de un píxel (con filete por celda, no con el hueco sobre gris, por
+   la misma razón que el mosaico), la rejilla milimetrada de fondo, los
+   códigos (G-01, P-01), la sombra dura de las piezas que se destacan, el
+   proceso en cuadrados de acento sobre tinta y la tabla de precios con su
+   fila de cabecera. */
+.ficha-rejilla{background-color:var(--fondo);background-image:linear-gradient(var(--rejilla) 1px,transparent 1px),linear-gradient(90deg,var(--rejilla) 1px,transparent 1px);background-size:32px 32px;background-position:-1px -1px}
+.kv-sobre--cita.ficha-variante .kv-cita-foto{width:8.5rem;height:8.5rem;padding:6px;border:1px solid var(--tinta);background:var(--blanco);box-shadow:6px 6px 0 color-mix(in srgb,var(--tinta) 85%,transparent)}
+.kv-sobre--cita.ficha-variante h2{margin-bottom:var(--s-6)}
+.kv-sobre--cita.ficha-variante .kv-cita-texto>p:first-child{font:500 clamp(1.3rem,1rem + 1vw,1.75rem)/1.4 var(--display);letter-spacing:-.01em}
+.kv-sobre--cita.ficha-variante .kv-cita-texto>p:first-child::before{font-weight:700;color:var(--acento)}
+.kv-sobre--media.ficha-variante .kv-media-texto{background:var(--blanco);border-left:1px solid var(--tinta)}
+.kv-sobre--media.ficha-variante .kv-media-foto{border-block:1px solid var(--tinta)}
+.ficha-variante .kv-cifras{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,9rem),1fr));gap:0;padding:0;border:0;border-top:1px solid var(--filete);border-left:1px solid var(--filete)}
+.ficha-variante .kv-cifras li{padding:var(--s-4);border-right:1px solid var(--filete);border-bottom:1px solid var(--filete)}
+.ficha-variante .kv-cifras strong{margin-bottom:var(--s-1);font-size:2rem;letter-spacing:-.03em}
+.ficha-variante .kv-cifras li>span{display:block;font-size:.75rem;line-height:1.4;text-transform:uppercase;letter-spacing:.1em}
+.kv-sobre--revista.ficha-variante .kv-revista-cabeza{border-bottom:1px solid var(--tinta)}
+.kv-sobre--revista.ficha-variante .kv-revista-cabeza>p{display:inline-flex;align-items:center;gap:var(--s-2);padding:.45rem .6rem;border:1px solid var(--filete);font:600 .78rem/1.3 var(--texto);text-transform:uppercase;letter-spacing:.1em;color:var(--gris)}
+.kv-sobre--revista.ficha-variante .kv-revista-cabeza .etiqueta{font-style:normal;color:var(--acento)}
+.kv-sobre--revista.ficha-variante .kv-revista-cabeza>p svg{width:1rem;height:1rem;color:var(--acento)}
+.kv-sobre--revista.ficha-variante .kv-revista-columnas{column-rule:1px solid var(--filete)}
+.kv-sobre--revista.ficha-variante .kv-revista-columnas>p:first-child{font-size:inherit;line-height:inherit}
+.kv-sobre--revista.ficha-variante .kv-revista-columnas>p:first-child::first-letter{font-size:3.4em;line-height:1;padding:.08em .16em;margin:.1em .18em 0 0;background:var(--acento);color:var(--blanco)}
+.kv-proceso--linea.ficha-variante .kv-linea>li{padding:0 0 var(--s-6) 4.5rem}
+.kv-proceso--linea.ficha-variante .kv-linea>li::before{content:counter(kv-n,decimal-leading-zero);width:3rem;height:3rem;border-radius:0;background:var(--acento);color:var(--blanco);font:700 1.05rem/1 var(--display)}
+.kv-proceso--linea.ficha-variante .kv-linea>li:not(:last-child)::after{left:calc(1.5rem - .5px);top:3rem;bottom:0;border-left:1px solid var(--claro-suave);transform-origin:top;transition:transform 1s ease .3s}
+.js .kv-proceso--linea.ficha-variante .kv-linea>li:not(.visto)::after{transform:scaleY(0)}
+.kv-proceso--linea.ficha-variante .kv-linea h3{padding-top:.6rem;color:var(--blanco)}
+.kv-proceso--linea.ficha-variante .kv-linea p{color:var(--claro-suave)}
+.kv-garantias--marcas.ficha-variante .kv-marcas{margin-top:var(--s-6);gap:0;grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr));border-top:1px solid var(--filete);border-left:1px solid var(--filete)}
+.kv-garantias--marcas.ficha-variante .kv-marcas>li{gap:var(--s-4);padding:var(--s-5);background:var(--blanco);border:0;border-right:1px solid var(--filete);border-bottom:1px solid var(--filete);transition:background .25s ease}
+.kv-garantias--marcas.ficha-variante .kv-marcas>li:hover{background:color-mix(in srgb,var(--acento) 5%,var(--blanco))}
+.kv-garantias--marcas.ficha-variante .kv-marcas>li:hover .icono{background:var(--acento);color:var(--blanco);transform:rotate(-8deg)}
+.kv-garantias--marcas.ficha-variante .kv-marcas p{color:var(--gris)}
+.kv-garantias--iconos.ficha-variante .kv-iconos{counter-reset:kvg}
+.kv-garantias--iconos.ficha-variante .kv-iconos>li{counter-increment:kvg}
+.kv-garantias--iconos.ficha-variante .kv-icono-grande{width:4.75rem;height:4.75rem;border-radius:var(--radio);border:1px solid var(--tinta);background:var(--blanco);color:var(--acento);box-shadow:5px 5px 0 color-mix(in srgb,var(--tinta) 85%,transparent);transition:transform .3s ease,box-shadow .3s ease}
+.kv-garantias--iconos.ficha-variante .kv-icono-grande svg{width:2rem;height:2rem}
+.kv-garantias--iconos.ficha-variante .kv-iconos>li:hover .kv-icono-grande{transform:translate(-2px,-2px);box-shadow:7px 7px 0 color-mix(in srgb,var(--tinta) 85%,transparent)}
+.kv-garantias--iconos.ficha-variante h3::before{content:"G-" counter(kvg,decimal-leading-zero);display:block;margin-bottom:var(--s-2);font:600 .74rem/1 var(--texto);letter-spacing:.12em;color:var(--gris)}
+.kv-precios--ventanitas.ficha-variante .kv-tabla{padding:0;border:1px solid var(--filete);border-radius:0;background:var(--blanco)}
+.ficha-tabla-cabeza{display:flex;justify-content:space-between;gap:var(--s-4);padding:var(--s-3) var(--s-5);background:var(--fondo-2);border-bottom:1px solid var(--filete);font:600 .74rem/1.2 var(--texto);text-transform:uppercase;letter-spacing:.1em;color:var(--gris)}
+.kv-precios--ventanitas.ficha-variante .kv-fila-precio{padding:var(--s-4) var(--s-5);transition:background .2s ease}
+.kv-precios--ventanitas.ficha-variante .kv-fila-precio:hover{background:color-mix(in srgb,var(--acento) 5%,var(--blanco))}
+.kv-precios--ventanitas.ficha-variante .kv-concepto>span:first-child{font:700 1.08rem/1.3 var(--display)}
+.kv-precios--ventanitas.ficha-variante .kv-fila-precio>strong{font-size:1.1rem}
+.kv-precios--ventanitas.ficha-variante .kv-info{border-radius:var(--radio);font:600 .78rem/1 var(--texto)}
+.kv-precios--ventanitas.ficha-variante .kv-globo{left:var(--s-5);right:var(--s-5);border:1px solid var(--tinta);border-radius:var(--radio);box-shadow:5px 5px 0 color-mix(in srgb,var(--tinta) 85%,transparent);color:var(--gris)}
+.kv-opiniones--carrusel.ficha-variante{background-color:var(--tinta);background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px);background-size:32px 32px;background-position:-1px -1px}
+.kv-opiniones--carrusel.ficha-variante .etiqueta{color:var(--acento-claro)!important}
+.kv-opiniones--carrusel.ficha-variante .kv-cabeza{padding-bottom:var(--s-5);border-bottom:1px solid var(--tinta-3)}
+.kv-opiniones--carrusel.ficha-variante .kv-nota-google{padding:var(--s-3) var(--s-4);border:1px solid var(--tinta-3)}
+.kv-opiniones--carrusel.ficha-variante .kv-nota-google strong{font:700 2rem/1 var(--display)}
+.kv-opiniones--carrusel.ficha-variante :is(.cita,.resena){border-radius:0!important;border-width:1px!important;border-top:3px solid var(--acento-claro)!important}
+.kv-opiniones--carrusel.ficha-variante .kv-carrusel-nav button{border-radius:var(--radio)}
+.kv-opiniones--muro.ficha-variante .kv-muro-nota{border-radius:var(--radio);box-shadow:6px 6px 0 var(--tinta)}
+.kv-opiniones--muro.ficha-variante .kv-muro-nota strong{font-weight:700;letter-spacing:-.03em}
+.ficha-variante.kv-opiniones:not(.kv-oscura) :is(.cita,.resena){border-radius:0!important;border-top:3px solid var(--acento)!important}
+.kv-opiniones--destacada.ficha-variante .kv-lado-tarjeta{border:1px solid var(--tinta);border-radius:var(--radio);box-shadow:8px 8px 0 color-mix(in srgb,var(--tinta) 85%,transparent)}
+.kv-opiniones--destacada.ficha-variante .kv-nota-grande strong{font-weight:700}
+.kv-opiniones--destacada.ficha-variante .kv-nota-grande .kv-estrellas{color:var(--oro)}
+.kv-opiniones--destacada.ficha-variante .kv-lado-tarjeta a{color:var(--acento)}
+.kv-faq--dos-columnas.ficha-variante .kv-acordeon{counter-reset:pregunta;margin-top:var(--s-6)}
+.kv-faq--dos-columnas.ficha-variante .kv-acordeon details{counter-increment:pregunta;padding:0;border-radius:0;transition:border-color .2s ease}
+.kv-faq--dos-columnas.ficha-variante .kv-acordeon details[open]{border-color:var(--tinta)}
+.ficha-variante .kv-acordeon summary{align-items:center;gap:var(--s-4);padding:var(--s-4) var(--s-5);font-weight:600}
+.ficha-variante .kv-acordeon summary::before{content:"P-" counter(pregunta,decimal-leading-zero);flex:none;font:600 .74rem/1 var(--texto);letter-spacing:.1em;color:var(--gris)}
+.ficha-variante .kv-acordeon summary>span{flex:1;min-width:0}
+.ficha-variante .kv-acordeon summary::after{content:"";width:1.6rem;height:1.6rem;border:1px solid var(--filete);background:linear-gradient(var(--acento),var(--acento)) center/.7rem 2px no-repeat,linear-gradient(var(--acento),var(--acento)) center/2px .7rem no-repeat;transition:transform .3s ease}
+.ficha-variante .kv-acordeon .kv-respuesta{padding:0 var(--s-5) var(--s-4)}
+.kv-faq--panel.ficha-variante .kv-pestanas-lista{counter-reset:pregunta}
+.kv-faq--panel.ficha-variante .kv-pestanas-lista button{counter-increment:pregunta;gap:var(--s-4);padding:var(--s-4) var(--s-3);font-weight:600}
+.kv-faq--panel.ficha-variante .kv-pestanas-lista button::before{content:"P-" counter(pregunta,decimal-leading-zero);flex:none;font:600 .74rem/1 var(--texto);letter-spacing:.1em;color:var(--gris)}
+.kv-faq--panel.ficha-variante .kv-pestanas-lista button:hover{background:var(--blanco)}
+.kv-faq--panel.ficha-variante .kv-pestanas-lista button[aria-selected="true"]{background:var(--blanco);box-shadow:inset 3px 0 0 var(--acento)}
+.kv-faq--panel.ficha-variante .kv-pestanas-lista button[aria-selected="true"]::before{color:var(--acento)}
+.kv-faq--panel.ficha-variante .kv-pestanas--js .kv-panel{border:1px solid var(--tinta);border-radius:var(--radio);box-shadow:8px 8px 0 color-mix(in srgb,var(--tinta) 85%,transparent)}
+/* .kv parte cualquier palabra (overflow-wrap:anywhere): que la nota no se
+   corte por la coma. */
+.ficha-variante :is(.kv-nota-google,.kv-muro-nota,.kv-nota-grande) strong{white-space:nowrap;overflow-wrap:normal}
+.ficha-variante .kv-ayuda{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s-2) var(--s-4);margin-top:var(--s-7);color:var(--gris)}
+.kv-opiniones--carrusel.ficha-variante .kv-cabeza{row-gap:var(--s-5)}
+.ficha-variante .kv-ayuda a{display:inline-flex;align-items:center;gap:var(--s-2);font:700 1.5rem/1.2 var(--display);color:var(--tinta);text-decoration:none}
+.ficha-variante .kv-ayuda a svg{width:1.2rem;height:1.2rem;color:var(--acento)}
+.ficha-variante .kv-ayuda a:hover{color:var(--acento)}
+@media (max-width:820px){.kv-sobre--media.ficha-variante .kv-media-texto{border-left:0}}
+@media (max-width:640px){.kv-proceso--linea.ficha-variante .kv-linea>li{padding-left:4rem}.ficha-variante .kv-lado-tarjeta,.kv-faq--panel.ficha-variante .kv-pestanas--js .kv-panel{box-shadow:5px 5px 0 color-mix(in srgb,var(--tinta) 85%,transparent)}}
+/* Desde #375 «Vamos preparados…:» con su lista debajo sale como lista. En la
+   cita, la lista iba pegada a la izquierda de un bloque centrado: ahí se ciñe
+   a su texto y se centra. En la revista, el break-after:avoid-column del
+   motor no lo respeta Chrome y la lista se iba sola a la segunda columna;
+   break-before:avoid en la lista sí la deja con su frase. */
+.kv-sobre--cita.ficha-variante .kv-cita-texto>:is(ul,ol){width:fit-content;max-width:100%;margin-inline:auto}
+.kv-sobre--revista.ficha-variante .kv-revista-columnas>:is(ul,ol){break-before:avoid}
+/* Los bloques ricos a la manera de Ficha (31/10/2026): las piezas
+   bloque_galeria.html y demás ponen el marco (etiqueta con su cuadro, la
+   cabeza con su cota, la referencia en tinta de las fichas) y el motor sigue
+   pintando el cuerpo (site-rich-blocks.ts). Aquí solo se retoca ese cuerpo,
+   acotado a .ficha-bloque: fotos enmarcadas como en un plano (filete de
+   tinta y paspartú blanco), códigos F-01 / M-01 / 01, celdas de 1 px, la
+   sombra dura de lo que se destaca y el papel milimetrado. Nada de esto toca
+   los ganchos del script (visor, filtros, arrastre). */
+.ficha-bloque-texto>:last-child{margin-bottom:0}
+/* El motor pone a la <section> las clases de su cuerpo (k-trayectoria,
+   k-comparativa) y le llegaban la raya y el ancho de la lista o las
+   esquinas de la tabla: a la sección se le quitan (el fondo ya lo pone
+   .seccion--blanca, que va después y gana). */
+section.ficha-bloque.k-trayectoria{display:block;max-width:none;padding-left:0;isolation:auto}
+section.ficha-bloque.k-trayectoria::before{content:none}
+section.ficha-bloque.k-comparativa{display:block;width:auto;border-radius:0;overflow:visible}
+.ficha-bloque-partido{display:grid;gap:var(--s-6) var(--s-8);grid-template-columns:minmax(0,1fr);align-items:center}
+.ficha-bloque-partido>*{min-width:0}
+.ficha-bloque-lado h2{max-width:18ch}
+.ficha-bloque-lado .lead{margin-top:var(--s-4)}
+@media (min-width:900px){.ficha-bloque-partido{grid-template-columns:minmax(0,1fr) minmax(0,1.75fr)}}
+/* Galería: cada foto enmarcada, con su código */
+.ficha-bloque .k-galeria-rejilla{counter-reset:foto;gap:var(--s-5)}
+.ficha-bloque .k-galeria-rejilla>li{position:relative;counter-increment:foto}
+.ficha-bloque .k-galeria-rejilla>li::before{content:"F-" counter(foto,decimal-leading-zero);position:absolute;z-index:1;left:calc(6px + var(--s-3));top:calc(6px + var(--s-3));padding:.35rem .5rem;background:var(--tinta);color:var(--blanco);font:600 .72rem/1 var(--texto);letter-spacing:.12em;pointer-events:none}
+.ficha-bloque .k-galeria-foto{padding:6px;border:1px solid var(--tinta);border-radius:0;background:var(--blanco);transition:transform .25s ease,box-shadow .25s ease}
+.ficha-bloque .k-galeria-foto img{border-radius:0}
+.ficha-bloque .k-galeria-foto:hover,.ficha-bloque .k-galeria-foto:focus-visible{transform:translate(-3px,-3px);box-shadow:6px 6px 0 color-mix(in srgb,var(--tinta) 85%,transparent)}
+.ficha-bloque .k-galeria-foto:hover img,.ficha-bloque .k-galeria-foto:focus-visible img{transform:none}
+.ficha-bloque .k-pie{margin-top:var(--s-2);font-size:.92rem;color:var(--gris)}
+/* Antes y después: el comparador en su marco de plano, con sombra dura */
+.ficha-bloque--antes-despues .ficha-bloque-cuerpo{padding:6px;border:1px solid var(--tinta);background:var(--blanco);box-shadow:8px 8px 0 color-mix(in srgb,var(--tinta) 85%,transparent)}
+.ficha-bloque .k-comparador,.ficha-bloque .k-comparador-sola{max-width:none;border-radius:0}
+.ficha-bloque .k-etiqueta{top:var(--s-3);padding:.4rem .55rem;border-radius:0;background:var(--tinta);font:600 .72rem/1 var(--texto);letter-spacing:.12em}
+.ficha-bloque .k-etiqueta--antes{left:var(--s-3)}
+.ficha-bloque .k-etiqueta--despues{right:var(--s-3);background:var(--acento)}
+.ficha-bloque .k-comparador-linea::after{border-radius:var(--radio)}
+/* Catálogo: filtros como pestañas de archivador y cada modelo con su código */
+.ficha-bloque .k-filtros{gap:var(--s-2)}
+.ficha-bloque .k-filtros button{padding:.6rem .85rem;border-radius:var(--radio);border-color:var(--tinta);font:600 .78rem/1 var(--texto);letter-spacing:.1em;text-transform:uppercase}
+.ficha-bloque .k-filtros button:hover{background:var(--blanco)}
+.ficha-bloque .k-filtros button[aria-pressed="true"]{background:var(--tinta);border-color:var(--tinta);color:var(--blanco)}
+.ficha-bloque .k-catalogo-rejilla{counter-reset:modelo;gap:var(--s-5)}
+.ficha-bloque .k-producto{counter-increment:modelo;border-radius:var(--radio);border-color:var(--filete);transition:border-color .25s ease,transform .25s ease,box-shadow .25s ease}
+.ficha-bloque .k-producto:hover{border-color:var(--tinta);transform:translate(-3px,-3px);box-shadow:6px 6px 0 color-mix(in srgb,var(--tinta) 85%,transparent)}
+.ficha-bloque .k-producto img,.ficha-bloque .k-producto-sin-foto{border-bottom:1px solid var(--filete)}
+.ficha-bloque .k-producto-cuerpo{padding:var(--s-5)}
+.ficha-bloque .k-producto-cuerpo::before{content:"M-" counter(modelo,decimal-leading-zero);font:600 .72rem/1 var(--texto);letter-spacing:.12em;color:var(--gris)}
+.ficha-bloque .k-precio{margin-top:auto;padding-top:var(--s-3);border-top:1px solid var(--filete);font:700 1.2rem/1.2 var(--display);color:var(--acento)}
+.ficha-bloque :is(.k-caracteristicas,.k-panel-texto ul) li::before{top:.45em;width:.55rem;height:.55rem;border:0;background:var(--acento);transform:none}
+/* Pestañas: numeradas, y cada panel una ficha blanca con filete */
+.ficha-bloque .k-pestanas-lista{counter-reset:pestana}
+.ficha-bloque .k-pestanas-lista button{counter-increment:pestana;font-family:var(--display);font-weight:700}
+.ficha-bloque .k-pestanas-lista button::before{content:counter(pestana,decimal-leading-zero);margin-right:.55em;font:600 .72rem/1 var(--texto);letter-spacing:.12em;color:var(--gris);vertical-align:.12em}
+.ficha-bloque .k-pestanas-lista button[aria-selected="true"]::before{color:inherit;opacity:.75}
+.ficha-bloque .k-pestanas:not(.k-pestanas--pildora):not(.k-pestanas--tarjetas) .k-pestanas-lista{border-bottom:1px solid var(--tinta);margin-bottom:0}
+.ficha-bloque .k-pestanas:not(.k-pestanas--pildora):not(.k-pestanas--tarjetas) .k-pestanas-lista button{margin-bottom:-1px}
+.ficha-bloque .k-pestanas--pildora .k-pestanas-lista,.ficha-bloque .k-pestanas--tarjetas .k-pestanas-lista{margin-bottom:var(--s-4)}
+.ficha-bloque .k-panel{padding:var(--s-5);border:1px solid var(--filete);border-radius:0;background:var(--blanco)}
+.ficha-bloque .k-pestanas--js:not(.k-pestanas--pildora):not(.k-pestanas--tarjetas) .k-panel{border-top:0}
+.ficha-bloque .k-pestanas--tarjetas.k-pestanas--js .k-panel{border-radius:var(--radio)}
+.ficha-bloque .k-panel-cuerpo img{padding:6px;border:1px solid var(--tinta);border-radius:0;background:var(--blanco)}
+.ficha-bloque .k-panel-texto ul{list-style:none;padding:0;display:grid;gap:var(--s-2)}
+.ficha-bloque .k-panel-texto li{position:relative;padding-left:var(--s-5)}
+.ficha-bloque .k-panel-texto li::before{content:"";position:absolute;left:0}
+/* Comparativa: la misma tabla que la de tarifas, con la columna destacada en acento */
+.ficha-bloque .k-comparativa{background:var(--blanco);border:1px solid var(--filete);border-radius:0}
+.ficha-bloque .k-comparativa th,.ficha-bloque .k-comparativa td{border-color:var(--filete)}
+.ficha-bloque .k-comparativa thead th{font:600 .74rem/1.25 var(--texto);text-transform:uppercase;letter-spacing:.1em;color:var(--gris);background:var(--fondo-2)}
+.ficha-bloque .k-comparativa thead .k-destacada{background:var(--acento);color:var(--blanco)}
+.ficha-bloque .k-comparativa tbody th{font:700 1.02rem/1.3 var(--display)}
+.ficha-bloque .k-comparativa .k-destacada{background:color-mix(in srgb,var(--acento) 6%,var(--blanco))}
+.ficha-bloque .k-comparativa-marco{box-shadow:8px 8px 0 color-mix(in srgb,var(--tinta) 85%,transparent);border:1px solid var(--tinta)}
+.ficha-bloque .k-comparativa-marco .k-comparativa{border:0}
+/* Trayectoria, en tinta sobre papel milimetrado oscuro: hitos como cuadros de acento */
+.ficha-bloque--trayectoria{background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px);background-size:32px 32px;background-position:-1px -1px}
+.ficha-bloque--trayectoria .k-trayectoria::before{background:var(--tinta-3)}
+.ficha-bloque--trayectoria .k-hito::before{border-radius:0;background:var(--acento-claro);box-shadow:0 0 0 4px var(--tinta)}
+.ficha-bloque--trayectoria .k-hito-fecha{font:700 1.15rem/1.25 var(--display);color:var(--acento-claro)}
+.ficha-bloque--trayectoria .k-hito-cuerpo{padding:var(--s-4) var(--s-5);border:1px solid var(--tinta-3);background:var(--tinta-2)}
+.ficha-bloque--trayectoria .k-hito-cuerpo h3{color:var(--blanco)}
+.ficha-bloque--trayectoria .k-hito-cuerpo p{color:var(--claro-suave)}
+/* Marcas: cada logo en su celda */
+.ficha-bloque .k-marcas-pista{gap:var(--s-3)}
+.ficha-bloque .k-marcas-pista li{padding:var(--s-4) var(--s-5);border:1px solid var(--filete);background:var(--blanco)}
+.ficha-bloque .k-marcas--cinta .k-marcas-pista{padding-right:var(--s-3)}
+.ficha-bloque .k-marca-texto{font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--gris)}
+/* Vídeo: la portada enmarcada como una foto del plano, con sombra dura */
+.ficha-bloque .k-video-marco{max-width:none}
+.ficha-bloque :is(.k-video-portada,.k-video-marco iframe){border-radius:0;box-shadow:0 0 0 6px var(--blanco),0 0 0 7px var(--tinta),15px 15px 0 0 color-mix(in srgb,var(--tinta) 85%,transparent);width:calc(100% - 14px);margin:7px}
+.ficha-bloque .k-video-boton{border-radius:var(--radio);background:var(--acento)}
+.ficha-bloque .k-video-etiqueta{border-radius:0;background:var(--tinta);font:600 .74rem/1 var(--texto);letter-spacing:.12em;text-transform:uppercase;padding:.5rem .65rem}
+.ficha-bloque .k-video-aviso{margin-top:var(--s-4)}
+/* En el móvil las dos etiquetas no caben en la misma línea y «Después» tapaba
+   a «Antes»: ahí, una arriba a la izquierda y la otra abajo a la derecha. */
+@media (max-width:640px){.ficha-bloque--antes-despues .ficha-bloque-cuerpo,.ficha-bloque .k-comparativa-marco{box-shadow:5px 5px 0 color-mix(in srgb,var(--tinta) 85%,transparent)}.ficha-bloque :is(.k-video-portada,.k-video-marco iframe){box-shadow:0 0 0 6px var(--blanco),0 0 0 7px var(--tinta),10px 10px 0 0 color-mix(in srgb,var(--tinta) 85%,transparent)}.ficha-bloque .k-panel{padding:var(--s-4)}.ficha-bloque .k-etiqueta--despues{top:auto;bottom:var(--s-3)}}
 </style>
 </head>
 <body>

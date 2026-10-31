@@ -1,0 +1,10 @@
+<section class="llamada" id="{{ancla}}">
+  <div class="toldo" aria-hidden="true"></div>
+  <div class="contenedor">
+    <div class="pizarra pizarra--puerta aparece">
+      <p class="pizarra-hoy" aria-hidden="true">Te esperamos</p>
+      <h2 class="escribe">{{#llamada_accion}}{{llamada_accion}}{{/llamada_accion}}{{^llamada_accion}}Reserva tu mesa{{/llamada_accion}}</h2>
+      {{#telefono_href}}<a class="llamada-telefono" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg><span>{{telefono}}</span></a>{{/telefono_href}}
+    </div>
+  </div>
+</section>

@@ -1,0 +1,31 @@
+<section class="kv kv-portada kv-portada--formulario despacho-variante" id="{{ancla}}">
+  <div class="kv-dentro kv-formulario-caja">
+    <div class="kv-formulario-texto">
+      {{#horario_resumen}}<p class="estado">{{horario_resumen}}</p>{{/horario_resumen}}
+      <h1 class="kv-titular">{{titular}}</h1>
+      <svg class="trazo" viewBox="0 0 300 14" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M3 9.5C48 4.5 96 3.5 150 6.5s104 4 147-1.5"></path></svg>
+      {{#subtitulo}}<p class="kv-entradilla">{{subtitulo}}</p>{{/subtitulo}}
+      {{#garantias.length}}<ul class="kv-checks">{{#garantias}}<li><span class="icono-caja"><svg aria-hidden="true"><use href="#i-check"></use></svg></span><span>{{titulo}}</span></li>{{/garantias}}</ul>{{/garantias.length}}
+      <ul class="portada-datos">
+      {{#telefono}}<li><svg aria-hidden="true"><use href="#i-telefono"></use></svg><a href="tel:{{telefono_href}}">{{telefono}}</a></li>{{/telefono}}
+      {{#direccion}}<li><svg aria-hidden="true"><use href="#i-mapa"></use></svg><span>{{direccion}}</span></li>{{/direccion}}
+      </ul>
+    </div>
+    <div class="kv-formulario-lado">
+      {{#fotos.portada}}<img class="kv-formulario-fondo" src="{{fotos.portada}}" alt="">{{/fotos.portada}}
+      <form class="kv-formulario formulario" method="post" data-kairikos-form>
+        <p class="formulario-rotulo">Primera consulta</p>
+        <h2>Cuéntenos su caso</h2>
+        <label for="kv-p4-nombre">Nombre</label>
+        <input id="kv-p4-nombre" name="name" maxlength="200" autocomplete="name">
+        <label for="kv-p4-contacto">Teléfono o email</label>
+        <input id="kv-p4-contacto" name="contact" maxlength="200" required>
+        <label for="kv-p4-mensaje">¿En qué podemos ayudarle?</label>
+        <textarea id="kv-p4-mensaje" name="message" rows="3" maxlength="2000"></textarea>
+        <button class="boton" type="submit"{{#formulario.muestra}} disabled{{/formulario.muestra}}>Enviar consulta</button>
+        {{#formulario.muestra}}<p class="form-nota">Formulario de muestra: en la web publicada, los mensajes llegan al correo del despacho.</p>{{/formulario.muestra}}
+        <p class="form-nota" data-kairikos-form-note hidden></p>
+      </form>
+    </div>
+  </div>
+</section>

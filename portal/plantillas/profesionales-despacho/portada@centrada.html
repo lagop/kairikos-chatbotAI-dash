@@ -1,0 +1,13 @@
+<section class="kv kv-portada kv-portada--centrada despacho-variante" id="{{ancla}}">
+  <div class="kv-dentro">
+    {{#horario_resumen}}<p class="estado">{{horario_resumen}}</p>{{/horario_resumen}}
+    <h1 class="kv-titular">{{titular}}</h1>
+    <svg class="trazo" viewBox="0 0 300 14" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M3 9.5C48 4.5 96 3.5 150 6.5s104 4 147-1.5"></path></svg>
+    {{#subtitulo}}<p class="kv-entradilla">{{subtitulo}}</p>{{/subtitulo}}
+    <div class="acciones">
+      {{#telefono_href}}<a class="boton" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg>Llamar</a>{{/telefono_href}}
+      <a class="boton boton--borde" href="#contacto">Pedir una consulta</a>
+    </div>
+    <div class="kv-abanico">{{#kv_fotos}}<img src="{{src}}" alt="Despacho de {{nombre}}">{{/kv_fotos}}{{^kv_fotos}}<div class="kv-foto-vacia folio-vacio" aria-hidden="true"><svg><use href="#i-documento"></use></svg></div>{{/kv_fotos}}</div>
+  </div>
+</section>

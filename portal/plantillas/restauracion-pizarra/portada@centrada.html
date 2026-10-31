@@ -1,0 +1,21 @@
+<section class="kv kv-portada kv-portada--centrada pizarra-variante" id="{{ancla}}">
+  <div class="kv-dentro">
+    {{#horario_resumen}}<p class="estado">{{horario_resumen}}</p>{{/horario_resumen}}
+    <p class="pizarra-hoy" aria-hidden="true">Hoy en la pizarra</p>
+    <h1 class="kv-titular escribe">{{titular}}</h1>
+    <svg class="trazo" viewBox="0 0 300 18" preserveAspectRatio="none" aria-hidden="true"><path d="M3 11c40-6 80-8 120-5s70 6 110 1 50-4 64-2"></path></svg>
+    {{#subtitulo}}<p class="kv-entradilla">{{subtitulo}}</p>{{/subtitulo}}
+    <div class="acciones">
+      {{#telefono_href}}<a class="boton" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg>Llamar y reservar</a>{{/telefono_href}}
+      <a class="boton boton--tiza" href="#contacto">Escríbenos</a>
+    </div>
+    <div class="pizarra-abanico"><div class="kv-abanico">
+      {{#kv_fotos}}<img src="{{src}}" alt="El local de {{nombre}}">{{/kv_fotos}}
+      {{^kv_fotos}}<div class="kv-foto-vacia foto-vacia" aria-hidden="true"><svg><use href="#i-plato"></use></svg></div>{{/kv_fotos}}
+      </div>
+      <div class="colgante" role="img" aria-label="{{#valoracion}}{{valoracion}} de 5 en Google{{/valoracion}}{{^valoracion}}Cocina de mercado{{/valoracion}}">
+        <span class="colgante-cuerpo" aria-hidden="true">{{#valoracion}}<strong>{{valoracion}}</strong><span class="colgante-estrellas"><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg></span><small>en Google</small>{{/valoracion}}{{^valoracion}}<svg class="colgante-icono"><use href="#i-cubiertos"></use></svg><small>De mercado</small>{{/valoracion}}</span>
+      </div>
+    </div>
+  </div>
+</section>

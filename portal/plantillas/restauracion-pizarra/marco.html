@@ -1,0 +1,810 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{pagina.meta_titulo}}</title>
+<meta name="description" content="{{pagina.meta_descripcion}}">
+<link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* «Pizarra» — dirección de arte (31/10/2026, primera plantilla de restauración)
+   El restaurante, bar o cafetería de barrio con cocina de mercado. Todo gira
+   en torno a la pizarra del menú: el titular de la portada se escribe con
+   tiza en una pizarra verde oscura con marco de madera, los precios son la
+   pizarra del día con puntos guía entre el plato y el precio, la llamada es la
+   pizarra de la puerta bajo un toldo a rayas, y el pie y las cabeceras de las
+   páginas interiores son pizarra también. Alrededor, la mesa: fondo de papel
+   de estraza, garantías sobre un mantel de cuadros, cifras y pueblos en
+   etiquetas de papel con su ojal, el proceso en comandas de cocina colgadas
+   de la barra, las opiniones en notas con cinta, y las fotos sujetas con
+   cinta de carrocero. Un solo acento (rojo tomate, o el color del negocio);
+   los cuadros del mantel y las rayas del toldo salen de él con color-mix.
+   No hay letra de tiza en el catálogo: los titulares van en Josefin Sans, la
+   de los rótulos de pizarra de toda la vida; el texto, en Work Sans.
+   Movimiento: el titular y las líneas del menú se escriben solos (clip-path a
+   saltos, como la tiza), un trazo se dibuja bajo el titular, las etiquetas se
+   balancean al cargar y al pasar por encima y los platos giran.
+   Ojo con el laboratorio: el texto sobre un fondo con background-image (la
+   textura de la pizarra, los cuadros) no se mide; el contraste de ahí está
+   comprobado a mano con los colores de debajo (tiza sobre #1e2b25). */
+/* Los bloques ricos (galería, antes y después, catálogo) los pinta el motor
+   (site-rich-blocks.ts) y toman de aquí los colores, las esquinas y el ancho. */
+:root{
+--k-acento:var(--tomate);--k-sobre-acento:var(--blanco);--k-acento-texto:var(--tomate);--k-superficie:var(--blanco);--k-borde:var(--filete);--k-suave:var(--gris);--k-radio:var(--radio);--k-ancho:var(--ancho);--k-margen:var(--s-5);
+--papel:#fbf6ec;--mantel:#f3e8d4;--blanco:#fffdf8;--kraft:#dcc39b;--kraft-osc:#b8966a;--filete:#e4d3b4;
+--tinta:#2b2119;--tinta-2:#4a3a2c;--gris:#66574a;
+--pizarra:#1e2b25;--pizarra-2:#26352e;--pizarra-3:#3c4c44;--tiza:#f4f1e8;--tiza-suave:#c7cfc8;--tiza-tenue:#8f9c94;
+--madera:#7a4e2d;--madera-2:#55361f;--mostaza:#ecbf5a;--oro:#8a5a00;
+--tomate:#b8401f;--tomate-claro:#ff9a7a;
+--textura:radial-gradient(ellipse 55% 45% at 18% 20%,rgba(255,255,255,.075),transparent 70%),radial-gradient(ellipse 45% 40% at 84% 80%,rgba(255,255,255,.05),transparent 70%),repeating-linear-gradient(-24deg,rgba(255,255,255,.02) 0 1px,transparent 1px 7px);
+--display:"Josefin Sans","Avenir Next",system-ui,sans-serif;--texto:"Work Sans",system-ui,sans-serif;
+--s-1:.25rem;--s-2:.5rem;--s-3:.75rem;--s-4:1rem;--s-5:1.5rem;--s-6:2rem;--s-7:3rem;--s-8:5.5rem;
+--ancho:1200px;--radio:.6rem}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--papel);color:var(--tinta);font:400 1.0625rem/1.65 var(--texto);-webkit-font-smoothing:antialiased}
+img{max-width:100%;display:block}
+a{color:inherit}
+h1,h2,h3{font-family:var(--display);font-weight:700;line-height:1.1;letter-spacing:-.01em;margin:0 0 var(--s-4);overflow-wrap:anywhere}
+h2{font-size:clamp(1.9rem,1.1rem + 2.5vw,3.2rem);text-wrap:balance}
+h3{font-size:1.35rem;line-height:1.2;font-weight:600}
+p{margin:0 0 var(--s-4)}
+:focus-visible{outline:3px solid var(--tomate);outline-offset:3px}
+[id]{scroll-margin-top:6rem}
+.saltar{position:absolute;left:-9999px}.saltar:focus{left:var(--s-4);top:var(--s-4);z-index:100;background:var(--blanco);padding:var(--s-2) var(--s-4)}
+.contenedor{width:min(100% - 2*var(--s-5),var(--ancho));margin-inline:auto}
+.seccion{padding-block:var(--s-8);position:relative}
+.seccion--mantel{background:var(--mantel)}
+.rotulo{display:inline-flex;align-items:center;gap:var(--s-3);font:600 .8rem/1.2 var(--texto);text-transform:uppercase;letter-spacing:.18em;color:var(--tomate);margin:0 0 var(--s-4)}
+.rotulo::before{content:"";flex:none;width:1.6rem;height:2px;border-radius:2px;background:currentColor}
+.cabeza{max-width:44rem;margin-bottom:var(--s-7)}
+.cabeza h2{margin:0}
+.lead{max-width:56ch;color:var(--gris);font-size:1.15rem}
+.rejilla{display:grid;gap:var(--s-5);grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr))}
+.rejilla>*{min-width:0}
+.boton{display:inline-flex;align-items:center;justify-content:center;gap:var(--s-2);background:var(--tomate);color:var(--blanco);font:600 1rem/1.15 var(--texto);letter-spacing:.01em;text-decoration:none;border-radius:.45rem;padding:.95rem 1.45rem;border:2px solid var(--tomate);cursor:pointer;box-shadow:0 3px 0 color-mix(in oklab,var(--tomate),#000 38%);transition:transform .15s ease,box-shadow .15s ease,background .2s ease}
+.boton:hover{background:color-mix(in oklab,var(--tomate),#000 10%);transform:translateY(-2px);box-shadow:0 5px 0 color-mix(in oklab,var(--tomate),#000 38%)}
+.boton:active{transform:translateY(2px);box-shadow:0 1px 0 color-mix(in oklab,var(--tomate),#000 38%)}
+.boton svg{width:1.1rem;height:1.1rem;flex:none}
+.boton--borde{background:transparent;color:var(--tinta);border-color:var(--tinta);box-shadow:none}
+.boton--borde:hover{background:var(--tinta);color:var(--blanco);box-shadow:none}
+.boton--tiza{background:transparent;color:var(--tiza);border:2px dashed var(--tiza-suave);box-shadow:none}
+.boton--tiza:hover{background:rgba(255,255,255,.07);border-style:solid;box-shadow:none}
+.estrellas{display:inline-flex;gap:2px;color:var(--oro)}.estrellas svg{width:1rem;height:1rem}
+
+/* El plato: el icono va en un plato visto desde arriba (el ala y el fondo) */
+.plato{width:3.6rem;height:3.6rem;display:grid;place-items:center;flex:none;border-radius:50%;color:var(--tomate);background:var(--blanco);border:2px solid var(--filete);box-shadow:inset 0 0 0 5px var(--blanco),inset 0 0 0 7px var(--filete);transition:transform .7s cubic-bezier(.3,1.5,.5,1),background .3s ease,color .3s ease,box-shadow .3s ease}
+.plato svg{width:1.5rem;height:1.5rem}
+.plato--marca{width:2.9rem;height:2.9rem;box-shadow:inset 0 0 0 4px var(--blanco),inset 0 0 0 5.5px var(--filete)}
+.plato--marca svg{width:1.2rem;height:1.2rem}
+.plato--tiza{width:2.6rem;height:2.6rem;background:transparent;color:var(--tomate-claro);border:2px dashed var(--tiza-tenue);box-shadow:none}
+.plato--tiza svg{width:1.15rem;height:1.15rem}
+
+/* La pizarra: textura de tiza, marco de madera y tiza por texto */
+.pizarra{position:relative;background:var(--textura),var(--pizarra);color:var(--tiza);border:clamp(.4rem,1.1vw,.75rem) solid var(--madera);border-radius:.4rem;box-shadow:inset 0 0 0 2px rgba(0,0,0,.3),inset 0 0 70px rgba(0,0,0,.45),0 0 0 1px var(--madera-2),0 28px 50px -28px rgba(43,33,25,.75)}
+.pizarra h1,.pizarra h2,.pizarra h3{color:var(--tiza);text-shadow:0 0 1px rgba(244,241,232,.5)}
+.pizarra .rotulo{color:var(--tomate-claro)}
+.pizarra-hoy{font:italic 400 clamp(1.1rem,1rem + .5vw,1.4rem)/1.2 var(--display);color:var(--mostaza);margin:0 0 var(--s-3);letter-spacing:.02em}
+.trazo{display:block;width:min(100%,15rem);height:1rem;margin:-.4rem 0 var(--s-5);overflow:visible}
+.trazo path{fill:none;stroke:var(--tomate-claro);stroke-width:4;stroke-linecap:round;stroke-dasharray:340;vector-effect:non-scaling-stroke}
+.js .trazo path{animation:trazar 1s ease 1.7s both}
+@keyframes trazar{from{stroke-dashoffset:340}to{stroke-dashoffset:0}}
+/* Se escribe a saltos, como la tiza; sin JavaScript o con el movimiento reducido, ya está escrito. */
+.js .portada .escribe,.js .kv-portada .escribe{animation:escribir 1.7s steps(26,end) .25s both}
+@keyframes escribir{from{clip-path:inset(-.2em 100% -.2em 0)}to{clip-path:inset(-.2em -.2em -.2em 0)}}
+.foto-vacia{width:100%;height:100%;min-height:14rem;display:grid;place-items:center;color:var(--tomate);background:var(--mantel) radial-gradient(circle,var(--filete) 1.5px,transparent 2px) 0 0/18px 18px}
+.foto-vacia svg{width:30%;height:30%;max-width:6rem;max-height:6rem}
+
+/* La cinta de carrocero en las esquinas de las fotos */
+.cinta{position:relative;margin:0;background:var(--blanco);padding:.6rem;box-shadow:0 22px 40px -22px rgba(43,33,25,.6);transform:rotate(2deg);transition:transform .5s ease}
+.cinta::before,.cinta::after{content:"";position:absolute;z-index:1;width:5.5rem;height:1.6rem;background:color-mix(in oklab,var(--kraft),transparent 22%);box-shadow:0 1px 2px rgba(43,33,25,.15);clip-path:polygon(0 10%,5% 0,12% 8%,20% 0,100% 4%,96% 30%,100% 55%,95% 80%,100% 100%,82% 94%,70% 100%,0 96%,4% 70%,0 45%)}
+.cinta::before{top:-.55rem;left:-.9rem;transform:rotate(-34deg)}
+.cinta::after{bottom:-.55rem;right:-.9rem;transform:rotate(-34deg)}
+.cinta img{width:100%;aspect-ratio:4/5;object-fit:cover}
+.cinta:hover{transform:rotate(0)}
+
+/* Cabecera, con su tira de mantel debajo */
+.cabecera{position:sticky;top:0;z-index:50;background:var(--papel);transition:box-shadow .25s ease}
+.cabecera::after{content:"";position:absolute;left:0;right:0;bottom:-6px;height:6px;background:linear-gradient(90deg,color-mix(in oklab,var(--tomate),transparent 45%) 50%,transparent 0) 0 0/12px 12px,linear-gradient(color-mix(in oklab,var(--tomate),transparent 45%) 50%,transparent 0) 0 0/12px 12px,var(--blanco)}
+.cabecera.compacta{box-shadow:0 10px 26px rgba(43,33,25,.14)}
+.cabecera .contenedor{display:grid;grid-template-columns:minmax(11rem,1fr) auto auto;align-items:center;gap:var(--s-3) var(--s-5);min-height:4.75rem;padding-block:var(--s-2)}
+.marca{display:flex;align-items:center;gap:var(--s-3);min-width:0;font:700 1.45rem/1 var(--display);color:var(--tinta);text-decoration:none;letter-spacing:-.01em}
+.marca::before{content:"";flex:none;width:1.75rem;height:1.75rem;border-radius:50%;border:2px solid var(--tomate);background:radial-gradient(circle,transparent .36rem,var(--tomate) .37rem .47rem,transparent .48rem);transition:transform .6s cubic-bezier(.3,1.6,.5,1)}
+.marca:hover::before{transform:rotate(-30deg) scale(1.12)}
+.marca span{min-width:0;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.15;padding-top:.12em}
+.marca--logo::before{display:none}.marca img{display:block;height:3rem;width:auto;max-width:100%;object-fit:contain}
+.menu{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:0 var(--s-1)}
+.menu a{white-space:nowrap;text-decoration:none;font-weight:600;font-size:.97rem;color:var(--tinta);padding:var(--s-2) var(--s-3);border-radius:.4rem;text-decoration-color:transparent;transition:background .2s ease,text-decoration-color .2s ease}
+.menu a:hover{text-decoration:underline wavy;text-decoration-color:var(--tomate);text-underline-offset:6px}
+.menu a[aria-current]{background:var(--pizarra);color:var(--tiza)}
+.cabecera .boton{padding:.8rem 1.2rem}
+.abrir-menu{display:none;background:transparent;border:2px solid var(--tinta);border-radius:.45rem;width:2.9rem;height:2.9rem;color:var(--tinta);cursor:pointer}
+@media (max-width:1099px){
+.cabecera .contenedor{grid-template-columns:minmax(0,1fr) auto auto;position:relative}
+.menu{display:none;position:absolute;top:100%;left:calc(-1 * var(--s-5));right:calc(-1 * var(--s-5));flex-direction:column;flex-wrap:nowrap;background:var(--papel);border-top:1px solid var(--filete);padding:var(--s-3) var(--s-5) var(--s-5);box-shadow:0 20px 30px rgba(43,33,25,.16)}
+.menu.abierto{display:flex}.menu a{padding:var(--s-3) var(--s-4);font-size:1.1rem}
+.abrir-menu{display:grid;place-items:center;order:3}.cabecera .boton span{display:none}.cabecera .boton{padding:.8rem}}
+@media (max-width:640px){.marca{font-size:1.25rem}}
+
+/* Portada: la pizarra con el titular escrito a tiza y, al lado, la foto con cinta y su etiqueta colgada */
+.portada{position:relative;overflow-x:clip;padding-block:clamp(2.25rem,5vw,4.5rem) clamp(3.5rem,7vw,6rem);background:var(--mantel)}
+.portada-rejilla{display:grid;gap:var(--s-7);grid-template-columns:minmax(0,1fr);align-items:center}
+.portada-rejilla>*{min-width:0}
+@media (min-width:1000px){.portada-rejilla{grid-template-columns:minmax(0,1.3fr) minmax(0,.7fr);gap:var(--s-7)}}
+.portada-pizarra{padding:clamp(1.1rem,4vw,3.25rem)}
+.estado{display:inline-flex;align-items:center;gap:var(--s-2);background:var(--blanco);border-radius:.4rem;padding:.4rem .85rem;font:600 .85rem/1.2 var(--texto);color:var(--tinta);margin-bottom:var(--s-5)}
+.estado::before{content:"";flex:none;width:.55rem;height:.55rem;border-radius:50%;background:#2f9e5b;box-shadow:0 0 0 0 rgba(47,158,91,.5);animation:latido 2s infinite}
+@keyframes latido{70%{box-shadow:0 0 0 8px rgba(47,158,91,0)}100%{box-shadow:0 0 0 0 rgba(47,158,91,0)}}
+.pizarra .estado{background:rgba(255,255,255,.08);color:var(--tiza);border:1px dashed var(--tiza-tenue)}
+/* Josefin es ancha en las mayúsculas y las palabras largas: a 345 px una de 13 letras tiene que caber con holgura en la pizarra (marco y relleno incluidos). */
+.portada h1{font-size:clamp(1.7rem,.85rem + 3.3vw,3.6rem);line-height:1.08;margin-bottom:var(--s-4);text-wrap:balance}
+.entradilla{font-size:clamp(1.05rem,1rem + .35vw,1.25rem);color:var(--gris);max-width:46ch;margin-bottom:var(--s-6)}
+.pizarra .entradilla{color:var(--tiza-suave)}
+.acciones{display:flex;flex-wrap:wrap;gap:var(--s-3)}
+.portada-datos{list-style:none;margin:var(--s-6) 0 0;padding:var(--s-5) 0 0;border-top:2px dashed var(--filete);display:flex;flex-wrap:wrap;gap:var(--s-3) var(--s-6);font-weight:600}
+.portada-datos li{display:flex;align-items:center;gap:var(--s-2);min-width:0;overflow-wrap:anywhere}
+.portada-datos svg{flex:none;width:1.15rem;height:1.15rem;color:var(--tomate)}
+.portada-datos a{text-decoration:none}
+.portada-datos a:hover{text-decoration:underline}
+.pizarra .portada-datos{border-top-color:rgba(199,207,200,.35)}
+.pizarra .portada-datos svg{color:var(--tomate-claro)}
+.portada-foto{position:relative;justify-self:center;width:min(100%,26rem);padding-top:var(--s-5)}
+.portada-foto .cinta img,.portada-foto .foto-vacia{aspect-ratio:4/5}
+@media (max-width:999px){.portada-foto{width:min(100% - 1rem,24rem)}.portada-foto .cinta img,.portada-foto .foto-vacia{aspect-ratio:5/4}}
+/* La etiqueta de papel colgada de su hilo: el hilo se ve por el ojal */
+.colgante{position:absolute;z-index:2;top:-.6rem;right:clamp(.75rem,4vw,1.5rem);width:6.5rem;padding-top:2.4rem;transform-origin:50% 0;animation:balanceo 2.6s ease-in-out .5s both}
+.colgante::before{content:"";position:absolute;left:50%;top:0;width:2px;height:3.3rem;margin-left:-1px;background:var(--tinta-2)}
+.portada-foto:hover .colgante,.kv-panoramica-foto:hover .colgante,.pizarra-abanico:hover .colgante,.colgante:hover{animation:balanceo-otra 1.8s ease-in-out both}
+@keyframes balanceo{0%{transform:rotate(16deg)}22%{transform:rotate(-10deg)}44%{transform:rotate(6deg)}66%{transform:rotate(-3deg)}100%{transform:rotate(2deg)}}
+@keyframes balanceo-otra{0%{transform:rotate(2deg)}20%{transform:rotate(-12deg)}42%{transform:rotate(8deg)}64%{transform:rotate(-4deg)}100%{transform:rotate(2deg)}}
+.colgante-cuerpo{display:flex;flex-direction:column;align-items:center;gap:.2rem;padding:1.6rem .5rem .85rem;color:var(--tinta);text-align:center;background:radial-gradient(circle at 50% .9rem,transparent .27rem,var(--kraft-osc) .29rem .4rem,var(--kraft) .41rem);clip-path:polygon(24% 0,76% 0,100% 16%,100% 100%,0 100%,0 16%);filter:drop-shadow(0 6px 8px rgba(43,33,25,.25))}
+.colgante-cuerpo strong{font:700 2rem/1 var(--display)}
+.colgante-estrellas{display:inline-flex;gap:1px;color:var(--oro)}
+.colgante-estrellas svg{width:.78rem;height:.78rem}
+.colgante-icono{width:1.9rem;height:1.9rem;color:var(--tomate)}
+.colgante-cuerpo small{font:600 .68rem/1.2 var(--texto);text-transform:uppercase;letter-spacing:.1em}
+
+/* Cifras: etiquetas de papel con su ojal */
+.cifras{padding-block:0 var(--s-8);background:var(--mantel)}
+.cifras .rejilla{gap:var(--s-5) var(--s-6)}
+.cifra{position:relative;display:flex;flex-direction:column;justify-content:center;gap:.35rem;min-height:7.5rem;padding:var(--s-4) var(--s-5) var(--s-4) 3.6rem;color:var(--tinta);background:radial-gradient(circle at 1.75rem 50%,var(--mantel) 0 .3rem,var(--kraft-osc) .32rem .46rem,transparent .48rem),var(--kraft);clip-path:polygon(1.15rem 0,100% 0,100% 100%,1.15rem 100%,0 50%);transform-origin:1.75rem 50%;rotate:-1.2deg;transition:rotate .7s cubic-bezier(.3,1.7,.5,1)}
+.cifra:nth-child(even){rotate:1deg}
+.cifra:hover{rotate:-5deg}
+.cifra-valor{display:block;font:700 clamp(2.1rem,1.5rem + 2vw,2.9rem)/1 var(--display);overflow-wrap:anywhere}
+.cifra-etiqueta{display:block;color:var(--tinta-2);font-weight:600;overflow-wrap:anywhere}
+
+/* Servicios: la carta, cada uno en su plato */
+.servicio{background:var(--blanco);border:1px solid var(--filete);border-radius:var(--radio);padding:var(--s-5) 1.4rem var(--s-6);display:flex;flex-direction:column;gap:var(--s-3);transition:transform .3s ease,box-shadow .3s ease}
+.servicio h3{margin:var(--s-2) 0 0}
+.servicio p{margin:0;color:var(--gris);overflow-wrap:anywhere}
+.servicio:hover{transform:translateY(-4px);box-shadow:0 18px 36px -20px rgba(43,33,25,.4)}
+.servicio:hover .plato,.lista-iconos li:hover .plato{transform:rotate(-200deg);background:var(--tomate);color:var(--blanco);box-shadow:inset 0 0 0 5px var(--tomate),inset 0 0 0 7px color-mix(in oklab,var(--blanco),transparent 45%)}
+
+/* Quiénes somos: la foto del equipo sujeta con cinta */
+.sobre{display:grid;gap:var(--s-6) var(--s-8);grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr));align-items:start}
+.sobre>*{min-width:0}
+.sobre h2{font-size:clamp(1.9rem,1rem + 2.4vw,3.2rem)}
+.sobre-firma{display:block;font:italic 400 1.6rem/1.2 var(--display);color:var(--tomate);margin-bottom:var(--s-2)}
+.cinta--foto{max-width:26rem;margin:var(--s-6) 0 0 .5rem;transform:rotate(-2deg)}
+.cinta--foto img{aspect-ratio:4/3}
+.texto-rico{font-size:1.1rem;overflow-wrap:anywhere}
+.texto-rico>p:first-child{font:400 clamp(1.35rem,1.1rem + 1vw,1.8rem)/1.35 var(--display);color:var(--tinta)}
+.texto-rico ul{list-style:none;padding:0;margin:0 0 var(--s-4);display:grid;gap:var(--s-2)}
+.texto-rico li{position:relative;padding-left:var(--s-6)}
+.texto-rico li::before{content:"";position:absolute;left:.15rem;top:.5em;width:.7rem;height:.7rem;border-radius:50%;background:var(--tomate);box-shadow:inset -2px -2px 0 rgba(0,0,0,.18)}
+.texto-rico strong{font-weight:700}
+.texto-rico>p:first-child strong{font-weight:700;color:var(--tomate)}
+.texto-rico a{color:var(--tomate);font-weight:600;text-underline-offset:3px}
+
+/* Proceso: comandas de cocina colgadas de la barra */
+.pasos{counter-reset:paso;list-style:none;position:relative;margin:0;padding:var(--s-6) 0 var(--s-4);display:grid;gap:var(--s-7) var(--s-5);grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr))}
+.pasos::before{content:"";position:absolute;left:0;right:0;top:0;height:.5rem;border-radius:.3rem;background:linear-gradient(#e2ddd4,#9c958a);box-shadow:0 2px 4px rgba(43,33,25,.25)}
+.paso{position:relative;counter-increment:paso;min-width:0;background:var(--blanco);padding:var(--s-5) var(--s-5) var(--s-6);box-shadow:0 16px 26px -20px rgba(43,33,25,.55);transform-origin:50% -1.5rem;rotate:-1deg;transition:rotate .7s cubic-bezier(.3,1.7,.5,1)}
+.paso:nth-child(even){rotate:1.2deg}
+.paso:hover{rotate:0deg}
+.paso::before{content:"";position:absolute;top:-1.55rem;left:50%;width:1rem;height:2.1rem;margin-left:-.5rem;border-radius:.3rem;background:linear-gradient(90deg,#b9b2a6,#efeae1 50%,#b9b2a6)}
+.paso::after{content:"";position:absolute;left:0;right:0;bottom:-11px;height:12px;background:linear-gradient(-45deg,transparent 6px,var(--blanco) 0) 0 0/12px 12px repeat-x,linear-gradient(45deg,transparent 6px,var(--blanco) 0) 0 0/12px 12px repeat-x}
+.paso-marca{display:flex;align-items:baseline;justify-content:space-between;gap:var(--s-3);padding-bottom:var(--s-3);margin-bottom:var(--s-4);border-bottom:2px dashed var(--filete);font:600 .75rem/1 var(--texto);letter-spacing:.16em;text-transform:uppercase;color:var(--gris)}
+.paso-marca::before{content:"Comanda"}
+.paso-marca::after{content:"Nº " counter(paso,decimal-leading-zero);font:700 1.45rem/1 var(--display);letter-spacing:0;color:var(--tomate)}
+.paso h3{margin-bottom:var(--s-2)}
+.paso p{color:var(--gris);margin:0;overflow-wrap:anywhere}
+
+/* Garantías: sobre el mantel de cuadros */
+.seccion--cuadros{background:linear-gradient(90deg,color-mix(in oklab,var(--tomate),transparent 84%) 50%,transparent 0) 0 0/2.6rem 2.6rem,linear-gradient(color-mix(in oklab,var(--tomate),transparent 84%) 50%,transparent 0) 0 0/2.6rem 2.6rem,var(--blanco)}
+.cabeza--servilleta{width:fit-content;max-width:min(100%,44rem);background:var(--blanco);padding:clamp(1rem,3vw,1.5rem) clamp(.85rem,4vw,2rem);border-radius:var(--radio);box-shadow:0 14px 30px -22px rgba(43,33,25,.5)}
+.garantia{display:flex;gap:var(--s-4);align-items:flex-start;padding:var(--s-5);background:var(--blanco);border-radius:var(--radio);box-shadow:0 14px 30px -22px rgba(43,33,25,.5)}
+.garantia>div{min-width:0}
+.garantia h3{margin-bottom:var(--s-2)}
+.garantia p{margin:0;color:var(--gris);overflow-wrap:anywhere}
+.garantia:hover .plato{transform:rotate(-20deg)}
+
+/* Precios: la pizarra del día, con puntos guía hasta el precio */
+.seccion--pared{background:var(--papel)}
+.pizarra--carta{max-width:62rem;margin-inline:auto;padding:clamp(1.5rem,5vw,4rem) clamp(1.1rem,5vw,4.5rem)}
+.pizarra--carta .cabeza{text-align:center;margin:0 auto var(--s-7)}
+.pizarra--carta .rotulo::after{content:"";flex:none;width:1.6rem;height:2px;border-radius:2px;background:currentColor}
+.carta{list-style:none;margin:0;padding:0;display:grid;gap:var(--s-5)}
+.carta-fila{display:flex;align-items:flex-end;align-items:last baseline;gap:var(--s-3)}
+.carta-fila h3{flex:0 1 auto;min-width:0;margin:0;font-size:clamp(1.2rem,1rem + .8vw,1.6rem);font-weight:600}
+.puntos{flex:1 1 2rem;min-width:1.25rem;border-bottom:3px dotted var(--tiza-tenue);transform:translateY(-.3em)}
+.precio{flex:0 0 auto;max-width:48%;margin:0;font:700 clamp(1.2rem,1rem + .9vw,1.65rem)/1.15 var(--display);color:var(--tomate-claro);text-align:right;overflow-wrap:anywhere}
+/* En el móvil la pizarra es estrecha: el plato va en su línea y los puntos llevan hasta el precio en la de abajo. */
+@media (max-width:520px){.carta-fila{flex-wrap:wrap;row-gap:.1rem}.carta-fila h3{flex-basis:100%}.precio{max-width:80%}}
+.carta-detalle{margin:.4rem 0 0;color:var(--tiza-suave);font-size:.98rem;max-width:60ch;overflow-wrap:anywhere}
+.pizarra .nota{color:var(--tiza-suave);justify-content:center;text-align:left}
+.nota{display:flex;gap:var(--s-2);align-items:flex-start;font-size:.95rem;color:var(--gris);margin:var(--s-7) 0 0}
+.nota svg{flex:none;width:1.1rem;height:1.1rem;margin-top:.2rem;color:var(--mostaza)}
+.js .carta .aparece{opacity:1;transform:none;clip-path:inset(0 100% 0 0);transition:clip-path 1.2s steps(24,end);transition-delay:calc(var(--i,0) * 260ms)}
+.js .carta .aparece.visto{clip-path:inset(-.3em -.3em -.3em 0)}
+
+/* Opiniones: notas pegadas con cinta y la nota en una pizarrita */
+.opiniones-cabeza{display:grid;gap:var(--s-5) var(--s-7);grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr));align-items:center;margin-bottom:var(--s-7)}
+.opiniones-cabeza>*{min-width:0}
+.opiniones-cabeza h2{margin:0}
+.nota-google{display:flex;align-items:center;gap:var(--s-5);justify-self:start}
+.nota-pizarra{flex:none;width:8.5rem;height:7rem;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.35rem;background:var(--textura),var(--pizarra);color:var(--tiza);border:.4rem solid var(--madera);border-radius:.3rem;box-shadow:0 14px 24px -14px rgba(43,33,25,.6);rotate:-3deg;transition:rotate .6s cubic-bezier(.3,1.7,.5,1)}
+.nota-google:hover .nota-pizarra{rotate:2deg}
+.nota-pizarra strong{font:700 2.6rem/1 var(--display)}
+.nota-pizarra .estrellas{color:var(--mostaza)}
+.nota-google p{margin:0;color:var(--gris)}
+.nota-google a{color:var(--tomate);font-weight:600}
+.citas{list-style:none;padding:var(--s-3) 0 0;margin:0 0 var(--s-7);gap:var(--s-7) var(--s-5)}
+.cita{position:relative;display:flex;flex-direction:column;background:var(--blanco);padding:var(--s-6) var(--s-5) var(--s-5);box-shadow:0 16px 28px -22px rgba(43,33,25,.55);rotate:-.8deg;transition:rotate .5s ease}
+.cita:nth-child(even){rotate:.9deg}
+.cita:hover{rotate:0deg}
+.cita::before{content:"";position:absolute;top:-.7rem;left:50%;width:5.5rem;height:1.5rem;margin-left:-2.75rem;background:color-mix(in oklab,var(--kraft),transparent 22%);clip-path:polygon(0 10%,5% 0,12% 8%,20% 0,100% 4%,96% 30%,100% 55%,95% 80%,100% 100%,82% 94%,70% 100%,0 96%,4% 70%,0 45%)}
+.cita h3{font-size:1.3rem;color:var(--tomate)}
+.cita p{margin:0 0 var(--s-4);font-size:1.06rem}
+.cita-autor{margin-top:auto;font-size:.88rem;font-weight:600;color:var(--gris)}
+.resenas{margin-bottom:var(--s-4)}
+.resena{margin:0;background:var(--blanco);border:1px solid var(--filete);border-radius:var(--radio);padding:var(--s-5);display:flex;flex-direction:column}
+.resena-estrellas{color:var(--oro);letter-spacing:.12em;font-size:1.05rem}
+.resena blockquote{margin:var(--s-3) 0 var(--s-4)}
+.resena blockquote p{margin:0}
+.resena figcaption{margin-top:auto;font-size:.88rem;color:var(--gris)}
+.resena figcaption a{color:var(--tinta)}
+.atribucion-google{font-size:.85rem;color:var(--gris);margin:var(--s-4) 0 0}
+
+/* Preguntas: una hoja de la libreta de la barra */
+.faq{display:grid;gap:var(--s-6) var(--s-8);grid-template-columns:minmax(0,1fr)}
+@media (min-width:1000px){.faq{grid-template-columns:minmax(0,1fr) minmax(0,1.5fr)}}
+/* La columna es estrecha: un título largo del cliente no cabe al tamaño de los demás sin partir palabras. */
+.faq-lado h2{font-size:clamp(1.8rem,1rem + 1.8vw,2.5rem)}
+.faq-lado p:not(.rotulo){color:var(--gris)}
+.faq-telefono{display:inline-flex;align-items:center;gap:var(--s-2);font:700 1.6rem/1.1 var(--display);color:var(--tinta);text-decoration:none;overflow-wrap:anywhere}
+.faq-telefono svg{flex:none;width:1.2rem;height:1.2rem;color:var(--tomate)}
+.faq-telefono:hover{color:var(--tomate)}
+.preguntas{display:grid;align-content:start;background:var(--blanco);border-radius:var(--radio);padding:var(--s-2) clamp(1rem,3vw,1.75rem);box-shadow:0 18px 34px -26px rgba(43,33,25,.55)}
+.preguntas details{border-bottom:2px dotted var(--filete)}
+.preguntas details:last-child{border-bottom:0}
+.preguntas summary{cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;gap:var(--s-4);padding:var(--s-4) 0;font-weight:600;font-size:1.08rem;overflow-wrap:anywhere}
+.preguntas summary::-webkit-details-marker{display:none}
+.preguntas summary::after{content:"";flex:none;width:1.8rem;height:1.8rem;border-radius:50%;background:linear-gradient(var(--blanco),var(--blanco)) center/.8rem 2px no-repeat,linear-gradient(var(--blanco),var(--blanco)) center/2px .8rem no-repeat,var(--tomate);transition:transform .3s ease}
+.preguntas details[open] summary::after{transform:rotate(45deg)}
+.preguntas summary:hover{color:var(--tomate)}
+.respuesta{padding:0 0 var(--s-5);color:var(--gris);overflow-wrap:anywhere}
+.respuesta p:last-child{margin-bottom:0}
+
+/* Zona: etiquetas de papel, una por pueblo */
+.zona{display:grid;gap:var(--s-6) var(--s-8);grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr));align-items:center}
+.zona>*{min-width:0}
+.etiquetas{list-style:none;margin:0;padding:var(--s-2);display:flex;flex-wrap:wrap;gap:var(--s-4) var(--s-3)}
+.etiquetas li{display:inline-flex;align-items:center;gap:var(--s-2);min-width:0;max-width:100%;padding:.6rem 1.15rem .55rem 2.1rem;background:radial-gradient(circle at 1rem 50%,var(--papel) 0 .22rem,var(--kraft-osc) .24rem .34rem,transparent .36rem),var(--kraft);clip-path:polygon(.75rem 0,100% 0,100% 100%,.75rem 100%,0 50%);font:600 1.12rem/1.2 var(--display);color:var(--tinta);overflow-wrap:anywhere;transform-origin:1rem 50%;rotate:-2deg;transition:rotate .7s cubic-bezier(.3,1.7,.5,1)}
+.etiquetas li:nth-child(even){rotate:1.5deg}
+.etiquetas li:hover{rotate:-7deg}
+.etiquetas svg{flex:none;width:1rem;height:1rem;color:var(--tomate)}
+
+/* Llamada: la pizarra de la puerta, bajo el toldo */
+.llamada{position:relative;overflow-x:clip;background:var(--mantel);padding:0 0 clamp(3.5rem,8vw,6rem);text-align:center}
+.toldo{height:clamp(3.4rem,6vw,4.4rem);margin-bottom:clamp(2.5rem,6vw,4rem);background:linear-gradient(rgba(0,0,0,.14),transparent 45%),repeating-linear-gradient(90deg,var(--tomate) 0 3rem,var(--blanco) 3rem 6rem);-webkit-mask:linear-gradient(#000 0 0) 0 0/100% calc(100% - 1.5rem) no-repeat,radial-gradient(circle 1.5rem at 50% 0,#000 97%,transparent) 0 100%/3rem 1.5rem repeat-x;mask:linear-gradient(#000 0 0) 0 0/100% calc(100% - 1.5rem) no-repeat,radial-gradient(circle 1.5rem at 50% 0,#000 97%,transparent) 0 100%/3rem 1.5rem repeat-x;transform-origin:50% 0;animation:toldo 6s ease-in-out infinite}
+@keyframes toldo{0%,100%{transform:scaleY(1)}50%{transform:scaleY(1.06)}}
+.pizarra--puerta{max-width:48rem;margin-inline:auto;padding:clamp(1.75rem,5vw,3.5rem) clamp(1.1rem,5vw,3.5rem)}
+.llamada h2{font-size:clamp(1.9rem,1.1rem + 3vw,3.6rem);max-width:20ch;margin:0 auto var(--s-6)}
+.js .pizarra--puerta .escribe{clip-path:inset(-.2em 100% -.2em 0);transition:clip-path 1.6s steps(28,end) .5s}
+.js .pizarra--puerta.visto .escribe{clip-path:inset(-.2em -.2em -.2em 0)}
+.llamada-telefono{display:inline-flex;align-items:center;gap:var(--s-3);max-width:100%;font:700 clamp(1.6rem,1rem + 3vw,3rem)/1.1 var(--display);color:var(--tiza);text-decoration:none;overflow-wrap:anywhere;padding-bottom:.3rem;border-bottom:3px dashed var(--tomate-claro);transition:border-color .2s ease}
+.llamada-telefono:hover{border-bottom-style:solid}
+.llamada-telefono svg{flex:none;width:clamp(1.3rem,3.2vw,2.1rem);height:clamp(1.3rem,3.2vw,2.1rem);color:var(--tomate-claro);animation:timbre 3s ease-in-out infinite}
+@keyframes timbre{0%,60%,100%{transform:rotate(0)}65%{transform:rotate(-14deg)}70%{transform:rotate(12deg)}75%{transform:rotate(-10deg)}80%{transform:rotate(6deg)}85%{transform:rotate(0)}}
+
+/* Contacto: los datos a tiza; el formulario, en papel con su tira de mantel */
+.contacto{display:grid;gap:var(--s-6);grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr))}
+.contacto>*{min-width:0}
+.contacto-datos{padding:clamp(1.25rem,4vw,3rem);display:flex;flex-direction:column;gap:var(--s-4)}
+/* Dentro de una pizarra con marco y a media anchura: más pequeño que los demás h2. */
+.contacto-datos h2{font-size:clamp(1.7rem,1rem + 1.5vw,2.5rem)}
+.dato{display:flex;gap:var(--s-3);align-items:flex-start;overflow-wrap:anywhere;margin:0}
+.dato>span:last-child,.dato>div:last-child{min-width:0;padding-top:.45rem}
+.dato a{color:var(--tiza);font-weight:600}
+.dato-grande a{font:700 1.8rem/1.1 var(--display);text-decoration:none}
+.contacto table{border-collapse:collapse;width:100%}
+.contacto th,.contacto td{text-align:left;padding:var(--s-1) 0;vertical-align:top}
+.contacto th{padding-right:var(--s-4);color:var(--tiza-suave);font-weight:500}
+.formulario{background:linear-gradient(90deg,var(--tomate) 50%,transparent 0) 0 0/1.1rem .55rem repeat-x,linear-gradient(90deg,color-mix(in oklab,var(--tomate),transparent 55%) 50%,transparent 0) .55rem 0/1.1rem .55rem repeat-x,var(--blanco);border-radius:.3rem;padding:clamp(1.5rem,4vw,3rem);padding-top:calc(clamp(1.5rem,4vw,3rem) + .55rem);display:flex;flex-direction:column;box-shadow:0 22px 40px -28px rgba(43,33,25,.55)}
+.formulario h3{font-size:2rem}
+form label{display:block;font-weight:600;font-size:.92rem;margin:var(--s-4) 0 var(--s-2)}
+form input,form textarea{width:100%;font:inherit;padding:var(--s-3) var(--s-4);border:2px solid var(--filete);border-radius:.45rem;background:var(--papel);color:var(--tinta);transition:border-color .2s ease,background .2s ease}
+form input:focus,form textarea:focus{outline:none;border-color:var(--tomate);background:var(--blanco)}
+form .boton{margin-top:var(--s-6);align-self:flex-start}
+form .boton[disabled]{opacity:.55;cursor:not-allowed}
+.form-nota{font-size:.9rem;color:var(--gris);margin:var(--s-4) 0 0}
+
+/* Bloques */
+.aviso-banda{padding-block:var(--s-5) 0;background:var(--mantel)}
+.aviso{position:relative;display:flex;gap:var(--s-4);align-items:center;background:var(--kraft);color:var(--tinta);padding:var(--s-3) var(--s-5);box-shadow:0 10px 22px -16px rgba(43,33,25,.55);overflow-wrap:anywhere;rotate:-.4deg}
+.aviso::before{content:"";position:absolute;top:-.55rem;left:-.7rem;width:4.5rem;height:1.3rem;background:color-mix(in oklab,var(--blanco),transparent 35%);transform:rotate(-28deg);box-shadow:0 1px 2px rgba(43,33,25,.15)}
+.aviso>div{min-width:0}
+.aviso strong{margin-right:var(--s-2)}
+.aviso p{display:inline;margin:0}
+.texto-foto{display:grid;gap:var(--s-6) var(--s-8);grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr));align-items:center}
+.texto-foto>*{min-width:0}
+.texto-foto .cinta{margin:0 auto;justify-self:center}
+.lista-iconos{list-style:none;padding:0;margin:var(--s-5) 0 0;display:grid;gap:var(--s-3) var(--s-5);grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr))}
+.lista-iconos li{display:flex;gap:var(--s-3);align-items:center;min-width:0;font-weight:600;overflow-wrap:anywhere}
+.lista-iconos .plato{width:2.6rem;height:2.6rem;box-shadow:inset 0 0 0 3px var(--blanco),inset 0 0 0 4.5px var(--filete)}
+.lista-iconos .plato svg{width:1.1rem;height:1.1rem}
+
+/* Páginas interiores y blog: la cabecera es una pizarra */
+.cabecera-pagina{position:relative;background:var(--textura),var(--pizarra);color:var(--tiza);padding-block:clamp(3.25rem,7vw,5.5rem) clamp(2.25rem,5vw,3.5rem);border-bottom:.6rem solid var(--madera)}
+.cabecera-pagina .rotulo{color:var(--tomate-claro)}
+.cabecera-pagina h1{font-size:clamp(2rem,1.1rem + 3.2vw,3.9rem);margin:0;max-width:20ch;color:var(--tiza);text-shadow:0 0 1px rgba(244,241,232,.5)}
+.blog-pagina{padding-bottom:var(--s-8)}
+.blog-pagina .cabecera-pagina{margin-bottom:var(--s-7)}
+.cabecera-pagina .lead{margin:var(--s-4) 0 0;color:var(--tiza-suave)}
+.entradas{display:grid;gap:var(--s-6) var(--s-5);grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr))}
+.entradas>*{min-width:0}
+.entrada{position:relative;display:flex;flex-direction:column;background:var(--blanco);border:1px solid var(--filete);border-radius:var(--radio);overflow:hidden;transition:transform .3s ease,box-shadow .3s ease}
+.entrada:hover{transform:translateY(-4px);box-shadow:0 18px 36px -20px rgba(43,33,25,.4)}
+.entrada img{width:100%;aspect-ratio:16/10;object-fit:cover}
+.entrada-motivo{height:6rem;background:linear-gradient(90deg,color-mix(in oklab,var(--tomate),transparent 80%) 50%,transparent 0) 0 0/1.5rem 1.5rem,linear-gradient(color-mix(in oklab,var(--tomate),transparent 80%) 50%,transparent 0) 0 0/1.5rem 1.5rem,var(--blanco)}
+.entrada-cuerpo{display:flex;flex-direction:column;gap:var(--s-2);flex:1;padding:var(--s-5)}
+.entrada h2{font-size:1.55rem;line-height:1.15;margin:0}
+.entrada h2 a{text-decoration:none}
+.entrada h2 a::after{content:"";position:absolute;inset:0}
+.entrada:hover h2 a{color:var(--tomate)}
+.entrada p{margin:0;color:var(--gris);overflow-wrap:anywhere}
+.leer{margin-top:auto;padding-top:var(--s-3);font-weight:600;color:var(--tomate)}
+.leer::after{content:" \2192"}
+time{font-size:.85rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--gris)}
+.articulo{max-width:46rem}
+.articulo h1{font-size:clamp(2.1rem,1.2rem + 3vw,3.6rem);margin:var(--s-5) 0 var(--s-4)}
+.articulo>img{width:100%;margin:var(--s-5) 0;border-radius:var(--radio)}
+.articulo .cuerpo{font-size:1.15rem;overflow-wrap:anywhere;margin-top:var(--s-5)}
+.articulo .cuerpo>p:first-child{font-size:1.15rem;font-family:var(--texto);line-height:1.65}
+.articulo .cuerpo h2{font-size:2rem;margin-top:var(--s-7)}
+.articulo .cuerpo h3{font-size:1.5rem;margin-top:var(--s-5)}
+.volver{display:inline-flex;align-items:center;gap:var(--s-2);font-weight:600;color:var(--tomate);text-decoration:none}
+.volver::before{content:"\2190"}
+
+/* Pie: la última pizarra, con su repisa de madera */
+.pie{background:var(--textura),var(--pizarra);color:var(--tiza-suave);border-top:.7rem solid var(--madera);padding-block:var(--s-8) var(--s-6);font-size:.98rem}
+.pie .pie-nombre{font:700 clamp(2.1rem,1rem + 4vw,4.4rem)/1.05 var(--display);color:var(--tiza);text-shadow:0 0 1px rgba(244,241,232,.5);margin:0 0 var(--s-7);overflow-wrap:anywhere}
+.pie-rejilla{display:grid;gap:var(--s-5);grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));padding-bottom:var(--s-6)}
+.pie-rejilla>*{min-width:0;overflow-wrap:anywhere}
+.pie h3{font:600 .8rem/1.2 var(--texto);text-transform:uppercase;letter-spacing:.16em;color:var(--tomate-claro);margin-bottom:var(--s-3);text-shadow:none}
+.pie p{margin:0 0 var(--s-2)}
+.pie a{color:var(--tiza)}
+.pie-legal{display:flex;flex-wrap:wrap;gap:var(--s-2) var(--s-5);padding-top:var(--s-5);border-top:2px dashed var(--pizarra-3);font-size:.9rem}
+
+/* Datos de ejemplo (los marca el sistema) */
+.dato-ejemplo{text-decoration:underline dashed currentColor;text-decoration-thickness:1px;text-underline-offset:4px}
+.dato-ejemplo::after{content:"ejemplo";display:inline-block;font:700 .62rem/1 var(--texto);text-transform:uppercase;letter-spacing:.08em;background:var(--mostaza);color:var(--tinta);padding:3px 7px;border-radius:.3rem;margin-left:6px;vertical-align:middle}
+.dato-ejemplo-bloque{outline:2px dashed var(--mostaza);outline-offset:6px}
+.leyenda-ejemplos{position:fixed;left:var(--s-4);bottom:var(--s-4);z-index:60;max-width:22rem;margin:0;background:var(--pizarra);color:var(--tiza);font-size:.85rem;padding:var(--s-3) var(--s-4);border-radius:.5rem;box-shadow:0 10px 30px rgba(0,0,0,.3);border-left:4px solid var(--mostaza)}
+
+/* Aparición al hacer scroll: solo si el JavaScript arrancó. Los giros de
+   etiquetas, comandas y notas van en «rotate», aparte del «transform» que
+   anima esto, para que no se pisen. */
+.js .aparece{opacity:0;transform:translateY(22px);transition:opacity .7s ease,transform .8s cubic-bezier(.2,.8,.2,1),rotate .7s cubic-bezier(.3,1.7,.5,1);transition-delay:calc(var(--i,0) * 80ms)}
+.js .aparece.visto{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.js .aparece{opacity:1;transform:none}.js .carta .aparece,.js .pizarra--puerta .escribe{clip-path:none}}
+/* Las variantes de sección a la manera de Pizarra: las piezas
+   seccion@variante.html usan el esqueleto del motor (clases kv-*, que traen
+   el diseño de cada disposición) y le ponen lo que hace a Pizarra: la
+   pizarra con marco y el titular a tiza, la etiqueta colgada con la nota de
+   Google, el rótulo con su raya, los botones con canto y los platos de los
+   iconos. Ojo: el motor fija .kv svg a 1,25rem; los SVG propios lo corrigen. */
+/* La etiqueta entra balanceándose y el titular se escribe: los dos asoman
+   un poco por la derecha mientras dura. clip, no hidden: no crea otra caja de scroll. */
+.kv-portada.pizarra-variante{overflow-x:clip}
+.pizarra-variante .cabeza{margin-bottom:0}
+.pizarra-variante .estado{margin-bottom:var(--s-5)}
+.pizarra-variante .acciones{margin-top:var(--s-6)}
+.pizarra-variante .trazo{width:min(100%,15rem);height:1rem}
+.pizarra-variante .colgante-estrellas svg{width:.78rem;height:.78rem}
+.pizarra-variante .colgante-icono{width:1.9rem;height:1.9rem}
+.pizarra-variante .foto-vacia svg{width:30%;height:30%}
+.pizarra-variante .plato svg{width:1.5rem;height:1.5rem}
+.pizarra-variante .plato--marca svg{width:1.2rem;height:1.2rem}
+.kv-portada--panoramica.pizarra-variante{background:var(--mantel)}
+.kv-portada--panoramica.pizarra-variante .kv-titular{font-size:clamp(1.9rem,.8rem + 4.4vw,5rem);line-height:1.05}
+.kv-portada--panoramica.pizarra-variante .kv-entradilla{color:var(--gris)}
+.kv-portada--panoramica.pizarra-variante .acciones{margin:0}
+.pizarra-variante .kv-panoramica-foto{position:relative;border-top:.6rem solid var(--madera)}
+.pizarra-variante .kv-panoramica-foto .colgante{top:-.6rem;right:clamp(1rem,6vw,5rem)}
+.pizarra-variante .kv-datos{border-top:.35rem solid var(--tomate)}
+.kv-portada--sangre.pizarra-variante>.colgante{top:0;right:clamp(1rem,6vw,5rem);z-index:1}
+.pizarra-variante .kv-tarjeta.pizarra{background:var(--textura),var(--pizarra);max-width:38rem;border-radius:.4rem;box-shadow:inset 0 0 0 2px rgba(0,0,0,.3),inset 0 0 70px rgba(0,0,0,.45),0 0 0 1px var(--madera-2),0 30px 60px -24px rgba(0,0,0,.7)}
+.pizarra-variante .kv-tarjeta .kv-titular{color:var(--tiza)}
+.pizarra-variante .kv-tarjeta .kv-entradilla{color:var(--tiza-suave)}
+.pizarra-variante .kv-tarjeta .portada-datos{margin-top:var(--s-5);padding-top:var(--s-4)}
+.kv-portada--centrada.pizarra-variante{background:var(--textura),var(--pizarra);color:var(--tiza);border-block:.7rem solid var(--madera)}
+.kv-portada--centrada.pizarra-variante .kv-titular{color:var(--tiza);text-shadow:0 0 1px rgba(244,241,232,.5);font-size:clamp(1.8rem,.85rem + 3.8vw,4.4rem)}
+.kv-portada--centrada.pizarra-variante .kv-entradilla{color:var(--tiza-suave)}
+.kv-portada--centrada.pizarra-variante .estado{background:rgba(255,255,255,.08);color:var(--tiza);border:1px dashed var(--tiza-tenue)}
+.kv-portada--centrada.pizarra-variante .trazo{margin:-.4rem auto var(--s-5)}
+.pizarra-abanico{position:relative}
+.pizarra-abanico .colgante{top:auto;bottom:-1rem;right:auto;left:clamp(0rem,8vw,7rem);padding-top:0}
+.pizarra-abanico .colgante::before{display:none}
+.kv-formulario-lado.pizarra{background:var(--textura),var(--pizarra)}
+.pizarra-variante .kv-formulario-fondo{opacity:.22;mix-blend-mode:luminosity}
+.pizarra-variante .kv-formulario-texto .portada-datos{margin-top:var(--s-6)}
+/* El formulario es papel dentro de la pizarra: sin esto hereda la tiza y las etiquetas salen blanco sobre blanco (el laboratorio no lo mide, el papel lleva background-image). */
+.pizarra-variante .kv-formulario{border-radius:.3rem;color:var(--tinta)}
+.kv-portada--centrada.pizarra-variante .acciones{justify-content:center}
+.pizarra-variante .kv-formulario .rotulo{margin-bottom:var(--s-2)}
+.pizarra-variante .kv-formulario h2{font-size:clamp(1.5rem,1.1rem + 1.2vw,2rem);color:var(--tinta);text-shadow:none}
+.pizarra-variante .kv-formulario .boton{margin-top:var(--s-5);align-self:stretch}
+.pizarra-variante .kv-checks .plato--marca{width:2.3rem;height:2.3rem}
+.pizarra-variante .kv-checks .plato--marca svg{width:1rem;height:1rem}
+.pizarra-variante .kv-zigzag-icono{background:none;border:0;box-shadow:none}
+.pizarra-variante .kv-zigzag-icono .plato{width:100%;height:100%;box-shadow:inset 0 0 0 .6rem var(--blanco),inset 0 0 0 calc(.6rem + 2px) var(--filete)}
+.pizarra-variante .kv-zigzag-icono .plato svg{width:38%;height:38%}
+.pizarra-variante .kv-num{font-family:var(--display);color:var(--tomate)}
+.pizarra-variante .kv-indice{border-top-color:var(--tinta)}
+.pizarra-variante .kv-indice>li{align-items:center;border-bottom:2px dotted var(--filete)}
+.pizarra-variante .kv-indice .plato{width:2.75rem;height:2.75rem;box-shadow:inset 0 0 0 3px var(--blanco),inset 0 0 0 4.5px var(--filete)}
+.pizarra-variante .kv-indice .plato svg{width:1.15rem;height:1.15rem}
+.pizarra-variante .kv-mosaico .plato{margin-bottom:auto}
+.pizarra-variante .kv-mosaico .plato svg{width:1.5rem;height:1.5rem;margin:0;padding:0;box-sizing:border-box;color:inherit}
+.pizarra-variante .kv-mosaico h3{margin-top:var(--s-5)}
+.pizarra-variante .kv-mosaico>li:first-child .plato{color:var(--blanco);background:transparent;border-color:color-mix(in oklab,var(--blanco),transparent 50%);box-shadow:none}
+.pizarra-variante .kv-panel>.plato{margin-bottom:var(--s-4);background:var(--blanco);color:var(--tomate);border-radius:50%}
+.pizarra-variante .kv-pestanas-lista .plato{width:auto;height:auto;border:0;box-shadow:none;background:none;color:inherit}
+.pizarra-variante .kv-pestanas-lista .plato svg{width:1.3rem;height:1.3rem}
+.pizarra-variante .kv-zigzag>li:hover .plato,.pizarra-variante .kv-indice>li:hover .plato,.pizarra-variante .kv-mosaico>li:not(:first-child):hover .plato{transform:rotate(-200deg);background:var(--tomate);color:var(--blanco);box-shadow:inset 0 0 0 4px var(--tomate),inset 0 0 0 6px color-mix(in oklab,var(--blanco),transparent 45%)}
+@media (max-width:640px){.kv-portada--sangre.pizarra-variante{padding-top:12rem}.pizarra-variante .kv-indice .plato{display:none}.pizarra-variante .kv-indice>li{grid-template-columns:2.75rem minmax(0,1fr)}}
+/* La pizarra como fondo de sección entera (garantías con iconos, la columna
+   de texto de «sobre» con foto, la trayectoria) y las variables del motor
+   cuando su texto cae sobre ella: --k-suave, --k-borde y el acento de texto
+   pasan a tiza y tomate claro. Ojo: el laboratorio no mide el contraste
+   encima de la textura (lleva background-image); estos pares se eligieron a
+   mano: tiza y tiza suave sobre --pizarra pasan de 10:1, y --tomate-claro
+   sale de plantilla.json contra --pizarra con 4,5 como mínimo. */
+.pizarra-fondo{background:var(--textura),var(--pizarra);color:var(--tiza)}
+section.pizarra-fondo{border-block:.7rem solid var(--madera)}
+.pizarra,.pizarra-fondo{--k-suave:var(--tiza-suave);--k-acento-texto:var(--tomate-claro);--k-borde:rgba(199,207,200,.3);--k-superficie:var(--pizarra-2)}
+.pizarra-fondo h2,.pizarra-fondo h3{color:var(--tiza);text-shadow:0 0 1px rgba(244,241,232,.5)}
+.pizarra-fondo .rotulo{color:var(--tomate-claro)}
+:is(.pizarra,.pizarra-fondo) .sobre-firma{color:var(--tomate-claro)}
+:is(.pizarra,.pizarra-fondo) .texto-rico{color:var(--tiza-suave)}
+:is(.pizarra,.pizarra-fondo) .texto-rico>p:first-child{color:var(--tiza)}
+:is(.pizarra,.pizarra-fondo) .texto-rico>p:first-child strong,:is(.pizarra,.pizarra-fondo) .texto-rico a{color:var(--tomate-claro)}
+:is(.pizarra,.pizarra-fondo) .texto-rico strong{color:var(--tiza)}
+.pizarra-variante:not(.kv-portada) .trazo path,.pizarra-bloque .trazo path{animation-delay:.3s}
+.pizarra-variante:not(.pizarra-fondo) .kv-dentro>.trazo path,.kv-sobre--cita .trazo path{stroke:var(--tomate)}
+/* S1, la cita: la foto es una polaroid con cinta y el texto se lee en el
+   centro del mantel; el titular lleva su trazo de tiza debajo. */
+.kv-sobre--cita.pizarra-variante .rotulo{justify-content:center}
+.kv-sobre--cita.pizarra-variante .trazo{margin:-.4rem auto var(--s-6)}
+.pizarra-retrato{width:fit-content;margin:0 auto var(--s-7);padding:.55rem .55rem 1.6rem}
+.pizarra-retrato .kv-cita-foto{width:clamp(8rem,22vw,11rem);height:auto;aspect-ratio:1;margin:0;border:0;border-radius:0;box-shadow:none}
+.kv-sobre--cita.pizarra-variante .kv-cita-texto>p:first-child{font:italic 400 clamp(1.3rem,1rem + 1.2vw,1.9rem)/1.4 var(--display)}
+.kv-sobre--cita.pizarra-variante .kv-cita-texto>p:first-child::before{font-style:normal;color:var(--tomate)}
+.kv-sobre--cita.pizarra-variante .kv-cita-texto ul{display:inline-grid;max-width:58ch}
+/* S2, foto y texto: la mitad del texto es pizarra con su marco de madera. */
+.kv-sobre--media.pizarra-variante{border-block:.7rem solid var(--madera);background:var(--madera)}
+.pizarra-variante .kv-media-texto.pizarra-fondo{background:var(--textura),var(--pizarra);box-shadow:inset 0 0 70px rgba(0,0,0,.45)}
+@media (min-width:681px){.pizarra-variante .kv-media-texto{border-left:.7rem solid var(--madera)}}
+@media (max-width:680px){.pizarra-variante .kv-media-texto{border-top:.7rem solid var(--madera)}}
+.pizarra-variante .kv-media-foto .foto-vacia{border-radius:0}
+.pizarra-variante .kv-media-foto .foto-vacia svg{width:30%;height:30%}
+.pizarra-variante .kv-cifras{border-top:2px dashed var(--k-borde)}
+.pizarra-variante .kv-cifras strong{font-size:2.4rem}
+/* S3, revista: la capitular es un cuadrito de pizarra escrito a tiza. */
+.kv-sobre--revista.pizarra-variante{background:var(--blanco)}
+.pizarra-variante .kv-revista-cabeza{border-bottom:3px double var(--tinta)}
+.pizarra-variante .kv-revista-cabeza .rotulo{margin-bottom:var(--s-3);font-style:normal;color:var(--tomate)}
+.pizarra-variante .revista-sitio{display:flex;align-items:center;gap:var(--s-3);font-style:normal;color:var(--gris)}
+.pizarra-variante .kv-revista-columnas>p:first-child{font:inherit;font-size:1.15rem;color:var(--tinta)}
+.pizarra-variante .kv-revista-columnas>p:first-child::first-letter{font-size:3.6em;line-height:.85;padding:.12em .16em .02em;margin:.06em .18em 0 0;color:var(--tiza);background:var(--pizarra);border:.12em solid var(--madera);border-radius:.08em}
+/* P1, la línea: la columna del título es una pizarra y los pasos, platos. */
+/* .pizarra trae position:relative y pisaba el sticky del motor; con el
+   top:6rem de .kv-lado, la pizarra bajaba 6rem y tapaba el primer paso a 390 px. */
+.pizarra-lado{padding:clamp(1.5rem,3vw,2.25rem);position:sticky}
+@media (max-width:860px){.pizarra-lado{position:static}}
+.pizarra-lado .acciones{margin-top:var(--s-5)}
+.pizarra-lado .trazo{margin:-.2rem 0 0}
+.pizarra-variante .kv-linea>li::before{background:var(--blanco);color:var(--tomate);border:2px solid var(--filete);box-shadow:inset 0 0 0 4px var(--blanco),inset 0 0 0 5.5px var(--filete);transition:transform .7s cubic-bezier(.3,1.5,.5,1),background .3s ease,color .3s ease}
+.pizarra-variante .kv-linea>li:hover::before{transform:rotate(-200deg);background:var(--tomate);color:var(--blanco)}
+.pizarra-variante .kv-linea>li:not(:last-child)::after{border-left:2px dotted var(--kraft-osc)}
+.pizarra-variante .kv-linea p{color:var(--gris)}
+/* G1, las marcas: una hoja blanca puesta sobre el mantel de cuadros (el texto
+   nunca va directamente sobre los cuadros). */
+.pizarra-hoja{background:var(--blanco);border-radius:var(--radio);padding:clamp(1.25rem,4vw,3rem);box-shadow:0 18px 34px -24px rgba(43,33,25,.55)}
+.pizarra-variante .kv-marcas>li{border-bottom:2px dotted var(--filete)}
+.pizarra-variante .kv-marca.plato{width:2.9rem;height:2.9rem;background:var(--blanco);color:var(--tomate)}
+.pizarra-variante .kv-marcas>li:hover .plato{transform:rotate(-20deg)}
+.pizarra-variante .kv-marcas p{color:var(--gris)}
+/* G2, iconos: la pizarra entera, con los iconos dibujados a tiza. */
+.kv-garantias--iconos.pizarra-variante{text-align:center}
+.kv-garantias--iconos.pizarra-variante .rotulo{justify-content:center}
+.kv-garantias--iconos.pizarra-variante .trazo{margin:-.4rem auto 0}
+.pizarra-variante .kv-icono-grande{background:transparent;border:2px dashed var(--tiza-tenue);color:var(--tomate-claro)}
+.pizarra-variante .kv-iconos>li:hover .kv-icono-grande{border-color:var(--tomate-claro)}
+.pizarra-variante .kv-icono-grande svg{width:2rem;height:2rem}
+/* R1, precios en ventanita: la tabla es la pizarra de la carta; el globo del
+   detalle es un papelito blanco pegado encima, con su tinta. */
+.pizarra-variante .kv-tabla{background:var(--textura),var(--pizarra);color:var(--tiza);border:clamp(.4rem,1.1vw,.7rem) solid var(--madera);border-radius:.4rem;box-shadow:inset 0 0 60px rgba(0,0,0,.45),0 28px 50px -28px rgba(43,33,25,.75);padding:var(--s-3) clamp(1rem,3vw,2rem)}
+.pizarra-variante .kv-fila-precio{border-bottom:2px dotted rgba(199,207,200,.3)}
+.pizarra-variante .kv-concepto>span:first-child{font:600 1.15rem/1.3 var(--display)}
+.pizarra-variante .kv-fila-precio>strong{color:var(--tomate-claro);font-size:1.3rem}
+.pizarra-variante .kv-detalle{color:var(--tiza-suave)}
+.pizarra-variante .kv-info{color:var(--tomate-claro)}
+.pizarra-variante .kv-info[aria-expanded="true"]{background:var(--tomate-claro);border-color:var(--tomate-claro);color:var(--pizarra)}
+.pizarra-variante .kv-globo{background:var(--blanco);color:var(--tinta);border:0;border-radius:.2rem;rotate:-.6deg}
+.pizarra-variante .kv-lado .nota{margin-top:var(--s-5)}
+/* O1, el carrusel: la pizarra en vez del negro del motor, y las opiniones
+   son papelitos pegados con cinta. El motor obliga el color con !important
+   en todo lo de dentro (.kv-oscura *), así que aquí también hace falta. */
+.kv-oscura.pizarra-variante{background:var(--textura),var(--pizarra);border-block:.7rem solid var(--madera)}
+.kv-oscura.pizarra-variante .rotulo{color:var(--tomate-claro)!important}
+.kv-oscura.pizarra-variante .nota-google p{color:var(--tiza-suave)!important}
+.kv-oscura.pizarra-variante .nota-google a{color:var(--tomate-claro)!important}
+.kv-oscura.pizarra-variante .nota-pizarra .estrellas{color:var(--mostaza)!important}
+.kv-oscura.pizarra-variante :is(.cita,.resena){background:var(--blanco)!important;color:var(--tinta)!important;border:0!important}
+.kv-oscura.pizarra-variante .cita h3{color:var(--tomate)!important}
+.kv-oscura.pizarra-variante :is(.cita-autor,.resena figcaption){color:var(--gris)!important}
+.kv-oscura.pizarra-variante .resena-estrellas{color:var(--oro)!important}
+.kv-oscura.pizarra-variante .atribucion-google{color:var(--tiza-suave)!important}
+.pizarra-variante .kv-cabeza{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:var(--s-5) var(--s-7);margin-bottom:var(--s-6)}
+.pizarra-variante .kv-pista{padding-top:1.2rem;padding-inline:.4rem}
+.pizarra-variante .kv-carrusel-nav button{border-color:var(--tiza-tenue)}
+/* O2, el muro: la nota de Google es una pizarrita entre los papelitos. */
+.pizarra-variante .kv-muro{padding-top:.8rem}
+.pizarra-variante .kv-muro-nota{background:var(--textura),var(--pizarra);color:var(--tiza);border:.45rem solid var(--madera);border-radius:.3rem;rotate:-1.5deg;transition:rotate .6s cubic-bezier(.3,1.7,.5,1)}
+.pizarra-variante .kv-muro-nota:hover{rotate:1deg}
+.pizarra-variante .kv-muro-nota .kv-estrellas{color:var(--mostaza)}
+.pizarra-variante .kv-muro-nota a{color:var(--tomate-claro)}
+/* En columnas, la cinta que asoma por arriba se quedaba sola al pie de la
+   columna anterior cuando la nota saltaba de columna: aquí va pegada dentro. */
+.pizarra-variante .kv-muro>.cita::before{top:.35rem}
+/* O3, la destacada: la tarjeta del lado es pizarra con la nota a tiza. */
+.pizarra-variante .kv-lado-tarjeta.pizarra{background:var(--textura),var(--pizarra);border:clamp(.4rem,1.1vw,.7rem) solid var(--madera);border-radius:.4rem}
+.pizarra-variante .kv-lado-tarjeta .kv-estrellas{color:var(--mostaza)}
+.pizarra-variante .kv-lado-tarjeta a{color:var(--tomate-claro)}
+.pizarra-variante .kv-citas{padding-top:.8rem;gap:var(--s-6)}
+/* F1, dos columnas: cada pregunta, una ficha blanca con su plato con la cruz. */
+.pizarra-variante .kv-acordeon details{border:0;box-shadow:0 14px 30px -22px rgba(43,33,25,.5)}
+.pizarra-variante .kv-acordeon summary{align-items:center;font-weight:600;font-size:1.06rem}
+.pizarra-variante .kv-acordeon summary::after{content:"";width:1.8rem;height:1.8rem;border-radius:50%;background:linear-gradient(var(--blanco),var(--blanco)) center/.8rem 2px no-repeat,linear-gradient(var(--blanco),var(--blanco)) center/2px .8rem no-repeat,var(--tomate);transition:transform .3s ease}
+.pizarra-variante .kv-acordeon summary:hover{color:var(--tomate)}
+.pizarra-variante .kv-ayuda{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s-2) var(--s-4);color:var(--gris)}
+.pizarra-variante .kv-ayuda .faq-telefono{font-size:1.35rem}
+/* F2, el panel: la lista de preguntas a la izquierda y la respuesta, escrita
+   en una pizarra. Sin JavaScript, todas las pizarras una debajo de otra. */
+.pizarra-variante .kv-panel.pizarra{padding:clamp(1.25rem,3vw,2rem)}
+.pizarra-variante .kv-panel.pizarra+.kv-panel.pizarra{margin-top:var(--s-5)}
+.pizarra-variante .kv-pestanas--js .kv-panel.pizarra+.kv-panel.pizarra{margin-top:0}
+.pizarra-variante .kv-pestanas--preguntas .kv-pestanas-lista button{font-weight:600;border-bottom:2px dotted var(--filete)}
+.pizarra-variante .kv-pestanas--preguntas .kv-pestanas-lista button:first-child{border-top:2px dotted var(--filete)}
+.pizarra-variante .kv-pestanas--preguntas .kv-pestanas-lista button[aria-selected="true"]{color:var(--tomate);box-shadow:inset 4px 0 0 var(--tomate);padding-left:1rem}
+.pizarra-variante .kv-panel.pizarra .kv-respuesta{color:var(--tiza-suave)}
+.pizarra-variante .kv-panel.pizarra .kv-respuesta a{color:var(--tomate-claro)}
+.pizarra-variante .kv-panel.pizarra .kv-panel-titulo{color:var(--tiza)}
+/* Bloques ricos con marco propio (31/10/2026, #374). El marco —mantel,
+   cuadros, pizarra, cinta— es de Pizarra; el cuerpo lo pinta el motor
+   (BLOQUES_CSS) y aquí solo se retoca, siempre bajo .pizarra-bloque. Solo
+   aspecto: el visor, los filtros, el arrastre del comparador y la versión
+   sin JavaScript son del motor y no se tocan. */
+.pizarra-bloque .cabeza{margin-bottom:var(--s-6)}
+.pizarra-bloque-texto{max-width:60ch;margin:0 0 var(--s-6);color:var(--gris)}
+.pizarra-bloque-texto>p:first-child{font:400 1.15rem/1.6 var(--texto);color:var(--gris)}
+.pizarra-bloque-texto>:last-child{margin-bottom:0}
+.pizarra-fondo .pizarra-bloque-texto,.pizarra-fondo .pizarra-bloque-texto>p:first-child{color:var(--tiza-suave)}
+.pizarra-bloque-rejilla{display:grid;gap:var(--s-6) var(--s-8);align-items:start}
+@media (min-width:900px){.pizarra-bloque-rejilla{grid-template-columns:minmax(0,1fr) minmax(0,1.7fr)}}
+.pizarra-bloque-lado h2{font-size:clamp(1.9rem,1.2rem + 1.8vw,2.8rem);margin:0 0 var(--s-5)}
+.pizarra-bloque-lado .pizarra-bloque-texto{margin:0}
+.pizarra-bloque-cuerpo{min-width:0}
+.pizarra-bloque-centro{margin-inline:auto;text-align:center}
+.pizarra-bloque-centro.cabeza .rotulo{justify-content:center}
+/* La clase de la pieza pone k-trayectoria y k-comparativa en la <section>, y
+   el motor usa esas mismas clases para la lista y la tabla de dentro: la
+   sección heredaba max-width:56rem, el fondo y la raya de la lista (pasa
+   igual con el marco del motor). Se deshace aquí para la sección. */
+section.pizarra-bloque.k-trayectoria{display:block;max-width:none;margin:0;padding-inline:0}
+section.pizarra-bloque.k-trayectoria::before{content:none}
+section.pizarra-bloque.k-comparativa{display:block;width:auto;border-radius:0;overflow:visible}
+section.pizarra-bloque.k-marcas{overflow:visible}
+/* El cuadro: el comparador y el vídeo, colgados con su marco de madera. */
+.pizarra-bloque-cuadro{padding:clamp(.4rem,1.1vw,.7rem);background:var(--madera);border-radius:.4rem;box-shadow:inset 0 0 0 1px var(--madera-2),0 28px 50px -28px rgba(43,33,25,.75)}
+.pizarra-bloque .pizarra-bloque-cuadro .k-comparador,.pizarra-bloque .pizarra-bloque-cuadro .k-comparador-sola,.pizarra-bloque .k-video-marco{max-width:none;border-radius:.15rem}
+.pizarra-bloque .k-video-portada,.pizarra-bloque .k-video-marco iframe{border-radius:.15rem}
+/* Galería: polaroids con su cinta, torcidas a un lado y a otro (el mismo
+   ángulo, para que la fila mida lo mismo); al pasar, se enderezan. */
+.pizarra-bloque .k-galeria-rejilla{gap:var(--s-6) var(--s-5);padding-top:.6rem}
+.pizarra-bloque .k-galeria-rejilla>li{position:relative;padding:.55rem .55rem .7rem;background:var(--blanco);box-shadow:0 16px 28px -20px rgba(43,33,25,.6);rotate:-1.2deg;transition:rotate .5s ease}
+.pizarra-bloque .k-galeria-rejilla>li:nth-child(even){rotate:1.2deg}
+.pizarra-bloque .k-galeria-rejilla>li:hover,.pizarra-bloque .k-galeria-rejilla>li:focus-within{rotate:0deg}
+.pizarra-bloque .k-galeria-rejilla>li::before{content:"";position:absolute;z-index:1;top:-.7rem;left:50%;width:5rem;height:1.4rem;margin-left:-2.5rem;background:color-mix(in oklab,var(--kraft),transparent 22%);clip-path:polygon(0 10%,5% 0,12% 8%,20% 0,100% 4%,96% 30%,100% 55%,95% 80%,100% 100%,82% 94%,70% 100%,0 96%,4% 70%,0 45%);pointer-events:none}
+.pizarra-bloque .k-galeria-foto{border-radius:0;background:var(--mantel)}
+.pizarra-bloque .k-galeria-foto:focus-visible{outline:3px solid var(--tomate);outline-offset:4px}
+.pizarra-bloque .k-pie{margin-top:.55rem;padding-inline:.2rem;font:italic 400 1rem/1.35 var(--display);color:var(--tinta-2)}
+/* Antes y después: etiquetas de kraft y el tirador, un plato. */
+.pizarra-bloque .k-etiqueta{top:1rem;border-radius:.2rem;padding:.4rem .7rem;background:var(--kraft);color:var(--tinta);font:700 .85rem/1 var(--texto);letter-spacing:.12em;box-shadow:0 4px 10px -4px rgba(43,33,25,.5)}
+.pizarra-bloque .k-etiqueta--antes{left:1rem;rotate:-3deg}
+.pizarra-bloque .k-etiqueta--despues{right:1rem;rotate:3deg;background:var(--tomate);color:var(--blanco)}
+/* A 390 px las dos etiquetas largas («Antes de la reforma») se pisaban: la de después baja a la esquina de abajo. */
+@media (max-width:560px){.pizarra-bloque .k-etiqueta{font-size:.72rem;letter-spacing:.06em;padding:.32rem .5rem}.pizarra-bloque .k-etiqueta--antes{left:.6rem;top:.7rem}.pizarra-bloque .k-etiqueta--despues{top:auto;bottom:.7rem;right:.6rem}}
+.pizarra-bloque .k-comparador-linea{width:4px;margin-left:-2px;background:var(--blanco)}
+.pizarra-bloque .k-comparador-linea::after{border:2px solid var(--filete);box-shadow:inset 0 0 0 3px var(--blanco),inset 0 0 0 4.5px var(--filete),0 6px 16px rgba(0,0,0,.35)}
+.pizarra-bloque .k-comparador:has(.k-comparador-control:focus-visible) .k-comparador-linea{box-shadow:0 0 0 3px var(--tomate)}
+/* La carta: filtros de etiqueta de kraft (el pulsado, a tiza en pizarra) y
+   cada plato una ficha con el precio en la letra de los titulares. */
+.pizarra-bloque .k-filtros{gap:var(--s-2)}
+.pizarra-bloque .k-filtros button{border:0;border-radius:.3rem;background:var(--mantel);color:var(--tinta);box-shadow:inset 0 0 0 2px var(--filete);padding:.6rem 1.05rem}
+.pizarra-bloque .k-filtros button:hover{background:var(--kraft)}
+.pizarra-bloque .k-filtros button[aria-pressed="true"]{background:var(--pizarra);color:var(--tiza);box-shadow:inset 0 0 0 3px var(--madera)}
+.pizarra-bloque .k-filtros button:focus-visible{outline:3px solid var(--tomate);outline-offset:2px}
+.pizarra-bloque .k-catalogo-rejilla{gap:var(--s-5)}
+.pizarra-bloque .k-producto{border:0;border-radius:var(--radio);box-shadow:0 14px 30px -22px rgba(43,33,25,.5);transition:transform .3s ease,box-shadow .3s ease}
+.pizarra-bloque .k-producto:hover{transform:translateY(-4px);box-shadow:0 22px 36px -22px rgba(43,33,25,.6)}
+.pizarra-bloque .k-producto-cuerpo{border-top:3px solid var(--tomate)}
+.pizarra-bloque .k-producto-categoria{color:var(--tomate)}
+.pizarra-bloque .k-producto-cuerpo>p:not([class]){color:var(--gris)}
+.pizarra-bloque .k-precio{font:700 1.4rem/1.1 var(--display);color:var(--tomate);border-top:2px dotted var(--filete);margin-top:auto}
+.pizarra-bloque .k-caracteristicas li::before{border-color:var(--tomate)}
+.pizarra-bloque .k-producto-sin-foto{background:var(--mantel) radial-gradient(circle,var(--filete) 1.5px,transparent 2px) 0 0/18px 18px}
+/* Pestañas: el contenido es una hoja blanca sobre el mantel. */
+.pizarra-bloque-hoja{background:var(--blanco);border-radius:var(--radio);padding:clamp(1.25rem,4vw,2.5rem);box-shadow:0 18px 34px -24px rgba(43,33,25,.55)}
+.pizarra-bloque .k-pestanas-lista{border-bottom:2px dotted var(--filete)}
+.pizarra-bloque .k-pestanas-lista button{font-weight:600}
+/* La pastilla y las tarjetas pintan la pulsada con fondo de acento: ahí el texto tomate no se leería. */
+.pizarra-bloque .k-pestanas-lista button:not([aria-selected="true"]):hover{color:var(--tomate)}
+.pizarra-bloque .k-pestanas:not(.k-pestanas--pildora,.k-pestanas--tarjetas) .k-pestanas-lista button[aria-selected="true"]{border-bottom-color:var(--tomate);color:var(--tomate)}
+.pizarra-bloque .k-pestanas-lista button:focus-visible{outline-color:var(--tomate)}
+.pizarra-bloque .k-panel-texto{color:var(--tinta-2)}
+.pizarra-bloque .k-panel-cuerpo img{border-radius:.2rem}
+/* Comparativa: la servilleta y la tabla, blancas encima de los cuadros. */
+.pizarra-bloque--comparativa .cabeza--servilleta .pizarra-bloque-texto{margin:var(--s-4) 0 0}
+.pizarra-bloque .k-comparativa{background:var(--blanco);border-radius:var(--radio);box-shadow:0 18px 34px -24px rgba(43,33,25,.55)}
+.pizarra-bloque .k-comparativa th,.pizarra-bloque .k-comparativa td{border-bottom:2px dotted var(--filete)}
+.pizarra-bloque .k-comparativa thead th{font-family:var(--display)}
+.pizarra-bloque .k-comparativa .k-destacada{background:color-mix(in oklab,var(--tomate),var(--blanco) 92%)}
+.pizarra-bloque .k-comparativa thead .k-destacada{background:var(--pizarra);color:var(--tiza)}
+.pizarra-bloque .k-si{background:color-mix(in oklab,var(--tomate),transparent 86%)}
+@media (max-width:640px){.pizarra-bloque .k-comparativa{background:transparent;box-shadow:none}.pizarra-bloque .k-comparativa tr{margin-bottom:var(--s-4);background:var(--blanco);border-bottom:0;border-radius:var(--radio);box-shadow:0 14px 30px -22px rgba(43,33,25,.5)}.pizarra-bloque .k-comparativa th,.pizarra-bloque .k-comparativa td{border-bottom:0}.pizarra-bloque .k-comparativa tbody th{font:700 1.2rem/1.2 var(--display);border-bottom:2px dotted var(--filete)}}
+/* Trayectoria: escrita en la pizarra; la línea es de tiza y cada hito, un
+   platito con el borde punteado. */
+.pizarra-bloque--trayectoria .trazo{margin:-.6rem 0 var(--s-5)}
+.pizarra-bloque .k-trayectoria{padding-left:2.25rem;gap:var(--s-6)}
+.pizarra-bloque .k-trayectoria::before{left:.6rem;width:0;border-left:2px dashed var(--tiza-tenue);background:none}
+.pizarra-bloque .k-hito::before{left:-2.25rem;top:.2rem;width:1.4rem;height:1.4rem;background:var(--pizarra);border:2px solid var(--tomate-claro);box-shadow:0 0 0 4px var(--pizarra)}
+.pizarra-bloque .k-hito:hover::before{background:var(--tomate-claro)}
+.pizarra-bloque .k-hito-fecha{font:700 1.2rem/1.2 var(--display);color:var(--tomate-claro)}
+.pizarra-bloque .k-hito-cuerpo h3{color:var(--tiza)}
+.pizarra-bloque .k-hito-cuerpo p{color:var(--tiza-suave)}
+/* Proveedores: cada marca en su fichita blanca con el filete del plato. */
+.pizarra-bloque .k-marcas-pista{gap:var(--s-4) var(--s-5);padding-block:.5rem}
+.pizarra-bloque .k-marcas-pista li{padding:.9rem 1.2rem;background:var(--blanco);border-radius:var(--radio);box-shadow:inset 0 0 0 2px var(--blanco),inset 0 0 0 3.5px var(--filete),0 10px 20px -16px rgba(43,33,25,.5)}
+.pizarra-bloque .k-marca-texto{color:var(--tinta-2)}
+/* Vídeo: el botón es un plato tomate y la etiqueta, de kraft. */
+.pizarra-bloque .k-video-boton{background:var(--tomate);box-shadow:inset 0 0 0 5px var(--tomate),inset 0 0 0 7px color-mix(in oklab,var(--blanco),transparent 45%),0 8px 30px rgba(0,0,0,.35)}
+.pizarra-bloque .k-video-etiqueta{border-radius:.2rem;background:var(--kraft);color:var(--tinta);font:600 .9rem/1.2 var(--texto)}
+.pizarra-bloque .k-video-aviso{margin-top:.6rem;padding-inline:.2rem;color:var(--mantel)}
+.pizarra-bloque .k-video-fondo{background:var(--textura),var(--pizarra)}
+</style>
+</head>
+<body>
+<svg aria-hidden="true" style="display:none">
+<symbol id="i-check" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></g></symbol>
+<symbol id="i-telefono" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M6.5 3.5h3l1.5 4-2 1.5a11 11 0 0 0 6 6l1.5-2 4 1.5v3a2 2 0 0 1-2 2A16 16 0 0 1 4.5 5.5a2 2 0 0 1 2-2z"/></g></symbol>
+<symbol id="i-estrella" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2.8l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.1 6.4 20l1.1-6.2L3 9.4l6.2-.9z"/></symbol>
+<symbol id="i-plato" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5a7.5 7.5 0 0 1 15 0z"/><path d="M2.5 19.5h19M12 9V7.2"/><circle cx="12" cy="6.2" r="1"/></g></symbol>
+<symbol id="i-cubiertos" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v5.5a2.5 2.5 0 0 0 5 0V3M8.5 3v18"/><path d="M17.5 21V3c-2.2 1.6-3.3 4.3-3.3 8h3.3"/></g></symbol>
+<symbol id="i-hoja" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19c0-8 5.5-14 15-14 0 9.5-6 15-14 15"/><path d="M5 19c3-4 6-6.5 10-8.5"/></g></symbol>
+<symbol id="i-copa" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7.2 3h9.6l-.4 5a4.4 4.4 0 0 1-8.8 0z"/><path d="M7.5 6.8h9M12 12.5v7M8.5 20.5h7"/></g></symbol>
+<symbol id="i-bolsa" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 8h13l-1 12.5h-11z"/><path d="M9 10.5V7a3 3 0 0 1 6 0v3.5"/></g></symbol>
+<symbol id="i-cafe" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 9.5h12v4.5a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5z"/><path d="M16.5 11h1.3a2.4 2.4 0 0 1 0 4.8h-1.6M8.5 3.5c-.8 1 .8 2 0 3.2M12.5 3.5c-.8 1 .8 2 0 3.2M3.5 21h14"/></g></symbol>
+<symbol id="i-pan" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.2 17.8C2.6 16.2 3.6 12 7.6 8s8.2-5 9.8-3.4.6 5.8-3.4 9.8-8.2 5-9.8 3.4z"/><path d="M9 10.2l2 2M12 7.6l2 2M7.2 13.6l2 2"/></g></symbol>
+<symbol id="i-pez" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12c2.4-3.4 5.6-5.3 9-5.3s5.6 2.2 7 5.3c-1.4 3.1-3.6 5.3-7 5.3S7.4 15.4 5 12z"/><path d="M5 12 2 8.5M5 12l-3 3.5"/><circle cx="16.5" cy="11" r=".9" fill="currentColor"/></g></symbol>
+<symbol id="i-gota" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5c3.6 4.4 6 7.7 6 10.6a6 6 0 0 1-12 0c0-2.9 2.4-6.2 6-10.6z"/><path d="M9.3 14.6a2.8 2.8 0 0 0 2.7 2.6"/></g></symbol>
+<symbol id="i-calendario" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></g></symbol>
+<symbol id="i-casa" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 11l8-6.5 8 6.5V20h-5v-5H9v5H4z"/></g></symbol>
+<symbol id="i-reloj" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></g></symbol>
+<symbol id="i-escudo" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5.5c0 4.5-3 8-7 9.5-4-1.5-7-5-7-9.5V6z"/><path d="M8.8 12.2l2.2 2.2 4.2-4.4"/></g></symbol>
+<symbol id="i-mapa" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0 1 13 0c0 5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3" fill="currentColor"/></g></symbol>
+<symbol id="i-chispa" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2.5c.6 4.6 2.9 6.9 7.5 7.5-4.6.6-6.9 2.9-7.5 7.5-.6-4.6-2.9-6.9-7.5-7.5 4.6-.6 6.9-2.9 7.5-7.5z"/></symbol>
+<symbol id="i-flecha" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></g></symbol>
+</svg>
+<a class="saltar" href="#contenido">Saltar al contenido</a>
+<header class="cabecera"><div class="contenedor">
+  <a class="marca{{#logo}} marca--logo{{/logo}}" href="{{pagina.inicio}}">{{#logo}}<img src="{{logo}}" alt="{{nombre}}">{{/logo}}{{^logo}}<span>{{nombre}}</span>{{/logo}}</a>
+  <nav class="menu" id="menu" aria-label="Principal">{{#menu}}<a href="{{href}}"{{#actual}} aria-current="page"{{/actual}}>{{titulo}}</a>{{/menu}}</nav>
+  {{#telefono_href}}<a class="boton" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg><span>Reservar</span></a>{{/telefono_href}}
+  <button class="abrir-menu" type="button" aria-expanded="false" aria-controls="menu" aria-label="Abrir el menú"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16M4 16h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+</div></header>
+<main id="contenido">
+{{{secciones}}}
+</main>
+<footer class="pie"><div class="contenedor">
+  <p class="pie-nombre">{{nombre}}</p>
+  <div class="pie-rejilla">
+    <div><h3>Contacto</h3>{{#telefono}}<p><a href="tel:{{telefono_href}}">{{telefono}}</a></p>{{/telefono}}{{#direccion}}<p>{{direccion}}</p>{{/direccion}}{{#maps_url}}<p><a href="{{maps_url}}">Cómo llegar</a></p>{{/maps_url}}</div>
+    {{#horario.length}}<div><h3>Horario</h3>{{#horario}}<p>{{dias}}: {{horas}}</p>{{/horario}}</div>{{/horario.length}}
+    {{#blog}}<div><h3>{{blog.titulo}}</h3><p><a href="{{blog.href}}">Recetas y novedades</a></p></div>{{/blog}}
+  </div>
+  <p class="pie-legal"><span>© {{anio}} {{nombre}}</span>{{#legales}}<a href="{{href}}">{{titulo}}</a>{{/legales}}</p>
+</div></footer>
+<script>
+(function () {
+  var root = document.documentElement;
+  root.classList.add("js");
+  var reducido = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  var boton = document.querySelector(".abrir-menu");
+  var menu = document.getElementById("menu");
+  if (boton && menu) {
+    boton.addEventListener("click", function () {
+      var abierto = menu.classList.toggle("abierto");
+      boton.setAttribute("aria-expanded", abierto ? "true" : "false");
+    });
+    menu.addEventListener("click", function (e) {
+      if (e.target.tagName === "A") { menu.classList.remove("abierto"); boton.setAttribute("aria-expanded", "false"); }
+    });
+  }
+
+  var cabecera = document.querySelector(".cabecera");
+  var alHacerScroll = function () { if (cabecera) cabecera.classList.toggle("compacta", window.scrollY > 24); };
+  window.addEventListener("scroll", alHacerScroll, { passive: true });
+  alHacerScroll();
+
+  // Escalonado: cada elemento de una lista entra un poco después (las líneas
+  // de la pizarra, una detrás de otra, como si se escribieran).
+  document.querySelectorAll(".rejilla, .pasos, .entradas, .lista-iconos, .carta, .etiquetas").forEach(function (lista) {
+    Array.prototype.forEach.call(lista.children, function (hijo, i) { hijo.style.setProperty("--i", String(i % 6)); });
+  });
+
+  // Las cifras cuentan desde cero la primera vez que se ven.
+  function contar(el) {
+    if (reducido || !el) return;
+    var nodos = [];
+    var paseo = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    while (paseo.nextNode()) nodos.push(paseo.currentNode);
+    nodos.forEach(function (nodo) {
+      var m = /(\d{1,3}(?:\.\d{3})+|\d+)/.exec(nodo.nodeValue);
+      if (!m) return;
+      var final = parseInt(m[1].replace(/\./g, ""), 10);
+      if (!(final > 1) || final > 100000) return;
+      var original = nodo.nodeValue;
+      var antes = original.slice(0, m.index), despues = original.slice(m.index + m[1].length);
+      var inicio = null;
+      function paso(t) {
+        if (inicio === null) inicio = t;
+        var x = Math.min(1, (t - inicio) / 1300);
+        // Al final, el texto tal cual lo escribió el cliente («1.500», no «1500»).
+        nodo.nodeValue = x < 1 ? antes + Math.round(final * (1 - Math.pow(1 - x, 3))) + despues : original;
+        if (x < 1) requestAnimationFrame(paso);
+      }
+      requestAnimationFrame(paso);
+    });
+  }
+
+  // Lo que aparece al hacer scroll.
+  var elementos = document.querySelectorAll(".aparece");
+  if (!("IntersectionObserver" in window)) { elementos.forEach(function (el) { el.classList.add("visto"); }); return; }
+  var obs = new IntersectionObserver(function (entradas) {
+    entradas.forEach(function (en) {
+      if (!en.isIntersecting) return;
+      en.target.classList.add("visto");
+      if (en.target.classList.contains("cifra")) contar(en.target.querySelector(".cifra-valor"));
+      obs.unobserve(en.target);
+    });
+  }, { rootMargin: "0px 0px -8% 0px" });
+  elementos.forEach(function (el) { obs.observe(el); });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+<section class="kv kv-portada kv-portada--panoramica pizarra-variante" id="{{ancla}}">
+  <div class="kv-dentro">
+    {{#horario_resumen}}<p class="estado">{{horario_resumen}}</p>{{/horario_resumen}}
+    <h1 class="kv-titular">{{titular}}</h1>
+    <div class="kv-fila">
+      {{#subtitulo}}<p class="kv-entradilla">{{subtitulo}}</p>{{/subtitulo}}
+      <div class="acciones">
+        {{#telefono_href}}<a class="boton" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg>Llamar y reservar</a>{{/telefono_href}}
+        <a class="boton boton--borde" href="#contacto">Escríbenos</a>
+      </div>
+    </div>
+  </div>
+  <div class="kv-panoramica-foto">
+    {{#fotos.portada}}<img src="{{fotos.portada}}" alt="El local de {{nombre}}">{{/fotos.portada}}
+    {{^fotos.portada}}<div class="kv-foto-vacia foto-vacia" aria-hidden="true"><svg><use href="#i-plato"></use></svg></div>{{/fotos.portada}}
+    <div class="colgante" role="img" aria-label="{{#valoracion}}{{valoracion}} de 5 en Google{{/valoracion}}{{^valoracion}}Cocina de mercado{{/valoracion}}">
+      <span class="colgante-cuerpo" aria-hidden="true">{{#valoracion}}<strong>{{valoracion}}</strong><span class="colgante-estrellas"><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg><svg><use href="#i-estrella"></use></svg></span><small>en Google</small>{{/valoracion}}{{^valoracion}}<svg class="colgante-icono"><use href="#i-cubiertos"></use></svg><small>De mercado</small>{{/valoracion}}</span>
+    </div>
+  </div>
+  <ul class="kv-datos">
+    {{#telefono}}<li><strong>Reservas</strong><a href="tel:{{telefono_href}}">{{telefono}}</a></li>{{/telefono}}
+    {{#direccion}}<li><strong>Dónde</strong><span>{{direccion}}</span></li>{{/direccion}}
+  </ul>
+</section>

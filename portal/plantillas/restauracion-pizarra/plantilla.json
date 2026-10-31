@@ -1,0 +1,41 @@
+{
+  "nombre": "Restauración · Pizarra",
+  "sector": "food",
+  "variante": "de barrio y de mercado, pizarra de tiza, papel de estraza y rojo tomate",
+  "encargo": "Restaurantes, bares y cafeterías de barrio con cocina de mercado (menú del día, carta de temporada, tapas, desayunos, comida para llevar). Todo gira en torno a la pizarra del menú: el titular de la portada está escrito con tiza en una pizarra verde oscura con marco de madera, los precios son la pizarra del día con puntos guía entre el plato y el precio, la llamada final es la pizarra de la puerta bajo un toldo a rayas y el pie es otra pizarra. Alrededor, la mesa: fondo de papel de estraza, garantías sobre un mantel de cuadros, las cifras y los pueblos son etiquetas de papel colgadas de un hilo, el proceso son comandas de cocina, las opiniones son notas pegadas con cinta y las fotos van sujetas con cinta de carrocero. Un solo acento, rojo tomate (o el color del negocio). Titulares en Josefin Sans, letra de rótulo de pizarra; texto en Work Sans. Dinámica: el titular y las líneas del menú se escriben solos, un trazo de tiza se dibuja bajo el titular, las etiquetas se balancean al cargar y al pasar por encima y los platos de los servicios giran. Transmite el sitio de siempre del barrio, donde se come bien y a buen precio. Escrita a mano.",
+  "estilo": {
+    "acento": {
+      "variables": [
+        {
+          "variable": "--tomate",
+          "desde": "color",
+          "contra": ["--papel", "--mantel", "--blanco"],
+          "minimo": 4.5
+        },
+        {
+          "variable": "--tomate-claro",
+          "desde": "tono",
+          "contra": ["--pizarra", "--pizarra-2"],
+          "minimo": 4.5
+        }
+      ],
+      "muestras": [
+        { "nombre": "Tomate", "color": "#b8401f" },
+        { "nombre": "Vino", "color": "#8c2341" },
+        { "nombre": "Oliva", "color": "#55702b" },
+        { "nombre": "Azul marinero", "color": "#1f5c99" },
+        { "nombre": "Mostaza", "color": "#9a6a00" },
+        { "nombre": "Petróleo", "color": "#0e6a74" }
+      ]
+    },
+    "tipografias": {
+      "titulares": "--display",
+      "texto": "--texto",
+      "parejas": [
+        { "id": "pizarra", "nombre": "Pizarra", "titulares": "Josefin Sans", "texto": "Work Sans" },
+        { "id": "bistro", "nombre": "Bistró", "titulares": "Playfair Display", "texto": "Manrope" },
+        { "id": "taberna", "nombre": "Taberna", "titulares": "Bitter", "texto": "Rubik" }
+      ]
+    }
+  }
+}

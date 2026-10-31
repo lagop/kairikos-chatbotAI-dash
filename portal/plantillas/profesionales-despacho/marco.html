@@ -1,0 +1,724 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{pagina.meta_titulo}}</title>
+<meta name="description" content="{{pagina.meta_descripcion}}">
+<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+/* «Despacho» — dirección de arte
+   El despacho profesional de confianza: asesoría, gestoría, abogados,
+   inmobiliaria o seguros. Sobria y editorial, como un buen papel con
+   membrete, no como una web corporativa de plantilla. Papel marfil, tinta azul
+   noche y un solo acento (verde botella, o el color del negocio). Titulares en
+   Libre Baskerville, una serifa de libro; texto en Source Sans 3. Cada sección
+   se numera como la cláusula de un documento (§ 1, § 2…, con un contador de
+   CSS: el texto de la plantilla no puede llevar cifras); los servicios son
+   carpetas de expediente con su pestaña; los precios, una minuta de
+   honorarios en una tabla limpia; las garantías llevan un sello de lacre en
+   relieve y una firma a mano; el proceso es un índice con una línea vertical.
+   Filetes finos y márgenes amplios. Movimiento contenido: los subrayados y la
+   firma se dibujan solos al aparecer, la línea del índice baja y la pestaña de
+   cada expediente asoma al pasar por encima. */
+/* Los bloques ricos (galería, antes y después, catálogo) los pinta el motor
+   (site-rich-blocks.ts) y toman de aquí los colores, las esquinas y el ancho. */
+:root{
+--k-acento:var(--acento);--k-sobre-acento:var(--blanco);--k-acento-texto:var(--acento);--k-superficie:var(--blanco);--k-borde:var(--filete);--k-suave:var(--gris);--k-radio:var(--radio);--k-ancho:var(--ancho);--k-margen:var(--s-5);--k-borde-ancho:1px;--k-sombra:0 22px 44px -30px rgba(22,33,58,.5);
+--marfil:#f8f5ee;--marfil-2:#efe9dc;--blanco:#fffdf9;
+--noche:#16213a;--noche-2:#1f2c49;--noche-3:#36466c;
+--gris:#4f5869;--claro:#ece7dc;--claro-suave:#b9c1d3;--filete:#dad1bf;--filete-2:#bfb399;
+--acento:#1f5c46;--acento-claro:#93d4b6;--oro:#7d5a00;--oro-claro:#e8c56d;
+--display:"Libre Baskerville",Georgia,serif;--texto:"Source Sans 3",system-ui,sans-serif;
+--s-1:.25rem;--s-2:.5rem;--s-3:.75rem;--s-4:1rem;--s-5:1.5rem;--s-6:2rem;--s-7:3rem;--s-8:5.5rem;
+--ancho:1180px;--radio:3px}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--marfil);color:var(--noche);font:400 1.0625rem/1.7 var(--texto);-webkit-font-smoothing:antialiased}
+img{max-width:100%;display:block}
+a{color:inherit}
+h1,h2,h3{font-family:var(--display);font-weight:400;line-height:1.15;letter-spacing:-.012em;margin:0 0 var(--s-4);overflow-wrap:anywhere}
+/* Libre Baskerville es ancha: los h2 un punto más pequeños que en una serifa
+   de revista, para que una palabra larga del cliente no pase del ~85 % de la
+   línea a 345 px. */
+h2{font-size:clamp(1.85rem,1.15rem + 2.2vw,3rem);text-wrap:balance}
+h3{font-size:1.25rem;line-height:1.3}
+p{margin:0 0 var(--s-4)}
+:focus-visible{outline:2px solid var(--acento);outline-offset:3px}
+[id]{scroll-margin-top:6rem}
+.saltar{position:absolute;left:-9999px}.saltar:focus{left:var(--s-4);top:var(--s-4);z-index:100;background:var(--blanco);padding:var(--s-2) var(--s-4)}
+.contenedor{width:min(100% - 2*var(--s-5),var(--ancho));margin-inline:auto}
+main{counter-reset:clausula}
+.seccion{padding-block:var(--s-8);position:relative}
+.seccion--crema{background:var(--marfil-2)}
+.seccion--noche{background:var(--noche);color:var(--claro)}
+/* Dos secciones claras seguidas: un filete fino entre las dos, como entre
+   dos cláusulas. */
+.seccion:not(.seccion--crema):not(.seccion--noche)+.seccion:not(.seccion--crema):not(.seccion--noche)::before{content:"";position:absolute;top:0;left:50%;width:min(100% - 2*var(--s-5),var(--ancho));transform:translateX(-50%);height:1px;background:var(--filete)}
+/* El rótulo de cada sección es su cláusula: «§ 3 — Honorarios». */
+.rotulo{counter-increment:clausula;display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--s-2) var(--s-3);font:700 .78rem/1.3 var(--texto);text-transform:uppercase;letter-spacing:.16em;color:var(--acento);margin:0 0 var(--s-4)}
+.rotulo::before{content:"§\00a0" counter(clausula);font:400 1.05rem/1 var(--display);letter-spacing:0;text-transform:none}
+.rotulo--sin{counter-increment:none}
+.rotulo--sin::before{content:"§"}
+.seccion--noche .rotulo{color:var(--acento-claro)}
+.cabeza{max-width:46rem;margin-bottom:var(--s-7)}
+.cabeza h2{margin:0}
+/* El subrayado que se dibuja solo bajo cada título. */
+.cabeza h2::after,.trazo-titulo::after{content:"";display:block;width:3.5rem;height:2px;margin-top:var(--s-4);background:var(--acento);transform-origin:left;transition:transform 1s cubic-bezier(.6,.1,.2,1) .2s}
+.js .dibuja h2::after{transform:scaleX(0)}
+.js .dibuja.visto h2::after{transform:scaleX(1)}
+.sobre .cabeza{margin-bottom:0}
+.zona-texto .cabeza,.faq-lado .cabeza{margin-bottom:var(--s-5)}
+.lead{max-width:58ch;color:var(--gris);font-size:1.15rem}
+.seccion--noche .lead{color:var(--claro-suave)}
+.rejilla{display:grid;gap:var(--s-5);grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr))}
+.rejilla>*{min-width:0}
+.boton{display:inline-flex;align-items:center;justify-content:center;gap:var(--s-2);background:var(--acento);color:var(--blanco);font:700 1rem/1.2 var(--texto);letter-spacing:.01em;text-decoration:none;border-radius:var(--radio);padding:.95rem 1.5rem;border:1px solid var(--acento);cursor:pointer;transition:background .2s ease,color .2s ease,box-shadow .2s ease}
+.boton:hover{background:color-mix(in oklab,var(--acento),#000 20%);box-shadow:0 10px 22px -14px color-mix(in oklab,var(--acento),transparent 30%)}
+.boton svg{width:1.05rem;height:1.05rem;flex:none}
+.boton--borde{background:transparent;color:var(--noche);border-color:var(--noche)}
+.boton--borde:hover{background:var(--noche);color:var(--blanco);box-shadow:none}
+/* El icono en una caja de filete fino, como un sello de caucho cuadrado. */
+.icono-caja{width:3rem;height:3rem;display:grid;place-items:center;flex:none;border:1px solid color-mix(in oklab,var(--acento),transparent 50%);color:var(--acento);background:color-mix(in oklab,var(--acento),transparent 94%);transition:background .3s ease,color .3s ease,border-color .3s ease}
+.icono-caja svg{width:1.4rem;height:1.4rem}
+.icono-caja--claro{color:var(--acento-claro);border-color:color-mix(in oklab,var(--acento-claro),transparent 50%);background:transparent}
+.estrellas{display:inline-flex;gap:2px;color:var(--oro)}.estrellas svg{width:1rem;height:1rem}
+.subraya{text-decoration:none;background:linear-gradient(currentColor,currentColor) 0 100%/0 1px no-repeat;transition:background-size .35s ease}
+.subraya:hover{background-size:100% 1px}
+
+/* Cabecera: el membrete, con doble filete debajo */
+.cabecera{position:sticky;top:0;z-index:50;background:var(--marfil);border-bottom:1px solid var(--filete);transition:box-shadow .25s ease}
+.cabecera::after{content:"";position:absolute;left:0;right:0;bottom:-4px;height:1px;background:var(--filete);pointer-events:none}
+.cabecera.compacta{box-shadow:0 10px 24px -12px rgba(22,33,58,.22)}
+.cabecera .contenedor{display:grid;grid-template-columns:minmax(11rem,1fr) auto auto;align-items:center;gap:var(--s-3) var(--s-5);min-height:4.75rem;padding-block:var(--s-2)}
+.marca{display:flex;align-items:center;gap:var(--s-3);min-width:0;font:400 1.3rem/1.15 var(--display);color:var(--noche);text-decoration:none}
+.marca::before{content:"§";flex:none;display:grid;place-items:center;width:2.3rem;height:2.3rem;border:1px solid var(--acento);color:var(--acento);font:400 1.15rem/1 var(--display);box-shadow:inset 0 0 0 3px var(--marfil),inset 0 0 0 4px color-mix(in oklab,var(--acento),transparent 55%);transition:transform .5s ease}
+.marca:hover::before{transform:rotate(-6deg)}
+.marca span{min-width:0;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.marca--logo::before{display:none}.marca img{display:block;height:3rem;width:auto;max-width:100%;object-fit:contain}
+.menu{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:0 var(--s-1)}
+.menu a{white-space:nowrap;text-decoration:none;font-weight:600;font-size:.97rem;color:var(--noche);padding:var(--s-2) var(--s-3);background:linear-gradient(var(--acento),var(--acento)) var(--s-3) calc(100% - .3rem)/0 1px no-repeat;transition:background-size .3s ease,color .2s ease}
+.menu a:hover{background-size:calc(100% - 2*var(--s-3)) 1px}
+.menu a[aria-current]{color:var(--acento);background-size:calc(100% - 2*var(--s-3)) 2px}
+.cabecera .boton{padding:.75rem 1.2rem}
+.abrir-menu{display:none;background:transparent;border:1px solid var(--noche);border-radius:var(--radio);width:2.9rem;height:2.9rem;color:var(--noche);cursor:pointer}
+@media (max-width:1099px){
+.cabecera .contenedor{grid-template-columns:minmax(0,1fr) auto auto;position:relative}
+.menu{display:none;position:absolute;top:100%;left:calc(-1 * var(--s-5));right:calc(-1 * var(--s-5));flex-direction:column;flex-wrap:nowrap;background:var(--marfil);border-top:1px solid var(--filete);padding:var(--s-3) var(--s-5) var(--s-5);box-shadow:0 20px 30px rgba(22,33,58,.15)}
+.menu.abierto{display:flex}.menu a{padding:var(--s-3) var(--s-4);font-size:1.1rem;background-position:var(--s-4) calc(100% - .45rem)}
+.menu a:hover,.menu a[aria-current]{background-size:3rem 1px}
+.abrir-menu{display:grid;place-items:center;order:3}.cabecera .boton span{display:none}.cabecera .boton{padding:.8rem}}
+@media (max-width:640px){.marca{font-size:1.1rem}.marca::before{width:2rem;height:2rem;font-size:1rem}}
+
+/* Portada: texto con su membrete a un lado; al otro, la foto en un folio con
+   la nota de Google como una ficha */
+.portada{position:relative;padding-block:clamp(2.5rem,6vw,5rem) clamp(3.5rem,7vw,6rem)}
+.portada-rejilla{display:grid;gap:var(--s-7);grid-template-columns:minmax(0,1fr);align-items:center}
+.portada-rejilla>*{min-width:0}
+@media (min-width:1000px){.portada-rejilla{grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr);gap:var(--s-8)}}
+.estado{display:inline-flex;align-items:center;gap:var(--s-2);margin:0 0 var(--s-5);font:600 .9rem/1.3 var(--texto);color:var(--gris)}
+.estado::before{content:"";flex:none;width:.5rem;height:.5rem;border-radius:50%;border:1.5px solid var(--acento);background:color-mix(in oklab,var(--acento),transparent 70%)}
+.portada h1{font-size:clamp(1.85rem,1.05rem + 2.9vw,3.5rem);line-height:1.12;letter-spacing:-.02em;margin-bottom:var(--s-3);text-wrap:balance}
+/* El trazo de pluma bajo el titular: se dibuja al cargar, sin esperar a JS. */
+.trazo{display:block;width:min(13rem,60%);height:.9rem;margin:0 0 var(--s-5);color:var(--acento);overflow:visible}
+.trazo path{fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;stroke-dasharray:1;stroke-dashoffset:0;animation:trazar 1.3s cubic-bezier(.6,.1,.25,1) .35s both}
+@keyframes trazar{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+.entradilla{font-size:clamp(1.1rem,1rem + .35vw,1.25rem);color:var(--gris);max-width:46ch;margin-bottom:var(--s-6)}
+.acciones{display:flex;flex-wrap:wrap;gap:var(--s-3)}
+.portada-datos{list-style:none;margin:var(--s-6) 0 0;padding:0;display:flex;flex-wrap:wrap;gap:0 var(--s-6);border-top:1px solid var(--filete);font-weight:600}
+.portada-datos li{display:flex;align-items:center;gap:var(--s-2);min-width:0;padding-top:var(--s-4);overflow-wrap:anywhere}
+.portada-datos svg{flex:none;width:1.1rem;height:1.1rem;color:var(--acento)}
+.portada-datos a{text-decoration:none}
+.portada-datos a:hover{color:var(--acento)}
+.portada-folio{position:relative;isolation:isolate;justify-self:center;width:min(100%,28rem);margin:0}
+.portada-folio::before{content:"";position:absolute;inset:1rem -1rem -1rem 1rem;z-index:-1;border:1px solid var(--filete-2)}
+.portada-folio>img,.folio-vacio{width:100%;aspect-ratio:4/5;object-fit:cover;border:8px solid var(--blanco);box-shadow:var(--k-sombra)}
+.folio-vacio{display:grid;place-items:center;color:var(--acento);background:var(--blanco) repeating-linear-gradient(transparent 0 1.6rem,var(--filete) 1.6rem calc(1.6rem + 1px))}
+.folio-vacio svg{width:28%;height:28%}
+@media (max-width:999px){.portada-folio{width:min(100% - 1rem,24rem);justify-self:start}.portada-folio>img,.folio-vacio{aspect-ratio:1/1}}
+.folio-nota{position:absolute;left:-1.25rem;bottom:2rem;display:flex;flex-direction:column;gap:.2rem;min-width:9.5rem;max-width:calc(100% - 1rem);margin:0;padding:var(--s-3) var(--s-4) var(--s-4);background:var(--blanco);border-top:3px double var(--noche);box-shadow:0 16px 32px -18px rgba(22,33,58,.55);animation:ficha .8s cubic-bezier(.2,.8,.2,1) .5s both}
+@keyframes ficha{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.folio-nota-titulo{font:700 .7rem/1.2 var(--texto);text-transform:uppercase;letter-spacing:.14em;color:var(--gris)}
+.folio-nota strong{font:400 2.4rem/1.05 var(--display);color:var(--noche)}
+.folio-nota-resenas{font-size:.88rem;color:var(--gris)}
+@media (max-width:640px){.folio-nota{left:auto;right:-.5rem;bottom:1rem}}
+
+/* Cifras: entre dos filetes, separadas por líneas verticales */
+.cifras{padding-block:0 var(--s-8)}
+.cifras-fila{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr));overflow:hidden;border-block:1px solid var(--noche)}
+.cifra{padding:var(--s-5);box-shadow:-1px 0 0 var(--filete);display:flex;flex-direction:column;justify-content:center;min-width:0}
+.cifra-valor{display:block;font:italic 400 clamp(2rem,1.4rem + 2vw,3rem)/1.1 var(--display);color:var(--acento);margin-bottom:var(--s-2);overflow-wrap:anywhere}
+.cifra-etiqueta{display:block;color:var(--gris);font-weight:600;overflow-wrap:anywhere}
+
+/* Servicios: carpetas de expediente con su pestaña */
+.expedientes{display:grid;gap:var(--s-7) var(--s-5);grid-template-columns:repeat(auto-fit,minmax(min(100%,16.5rem),1fr));counter-reset:expediente;padding-top:var(--s-4)}
+.expediente{position:relative;counter-increment:expediente;display:flex;flex-direction:column;gap:var(--s-3);min-width:0;background:var(--blanco);border:1px solid var(--filete);border-radius:0 var(--radio) var(--radio) var(--radio);padding:var(--s-6) var(--s-5) var(--s-5);box-shadow:0 3px 0 -1px var(--blanco),0 4px 0 -1px var(--filete),0 7px 0 -2px var(--blanco),0 8px 0 -2px var(--filete);transition:transform .3s ease,box-shadow .3s ease}
+.expediente h3{margin:var(--s-2) 0 0}
+.expediente p{margin:0;color:var(--gris);overflow-wrap:anywhere}
+.expediente:hover{transform:translateY(-3px)}
+.expediente:hover .icono-caja{background:var(--acento);color:var(--blanco);border-color:var(--acento)}
+/* La pestaña asoma al pasar por encima: crece hacia arriba desde el borde. */
+.expediente-pestana{position:absolute;left:-1px;bottom:calc(100% - 1px);z-index:1;display:inline-flex;align-items:center;padding:.4rem .95rem .3rem;background:var(--blanco);border:1px solid var(--filete);border-bottom:0;border-radius:var(--radio) .8rem 0 0;font:700 .7rem/1 var(--texto);letter-spacing:.14em;text-transform:uppercase;color:var(--gris);transition:padding .3s cubic-bezier(.3,1.4,.5,1),color .25s ease}
+.expediente-pestana::before{content:"Exp.\00a0" counter(expediente,decimal-leading-zero)}
+.expediente:hover .expediente-pestana{padding-bottom:.75rem;color:var(--acento)}
+
+/* Quiénes somos: una lámina con paspartú y el texto con letra capital */
+.sobre{display:grid;gap:var(--s-6) var(--s-8);grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr));align-items:start}
+.sobre>*{min-width:0}
+.sobre-antetitulo{display:block;font:italic 400 1.15rem/1.3 var(--display);color:var(--gris);margin-bottom:var(--s-2)}
+.lamina{margin:var(--s-6) 0 0;max-width:26rem;padding:.6rem;background:var(--blanco);border:1px solid var(--filete);box-shadow:var(--k-sombra)}
+.lamina img{width:100%;aspect-ratio:4/3;object-fit:cover}
+.texto-rico{font-size:1.1rem;overflow-wrap:anywhere}
+.texto-rico>p:first-child{font:400 clamp(1.2rem,1.05rem + .7vw,1.5rem)/1.5 var(--display);color:var(--noche)}
+.sobre .texto-rico>p:first-child::first-letter{float:left;font-size:3.3em;line-height:.9;padding:.06em .12em 0 0;color:var(--acento)}
+.texto-rico ul{list-style:none;padding:0;margin:0 0 var(--s-4);display:grid;gap:var(--s-2)}
+.texto-rico li{position:relative;padding-left:var(--s-6)}
+.texto-rico li::before{content:"";position:absolute;left:0;top:.85em;width:1rem;height:1px;background:var(--acento)}
+.texto-rico strong{font-weight:700}
+.texto-rico>p:first-child strong{font-weight:400;font-style:italic;color:var(--acento)}
+.texto-rico a{color:var(--acento);font-weight:700;text-underline-offset:3px}
+.seccion--noche .texto-rico>p:first-child{color:var(--blanco)}
+.seccion--noche .texto-rico a{color:var(--acento-claro)}
+
+/* Proceso: un índice con su línea vertical, que baja al aparecer */
+.partida{display:grid;gap:var(--s-6) var(--s-8);grid-template-columns:minmax(0,1fr)}
+@media (min-width:1000px){.partida{grid-template-columns:minmax(0,1fr) minmax(0,1.5fr)}.partida>.cabeza{position:sticky;top:7rem;align-self:start}}
+.partida>*{min-width:0}
+/* Columna estrecha en escritorio: el título a tamaño de columna. */
+@media (min-width:1000px){.partida h2{font-size:clamp(1.8rem,1rem + 1.5vw,2.5rem)}}
+.indice-pasos{counter-reset:paso;list-style:none;margin:0;padding:0;position:relative;display:grid;gap:var(--s-6)}
+/* La línea va a tramos, de un número al siguiente: una sola línea para toda
+   la lista se pasaba del último número. */
+.paso:not(:last-child)::after{content:"";position:absolute;left:1.5rem;top:3rem;bottom:calc(-1 * var(--s-6));width:1px;background:var(--noche);transform-origin:top;transition:transform .9s cubic-bezier(.6,.1,.2,1) calc(var(--i,0) * 70ms + .3s)}
+.js .paso::after{transform:scaleY(0)}
+.js .paso.visto::after{transform:scaleY(1)}
+.paso{counter-increment:paso;position:relative;display:grid;grid-template-columns:3rem minmax(0,1fr);gap:var(--s-5);min-width:0}
+.paso-marca{position:relative;z-index:1;display:grid;place-items:center;width:3rem;height:3rem;border-radius:50%;background:var(--marfil);border:1px solid var(--noche);font:400 1rem/1 var(--display);color:var(--noche);transition:background .3s ease,color .3s ease,border-color .3s ease}
+.paso-marca::before{content:counter(paso,upper-roman)}
+.paso:hover .paso-marca{background:var(--acento);border-color:var(--acento);color:var(--blanco)}
+.paso h3{margin:.6rem 0 var(--s-2)}
+.paso p{color:var(--gris);margin:0;overflow-wrap:anywhere}
+
+/* Garantías: cláusulas a), b)… con el sello de lacre y la firma */
+.compromiso{display:grid;gap:var(--s-7) var(--s-8);grid-template-columns:minmax(0,1fr)}
+@media (min-width:1000px){.compromiso{grid-template-columns:minmax(0,1fr) minmax(0,1.4fr)}.compromiso h2{font-size:clamp(1.8rem,1rem + 1.5vw,2.5rem)}}
+.compromiso>*{min-width:0}
+.compromiso .cabeza{margin-bottom:var(--s-6)}
+.rubrica{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s-5) var(--s-6)}
+.lacre{position:relative;flex:none;width:7.5rem;aspect-ratio:1;display:grid;place-items:center;color:var(--blanco);border-radius:47% 53% 50% 50%/52% 46% 54% 48%;background:radial-gradient(circle at 34% 28%,color-mix(in oklab,var(--acento),#fff 30%),var(--acento) 52%,color-mix(in oklab,var(--acento),#000 32%));box-shadow:inset 0 2px 3px rgba(255,255,255,.35),inset 0 -5px 9px rgba(0,0,0,.35),0 12px 24px -12px rgba(22,33,58,.7);transform:rotate(-8deg);transition:transform .5s cubic-bezier(.3,1.5,.5,1)}
+.lacre::before{content:"";position:absolute;inset:.7rem;border-radius:50%;border:1px solid rgba(255,255,255,.4);box-shadow:inset 0 1px 2px rgba(0,0,0,.3),0 1px 0 rgba(255,255,255,.2)}
+.lacre span{font:400 2.6rem/1 var(--display);text-shadow:0 -1px 0 rgba(0,0,0,.4),0 1px 0 rgba(255,255,255,.3)}
+.rubrica:hover .lacre{transform:rotate(0) scale(1.03)}
+.firma-bloque{min-width:0;flex:1 1 11rem;max-width:16rem}
+.firma{display:block;width:100%;height:auto;color:var(--noche)}
+.firma path{fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:0;transition:stroke-dashoffset 2.6s cubic-bezier(.55,.1,.3,1) .3s}
+.js .firma.dibuja path{stroke-dashoffset:1}
+.js .firma.dibuja.visto path{stroke-dashoffset:0}
+.firma-pie{margin:var(--s-1) 0 0;padding-top:var(--s-2);border-top:1px solid var(--noche);font:700 .74rem/1.3 var(--texto);text-transform:uppercase;letter-spacing:.14em;color:var(--gris);overflow-wrap:anywhere}
+.clausulas{counter-reset:clausula-g;list-style:none;margin:0;padding:0;border-top:1px solid var(--noche)}
+.clausula{counter-increment:clausula-g;display:grid;grid-template-columns:2.5rem minmax(0,1fr);gap:var(--s-4);padding:var(--s-5) 0;border-bottom:1px solid var(--filete)}
+.clausula::before{content:counter(clausula-g,lower-alpha) ")";font:italic 400 1.3rem/1.3 var(--display);color:var(--acento)}
+.clausula h3{margin-bottom:var(--s-2)}
+.clausula p{margin:0;color:var(--gris);overflow-wrap:anywhere}
+
+/* Precios: la minuta de honorarios */
+.minuta{position:relative;max-width:58rem;background:var(--blanco);border:1px solid var(--filete);padding:clamp(1.25rem,4vw,3rem);box-shadow:var(--k-sombra)}
+.minuta::before{content:"";position:absolute;inset:.45rem;border:1px solid var(--filete);pointer-events:none}
+.minuta-cabeza{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:var(--s-2) var(--s-3);padding-bottom:var(--s-4);margin:0;border-bottom:3px double var(--noche);font:700 .78rem/1.3 var(--texto);text-transform:uppercase;letter-spacing:.16em}
+.minuta-cabeza svg{flex:none;width:1.1rem;height:1.1rem;color:var(--acento)}
+.minuta-de{margin-left:auto;font:italic 400 1rem/1.3 var(--display);text-transform:none;letter-spacing:0;color:var(--gris);overflow-wrap:anywhere;min-width:0}
+.minuta-tabla{position:relative;width:100%;border-collapse:collapse;table-layout:fixed}
+.minuta-tabla thead th{font:700 .72rem/1.2 var(--texto);text-transform:uppercase;letter-spacing:.14em;color:var(--gris);text-align:left;padding:var(--s-4) 0 var(--s-3);border-bottom:1px solid var(--noche)}
+.minuta-tabla thead th:last-child{width:34%;text-align:right}
+.minuta-tabla tbody th,.minuta-tabla td{padding:var(--s-4) 0;border-bottom:1px solid var(--filete);vertical-align:baseline;overflow-wrap:break-word}
+.minuta-tabla tbody th{font-weight:400;text-align:left;padding-right:var(--s-5)}
+.minuta-concepto{display:block;font:400 1.15rem/1.35 var(--display);color:var(--noche)}
+.minuta-detalle{display:block;margin-top:var(--s-1);color:var(--gris);font-size:.95rem}
+.minuta-tabla td{text-align:right;font:700 1.08rem/1.35 var(--texto);color:var(--acento);font-variant-numeric:tabular-nums}
+.minuta-tabla tbody tr{transition:background .2s ease}
+.minuta-tabla tbody tr:hover{background:color-mix(in oklab,var(--acento),transparent 95%)}
+@media (max-width:560px){.minuta-tabla thead{display:none}.minuta-tabla,.minuta-tabla tbody,.minuta-tabla tr,.minuta-tabla th,.minuta-tabla td{display:block;width:auto}.minuta-tabla tr{padding:var(--s-4) 0;border-bottom:1px solid var(--filete)}.minuta-tabla tbody th,.minuta-tabla td{padding:0;border:0;text-align:left}.minuta-tabla td{margin-top:var(--s-2)}}
+.nota{position:relative;display:flex;gap:var(--s-2);align-items:flex-start;font-size:.95rem;color:var(--gris);margin:var(--s-5) 0 0}
+.nota svg{flex:none;width:1.05rem;height:1.05rem;margin-top:.25rem;color:var(--acento)}
+
+/* Opiniones: extractos con su filete, como citas en un informe */
+.opiniones-cabeza{display:grid;gap:var(--s-5) var(--s-7);grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr));align-items:end;margin-bottom:var(--s-7)}
+.opiniones-cabeza>*{min-width:0}
+.opiniones-cabeza .cabeza{margin:0}
+.nota-google{display:flex;align-items:center;gap:var(--s-5);justify-self:start;max-width:100%;padding:var(--s-4) var(--s-5);background:var(--blanco);border:1px solid var(--filete);border-top:3px double var(--noche)}
+.nota-google>div{min-width:0}
+.nota-google strong{flex:none;font:400 3rem/1 var(--display);color:var(--noche)}
+.nota-google p{margin:0;color:var(--gris)}
+.nota-google a{color:var(--acento);font-weight:700}
+.citas{list-style:none;padding:0;margin:0 0 var(--s-7)}
+.cita{position:relative;display:flex;flex-direction:column;padding:var(--s-5) 0 var(--s-2) var(--s-5);border-left:1px solid var(--filete)}
+.cita::before{content:"";position:absolute;left:-1px;top:0;width:1px;height:3rem;background:var(--acento)}
+.cita h3{font-size:1.2rem}
+.cita p{margin:0 0 var(--s-4);font:italic 400 1.1rem/1.55 var(--display);color:var(--noche)}
+.cita-autor{margin-top:auto;font-size:.88rem;font-weight:600;color:var(--gris)}
+.resenas{margin-bottom:var(--s-4)}
+.resena{margin:0;background:var(--blanco);border:1px solid var(--filete);padding:var(--s-5);display:flex;flex-direction:column}
+.resena-estrellas{color:var(--oro);letter-spacing:.14em;font-size:1rem}
+.resena blockquote{margin:var(--s-3) 0 var(--s-4)}
+.resena blockquote p{margin:0}
+.resena figcaption{margin-top:auto;padding-top:var(--s-3);border-top:1px solid var(--filete);font-size:.88rem;color:var(--gris)}
+.resena figcaption a{color:var(--noche)}
+.atribucion-google{font-size:.85rem;color:var(--gris);margin:var(--s-4) 0 0}
+
+/* Preguntas: un índice de filetes */
+.faq{display:grid;gap:var(--s-6) var(--s-8);grid-template-columns:minmax(0,1fr)}
+@media (min-width:1000px){.faq{grid-template-columns:minmax(0,1fr) minmax(0,1.5fr)}}
+.faq>*{min-width:0}
+/* La columna es estrecha: un título largo del cliente no cabe al tamaño de los demás sin partir palabras. */
+@media (min-width:1000px){.faq-lado h2{font-size:clamp(1.8rem,1rem + 1.5vw,2.5rem)}}
+.faq-lado p:not(.rotulo){color:var(--gris)}
+.faq-lado .cabeza{margin-bottom:var(--s-5)}
+.faq-telefono{display:inline-flex;align-items:center;gap:var(--s-2);font:400 1.45rem/1.2 var(--display);color:var(--noche);overflow-wrap:anywhere}
+.faq-telefono svg{flex:none;width:1.1rem;height:1.1rem;color:var(--acento)}
+.faq-telefono:hover{color:var(--acento)}
+.preguntas{display:grid;align-content:start;border-top:1px solid var(--noche)}
+.preguntas details{border-bottom:1px solid var(--filete-2)}
+.preguntas summary{cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;gap:var(--s-4);padding:var(--s-4) 0;font:400 1.12rem/1.45 var(--display);overflow-wrap:anywhere;transition:color .2s ease}
+.preguntas summary::-webkit-details-marker{display:none}
+.preguntas summary::after{content:"";flex:none;width:1rem;height:1rem;color:var(--acento);background:linear-gradient(currentColor,currentColor) center/100% 1.5px no-repeat,linear-gradient(currentColor,currentColor) center/1.5px 100% no-repeat;transition:transform .3s ease}
+.preguntas details[open] summary::after{transform:rotate(45deg)}
+.preguntas summary:hover{color:var(--acento)}
+.respuesta{padding:0 0 var(--s-5);color:var(--gris);overflow-wrap:anywhere}
+.respuesta p:last-child{margin-bottom:0}
+
+/* Zona: una relación de municipios, a filetes */
+.zona{display:grid;gap:var(--s-6) var(--s-8);grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr));align-items:start}
+.zona>*{min-width:0}
+.municipios{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,12rem),1fr));column-gap:var(--s-6);border-top:1px solid var(--noche)}
+.municipios li{display:flex;align-items:baseline;gap:var(--s-3);min-width:0;padding:var(--s-3) 0;border-bottom:1px solid var(--filete);font:400 1.12rem/1.35 var(--display);overflow-wrap:anywhere;transition:color .2s ease,padding .25s ease}
+.municipios li:hover{color:var(--acento);padding-left:var(--s-2)}
+.municipios svg{flex:none;width:.95rem;height:.95rem;color:var(--acento);transform:translateY(.1rem)}
+
+/* Llamada: la banda azul noche, con el teléfono subrayado a pluma */
+.llamada{position:relative;isolation:isolate;overflow:hidden;padding-block:clamp(4.5rem,10vw,7.5rem);background:var(--noche);color:var(--claro)}
+.llamada::before{content:"§";position:absolute;z-index:-1;right:clamp(-4rem,-4vw,-1rem);top:50%;transform:translateY(-50%);font:400 clamp(16rem,36vw,30rem)/1 var(--display);color:var(--noche-2);pointer-events:none}
+.llamada h2{font-size:clamp(1.9rem,1.1rem + 2.8vw,3.6rem);max-width:22ch;margin:0 0 var(--s-5);color:var(--blanco)}
+.llamada-telefono{display:inline-flex;align-items:center;gap:var(--s-3);max-width:100%;font:400 clamp(1.5rem,1rem + 2.6vw,3rem)/1.2 var(--display);color:var(--blanco);text-decoration:none;overflow-wrap:anywhere;padding-bottom:.4rem;background:linear-gradient(var(--acento-claro),var(--acento-claro)) 0 100%/100% 2px no-repeat;transition:background-size 1s cubic-bezier(.6,.1,.2,1) .3s,color .2s ease}
+.js .llamada .dibuja .llamada-telefono{background-size:0 2px}
+.js .llamada .dibuja.visto .llamada-telefono{background-size:100% 2px}
+.llamada-telefono:hover{color:var(--acento-claro)}
+.llamada-telefono svg{flex:none;width:clamp(1.2rem,3vw,2rem);height:clamp(1.2rem,3vw,2rem);color:var(--acento-claro)}
+
+/* Contacto: los datos a filetes y el formulario como un impreso */
+.contacto{display:grid;gap:var(--s-7);grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr))}
+.contacto>*{min-width:0}
+.contacto-datos{display:flex;flex-direction:column;gap:var(--s-4)}
+.contacto-datos .cabeza{margin-bottom:var(--s-3)}
+/* A media anchura: más pequeño que los demás h2. */
+.contacto-datos h2{font-size:clamp(1.75rem,1rem + 1.5vw,2.5rem)}
+.dato{display:flex;gap:var(--s-4);align-items:flex-start;overflow-wrap:anywhere;margin:0;padding-top:var(--s-4);border-top:1px solid var(--filete-2)}
+.dato .icono-caja{width:2.5rem;height:2.5rem}
+.dato .icono-caja svg{width:1.1rem;height:1.1rem}
+.dato>span:last-child,.dato>div:last-child{min-width:0;padding-top:.3rem}
+.dato a{color:var(--noche);font-weight:700}
+.dato-grande a{font:400 1.6rem/1.2 var(--display);text-decoration:none}
+.dato-grande a:hover{color:var(--acento)}
+.contacto table{border-collapse:collapse;width:100%}
+.contacto th,.contacto td{text-align:left;padding:var(--s-1) 0;vertical-align:top;overflow-wrap:break-word}
+.contacto th{padding-right:var(--s-4);color:var(--gris);font-weight:600}
+.formulario{background:var(--blanco);border:1px solid var(--filete);border-top:3px double var(--noche);padding:clamp(1.5rem,4vw,3rem);display:flex;flex-direction:column;box-shadow:var(--k-sombra)}
+.formulario h3{font-size:1.6rem;margin-bottom:var(--s-2)}
+form label{display:block;font:700 .76rem/1.3 var(--texto);text-transform:uppercase;letter-spacing:.13em;color:var(--gris);margin:var(--s-5) 0 var(--s-1)}
+form input,form textarea{width:100%;font:inherit;padding:var(--s-2) 0;border:0;border-bottom:1px solid var(--filete-2);border-radius:0;background:transparent;color:var(--noche);transition:border-color .2s ease,box-shadow .2s ease}
+form textarea{resize:vertical;min-height:6rem}
+form input:focus,form textarea:focus{outline:none;border-color:var(--acento);box-shadow:0 1px 0 var(--acento)}
+form .boton{margin-top:var(--s-6);align-self:flex-start}
+form .boton[disabled]{opacity:.55;cursor:not-allowed}
+.form-nota{font-size:.9rem;color:var(--gris);margin:var(--s-4) 0 0}
+
+/* Bloques */
+.aviso-banda{padding-block:var(--s-5) 0}
+.aviso{display:flex;gap:var(--s-4);align-items:flex-start;background:var(--blanco);border:1px solid var(--filete);border-left:3px solid var(--acento);padding:var(--s-4) var(--s-5);overflow-wrap:anywhere}
+.aviso .icono-caja{width:2.3rem;height:2.3rem}
+.aviso .icono-caja svg{width:1.05rem;height:1.05rem}
+.aviso>div{min-width:0;padding-top:.2rem}
+.aviso strong{margin-right:var(--s-2);font-family:var(--display);font-weight:400;font-size:1.1rem}
+.aviso p{display:inline;margin:0}
+.texto-foto{display:grid;gap:var(--s-6) var(--s-8);grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr));align-items:center}
+.texto-foto>*{min-width:0}
+.texto-foto .lamina{margin:0;justify-self:center}
+.lista-iconos{list-style:none;padding:0;margin:var(--s-5) 0 0;display:grid;gap:0 var(--s-6);grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr));border-top:1px solid var(--noche)}
+.lista-iconos li{display:flex;gap:var(--s-3);align-items:center;min-width:0;padding:var(--s-3) 0;border-bottom:1px solid var(--filete);font-weight:600;overflow-wrap:anywhere}
+.lista-iconos .icono-caja{width:2.3rem;height:2.3rem}
+.lista-iconos .icono-caja svg{width:1.05rem;height:1.05rem}
+
+/* Páginas interiores y blog */
+.cabecera-pagina{position:relative;overflow:hidden;background:var(--marfil-2);padding-block:clamp(3.5rem,8vw,6rem) var(--s-6);border-bottom:3px double var(--filete-2)}
+.cabecera-pagina::after{content:"§";position:absolute;z-index:0;right:-1rem;bottom:-5rem;font:400 16rem/1 var(--display);color:color-mix(in oklab,var(--filete),transparent 40%);pointer-events:none}
+.cabecera-pagina .contenedor{position:relative;z-index:1}
+.cabecera-pagina h1{font-size:clamp(2rem,1.15rem + 2.8vw,3.6rem);margin:0;max-width:22ch}
+.blog-pagina{padding-bottom:var(--s-8)}
+.blog-pagina .cabecera-pagina{margin-bottom:var(--s-7)}
+.cabecera-pagina .lead{margin:var(--s-4) 0 0}
+.entradas{display:grid;gap:var(--s-6) var(--s-5);grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr))}
+.entradas>*{min-width:0}
+.entrada{position:relative;display:flex;flex-direction:column;background:var(--blanco);border:1px solid var(--filete);overflow:hidden;transition:transform .3s ease,box-shadow .3s ease}
+.entrada:hover{transform:translateY(-3px);box-shadow:var(--k-sombra)}
+.entrada img{width:100%;aspect-ratio:16/10;object-fit:cover}
+/* Sin foto: una hoja pautada con su margen, como un bloc de notas. */
+.entrada-motivo{height:6rem;background:linear-gradient(90deg,transparent 2.4rem,color-mix(in oklab,var(--acento),transparent 55%) 2.4rem calc(2.4rem + 1px),transparent calc(2.4rem + 1px)),repeating-linear-gradient(var(--marfil) 0 1.2rem,var(--filete) 1.2rem calc(1.2rem + 1px))}
+.entrada-cuerpo{display:flex;flex-direction:column;gap:var(--s-2);flex:1;padding:var(--s-5)}
+.entrada h2{font-size:1.4rem;line-height:1.25;margin:0}
+.entrada h2 a{text-decoration:none}
+.entrada h2 a::after{content:"";position:absolute;inset:0}
+.entrada:hover h2 a{color:var(--acento)}
+.entrada p{margin:0;color:var(--gris);overflow-wrap:anywhere}
+.leer{margin-top:auto;padding-top:var(--s-3);font-weight:700;color:var(--acento)}
+.leer::after{content:" \2192"}
+time{font-size:.82rem;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--gris)}
+.articulo{max-width:44rem}
+.articulo h1{font-size:clamp(2rem,1.15rem + 2.6vw,3.3rem);margin:var(--s-5) 0 var(--s-4)}
+.articulo>img{width:100%;margin:var(--s-5) 0;border:1px solid var(--filete)}
+.articulo .cuerpo{font-size:1.15rem;overflow-wrap:anywhere;margin-top:var(--s-5)}
+.articulo .cuerpo>p:first-child{font-size:1.15rem;font-family:var(--texto);line-height:1.7}
+.articulo .cuerpo h2{font-size:1.8rem;margin-top:var(--s-7)}
+.articulo .cuerpo h3{font-size:1.35rem;margin-top:var(--s-5)}
+.volver{display:inline-flex;align-items:center;gap:var(--s-2);font-weight:700;color:var(--acento);text-decoration:none}
+.volver::before{content:"\2190"}
+
+/* Pie */
+.pie{background:var(--noche);color:var(--claro-suave);padding-block:var(--s-8) var(--s-6);font-size:.98rem}
+.pie .pie-nombre{font:400 clamp(2rem,1rem + 3.4vw,4rem)/1.1 var(--display);color:var(--blanco);margin:0 0 var(--s-7);padding-bottom:var(--s-5);border-bottom:3px double var(--noche-3);overflow-wrap:anywhere}
+.pie-rejilla{display:grid;gap:var(--s-5);grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));padding-bottom:var(--s-6)}
+.pie-rejilla>*{min-width:0;overflow-wrap:anywhere}
+.pie h3{font:700 .76rem/1.2 var(--texto);text-transform:uppercase;letter-spacing:.16em;color:var(--acento-claro);margin-bottom:var(--s-3)}
+.pie p{margin:0 0 var(--s-2)}
+.pie a{color:var(--blanco)}
+.pie-legal{display:flex;flex-wrap:wrap;gap:var(--s-2) var(--s-5);padding-top:var(--s-5);border-top:1px solid var(--noche-3);font-size:.9rem}
+
+/* Datos de ejemplo (los marca el sistema) */
+.dato-ejemplo{text-decoration:underline dashed currentColor;text-decoration-thickness:1px;text-underline-offset:4px}
+.dato-ejemplo::after{content:"ejemplo";display:inline-block;font:700 .62rem/1 var(--texto);font-style:normal;text-transform:uppercase;letter-spacing:.08em;background:var(--oro-claro);color:var(--noche);padding:3px 7px;border-radius:2px;margin-left:6px;vertical-align:middle}
+.dato-ejemplo-bloque{outline:2px dashed var(--oro-claro);outline-offset:6px}
+.leyenda-ejemplos{position:fixed;left:var(--s-4);bottom:var(--s-4);z-index:60;max-width:22rem;margin:0;background:var(--noche);color:var(--blanco);font-size:.85rem;padding:var(--s-3) var(--s-4);border-radius:var(--radio);box-shadow:0 10px 30px rgba(0,0,0,.3);border-left:4px solid var(--oro-claro)}
+
+/* Aparición al hacer scroll: solo si el JavaScript arrancó */
+.js .aparece{opacity:0;transform:translateY(18px);transition:opacity .7s ease,transform .8s cubic-bezier(.2,.8,.2,1);transition-delay:calc(var(--i,0) * 70ms)}
+.js .aparece.visto{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.js .aparece{opacity:1;transform:none}.js .dibuja h2::after{transform:none}.js .paso::after{transform:none}.js .firma.dibuja path{stroke-dashoffset:0}.js .llamada .dibuja .llamada-telefono{background-size:100% 2px}}
+/* Las variantes de sección a la manera de Despacho (31/10/2026): las piezas
+   seccion@variante.html usan el esqueleto del motor (clases kv-*, que traen
+   el diseño de cada disposición) y le ponen lo que hace a Despacho: el rótulo
+   numerado como cláusula, el trazo bajo el titular, la ficha con la nota de
+   Google, las cajas de filete de los iconos, la pestaña de expediente y los
+   números «§ 1» en vez de «01». Ojo con .kv svg (1,25rem): pisa el tamaño de
+   los svg propios con la misma especificidad, así que aquí van con prefijo. */
+.kv-portada.despacho-variante{overflow-x:clip}
+.despacho-variante .cabeza{margin-bottom:0}
+.despacho-variante .kv-titular{font-weight:400}
+.despacho-variante .trazo{width:min(13rem,60%);height:.9rem}
+.despacho-variante .acciones{margin-top:var(--s-2)}
+.kv-portada--panoramica.despacho-variante .acciones{margin:0}
+.kv-portada--panoramica.despacho-variante .kv-titular{font-size:clamp(2rem,1rem + 3.6vw,4.4rem);line-height:1.08;max-width:20ch;margin-bottom:var(--s-3)}
+.kv-portada--panoramica.despacho-variante .trazo{margin-bottom:var(--s-6)}
+.kv-portada--centrada.despacho-variante .acciones{justify-content:center;margin-top:var(--s-6)}
+.kv-portada--centrada.despacho-variante .trazo{margin-inline:auto}
+.kv-portada--centrada.despacho-variante .kv-titular{font-size:clamp(1.9rem,1rem + 3.2vw,4rem);line-height:1.1;max-width:21ch;margin-bottom:var(--s-3)}
+.kv-portada--centrada.despacho-variante .estado{justify-content:center}
+.kv-portada--formulario.despacho-variante .kv-titular,.kv-tarjeta .kv-titular{line-height:1.12;margin-bottom:var(--s-3)}
+.despacho-variante .folio-vacio{border:0;box-shadow:none}
+.despacho-variante .folio-vacio svg{width:3.5rem;height:3.5rem}
+.despacho-variante .kv-panoramica-foto{position:relative}
+.despacho-variante .kv-panoramica-foto .folio-nota{left:auto;right:clamp(1rem,5vw,4rem);top:clamp(1rem,3vw,2rem);bottom:auto}
+.kv-portada--sangre.despacho-variante>.folio-nota{left:auto;right:clamp(1rem,5vw,4rem);top:clamp(1.5rem,4vw,3rem);bottom:auto;z-index:1}
+.kv-portada--sangre.despacho-variante .kv-tarjeta{border-top:3px double var(--noche)}
+.despacho-variante .kv-tarjeta .portada-datos{margin-top:var(--s-5)}
+.despacho-variante .kv-datos{border-top:3px double var(--noche)}
+.despacho-variante .kv-datos strong{font:700 .72rem/1.3 var(--texto);text-transform:uppercase;letter-spacing:.14em;color:var(--gris)}
+.despacho-variante .kv-datos a,.despacho-variante .kv-datos span{font:400 1.15rem/1.35 var(--display);color:var(--noche)}
+.despacho-variante .estrellas svg{width:1rem;height:1rem}
+.despacho-variante .portada-datos svg{width:1.1rem;height:1.1rem}
+.despacho-variante .boton svg{width:1.05rem;height:1.05rem}
+.despacho-variante .kv-abanico img,.despacho-variante .kv-abanico .kv-foto-vacia{border-radius:0}
+.despacho-variante .kv-checks{font-weight:600}
+.despacho-variante .kv-checks .icono-caja{width:2rem;height:2rem}
+.despacho-variante .kv-checks .icono-caja svg{width:.95rem;height:.95rem}
+.despacho-variante .kv-formulario-texto .portada-datos{margin-top:var(--s-6)}
+.despacho-variante .kv-formulario-lado{border-radius:0}
+.despacho-variante .kv-formulario{border:0;border-top:3px double var(--noche);border-radius:0;padding:clamp(1.25rem,3vw,2.25rem)}
+.despacho-variante .kv-formulario .formulario-rotulo{margin:0 0 var(--s-2);font:700 .74rem/1.3 var(--texto);text-transform:uppercase;letter-spacing:.14em;color:var(--acento)}
+.despacho-variante .kv-formulario h2{font-size:clamp(1.4rem,1.1rem + 1vw,1.85rem)}
+.despacho-variante .kv-formulario label{font:700 .74rem/1.3 var(--texto);text-transform:uppercase;letter-spacing:.13em;color:var(--gris);margin:var(--s-4) 0 var(--s-1)}
+.despacho-variante .kv-formulario input,.despacho-variante .kv-formulario textarea{padding:var(--s-2) 0;border:0;border-bottom:1px solid var(--filete-2);border-radius:0}
+.despacho-variante .kv-formulario input:focus-visible,.despacho-variante .kv-formulario textarea:focus-visible{outline:none;border-color:var(--acento);box-shadow:0 1px 0 var(--acento)}
+.despacho-variante .kv-formulario .boton{margin-top:var(--s-5);align-self:stretch;width:100%}
+/* «Exp. 01», como la pestaña de los expedientes: «§ 1» se confundía con el
+   número de la cláusula de la sección. */
+.despacho-variante .kv-num::before{content:"Exp.\00a0" counter(kv-n,decimal-leading-zero)}
+.kv.despacho-variante .kv-num{font:700 .72rem/1.2 var(--texto);text-transform:uppercase;letter-spacing:.14em;color:var(--gris)}
+/* Tras una portada a sangre o panorámica, las cifras no pueden ir pegadas. */
+.kv-portada+.cifras{padding-top:var(--s-7)}
+.despacho-variante .kv-zigzag-icono{background:var(--blanco);color:var(--acento);border:1px solid var(--filete);box-shadow:inset 0 0 0 6px var(--blanco),inset 0 0 0 7px color-mix(in oklab,var(--acento),transparent 60%);border-radius:0}
+.kv.despacho-variante .kv-zigzag .kv-num{margin-bottom:var(--s-2);color:var(--acento)}
+.despacho-variante .kv-zigzag>li:hover .kv-zigzag-icono{background:var(--acento);color:var(--blanco);box-shadow:inset 0 0 0 6px var(--acento),inset 0 0 0 7px color-mix(in oklab,var(--blanco),transparent 50%)}
+.despacho-variante .kv-indice{border-top:1px solid var(--noche)}
+.despacho-variante .kv-indice>li{align-items:center;grid-template-columns:4.25rem minmax(0,1fr) auto}
+.kv.despacho-variante .kv-indice .kv-num{color:var(--acento)}
+.despacho-variante .kv-indice .icono-caja{width:2.5rem;height:2.5rem}
+.despacho-variante .kv-indice .icono-caja svg{width:1.1rem;height:1.1rem}
+.despacho-variante .kv-indice>li:hover .icono-caja{background:var(--acento);color:var(--blanco);border-color:var(--acento)}
+.despacho-variante .kv-mosaico{counter-reset:expediente;gap:3rem 1rem;margin-top:3.5rem}
+.despacho-variante .kv-mosaico>li{position:relative;counter-increment:expediente;border-radius:0 var(--radio) var(--radio) var(--radio)}
+.despacho-variante .kv-mosaico .icono-caja{margin-bottom:auto}
+.despacho-variante .kv-mosaico .icono-caja svg{width:1.4rem;height:1.4rem;margin:0;padding:0;box-sizing:border-box;color:inherit}
+.despacho-variante .kv-mosaico h3{margin-top:var(--s-5)}
+.despacho-variante .kv-mosaico>li:first-child .icono-caja{color:var(--blanco);border-color:color-mix(in oklab,var(--blanco),transparent 50%);background:transparent}
+.despacho-variante .kv-mosaico>li:first-child .expediente-pestana{background:var(--acento);border-color:var(--acento);color:var(--blanco)}
+.despacho-variante .kv-mosaico>li:hover .expediente-pestana{padding-bottom:.75rem}
+.despacho-variante .kv-mosaico>li:not(:first-child):hover .expediente-pestana{color:var(--acento)}
+.despacho-variante .kv-mosaico>li:not(:first-child):hover .icono-caja{background:var(--acento);color:var(--blanco);border-color:var(--acento)}
+/* El filete de arriba va en el primer botón, no en la lista: con borde, el
+   laboratorio la cuenta como una tarjeta junto al panel. */
+.despacho-variante .kv-pestanas-lista{gap:0}
+.despacho-variante .kv-pestanas-lista button:first-child{border-top:1px solid var(--noche)}
+.despacho-variante .kv-pestanas-lista button{border-radius:0;border-bottom:1px solid var(--filete);padding:1rem .85rem;font-weight:600}
+.despacho-variante .kv-pestanas-lista button[aria-selected="true"]{background:var(--blanco);color:var(--acento);box-shadow:inset 3px 0 0 var(--acento)}
+.despacho-variante .kv-pestanas-lista .icono-caja{border:0;background:none;width:auto;height:auto}
+.despacho-variante .kv-panel{border-radius:0;border-top:3px double var(--noche)}
+.despacho-variante .kv-panel-icono{border-radius:0}
+.despacho-variante .kv-lado .acciones{margin-top:var(--s-6)}
+.despacho-variante .kv-panel>.icono-caja{margin-bottom:var(--s-4)}
+@media (max-width:640px){.kv-portada--sangre.despacho-variante{padding-top:11rem}.despacho-variante .kv-indice .icono-caja{display:none}.despacho-variante .kv-indice>li{grid-template-columns:4.25rem minmax(0,1fr)}}
+/* Las variantes de quiénes somos, proceso, garantías, precios, opiniones y
+   preguntas (31/10/2026), con la misma firma. El motor pone en cursiva y sin
+   margen todo párrafo de algunas cabeceras (.kv-revista-cabeza p): el rótulo
+   lo recupera aquí. */
+.despacho-variante .rotulo{font-style:normal}
+.despacho-variante .sobre-antetitulo{margin-bottom:var(--s-2)}
+.kv-sobre--cita.despacho-variante .rotulo,.kv-garantias--iconos.despacho-variante .rotulo{justify-content:center}
+.kv-sobre--cita.despacho-variante .cabeza{margin:0 auto var(--s-6)}
+.kv-sobre--cita.despacho-variante .cabeza h2::after,.kv-garantias--iconos.despacho-variante .cabeza h2::after{margin-inline:auto;transform-origin:center}
+.despacho-retrato{display:block;width:fit-content;margin:0 auto var(--s-6);padding:.45rem;background:var(--blanco);border:1px solid var(--filete);box-shadow:var(--k-sombra)}
+.despacho-variante .despacho-retrato .kv-cita-foto{width:8rem;height:8rem;margin:0;border:0;border-radius:0;box-shadow:none}
+.despacho-variante .kv-cita-texto>p:first-child::before{content:"§";height:auto;margin-bottom:var(--s-3);font:400 2rem/1 var(--display);font-style:normal;color:var(--acento)}
+.kv-sobre--media.despacho-variante .kv-media-texto{background:var(--blanco);border-left:1px solid var(--filete)}
+.despacho-variante .kv-media-texto .cabeza,.despacho-variante .kv-lado-tarjeta .cabeza{margin-bottom:var(--s-5)}
+.despacho-variante .kv-cifras{border-top:1px solid var(--noche)}
+.despacho-variante .kv-cifras strong{font:italic 400 2rem/1.1 var(--display);color:var(--acento)}
+.despacho-variante .kv-cifras li>span{color:var(--gris);font-weight:600}
+.despacho-variante .kv-revista-cabeza{border-bottom:3px double var(--noche);padding-bottom:var(--s-5)}
+.despacho-variante .kv-revista-cabeza .rotulo{margin-bottom:var(--s-4);color:var(--acento)}
+.despacho-variante .kv-revista-cabeza h2{max-width:20ch}
+.despacho-variante .revista-sitio{display:flex;gap:var(--s-2);align-items:center;font:italic 400 1.05rem/1.4 var(--display);color:var(--gris)}
+.despacho-variante .revista-sitio svg{width:1rem;height:1rem;color:var(--acento)}
+.despacho-variante .kv-revista-columnas>p:first-child::first-letter{font-weight:400;color:var(--acento)}
+.despacho-variante .kv-linea>li{padding-left:4.5rem}
+.despacho-variante .kv-linea>li::before{content:counter(kv-n,upper-roman);width:3rem;height:3rem;border-radius:0;background:var(--acento);color:var(--blanco);font:400 1rem/1 var(--display);box-shadow:inset 0 0 0 3px var(--acento),inset 0 0 0 4px color-mix(in oklab,var(--blanco),transparent 45%)}
+.despacho-variante .kv-linea>li:not(:last-child)::after{left:calc(1.5rem - .5px);top:3.4rem;border-left:1px solid var(--noche)}
+.despacho-variante .kv-linea h3{padding-top:.6rem}
+.despacho-variante .kv-marcas{border-top:1px solid var(--noche);padding-top:var(--s-5);gap:var(--s-5) var(--s-7)}
+.despacho-variante .kv-marcas>li{border-bottom:1px solid var(--filete);padding-bottom:var(--s-5)}
+.despacho-variante .kv-marca.icono-caja{width:2.4rem;height:2.4rem;border-radius:0;background:color-mix(in oklab,var(--acento),transparent 94%);color:var(--acento)}
+.despacho-variante .kv-marca.icono-caja svg{width:1.05rem;height:1.05rem}
+.despacho-variante .kv-marcas>li:hover .kv-marca{background:var(--acento);color:var(--blanco)}
+.kv-garantias--iconos.despacho-variante .cabeza{margin-inline:auto}
+.seccion--noche.despacho-variante .cabeza h2::after{background:var(--acento-claro)}
+.despacho-variante .kv-icono-grande{border-radius:0;background:transparent;border:1px solid color-mix(in oklab,var(--acento-claro),transparent 40%);color:var(--acento-claro);box-shadow:inset 0 0 0 5px var(--noche),inset 0 0 0 6px color-mix(in oklab,var(--acento-claro),transparent 70%)}
+.despacho-variante .kv-icono-grande svg{width:2rem;height:2rem}
+.seccion--noche.despacho-variante .kv-iconos h3{color:var(--blanco)}
+.seccion--noche.despacho-variante .kv-iconos p{color:var(--claro-suave)}
+.despacho-variante .kv-tabla{border-radius:0;padding:var(--s-3) clamp(1rem,3vw,2rem) var(--s-2)}
+.despacho-variante .kv-tabla .minuta-cabeza{padding-block:var(--s-2) var(--s-3)}
+.despacho-variante .kv-concepto>span:first-child{font:400 1.15rem/1.35 var(--display)}
+.kv.despacho-variante .kv-fila-precio>strong{font:700 1.05rem/1.35 var(--texto);color:var(--acento)}
+.despacho-variante .kv-info{border-radius:0;font-family:var(--display)}
+.despacho-variante .kv-globo{border-radius:0;border-top:3px double var(--noche)}
+.despacho-variante .kv-lado .nota{margin-top:var(--s-5)}
+.kv-oscura.despacho-variante{background:var(--noche)}
+.kv-oscura.despacho-variante .cabeza h2::after,.kv-oscura.despacho-variante .cita::before{background:var(--acento-claro)}
+.kv-oscura.despacho-variante .nota-google{background:transparent;border-color:rgba(255,255,255,.22);border-top-color:var(--claro-suave)}
+.kv-oscura.despacho-variante .kv-cabeza{margin-bottom:var(--s-6)}
+.kv-oscura.despacho-variante .kv-carrusel-nav button{border-radius:0}
+.despacho-variante .kv-pista .cita,.despacho-variante .kv-muro .cita,.despacho-variante .kv-citas .cita{padding:var(--s-5)}
+.despacho-variante .kv-muro-nota{border-radius:0;box-shadow:inset 0 0 0 .4rem var(--acento),inset 0 0 0 calc(.4rem + 1px) color-mix(in oklab,var(--blanco),transparent 55%)}
+.despacho-variante .kv-muro-nota strong{font:400 3.4rem/1.05 var(--display);margin-top:var(--s-2)}
+.despacho-variante .kv-lado-tarjeta{border-radius:0;border-top:3px double var(--noche)}
+.despacho-variante .kv-nota-grande strong{font-weight:400;color:var(--noche)}
+.despacho-variante .kv-nota-grande .estrellas svg{width:1.1rem;height:1.1rem}
+.despacho-variante .kv-acordeon{column-gap:var(--s-7);margin-top:var(--s-6)}
+.despacho-variante .kv-acordeon details{margin:0;padding:0;background:transparent;border:0;border-top:1px solid var(--filete-2);border-radius:0;box-shadow:none}
+.despacho-variante .kv-acordeon summary{font:400 1.1rem/1.45 var(--display);padding:var(--s-4) 0;transition:color .2s ease}
+.despacho-variante .kv-acordeon summary::after{color:var(--acento);font-family:var(--texto);font-weight:300}
+.despacho-variante .kv-acordeon summary:hover{color:var(--acento)}
+.kv.despacho-variante .kv-ayuda{margin-top:var(--s-6);color:var(--gris)}
+.despacho-variante .kv-ayuda .faq-telefono{font-size:1.2rem}
+@media (max-width:640px){.despacho-variante .kv-linea>li{padding-left:4rem}}
+
+/* El marco de los bloques ricos (31/10/2026, #374): la cláusula, el título,
+   el texto y, en el antes y después y la trayectoria, una columna al lado. El
+   cuerpo lo pinta el motor (BLOQUES_CSS va antes que esta hoja y aquí se
+   retoca), así que el visor, los filtros, el arrastre del comparador y el «sin
+   JavaScript» siguen siendo los suyos. Los marcos con paspartú van con
+   box-shadow y no con padding: en el comparador, un padding descuadraría la
+   foto de después (inset:0) respecto a la de antes. */
+.despacho-bloque{padding-block:var(--s-8)}
+.despacho-bloque .cabeza{margin-bottom:var(--s-6)}
+.bloque-texto{margin:0 0 var(--s-6);overflow-wrap:anywhere}
+.bloque-texto>:last-child{margin-bottom:0}
+.bloque-partida{display:grid;gap:var(--s-6) var(--s-8);grid-template-columns:minmax(0,1fr)}
+.bloque-partida>*{min-width:0}
+@media (min-width:1000px){.bloque-partida{grid-template-columns:minmax(0,1fr) minmax(0,1.6fr)}.bloque-lado{position:sticky;top:7rem;align-self:start}.bloque-lado h2{font-size:clamp(1.8rem,1rem + 1.5vw,2.5rem)}}
+.despacho-bloque .k-galeria-rejilla{counter-reset:figura;gap:var(--s-6) var(--s-5)}
+.despacho-bloque .k-galeria-rejilla>li{counter-increment:figura}
+.despacho-bloque .k-galeria-foto{border-radius:0;background:var(--blanco);box-shadow:0 0 0 .45rem var(--blanco),0 0 0 calc(.45rem + 1px) var(--filete),var(--k-sombra)}
+.despacho-bloque .k-pie{margin-top:var(--s-4);font:italic 400 .98rem/1.45 var(--display);color:var(--gris)}
+.despacho-bloque .k-pie::before{content:"Fig.\00a0" counter(figura) "\00a0\2014\00a0";font:normal 700 .7rem/1 var(--texto);letter-spacing:.12em;text-transform:uppercase;color:var(--acento)}
+.despacho-bloque .k-comparador,.despacho-bloque .k-comparador-sola{margin:.5rem;border-radius:0;box-shadow:0 0 0 .5rem var(--blanco),0 0 0 calc(.5rem + 1px) var(--filete),var(--k-sombra)}
+.despacho-bloque .k-etiqueta{border-radius:0;background:var(--noche);font:700 .7rem/1.2 var(--texto);letter-spacing:.14em}
+.despacho-bloque .k-filtros button{border-radius:0;border-color:var(--filete-2);font-weight:600}
+.despacho-bloque .k-filtros button[aria-pressed="true"]{background:var(--noche);border-color:var(--noche);color:var(--blanco)}
+.despacho-bloque .k-catalogo-rejilla{gap:var(--s-5)}
+.despacho-bloque .k-producto{border-radius:0;background:var(--blanco);border-color:var(--filete);border-top:3px double var(--noche);transition:transform .3s ease,box-shadow .3s ease}
+.despacho-bloque .k-producto:hover{transform:translateY(-3px);box-shadow:var(--k-sombra)}
+.despacho-bloque .k-producto-cuerpo h3{font-size:1.25rem}
+.despacho-bloque .k-producto-categoria{letter-spacing:.14em;color:var(--acento)}
+.despacho-bloque .k-precio{padding-top:var(--s-3);border-top:1px solid var(--filete);font:700 1.08rem/1.3 var(--texto);color:var(--acento)}
+.despacho-bloque .k-caracteristicas li::before{border-color:var(--acento)}
+/* Pestañas, en su estilo de siempre: carpetas con la pestaña que asoma sobre
+   la hoja. Las variantes (subrayado, píldora, tarjetas) conservan su forma,
+   solo sin esquinas redondas. */
+.despacho-bloque .k-pestanas:not(.k-pestanas--subrayado,.k-pestanas--pildora,.k-pestanas--tarjetas) .k-pestanas-lista{gap:.3rem;margin:0;padding-left:.5rem;border-bottom:1px solid var(--filete-2)}
+.despacho-bloque .k-pestanas:not(.k-pestanas--subrayado,.k-pestanas--pildora,.k-pestanas--tarjetas) .k-pestanas-lista button{margin:0 0 -1px;padding:.6rem 1.1rem;border:1px solid transparent;border-bottom:0;border-radius:var(--radio) .7rem 0 0;color:var(--gris);transition:color .2s ease,background .2s ease,padding .25s ease}
+.despacho-bloque .k-pestanas:not(.k-pestanas--subrayado,.k-pestanas--pildora,.k-pestanas--tarjetas) .k-pestanas-lista button:hover{color:var(--noche);padding-bottom:.8rem}
+.despacho-bloque .k-pestanas:not(.k-pestanas--subrayado,.k-pestanas--pildora,.k-pestanas--tarjetas) .k-pestanas-lista button[aria-selected="true"]{background:var(--blanco);border-color:var(--filete-2);color:var(--acento);padding-bottom:.8rem}
+.despacho-bloque .k-pestanas--js:not(.k-pestanas--subrayado,.k-pestanas--pildora,.k-pestanas--tarjetas) .k-panel{padding:clamp(1.25rem,3vw,2.25rem);background:var(--blanco);border:1px solid var(--filete-2);border-top:0}
+.despacho-bloque .k-pestanas--pildora .k-pestanas-lista,.despacho-bloque .k-pestanas--pildora .k-pestanas-lista button,.despacho-bloque .k-pestanas--tarjetas .k-pestanas-lista button,.despacho-bloque .k-pestanas--tarjetas.k-pestanas--js .k-panel{border-radius:0}
+.despacho-bloque .k-panel-titulo{font-size:1.35rem}
+.despacho-bloque .k-panel-cuerpo img{border-radius:0}
+.despacho-bloque .k-comparativa-marco{background:var(--blanco);border:1px solid var(--filete);border-top:3px double var(--noche);padding:clamp(.5rem,2.5vw,1.75rem);box-shadow:var(--k-sombra)}
+.despacho-bloque .k-comparativa{background:transparent;border-radius:0}
+.despacho-bloque .k-comparativa thead th{font:400 1.1rem/1.3 var(--display);border-bottom:1px solid var(--noche)}
+.despacho-bloque .k-comparativa tbody th{font-weight:600}
+.despacho-bloque .k-comparativa .k-destacada{background:color-mix(in oklab,var(--acento),transparent 93%)}
+.despacho-bloque .k-comparativa thead .k-destacada{background:var(--acento);color:var(--blanco)}
+.despacho-bloque .k-trayectoria{padding-left:2rem;gap:var(--s-6)}
+.despacho-bloque .k-trayectoria::before{left:.55rem;width:1px;background:var(--noche)}
+.despacho-bloque .k-hito::before{left:-2rem;top:.45rem;width:1.15rem;height:1.15rem;border-radius:0;background:var(--marfil);border:1px solid var(--noche);box-shadow:none;transform:rotate(45deg);transition:background .3s ease,border-color .3s ease}
+.despacho-bloque .k-hito:hover::before{background:var(--acento);border-color:var(--acento)}
+.despacho-bloque .k-hito-fecha{font:italic 400 1.25rem/1.3 var(--display);color:var(--acento)}
+.despacho-bloque .k-hito-cuerpo h3{font-size:1.25rem}
+.despacho-bloque .k-marcas{padding-block:var(--s-5);border-block:1px solid var(--noche)}
+.despacho-bloque .k-marca-texto{font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--gris)}
+.despacho-bloque .k-video-marco{max-width:56rem;margin:.5rem}
+.despacho-bloque .k-video-portada,.despacho-bloque .k-video-marco iframe{border-radius:0;box-shadow:0 0 0 .5rem var(--blanco),0 0 0 calc(.5rem + 1px) var(--filete),var(--k-sombra)}
+.despacho-bloque .k-video-etiqueta{border-radius:0;background:var(--noche);font:700 .72rem/1.2 var(--texto);letter-spacing:.14em;text-transform:uppercase}
+.despacho-bloque .k-video-aviso{margin-top:var(--s-4)}
+</style>
+</head>
+<body>
+<svg aria-hidden="true" style="display:none">
+<symbol id="i-check" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></g></symbol>
+<symbol id="i-telefono" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M6.5 3.5h3l1.5 4-2 1.5a11 11 0 0 0 6 6l1.5-2 4 1.5v3a2 2 0 0 1-2 2A16 16 0 0 1 4.5 5.5a2 2 0 0 1 2-2z"/></g></symbol>
+<symbol id="i-estrella" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2.8l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.1 6.4 20l1.1-6.2L3 9.4l6.2-.9z"/></symbol>
+<symbol id="i-documento" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.5h7.5l4 4v13h-11.5z"/><path d="M14 3.5v4h4M9.5 12h5.5M9.5 15.5h5.5M9.5 8.5h2"/></g></symbol>
+<symbol id="i-personas" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.5" r="3"/><path d="M3.5 19.5a5.5 5.5 0 0 1 11 0"/><circle cx="16.5" cy="9.5" r="2.4"/><path d="M15.6 14.3a4.6 4.6 0 0 1 4.9 5.2"/></g></symbol>
+<symbol id="i-grafica" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v16h16"/><path d="M7.5 15l3.5-4 3 2.5 5-6"/><path d="M15.5 7.5H19V11"/></g></symbol>
+<symbol id="i-balanza" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v17M8 20.5h8M5 7h14"/><path d="M5 7l-2.4 6M5 7l2.4 6M19 7l-2.4 6M19 7l2.4 6"/><path d="M2.2 13h5.6a2.8 2.8 0 0 1-5.6 0zM16.2 13h5.6a2.8 2.8 0 0 1-5.6 0z"/></g></symbol>
+<symbol id="i-edificio" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 20.5h17M6 20.5V4.5h8v16M14 9.5h4v11"/><path d="M8.5 8h3M8.5 11.5h3M8.5 15h3M16 13h0M16 16.5h0"/></g></symbol>
+<symbol id="i-calendario" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5.5" width="16" height="14.5" rx="1.5"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4M8 14h2M12 14h2M8 17h2"/></g></symbol>
+<symbol id="i-maletin" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="7.5" width="17" height="12" rx="1.5"/><path d="M9 7.5v-2a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M3.5 12.5h17M11 12.5v2h2v-2"/></g></symbol>
+<symbol id="i-firma" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 20.5h17"/><path d="M14.5 4.5l4 4L9 18l-4.5.5L5 14z"/><path d="M12.5 6.5l4 4"/></g></symbol>
+<symbol id="i-correo" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5.5" width="17" height="13" rx="1.5"/><path d="M4 6.5l8 6 8-6"/></g></symbol>
+<symbol id="i-inmueble" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 5l8 6.5"/><path d="M6 10v10h12V10"/><circle cx="12" cy="13.5" r="1.8"/><path d="M12 15.3V18"/></g></symbol>
+<symbol id="i-hoja" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19c0-8 5.5-14 15-14 0 9.5-6 15-14 15"/><path d="M5 19c3-4 6-6.5 10-8.5"/></g></symbol>
+<symbol id="i-casa" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M4 11l8-6.5 8 6.5V20h-5v-5H9v5H4z"/></g></symbol>
+<symbol id="i-reloj" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></g></symbol>
+<symbol id="i-escudo" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5.5c0 4.5-3 8-7 9.5-4-1.5-7-5-7-9.5V6z"/><path d="M8.8 12.2l2.2 2.2 4.2-4.4"/></g></symbol>
+<symbol id="i-mapa" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0 1 13 0c0 5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3" fill="currentColor"/></g></symbol>
+<symbol id="i-chispa" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2.5c.6 4.6 2.9 6.9 7.5 7.5-4.6.6-6.9 2.9-7.5 7.5-.6-4.6-2.9-6.9-7.5-7.5 4.6-.6 6.9-2.9 7.5-7.5z"/></symbol>
+<symbol id="i-flecha" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></g></symbol>
+</svg>
+<a class="saltar" href="#contenido">Saltar al contenido</a>
+<header class="cabecera"><div class="contenedor">
+  <a class="marca{{#logo}} marca--logo{{/logo}}" href="{{pagina.inicio}}">{{#logo}}<img src="{{logo}}" alt="{{nombre}}">{{/logo}}{{^logo}}<span>{{nombre}}</span>{{/logo}}</a>
+  <nav class="menu" id="menu" aria-label="Principal">{{#menu}}<a href="{{href}}"{{#actual}} aria-current="page"{{/actual}}>{{titulo}}</a>{{/menu}}</nav>
+  {{#telefono_href}}<a class="boton" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg><span>Llamar</span></a>{{/telefono_href}}
+  <button class="abrir-menu" type="button" aria-expanded="false" aria-controls="menu" aria-label="Abrir el menú"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16M4 16h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+</div></header>
+<main id="contenido">
+{{{secciones}}}
+</main>
+<footer class="pie"><div class="contenedor">
+  <p class="pie-nombre">{{nombre}}</p>
+  <div class="pie-rejilla">
+    <div><h3>Contacto</h3>{{#telefono}}<p><a class="subraya" href="tel:{{telefono_href}}">{{telefono}}</a></p>{{/telefono}}{{#direccion}}<p>{{direccion}}</p>{{/direccion}}{{#maps_url}}<p><a class="subraya" href="{{maps_url}}">Cómo llegar</a></p>{{/maps_url}}</div>
+    {{#horario.length}}<div><h3>Horario</h3>{{#horario}}<p>{{dias}}: {{horas}}</p>{{/horario}}</div>{{/horario.length}}
+    {{#blog}}<div><h3>{{blog.titulo}}</h3><p><a class="subraya" href="{{blog.href}}">Plazos, novedades y consejos</a></p></div>{{/blog}}
+  </div>
+  <p class="pie-legal"><span>© {{anio}} {{nombre}}</span>{{#legales}}<a class="subraya" href="{{href}}">{{titulo}}</a>{{/legales}}</p>
+</div></footer>
+<script>
+(function () {
+  var root = document.documentElement;
+  root.classList.add("js");
+  var reducido = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  var boton = document.querySelector(".abrir-menu");
+  var menu = document.getElementById("menu");
+  if (boton && menu) {
+    boton.addEventListener("click", function () {
+      var abierto = menu.classList.toggle("abierto");
+      boton.setAttribute("aria-expanded", abierto ? "true" : "false");
+    });
+    menu.addEventListener("click", function (e) {
+      if (e.target.tagName === "A") { menu.classList.remove("abierto"); boton.setAttribute("aria-expanded", "false"); }
+    });
+  }
+
+  var cabecera = document.querySelector(".cabecera");
+  var alHacerScroll = function () { if (cabecera) cabecera.classList.toggle("compacta", window.scrollY > 24); };
+  window.addEventListener("scroll", alHacerScroll, { passive: true });
+  alHacerScroll();
+
+  // Escalonado: cada elemento de una lista entra un poco después.
+  document.querySelectorAll(".rejilla, .expedientes, .indice-pasos, .clausulas, .entradas, .lista-iconos, .municipios").forEach(function (lista) {
+    Array.prototype.forEach.call(lista.children, function (hijo, i) { hijo.style.setProperty("--i", String(i % 6)); });
+  });
+
+  // Las cifras cuentan desde cero la primera vez que se ven.
+  function contar(el) {
+    if (reducido || !el) return;
+    var nodos = [];
+    var paseo = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    while (paseo.nextNode()) nodos.push(paseo.currentNode);
+    nodos.forEach(function (nodo) {
+      var m = /(\d{1,3}(?:\.\d{3})+|\d+)/.exec(nodo.nodeValue);
+      if (!m) return;
+      var final = parseInt(m[1].replace(/\./g, ""), 10);
+      if (!(final > 1) || final > 100000) return;
+      var original = nodo.nodeValue;
+      var antes = original.slice(0, m.index), despues = original.slice(m.index + m[1].length);
+      var inicio = null;
+      function paso(t) {
+        if (inicio === null) inicio = t;
+        var x = Math.min(1, (t - inicio) / 1300);
+        // Al final, el texto tal cual lo escribió el cliente («1.500», no «1500»).
+        nodo.nodeValue = x < 1 ? antes + Math.round(final * (1 - Math.pow(1 - x, 3))) + despues : original;
+        if (x < 1) requestAnimationFrame(paso);
+      }
+      requestAnimationFrame(paso);
+    });
+  }
+
+  // Lo que aparece al hacer scroll, y lo que se dibuja (subrayados, la línea
+  // del índice, la firma): las dos cosas reciben .visto al entrar.
+  var elementos = document.querySelectorAll(".aparece, .dibuja");
+  if (!("IntersectionObserver" in window)) { elementos.forEach(function (el) { el.classList.add("visto"); }); return; }
+  var obs = new IntersectionObserver(function (entradas) {
+    entradas.forEach(function (en) {
+      if (!en.isIntersecting) return;
+      en.target.classList.add("visto");
+      if (en.target.classList.contains("cifra")) contar(en.target.querySelector(".cifra-valor"));
+      obs.unobserve(en.target);
+    });
+  }, { rootMargin: "0px 0px -8% 0px" });
+  elementos.forEach(function (el) { obs.observe(el); });
+})();
+</script>
+</body>
+</html>

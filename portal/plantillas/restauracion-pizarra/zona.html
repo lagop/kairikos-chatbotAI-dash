@@ -1,0 +1,8 @@
+<section class="seccion" id="{{ancla}}"><div class="contenedor zona">
+  <div class="zona-texto">
+    <p class="rotulo">Dónde estamos</p>
+    <h2 data-k-titulo-seccion>Cerca de ti</h2>
+    {{#zona.texto}}<p class="lead">{{zona.texto}}</p>{{/zona.texto}}
+  </div>
+  {{#zona.lugares.length}}<ul class="etiquetas">{{#zona.lugares}}<li class="aparece"><svg aria-hidden="true"><use href="#i-mapa"></use></svg><span>{{nombre}}</span></li>{{/zona.lugares}}</ul>{{/zona.lugares.length}}
+</div></section>
