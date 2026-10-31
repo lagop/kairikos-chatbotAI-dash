@@ -3,6 +3,7 @@ import type { PrismaClient, PublicDraftRequest } from '@prisma/client';
 import { renderWebDraftHtml, type WebDraftPurchaseCta } from './web-draft-html';
 import type { WebDraftCopy } from './web-draft-ai';
 import { renderDesignedDraft } from './web-draft-design';
+import { publicDraftUploadsBase } from './web-draft-images';
 
 // =============================================================================
 // 30/10/2026 — pintar el borrador de una petición de kairikos.com.
@@ -15,7 +16,7 @@ import { renderDesignedDraft } from './web-draft-design';
 
 type PublicDraftRow = Pick<
   PublicDraftRequest,
-  'businessName' | 'primaryType' | 'city' | 'contact' | 'phone' | 'copy' | 'content' | 'templateId' | 'themeKey' | 'createdAt'
+  'token' | 'businessName' | 'primaryType' | 'city' | 'contact' | 'phone' | 'copy' | 'content' | 'templateId' | 'themeKey' | 'createdAt'
 >;
 
 /** El teléfono que se pinta en su web: el que dejó aparte o, en las
@@ -64,6 +65,8 @@ export async function renderPublicDraft(
     offer: opts.offer,
     shareUrl: opts.shareUrl ?? null,
     edicion: opts.edicion,
+    // 31/10/2026 — las fotos que subió el operador (web-draft-images.ts).
+    subidasBase: publicDraftUploadsBase(row.token),
   });
   if (designed) return designed;
   if (opts.content !== undefined) return null;

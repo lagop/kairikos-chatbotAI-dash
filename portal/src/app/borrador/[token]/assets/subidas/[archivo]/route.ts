@@ -22,7 +22,7 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ token: s
   if (!isShareToken(params.token)) return notFound();
   if (!isDatabaseConfigured) return new NextResponse('No disponible.', { status: 503, headers: { 'content-type': 'text/plain; charset=utf-8' } });
   try {
-    return await serveDraftImage(prisma, { shareToken: params.token, lead: { contactName: { not: null } } }, `assets/subidas/${params.archivo}`);
+    return await serveDraftImage(prisma, { kind: 'prospecting', where: { shareToken: params.token, lead: { contactName: { not: null } } } }, `assets/subidas/${params.archivo}`);
   } catch (err) {
     logError('web_draft.image_view_failed', err, { route: 'app/borrador/[token]/assets/subidas/[archivo]' }, 'warn');
     return notFound();

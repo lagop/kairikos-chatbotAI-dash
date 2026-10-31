@@ -4260,9 +4260,34 @@ model PublicDraftRequest {
   // abierto igual). El operador lo ve en la cola y puede reintentarlo.
   deliveryError      String?   @map("delivery_error")
 
+  images PublicDraftImage[]
+
   @@index([createdAt])
   @@index([sentAt])
   @@index([ipHash, createdAt])
+}
+
+/// 31/10/2026 — el logo y las fotos que el operador sube al borrador que pidió
+/// un negocio en kairikos.com. Lo mismo que ProspectingWebDraftImage
+/// (lib/web-draft-images.ts), servidas en /mi-web/<testigo>/assets/subidas/….
+/// Se borran CON la petición (Cascade): retention-purge.ts la borra entera a
+/// los dos años, y las fotos de un negocio también le identifican.
+model PublicDraftImage {
+  id        String @id @default(uuid()) @db.Uuid
+  requestId String @map("request_id") @db.Uuid
+  path      String
+
+  contentType String @map("content_type")
+  content     Bytes
+  width       Int
+  height      Int
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  request PublicDraftRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, path])
+  @@index([requestId, createdAt])
 }
 
 // =============================================================================

@@ -55,6 +55,8 @@ export default async function AdminPublicDraftEditorPage(props: { params: Promis
               ? 'Ya se le envió: lo que guardes lo verá en su enlace la próxima vez que lo abra. Aquí no hay historial; «Deshacer» sí funciona mientras no cierres la página.'
               : 'Todavía no se le ha enviado: lo que guardes es lo que recibirá. Aquí no hay historial; «Deshacer» sí funciona mientras no cierres la página.',
             guardado: sent ? 'Guardado. Su enlace ya enseña el borrador así.' : 'Guardado. Es lo que recibirá cuando se envíe.',
+            // 31/10/2026 — con sus fotos (PublicDraftImage, lib/web-draft-images.ts).
+            subidas: true,
           }}
           initialContent={loaded.data.content}
           phone={null}

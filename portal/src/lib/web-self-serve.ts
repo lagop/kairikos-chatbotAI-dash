@@ -359,9 +359,14 @@ export async function createClientWebsiteFromDraft(
         },
       });
       // 31/10/2026 — las fotos que el operador subió al borrador viajan con su
-      // contenido (web-draft-images.ts). Los de kairikos.com no tienen.
-      if (seed.kind === 'prospecting' && seed.content != null) {
-        await copyDraftImagesToWebsite(tx, { shareToken: seed.token }, row.id, seed.content);
+      // contenido (web-draft-images.ts), venga de la prospección o de kairikos.com.
+      if (seed.content != null) {
+        await copyDraftImagesToWebsite(
+          tx,
+          seed.kind === 'prospecting' ? { kind: 'prospecting', where: { shareToken: seed.token } } : { kind: 'public', where: { token: seed.token } },
+          row.id,
+          seed.content,
+        );
       }
       return row;
     });

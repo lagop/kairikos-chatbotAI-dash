@@ -132,8 +132,8 @@ export interface SiteContentEditorProps {
    *  `aviso` y `guardado` sustituyen a los textos de prospección: un
    *  borrador de kairikos.com sin enviar no se ve en su enlace todavía y no
    *  tiene historial (lib/public-draft-editor.ts). `subidas` (31/10/2026):
-   *  el borrador tiene dónde guardar fotos — los de prospección sí
-   *  (lib/web-draft-images.ts), los de kairikos.com todavía no. */
+   *  el borrador tiene dónde guardar fotos (lib/web-draft-images.ts); hoy
+   *  lo tienen los dos, el de prospección y el de kairikos.com. */
   borrador?: { negocio: string; verUrl: string; aviso?: string; guardado?: string; subidas?: boolean } | null;
   initialContent: SiteContent;
   phone: string | null;
