@@ -125,7 +125,15 @@ describe('listLeadsQueue', () => {
   it('queries only the open statuses — never terminal leads', async () => {
     findMany.mockResolvedValue([]);
     await listLeadsQueue(prisma);
-    expect(findMany.mock.calls[0][0].where).toEqual({ status: { in: ['nuevo', 'contactado'] } });
+    expect(findMany.mock.calls[0][0].where.status).toEqual({ in: ['nuevo', 'contactado'] });
+  });
+
+  // 31/10/2026 — 200 de 203 «parados» eran prospectos de Google Maps sin
+  // respuesta: no esperan a nadie. Uno que contestó, sí.
+  it('leaves out prospects that never replied, keeps the ones that did', async () => {
+    findMany.mockResolvedValue([]);
+    await listLeadsQueue(prisma);
+    expect(findMany.mock.calls[0][0].where.OR).toEqual([{ source: { not: 'outbound' } }, { repliedAt: { not: null } }]);
   });
 
   it('clocks a nuevo lead from createdAt and a contactado one from contactedAt, not updatedAt', async () => {

@@ -1,6 +1,6 @@
 import 'server-only';
 import type { PrismaClient } from '@prisma/client';
-import { isStuck, stuckThresholdDays } from './leads';
+import { isStuck, stuckThresholdDays, LEADS_AWAITING_CLIENT_WHERE } from './leads';
 import { LEADS_ENTITLEMENT_WHERE } from './lead-entitlement';
 import { sendStaleLeadEmail } from './leads-email';
 import { logError } from './observability';
@@ -64,7 +64,10 @@ export async function sweepStaleLeadAlerts(
 ): Promise<StaleAlertSweepResult> {
   const candidates = (await prisma.lead.findMany({
     where: {
-      status: { in: ['nuevo', 'contactado'] },
+      // Abiertos y, de la prospección, solo los que contestaron: los mismos
+      // que la cola del operador. Un prospecto sin respuesta no es un lead
+      // que el cliente haya dejado enfriar (LEADS_AWAITING_CLIENT_WHERE).
+      ...LEADS_AWAITING_CLIENT_WHERE,
       staleAlertSentAt: null,
       // El complemento o un Chatbot Premium (plan de precios del 01/10/2026).
       client: { clientProducts: { some: LEADS_ENTITLEMENT_WHERE } },

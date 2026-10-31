@@ -40,7 +40,18 @@ const CHANNEL_LABEL: Record<string, string> = {
   instagram: 'Instagram',
   web: 'Web',
   phone: 'Llamada',
+  places: 'Prospección (Google Maps)',
 };
+
+/** La pestaña de la ficha del cliente donde está este lead. Antes era
+ *  siempre `?product=leads`, y a un cliente sin ese producto (los leads de
+ *  llamadas vienen de recall, los prospectos de prospecting) la ficha le
+ *  abría el chatbot, que no tiene nada que ver con el lead. */
+function productTabFor(row: LeadQueueRow): string {
+  if (row.source === 'outbound') return 'prospecting';
+  if (row.channel === 'phone') return 'recall';
+  return 'leads';
+}
 
 const DATE_FORMAT = new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 
@@ -56,7 +67,7 @@ function LeadQueueCard({ row }: { row: LeadQueueRow }) {
     <li className="card space-y-3" data-testid="leads-queue-row" data-status={row.status} data-stuck={String(stuck)}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <p className="text-xs uppercase tracking-wider text-kairikos-muted">{row.clientEmail}</p>
+          <p className="text-xs uppercase tracking-wider text-kairikos-muted">Cliente · {row.clientEmail}</p>
           <h3 className="mt-1 text-base font-semibold">{row.clientName}</h3>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -70,6 +81,7 @@ function LeadQueueCard({ row }: { row: LeadQueueRow }) {
       </div>
 
       <p className="text-sm text-kairikos-text">
+        <span className="text-kairikos-muted">Lead: </span>
         {contactParts.length > 0 ? contactParts.join(' · ') : 'Sin datos de contacto'}
         {row.score !== null ? ` · prioridad ${row.score}` : ''}
       </p>
@@ -81,11 +93,11 @@ function LeadQueueCard({ row }: { row: LeadQueueRow }) {
           {` · desde el ${DATE_FORMAT.format(row.since)}`}
         </span>
         <Link
-          href={`/admin/portal/${row.clientId}?product=leads`}
+          href={`/admin/portal/${row.clientId}?product=${productTabFor(row)}`}
           className="underline hover:text-kairikos-text"
           data-testid="leads-queue-view-client"
         >
-          Ver cliente →
+          Ver la ficha del cliente →
         </Link>
       </div>
     </li>
@@ -122,7 +134,7 @@ export default async function AdminLeadsQueuePage() {
       <PageHeading
         eyebrow="Operador"
         title="Leads sin cerrar"
-        description="Leads capturados por la IA que el equipo del cliente todavía no ha contactado o no ha cerrado."
+        description="Leads que esperan al equipo de un cliente: los que llegaron por sus canales o sus llamadas y los prospectos que contestaron. Cada tarjeta es un lead; el nombre de arriba es el cliente al que pertenece."
         actions={
           stuckCount > 0 ? (
             <span className="pill-danger" data-testid="leads-queue-stuck-count">

@@ -1,5 +1,5 @@
 import 'server-only';
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import { isProductContracted } from './client-product-access';
 import { hasLeadsProduct } from './lead-entitlement';
 import { sendNewLeadEmail } from './leads-email';
@@ -372,6 +372,28 @@ export function isStuck(status: string, since: Date, now: Date = new Date()): bo
 
 // --- Operator queue ------------------------------------------------------
 
+/**
+ * Los leads que esperan al equipo del cliente: abiertos y, si salieron de
+ * la prospección, solo los que contestaron.
+ *
+ * 31/10/2026 — la cola del operador marcaba «203 parados» y 200 eran los
+ * prospectos que la campaña de contacto@kairikos.com saca de Google Maps
+ * (source 'outbound'). Un prospecto sin respuesta no es un lead que alguien
+ * haya dejado enfriar: es la ficha de un negocio que aún no sabe nada de
+ * nosotros, y de él se ocupan el contacto automático y la lista diaria de
+ * llamadas (daily-call-list.ts). Con el umbral de 2 días en 'nuevo', cada
+ * barrido de prospección llenaba la cola de falsos avisos y tapaba los de
+ * verdad. Cuando el prospecto contesta (repliedAt) sí hay alguien
+ * esperando, y entonces cuenta.
+ *
+ * Lo comparten la cola y el aviso al cliente (lead-stale-alerts.ts), por lo
+ * mismo que comparten los umbrales: que no puedan discrepar.
+ */
+export const LEADS_AWAITING_CLIENT_WHERE = {
+  status: { in: ['nuevo', 'contactado'] },
+  OR: [{ source: { not: 'outbound' } }, { repliedAt: { not: null } }],
+} satisfies Prisma.LeadWhereInput;
+
 export interface LeadQueueRow {
   leadId: string;
   clientId: string;
@@ -389,6 +411,8 @@ export interface LeadQueueRow {
   contactEmail: string | null;
   score: number | null;
   channel: string | null;
+  /** 'inbound', u 'outbound' si es un prospecto que contestó. */
+  source: string;
 }
 
 function enteredCurrentStateAt(row: { status: string; createdAt: Date; contactedAt: Date | null }): Date {
@@ -408,7 +432,7 @@ function enteredCurrentStateAt(row: { status: string; createdAt: Date; contacted
  */
 export async function listLeadsQueue(prisma: PrismaClient): Promise<LeadQueueRow[]> {
   const rows = await prisma.lead.findMany({
-    where: { status: { in: ['nuevo', 'contactado'] } },
+    where: LEADS_AWAITING_CLIENT_WHERE,
     orderBy: { updatedAt: 'asc' },
     select: {
       id: true,
@@ -421,6 +445,7 @@ export async function listLeadsQueue(prisma: PrismaClient): Promise<LeadQueueRow
       contactEmail: true,
       score: true,
       channel: true,
+      source: true,
       client: { select: { name: true, companyName: true, email: true } },
     },
   });
@@ -437,5 +462,6 @@ export async function listLeadsQueue(prisma: PrismaClient): Promise<LeadQueueRow
     contactEmail: row.contactEmail,
     score: row.score,
     channel: row.channel,
+    source: row.source,
   }));
 }
