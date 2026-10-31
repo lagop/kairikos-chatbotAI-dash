@@ -234,6 +234,14 @@ export function renderRichBlock(b: RichBlockInput, base: string, ejemplo = false
   );
 }
 
+/** Por la id, que es la que ponen los bloques de sector (site-sector-blocks.ts)
+ *  y no cambia aunque el cliente retitule el bloque. Los que crea el cliente
+ *  desde el editor son bloque-N y se quedan con el de la plantilla. */
+const RICH_BLOCK_EYEBROWS = new Map([
+  ['equipo', 'Quiénes somos'],
+  ['inmuebles', 'Inmuebles'],
+]);
+
 /**
  * 31/10/2026 — lo que recibe la pieza PROPIA de una plantilla para un bloque
  * rico (`bloque_galeria`, SITE_RICH_BLOCK_PARTS). La plantilla pone el marco
@@ -248,12 +256,19 @@ export function renderRichBlock(b: RichBlockInput, base: string, ejemplo = false
  * para escribir su propio cuerpo. El cuerpo se retoca con CSS desde su marco
  * (.k-galeria-rejilla, .k-panel…), que va después de BLOQUES_CSS y gana.
  * `ejemplo` lo pone quien llama.
+ *
+ * `rotulo` es el antetítulo cuando el de la plantilla no le vale al bloque:
+ * cada plantilla escribe el suyo a mano («Catálogo», «La carta»), y un
+ * catálogo que es el equipo de un despacho o los pisos de una inmobiliaria
+ * salía como «Catálogo / Nuestro equipo». Vacío en lo demás, y la plantilla
+ * pone el suyo: {{#rotulo}}{{rotulo}}{{/rotulo}}{{^rotulo}}Catálogo{{/rotulo}}.
  */
 export function richBlockFrameView(b: RichBlockInput, base: string, edicion = false, variante?: string) {
   return {
     id: b.id,
     tipo: b.tipo,
     clase: richBlockClass(b.tipo),
+    rotulo: RICH_BLOCK_EYEBROWS.get(b.id) ?? '',
     titulo: b.titulo,
     texto_html: b.texto ? renderSiteMarkdown(b.texto) : '',
     cuerpo_html: richBlockBody(b, base, edicion, variante),

@@ -58,7 +58,7 @@ const ITEM_FIELDS = new Set([
 const VARIANT_FIELDS = new Set(['kv_fotos', 'kv_foto_sobre', 'src']);
 /** Lo que el motor da al marco propio de un bloque rico (richBlockFrameView,
  *  site-rich-blocks.ts): solo existe en las piezas bloque_galeria y demás. */
-const RICH_FRAME_FIELDS = new Set(['clase', 'cuerpo_html', 'ejemplo']);
+const RICH_FRAME_FIELDS = new Set(['clase', 'cuerpo_html', 'ejemplo', 'rotulo']);
 /** Solo estos van con triple llave: son HTML que ya produjo el motor. Un
  *  campo de texto del cliente con triple llave sería una puerta a inyectar
  *  HTML en su propia web. */

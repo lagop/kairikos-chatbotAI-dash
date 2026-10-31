@@ -116,3 +116,34 @@ describe('las pestañas en el móvil', () => {
     expect(BLOQUES_CSS).not.toMatch(/\.k-pestanas-lista\{[^}]*overflow/);
   });
 });
+
+describe('el antetítulo del marco ({{rotulo}})', () => {
+  // 31/10/2026: «Catálogo / Nuestro equipo» en un despacho y «Catálogo /
+  // Inmuebles destacados» en una inmobiliaria; el de la plantilla iba a mano.
+  const CATALOGO =
+    '<section class="{{clase}}" id="{{ancla}}">{{#ejemplo}}<div class="dato-ejemplo-bloque">{{/ejemplo}}' +
+    '<p class="rotulo">{{#rotulo}}{{rotulo}}{{/rotulo}}{{^rotulo}}Catálogo{{/rotulo}}</p><h2>{{titulo}}</h2>{{{cuerpo_html}}}' +
+    '{{#ejemplo}}</div>{{/ejemplo}}</section>';
+  const plantilla: SiteTemplateSource = { ...SITE_TEMPLATE_BASE, secciones: { ...SITE_TEMPLATE_BASE.secciones, bloque_catalogo: CATALOGO } };
+  const rotuloDe = (html: string, id: string) => {
+    const i = html.indexOf(`id="bloque-${id}"`);
+    expect(i, id).toBeGreaterThan(0);
+    return /<p class="rotulo">([^<]*)<\/p>/.exec(html.slice(i))?.[1];
+  };
+  const borrador = (businessName: string, primaryType: string) =>
+    withSectorExamples({ ...structuredClone(SITE_CONTENT_SAMPLES.normal), ejemplos: [] }, { familia: 'professional', businessName, primaryType });
+
+  it('el validador lo deja pasar en el marco', () => {
+    expect(validateSiteTemplate(plantilla).problems).toEqual([]);
+  });
+
+  it('el equipo y los inmuebles traen el suyo; un catálogo cualquiera se queda con el de la plantilla', () => {
+    expect(rotuloDe(home(plantilla, borrador('Bufete Ejemplo', 'lawyer')), 'equipo')).toBe('Quiénes somos');
+    expect(rotuloDe(home(plantilla, borrador('Inmobiliaria Ejemplo', 'real_estate_agency')), 'inmuebles')).toBe('Inmuebles');
+    const c = borrador('Bufete Ejemplo', 'lawyer');
+    const equipo = c.bloques.find((b) => b.id === 'equipo')!;
+    c.bloques = c.bloques.map((b) => (b === equipo ? { ...b, id: 'bloque-1' } : b));
+    for (const p of c.paginas) p.secciones = p.secciones.map((s) => (s.tipo === 'bloque' && s.id === 'equipo' ? { ...s, id: 'bloque-1' } : s));
+    expect(rotuloDe(home(plantilla, c), 'bloque-1')).toBe('Catálogo');
+  });
+});

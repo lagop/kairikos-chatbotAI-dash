@@ -1,6 +1,6 @@
 <section class="{{clase}} seccion encuadre-bloque encuadre-bloque--catalogo" id="{{ancla}}"><div class="contenedor">
   {{#ejemplo}}<div class="dato-ejemplo-bloque">{{/ejemplo}}
-  <div class="cabeza"><div><p class="rotulo">Catálogo</p>{{#titulo}}<h2>{{titulo}}</h2>{{/titulo}}</div>{{#texto_html}}<div class="lead encuadre-bloque-texto">{{{texto_html}}}</div>{{/texto_html}}</div>
+  <div class="cabeza"><div><p class="rotulo">{{#rotulo}}{{rotulo}}{{/rotulo}}{{^rotulo}}Catálogo{{/rotulo}}</p>{{#titulo}}<h2>{{titulo}}</h2>{{/titulo}}</div>{{#texto_html}}<div class="lead encuadre-bloque-texto">{{{texto_html}}}</div>{{/texto_html}}</div>
   {{{cuerpo_html}}}
   {{#ejemplo}}</div>{{/ejemplo}}
 </div></section>
