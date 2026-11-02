@@ -179,7 +179,11 @@ p{margin:0 0 var(--s-4)}
 .icono{width:3.25rem;height:3.25rem;border-radius:14px;background:var(--suave-ambar);color:var(--ambar-hondo);display:grid;place-items:center;flex:none;transition:background-color .2s ease,color .2s ease}
 .icono svg{width:1.45rem;height:1.45rem}
 .servicio:hover .icono{background:var(--ambar);color:var(--tinta)}
-@media (max-width:640px){.servicio{grid-template-columns:2.9rem minmax(0,1fr);gap:.9rem;padding:1rem}.servicio .icono{width:2.9rem;height:2.9rem}.servicio:hover{transform:none}}
+/* El precio de cada servicio, opcional: una tercera columna en la letra técnica,
+   como el «desde» de la landing; en el móvil baja debajo del texto. */
+.servicio:has(.servicio-precio){grid-template-columns:3.25rem minmax(0,1fr) auto}
+.servicio .servicio-precio{max-width:11rem;margin:0;text-align:right;font:600 .95rem/1.25 var(--tecnica);letter-spacing:-.01em;color:var(--ambar-hondo)}
+@media (max-width:640px){.servicio{grid-template-columns:2.9rem minmax(0,1fr);gap:.9rem;padding:1rem}.servicio .icono{width:2.9rem;height:2.9rem}.servicio:hover{transform:none}.servicio:has(.servicio-precio){grid-template-columns:2.9rem minmax(0,1fr)}.servicio .servicio-precio{grid-column:2;max-width:none;text-align:left}}
 
 /* Sobre */
 .partida{display:grid;gap:clamp(2rem,5vw,4.5rem);align-items:center}
@@ -409,6 +413,10 @@ form .boton[disabled]{opacity:.55;cursor:not-allowed;transform:none}
 .flotante:hover{transform:translateY(-3px) scale(1.04)}
 .js .flotante{opacity:0;pointer-events:none}
 .js .flotante.visible{opacity:1;pointer-events:auto}
+/* El de WhatsApp, abajo, y el de llamar encima: en su verde, que es lo que se reconoce. */
+.flotante--whatsapp{background:#25d366;color:var(--blanco);border-color:#1faa52}
+.flotante:has(~ .flotante--whatsapp){bottom:5.4rem}
+.llamada-whatsapp{margin:var(--s-5) 0 0}
 
 /* Datos de ejemplo (los marca el sistema) */
 .dato-ejemplo{text-decoration:underline dashed currentColor;text-decoration-thickness:1px;text-underline-offset:4px}
@@ -448,6 +456,7 @@ form .boton[disabled]{opacity:.55;cursor:not-allowed;transform:none}
 <symbol id="i-reloj" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
 <symbol id="i-escudo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></symbol>
 <symbol id="i-mapa" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></symbol>
+<symbol id="i-whatsapp" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0-7.7 13.6L3 21l4.5-1.2A9 9 0 1 0 12 3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9.3 7.6c.3-.1.6 0 .7.3l.8 1.8c.1.3 0 .6-.2.8l-.6.6c.6 1.2 1.6 2.2 2.8 2.8l.6-.6c.2-.2.5-.3.8-.2l1.8.8c.3.1.4.4.3.7l-.3 1c-.2.5-.7.8-1.2.8-3.6-.3-6.5-3.2-6.8-6.8 0-.5.3-1 .8-1.2z" fill="currentColor"/></symbol>
 <symbol id="i-mensaje" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/></symbol>
 <symbol id="i-lupa" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
 <symbol id="i-flecha" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
@@ -473,6 +482,7 @@ form .boton[disabled]{opacity:.55;cursor:not-allowed;transform:none}
   <p class="pie-legal"><span>© {{anio}} {{nombre}}</span>{{#legales}}<a href="{{href}}">{{titulo}}</a>{{/legales}}</p>
 </div></footer>
 {{#telefono_href}}<a class="flotante" href="tel:{{telefono_href}}" aria-label="Llamar a {{nombre}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg></a>{{/telefono_href}}
+{{#whatsapp_href}}<a class="flotante flotante--whatsapp" data-k-whatsapp href="{{whatsapp_href}}" target="_blank" rel="noopener" aria-label="Escribir por WhatsApp a {{nombre}}"><svg aria-hidden="true"><use href="#i-whatsapp"></use></svg></a>{{/whatsapp_href}}
 <script>
 (function () {
   var root = document.documentElement;
@@ -492,16 +502,16 @@ form .boton[disabled]{opacity:.55;cursor:not-allowed;transform:none}
   }
 
   // La cabecera se separa del contenido al bajar; la barra de arriba dice
-  // cuánto queda, y el botón de llamar aparece pasada la portada.
+  // cuánto queda, y los botones de llamar y de WhatsApp aparecen pasada la portada.
   var cabecera = document.querySelector(".cabecera");
   var lectura = document.querySelector(".lectura");
-  var flotante = document.querySelector(".flotante");
+  var flotantes = document.querySelectorAll(".flotante");
   var alHacerScroll = function () {
     var y = window.scrollY;
     if (cabecera) cabecera.classList.toggle("compacta", y > 24);
     var alto = document.documentElement.scrollHeight - window.innerHeight;
     if (lectura) lectura.style.transform = "scaleX(" + (alto > 0 ? Math.min(1, y / alto) : 0) + ")";
-    if (flotante) flotante.classList.toggle("visible", y > window.innerHeight * 0.6);
+    flotantes.forEach(function (f) { f.classList.toggle("visible", y > window.innerHeight * 0.6); });
   };
   window.addEventListener("scroll", alHacerScroll, { passive: true });
   alHacerScroll();

@@ -11,6 +11,7 @@ import {
   renderMustache,
   renderSiteFiles,
   renderSitePage,
+  whatsappHref,
   type SiteTemplateSource,
 } from '@/lib/site-template';
 import { SITE_TEMPLATE_BASE } from '@/lib/site-template-base';
@@ -278,5 +279,57 @@ describe('validateSiteTemplate', () => {
     const text = validateSiteTemplate(t).problems.join('\n');
     expect(text).toMatch(/\{\{\{secciones\}\}\} exactamente una vez \(lleva 0\)/);
     expect(text).toMatch(/el menú tiene que ser/);
+  });
+});
+
+// 02/11/2026 — el precio de cada servicio y el WhatsApp del negocio.
+describe('precio por servicio y WhatsApp', () => {
+  it('el enlace de wa.me: solo cifras, con prefijo de país', () => {
+    expect(whatsappHref('600 00 00 00')).toBe('https://wa.me/34600000000');
+    expect(whatsappHref('+34 611-22-33-44')).toBe('https://wa.me/34611223344');
+    expect(whatsappHref('0044 7700 900123')).toBe('https://wa.me/447700900123');
+    expect(whatsappHref('')).toBe('');
+    expect(whatsappHref('6000')).toBe('');
+  });
+
+  it('con número, el motor pone el botón flotante; sin él, nada', () => {
+    const c = normal();
+    const con = renderSitePage(SITE_TEMPLATE_BASE, c, home(c), ctx());
+    expect(con).toContain('class="k-whatsapp" data-k-whatsapp href="https://wa.me/34600000000"');
+    expect(con).toContain('Escríbanos por WhatsApp');
+    c.datos.whatsapp = '';
+    const sin = renderSitePage(SITE_TEMPLATE_BASE, c, home(c), ctx());
+    expect(sin).not.toContain('wa.me');
+  });
+
+  it('la plantilla que pinta su propio botón (data-k-whatsapp) se queda con el suyo', () => {
+    const c = normal();
+    const t: SiteTemplateSource = {
+      ...SITE_TEMPLATE_BASE,
+      marco: SITE_TEMPLATE_BASE.marco.replace('</body>', '{{#whatsapp_href}}<a class="mio" data-k-whatsapp href="{{whatsapp_href}}">WA</a>{{/whatsapp_href}}</body>'),
+    };
+    const html = renderSitePage(t, c, home(c), ctx());
+    expect(html).toContain('class="mio"');
+    expect(html).not.toContain('class="k-whatsapp"');
+    expect(validateSiteTemplate(t).problems).toEqual([]);
+  });
+
+  it('el precio sale solo en los servicios que lo tienen', () => {
+    const c = normal();
+    const html = renderSitePage(SITE_TEMPLATE_BASE, c, home(c), ctx());
+    const precios = html.match(/<p class="precio-servicio">[^<]*<\/p>/g) ?? [];
+    expect(precios).toEqual(['<p class="precio-servicio">Desde 45 €</p>', '<p class="precio-servicio">Desde 60 €</p>', '<p class="precio-servicio">Según modelo</p>']);
+  });
+
+  it('un contenido guardado antes de existir los campos sigue valiendo', () => {
+    const c = normal() as unknown as { datos: Record<string, unknown> & { servicios: Record<string, unknown>[] } };
+    delete c.datos.whatsapp;
+    for (const s of c.datos.servicios) delete s.precio;
+    const parsed = parseSiteContent(c);
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.content.datos.whatsapp).toBe('');
+      expect(parsed.content.datos.servicios.every((s) => s.precio === '')).toBe(true);
+    }
   });
 });

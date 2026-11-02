@@ -478,6 +478,21 @@ export const EDIT_MODE_HEAD = `<script>(function(){var IO=function(cb){this.cb=c
 export const EXAMPLE_LEGEND_HTML =
   '<p class="leyenda-ejemplos" role="note">Los datos marcados son de ejemplo: usted los cambia o los quita antes de publicar.</p>';
 
+/** 02/11/2026 — el botón flotante de WhatsApp que pone el motor cuando el
+ *  negocio tiene número y la plantilla no pinta el suyo (data-k-whatsapp en
+ *  su marco, como Circuito, que lo empareja con el de llamar). Abajo a la
+ *  DERECHA: la leyenda de ejemplos va abajo a la izquierda en todas. El verde
+ *  es el de WhatsApp a propósito: es lo que el visitante reconoce, no un color
+ *  de la plantilla. Estilos en línea para no depender de ninguna hoja. */
+export function whatsappFloatHtml(href: string): string {
+  return (
+    `<a class="k-whatsapp" data-k-whatsapp href="${esc(href)}" target="_blank" rel="noopener" aria-label="Escribir por WhatsApp" title="Escribir por WhatsApp"` +
+    ' style="position:fixed;right:16px;bottom:16px;z-index:65;display:grid;place-items:center;width:56px;height:56px;border-radius:50%;background:#25d366;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.25)">' +
+    '<svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path d="M12 3a9 9 0 0 0-7.7 13.6L3 21l4.5-1.2A9 9 0 1 0 12 3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>' +
+    '<path d="M9.3 7.6c.3-.1.6 0 .7.3l.8 1.8c.1.3 0 .6-.2.8l-.6.6c.6 1.2 1.6 2.2 2.8 2.8l.6-.6c.2-.2.5-.3.8-.2l1.8.8c.3.1.4.4.3.7l-.3 1c-.2.5-.7.8-1.2.8-3.6-.3-6.5-3.2-6.8-6.8 0-.5.3-1 .8-1.2z" fill="currentColor"/></svg></a>'
+  );
+}
+
 /** El texto del menú de una web de una página, por sección. Las que no están
  *  aquí no salen en el menú. Orden = prioridad: caben cinco. */
 const MENU_LABELS: Partial<Record<SiteSectionType, string>> = {
@@ -500,6 +515,13 @@ function phoneHref(phone: string | null): string | null {
   return digits.startsWith('+') ? digits : `+34${digits}`;
 }
 
+/** El enlace de wa.me: solo cifras, con el prefijo del país (sin «+» ni el
+ *  «00» de marcar desde fuera). Vacío si no hay número que valga. */
+export function whatsappHref(phone: string): string {
+  const tel = phoneHref(phone.replace(/^\s*00/, '+'));
+  return tel ? `https://wa.me/${tel.slice(1)}` : '';
+}
+
 /** Lo que ve una plantilla. Los datos del contenido van en la raíz, con su
  *  ruta, para que las marcas de ejemplo funcionen tal cual. */
 function buildView(content: SiteContent, ctx: SiteRenderContext, base: string): View {
@@ -515,6 +537,9 @@ function buildView(content: SiteContent, ctx: SiteRenderContext, base: string): 
     nombre: ctx.negocio.nombre,
     telefono: ctx.negocio.telefono ?? '',
     telefono_href: phoneHref(ctx.negocio.telefono) ?? '',
+    // 02/11/2026 — el WhatsApp lo escribe el cliente en sus datos (ver
+    // site-content.ts). Sin un número que se pueda marcar, sin botón.
+    whatsapp_href: whatsappHref(d.whatsapp),
     direccion: ctx.negocio.direccion ?? '',
     maps_url: ctx.negocio.mapsUrl ?? '',
     valoracion: ctx.negocio.valoracion ?? '',
@@ -927,6 +952,10 @@ export function renderSitePage(
   }
   if (/class="[^"]*\bdato-ejemplo/.test(html)) {
     html = html.replace(/<\/body>/i, `${EXAMPLE_LEGEND_HTML}\n</body>`);
+  }
+  const whatsapp = view.whatsapp_href as string;
+  if (whatsapp && !html.includes('data-k-whatsapp')) {
+    html = html.replace(/<\/body>/i, `${whatsappFloatHtml(whatsapp)}\n</body>`);
   }
   // Los bloques ricos: su aspecto base ANTES del de la plantilla (que gana si
   // retoca algo) y su comportamiento al final. Solo en las páginas que los

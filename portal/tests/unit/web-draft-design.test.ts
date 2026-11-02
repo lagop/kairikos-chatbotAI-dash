@@ -59,6 +59,14 @@ describe('buildSiteContentFromDraft', () => {
     expect(c.ejemplos).toEqual(['garantias.1.texto']);
   });
 
+  it('el precio de cada servicio, siempre de ejemplo (con cifra o sin ella)', () => {
+    const c = buildSiteContentFromDraft(COPY, { precios_servicios: ['Desde 45 €', 'Según obra', 'sobra'], ejemplos: [] }, []);
+    expect(c.datos.servicios.map((s) => s.precio)).toEqual(['Desde 45 €', 'Según obra']);
+    expect(c.ejemplos).toEqual(expect.arrayContaining(['servicios.0.precio', 'servicios.1.precio']));
+    // El WhatsApp no lo sabe el borrador: lo pone el dueño.
+    expect(c.datos.whatsapp).toBe('');
+  });
+
   it('sin ampliación (falló la IA) sale con lo que había y sin ejemplos', () => {
     const c = buildSiteContentFromDraft(COPY, null, []);
     expect(c.datos.servicios).toHaveLength(2);

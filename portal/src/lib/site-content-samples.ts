@@ -47,11 +47,12 @@ const normal: SiteContent = {
     sobre:
       'Somos un fontanero de barrio que trabaja con **puntualidad** y explica cada paso.\n\nVamos preparados para resolver en la primera visita:\n- Detector de fugas\n- Cámara de inspección',
     llamada_accion: 'Llame y le decimos cuándo podemos ir',
+    whatsapp: '600 00 00 00',
     servicios: [
-      { nombre: 'Detección de fugas', descripcion: 'Encontramos el origen sin abrir de más.', icono: 'herramienta' },
-      { nombre: 'Desatascos', descripcion: 'Fregaderos, baños y bajantes.', icono: 'check' },
-      { nombre: 'Termos y calentadores', descripcion: 'Reparación y sustitución.', icono: 'reloj' },
-      { nombre: 'Grifería y sanitarios', descripcion: 'Cambio de grifos, cisternas e inodoros.', icono: 'casa' },
+      { nombre: 'Detección de fugas', descripcion: 'Encontramos el origen sin abrir de más.', icono: 'herramienta', precio: 'Desde 45 €' },
+      { nombre: 'Desatascos', descripcion: 'Fregaderos, baños y bajantes.', icono: 'check', precio: 'Desde 60 €' },
+      { nombre: 'Termos y calentadores', descripcion: 'Reparación y sustitución.', icono: 'reloj', precio: 'Según modelo' },
+      { nombre: 'Grifería y sanitarios', descripcion: 'Cambio de grifos, cisternas e inodoros.', icono: 'casa', precio: '' },
     ],
     cifras: [
       { valor: 'Mismo día', etiqueta: 'en urgencias, siempre que se pueda' },
@@ -200,6 +201,8 @@ const exagerado: SiteContent = {
       nombre: i % 3 === 0 ? 'Instalaciones de fontanería completas para reformas integrales' : `Servicio número ${i + 1}`,
       descripcion: repeat('Descripción larga del servicio con detalles prácticos.', (i % 4) + 1).slice(0, 300),
       icono: i % 2 ? 'herramienta' : '',
+      // El tope entero (40), para ver si la columna del precio empuja al resto.
+      precio: i % 3 === 2 ? '' : 'Presupuesto cerrado desde 1.250 € por obra'.slice(0, 40),
     })),
     cifras: [
       { valor: '24/7', etiqueta: 'urgencias atendidas todos los días del año, también festivos' },
@@ -470,10 +473,10 @@ const healthNormal: SiteContent = {
       'Somos una clínica de barrio donde te atiende **siempre el mismo equipo** y te explicamos cada paso.\n\nEn la primera visita revisamos:\n- Dientes y encías, con radiografía si hace falta\n- Lo que te preocupa y las opciones que tienes',
     llamada_accion: 'Llámanos y te damos cita esta misma semana',
     servicios: [
-      { nombre: 'Limpieza y revisión', descripcion: 'Una vez al año, para evitar problemas mayores.', icono: 'diente' },
-      { nombre: 'Implantes', descripcion: 'Recupera la pieza que falta con un plan claro.', icono: 'escudo' },
-      { nombre: 'Ortodoncia', descripcion: 'Brackets o alineadores transparentes.', icono: 'chispa' },
-      { nombre: 'Urgencias dentales', descripcion: 'Dolor, un golpe o una pieza rota: te vemos el mismo día.', icono: 'reloj' },
+      { nombre: 'Limpieza y revisión', descripcion: 'Una vez al año, para evitar problemas mayores.', icono: 'diente', precio: 'Gratis' },
+      { nombre: 'Implantes', descripcion: 'Recupera la pieza que falta con un plan claro.', icono: 'escudo', precio: 'Desde 900 €' },
+      { nombre: 'Ortodoncia', descripcion: 'Brackets o alineadores transparentes.', icono: 'chispa', precio: 'Desde 39 € al mes' },
+      { nombre: 'Urgencias dentales', descripcion: 'Dolor, un golpe o una pieza rota: te vemos el mismo día.', icono: 'reloj', precio: '' },
     ],
     cifras: [
       { valor: 'Mismo día', etiqueta: 'en urgencias, siempre que se pueda' },
@@ -632,10 +635,10 @@ const beautyNormal: SiteContent = {
       'Somos un salón de barrio donde **escuchamos antes de cortar** y te explicamos qué le va a tu pelo.\n\nTrabajamos con:\n- Color sin amoniaco\n- Tratamientos para cabello dañado',
     llamada_accion: 'Pide tu cita y te buscamos hueco esta semana',
     servicios: [
-      { nombre: 'Corte y peinado', descripcion: 'Para mujer, hombre y niños.', icono: 'tijeras' },
-      { nombre: 'Color y mechas', descripcion: 'Balayage, mechas y tinte sin amoniaco.', icono: 'gota' },
-      { nombre: 'Tratamientos', descripcion: 'Hidratación y keratina para recuperar el brillo.', icono: 'hoja' },
-      { nombre: 'Recogidos y novias', descripcion: 'Peinados para bodas y ocasiones especiales.', icono: 'chispa' },
+      { nombre: 'Corte y peinado', descripcion: 'Para mujer, hombre y niños.', icono: 'tijeras', precio: 'Desde 18 €' },
+      { nombre: 'Color y mechas', descripcion: 'Balayage, mechas y tinte sin amoniaco.', icono: 'gota', precio: 'Desde 45 €' },
+      { nombre: 'Tratamientos', descripcion: 'Hidratación y keratina para recuperar el brillo.', icono: 'hoja', precio: '' },
+      { nombre: 'Recogidos y novias', descripcion: 'Peinados para bodas y ocasiones especiales.', icono: 'chispa', precio: '' },
     ],
     cifras: [
       { valor: 'Sin esperas', etiqueta: 'trabajamos siempre con cita' },
@@ -775,10 +778,10 @@ const foodNormal: SiteContent = {
       'Somos un restaurante de barrio donde **cocinamos cada día con lo que trae el mercado**.\n\nLo que no falta:\n- Pescado del día\n- Postres caseros',
     llamada_accion: 'Reserva tu mesa y te la guardamos',
     servicios: [
-      { nombre: 'Menú del día', descripcion: 'Primero, segundo, postre y bebida, de lunes a viernes.', icono: 'plato' },
-      { nombre: 'Carta de temporada', descripcion: 'Cambia con el mercado: pescado, carnes y verduras de aquí.', icono: 'hoja' },
-      { nombre: 'Celebraciones y grupos', descripcion: 'Cumpleaños, comidas de empresa y reuniones familiares.', icono: 'copa' },
-      { nombre: 'Para llevar', descripcion: 'Encarga por teléfono y pásate a recogerlo.', icono: 'bolsa' },
+      { nombre: 'Menú del día', descripcion: 'Primero, segundo, postre y bebida, de lunes a viernes.', icono: 'plato', precio: 'Desde 13,50 €' },
+      { nombre: 'Carta de temporada', descripcion: 'Cambia con el mercado: pescado, carnes y verduras de aquí.', icono: 'hoja', precio: '' },
+      { nombre: 'Celebraciones y grupos', descripcion: 'Cumpleaños, comidas de empresa y reuniones familiares.', icono: 'copa', precio: 'Desde 25 € por persona' },
+      { nombre: 'Para llevar', descripcion: 'Encarga por teléfono y pásate a recogerlo.', icono: 'bolsa', precio: '' },
     ],
     cifras: [
       { valor: '14 €', etiqueta: 'el menú del día, con bebida y postre' },
@@ -913,10 +916,10 @@ const professionalNormal: SiteContent = {
       'Somos una asesoría de barrio donde **te atiende siempre la misma persona** y te contesta el mismo día.\n\nTe llevamos:\n- Declaraciones trimestrales y renta\n- Nóminas y contratos',
     llamada_accion: 'Llámanos y te decimos cómo podemos ayudarte',
     servicios: [
-      { nombre: 'Asesoría fiscal', descripcion: 'IVA, IRPF, IGIC y sociedades, presentados a tiempo.', icono: 'documento' },
-      { nombre: 'Laboral', descripcion: 'Nóminas, altas, contratos y seguros sociales.', icono: 'personas' },
-      { nombre: 'Contabilidad', descripcion: 'Tus libros al día y tus cuentas claras cada trimestre.', icono: 'grafica' },
-      { nombre: 'Trámites y altas', descripcion: 'Te damos de alta como autónomo o constituimos tu empresa.', icono: 'balanza' },
+      { nombre: 'Asesoría fiscal', descripcion: 'IVA, IRPF, IGIC y sociedades, presentados a tiempo.', icono: 'documento', precio: 'Desde 40 € al mes' },
+      { nombre: 'Laboral', descripcion: 'Nóminas, altas, contratos y seguros sociales.', icono: 'personas', precio: 'Desde 15 € por nómina' },
+      { nombre: 'Contabilidad', descripcion: 'Tus libros al día y tus cuentas claras cada trimestre.', icono: 'grafica', precio: '' },
+      { nombre: 'Trámites y altas', descripcion: 'Te damos de alta como autónomo o constituimos tu empresa.', icono: 'balanza', precio: 'Consúltanos' },
     ],
     cifras: [
       { valor: 'Mismo día', etiqueta: 'te contestamos las dudas' },

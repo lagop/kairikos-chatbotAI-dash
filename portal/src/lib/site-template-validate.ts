@@ -42,7 +42,7 @@ const ROOT_FIELDS = new Set([
   // el blog (entrega 5): blog = {titulo, intro, href}; entradas en la lista; entrada en el artículo
   'blog', 'entradas', 'entrada',
   // negocio ('logo': la ruta del que subió el cliente, o vacío)
-  'nombre', 'logo', 'telefono', 'telefono_href', 'direccion', 'maps_url', 'valoracion', 'num_resenas',
+  'nombre', 'logo', 'telefono', 'telefono_href', 'whatsapp', 'whatsapp_href', 'direccion', 'maps_url', 'valoracion', 'num_resenas',
   // Google en vivo, solo en el borrador
   'resenas_html', 'citas_html', 'atribucion_google_html',
 ]);

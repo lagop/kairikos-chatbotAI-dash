@@ -94,6 +94,7 @@ p{margin:0 0 var(--s-4)}
 .pasos li::after{content:"";position:absolute;top:1.2rem;left:3rem;right:0;height:2px;background:var(--borde)}
 .pasos li:last-child::after{display:none}
 .precio{font:700 1.5rem/1.2 var(--display);color:var(--acento);margin-top:auto;padding-top:var(--s-3)}
+.precio-servicio{font-weight:700;color:var(--acento);margin-top:auto;padding-top:var(--s-3)}
 .nota{font-size:.9rem;color:var(--tinta-suave);margin-top:var(--s-5)}
 .preguntas{display:grid;gap:var(--s-3);max-width:52rem}
 .preguntas details{background:var(--blanco);border:1px solid var(--borde);border-radius:12px;padding:var(--s-4) var(--s-5)}
@@ -227,7 +228,7 @@ const SECCIONES: SiteTemplateSource['secciones'] = {
   <span class="rotulo">Servicios</span>
   <h2 data-k-titulo-seccion>Lo que hacemos</h2>
   <div class="rejilla">
-    {{#servicios}}<article class="tarjeta aparece"><span class="icono"><svg aria-hidden="true"><use href="#i-{{#icono}}{{icono}}{{/icono}}{{^icono}}check{{/icono}}"></use></svg></span><h3>{{nombre}}</h3>{{#descripcion}}<p>{{descripcion}}</p>{{/descripcion}}</article>{{/servicios}}
+    {{#servicios}}<article class="tarjeta aparece"><span class="icono"><svg aria-hidden="true"><use href="#i-{{#icono}}{{icono}}{{/icono}}{{^icono}}check{{/icono}}"></use></svg></span><h3>{{nombre}}</h3>{{#descripcion}}<p>{{descripcion}}</p>{{/descripcion}}{{#precio}}<p class="precio-servicio">{{precio}}</p>{{/precio}}</article>{{/servicios}}
   </div>
 </div></section>`,
   sobre: `<section class="seccion seccion--alt" id="{{ancla}}"><div class="contenedor partida">
@@ -277,6 +278,7 @@ const SECCIONES: SiteTemplateSource['secciones'] = {
     <span class="rotulo">Contacto</span>
     <h2 data-k-titulo-seccion>Cuéntenos qué necesita</h2>
     {{#telefono}}<p><a href="tel:{{telefono_href}}"><strong>{{telefono}}</strong></a></p>{{/telefono}}
+    {{#whatsapp_href}}<p><a href="{{whatsapp_href}}" target="_blank" rel="noopener">Escríbanos por WhatsApp</a></p>{{/whatsapp_href}}
     {{#direccion}}<p>{{direccion}}{{#maps_url}} · <a href="{{maps_url}}">Cómo llegar</a>{{/maps_url}}</p>{{/direccion}}
     {{#horario.length}}<table><caption class="saltar">Horario</caption><tbody>{{#horario}}<tr><th scope="row">{{dias}}</th><td>{{horas}}</td></tr>{{/horario}}</tbody></table>{{/horario.length}}
   </div>

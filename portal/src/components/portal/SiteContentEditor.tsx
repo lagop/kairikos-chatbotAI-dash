@@ -188,7 +188,7 @@ const BLOCK_LABEL: Record<SiteBlock['tipo'], string> = {
 
 /** Qué rutas de datos de ejemplo pertenecen a cada sección. */
 const SECTION_PATHS: Record<SiteSectionType, string[]> = {
-  portada: ['titular', 'subtitulo'],
+  portada: ['titular', 'subtitulo', 'whatsapp'],
   cifras: ['cifras'],
   servicios: ['servicios'],
   sobre: ['sobre'],
@@ -265,6 +265,7 @@ const FIELD_MAX: [RegExp, number][] = [
   [/^llamada_accion$/, 90],
   [/^titulos\.[a-z]+$/, 90],
   [/^servicios\.\d+\.nombre$/, 80],
+  [/^whatsapp$/, 30],
   [/\.descripcion$/, 300],
   [/^cifras\.\d+\.valor$/, 30],
   [/^cifras\.\d+\.etiqueta$/, 90],
@@ -294,7 +295,7 @@ function maxFor(ruta: string): number {
 /** Lo que se añade con «+» desde la vista: con un texto de partida que se
  *  ve (uno vacío no se podría pulsar para escribirlo), y el tope de cada lista. */
 const LIST_NEW: [RegExp, Record<string, string>, number][] = [
-  [/^servicios$/, { nombre: 'Nuevo servicio', descripcion: 'Cuéntalo en una frase.', icono: '' }, 12],
+  [/^servicios$/, { nombre: 'Nuevo servicio', descripcion: 'Cuéntalo en una frase.', icono: '', precio: '' }, 12],
   [/^cifras$/, { valor: 'Cifra', etiqueta: 'Qué significa' }, 4],
   [/^proceso$/, { titulo: 'Nuevo paso', texto: 'Qué pasa en este paso.' }, 6],
   [/^garantias$/, { titulo: 'Nueva garantía', texto: 'En qué consiste.' }, 4],
@@ -882,6 +883,8 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
               {text('Titular', 'titular', d.titular, 90)}
               {text('Subtítulo', 'subtitulo', d.subtitulo, 220, 'textarea')}
               {text('Texto del botón de llamar', 'llamada_accion', d.llamada_accion, 90)}
+              {/* 02/11/2026 — el número lo escribe el cliente: el de Google no dice si tiene WhatsApp. */}
+              {text('WhatsApp, si atendéis por ahí (sale un botón para escribiros; vacío, sin botón)', 'whatsapp', d.whatsapp ?? '', 30)}
             </div>
           );
         case 'llamada':
@@ -889,7 +892,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
         case 'sobre':
           return text('Quiénes sois (puedes usar **negrita**, listas con «- » y enlaces)', 'sobre', d.sobre, 1200, 'textarea');
         case 'servicios':
-          return listEditor('servicios', d.servicios, [{ key: 'nombre', label: 'Servicio', max: 80 }, { key: 'descripcion', label: 'Descripción', kind: 'textarea', max: 300 }, { key: 'icono', label: 'Icono', kind: 'icon', max: 40 }], { nombre: '', descripcion: '', icono: '' }, 12);
+          return listEditor('servicios', d.servicios, [{ key: 'nombre', label: 'Servicio', max: 80 }, { key: 'descripcion', label: 'Descripción', kind: 'textarea', max: 300 }, { key: 'icono', label: 'Icono', kind: 'icon', max: 40 }, { key: 'precio', label: 'Precio (opcional)', max: 40, placeholder: 'Desde 45 €' }], { nombre: '', descripcion: '', icono: '', precio: '' }, 12);
         case 'cifras':
           return listEditor('cifras', d.cifras, [{ key: 'valor', label: 'Cifra', max: 30 }, { key: 'etiqueta', label: 'Qué es', max: 90 }], { valor: '', etiqueta: '' }, 4);
         case 'proceso':

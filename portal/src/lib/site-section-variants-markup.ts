@@ -90,17 +90,17 @@ export const VARIANT_SOURCES: Partial<Record<SiteSectionType, Record<string, str
   servicios: {
     zigzag:
       open('servicios', 'zigzag') +
-      `<div class="kv-dentro">${TITULO}<ol class="kv-zigzag">{{#servicios}}<li><div class="kv-zigzag-icono">${ICONO}</div><div class="kv-zigzag-texto"><span class="kv-num" aria-hidden="true"></span><h3>{{nombre}}</h3>{{#descripcion}}<p>{{descripcion}}</p>{{/descripcion}}</div></li>{{/servicios}}</ol></div></section>`,
+      `<div class="kv-dentro">${TITULO}<ol class="kv-zigzag">{{#servicios}}<li><div class="kv-zigzag-icono">${ICONO}</div><div class="kv-zigzag-texto"><span class="kv-num" aria-hidden="true"></span><h3>{{nombre}}</h3>{{#descripcion}}<p>{{descripcion}}</p>{{/descripcion}}{{#precio}}<p class="kv-precio">{{precio}}</p>{{/precio}}</div></li>{{/servicios}}</ol></div></section>`,
     pestanas:
       open('servicios', 'pestanas') +
-      `<div class="kv-dentro">${TITULO}<div class="kv-pestanas" data-kv-pestanas>{{#servicios}}<article class="kv-panel"><span class="kv-panel-icono">${ICONO}</span><h3 class="kv-panel-titulo">{{nombre}}</h3>{{#descripcion}}<p>{{descripcion}}</p>{{/descripcion}}</article>{{/servicios}}</div></div></section>`,
+      `<div class="kv-dentro">${TITULO}<div class="kv-pestanas" data-kv-pestanas>{{#servicios}}<article class="kv-panel"><span class="kv-panel-icono">${ICONO}</span><h3 class="kv-panel-titulo">{{nombre}}</h3>{{#descripcion}}<p>{{descripcion}}</p>{{/descripcion}}{{#precio}}<p class="kv-precio">{{precio}}</p>{{/precio}}</article>{{/servicios}}</div></div></section>`,
     indice:
       open('servicios', 'indice') +
       `<div class="kv-dentro kv-partida"><div class="kv-lado">${TITULO}{{#telefono_href}}<p><a class="kv-boton kv-boton--claro" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg>{{telefono}}</a></p>{{/telefono_href}}</div>` +
-      `<ol class="kv-indice">{{#servicios}}<li><span class="kv-num" aria-hidden="true"></span><div><h3>{{nombre}}</h3>{{#descripcion}}<p>{{descripcion}}</p>{{/descripcion}}</div>${FLECHA}</li>{{/servicios}}</ol></div></section>`,
+      `<ol class="kv-indice">{{#servicios}}<li><span class="kv-num" aria-hidden="true"></span><div><h3>{{nombre}}</h3>{{#descripcion}}<p>{{descripcion}}</p>{{/descripcion}}{{#precio}}<p class="kv-precio">{{precio}}</p>{{/precio}}</div>${FLECHA}</li>{{/servicios}}</ol></div></section>`,
     mosaico:
       open('servicios', 'mosaico') +
-      `<div class="kv-dentro">${TITULO}<ul class="kv-mosaico">{{#servicios}}<li>${ICONO}<h3>{{nombre}}</h3>{{#descripcion}}<p>{{descripcion}}</p>{{/descripcion}}</li>{{/servicios}}</ul></div></section>`,
+      `<div class="kv-dentro">${TITULO}<ul class="kv-mosaico">{{#servicios}}<li>${ICONO}<h3>{{nombre}}</h3>{{#descripcion}}<p>{{descripcion}}</p>{{/descripcion}}{{#precio}}<p class="kv-precio">{{precio}}</p>{{/precio}}</li>{{/servicios}}</ul></div></section>`,
   },
   sobre: {
     cita:
@@ -316,6 +316,10 @@ const CSS = `
 .kv-mosaico>li:first-child{grid-column:span 2;background:var(--k-acento,#222);border-color:var(--k-acento,#222);color:var(--k-sobre-acento,#fff)}
 .kv-mosaico>li:first-child h3{font-size:1.7rem}
 .kv-mosaico>li:first-child p,.kv-mosaico>li:first-child svg{color:inherit}
+/* 02/11/2026 — el precio de cada servicio («Desde 45 €»), opcional. */
+.kv-precio{margin:.75rem 0 0;font-weight:700;font-size:.95rem;line-height:1.3;color:var(--k-acento-texto,inherit)}
+.kv-mosaico>li .kv-precio{color:var(--k-acento-texto,inherit)}
+.kv-mosaico>li:first-child .kv-precio{color:inherit}
 @media (max-width:980px){.kv-mosaico{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:560px){.kv-mosaico{grid-template-columns:minmax(0,1fr)}.kv-mosaico>li{min-height:0}.kv-mosaico>li:first-child{grid-column:auto}}
 
