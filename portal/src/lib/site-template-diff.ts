@@ -15,6 +15,8 @@ export interface TemplateContent {
   marco: string;
   secciones: unknown;
   estilo: unknown;
+  /** 02/11/2026 — la estructura de su portada (site-template-structure.ts). */
+  estructura?: unknown;
 }
 
 export interface TemplateDiffPart {
@@ -81,6 +83,7 @@ export function diffSiteTemplates(vigente: TemplateContent, correccion: Template
     ['marco', vigente.marco, correccion.marco],
     ...Array.from(new Set([...Object.keys(a), ...Object.keys(b)])).map((k): [string, string, string] => [k, a[k] ?? '', b[k] ?? '']),
     ['estilo', JSON.stringify(vigente.estilo ?? null, null, 1), JSON.stringify(correccion.estilo ?? null, null, 1)],
+    ['estructura', JSON.stringify(vigente.estructura ?? null, null, 1), JSON.stringify(correccion.estructura ?? null, null, 1)],
   ];
   const out: TemplateDiffPart[] = [];
   for (const [pieza, antes, despues] of piezas) {

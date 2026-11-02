@@ -32,6 +32,7 @@ export async function listSiteTemplates(prisma: PrismaClient): Promise<SiteTempl
       estado: true,
       validacion: true,
       estilo: true,
+      estructura: true,
       createdAt: true,
       correccionDe: true,
       original: { select: { nombre: true } },
@@ -44,7 +45,7 @@ export async function listSiteTemplates(prisma: PrismaClient): Promise<SiteTempl
   const ids = Array.from(new Set(open.flatMap((r) => [r.id, r.correccionDe as string])));
   const bodies = ids.length
     ? new Map(
-        (await prisma.siteTemplate.findMany({ where: { id: { in: ids } }, select: { id: true, marco: true, secciones: true, estilo: true } })).map((b) => [b.id, b]),
+        (await prisma.siteTemplate.findMany({ where: { id: { in: ids } }, select: { id: true, marco: true, secciones: true, estilo: true, estructura: true } })).map((b) => [b.id, b]),
       )
     : new Map();
 
@@ -61,6 +62,7 @@ export async function listSiteTemplates(prisma: PrismaClient): Promise<SiteTempl
       estado: r.estado,
       validacion: r.validacion as SiteTemplateRow['validacion'],
       estilo: r.estilo as SiteTemplateRow['estilo'],
+      conEstructura: r.estructura != null,
       createdAt: r.createdAt.toISOString(),
       _count: r._count,
       correccionDe: r.correccionDe,

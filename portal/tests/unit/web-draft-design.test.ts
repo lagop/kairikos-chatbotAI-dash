@@ -210,6 +210,17 @@ describe('designForDraft', () => {
     expect(alternarVariantes(secciones)).toEqual(secciones);
   });
 
+  it('con estructura propia (una landing convertida), sale tal cual y sin alternar', async () => {
+    mocks.pick.mockResolvedValue({ id: 't1' });
+    mocks.expand.mockResolvedValue({ ok: true, content: JSON.parse(JSON.stringify(SITE_CONTENT_SAMPLES.normal)), model: 'm' });
+    const estructura = { portada: [{ tipo: 'portada' }, { tipo: 'servicios', variante: 'zigzag' }, { tipo: 'proceso' }, { tipo: 'contacto' }] };
+    const p = { siteTemplate: { findUnique: vi.fn(async () => ({ ...SITE_TEMPLATE_BASE, estructura })) } } as unknown as PrismaClient;
+    const r = await designForDraft(p, { copy: COPY, themeKey: 'trades-1', businessName: 'Fontanería Pérez', primaryType: 'plumber', city: 'Telde' });
+    expect(r!.content.paginas[0].secciones).toEqual(estructura.portada);
+    // Las garantías no salen en la portada, pero siguen en el contenido.
+    expect(r!.content.datos.garantias.length).toBeGreaterThan(0);
+  });
+
   it('las mismas al regenerar el mismo negocio', () => {
     const c = JSON.parse(JSON.stringify(SITE_CONTENT_SAMPLES.normal));
     expect(conDisposicionesAlternadas(c, 'Fontanería Pérez')).toEqual(conDisposicionesAlternadas(c, 'Fontanería Pérez'));

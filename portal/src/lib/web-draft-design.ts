@@ -9,6 +9,7 @@ import { alternarVariantes } from './site-section-variants';
 import { pickSiteTemplateForSector } from './site-template-jobs';
 import { withSectorExamples } from './site-sector-blocks';
 import { editorStyleOptions, parseTemplateStyle } from './site-style';
+import { conEstructura, parseTemplateStructure, type SiteTemplateStructure } from './site-template-structure';
 import type { WebDraftCopy } from './web-draft-ai';
 import { withDraftUploadsBase } from './web-draft-images';
 import {
@@ -75,10 +76,15 @@ export function conDisposicionesAlternadas(content: SiteContent, businessName: s
   };
 }
 
-async function loadTemplate(prisma: PrismaClient, id: string): Promise<SiteTemplateSource | null> {
-  const row = await prisma.siteTemplate.findUnique({ where: { id }, select: { marco: true, secciones: true, estilo: true } });
+async function loadTemplate(prisma: PrismaClient, id: string): Promise<(SiteTemplateSource & { estructura: SiteTemplateStructure | null }) | null> {
+  const row = await prisma.siteTemplate.findUnique({ where: { id }, select: { marco: true, secciones: true, estilo: true, estructura: true } });
   return row?.marco
-    ? { marco: row.marco, secciones: row.secciones as Partial<Record<SiteTemplatePart, string>>, estilo: parseTemplateStyle(row.estilo) }
+    ? {
+        marco: row.marco,
+        secciones: row.secciones as Partial<Record<SiteTemplatePart, string>>,
+        estilo: parseTemplateStyle(row.estilo),
+        estructura: parseTemplateStructure(row.estructura),
+      }
     : null;
 }
 
@@ -120,10 +126,11 @@ export async function designForDraft(
     const base = expanded.ok && !('skipped' in expanded) ? expanded.content : buildSiteContentFromDraft(input.copy, null, iconIds);
     // 28/10/2026 — galería, servicios por pestañas… con contenido de ejemplo,
     // marcado como tal (site-sector-blocks.ts).
-    const content = conDisposicionesAlternadas(
-      withSectorExamples(base, { familia: sector, businessName: input.businessName, primaryType: input.primaryType }),
-      input.businessName,
-    );
+    const conSector = withSectorExamples(base, { familia: sector, businessName: input.businessName, primaryType: input.primaryType });
+    // 02/11/2026 — la plantilla con estructura propia (las que vienen de una
+    // landing) sale tal cual la diseñó: su orden, sus disposiciones y sin
+    // alternar (site-template-structure.ts).
+    const content = template.estructura ? conEstructura(conSector, template.estructura) : conDisposicionesAlternadas(conSector, input.businessName);
     if (!expanded.ok) logError('web_draft_design.expand_failed', new Error(expanded.error), {}, 'warn');
     return { content, templateId: picked.id, expanded: expanded.ok && !('skipped' in expanded) };
   } catch (err) {
