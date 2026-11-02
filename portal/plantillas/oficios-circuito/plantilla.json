@@ -1,0 +1,41 @@
+{
+  "nombre": "Oficios · Circuito",
+  "sector": "trades",
+  "variante": "técnica y limpia, papel cálido, tinta y ámbar de piloto",
+  "encargo": "Oficios en los que la urgencia y la confianza venden (electricidad sobre todo; también climatización, fontanería, energía solar). Técnica y limpia: papel cálido, tinta casi negra y el ámbar de un piloto encendido como único acento. Titulares en Outfit, texto en DM Sans y rótulos, cifras y precios en Space Grotesk, que hace de letra técnica. Motivo: el circuito impreso —pistas y nodos— en la portada, la llamada y el plano de la zona. La portada es oscura, con la corriente recorriendo las pistas y un panel de cristal con la nota de Google, el horario y el teléfono; los servicios son una lista de tarjetas con un lateral fijo de urgencias; los pasos, una línea con pilotos; las garantías, sobre tinta; los precios, un ticket oscuro. Dinámica: corriente animada, pulso de «en servicio», cinta de servicios, cifras que cuentan, barra de lectura y botón flotante de llamar. Nace de una landing hecha para Kairikos (Voltia). Escrita a mano.",
+  "estilo": {
+    "acento": {
+      "variables": [
+        {
+          "variable": "--ambar",
+          "desde": "color",
+          "contra": ["--tinta", "--tinta-2"],
+          "minimo": 4.5
+        },
+        {
+          "variable": "--ambar-hondo",
+          "desde": "tono",
+          "contra": ["--fondo", "--blanco"],
+          "minimo": 4.5
+        }
+      ],
+      "muestras": [
+        { "nombre": "Ámbar", "color": "#f59e0b" },
+        { "nombre": "Amarillo", "color": "#facc15" },
+        { "nombre": "Verde", "color": "#22c55e" },
+        { "nombre": "Cian", "color": "#22d3ee" },
+        { "nombre": "Azul", "color": "#60a5fa" },
+        { "nombre": "Coral", "color": "#fb7185" }
+      ]
+    },
+    "tipografias": {
+      "titulares": "--display",
+      "texto": "--texto",
+      "parejas": [
+        { "id": "circuito", "nombre": "Circuito", "titulares": "Outfit", "texto": "DM Sans" },
+        { "id": "tecnica", "nombre": "Técnica", "titulares": "Space Grotesk", "texto": "Inter" },
+        { "id": "clara", "nombre": "Clara", "titulares": "Plus Jakarta Sans", "texto": "Figtree" }
+      ]
+    }
+  }
+}
