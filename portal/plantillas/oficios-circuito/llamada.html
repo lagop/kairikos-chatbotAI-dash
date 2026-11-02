@@ -3,4 +3,5 @@
   <h2>{{#llamada_accion}}{{llamada_accion}}{{/llamada_accion}}{{^llamada_accion}}¿Le echamos un vistazo?{{/llamada_accion}}</h2>
   {{#telefono_href}}<a class="llamada-telefono" href="tel:{{telefono_href}}"><span class="anillo"><svg aria-hidden="true"><use href="#i-telefono"></use></svg></span><span class="numero">{{telefono}}</span></a>{{/telefono_href}}
   {{^telefono_href}}<a class="boton" href="#contacto">Escríbanos</a>{{/telefono_href}}
+  {{#whatsapp_href}}<p class="llamada-whatsapp"><a class="boton boton--hueco" href="{{whatsapp_href}}" target="_blank" rel="noopener"><svg aria-hidden="true"><use href="#i-whatsapp"></use></svg>O escríbanos por WhatsApp</a></p>{{/whatsapp_href}}
 </div></section>

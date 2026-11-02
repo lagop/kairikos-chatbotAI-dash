@@ -4,5 +4,5 @@
     <h2 data-k-titulo-seccion>Lo que hacemos</h2>
     {{#telefono_href}}<p class="acciones"><a class="boton boton--acento" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg>{{telefono}}</a></p>{{/telefono_href}}
   </div>
-  <ol class="kv-indice">{{#servicios}}<li><span class="kv-num" aria-hidden="true"></span><div><h3>{{nombre}}</h3>{{#descripcion}}<p>{{descripcion}}</p>{{/descripcion}}</div><span class="icono"><svg aria-hidden="true"><use href="#i-{{#icono}}{{icono}}{{/icono}}{{^icono}}tijeras{{/icono}}"></use></svg></span></li>{{/servicios}}</ol>
+  <ol class="kv-indice">{{#servicios}}<li><span class="kv-num" aria-hidden="true"></span><div><h3>{{nombre}}</h3>{{#descripcion}}<p>{{descripcion}}</p>{{/descripcion}}{{#precio}}<p class="precio-servicio kv-precio">{{precio}}</p>{{/precio}}</div><span class="icono"><svg aria-hidden="true"><use href="#i-{{#icono}}{{icono}}{{/icono}}{{^icono}}tijeras{{/icono}}"></use></svg></span></li>{{/servicios}}</ol>
 </div></section>

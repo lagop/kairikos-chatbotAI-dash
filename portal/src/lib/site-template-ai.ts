@@ -100,9 +100,9 @@ Las piezas, cada una precedida de su separador:
   En ${SITE_TITLED_SECTIONS.join(', ')}, la etiqueta del título de la sección lleva data-k-titulo-seccion (<h2 data-k-titulo-seccion>Lo que hacemos</h2>), una sola vez: el dueño puede cambiar ese título por el suyo y el sistema lo pone ahí dentro; el que escribas es el que sale si no lo cambia.
 
 CAMPOS (y ningún otro):
-  Del negocio: {{nombre}} {{telefono}} {{telefono_href}} (en href="tel:{{telefono_href}}") {{direccion}} {{maps_url}} {{valoracion}} {{num_resenas}} {{horario_resumen}} — pueden venir vacíos: envuelve lo que dependa de ellos en {{#campo}}.
+  Del negocio: {{nombre}} {{telefono}} {{telefono_href}} (en href="tel:{{telefono_href}}") {{whatsapp_href}} (el enlace de WhatsApp, ya completo; el sistema pone un botón flotante si no lo pintas tú con data-k-whatsapp) {{direccion}} {{maps_url}} {{valoracion}} {{num_resenas}} {{horario_resumen}} — pueden venir vacíos: envuelve lo que dependa de ellos en {{#campo}}.
   Del contenido: {{titular}} {{subtitulo}} {{{sobre_html}}} {{llamada_accion}}
-    {{#servicios}} {{nombre}} {{descripcion}} {{icono}} {{/servicios}} — el icono: <use href="#i-{{#icono}}{{icono}}{{/icono}}{{^icono}}check{{/icono}}">
+    {{#servicios}} {{nombre}} {{descripcion}} {{icono}} {{#precio}}{{precio}}{{/precio}} {{/servicios}} — el precio («Desde 45 €») es opcional — el icono: <use href="#i-{{#icono}}{{icono}}{{/icono}}{{^icono}}check{{/icono}}">
     {{#cifras}} {{valor}} {{etiqueta}} {{/cifras}} · {{#proceso}} {{titulo}} {{texto}} {{/proceso}} · {{#garantias}} {{titulo}} {{texto}} {{/garantias}}
     {{#precios.filas}} {{concepto}} {{precio}} {{detalle}} {{/precios.filas}} y {{precios.nota}}
     {{zona.texto}} y {{#zona.lugares}} {{nombre}} {{/zona.lugares}} · {{#faq}} {{pregunta}} {{{respuesta_html}}} {{/faq}} · {{#horario}} {{dias}} {{horas}} {{/horario}}

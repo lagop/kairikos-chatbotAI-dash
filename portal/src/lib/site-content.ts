@@ -325,8 +325,21 @@ const datosSchema = z.object({
   /** Formato básico. */
   sobre: optionalText(1200),
   llamada_accion: optionalText(90),
+  /** 02/11/2026 — el WhatsApp del negocio, si atiende por ahí. Lo escribe el
+   *  cliente: el teléfono de Google no dice si tiene WhatsApp, y un botón que
+   *  abre un chat con un fijo es peor que no tenerlo. Vacío = sin botón. */
+  whatsapp: optionalText(30),
   servicios: z
-    .array(z.object({ nombre: text(80).min(1), descripcion: optionalText(300), icono: optionalText(40) }))
+    .array(
+      z.object({
+        nombre: text(80).min(1),
+        descripcion: optionalText(300),
+        icono: optionalText(40),
+        /** 02/11/2026 — «Desde 45 €», «Gratis», «Según obra»: texto libre,
+         *  porque cada oficio cobra a su manera. Vacío = no se pinta. */
+        precio: optionalText(40),
+      }),
+    )
     .min(1)
     .max(SITE_LIMITS.servicios),
   cifras: z.array(z.object({ valor: text(30).min(1), etiqueta: optionalText(90) })).max(SITE_LIMITS.cifras).default([]),

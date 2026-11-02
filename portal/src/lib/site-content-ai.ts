@@ -68,6 +68,7 @@ function buildSystem(): string {
 Devuelves SOLO un JSON, sin vallas de markdown:
 {
   "iconos_servicios": [string],   // uno por servicio, en el mismo orden, elegido de la lista de iconos
+  "precios_servicios": [string],  // uno por servicio, en el mismo orden: «Desde X €» corto, o "" si en este oficio ese servicio no tiene precio de partida
   "cifras": [{"valor": string, "etiqueta": string}],          // 2 o 3; valor corto («Mismo día», «15 años»)
   "proceso": [{"titulo": string, "texto": string}],           // 3 o 4 pasos de cómo trabaja
   "precios": {"nota": string, "filas": [{"concepto": string, "precio": string, "detalle": string}]},  // 3 a 5 filas, precios «Desde X €»
@@ -144,15 +145,19 @@ export function buildSiteContentFromDraft(copy: WebDraftCopy, expansion: unknown
   const e = (expansion && typeof expansion === 'object' ? expansion : {}) as Record<string, unknown>;
   const icons = Array.isArray(e.iconos_servicios) ? e.iconos_servicios : [];
   const iconOk = new Set(iconIds);
+  const prices = Array.isArray(e.precios_servicios) ? e.precios_servicios : [];
   const datos: SiteContent['datos'] = {
     titular: str(copy.headline, 90) || 'Su web',
     subtitulo: str(copy.subheadline, 220),
     sobre: str(copy.about, 1200),
     llamada_accion: str(copy.callToAction, 90),
+    // El borrador no sabe si el negocio tiene WhatsApp: lo pone el dueño.
+    whatsapp: '',
     servicios: copy.services.slice(0, SITE_LIMITS.servicios).map((s, i) => ({
       nombre: str(s.name, 80) || 'Servicio',
       descripcion: str(s.description, 300),
       icono: typeof icons[i] === 'string' && iconOk.has(icons[i] as string) ? (icons[i] as string) : '',
+      precio: str(prices[i], 40),
     })),
     cifras: arr(e.cifras)
       .map((c) => ({ valor: str(c.valor, 30), etiqueta: str(c.etiqueta, 90) }))
@@ -187,7 +192,7 @@ export function buildSiteContentFromDraft(copy: WebDraftCopy, expansion: unknown
     horario: [],
     titulos: emptySiteTitles(),
   };
-  if (!datos.servicios.length) datos.servicios = [{ nombre: 'Servicios', descripcion: '', icono: '' }];
+  if (!datos.servicios.length) datos.servicios = [{ nombre: 'Servicios', descripcion: '', icono: '', precio: '' }];
 
   // 28/10/2026 — la portada más trabajada (Orlando: «el borrador es solo la
   // portada, pero más currado»). El servicio con su descripción ampliada y,
@@ -259,6 +264,11 @@ export function buildSiteContentFromDraft(copy: WebDraftCopy, expansion: unknown
   };
   for (const key of ['cifras', 'proceso', 'precios', 'garantias', 'zona', 'faq'] as const) walk(datos[key], key);
   for (const i of ampliados) walk(datos.servicios[i].descripcion, `servicios.${i}.descripcion`);
+  // El precio de cada servicio lo propone siempre el modelo: con cifra o sin
+  // ella («Según obra»), de ejemplo hasta que el dueño ponga el suyo.
+  datos.servicios.forEach((s, i) => {
+    if (s.precio) marked.add(`servicios.${i}.precio`);
+  });
   // Lo que incluye cada servicio es una promesa del negocio, y la comparativa,
   // información que alguien tiene que haber leído: los dos, enteros, de
   // ejemplo (se resaltan y no se publican sin mirarlos, como los de sector).
