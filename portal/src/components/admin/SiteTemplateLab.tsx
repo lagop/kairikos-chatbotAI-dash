@@ -45,6 +45,8 @@ export interface SiteTemplateRow {
   createdAt: string;
   /** Lo que admite del estilo de cada negocio (SiteTemplateStyle). */
   estilo?: CheckStyle | null;
+  /** 02/11/2026 — trae estructura propia: sus borradores salen con ella. */
+  conEstructura?: boolean;
   _count?: { websites: number };
   /** Si es una corrección: de qué plantilla (id y nombre). */
   correccionDe?: string | null;
@@ -311,7 +313,7 @@ export function SiteTemplateLab({
             intentarlo otra vez; si se repite, el fallo es del portal, no de la plantilla.
           </p>
         ) : null}
-        {t.estado !== 'generando' && t.estado !== 'aplicada' && t.estado !== 'descartada' ? <Previews id={t.id} estilo={t.estilo} /> : null}
+        {t.estado !== 'generando' && t.estado !== 'aplicada' && t.estado !== 'descartada' ? <Previews id={t.id} estilo={t.estilo} conEstructura={t.conEstructura} /> : null}
         {t.cambios ? <Cambios cambios={t.cambios} /> : null}
         {v.problemas?.length ? (
           <details className="text-sm">
@@ -428,7 +430,7 @@ function Cambios({ cambios }: { cambios: TemplateDiffPart[] }) {
   );
 }
 
-function Previews({ id, estilo }: { id: string; estilo?: SiteTemplateRow['estilo'] }) {
+function Previews({ id, estilo, conEstructura }: { id: string; estilo?: SiteTemplateRow['estilo']; conEstructura?: boolean }) {
   const url = (params: string) => `/api/admin/portal/site-templates/${id}/preview?contenido=normal${params}`;
   return (
     <>
@@ -444,6 +446,11 @@ function Previews({ id, estilo }: { id: string; estilo?: SiteTemplateRow['estilo
         <a className="underline" href={`/api/admin/portal/site-templates/${id}/preview?contenido=normal&pagina=blog/como-detectar-una-fuga`} target="_blank" rel="noopener">
           Ver un artículo
         </a>
+        {conEstructura ? (
+          <a className="underline" href={url('&estructura=1')} target="_blank" rel="noopener">
+            Ver como sale en sus borradores (estructura propia)
+          </a>
+        ) : null}
       </p>
       {estilo?.acento ? (
         <p className="flex flex-wrap items-center gap-3 text-sm">

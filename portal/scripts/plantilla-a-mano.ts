@@ -31,6 +31,13 @@
 //     aplicarla (29/10/2026; antes había que subirla con otro nombre). Una
 //     corrección que aún no se ha aplicado se sustituye, no se duplica.
 //
+// 02/11/2026 — plantilla.json puede llevar `estructura` ({ portada: [...] },
+// site-template-structure.ts): el orden y las disposiciones con los que salen
+// sus borradores. Se comprueba aquí, se sube con ella y `comprobar` pinta los
+// contenidos de muestra así en <salida>/<carpeta>/estructura/, para verla como
+// la verá el prospecto. Las carpetas de siempre siguen con todas las secciones:
+// el dueño puede añadir cualquiera desde el editor y el laboratorio las mide.
+//
 // site-template.ts arrastra seo-article-html.ts, que importa 'server-only'
 // (fuera de Next no existe): se resuelve al módulo vacío de Next antes de
 // cargar las libs.
@@ -59,6 +66,7 @@ const { parseTemplateStyle } = require('../src/lib/site-style') as typeof import
 const { SITE_VARIANT_PARTS, withVariantSet } = require('../src/lib/site-section-variants') as typeof import('../src/lib/site-section-variants');
 const { SITE_RICH_BLOCK_PARTS } = require('../src/lib/site-rich-blocks') as typeof import('../src/lib/site-rich-blocks');
 const { checkPlan } = require('../src/lib/site-template-checks') as typeof import('../src/lib/site-template-checks');
+const { conEstructura, parseTemplateStructure, templateStructureProblems } = require('../src/lib/site-template-structure') as typeof import('../src/lib/site-template-structure');
 
 interface Meta {
   nombre: string;
@@ -66,6 +74,7 @@ interface Meta {
   variante: string | null;
   encargo: string;
   estilo?: unknown;
+  estructura?: unknown;
 }
 
 function load(dir: string): { meta: Meta; template: SiteTemplateSource; slug: string } {
@@ -81,6 +90,19 @@ function load(dir: string): { meta: Meta; template: SiteTemplateSource; slug: st
     if (body) secciones[part] = body;
   }
   return { meta, template: { marco: read('marco'), secciones, estilo: (meta.estilo ?? null) as SiteTemplateSource['estilo'] }, slug: abs.split(/[\\/]/).pop() as string };
+}
+
+/** La estructura de plantilla.json, comprobada (null si no trae). */
+function estructuraDe(meta: Meta) {
+  if (meta.estructura == null) return null;
+  const problems = templateStructureProblems(meta.estructura);
+  if (problems.length) {
+    console.error(`La estructura no vale (${problems.length}):`);
+    for (const p of problems) console.error(`- ${p}`);
+    process.exitCode = 1;
+    return null;
+  }
+  return parseTemplateStructure(meta.estructura);
 }
 
 function validate(template: SiteTemplateSource): SiteTemplateSource {
@@ -144,6 +166,16 @@ function comprobar(dir: string, out: string) {
       const content = withVariantSet(sampleContent(meta.sector, name, foto), k);
       for (const [variant, t] of [[name, withStyle], [`${name}-sin-js`, sinJs]] as const) {
         for (const f of renderSiteFiles(t, content, ctx)) write(join(root, slug, `variantes-${k}`, variant, f.path), f.content);
+      }
+    }
+  }
+  // La portada como sale en sus borradores, si trae estructura propia.
+  const estructura = estructuraDe(meta);
+  if (estructura) {
+    for (const name of Object.keys(SITE_CONTENT_SAMPLES) as SiteContentSampleName[]) {
+      const content = conEstructura(sampleContent(meta.sector, name, foto), estructura);
+      for (const [variant, t] of [[name, withStyle], [`${name}-sin-js`, sinJs]] as const) {
+        for (const f of renderSiteFiles(t, content, ctx)) write(join(root, slug, 'estructura', variant, f.path), f.content);
       }
     }
   }
@@ -223,6 +255,8 @@ function sql(dir: string, motivo?: string) {
   // lo que queda en el historial de la plantilla al aplicarla.
   const fixValidacion = { ...validacion, encargo: motivo?.trim() || 'Corrección escrita a mano' };
   const estilo = clean.estilo != null ? JSON.stringify(clean.estilo) : null;
+  const estructura = estructuraDe(meta);
+  if (process.exitCode) return;
   const all = JSON.stringify([meta, clean, validacion, fixValidacion]);
   let tag = 'plantilla';
   while (all.includes(`$${tag}$`)) tag += '_';
@@ -230,26 +264,27 @@ function sql(dir: string, motivo?: string) {
   const nombre = q(meta.nombre);
   const secciones = `${q(JSON.stringify(clean.secciones))}::jsonb`;
   const estiloSql = estilo ? `${q(estilo)}::jsonb` : 'NULL';
+  const estructuraSql = estructura ? `${q(JSON.stringify(estructura))}::jsonb` : 'NULL';
   const variante = meta.variante ? q(meta.variante) : 'NULL';
   const open = `('pendiente_navegador', 'corrigiendo', 'lista', 'fallida')`;
   console.log(`BEGIN;
 CREATE TEMP TABLE _aprobada ON COMMIT DROP AS
   SELECT id FROM "SiteTemplate" WHERE nombre = ${nombre} AND estado = 'aprobada' AND correccion_de IS NULL LIMIT 1;
 -- Hay una aprobada con ese nombre: se sube (o se sustituye) su corrección abierta.
-UPDATE "SiteTemplate" t SET marco = ${q(clean.marco)}, secciones = ${secciones}, estilo = ${estiloSql}, variante = ${variante},
+UPDATE "SiteTemplate" t SET marco = ${q(clean.marco)}, secciones = ${secciones}, estilo = ${estiloSql}, estructura = ${estructuraSql}, variante = ${variante},
   estado = 'pendiente_navegador', validacion = ${q(JSON.stringify(fixValidacion))}::jsonb, updated_at = now()
   FROM _aprobada a WHERE t.correccion_de = a.id AND t.estado IN ${open};
-INSERT INTO "SiteTemplate" (nombre, sector, variante, origen, modelo, marco, secciones, estilo, estado, validacion, correccion_de, updated_at)
-  SELECT ${nombre} || ' · corrección', ${q(meta.sector)}, ${variante}, 'manual', NULL, ${q(clean.marco)}, ${secciones}, ${estiloSql},
+INSERT INTO "SiteTemplate" (nombre, sector, variante, origen, modelo, marco, secciones, estilo, estructura, estado, validacion, correccion_de, updated_at)
+  SELECT ${nombre} || ' · corrección', ${q(meta.sector)}, ${variante}, 'manual', NULL, ${q(clean.marco)}, ${secciones}, ${estiloSql}, ${estructuraSql},
     'pendiente_navegador', ${q(JSON.stringify(fixValidacion))}::jsonb, a.id, now()
   FROM _aprobada a WHERE NOT EXISTS (SELECT 1 FROM "SiteTemplate" t WHERE t.correccion_de = a.id AND t.estado IN ${open});
 -- No la hay: lo de siempre (se sustituye mientras no esté aprobada ni retirada).
-UPDATE "SiteTemplate" SET marco = ${q(clean.marco)}, secciones = ${secciones}, estilo = ${estiloSql}, sector = ${q(meta.sector)}, variante = ${variante},
+UPDATE "SiteTemplate" SET marco = ${q(clean.marco)}, secciones = ${secciones}, estilo = ${estiloSql}, estructura = ${estructuraSql}, sector = ${q(meta.sector)}, variante = ${variante},
   estado = 'pendiente_navegador', validacion = ${q(JSON.stringify(validacion))}::jsonb, updated_at = now()
   WHERE nombre = ${nombre} AND origen = 'manual' AND correccion_de IS NULL AND estado NOT IN ('aprobada', 'retirada')
     AND NOT EXISTS (SELECT 1 FROM _aprobada);
-INSERT INTO "SiteTemplate" (nombre, sector, variante, origen, modelo, marco, secciones, estilo, estado, validacion, updated_at)
-  SELECT ${nombre}, ${q(meta.sector)}, ${variante}, 'manual', NULL, ${q(clean.marco)}, ${secciones}, ${estiloSql},
+INSERT INTO "SiteTemplate" (nombre, sector, variante, origen, modelo, marco, secciones, estilo, estructura, estado, validacion, updated_at)
+  SELECT ${nombre}, ${q(meta.sector)}, ${variante}, 'manual', NULL, ${q(clean.marco)}, ${secciones}, ${estiloSql}, ${estructuraSql},
     'pendiente_navegador', ${q(JSON.stringify(validacion))}::jsonb, now()
   WHERE NOT EXISTS (SELECT 1 FROM "SiteTemplate" WHERE nombre = ${nombre});
 SELECT id, nombre, estado FROM "SiteTemplate"

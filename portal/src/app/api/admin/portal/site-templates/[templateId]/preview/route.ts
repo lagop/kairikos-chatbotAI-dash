@@ -7,6 +7,7 @@ import type { SiteContent } from '@/lib/site-content';
 import { SITE_TEMPLATE_BASE } from '@/lib/site-template-base';
 import { parseTemplateStyle } from '@/lib/site-style';
 import { SITE_VARIANT_SETS, withVariantSet } from '@/lib/site-section-variants';
+import { conEstructura, parseTemplateStructure, type SiteTemplateStructure } from '@/lib/site-template-structure';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -28,6 +29,11 @@ export const runtime = 'nodejs';
 // ?acento=%23rrggbb y ?tipografia=<pareja> la pintan con el color o la letra
 // de un negocio (site-style.ts): el laboratorio mide así las muestras y las
 // parejas que ofrece la plantilla, no solo su versión original.
+//
+// 02/11/2026 — ?estructura=1, con la estructura propia de la plantilla
+// (site-template-structure.ts): la portada como sale en sus borradores. Sin
+// él, todas las secciones, que es lo que mide el laboratorio: el dueño puede
+// añadir cualquiera desde el editor.
 // =============================================================================
 
 export async function GET(req: NextRequest, props: { params: Promise<{ templateId: string }> }) {
@@ -38,9 +44,10 @@ export async function GET(req: NextRequest, props: { params: Promise<{ templateI
   let template: SiteTemplateSource = SITE_TEMPLATE_BASE;
   let foto = '/web-draft/trades.jpg';
   let sector: string | null = null;
+  let estructura: SiteTemplateStructure | null = null;
   if (params.templateId !== 'base') {
     if (!isDatabaseConfigured) return NextResponse.json({ error: 'service_unavailable' }, { status: 503 });
-    const row = await prisma.siteTemplate.findUnique({ where: { id: params.templateId }, select: { marco: true, secciones: true, estilo: true, sector: true } });
+    const row = await prisma.siteTemplate.findUnique({ where: { id: params.templateId }, select: { marco: true, secciones: true, estilo: true, estructura: true, sector: true } });
     if (!row || !row.marco) return NextResponse.json({ error: 'not_found' }, { status: 404 });
     // 28/10/2026 — con la foto de SU sector: una de belleza medida con la de
     // una obra se ve rara y no dice nada de cómo quedará.
@@ -49,6 +56,7 @@ export async function GET(req: NextRequest, props: { params: Promise<{ templateI
     // con «Fontanería Ejemplo» no se podía juzgar.
     sector = row.sector;
     template = { marco: row.marco, secciones: row.secciones as Partial<Record<SiteTemplatePart, string>>, estilo: parseTemplateStyle(row.estilo) };
+    estructura = parseTemplateStructure(row.estructura);
   }
 
   const requested = req.nextUrl.searchParams.get('contenido') ?? 'normal';
@@ -68,6 +76,7 @@ export async function GET(req: NextRequest, props: { params: Promise<{ templateI
   const variantesParam = req.nextUrl.searchParams.get('variantes') ?? '';
   const variantes = /^\d{1,2}$/.test(variantesParam) ? Number(variantesParam) : -1;
   if (Number.isInteger(variantes) && variantes >= 0 && variantes < SITE_VARIANT_SETS) content = withVariantSet(content, variantes);
+  if (estructura && req.nextUrl.searchParams.get('estructura') === '1') content = conEstructura(content, estructura);
   if (req.nextUrl.searchParams.get('comprobar') === '1') {
     template = { ...template, marco: template.marco.replace(/<script\b[\s\S]*?<\/script>/gi, '') };
   }

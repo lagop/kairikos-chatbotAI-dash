@@ -3995,13 +3995,18 @@ model SiteTemplate {
   origen   String  @default("manual")
   modelo   String?
 
-  marco     String
+  marco      String
   // { [pieza]: string } — las piezas de SITE_TEMPLATE_PARTS.
-  secciones Json
+  secciones  Json
   // 27/10/2026 — qué colores y tipografías puede cambiar cada negocio
   // (SiteTemplateStyle, ver site-style.ts). Null = se pinta siempre tal cual
   // (las de la IA y la base).
-  estilo    Json?
+  estilo     Json?
+  // 02/11/2026 — la estructura propia de su portada: qué secciones, en qué
+  // orden y con qué disposición ({ portada: [...] }, site-template-structure.ts).
+  // Con ella, los borradores nuevos salen así y sin alternar disposiciones.
+  // Null = el orden de siempre.
+  estructura Json?
 
   // 'borrador' (hecha a mano) | 'generando' | 'corrigiendo' |
   // 'pendiente_navegador' | 'lista' | 'fallida' (las de la IA, ver
@@ -4039,9 +4044,10 @@ model SiteTemplateVersion {
   id         String @id @default(uuid()) @db.Uuid
   templateId String @map("template_id") @db.Uuid
 
-  marco     String
-  secciones Json
-  estilo    Json?
+  marco      String
+  secciones  Json
+  estilo     Json?
+  estructura Json?
 
   // Por qué se sustituyó: el encargo de la corrección, o «vuelta a la
   // versión de <fecha>».

@@ -368,10 +368,13 @@ export async function setSiteTemplateState(
   return { ok: true, estado };
 }
 
-const content = (row: { marco: string; secciones: unknown; estilo: unknown }) => ({
+// 02/11/2026 — con la estructura de su portada (site-template-structure.ts):
+// una corrección que la cambia la aplica, y volver atrás la recupera.
+const content = (row: { marco: string; secciones: unknown; estilo: unknown; estructura: unknown }) => ({
   marco: row.marco,
   secciones: row.secciones as Prisma.InputJsonValue,
   estilo: row.estilo == null ? Prisma.DbNull : (row.estilo as Prisma.InputJsonValue),
+  estructura: row.estructura == null ? Prisma.DbNull : (row.estructura as Prisma.InputJsonValue),
 });
 
 /**
@@ -384,12 +387,12 @@ async function applyCorrection(prisma: PrismaClient, id: string, actorEmail: str
   return prisma.$transaction(async (tx) => {
     const fix = await tx.siteTemplate.findUnique({
       where: { id },
-      select: { nombre: true, estado: true, correccionDe: true, marco: true, secciones: true, estilo: true, validacion: true },
+      select: { nombre: true, estado: true, correccionDe: true, marco: true, secciones: true, estilo: true, estructura: true, validacion: true },
     });
     if (!fix?.correccionDe || fix.estado !== 'lista') return { ok: false as const, error: 'wrong_state' as const };
     const original = await tx.siteTemplate.findUnique({
       where: { id: fix.correccionDe },
-      select: { id: true, nombre: true, estado: true, marco: true, secciones: true, estilo: true, validacion: true },
+      select: { id: true, nombre: true, estado: true, marco: true, secciones: true, estilo: true, estructura: true, validacion: true },
     });
     // Solo sobre una aprobada: corregir una retirada no llega a ningún sitio
     // nuevo, y una que aún no se aprobó se corrige subiéndola otra vez.
@@ -423,10 +426,10 @@ export async function restoreSiteTemplateVersion(
   return prisma.$transaction(async (tx) => {
     const tpl = await tx.siteTemplate.findUnique({
       where: { id: templateId },
-      select: { id: true, estado: true, marco: true, secciones: true, estilo: true, validacion: true },
+      select: { id: true, estado: true, marco: true, secciones: true, estilo: true, estructura: true, validacion: true },
     });
     if (!tpl) return { ok: false as const, error: 'not_found' as const };
-    const version = await tx.siteTemplateVersion.findFirst({ where: { id: versionId, templateId }, select: { marco: true, secciones: true, estilo: true, createdAt: true } });
+    const version = await tx.siteTemplateVersion.findFirst({ where: { id: versionId, templateId }, select: { marco: true, secciones: true, estilo: true, estructura: true, createdAt: true } });
     if (!version) return { ok: false as const, error: 'not_found' as const };
     if (tpl.estado !== 'aprobada') return { ok: false as const, error: 'wrong_state' as const };
     const cuando = version.createdAt.toLocaleString('es-ES', { timeZone: 'Atlantic/Canary' });
