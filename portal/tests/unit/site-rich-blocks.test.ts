@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseVideoUrl, renderRichBlock, richBlockHasContent, videoPlatformsIn, type RichBlockInput } from '@/lib/site-rich-blocks';
+import { parseVideoUrl, plazoBarras, plazoEnMinutos, renderRichBlock, richBlockHasContent, videoPlatformsIn, type RichBlockInput } from '@/lib/site-rich-blocks';
 import { legalPageMarkdown } from '@/lib/site-legal';
 import { parseSiteContent, referencedUploads, type SiteContent } from '@/lib/site-content';
 import { renderSiteFiles } from '@/lib/site-template';
@@ -7,7 +7,7 @@ import { SITE_TEMPLATE_BASE } from '@/lib/site-template-base';
 import { SAMPLE_RENDER_CONTEXT, SITE_CONTENT_SAMPLES } from '@/lib/site-content-samples';
 
 const foto = 'assets/subidas/0123456789abcdef01.webp';
-const block = (over: Partial<RichBlockInput>): RichBlockInput => ({ id: 'b', tipo: 'galeria', titulo: '', texto: '', fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [], video: '', foto: '', fotoAlt: '', ...over });
+const block = (over: Partial<RichBlockInput>): RichBlockInput => ({ id: 'b', tipo: 'galeria', titulo: '', texto: '', fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [], plazos: { filas: [], nota: '' }, video: '', foto: '', fotoAlt: '', ...over });
 
 describe('renderRichBlock', () => {
   it('galería: cada foto enlaza a sí misma (sin JavaScript se abre igual) y sube de nivel en una página interior', () => {
@@ -124,6 +124,44 @@ describe('tanda 2', () => {
     expect(richBlockHasContent(block({ ...vacio, tipo: 'comparativa', comparativa: { columnas: ['A'], destacada: -1, filas: [] } }))).toBe(false);
     expect(richBlockHasContent(block({ ...vacio, tipo: 'trayectoria' }))).toBe(false);
     expect(richBlockHasContent(block({ ...vacio, tipo: 'marcas' }))).toBe(false);
+  });
+});
+
+describe('plazos', () => {
+  it('entiende los plazos como se escriben: el último número del tramo, y nada si no hay unidad', () => {
+    expect(plazoEnMinutos('Inmediato')).toBe(0);
+    expect(plazoEnMinutos('≤ 60 min')).toBe(60);
+    expect(plazoEnMinutos('4 h')).toBe(240);
+    expect(plazoEnMinutos('24-48 h')).toBe(2880);
+    expect(plazoEnMinutos('De 2 a 3 días')).toBe(4320);
+    expect(plazoEnMinutos('1,5 horas')).toBe(90);
+    expect(plazoEnMinutos('Mismo día')).toBe(480);
+    expect(plazoEnMinutos('Según la zona')).toBeNull();
+    expect(plazoEnMinutos('Hoy, 2 técnicos')).toBeNull();
+  });
+
+  it('las barras: la más rápida llena, las demás más cortas; con menos de dos que se entiendan, ninguna', () => {
+    const b = plazoBarras([{ plazo: '≤ 60 min' }, { plazo: '24 h' }, { plazo: 'Según la zona' }, { plazo: '72 h' }]);
+    expect(b[0]).toBe(100);
+    expect(b[2]).toBeNull();
+    expect(b[1]!).toBeLessThan(100);
+    expect(b[3]!).toBeLessThan(b[1]!);
+    expect(b[3]).toBe(18);
+    expect(plazoBarras([{ plazo: '24 h' }, { plazo: 'Consultar' }])).toEqual([null, null]);
+    expect(plazoBarras([{ plazo: '24 h' }, { plazo: '1 día' }])).toEqual([100, 100]);
+  });
+
+  it('se pinta con su título al lado, la fila sin plazo entendible va sin barra, y escapa', () => {
+    const html = renderRichBlock(
+      block({ tipo: 'plazos', titulo: 'Urgencias', plazos: { filas: [{ concepto: 'Corte <de> luz', plazo: '≤ 60 min' }, { concepto: 'Avería', plazo: '24 h' }, { concepto: 'Obra', plazo: 'A convenir' }], nota: 'Medias del año' } }),
+      '',
+    );
+    expect(html).toContain('<div class="k-plazos-rejilla"><div class="k-plazos-cabeza">');
+    expect(html).toContain('Corte &lt;de&gt; luz');
+    expect(html.match(/class="k-plazo-barra"/g)).toHaveLength(2);
+    expect(html).toContain('style="--k-plazo:100%"');
+    expect(html).toContain('<p class="k-plazos-nota">Medias del año</p>');
+    expect(richBlockHasContent(block({ tipo: 'plazos' }))).toBe(false);
   });
 });
 

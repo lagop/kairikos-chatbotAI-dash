@@ -184,6 +184,7 @@ const BLOCK_LABEL: Record<SiteBlock['tipo'], string> = {
   trayectoria: 'Trayectoria',
   marcas: 'Marcas y certificados',
   video: 'Vídeo',
+  plazos: 'Plazos de respuesta',
 };
 
 /** Qué rutas de datos de ejemplo pertenecen a cada sección. */
@@ -681,7 +682,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
       let n = d.bloques.length + 1;
       while (d.bloques.some((b) => b.id === `bloque-${n}`)) n++;
       const id = `bloque-${n}`;
-      d.bloques.push({ id, tipo: newBlock, titulo: '', texto: '', foto: '', fotoAlt: '', items: newBlock === 'lista' ? [{ texto: '', icono: '' }] : [], fotos: newBlock === 'antes_despues' ? [{ foto: '', alt: '', texto: 'Antes' }, { foto: '', alt: '', texto: 'Después' }] : [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [], video: '' });
+      d.bloques.push({ id, tipo: newBlock, titulo: '', texto: '', foto: '', fotoAlt: '', items: newBlock === 'lista' ? [{ texto: '', icono: '' }] : [], fotos: newBlock === 'antes_despues' ? [{ foto: '', alt: '', texto: 'Antes' }, { foto: '', alt: '', texto: 'Después' }] : [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [], plazos: { filas: [], nota: '' }, video: '' });
       const list = d.paginas[pageIndex].secciones;
       const contacto = list.findIndex((s) => s.tipo === 'contacto');
       list.splice(contacto >= 0 ? contacto : list.length, 0, { tipo: 'bloque', id });
@@ -852,6 +853,9 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
           ) : null}
           {b.tipo === 'trayectoria' ? (
             <MilestonesEditor hitos={b.hitos} onChange={(hitos) => update((d) => void ((d.bloques.find((x) => x.id === b.id) as SiteBlock).hitos = hitos))} />
+          ) : null}
+          {b.tipo === 'plazos' ? (
+            <DeadlinesEditor value={b.plazos} onChange={(plazos) => update((d) => void ((d.bloques.find((x) => x.id === b.id) as SiteBlock).plazos = plazos))} />
           ) : null}
           {b.tipo === 'galeria' || b.tipo === 'antes_despues' || b.tipo === 'marcas' ? (
             <RichPhotosEditor
@@ -1916,6 +1920,45 @@ function MilestonesEditor({ hitos, onChange }: { hitos: SiteBlock['hitos']; onCh
           + Añadir hito
         </button>
       ) : null}
+    </div>
+  );
+}
+
+/** 02/11/2026 — los plazos de respuesta (hasta 8). Las barras las dibuja la
+ *  web a partir del plazo: no hay que poner ningún número aparte. */
+function DeadlinesEditor({ value, onChange }: { value: SiteBlock['plazos']; onChange: (p: SiteBlock['plazos']) => void }) {
+  const filas = value.filas;
+  const set = (i: number, patch: Partial<SiteBlock['plazos']['filas'][number]>) => onChange({ ...value, filas: filas.map((f, j) => (j === i ? { ...f, ...patch } : f)) });
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-kairikos-muted">
+        Cuánto tardas en cada caso, del más urgente al que menos. Escribe el plazo como lo dirías («Inmediato», «≤ 60 min», «24 h», «Mismo día»): la web dibuja una
+        barra con cada uno para compararlos.
+      </p>
+      {filas.map((f, i) => (
+        <div key={i} className="grid gap-2 rounded-lg border border-kairikos-border p-3 sm:grid-cols-[1fr_10rem]">
+          <label className="block text-xs font-medium">
+            Situación
+            <input className="input mt-1 w-full" maxLength={120} placeholder="Corte de luz en casa" value={f.concepto} onChange={(e) => set(i, { concepto: e.target.value })} />
+          </label>
+          <label className="block text-xs font-medium">
+            Plazo
+            <input className="input mt-1 w-full" maxLength={30} placeholder="≤ 60 min" value={f.plazo} onChange={(e) => set(i, { plazo: e.target.value })} />
+          </label>
+          <button type="button" className="btn-ghost justify-self-start text-xs text-kairikos-danger" onClick={() => onChange({ ...value, filas: filas.filter((_, j) => j !== i) })}>
+            Quitar
+          </button>
+        </div>
+      ))}
+      {filas.length < 8 ? (
+        <button type="button" className="btn-ghost text-sm" onClick={() => onChange({ ...value, filas: [...filas, { concepto: '', plazo: '' }] })}>
+          + Añadir plazo
+        </button>
+      ) : null}
+      <label className="block text-xs font-medium">
+        Nota al pie (opcional)
+        <input className="input mt-1 w-full" maxLength={160} placeholder="Tiempo medio de los últimos 12 meses" value={value.nota} onChange={(e) => onChange({ ...value, nota: e.target.value })} />
+      </label>
     </div>
   );
 }

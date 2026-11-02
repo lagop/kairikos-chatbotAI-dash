@@ -93,6 +93,7 @@ export const SITE_LIMITS = {
   bloquePestanas: 6,
   bloqueFilas: 15,
   bloqueHitos: 12,
+  bloquePlazos: 8,
   paginas: 20,
   seccionesPorPagina: 30,
   entradas: 200,
@@ -234,6 +235,17 @@ const blockSchema = z.object({
     .array(z.object({ fecha: text(30).min(1), titulo: text(90).min(1), texto: optionalText(300) }))
     .max(SITE_LIMITS.bloqueHitos)
     .default([]),
+  /** 02/11/2026 — Plazos: lo que tarda el negocio en cada caso («Corte de
+   *  luz», «≤ 60 min»), de la landing de electricidad. Las barras las calcula
+   *  el motor a partir del plazo (site-rich-blocks.ts), para no pedirle al
+   *  dueño un número que no sabría poner. `nota` es el pie («Tiempo medio de
+   *  los últimos 12 meses»). */
+  plazos: z
+    .object({
+      filas: z.array(z.object({ concepto: text(120).min(1), plazo: text(30).min(1) })).max(SITE_LIMITS.bloquePlazos).default([]),
+      nota: optionalText(160),
+    })
+    .default({ filas: [], nota: '' }),
   /** Tanda 3 (28/10/2026) — el enlace a un vídeo de YouTube o Vimeo. La
    *  portada propia, si la hay, va en `foto`. */
   video: optionalText(300).refine((u) => u === '' || parseVideoUrl(u) !== null, 'invalid_video_url'),
