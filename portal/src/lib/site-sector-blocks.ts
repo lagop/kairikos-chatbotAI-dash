@@ -63,6 +63,8 @@ type SectorSet = {
  *  incluye cada servicio, en pestañas, y la comparativa del oficio. */
 export const DETAIL_BLOCK_ID = 'detalle-servicios';
 export const COMPARISON_BLOCK_ID = 'comparativa';
+/** 02/11/2026 — y los plazos de respuesta, en los oficios con urgencias. */
+export const DEADLINES_BLOCK_ID = 'plazos';
 
 /** Un bloque con todo vacío salvo id, tipo y título. */
 export const vacio = (id: string, tipo: SiteBlock['tipo'], titulo: string): SiteBlock => ({
@@ -78,6 +80,7 @@ export const vacio = (id: string, tipo: SiteBlock['tipo'], titulo: string): Site
   pestanas: [],
   comparativa: { columnas: [], destacada: -1, filas: [] },
   hitos: [],
+  plazos: { filas: [], nota: '' },
   video: '',
 });
 

@@ -28,7 +28,8 @@ import { renderSiteMarkdown } from './site-markdown';
 
 // Tanda 2 (28/10/2026): pestañas, comparativa, trayectoria y marcas.
 // Tanda 3 (28/10/2026): vídeo que no carga nada de fuera hasta que se pulsa.
-export const SITE_RICH_BLOCK_TYPES = ['galeria', 'antes_despues', 'catalogo', 'pestanas', 'comparativa', 'trayectoria', 'marcas', 'video'] as const;
+// 02/11/2026: plazos (los tiempos de respuesta de la landing de electricidad).
+export const SITE_RICH_BLOCK_TYPES = ['galeria', 'antes_despues', 'catalogo', 'pestanas', 'comparativa', 'trayectoria', 'marcas', 'video', 'plazos'] as const;
 export type SiteRichBlockType = (typeof SITE_RICH_BLOCK_TYPES)[number];
 
 /**
@@ -62,6 +63,7 @@ export interface RichBlockInput {
   pestanas: { titulo: string; texto: string; foto: string; alt: string }[];
   comparativa: { columnas: string[]; destacada: number; filas: { concepto: string; valores: string[] }[] };
   hitos: { fecha: string; titulo: string; texto: string }[];
+  plazos: { filas: { concepto: string; plazo: string }[]; nota: string };
   /** El enlace al vídeo (YouTube o Vimeo); `foto`, la portada propia. */
   video: string;
   foto: string;
@@ -129,6 +131,7 @@ export function richBlockHasContent(b: RichBlockInput): boolean {
   if (b.tipo === 'pestanas') return b.pestanas.length > 0;
   if (b.tipo === 'comparativa') return b.comparativa.columnas.length > 0 && b.comparativa.filas.length > 0;
   if (b.tipo === 'trayectoria') return b.hitos.length > 0;
+  if (b.tipo === 'plazos') return b.plazos.filas.length > 0;
   if (b.tipo === 'video') return parseVideoUrl(b.video) !== null;
   return b.fotos.some((f) => f.foto);
 }
@@ -186,6 +189,58 @@ function renderTrayectoria(b: RichBlockInput): string {
     .join('')}</ol>`;
 }
 
+/**
+ * 02/11/2026 — cuánto es un plazo, en minutos, para dibujar su barra:
+ * «Inmediato» 0, «≤ 60 min» 60, «4 h» 240, «24-48 h» 2880 (el último número
+ * del tramo: lo que se promete), «Mismo día» 480. Null si no se entiende
+ * («Según la zona»): esa fila va sin barra.
+ */
+export function plazoEnMinutos(plazo: string): number | null {
+  const t = plazo.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (/inmediat|al momento|en el acto|ahora mismo/.test(t)) return 0;
+  const m = [...t.matchAll(/(\d+(?:[.,]\d+)?)\s*(?:a\s*\d+(?:[.,]\d+)?\s*|-\s*\d+(?:[.,]\d+)?\s*)?(minutos?|min|horas?|h|dias?|d|semanas?|sem)\b/g)];
+  if (m.length) {
+    const last = m[m.length - 1];
+    const tramo = last[0].match(/\d+(?:[.,]\d+)?/g) as string[];
+    const n = Number(tramo[tramo.length - 1].replace(',', '.'));
+    const u = last[2];
+    const por = u.startsWith('min') ? 1 : u.startsWith('h') ? 60 : u.startsWith('d') ? 1440 : 10080;
+    return n * por;
+  }
+  if (/mismo dia|en el dia|hoy mismo/.test(t)) return 480;
+  return null;
+}
+
+/** El ancho de cada barra (0–100), o null en las que no se entienden. La más
+ *  rápida, llena; las demás, más cortas en escala logarítmica (de una hora a
+ *  dos días hay mucho, pero no 48 veces de pantalla). Con menos de dos plazos
+ *  que se entiendan, ninguna: una barra sola no compara nada. */
+export function plazoBarras(filas: { plazo: string }[]): (number | null)[] {
+  const mins = filas.map((f) => plazoEnMinutos(f.plazo));
+  const ok = mins.filter((m): m is number => m !== null);
+  if (ok.length < 2) return mins.map(() => null);
+  const min = Math.min(...ok);
+  const max = Math.max(...ok);
+  if (max === min) return mins.map((m) => (m === null ? null : 100));
+  const l = (m: number) => Math.log1p(m - min);
+  return mins.map((m) => (m === null ? null : Math.round(100 - 82 * (l(m) / l(max)))));
+}
+
+/** Plazos: una tarjeta con cada caso, su plazo y una barra que se llena al
+ *  verla. Sin JavaScript, las barras ya están llenas. */
+function renderPlazos(b: RichBlockInput): string {
+  const barras = plazoBarras(b.plazos.filas);
+  const filas = b.plazos.filas
+    .map(
+      (f, i) =>
+        `<li class="k-plazo"><div class="k-plazo-fila"><span class="k-plazo-concepto">${esc(f.concepto)}</span><strong class="k-plazo-valor">${esc(f.plazo)}</strong></div>` +
+        (barras[i] === null ? '' : `<span class="k-plazo-barra" aria-hidden="true"><span style="--k-plazo:${barras[i]}%"></span></span>`) +
+        '</li>',
+    )
+    .join('');
+  return `<div class="k-plazos-panel"><ul class="k-plazos-lista">${filas}</ul>${b.plazos.nota ? `<p class="k-plazos-nota">${esc(b.plazos.nota)}</p>` : ''}</div>`;
+}
+
 /** Marcas y certificados. Con más de cuatro, pasan en cinta (la segunda copia
  *  es solo para que el bucle no tenga salto, y se oculta a los lectores). */
 function renderMarcas(b: RichBlockInput, src: (p: string) => string, foto: FotoAttr): string {
@@ -228,9 +283,15 @@ export function richBlockClass(tipo: SiteRichBlockType): string {
 export function renderRichBlock(b: RichBlockInput, base: string, ejemplo = false, edicion = false, variante?: string): string {
   // De ejemplo (site-sector-blocks.ts): el bloque entero va resaltado con la
   // marca de la plantilla (.dato-ejemplo-bloque).
+  // Plazos: el título y el texto a un lado y la tarjeta al otro, como en la
+  // landing de la que sale.
+  const cuerpo =
+    b.tipo === 'plazos'
+      ? `<div class="k-plazos-rejilla"><div class="k-plazos-cabeza">${head(b)}</div>${richBlockBody(b, base, edicion, variante)}</div>`
+      : `${head(b)}${richBlockBody(b, base, edicion, variante)}`;
   return (
     `<section class="${richBlockClass(b.tipo)}" id="bloque-${esc(b.id)}"><div class="k-dentro">${ejemplo ? '<div class="dato-ejemplo-bloque">' : ''}` +
-    `${head(b)}${richBlockBody(b, base, edicion, variante)}${ejemplo ? '</div>' : ''}</div></section>`
+    `${cuerpo}${ejemplo ? '</div>' : ''}</div></section>`
   );
 }
 
@@ -326,6 +387,7 @@ function richBlockBody(b: RichBlockInput, base: string, edicion: boolean, varian
   if (b.tipo === 'trayectoria') return renderTrayectoria(b);
   if (b.tipo === 'marcas') return renderMarcas(b, src, foto);
   if (b.tipo === 'video') return renderVideo(b, src, foto);
+  if (b.tipo === 'plazos') return renderPlazos(b);
 
   // Catálogo
   const cats = [...new Map(b.productos.filter((p) => p.categoria).map((p) => [slug(p.categoria), p.categoria])).entries()];
@@ -489,6 +551,20 @@ export const BLOQUES_CSS = `<style id="bloques-kairikos">
 @media (min-width:760px){.k-hito{grid-template-columns:9rem minmax(0,1fr)}}
 .k-js .k-hito{opacity:0;transform:translateY(16px);transition:opacity .6s ease,transform .7s ease}
 .k-js .k-hito.k-visto{opacity:1;transform:none}
+/* 02/11/2026 — plazos. */
+.k-plazos-rejilla{display:grid;gap:2rem 4rem;align-items:center}
+@media (min-width:900px){.k-plazos-rejilla{grid-template-columns:minmax(0,1fr) minmax(0,1.1fr)}}
+.k-plazos-cabeza>:last-child{margin-bottom:0}
+.k-plazos-panel{min-width:0;padding:clamp(1.25rem,3vw,2rem);border-radius:var(--k-radio,8px);background:var(--k-superficie,#fff);border:1px solid var(--k-borde,rgba(127,127,127,.25))}
+.k-plazos-lista{list-style:none;margin:0;padding:0;display:grid;gap:1.15rem}
+.k-plazo{display:grid;gap:.5rem;min-width:0}
+.k-plazo-fila{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;min-width:0}
+.k-plazo-concepto{min-width:0;overflow-wrap:anywhere}
+.k-plazo-valor{flex:none;max-width:45%;text-align:right;font-weight:700;color:var(--k-acento-texto,var(--k-acento,inherit));overflow-wrap:anywhere}
+.k-plazo-barra{display:block;height:.4rem;border-radius:999px;background:var(--k-borde,rgba(127,127,127,.2));overflow:hidden}
+.k-plazo-barra>span{display:block;height:100%;width:var(--k-plazo,100%);border-radius:inherit;background:var(--k-acento,#222);transform-origin:left;transition:transform 1.1s cubic-bezier(.3,.7,.2,1)}
+.k-js-plazos .k-plazos-panel:not(.k-visto) .k-plazo-barra>span{transform:scaleX(0)}
+.k-plazos-nota{margin:1.5rem 0 0;padding-top:1rem;border-top:1px solid var(--k-borde,rgba(127,127,127,.25));font-size:.85rem;color:var(--k-suave,inherit);overflow-wrap:anywhere}
 .k-marcas:where(div){overflow:hidden}
 .k-marcas-pista{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:1.5rem 3rem}
 .k-marcas-pista li{display:flex;flex-direction:column;align-items:center;gap:.4rem;min-width:0}
@@ -655,6 +731,16 @@ export const BLOQUES_JS = `<script>
       entradas.forEach(function (en) { if (en.isIntersecting) { en.target.classList.add("k-visto"); obsHitos.unobserve(en.target); } });
     }, { rootMargin: "0px 0px -10% 0px" });
     hitos.forEach(function (h) { obsHitos.observe(h); });
+  }
+
+  // Las barras de los plazos se llenan al verlas.
+  var plazos = document.querySelectorAll(".k-plazos-panel");
+  if (plazos.length && "IntersectionObserver" in window && !(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)) {
+    document.documentElement.classList.add("k-js-plazos");
+    var obsPlazos = new IntersectionObserver(function (entradas) {
+      entradas.forEach(function (en) { if (en.isIntersecting) { en.target.classList.add("k-visto"); obsPlazos.unobserve(en.target); } });
+    }, { rootMargin: "0px 0px -10% 0px" });
+    plazos.forEach(function (p) { obsPlazos.observe(p); });
   }
 })();
 </script>`;

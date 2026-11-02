@@ -2,7 +2,7 @@ import 'server-only';
 import { resolveActiveAnthropicCredentials } from './anthropic-credentials';
 import { logError } from './observability';
 import { defaultHomePage, emptySiteTitles, parseSiteContent, resolveContentPath, SITE_LIMITS, type SiteBlock, type SiteContent } from './site-content';
-import { COMPARISON_BLOCK_ID, DETAIL_BLOCK_ID, vacio } from './site-sector-blocks';
+import { COMPARISON_BLOCK_ID, DEADLINES_BLOCK_ID, DETAIL_BLOCK_ID, vacio } from './site-sector-blocks';
 import type { WebDraftCopy } from './web-draft-ai';
 
 // =============================================================================
@@ -77,6 +77,7 @@ Devuelves SOLO un JSON, sin vallas de markdown:
   "faq": [{"pregunta": string, "respuesta": string}],         // 4 a 6, las dudas reales de quien contrata este oficio
   "servicios_detalle": [{"descripcion": string, "incluye": [string]}],  // uno por servicio, en el mismo orden
   "comparativa": {"titulo": string, "texto": string, "columnas": [string], "filas": [{"concepto": string, "valores": [string]}]},  // o null
+  "plazos": {"titulo": string, "texto": string, "filas": [{"concepto": string, "plazo": string}]},  // o null
   "ejemplos": [string],  // rutas de lo inventado: "cifras.0.valor", "precios.filas.1.precio", "garantias.0.texto", "zona.lugares.2.nombre", "faq.1.respuesta"…
   "color": string,       // solo si se te dan colores: el nombre de uno, el que mejor le vaya por su oficio o su nombre
   "letra": string        // solo si se te dan letras: el nombre de una
@@ -88,7 +89,8 @@ Reglas:
 - Coherente con su texto y su oficio; nada de frases de agencia. Español de España; al visitante se le habla de usted.
 - Títulos de 2 a 5 palabras. Textos de una o dos frases; respuestas de la faq de dos a cuatro frases, que resuelvan la duda de verdad.
 - servicios_detalle: amplía cada servicio SIN cambiarle el sentido. "descripcion", de dos o tres frases (máximo 280 caracteres): qué es y para quién; "incluye", de 3 a 5 puntos cortos (máximo 12 palabras cada uno) con lo que comprende el trabajo. Explica el oficio: materiales, opciones, cómo se hace. Lo que sea una promesa concreta del negocio (plazos, marcas, garantías) es inventado y va en "ejemplos".
-- comparativa: solo si en este oficio el cliente suele dudar entre 2 o 3 opciones (aluminio o PVC, termo eléctrico o de gas, corredera o abatible…). Columnas: las opciones. De 4 a 7 filas; cada valor es «sí», «no» o algo de 1 a 4 palabras. Información general del oficio, honesta: ninguna opción gana en todo. Si no hay una duda así, null.`;
+- comparativa: solo si en este oficio el cliente suele dudar entre 2 o 3 opciones (aluminio o PVC, termo eléctrico o de gas, corredera o abatible…). Columnas: las opciones. De 4 a 7 filas; cada valor es «sí», «no» o algo de 1 a 4 palabras. Información general del oficio, honesta: ninguna opción gana en todo. Si no hay una duda así, null.
+- plazos: solo si el oficio atiende urgencias (electricidad, fontanería, cerrajería, desatascos, calderas, persianas…): cuánto tarda en cada caso. De 3 a 5 filas, de la más urgente a la que menos; "concepto", la situación en pocas palabras («Corte de luz en casa»); "plazo", corto y con unidad («Inmediato», «≤ 60 min», «24 h», «48-72 h»). "texto", una frase. Son promesas del negocio: el bloque sale entero de ejemplo. Si el oficio no tiene urgencias, null.`;
 }
 
 function buildUser(input: DraftExpansionInput): string {
@@ -132,6 +134,23 @@ function buildComparison(value: unknown): SiteBlock | null {
     ...vacio(COMPARISON_BLOCK_ID, 'comparativa', str(c.titulo, 90) || columnas.join(' o ')),
     texto: str(c.texto, 400),
     comparativa: { columnas, destacada: -1, filas },
+  };
+}
+
+/** Los plazos de respuesta, o null si no llegan a 3 filas completas: con
+ *  menos, las barras no comparan nada. */
+function buildDeadlines(value: unknown): SiteBlock | null {
+  if (!value || typeof value !== 'object') return null;
+  const p = value as Record<string, unknown>;
+  const filas = arr(p.filas)
+    .map((f) => ({ concepto: str(f.concepto, 120), plazo: str(f.plazo, 30) }))
+    .filter((f) => f.concepto && f.plazo)
+    .slice(0, SITE_LIMITS.bloquePlazos);
+  if (filas.length < 3) return null;
+  return {
+    ...vacio(DEADLINES_BLOCK_ID, 'plazos', str(p.titulo, 90) || 'Plazos de respuesta'),
+    texto: str(p.texto, 400),
+    plazos: { filas, nota: '' },
   };
 }
 
@@ -217,9 +236,13 @@ export function buildSiteContentFromDraft(copy: WebDraftCopy, expansion: unknown
   if (pestanas.length >= 2) bloques.push({ ...vacio(DETAIL_BLOCK_ID, 'pestanas', 'Qué incluye cada servicio'), pestanas });
   const comparativa = buildComparison(e.comparativa);
   if (comparativa) bloques.push(comparativa);
+  const plazos = buildDeadlines(e.plazos);
+  if (plazos) bloques.push(plazos);
 
   const home = defaultHomePage();
-  for (const [after, id] of [['servicios', DETAIL_BLOCK_ID], ['proceso', COMPARISON_BLOCK_ID]] as const) {
+  // Los plazos antes que la comparativa en la lista: los dos van tras el
+  // proceso, y el que entra después queda delante (proceso, comparativa, plazos).
+  for (const [after, id] of [['servicios', DETAIL_BLOCK_ID], ['proceso', DEADLINES_BLOCK_ID], ['proceso', COMPARISON_BLOCK_ID]] as const) {
     if (!bloques.some((b) => b.id === id)) continue;
     const at = home.secciones.findIndex((s) => s.tipo === after);
     home.secciones.splice(at + 1, 0, { tipo: 'bloque', id });
@@ -269,8 +292,8 @@ export function buildSiteContentFromDraft(copy: WebDraftCopy, expansion: unknown
   datos.servicios.forEach((s, i) => {
     if (s.precio) marked.add(`servicios.${i}.precio`);
   });
-  // Lo que incluye cada servicio es una promesa del negocio, y la comparativa,
-  // información que alguien tiene que haber leído: los dos, enteros, de
+  // Lo que incluye cada servicio es una promesa del negocio (como los plazos),
+  // y la comparativa, información que alguien tiene que haber leído: enteros, de
   // ejemplo (se resaltan y no se publican sin mirarlos, como los de sector).
   for (const b of bloques) marked.add(`bloques.${b.id}.titulo`);
   content.ejemplos = Array.from(marked).slice(0, 200);

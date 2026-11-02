@@ -84,8 +84,16 @@ const normal: SiteContent = {
     titulos: emptySiteTitles(),
   },
   bloques: [
-    { id: 'historia', tipo: 'texto', titulo: 'Nuestra historia', texto: 'Empezamos con una furgoneta y muchas ganas.', foto: '', fotoAlt: '', items: [], fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [], video: '' },
-    { id: 'agosto', tipo: 'aviso', titulo: 'Agosto', texto: 'Cerrado del 10 al 20 de agosto.', foto: '', fotoAlt: '', items: [], fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [], video: '' },
+    { id: 'historia', tipo: 'texto', titulo: 'Nuestra historia', texto: 'Empezamos con una furgoneta y muchas ganas.', foto: '', fotoAlt: '', items: [], fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [], plazos: { filas: [], nota: '' }, video: '' },
+    { id: 'agosto', tipo: 'aviso', titulo: 'Agosto', texto: 'Cerrado del 10 al 20 de agosto.', foto: '', fotoAlt: '', items: [], fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [], plazos: { filas: [], nota: '' }, video: '' },
+    // 02/11/2026 — sin sitio en la portada normal: está para las plantillas cuya
+    // estructura propia lo nombra (Circuito), y así su vista «como en sus
+    // borradores» lo enseña.
+    {
+      id: 'plazos', tipo: 'plazos', titulo: 'Urgencias: cuánto tardamos', texto: 'Le decimos la hora de llegada al coger el teléfono.', foto: '', fotoAlt: '', items: [], fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [],
+      plazos: { filas: [{ concepto: 'Corte de agua en casa', plazo: '≤ 60 min' }, { concepto: 'Fuga o avería urgente', plazo: '≤ 2 h' }, { concepto: 'Presupuesto en casa', plazo: '24 h' }, { concepto: 'Obra programada', plazo: '48-72 h' }], nota: 'Tiempos medios del último año en el área metropolitana.' },
+      video: '',
+    },
   ],
   ejemplos: [
     'cifras.0.valor',
@@ -157,7 +165,7 @@ const bloqueVacio = (id: string, tipo: SiteContent['bloques'][number]['tipo']): 
   productos: [],
   pestanas: [],
   comparativa: { columnas: [], destacada: -1, filas: [] },
-  hitos: [], video: '',
+  hitos: [], plazos: { filas: [], nota: '' }, video: '',
 });
 
 const exagerado: SiteContent = {
@@ -180,6 +188,7 @@ const exagerado: SiteContent = {
         { tipo: 'bloque', id: 'antes-despues' },
         { tipo: 'bloque', id: 'pestanas' },
         { tipo: 'bloque', id: 'comparativa' },
+        { tipo: 'bloque', id: 'plazos' },
         { tipo: 'bloque', id: 'trayectoria' },
         { tipo: 'bloque', id: 'marcas' },
         { tipo: 'bloque', id: 'video' },
@@ -242,8 +251,8 @@ const exagerado: SiteContent = {
     ) as SiteContent['datos']['titulos'],
   },
   bloques: [
-    { id: 'historia', tipo: 'texto_foto', titulo: 'Una historia larga de verdad, contada con calma y con muchos detalles', texto: repeat('Párrafo largo de la historia.', 40).slice(0, 2000), foto: 'assets/portada.jpg', fotoAlt: 'Foto', items: [], fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [], video: '' },
-    { id: 'agosto', tipo: 'lista', titulo: 'Por qué elegirnos', texto: '', foto: '', fotoAlt: '', items: Array.from({ length: 8 }, (_, i) => ({ texto: repeat('Motivo número', (i % 3) + 1) + ` ${i + 1}`, icono: '' })), fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [], video: '' },
+    { id: 'historia', tipo: 'texto_foto', titulo: 'Una historia larga de verdad, contada con calma y con muchos detalles', texto: repeat('Párrafo largo de la historia.', 40).slice(0, 2000), foto: 'assets/portada.jpg', fotoAlt: 'Foto', items: [], fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [], plazos: { filas: [], nota: '' }, video: '' },
+    { id: 'agosto', tipo: 'lista', titulo: 'Por qué elegirnos', texto: '', foto: '', fotoAlt: '', items: Array.from({ length: 8 }, (_, i) => ({ texto: repeat('Motivo número', (i % 3) + 1) + ` ${i + 1}`, icono: '' })), fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [], plazos: { filas: [], nota: '' }, video: '' },
     {
       id: 'galeria',
       tipo: 'galeria',
@@ -254,7 +263,7 @@ const exagerado: SiteContent = {
       items: [],
       pestanas: [],
       comparativa: { columnas: [], destacada: -1, filas: [] },
-      hitos: [], video: '',
+      hitos: [], plazos: { filas: [], nota: '' }, video: '',
       fotos: Array.from({ length: 13 }, (_, i) => ({ foto: 'assets/portada.jpg', alt: `Trabajo ${i + 1}`, texto: i % 3 ? '' : repeat('Pie de foto largo que explica el trabajo.', 3).slice(0, 160) })),
       productos: [],
     },
@@ -268,7 +277,7 @@ const exagerado: SiteContent = {
       items: [],
       pestanas: [],
       comparativa: { columnas: [], destacada: -1, filas: [] },
-      hitos: [], video: '',
+      hitos: [], plazos: { filas: [], nota: '' }, video: '',
       fotos: [
         { foto: 'assets/portada.jpg', alt: 'El baño antes', texto: 'Antes de la reforma' },
         { foto: 'assets/portada.jpg', alt: 'El baño después', texto: 'Después de la reforma' },
@@ -285,7 +294,7 @@ const exagerado: SiteContent = {
       items: [],
       pestanas: [],
       comparativa: { columnas: [], destacada: -1, filas: [] },
-      hitos: [], video: '',
+      hitos: [], plazos: { filas: [], nota: '' }, video: '',
       fotos: [],
       productos: Array.from({ length: 9 }, (_, i) => ({
         nombre: i % 2 ? `Modelo ${i + 1}` : 'Ventana corredera de aluminio con rotura de puente térmico y doble vidrio',
@@ -318,6 +327,20 @@ const exagerado: SiteContent = {
           concepto: i % 2 ? `Característica ${i + 1}` : 'Aislamiento térmico y acústico en fachadas expuestas al viento',
           valores: ['sí', 'no', i % 3 ? 'Hasta 30 años con mantenimiento' : 'sí', ''],
         })),
+      },
+    },
+    // 02/11/2026 — plazos al máximo: ocho filas, conceptos y plazos al tope,
+    // uno que no se entiende (va sin barra) y la nota más larga.
+    {
+      ...bloqueVacio('plazos', 'plazos'),
+      titulo: 'Tiempos de respuesta garantizados para cada tipo de aviso que recibimos',
+      texto: repeat('Le decimos la hora de llegada antes de colgar.', 4).slice(0, 400),
+      plazos: {
+        filas: Array.from({ length: 8 }, (_, i) => ({
+          concepto: i % 2 ? `Aviso ${i + 1}` : repeat('Atención de un caso urgente descrito con todo detalle', 3).slice(0, 120),
+          plazo: ['Inmediato', '≤ 60 min', 'Según la zona y el día', '4 h', '24-48 h', 'Entre 3 y 5 días laborables', '1 semana', 'Mismo día'][i].slice(0, 30),
+        })),
+        nota: repeat('Tiempos medios del último año en toda la isla, sin contar festivos.', 3).slice(0, 160),
       },
     },
     {

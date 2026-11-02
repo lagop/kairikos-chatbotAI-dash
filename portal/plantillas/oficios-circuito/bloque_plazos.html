@@ -1,0 +1,11 @@
+<section class="{{clase}} seccion seccion--noche circuito-bloque circuito-bloque--plazos" id="{{ancla}}"><div class="contenedor">
+  {{#ejemplo}}<div class="dato-ejemplo-bloque">{{/ejemplo}}
+  <div class="circuito-bloque-rejilla"><div>
+    <p class="rotulo">Urgencias</p>
+    {{#titulo}}<h2>{{titulo}}</h2>{{/titulo}}
+    {{#texto_html}}<div class="texto-rico lead">{{{texto_html}}}</div>{{/texto_html}}
+    {{#telefono_href}}<div class="acciones"><a class="boton" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg>Llamar ahora</a>{{#whatsapp_href}}<a class="boton boton--hueco" href="{{whatsapp_href}}" target="_blank" rel="noopener"><svg aria-hidden="true"><use href="#i-whatsapp"></use></svg>WhatsApp</a>{{/whatsapp_href}}</div>{{/telefono_href}}
+  </div>
+  <div class="circuito-bloque-cuerpo">{{{cuerpo_html}}}</div></div>
+  {{#ejemplo}}</div>{{/ejemplo}}
+</div></section>

@@ -106,6 +106,20 @@ describe('buildSiteContentFromDraft', () => {
     expect([...una.bloques, ...corta.bloques]).toEqual([]);
   });
 
+  it('los plazos del oficio: tras el proceso (y tras la comparativa si la hay), enteros de ejemplo; con menos de 3 filas, no salen', () => {
+    const plazos = { titulo: 'Urgencias', texto: 'Llegamos rápido.', filas: [{ concepto: 'Corte de luz', plazo: '≤ 60 min' }, { concepto: 'Avería', plazo: '24 h' }, { concepto: 'Revisión', plazo: '72 h' }, { concepto: 'Sin plazo', plazo: '' }] };
+    const c = buildSiteContentFromDraft(COPY, { plazos }, []);
+    expect(c.bloques.map((b) => [b.id, b.tipo])).toEqual([['plazos', 'plazos']]);
+    expect(c.bloques[0].plazos.filas).toHaveLength(3);
+    expect(c.ejemplos).toContain('bloques.plazos.titulo');
+    const orden = c.paginas[0].secciones.map((s) => (s.tipo === 'bloque' ? s.id : s.tipo));
+    expect(orden[orden.indexOf('proceso') + 1]).toBe('plazos');
+    const comparativa = { columnas: ['A', 'B'], filas: [1, 2, 3].map((i) => ({ concepto: 'c' + i, valores: ['sí', 'no'] })) };
+    const ambos = buildSiteContentFromDraft(COPY, { plazos, comparativa }, []).paginas[0].secciones.map((s) => (s.tipo === 'bloque' ? s.id : s.tipo));
+    expect(ambos.slice(ambos.indexOf('proceso'), ambos.indexOf('proceso') + 3)).toEqual(['proceso', 'comparativa', 'plazos']);
+    expect(buildSiteContentFromDraft(COPY, { plazos: { filas: plazos.filas.slice(0, 2) } }, []).bloques).toEqual([]);
+  });
+
   it('el JSON con valla de markdown se interpreta; lo que no es JSON, no', () => {
     expect(parseExpansionResponse('```json\n{"cifras":[]}\n```')).toEqual({ cifras: [] });
     expect(parseExpansionResponse('lo siento')).toBeNull();
