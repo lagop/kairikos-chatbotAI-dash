@@ -1,0 +1,12 @@
+<section class="seccion" id="{{ancla}}"><div class="contenedor precios-rejilla">
+  <div class="precios-lado aparece">
+    <p class="rotulo">Precios</p>
+    <h2 data-k-titulo-seccion>Precios claros</h2>
+    <p class="lead">El precio exacto se lo damos tras ver el trabajo, siempre por escrito y antes de empezar.</p>
+    {{#precios.nota}}<p class="nota">{{precios.nota}}</p>{{/precios.nota}}
+  </div>
+  <div class="ticket aparece">
+    <span class="ticket-etiqueta">Tarifa orientativa</span>
+    <ul class="tarifa">{{#precios.filas}}<li><h3>{{concepto}}</h3><span class="precio">{{precio}}</span>{{#detalle}}<p>{{detalle}}</p>{{/detalle}}</li>{{/precios.filas}}</ul>
+  </div>
+</div></section>

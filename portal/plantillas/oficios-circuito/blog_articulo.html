@@ -1,0 +1,7 @@
+<article class="seccion" id="{{ancla}}"><div class="contenedor articulo">
+  <a class="volver" href="{{blog.href}}">{{blog.titulo}}</a>
+  <h1>{{entrada.titulo}}</h1>
+  <time datetime="{{entrada.fecha_iso}}">{{entrada.fecha}}</time>
+  {{#entrada.foto}}<img src="{{entrada.foto}}" alt="{{entrada.foto_alt}}">{{/entrada.foto}}
+  <div class="cuerpo texto-rico">{{{entrada.texto_html}}}</div>
+</div></article>

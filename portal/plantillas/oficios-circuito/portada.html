@@ -1,0 +1,32 @@
+<section class="portada" id="{{ancla}}">
+  <svg class="circuito" viewBox="0 0 1200 700" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+    <g class="pista"><path d="M-20 130H260V240H560V110H820V330H1080V200H1220"/><path d="M-20 420H180V560H480V450H760V640H1000V520H1220"/><path d="M120-20V90H340V-20"/><path d="M940-20V60H1140V-20"/><path d="M640 700V600H880V700"/></g>
+    <path class="corriente" style="stroke-dasharray:180 820" d="M-20 130H260V240H560V110H820V330H1080V200H1220"/>
+    <path class="corriente corriente--b" style="stroke-dasharray:220 780" d="M-20 420H180V560H480V450H760V640H1000V520H1220"/>
+    <path class="corriente corriente--c" style="stroke-dasharray:140 860" d="M120-20V90H340V-20"/>
+    <circle class="nodo nodo--on" cx="260" cy="240" r="5"/><circle class="nodo" cx="560" cy="110" r="5"/><circle class="nodo nodo--on" cx="820" cy="330" r="5"/><circle class="nodo" cx="1080" cy="200" r="5"/><circle class="nodo" cx="180" cy="420" r="5"/><circle class="nodo nodo--on" cx="480" cy="450" r="5"/><circle class="nodo" cx="1000" cy="520" r="5"/><circle class="nodo" cx="120" cy="90" r="5"/>
+  </svg>
+  <div class="contenedor portada-cuerpo">
+    <div>
+      {{#horario_resumen}}<p class="en-vivo"><span class="pulso" aria-hidden="true"></span>{{horario_resumen}}</p>{{/horario_resumen}}
+      <h1>{{titular}}</h1>
+      {{#subtitulo}}<p class="entradilla">{{subtitulo}}</p>{{/subtitulo}}
+      <div class="acciones">
+        <a class="boton" href="#contacto">Pedir presupuesto<svg aria-hidden="true"><use href="#i-flecha"></use></svg></a>
+        {{#telefono_href}}<a class="boton boton--hueco" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg>{{telefono}}</a>{{/telefono_href}}
+      </div>
+      {{#garantias.length}}<ul class="chips">{{#garantias}}<li><svg aria-hidden="true"><use href="#i-check"></use></svg>{{titulo}}</li>{{/garantias}}</ul>{{/garantias.length}}
+    </div>
+    <aside class="panel" aria-label="{{nombre}}">
+      {{#fotos.portada}}<figure class="panel-foto"><img src="{{fotos.portada}}" alt="Trabajo de {{nombre}}"></figure>{{/fotos.portada}}
+      <p class="panel-titulo"><span>{{nombre}}</span><small>En servicio</small></p>
+      <dl class="panel-filas">
+        {{#valoracion}}<div class="panel-fila"><dt>Valoración en Google</dt><dd class="encendido">{{valoracion}}</dd></div>{{/valoracion}}
+        {{#num_resenas}}<div class="panel-fila"><dt>Opiniones</dt><dd>{{num_resenas}} reseñas</dd></div>{{/num_resenas}}
+        {{#horario_resumen}}<div class="panel-fila"><dt>Horario</dt><dd>{{horario_resumen}}</dd></div>{{/horario_resumen}}
+        {{#telefono_href}}<div class="panel-fila"><dt>Teléfono</dt><dd><a href="tel:{{telefono_href}}">{{telefono}}</a></dd></div>{{/telefono_href}}
+      </dl>
+    </aside>
+  </div>
+  {{#servicios.length}}<div class="cinta" role="region" aria-label="Servicios"><div class="cinta-pista"><ul>{{#servicios}}<li>{{nombre}}</li>{{/servicios}}</ul><ul aria-hidden="true">{{#servicios}}<li>{{nombre}}</li>{{/servicios}}</ul></div></div>{{/servicios.length}}
+</section>

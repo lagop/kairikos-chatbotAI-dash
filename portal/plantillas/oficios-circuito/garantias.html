@@ -1,0 +1,9 @@
+<section class="seccion seccion--noche" id="{{ancla}}"><div class="contenedor garantias-rejilla">
+  <div class="garantias-lado aparece">
+    <p class="rotulo">Garantías</p>
+    <h2 data-k-titulo-seccion>Trabajo con respaldo</h2>
+    <p class="lead">Lo que le prometemos antes de empezar, por escrito y sin letra pequeña.</p>
+    {{#telefono_href}}<div class="acciones"><a class="boton" href="tel:{{telefono_href}}"><svg aria-hidden="true"><use href="#i-telefono"></use></svg>Llamar</a><a class="boton boton--hueco" href="#contacto">Escribirnos</a></div>{{/telefono_href}}
+  </div>
+  <ul class="garantias-lista">{{#garantias}}<li class="garantia aparece"><span class="icono"><svg aria-hidden="true"><use href="#i-escudo"></use></svg></span><div><h3>{{titulo}}</h3>{{#texto}}<p>{{texto}}</p>{{/texto}}</div></li>{{/garantias}}</ul>
+</div></section>
