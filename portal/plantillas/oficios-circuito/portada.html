@@ -28,5 +28,6 @@
       </dl>
     </aside>
   </div>
-  {{#servicios.length}}<div class="cinta" role="region" aria-label="Servicios"><div class="cinta-pista"><ul>{{#servicios}}<li>{{nombre}}</li>{{/servicios}}</ul><ul aria-hidden="true">{{#servicios}}<li>{{nombre}}</li>{{/servicios}}</ul></div></div>{{/servicios.length}}
+  {{#sellos.length}}<div class="cinta cinta--sellos" role="region" aria-label="Acreditaciones"><div class="cinta-pista"><ul>{{#sellos}}<li>{{texto}}</li>{{/sellos}}</ul><ul aria-hidden="true">{{#sellos}}<li>{{texto}}</li>{{/sellos}}</ul></div></div>{{/sellos.length}}
+  {{^sellos.length}}{{#servicios.length}}<div class="cinta" role="region" aria-label="Servicios"><div class="cinta-pista"><ul>{{#servicios}}<li>{{nombre}}</li>{{/servicios}}</ul><ul aria-hidden="true">{{#servicios}}<li>{{nombre}}</li>{{/servicios}}</ul></div></div>{{/servicios.length}}{{/sellos.length}}
 </section>

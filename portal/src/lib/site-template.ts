@@ -515,6 +515,34 @@ function phoneHref(phone: string | null): string | null {
   return digits.startsWith('+') ? digits : `+34${digits}`;
 }
 
+/** 03/11/2026 — la palabra resaltada del titular (datos.titular_resalte):
+ *  se envuelve la primera vez que aparece en el texto del primer <h1> de la
+ *  página, que en la portada es el titular. Va después de las marcas del
+ *  editor: dentro de su <k-dato> el texto sigue siendo el titular entero, así
+ *  que editarlo en la vista no pierde nada. Si no aparece tal cual, nada. */
+export function resaltarTitular(html: string, resalte: string): string {
+  const palabras = esc(resalte.trim());
+  if (!palabras) return html;
+  return html.replace(/(<h1\b[^>]*>)([\s\S]*?)(<\/h1>)/i, (todo, abre: string, dentro: string, cierra: string) => {
+    let hecho = false;
+    const nuevo = dentro.replace(/(^|>)([^<]*)/g, (trozo, mayor: string, texto: string) => {
+      const i = hecho ? -1 : texto.indexOf(palabras);
+      if (i < 0) return trozo;
+      hecho = true;
+      return `${mayor}${texto.slice(0, i)}<em class="k-resalte">${palabras}</em>${texto.slice(i + palabras.length)}`;
+    });
+    return hecho ? abre + nuevo + cierra : todo;
+  });
+}
+
+/** El aspecto de partida de lo que llegó el 03/11/2026 (la palabra resaltada
+ *  y la nota del precio). Antes de la hoja de la plantilla, que lo retoca.
+ *  El resalte, subrayado en el acento y con el color del texto: el motor no
+ *  sabe si la portada es clara u oscura, y un color de acento sobre una
+ *  oscura no llegaba al contraste (Cercano y Señal en el laboratorio). */
+const EXTRAS_CSS =
+  '<style id="extras-kairikos">.k-resalte{font-style:normal;color:inherit;text-decoration:underline;text-decoration-color:var(--k-acento,currentColor);text-decoration-thickness:.09em;text-underline-offset:.14em;text-decoration-skip-ink:none}.precio-nota{display:block;font-size:.78em;font-weight:400;letter-spacing:0;text-transform:none}</style>';
+
 /** El enlace de wa.me: solo cifras, con el prefijo del país (sin «+» ni el
  *  «00» de marcar desde fuera). Vacío si no hay número que valga. */
 export function whatsappHref(phone: string): string {
@@ -532,6 +560,9 @@ function buildView(content: SiteContent, ctx: SiteRenderContext, base: string): 
     ...d,
     horario,
     horario_resumen: horario.length === 1 ? `${horario[0].dias}, ${horario[0].horas}` : '',
+    // 03/11/2026 — para que una plantilla pinte el plano con tiempos solo si
+    // el negocio los ha escrito (Circuito).
+    zona: { ...d.zona, con_tiempos: d.zona.lugares.some((l) => l.tiempo) },
     sobre_html: renderSiteMarkdown(d.sobre),
     faq: d.faq.map((f) => ({ ...f, respuesta_html: renderSiteMarkdown(f.respuesta) })),
     nombre: ctx.negocio.nombre,
@@ -981,6 +1012,12 @@ export function renderSitePage(
   // igual: su hoja antes de la de la plantilla, su script al final.
   if (html.includes('class="kv ')) {
     html = html.replace(/<head>/i, `<head>\n${variantesCss(template.estilo?.tipografias?.titulares)}`).replace(/<\/body>/i, `${VARIANTES_JS}\n</body>`);
+  }
+  if (content.datos.titular_resalte && rendered.some((r) => r.tipo === 'portada')) {
+    html = resaltarTitular(html, content.datos.titular_resalte);
+  }
+  if (html.includes('class="k-resalte"') || html.includes('class="precio-nota"')) {
+    html = html.replace(/<head>/i, `<head>\n${EXTRAS_CSS}`);
   }
   if (ctx.formAction && (rendered.some((r) => r.tipo === 'contacto') || html.includes('data-kairikos-form'))) {
     html = html.replace(/<\/body>/i, `${formScript(ctx.formAction, ctx.negocio.telefono, phoneHref(ctx.negocio.telefono))}\n</body>`);

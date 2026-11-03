@@ -1,18 +1,23 @@
-<section class="seccion" id="{{ancla}}"><div class="contenedor zona-rejilla">
-  <div class="aparece">
-    <p class="rotulo">Zona de trabajo</p>
-    <h2 data-k-titulo-seccion>Dónde trabajamos</h2>
-    {{#zona.texto}}<p class="lead">{{zona.texto}}</p>{{/zona.texto}}
-    {{#zona.lugares.length}}<ul class="zonas">{{#zona.lugares}}<li><svg aria-hidden="true"><use href="#i-mapa"></use></svg>{{nombre}}</li>{{/zona.lugares}}</ul>{{/zona.lugares.length}}
-  </div>
-  <div class="plano aparece" aria-hidden="true">
-    <svg viewBox="0 0 400 300">
-      <path class="barrio" d="M20 40 140 20 170 110 60 140Z"/><path class="barrio" d="M150 15 270 30 250 120 175 108Z"/><path class="barrio" d="M275 32 380 60 360 150 255 122Z"/>
-      <path class="barrio" d="M55 146 170 115 190 210 80 250Z"/><path class="barrio barrio--sel" d="M176 113 252 125 270 215 196 212Z"/><path class="barrio" d="M258 128 358 156 340 260 276 218Z"/>
-      <path class="barrio" d="M84 256 192 216 210 285 100 290Z"/><path class="barrio" d="M198 218 272 222 290 288 214 288Z"/>
-      <path class="calle" d="M10 150C90 120 160 170 230 160S340 120 395 140"/>
-      <circle class="halo" cx="222" cy="165" r="16"/><circle class="alfiler" cx="222" cy="165" r="7"/>
-    </svg>
-    <p class="plano-pie">{{#direccion}}{{direccion}}{{/direccion}}{{^direccion}}{{nombre}}{{/direccion}}</p>
-  </div>
+<section class="seccion" id="{{ancla}}"><div class="contenedor">
+  <div class="cabeza cabeza--partida aparece"><div><p class="rotulo">Zona de trabajo</p><h2 data-k-titulo-seccion>Dónde trabajamos</h2></div>{{#zona.texto}}<p class="lead">{{zona.texto}}</p>{{/zona.texto}}</div>
+  {{#zona.con_tiempos}}<div class="zona-mapa" data-k-zonas>
+    <div class="distritos aparece">{{#zona.lugares}}<button type="button" class="distrito" aria-pressed="false"><span class="distrito-nombre">{{nombre}}</span><span class="distrito-punto" aria-hidden="true"></span></button>{{/zona.lugares}}</div>
+    <div class="zona-panel aparece">
+      <div class="zona-elegida" hidden><p class="rotulo">Tiempo de llegada</p><h3></h3><p class="zona-tiempo"></p></div>
+      <ul class="zona-tiempos">{{#zona.lugares}}<li><span>{{nombre}}</span>{{#tiempo}}<strong>{{tiempo}}</strong>{{/tiempo}}</li>{{/zona.lugares}}</ul>
+    </div>
+  </div>{{/zona.con_tiempos}}
+  {{^zona.con_tiempos}}<div class="zona-rejilla">
+    <div class="aparece">{{#zona.lugares.length}}<ul class="zonas">{{#zona.lugares}}<li><svg aria-hidden="true"><use href="#i-mapa"></use></svg>{{nombre}}</li>{{/zona.lugares}}</ul>{{/zona.lugares.length}}</div>
+    <div class="plano aparece" aria-hidden="true">
+      <svg viewBox="0 0 400 300">
+        <path class="barrio" d="M20 40 140 20 170 110 60 140Z"/><path class="barrio" d="M150 15 270 30 250 120 175 108Z"/><path class="barrio" d="M275 32 380 60 360 150 255 122Z"/>
+        <path class="barrio" d="M55 146 170 115 190 210 80 250Z"/><path class="barrio barrio--sel" d="M176 113 252 125 270 215 196 212Z"/><path class="barrio" d="M258 128 358 156 340 260 276 218Z"/>
+        <path class="barrio" d="M84 256 192 216 210 285 100 290Z"/><path class="barrio" d="M198 218 272 222 290 288 214 288Z"/>
+        <path class="calle" d="M10 150C90 120 160 170 230 160S340 120 395 140"/>
+        <circle class="halo" cx="222" cy="165" r="16"/><circle class="alfiler" cx="222" cy="165" r="7"/>
+      </svg>
+      <p class="plano-pie">{{#direccion}}{{direccion}}{{/direccion}}{{^direccion}}{{nombre}}{{/direccion}}</p>
+    </div>
+  </div>{{/zona.con_tiempos}}
 </div></section>

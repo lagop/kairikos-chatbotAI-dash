@@ -120,6 +120,34 @@ describe('buildSiteContentFromDraft', () => {
     expect(buildSiteContentFromDraft(COPY, { plazos: { filas: plazos.filas.slice(0, 2) } }, []).bloques).toEqual([]);
   });
 
+  it('03/11/2026: resalte solo si está en el titular (con sus mayúsculas), nota del precio solo con precio, y las promesas de urgencias de ejemplo', () => {
+    const c = buildSiteContentFromDraft(
+      COPY,
+      {
+        titular_resalte: 'SIN ROMPERLE la casa',
+        precios_servicios: ['Desde 45 €', ''],
+        notas_precios: ['por fuga', 'sobra'],
+        guardia: '24 h / 7 días',
+        proceso: [{ titulo: 'Llama', texto: 'x', icono: 'telefono' }, { titulo: 'Vamos', texto: 'y', icono: 'inventado' }],
+        zona: { texto: '', lugares: [{ nombre: 'Telde', tiempo: '30 min' }, { nombre: 'Arucas', tiempo: '' }] },
+        plazos: {
+          titulo: 'Urgencias',
+          filas: [{ concepto: 'a', plazo: '1 h' }, { concepto: 'b', plazo: '2 h' }, { concepto: 'c', plazo: '3 h' }],
+          situaciones: [{ titulo: 'Sin luz', texto: 'Vamos.', icono: 'rayo' }, { titulo: 'Sin agua', icono: 'nada' }, { titulo: '' }],
+        },
+      },
+      ['telefono', 'rayo'],
+    );
+    expect(c.datos.titular_resalte).toBe('sin romperle la casa');
+    expect(c.datos.servicios.map((s) => s.precio_nota)).toEqual(['por fuga', '']);
+    expect(c.datos.proceso.map((p) => p.icono)).toEqual(['telefono', '']);
+    expect(c.datos.guardia).toBe('24 h / 7 días');
+    expect(c.ejemplos).toEqual(expect.arrayContaining(['servicios.0.precio_nota', 'zona.lugares.0.tiempo', 'guardia']));
+    expect(c.ejemplos).not.toContain('titular_resalte');
+    expect(c.bloques[0].plazos.situaciones).toEqual([{ titulo: 'Sin luz', texto: 'Vamos.', icono: 'rayo' }, { titulo: 'Sin agua', texto: '', icono: '' }]);
+    expect(buildSiteContentFromDraft(COPY, { titular_resalte: 'no está' }, []).datos.titular_resalte).toBeUndefined();
+  });
+
   it('el JSON con valla de markdown se interpreta; lo que no es JSON, no', () => {
     expect(parseExpansionResponse('```json\n{"cifras":[]}\n```')).toEqual({ cifras: [] });
     expect(parseExpansionResponse('lo siento')).toBeNull();

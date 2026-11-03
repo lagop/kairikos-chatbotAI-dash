@@ -11,6 +11,7 @@ import {
   renderMustache,
   renderSiteFiles,
   renderSitePage,
+  resaltarTitular,
   whatsappHref,
   type SiteTemplateSource,
 } from '@/lib/site-template';
@@ -324,8 +325,12 @@ describe('precio por servicio y WhatsApp', () => {
   it('el precio sale solo en los servicios que lo tienen', () => {
     const c = normal();
     const html = renderSitePage(SITE_TEMPLATE_BASE, c, home(c), ctx());
-    const precios = html.match(/<p class="precio-servicio">[^<]*<\/p>/g) ?? [];
-    expect(precios).toEqual(['<p class="precio-servicio">Desde 45 €</p>', '<p class="precio-servicio">Desde 60 €</p>', '<p class="precio-servicio">Según modelo</p>']);
+    const precios = html.match(/<p class="precio-servicio">.*?<\/p>/g) ?? [];
+    expect(precios).toEqual([
+      '<p class="precio-servicio">Desde 45 €<small class="precio-nota">diagnóstico incluido</small></p>',
+      '<p class="precio-servicio">Desde 60 €</p>',
+      '<p class="precio-servicio">Según modelo</p>',
+    ]);
   });
 
   it('un contenido guardado antes de existir los campos sigue valiendo', () => {
@@ -338,5 +343,48 @@ describe('precio por servicio y WhatsApp', () => {
       expect(parsed.content.datos.whatsapp).toBe('');
       expect(parsed.content.datos.servicios.every((s) => s.precio === '')).toBe(true);
     }
+  });
+});
+
+// 03/11/2026 — los campos que trajo la landing de Circuito.
+describe('campos de la landing', () => {
+  it('resalta la primera vez que salen las palabras en el texto del titular, no en sus atributos', () => {
+    expect(resaltarTitular('<h1 title="la casa">Arreglamos la casa hoy</h1>', 'la casa')).toBe('<h1 title="la casa">Arreglamos <em class="k-resalte">la casa</em> hoy</h1>');
+    expect(resaltarTitular('<h1><span data-k="titular">Hoy y hoy</span></h1>', 'hoy')).toBe('<h1><span data-k="titular">Hoy y <em class="k-resalte">hoy</em></span></h1>');
+    expect(resaltarTitular('<h1>Otra cosa</h1>', 'la casa')).toBe('<h1>Otra cosa</h1>');
+    expect(resaltarTitular('<h1>Tom &amp; Jerry</h1>', 'Tom & Jerry')).toBe('<h1><em class="k-resalte">Tom &amp; Jerry</em></h1>');
+    expect(resaltarTitular('<h1>Igual</h1>', '  ')).toBe('<h1>Igual</h1>');
+  });
+
+  it('el motor resalta el titular de la portada y pone el estilo de partida solo si hace falta', () => {
+    const c = normal();
+    const con = renderSitePage(SITE_TEMPLATE_BASE, c, home(c), ctx());
+    expect(con).toContain('<em class="k-resalte">sin romperle la casa</em>');
+    expect(con).toContain('.k-resalte{');
+    c.datos.titular_resalte = '';
+    for (const s of c.datos.servicios) s.precio_nota = '';
+    const sin = renderSitePage(SITE_TEMPLATE_BASE, c, home(c), ctx());
+    expect(sin).not.toContain('k-resalte');
+    expect(sin).not.toContain('precio-nota');
+  });
+
+  it('la zona sabe si algún lugar tiene tiempo de llegada', () => {
+    const t: SiteTemplateSource = {
+      ...SITE_TEMPLATE_BASE,
+      secciones: { ...SITE_TEMPLATE_BASE.secciones, zona: '<section id="{{ancla}}">{{#zona.con_tiempos}}CON{{/zona.con_tiempos}}{{^zona.con_tiempos}}SIN{{/zona.con_tiempos}}</section>' },
+    };
+    const c = normal();
+    expect(renderSitePage(t, c, home(c), ctx())).toContain('>CON<');
+    for (const l of c.datos.zona.lugares) l.tiempo = '';
+    expect(renderSitePage(t, c, home(c), ctx())).toContain('>SIN<');
+  });
+
+  it('un contenido sin los campos nuevos sigue valiendo, y los topes se cumplen', () => {
+    const c = normal() as unknown as { datos: Record<string, unknown> };
+    for (const k of ['titular_resalte', 'guardia', 'sellos']) delete c.datos[k];
+    expect(parseSiteContent(c).ok).toBe(true);
+    const largo = normal();
+    largo.datos.sellos = Array.from({ length: 7 }, () => ({ texto: 'Sello' }));
+    expect(parseSiteContent(largo).ok).toBe(false);
   });
 });

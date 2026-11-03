@@ -228,7 +228,7 @@ const SECCIONES: SiteTemplateSource['secciones'] = {
   <span class="rotulo">Servicios</span>
   <h2 data-k-titulo-seccion>Lo que hacemos</h2>
   <div class="rejilla">
-    {{#servicios}}<article class="tarjeta aparece"><span class="icono"><svg aria-hidden="true"><use href="#i-{{#icono}}{{icono}}{{/icono}}{{^icono}}check{{/icono}}"></use></svg></span><h3>{{nombre}}</h3>{{#descripcion}}<p>{{descripcion}}</p>{{/descripcion}}{{#precio}}<p class="precio-servicio">{{precio}}</p>{{/precio}}</article>{{/servicios}}
+    {{#servicios}}<article class="tarjeta aparece"><span class="icono"><svg aria-hidden="true"><use href="#i-{{#icono}}{{icono}}{{/icono}}{{^icono}}check{{/icono}}"></use></svg></span><h3>{{nombre}}</h3>{{#descripcion}}<p>{{descripcion}}</p>{{/descripcion}}{{#precio}}<p class="precio-servicio">{{precio}}{{#precio_nota}}<small class="precio-nota">{{precio_nota}}</small>{{/precio_nota}}</p>{{/precio}}</article>{{/servicios}}
   </div>
 </div></section>`,
   sobre: `<section class="seccion seccion--alt" id="{{ancla}}"><div class="contenedor partida">
