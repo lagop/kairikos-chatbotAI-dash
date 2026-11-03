@@ -143,6 +143,9 @@ export interface SiteContentEditorProps {
   iconIds: string[];
   /** Los dibujos de esos iconos (saneados), para elegirlos viéndolos. */
   iconSymbols?: IconSymbol[];
+  /** 03/11/2026 — los campos que solo pinta su plantilla (lib/site-editor-data.ts,
+   *  templateExtraFields): sin ellos en la lista, no salen en el formulario. */
+  campos?: ('sellos' | 'guardia' | 'proceso.icono' | 'zona.tiempo')[];
   /** Entrega 6: la versión cargada, para que un «Guardar» no pise lo que
    *  el SEO haya publicado mientras tanto (el servidor responde 409). */
   updatedAt?: string;
@@ -189,9 +192,9 @@ const BLOCK_LABEL: Record<SiteBlock['tipo'], string> = {
 
 /** Qué rutas de datos de ejemplo pertenecen a cada sección. */
 const SECTION_PATHS: Record<SiteSectionType, string[]> = {
-  portada: ['titular', 'subtitulo', 'whatsapp'],
+  portada: ['titular', 'subtitulo', 'whatsapp', 'sellos'],
   cifras: ['cifras'],
-  servicios: ['servicios'],
+  servicios: ['servicios', 'guardia'],
   sobre: ['sobre'],
   proceso: ['proceso'],
   garantias: ['garantias'],
@@ -200,7 +203,7 @@ const SECTION_PATHS: Record<SiteSectionType, string[]> = {
   faq: ['faq'],
   zona: ['zona'],
   llamada: ['llamada_accion'],
-  contacto: ['horario'],
+  contacto: ['horario', 'guardia'],
 };
 
 const ERRORS: Record<string, string> = {
@@ -262,6 +265,12 @@ const LEAVE_WARNING = 'Tienes cambios sin guardar en tu web. Si sales ahora, se 
  *  sobre la vista no puede dejar un texto que el formulario no dejaría. */
 const FIELD_MAX: [RegExp, number][] = [
   [/^titular$/, 90],
+  [/^titular_resalte$/, 40],
+  [/^guardia$/, 40],
+  [/^sellos\.\d+\.texto$/, 60],
+  [/\.precio_nota$/, 40],
+  [/^zona\.lugares\.\d+\.tiempo$/, 30],
+  [/\.icono$/, 40],
   [/^subtitulo$/, 220],
   [/^llamada_accion$/, 90],
   [/^titulos\.[a-z]+$/, 90],
@@ -303,6 +312,7 @@ const LIST_NEW: [RegExp, Record<string, string>, number][] = [
   [/^precios\.filas$/, { concepto: 'Nuevo concepto', precio: 'Precio', detalle: '' }, 12],
   [/^faq$/, { pregunta: '¿Nueva pregunta?', respuesta: 'La respuesta.' }, 8],
   [/^zona\.lugares$/, { nombre: 'Nuevo lugar' }, 12],
+  [/^sellos$/, { texto: 'Nueva acreditación' }, 6],
   [/^horario$/, { dias: 'Días', horas: 'Horas' }, 7],
   [/^bloques\.[^.]+\.items$/, { texto: 'Nuevo punto', icono: '' }, 8],
 ];
@@ -782,7 +792,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
         </div>
       ))}
       {items.length < max ? (
-        <button type="button" className="btn-ghost text-sm" onClick={() => update((d) => (listAt(d, path) as unknown[]).push({ ...empty }))}>
+        <button type="button" className="btn-ghost text-sm" onClick={() => update((d) => void (listAt(d, path) ? listAt(d, path).push({ ...empty }) : ((d.datos as unknown as Record<string, unknown>)[path] = [{ ...empty }])))}>
           + Añadir
         </button>
       ) : null}
@@ -855,7 +865,7 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
             <MilestonesEditor hitos={b.hitos} onChange={(hitos) => update((d) => void ((d.bloques.find((x) => x.id === b.id) as SiteBlock).hitos = hitos))} />
           ) : null}
           {b.tipo === 'plazos' ? (
-            <DeadlinesEditor value={b.plazos} onChange={(plazos) => update((d) => void ((d.bloques.find((x) => x.id === b.id) as SiteBlock).plazos = plazos))} />
+            <DeadlinesEditor value={b.plazos} iconIds={props.iconIds} icons={props.iconSymbols} onChange={(plazos) => update((d) => void ((d.bloques.find((x) => x.id === b.id) as SiteBlock).plazos = plazos))} />
           ) : null}
           {b.tipo === 'galeria' || b.tipo === 'antes_despues' || b.tipo === 'marcas' ? (
             <RichPhotosEditor
@@ -885,10 +895,18 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
           return (
             <div className="space-y-3">
               {text('Titular', 'titular', d.titular, 90)}
+              {/* 03/11/2026 — como «se lo arreglamos hoy» en la landing de Circuito. */}
+              {text('Palabras del titular que destacan en otro color (opcional; escríbelas tal cual salen en el titular)', 'titular_resalte', d.titular_resalte ?? '', 40)}
               {text('Subtítulo', 'subtitulo', d.subtitulo, 220, 'textarea')}
               {text('Texto del botón de llamar', 'llamada_accion', d.llamada_accion, 90)}
               {/* 02/11/2026 — el número lo escribe el cliente: el de Google no dice si tiene WhatsApp. */}
               {text('WhatsApp, si atendéis por ahí (sale un botón para escribiros; vacío, sin botón)', 'whatsapp', d.whatsapp ?? '', 30)}
+              {props.campos?.includes('sellos') ? (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium">Acreditaciones y sellos (salen en la cinta bajo la portada; vacío, tus servicios)</p>
+                  {listEditor('sellos', d.sellos ?? [], [{ key: 'texto', label: 'Acreditación', max: 60, placeholder: 'Instalador autorizado' }], { texto: '' }, 6)}
+                </div>
+              ) : null}
             </div>
           );
         case 'llamada':
@@ -896,11 +914,17 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
         case 'sobre':
           return text('Quiénes sois (puedes usar **negrita**, listas con «- » y enlaces)', 'sobre', d.sobre, 1200, 'textarea');
         case 'servicios':
-          return listEditor('servicios', d.servicios, [{ key: 'nombre', label: 'Servicio', max: 80 }, { key: 'descripcion', label: 'Descripción', kind: 'textarea', max: 300 }, { key: 'icono', label: 'Icono', kind: 'icon', max: 40 }, { key: 'precio', label: 'Precio (opcional)', max: 40, placeholder: 'Desde 45 €' }], { nombre: '', descripcion: '', icono: '', precio: '' }, 12);
+          return listEditor('servicios', d.servicios, [{ key: 'nombre', label: 'Servicio', max: 80 }, { key: 'descripcion', label: 'Descripción', kind: 'textarea', max: 300 }, { key: 'icono', label: 'Icono', kind: 'icon', max: 40 }, { key: 'precio', label: 'Precio (opcional)', max: 40, placeholder: 'Desde 45 €' }, { key: 'precio_nota', label: 'Qué cubre ese precio (opcional)', max: 40, placeholder: 'vivienda de 2 hab.' }], { nombre: '', descripcion: '', icono: '', precio: '', precio_nota: '' }, 12);
         case 'cifras':
           return listEditor('cifras', d.cifras, [{ key: 'valor', label: 'Cifra', max: 30 }, { key: 'etiqueta', label: 'Qué es', max: 90 }], { valor: '', etiqueta: '' }, 4);
         case 'proceso':
-          return listEditor('proceso', d.proceso, [{ key: 'titulo', label: 'Paso', max: 80 }, { key: 'texto', label: 'Explicación', kind: 'textarea', max: 300 }], { titulo: '', texto: '' }, 6);
+          return listEditor(
+            'proceso',
+            d.proceso,
+            [{ key: 'titulo', label: 'Paso', max: 80 }, { key: 'texto', label: 'Explicación', kind: 'textarea', max: 300 }, ...(props.campos?.includes('proceso.icono') ? [{ key: 'icono', label: 'Icono', kind: 'icon' as const, max: 40 }] : [])],
+            { titulo: '', texto: '' },
+            6,
+          );
         case 'garantias':
           return listEditor('garantias', d.garantias, [{ key: 'titulo', label: 'Garantía', max: 80 }, { key: 'texto', label: 'Explicación', kind: 'textarea', max: 300 }], { titulo: '', texto: '' }, 4);
         case 'precios':
@@ -916,11 +940,16 @@ export function SiteContentEditor(props: SiteContentEditorProps) {
           return (
             <div className="space-y-3">
               {text('Dónde trabajáis', 'zona.texto', d.zona.texto, 400, 'textarea')}
-              {listEditor('zona.lugares', d.zona.lugares, [{ key: 'nombre', label: 'Lugar', max: 60 }], { nombre: '' }, 12)}
+              {listEditor('zona.lugares', d.zona.lugares, [{ key: 'nombre', label: 'Lugar', max: 60 }, ...(props.campos?.includes('zona.tiempo') ? [{ key: 'tiempo', label: 'Cuánto tardáis en llegar (opcional; con alguno, la web enseña un plano que se pulsa)', max: 30, placeholder: '30 min' }] : [])], { nombre: '' }, 12)}
             </div>
           );
         case 'contacto':
-          return listEditor('horario', d.horario, [{ key: 'dias', label: 'Días', max: 40 }, { key: 'horas', label: 'Horas', max: 60 }], { dias: '', horas: '' }, 7);
+          return (
+            <div className="space-y-3">
+              {listEditor('horario', d.horario, [{ key: 'dias', label: 'Días', max: 40 }, { key: 'horas', label: 'Horas', max: 60 }], { dias: '', horas: '' }, 7)}
+              {props.campos?.includes('guardia') ? text('Horario de urgencias, si es otro (sale en la tarjeta de urgencias; p. ej. «24 h / 7 días»)', 'guardia', d.guardia ?? '', 40) : null}
+            </div>
+          );
         case 'opiniones':
           return <p className="text-sm text-kairikos-muted">Las opiniones salen de Google cuando tienes contratado el servicio de reseñas; aquí solo cambias el título.</p>;
       }
@@ -1926,8 +1955,22 @@ function MilestonesEditor({ hitos, onChange }: { hitos: SiteBlock['hitos']; onCh
 
 /** 02/11/2026 — los plazos de respuesta (hasta 8). Las barras las dibuja la
  *  web a partir del plazo: no hay que poner ningún número aparte. */
-function DeadlinesEditor({ value, onChange }: { value: SiteBlock['plazos']; onChange: (p: SiteBlock['plazos']) => void }) {
+function DeadlinesEditor({
+  value,
+  iconIds,
+  icons,
+  onChange,
+}: {
+  value: SiteBlock['plazos'];
+  iconIds: string[];
+  icons?: IconSymbol[];
+  onChange: (p: SiteBlock['plazos']) => void;
+}) {
   const filas = value.filas;
+  // 03/11/2026 — qué hacéis en los casos más urgentes, como en la landing de Circuito.
+  const situaciones = value.situaciones ?? [];
+  const setSituacion = (i: number, patch: Partial<NonNullable<SiteBlock['plazos']['situaciones']>[number]>) =>
+    onChange({ ...value, situaciones: situaciones.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
   const set = (i: number, patch: Partial<SiteBlock['plazos']['filas'][number]>) => onChange({ ...value, filas: filas.map((f, j) => (j === i ? { ...f, ...patch } : f)) });
   return (
     <div className="space-y-3">
@@ -1959,6 +2002,36 @@ function DeadlinesEditor({ value, onChange }: { value: SiteBlock['plazos']; onCh
         Nota al pie (opcional)
         <input className="input mt-1 w-full" maxLength={160} placeholder="Tiempo medio de los últimos 12 meses" value={value.nota} onChange={(e) => onChange({ ...value, nota: e.target.value })} />
       </label>
+      <p className="pt-2 text-xs text-kairikos-muted">Casos urgentes (opcional): qué hacéis en cada uno. Salen bajo el texto, con su icono.</p>
+      {situaciones.map((x, i) => (
+        <div key={i} className="space-y-2 rounded-lg border border-kairikos-border p-3">
+          <label className="block text-xs font-medium">
+            Caso
+            <input className="input mt-1 w-full" maxLength={80} placeholder="Se ha quedado sin luz" value={x.titulo} onChange={(e) => setSituacion(i, { titulo: e.target.value })} />
+          </label>
+          <label className="block text-xs font-medium">
+            Qué hacéis (opcional)
+            <input className="input mt-1 w-full" maxLength={160} placeholder="Le guiamos por teléfono mientras vamos." value={x.texto} onChange={(e) => setSituacion(i, { texto: e.target.value })} />
+          </label>
+          <FieldInput
+            ruta={`plazos.situaciones.${i}.icono`}
+            field={{ key: 'icono', label: 'Icono', kind: 'icon', max: 40 }}
+            value={x.icono}
+            iconIds={iconIds}
+            icons={icons}
+            example={false}
+            onChange={(v) => setSituacion(i, { icono: v })}
+          />
+          <button type="button" className="btn-ghost text-xs text-kairikos-danger" onClick={() => onChange({ ...value, situaciones: situaciones.filter((_, j) => j !== i) })}>
+            Quitar
+          </button>
+        </div>
+      ))}
+      {situaciones.length < 4 ? (
+        <button type="button" className="btn-ghost text-sm" onClick={() => onChange({ ...value, situaciones: [...situaciones, { titulo: '', texto: '', icono: '' }] })}>
+          + Añadir caso urgente
+        </button>
+      ) : null}
     </div>
   );
 }

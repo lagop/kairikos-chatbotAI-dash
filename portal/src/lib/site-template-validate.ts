@@ -36,7 +36,7 @@ import { SITE_VARIANT_PARTS } from './site-section-variants';
  *  se pintaría vacío sin avisar. */
 const ROOT_FIELDS = new Set([
   // contenido (site-content.ts)
-  'titular', 'subtitulo', 'sobre', 'llamada_accion', 'servicios', 'cifras', 'proceso', 'precios', 'garantias', 'zona', 'faq', 'horario',
+  'titular', 'subtitulo', 'sobre', 'llamada_accion', 'titular_resalte', 'guardia', 'sellos', 'servicios', 'cifras', 'proceso', 'precios', 'garantias', 'zona', 'faq', 'horario',
   // derivados que pone el motor
   'sobre_html', 'horario_resumen', 'ancla', 'menu', 'secciones', 'pagina', 'formulario', 'fotos', 'anio', 'legales',
   // el blog (entrega 5): blog = {titulo, intro, href}; entradas en la lista; entrada en el artículo
@@ -52,17 +52,19 @@ const ITEM_FIELDS = new Set([
   'nota', 'filas', 'lugares', 'pregunta', 'respuesta', 'respuesta_html', 'dias', 'horas', 'href', 'actual', 'length',
   'foto', 'fotoAlt', 'items', 'id', 'tipo', 'portada', 'equipo', 'trabajo', 'muestra', 'meta_titulo', 'meta_descripcion',
   'ruta', 'inicio', 'fecha', 'fecha_iso', 'extracto', 'foto_alt', 'intro',
+  // 03/11/2026
+  'precio_nota', 'tiempo', 'con_tiempos',
 ]);
 /** Lo que el motor añade a la vista de una variante (variantExtras,
  *  site-template.ts): solo existe en las piezas seccion@variante. */
 const VARIANT_FIELDS = new Set(['kv_fotos', 'kv_foto_sobre', 'src']);
 /** Lo que el motor da al marco propio de un bloque rico (richBlockFrameView,
  *  site-rich-blocks.ts): solo existe en las piezas bloque_galeria y demás. */
-const RICH_FRAME_FIELDS = new Set(['clase', 'cuerpo_html', 'ejemplo', 'rotulo']);
+const RICH_FRAME_FIELDS = new Set(['clase', 'cuerpo_html', 'ejemplo', 'rotulo', 'situaciones_html']);
 /** Solo estos van con triple llave: son HTML que ya produjo el motor. Un
  *  campo de texto del cliente con triple llave sería una puerta a inyectar
  *  HTML en su propia web. */
-const RAW_FIELDS = new Set(['secciones', 'sobre_html', 'respuesta_html', 'texto_html', 'resenas_html', 'citas_html', 'atribucion_google_html', 'cuerpo_html']);
+const RAW_FIELDS = new Set(['secciones', 'sobre_html', 'respuesta_html', 'texto_html', 'resenas_html', 'citas_html', 'atribucion_google_html', 'cuerpo_html', 'situaciones_html']);
 const LIST_FIELDS = ['legales', 'servicios', 'cifras', 'proceso', 'garantias', 'faq', 'horario', 'precios.filas', 'zona.lugares', 'items', 'menu', 'entradas'];
 
 const ALLOWED_HOSTS = new Set(['fonts.googleapis.com', 'fonts.gstatic.com']);

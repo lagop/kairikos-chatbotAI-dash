@@ -63,7 +63,7 @@ export interface RichBlockInput {
   pestanas: { titulo: string; texto: string; foto: string; alt: string }[];
   comparativa: { columnas: string[]; destacada: number; filas: { concepto: string; valores: string[] }[] };
   hitos: { fecha: string; titulo: string; texto: string }[];
-  plazos: { filas: { concepto: string; plazo: string }[]; nota: string };
+  plazos: { filas: { concepto: string; plazo: string }[]; nota: string; situaciones?: { titulo: string; texto: string; icono: string }[] };
   /** El enlace al vídeo (YouTube o Vimeo); `foto`, la portada propia. */
   video: string;
   foto: string;
@@ -228,6 +228,22 @@ export function plazoBarras(filas: { plazo: string }[]): (number | null)[] {
   return mins.map((m) => (m === null ? null : Math.round(6 + 74 * (Math.log1p(m) / Math.log1p(max)))));
 }
 
+/** 03/11/2026 — lo que hace el negocio en los casos más urgentes, debajo
+ *  del título (como en la landing). El icono, de los de la plantilla; sin
+ *  icono, un piloto. */
+export function renderPlazosSituaciones(b: RichBlockInput): string {
+  const s = b.plazos.situaciones ?? [];
+  if (!s.length) return '';
+  const items = s
+    .map(
+      (x) =>
+        `<li><span class="k-plazos-icono" aria-hidden="true">${x.icono ? `<svg><use href="#i-${esc(x.icono)}"></use></svg>` : ''}</span>` +
+        `<div><p class="k-plazos-situacion">${esc(x.titulo)}</p>${x.texto ? `<p class="k-plazos-que">${esc(x.texto)}</p>` : ''}</div></li>`,
+    )
+    .join('');
+  return `<ul class="k-plazos-situaciones">${items}</ul>`;
+}
+
 /** Plazos: una tarjeta con cada caso, su plazo y una barra que se llena al
  *  verla. Sin JavaScript, las barras ya están llenas. */
 function renderPlazos(b: RichBlockInput): string {
@@ -289,7 +305,7 @@ export function renderRichBlock(b: RichBlockInput, base: string, ejemplo = false
   // landing de la que sale.
   const cuerpo =
     b.tipo === 'plazos'
-      ? `<div class="k-plazos-rejilla"><div class="k-plazos-cabeza">${head(b)}</div>${richBlockBody(b, base, edicion, variante)}</div>`
+      ? `<div class="k-plazos-rejilla"><div class="k-plazos-cabeza">${head(b)}${renderPlazosSituaciones(b)}</div>${richBlockBody(b, base, edicion, variante)}</div>`
       : `${head(b)}${richBlockBody(b, base, edicion, variante)}`;
   return (
     `<section class="${richBlockClass(b.tipo)}" id="bloque-${esc(b.id)}"><div class="k-dentro">${ejemplo ? '<div class="dato-ejemplo-bloque">' : ''}` +
@@ -335,6 +351,9 @@ export function richBlockFrameView(b: RichBlockInput, base: string, edicion = fa
     titulo: b.titulo,
     texto_html: b.texto ? renderSiteMarkdown(b.texto) : '',
     cuerpo_html: richBlockBody(b, base, edicion, variante),
+    // 03/11/2026 — las situaciones de los plazos, para ponerlas junto al
+    // título en el marco propio.
+    situaciones_html: b.tipo === 'plazos' ? renderPlazosSituaciones(b) : '',
   };
 }
 
@@ -557,6 +576,13 @@ export const BLOQUES_CSS = `<style id="bloques-kairikos">
 .k-plazos-rejilla{display:grid;gap:2rem 4rem;align-items:center}
 @media (min-width:900px){.k-plazos-rejilla{grid-template-columns:minmax(0,1fr) minmax(0,1.1fr)}}
 .k-plazos-cabeza>:last-child{margin-bottom:0}
+.k-plazos-situaciones{list-style:none;margin:1.75rem 0 0;padding:0;display:grid}
+.k-plazos-situaciones>li{display:grid;grid-template-columns:1.5rem minmax(0,1fr);gap:.8rem;padding:.95rem 0;border-top:1px solid var(--k-borde,rgba(127,127,127,.25))}
+.k-plazos-icono{display:flex;justify-content:center;padding-top:.15rem;color:var(--k-acento-texto,var(--k-acento,inherit))}
+.k-plazos-icono svg{width:1.1rem;height:1.1rem;fill:none;stroke:currentColor;stroke-width:2}
+.k-plazos-icono:empty::before{content:"";width:.55rem;height:.55rem;margin-top:.35rem;border-radius:50%;background:currentColor}
+.k-plazos-situacion{margin:0;font-weight:600;overflow-wrap:anywhere}
+.k-plazos-que{margin:.2rem 0 0;font-size:.9rem;color:var(--k-suave,inherit);overflow-wrap:anywhere}
 .k-plazos-panel{min-width:0;padding:clamp(1.25rem,3vw,2rem);border-radius:var(--k-radio,8px);background:var(--k-superficie,#fff);border:1px solid var(--k-borde,rgba(127,127,127,.25))}
 .k-plazos-lista{list-style:none;margin:0;padding:0;display:grid;gap:1.15rem}
 .k-plazo{display:grid;gap:.5rem;min-width:0}

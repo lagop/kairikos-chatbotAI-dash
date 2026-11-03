@@ -158,6 +158,7 @@ export default async function PortalWebProjectPage(
         lastPublishedAt={siteRow.lastPublishedAt?.toISOString() ?? null}
         iconIds={editorData.iconIds}
         iconSymbols={editorData.iconSymbols}
+        campos={editorData.campos}
         estilo={editorData.estilo}
         updatedAt={siteRow.updatedAt.toISOString()}
       />

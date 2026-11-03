@@ -69,15 +69,18 @@ Devuelves SOLO un JSON, sin vallas de markdown:
 {
   "iconos_servicios": [string],   // uno por servicio, en el mismo orden, elegido de la lista de iconos
   "precios_servicios": [string],  // uno por servicio, en el mismo orden: «Desde X €» corto, o "" si en este oficio ese servicio no tiene precio de partida
+  "notas_precios": [string],      // uno por servicio, en el mismo orden: qué cubre ese precio en 2 a 5 palabras («vivienda de 2 hab.», «por punto de luz»), o ""
+  "titular_resalte": string,      // de 2 a 4 palabras del titular, copiadas tal cual, con la promesa que más pesa; o ""
+  "guardia": string,              // solo si atiende urgencias: su horario de urgencias, corto («24 h / 7 días»); si no, ""
   "cifras": [{"valor": string, "etiqueta": string}],          // 2 o 3; valor corto («Mismo día», «15 años»)
-  "proceso": [{"titulo": string, "texto": string}],           // 3 o 4 pasos de cómo trabaja
+  "proceso": [{"titulo": string, "texto": string, "icono": string}],  // 3 o 4 pasos de cómo trabaja; icono de la lista de iconos
   "precios": {"nota": string, "filas": [{"concepto": string, "precio": string, "detalle": string}]},  // 3 a 5 filas, precios «Desde X €»
   "garantias": [{"titulo": string, "texto": string}],         // 2 o 3
-  "zona": {"texto": string, "lugares": [{"nombre": string}]}, // 3 a 6 lugares cercanos a su ciudad
+  "zona": {"texto": string, "lugares": [{"nombre": string, "tiempo": string}]}, // 3 a 6 lugares cercanos a su ciudad; "tiempo", solo si atiende urgencias
   "faq": [{"pregunta": string, "respuesta": string}],         // 4 a 6, las dudas reales de quien contrata este oficio
   "servicios_detalle": [{"descripcion": string, "incluye": [string]}],  // uno por servicio, en el mismo orden
   "comparativa": {"titulo": string, "texto": string, "columnas": [string], "filas": [{"concepto": string, "valores": [string]}]},  // o null
-  "plazos": {"titulo": string, "texto": string, "filas": [{"concepto": string, "plazo": string}]},  // o null
+  "plazos": {"titulo": string, "texto": string, "filas": [{"concepto": string, "plazo": string}], "situaciones": [{"titulo": string, "texto": string, "icono": string}]},  // o null
   "ejemplos": [string],  // rutas de lo inventado: "cifras.0.valor", "precios.filas.1.precio", "garantias.0.texto", "zona.lugares.2.nombre", "faq.1.respuesta"…
   "color": string,       // solo si se te dan colores: el nombre de uno, el que mejor le vaya por su oficio o su nombre
   "letra": string        // solo si se te dan letras: el nombre de una
@@ -90,7 +93,10 @@ Reglas:
 - Títulos de 2 a 5 palabras. Textos de una o dos frases; respuestas de la faq de dos a cuatro frases, que resuelvan la duda de verdad.
 - servicios_detalle: amplía cada servicio SIN cambiarle el sentido. "descripcion", de dos o tres frases (máximo 280 caracteres): qué es y para quién; "incluye", de 3 a 5 puntos cortos (máximo 12 palabras cada uno) con lo que comprende el trabajo. Explica el oficio: materiales, opciones, cómo se hace. Lo que sea una promesa concreta del negocio (plazos, marcas, garantías) es inventado y va en "ejemplos".
 - comparativa: solo si en este oficio el cliente suele dudar entre 2 o 3 opciones (aluminio o PVC, termo eléctrico o de gas, corredera o abatible…). Columnas: las opciones. De 4 a 7 filas; cada valor es «sí», «no» o algo de 1 a 4 palabras. Información general del oficio, honesta: ninguna opción gana en todo. Si no hay una duda así, null.
-- plazos: solo si el oficio atiende urgencias (electricidad, fontanería, cerrajería, desatascos, calderas, persianas…): cuánto tarda en cada caso. De 3 a 5 filas, de la más urgente a la que menos; "concepto", la situación en pocas palabras («Corte de luz en casa»); "plazo", corto y con unidad («Inmediato», «≤ 60 min», «24 h», «48-72 h»). "texto", una frase. Son promesas del negocio: el bloque sale entero de ejemplo. Si el oficio no tiene urgencias, null.`;
+- plazos: solo si el oficio atiende urgencias (electricidad, fontanería, cerrajería, desatascos, calderas, persianas…): cuánto tarda en cada caso. De 3 a 5 filas, de la más urgente a la que menos; "concepto", la situación en pocas palabras («Corte de luz en casa»); "plazo", corto y con unidad («Inmediato», «≤ 60 min», «24 h», «48-72 h»). "texto", una frase. "situaciones", 2 o 3 casos urgentes de este oficio («Se ha quedado sin luz») con lo que hace el negocio en una frase y un icono de la lista. Son promesas del negocio: el bloque sale entero de ejemplo. Si el oficio no tiene urgencias, null.
+- Si atiende urgencias, "tiempo" de cada lugar es lo que tarda en llegar, corto («30 min», «45 min»), y "guardia" su horario de urgencias. Son promesas del negocio: van en "ejemplos" ("zona.lugares.0.tiempo", "guardia"). Si no atiende urgencias, los dos vacíos.
+- notas_precios: lo que cubre el precio de partida, no una promesa nueva; va en "ejemplos" como el precio ("servicios.0.precio_nota").
+- titular_resalte: palabras que ESTÁN en el titular, sin cambiar ni una letra; no lleva "ejemplos".`;
 }
 
 function buildUser(input: DraftExpansionInput): string {
@@ -139,7 +145,7 @@ function buildComparison(value: unknown): SiteBlock | null {
 
 /** Los plazos de respuesta, o null si no llegan a 3 filas completas: con
  *  menos, las barras no comparan nada. */
-function buildDeadlines(value: unknown): SiteBlock | null {
+function buildDeadlines(value: unknown, iconOk: Set<string>): SiteBlock | null {
   if (!value || typeof value !== 'object') return null;
   const p = value as Record<string, unknown>;
   const filas = arr(p.filas)
@@ -150,7 +156,14 @@ function buildDeadlines(value: unknown): SiteBlock | null {
   return {
     ...vacio(DEADLINES_BLOCK_ID, 'plazos', str(p.titulo, 90) || 'Plazos de respuesta'),
     texto: str(p.texto, 400),
-    plazos: { filas, nota: '' },
+    plazos: {
+      filas,
+      nota: '',
+      situaciones: arr(p.situaciones)
+        .map((x) => ({ titulo: str(x.titulo, 80), texto: str(x.texto, 160), icono: typeof x.icono === 'string' && iconOk.has(x.icono) ? x.icono : '' }))
+        .filter((x) => x.titulo)
+        .slice(0, SITE_LIMITS.bloqueSituaciones),
+    },
   };
 }
 
@@ -165,6 +178,8 @@ export function buildSiteContentFromDraft(copy: WebDraftCopy, expansion: unknown
   const icons = Array.isArray(e.iconos_servicios) ? e.iconos_servicios : [];
   const iconOk = new Set(iconIds);
   const prices = Array.isArray(e.precios_servicios) ? e.precios_servicios : [];
+  const priceNotes = Array.isArray(e.notas_precios) ? e.notas_precios : [];
+  const icono = (v: unknown) => (typeof v === 'string' && iconOk.has(v) ? v : '');
   const datos: SiteContent['datos'] = {
     titular: str(copy.headline, 90) || 'Su web',
     subtitulo: str(copy.subheadline, 220),
@@ -177,13 +192,15 @@ export function buildSiteContentFromDraft(copy: WebDraftCopy, expansion: unknown
       descripcion: str(s.description, 300),
       icono: typeof icons[i] === 'string' && iconOk.has(icons[i] as string) ? (icons[i] as string) : '',
       precio: str(prices[i], 40),
+      // 03/11/2026 — lo que cubre, solo si hay precio al que acompañar.
+      precio_nota: str(prices[i], 40) ? str(priceNotes[i], 40) : '',
     })),
     cifras: arr(e.cifras)
       .map((c) => ({ valor: str(c.valor, 30), etiqueta: str(c.etiqueta, 90) }))
       .filter((c) => c.valor)
       .slice(0, SITE_LIMITS.cifras),
     proceso: arr(e.proceso)
-      .map((p) => ({ titulo: str(p.titulo, 80), texto: str(p.texto, 300) }))
+      .map((p) => ({ titulo: str(p.titulo, 80), texto: str(p.texto, 300), icono: icono(p.icono) }))
       .filter((p) => p.titulo)
       .slice(0, SITE_LIMITS.proceso),
     precios: {
@@ -200,7 +217,7 @@ export function buildSiteContentFromDraft(copy: WebDraftCopy, expansion: unknown
     zona: {
       texto: str((e.zona as Record<string, unknown> | undefined)?.texto, 400),
       lugares: arr((e.zona as Record<string, unknown> | undefined)?.lugares)
-        .map((l) => ({ nombre: str(l.nombre, 60) }))
+        .map((l) => ({ nombre: str(l.nombre, 60), tiempo: str(l.tiempo, 30) }))
         .filter((l) => l.nombre)
         .slice(0, SITE_LIMITS.lugares),
     },
@@ -210,7 +227,14 @@ export function buildSiteContentFromDraft(copy: WebDraftCopy, expansion: unknown
       .slice(0, SITE_LIMITS.faq),
     horario: [],
     titulos: emptySiteTitles(),
+    guardia: str(e.guardia, 40),
   };
+  // 03/11/2026 — la palabra resaltada solo si está de verdad en el titular:
+  // si no, el motor no encontraría qué resaltar y quedaría un campo fantasma.
+  const resalte = str(e.titular_resalte, 40);
+  // Con las mayúsculas del titular: el motor lo busca tal cual.
+  const at = resalte ? datos.titular.toLowerCase().indexOf(resalte.toLowerCase()) : -1;
+  if (at >= 0) datos.titular_resalte = datos.titular.slice(at, at + resalte.length);
   if (!datos.servicios.length) datos.servicios = [{ nombre: 'Servicios', descripcion: '', icono: '', precio: '' }];
 
   // 28/10/2026 — la portada más trabajada (Orlando: «el borrador es solo la
@@ -236,7 +260,7 @@ export function buildSiteContentFromDraft(copy: WebDraftCopy, expansion: unknown
   if (pestanas.length >= 2) bloques.push({ ...vacio(DETAIL_BLOCK_ID, 'pestanas', 'Qué incluye cada servicio'), pestanas });
   const comparativa = buildComparison(e.comparativa);
   if (comparativa) bloques.push(comparativa);
-  const plazos = buildDeadlines(e.plazos);
+  const plazos = buildDeadlines(e.plazos, iconOk);
   if (plazos) bloques.push(plazos);
 
   const home = defaultHomePage();
@@ -291,7 +315,13 @@ export function buildSiteContentFromDraft(copy: WebDraftCopy, expansion: unknown
   // ella («Según obra»), de ejemplo hasta que el dueño ponga el suyo.
   datos.servicios.forEach((s, i) => {
     if (s.precio) marked.add(`servicios.${i}.precio`);
+    if (s.precio_nota) marked.add(`servicios.${i}.precio_nota`);
   });
+  // El tiempo de llegada y el horario de urgencias son promesas del negocio.
+  datos.zona.lugares.forEach((l, i) => {
+    if (l.tiempo) marked.add(`zona.lugares.${i}.tiempo`);
+  });
+  if (datos.guardia) marked.add('guardia');
   // Lo que incluye cada servicio es una promesa del negocio (como los plazos),
   // y la comparativa, información que alguien tiene que haber leído: enteros, de
   // ejemplo (se resaltan y no se publican sin mirarlos, como los de sector).

@@ -94,6 +94,8 @@ export const SITE_LIMITS = {
   bloqueFilas: 15,
   bloqueHitos: 12,
   bloquePlazos: 8,
+  bloqueSituaciones: 4,
+  sellos: 6,
   paginas: 20,
   seccionesPorPagina: 30,
   entradas: 200,
@@ -102,6 +104,10 @@ export const SITE_LIMITS = {
 
 const text = (max: number) => z.string().trim().max(max);
 const optionalText = (max: number) => text(max).default('');
+/** 03/11/2026 — los campos que llegaron con la landing de Circuito son
+ *  opcionales también en el tipo: el contenido guardado y las muestras que no
+ *  los traen siguen valiendo tal cual, y ausente cuenta como vacío. */
+const extraText = (max: number) => text(max).optional();
 
 /** Ruta de una página: '' es la portada; si no, minúsculas, números y guiones,
  *  con barras para anidar ('servicios/desatascos'). Sin puntos ni '..': la
@@ -244,6 +250,13 @@ const blockSchema = z.object({
     .object({
       filas: z.array(z.object({ concepto: text(120).min(1), plazo: text(30).min(1) })).max(SITE_LIMITS.bloquePlazos).default([]),
       nota: optionalText(160),
+      /** 03/11/2026 — lo que hace el negocio en los casos más urgentes, al
+       *  lado del título («Chispas u olor a quemado: desconexión general y
+       *  revisión del cuadro en el momento»), como en la landing. */
+      situaciones: z
+        .array(z.object({ titulo: text(80).min(1), texto: optionalText(160), icono: optionalText(40) }))
+        .max(SITE_LIMITS.bloqueSituaciones)
+        .optional(),
     })
     .default({ filas: [], nota: '' }),
   /** Tanda 3 (28/10/2026) — el enlace a un vídeo de YouTube o Vimeo. La
@@ -341,6 +354,17 @@ const datosSchema = z.object({
    *  cliente: el teléfono de Google no dice si tiene WhatsApp, y un botón que
    *  abre un chat con un fijo es peor que no tenerlo. Vacío = sin botón. */
   whatsapp: optionalText(30),
+  /** 03/11/2026 — las palabras del titular que la plantilla resalta
+   *  («Electricidad que *funciona* a la primera»). Tal cual están en el
+   *  titular; si no aparecen, no se resalta nada. */
+  titular_resalte: extraText(40),
+  /** 03/11/2026 — el horario de urgencias, si es otro que el de siempre
+   *  («24 h / 7 días»). Lo escribe el cliente: es una promesa suya. */
+  guardia: extraText(40),
+  /** 03/11/2026 — acreditaciones, carnés y seguros («Instalador autorizado»,
+   *  «Seguro de responsabilidad civil»). Los escribe el cliente; la IA no
+   *  los propone, porque solo él puede afirmarlos. */
+  sellos: z.array(z.object({ texto: text(60).min(1) })).max(SITE_LIMITS.sellos).optional(),
   servicios: z
     .array(
       z.object({
@@ -350,12 +374,16 @@ const datosSchema = z.object({
         /** 02/11/2026 — «Desde 45 €», «Gratis», «Según obra»: texto libre,
          *  porque cada oficio cobra a su manera. Vacío = no se pinta. */
         precio: optionalText(40),
+        /** 03/11/2026 — qué cubre ese precio, en pequeño debajo («vivienda
+         *  de 2 hab.», «cuadro completo»). */
+        precio_nota: extraText(40),
       }),
     )
     .min(1)
     .max(SITE_LIMITS.servicios),
   cifras: z.array(z.object({ valor: text(30).min(1), etiqueta: optionalText(90) })).max(SITE_LIMITS.cifras).default([]),
-  proceso: z.array(z.object({ titulo: text(80).min(1), texto: optionalText(300) })).max(SITE_LIMITS.proceso).default([]),
+  /** 03/11/2026 — con icono por paso, para las plantillas que lo pintan. */
+  proceso: z.array(z.object({ titulo: text(80).min(1), texto: optionalText(300), icono: extraText(40) })).max(SITE_LIMITS.proceso).default([]),
   precios: z
     .object({
       nota: optionalText(200),
@@ -369,7 +397,9 @@ const datosSchema = z.object({
   zona: z
     .object({
       texto: optionalText(400),
-      lugares: z.array(z.object({ nombre: text(60).min(1) })).max(SITE_LIMITS.lugares).default([]),
+      /** 03/11/2026 — `tiempo`: lo que tarda en llegar ahí («45 min»), para
+       *  las plantillas que lo pintan (el plano de Circuito). */
+      lugares: z.array(z.object({ nombre: text(60).min(1), tiempo: extraText(30) })).max(SITE_LIMITS.lugares).default([]),
     })
     .default({ texto: '', lugares: [] }),
   /** La respuesta lleva formato básico. */

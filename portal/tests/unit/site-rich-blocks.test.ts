@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseVideoUrl, plazoBarras, plazoEnMinutos, renderRichBlock, richBlockHasContent, videoPlatformsIn, type RichBlockInput } from '@/lib/site-rich-blocks';
+import { parseVideoUrl, plazoBarras, plazoEnMinutos, renderPlazosSituaciones, renderRichBlock, richBlockHasContent, videoPlatformsIn, type RichBlockInput } from '@/lib/site-rich-blocks';
 import { legalPageMarkdown } from '@/lib/site-legal';
 import { parseSiteContent, referencedUploads, type SiteContent } from '@/lib/site-content';
 import { renderSiteFiles } from '@/lib/site-template';
@@ -214,5 +214,30 @@ describe('tanda 3: vídeo', () => {
     expect(legalPageMarkdown('privacidad', legal, 'Ana', { videos: ['vimeo'] }).texto).toContain('**Vídeos.**');
     expect(legalPageMarkdown('privacidad', legal, 'Ana').texto).not.toContain('**Vídeos.**');
     expect(videoPlatformsIn([{ tipo: 'video', video: 'https://youtu.be/M7lc1UVf-VE' }, { tipo: 'texto', video: '' }, { tipo: 'video', video: 'https://vimeo.com/76979871' }])).toEqual(['vimeo', 'youtube']);
+  });
+});
+
+// 03/11/2026 — los casos urgentes bajo el texto de los plazos.
+describe('plazos: situaciones', () => {
+  it('cada caso con su icono (si lo tiene) y lo que hacen; escapa; sin casos, nada', () => {
+    const html = renderPlazosSituaciones(
+      block({ tipo: 'plazos', plazos: { filas: [], nota: '', situaciones: [{ titulo: 'Sin <luz>', texto: 'Le guiamos.', icono: 'rayo' }, { titulo: 'Fuga', texto: '', icono: '' }] } }),
+    );
+    expect(html.match(/<li>/g)).toHaveLength(2);
+    expect(html).toContain('<use href="#i-rayo">');
+    expect(html).toContain('Sin &lt;luz&gt;');
+    expect(html).toContain('<p class="k-plazos-que">Le guiamos.</p>');
+    expect(html.match(/<use /g)).toHaveLength(1);
+    expect(renderPlazosSituaciones(block({ tipo: 'plazos' }))).toBe('');
+    expect(renderPlazosSituaciones(block({ tipo: 'galeria' }))).toBe('');
+  });
+
+  it('en la rejilla del motor salen bajo el título', () => {
+    const html = renderRichBlock(
+      block({ tipo: 'plazos', titulo: 'Urgencias', plazos: { filas: [{ concepto: 'Corte', plazo: '1 h' }], nota: '', situaciones: [{ titulo: 'Sin luz', texto: '', icono: '' }] } }),
+      '',
+    );
+    expect(html.indexOf('k-plazos-situaciones')).toBeGreaterThan(html.indexOf('Urgencias'));
+    expect(html.indexOf('k-plazos-situaciones')).toBeLessThan(html.indexOf('Corte'));
   });
 });

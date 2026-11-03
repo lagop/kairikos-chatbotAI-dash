@@ -66,6 +66,7 @@ export default async function AdminPublicDraftEditorPage(props: { params: Promis
           lastPublishedAt={null}
           iconIds={loaded.data.iconIds}
           iconSymbols={loaded.data.iconSymbols}
+          campos={loaded.data.campos}
           estilo={loaded.data.estilo}
           updatedAt={loaded.huella}
         />

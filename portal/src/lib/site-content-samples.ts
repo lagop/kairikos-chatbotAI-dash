@@ -43,13 +43,16 @@ const normal: SiteContent = {
   paginas: [defaultHomePage()],
   datos: {
     titular: 'Localizamos la avería sin romperle la casa',
+    titular_resalte: 'sin romperle la casa',
+    guardia: 'Urgencias 24 h',
+    sellos: [{ texto: 'Instalador autorizado' }, { texto: 'Seguro de responsabilidad civil' }, { texto: 'Garantía por escrito' }],
     subtitulo: 'Fugas, desatascos, grifería y termos. Le explicamos qué pasa antes de tocar nada y dejamos todo limpio.',
     sobre:
       'Somos un fontanero de barrio que trabaja con **puntualidad** y explica cada paso.\n\nVamos preparados para resolver en la primera visita:\n- Detector de fugas\n- Cámara de inspección',
     llamada_accion: 'Llame y le decimos cuándo podemos ir',
     whatsapp: '600 00 00 00',
     servicios: [
-      { nombre: 'Detección de fugas', descripcion: 'Encontramos el origen sin abrir de más.', icono: 'herramienta', precio: 'Desde 45 €' },
+      { nombre: 'Detección de fugas', descripcion: 'Encontramos el origen sin abrir de más.', icono: 'herramienta', precio: 'Desde 45 €', precio_nota: 'diagnóstico incluido' },
       { nombre: 'Desatascos', descripcion: 'Fregaderos, baños y bajantes.', icono: 'check', precio: 'Desde 60 €' },
       { nombre: 'Termos y calentadores', descripcion: 'Reparación y sustitución.', icono: 'reloj', precio: 'Según modelo' },
       { nombre: 'Grifería y sanitarios', descripcion: 'Cambio de grifos, cisternas e inodoros.', icono: 'casa', precio: '' },
@@ -59,8 +62,8 @@ const normal: SiteContent = {
       { valor: '15 años', etiqueta: 'de oficio en la ciudad' },
     ],
     proceso: [
-      { titulo: 'Nos llama', texto: 'Nos cuenta qué pasa y le orientamos por teléfono.' },
-      { titulo: 'Diagnóstico', texto: 'Localizamos el problema antes de tocar nada.' },
+      { titulo: 'Nos llama', texto: 'Nos cuenta qué pasa y le orientamos por teléfono.', icono: 'telefono' },
+      { titulo: 'Diagnóstico', texto: 'Localizamos el problema antes de tocar nada.', icono: 'lupa' },
       { titulo: 'Reparación', texto: 'Hacemos el trabajo y dejamos todo limpio.' },
     ],
     precios: {
@@ -75,7 +78,7 @@ const normal: SiteContent = {
       { titulo: 'Trabajo garantizado', texto: 'Cada reparación queda cubierta por escrito durante tres meses.' },
       { titulo: 'Presupuesto cerrado', texto: 'Le decimos el precio antes de empezar.' },
     ],
-    zona: { texto: 'Atendemos la ciudad y los municipios cercanos.', lugares: [{ nombre: 'Telde' }, { nombre: 'Arucas' }, { nombre: 'Santa Brígida' }] },
+    zona: { texto: 'Atendemos la ciudad y los municipios cercanos.', lugares: [{ nombre: 'Telde', tiempo: '30 min' }, { nombre: 'Arucas', tiempo: '45 min' }, { nombre: 'Santa Brígida' }] },
     faq: [
       { pregunta: '¿Cobran el desplazamiento?', respuesta: 'Va incluido en el presupuesto que le damos antes de empezar.' },
       { pregunta: '¿Trabajan los fines de semana?', respuesta: 'Sí, **todos los días** en el horario indicado.' },
@@ -91,7 +94,8 @@ const normal: SiteContent = {
     // borradores» lo enseña.
     {
       id: 'plazos', tipo: 'plazos', titulo: 'Urgencias: cuánto tardamos', texto: 'Le decimos la hora de llegada al coger el teléfono.', foto: '', fotoAlt: '', items: [], fotos: [], productos: [], pestanas: [], comparativa: { columnas: [], destacada: -1, filas: [] }, hitos: [],
-      plazos: { filas: [{ concepto: 'Corte de agua en casa', plazo: '≤ 60 min' }, { concepto: 'Fuga o avería urgente', plazo: '≤ 2 h' }, { concepto: 'Presupuesto en casa', plazo: '24 h' }, { concepto: 'Obra programada', plazo: '48-72 h' }], nota: 'Tiempos medios del último año en el área metropolitana.' },
+      plazos: { filas: [{ concepto: 'Corte de agua en casa', plazo: '≤ 60 min' }, { concepto: 'Fuga o avería urgente', plazo: '≤ 2 h' }, { concepto: 'Presupuesto en casa', plazo: '24 h' }, { concepto: 'Obra programada', plazo: '48-72 h' }], nota: 'Tiempos medios del último año en el área metropolitana.',
+        situaciones: [{ titulo: 'Se ha quedado sin agua', texto: 'Le orientamos por teléfono mientras vamos.', icono: 'gota' }, { titulo: 'Fuga que no para', texto: 'Cierre la llave de paso; llegamos en menos de dos horas.', icono: 'llave' }] },
       video: '',
     },
   ],
@@ -203,6 +207,11 @@ const exagerado: SiteContent = {
   datos: {
     ...normal.datos,
     titular: 'Fontanería, desatascos, termos, calentadores y reformas de baño completas en toda la isla',
+    // 03/11/2026 — los campos nuevos al tope: el resalte de cuarenta letras, la
+    // guardia larga y seis acreditaciones de sesenta.
+    titular_resalte: 'termos, calentadores y reformas de baño',
+    guardia: 'Urgencias todos los días, también festivos'.slice(0, 40),
+    sellos: Array.from({ length: 6 }, (_, i) => ({ texto: i % 2 ? 'Seguro' : repeat('Empresa instaladora autorizada por Industria', 2).slice(0, 60) })),
     subtitulo: repeat('Urgencias y trabajos programados con presupuesto cerrado antes de empezar,', 3).slice(0, 220),
     sobre: repeat('Somos una empresa familiar que trabaja con cuidado, explica cada paso y deja la casa limpia.', 12).slice(0, 1200),
     llamada_accion: 'Llámenos ahora y le decimos cuándo podemos ir a su casa sin compromiso',
@@ -212,6 +221,7 @@ const exagerado: SiteContent = {
       icono: i % 2 ? 'herramienta' : '',
       // El tope entero (40), para ver si la columna del precio empuja al resto.
       precio: i % 3 === 2 ? '' : 'Presupuesto cerrado desde 1.250 € por obra'.slice(0, 40),
+      precio_nota: i % 2 ? 'vivienda de hasta tres habitaciones y baño'.slice(0, 40) : '',
     })),
     cifras: [
       { valor: '24/7', etiqueta: 'urgencias atendidas todos los días del año, también festivos' },
@@ -219,7 +229,7 @@ const exagerado: SiteContent = {
       { valor: '2 horas', etiqueta: 'de llegada media' },
       { valor: '100 %', etiqueta: 'de presupuestos cerrados' },
     ],
-    proceso: Array.from({ length: 6 }, (_, i) => ({ titulo: `Paso ${i + 1}: ${repeat('revisión', (i % 3) + 1)}`, texto: repeat('Texto del paso con explicación.', 4) })),
+    proceso: Array.from({ length: 6 }, (_, i) => ({ titulo: `Paso ${i + 1}: ${repeat('revisión', (i % 3) + 1)}`, texto: repeat('Texto del paso con explicación.', 4), icono: i % 2 ? 'herramienta' : '' })),
     precios: {
       nota: 'Precios orientativos con impuestos incluidos; desplazamiento aparte fuera del área metropolitana y en festivos.',
       filas: Array.from({ length: 12 }, (_, i) => ({
@@ -232,7 +242,7 @@ const exagerado: SiteContent = {
     zona: {
       texto: repeat('Trabajamos en toda la isla.', 8).slice(0, 400),
       lugares: ['Las Palmas de Gran Canaria', 'Telde', 'Arucas', 'Santa Brígida', 'Teror', 'Valsequillo de Gran Canaria', 'San Bartolomé de Tirajana', 'Mogán', 'Gáldar', 'Agaete', 'Ingenio', 'Agüimes'].map(
-        (nombre) => ({ nombre }),
+        (nombre, i) => ({ nombre, tiempo: i % 3 === 2 ? '' : i % 2 ? '45 min' : 'Entre una y dos horas, según el día'.slice(0, 30) }),
       ),
     },
     faq: Array.from({ length: 8 }, (_, i) => ({
@@ -341,6 +351,11 @@ const exagerado: SiteContent = {
           plazo: ['Inmediato', '≤ 60 min', 'Según la zona y el día', '4 h', '24-48 h', 'Entre 3 y 5 días laborables', '1 semana', 'Mismo día'][i].slice(0, 30),
         })),
         nota: repeat('Tiempos medios del último año en toda la isla, sin contar festivos.', 3).slice(0, 160),
+        situaciones: Array.from({ length: 4 }, (_, i) => ({
+          titulo: repeat('Se ha quedado sin luz en toda la casa', 3).slice(0, 80),
+          texto: i % 2 ? '' : repeat('Lo que hacemos nada más colgar el teléfono.', 4).slice(0, 160),
+          icono: i % 3 ? 'rayo' : '',
+        })),
       },
     },
     {
