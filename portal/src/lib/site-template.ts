@@ -841,7 +841,13 @@ function renderBlogPart(template: SiteTemplateSource, part: (typeof SITE_BLOG_PA
  *  segundo formulario en la página: además del de contacto (#kairikos-form,
  *  el que exige el validador a toda plantilla), cualquier <form
  *  data-kairikos-form> con su aviso dentro ([data-kairikos-form-note]). Los
- *  mismos campos y el mismo buzón. */
+ *  mismos campos y el mismo buzón.
+ *
+ *  03/11/2026 — una plantilla puede pedir más campos (zona, servicio, email;
+ *  Circuito, como la landing). El buzón sigue aceptando solo nombre, contacto
+ *  y mensaje, así que los demás viajan delante del mensaje, una línea cada
+ *  uno con su data-k-etiqueta (o su name): «Zona: Chamberí». Los vacíos no
+ *  se mandan. */
 function formScript(action: string, phone: string | null, href: string | null): string {
   const fallback =
     phone && href
@@ -854,6 +860,14 @@ function formScript(action: string, phone: string | null, href: string | null): 
     form.addEventListener("submit", function (event) {
       event.preventDefault();
       var data = new FormData(form);
+      var extra = [];
+      Array.prototype.forEach.call(form.elements, function (el) {
+        if (!el.name || el.name === "name" || el.name === "contact" || el.name === "message") return;
+        var value = String(el.value || "").trim();
+        if (value) extra.push((el.getAttribute("data-k-etiqueta") || el.name) + ": " + value);
+      });
+      var message = String(data.get("message") || "");
+      if (extra.length) message = extra.join("\\n") + (message ? "\\n\\n" + message : "");
       note.hidden = false;
       note.textContent = "Enviando…";
       fetch(${JSON.stringify(action)}, {
@@ -862,7 +876,7 @@ function formScript(action: string, phone: string | null, href: string | null): 
         body: JSON.stringify({
           name: String(data.get("name") || ""),
           contact: String(data.get("contact") || ""),
-          message: String(data.get("message") || "")
+          message: message.slice(0, 2000)
         })
       })
         .then(function (res) {

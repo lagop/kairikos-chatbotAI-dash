@@ -211,19 +211,21 @@ export function plazoEnMinutos(plazo: string): number | null {
   return null;
 }
 
-/** El ancho de cada barra (0–100), o null en las que no se entienden. La más
- *  rápida, llena; las demás, más cortas en escala logarítmica (de una hora a
- *  dos días hay mucho, pero no 48 veces de pantalla). Con menos de dos plazos
- *  que se entiendan, ninguna: una barra sola no compara nada. */
+/** El ancho de cada barra (0–100), o null en las que no se entienden. La
+ *  barra mide la espera, como en la landing de la que sale el bloque: casi
+ *  nada para «Inmediato» y la más larga para el plazo mayor, que se queda en
+ *  el 80 % para que se vea el carril. En escala logarítmica: de una hora a
+ *  dos días hay mucho, pero no 48 veces de pantalla. Con menos de dos plazos
+ *  que se entiendan, ninguna: una barra sola no compara nada.
+ *  03/11/2026: hasta hoy iba al revés (la más rápida, llena); Orlando lo vio
+ *  comparando Circuito con la landing. */
 export function plazoBarras(filas: { plazo: string }[]): (number | null)[] {
   const mins = filas.map((f) => plazoEnMinutos(f.plazo));
   const ok = mins.filter((m): m is number => m !== null);
   if (ok.length < 2) return mins.map(() => null);
-  const min = Math.min(...ok);
   const max = Math.max(...ok);
-  if (max === min) return mins.map((m) => (m === null ? null : 100));
-  const l = (m: number) => Math.log1p(m - min);
-  return mins.map((m) => (m === null ? null : Math.round(100 - 82 * (l(m) / l(max)))));
+  if (max === Math.min(...ok)) return mins.map((m) => (m === null ? null : 80));
+  return mins.map((m) => (m === null ? null : Math.round(6 + 74 * (Math.log1p(m) / Math.log1p(max)))));
 }
 
 /** Plazos: una tarjeta con cada caso, su plazo y una barra que se llena al

@@ -9,12 +9,18 @@
   </div>
   <form id="kairikos-form" class="formulario aparece" method="post">
     <h3>Pida su presupuesto</h3>
-    <label for="kf-name">Nombre</label>
-    <input id="kf-name" name="name" maxlength="200" autocomplete="name">
-    <label for="kf-contact">Teléfono o email</label>
-    <input id="kf-contact" name="contact" maxlength="200" required>
-    <label for="kf-message">¿Qué necesita?</label>
-    <textarea id="kf-message" name="message" rows="4" maxlength="2000"></textarea>
+    <div class="form-fila">
+      <div class="form-campo"><label for="kf-name">Nombre y apellidos</label><input id="kf-name" name="name" maxlength="200" autocomplete="name" placeholder="Cómo se llama"></div>
+      <div class="form-campo"><label for="kf-contact">Teléfono <span aria-hidden="true">*</span></label><input id="kf-contact" name="contact" maxlength="200" autocomplete="tel" inputmode="tel" required></div>
+    </div>
+    <div class="form-fila">
+      <div class="form-campo"><label for="kf-email">Email</label><input id="kf-email" name="email" data-k-etiqueta="Email" type="email" maxlength="200" autocomplete="email"></div>
+      {{#zona.lugares.length}}<div class="form-campo"><label for="kf-zona">Zona</label><select id="kf-zona" name="zona" data-k-etiqueta="Zona"><option value="">Elija su zona</option>{{#zona.lugares}}<option>{{nombre}}</option>{{/zona.lugares}}<option>Otra zona</option></select></div>{{/zona.lugares.length}}
+    </div>
+    {{#servicios.length}}<label for="kf-servicio">¿Qué necesita?</label>
+    <select id="kf-servicio" name="servicio" data-k-etiqueta="Servicio"><option value="">Elija un servicio</option>{{#servicios}}<option>{{nombre}}</option>{{/servicios}}<option>Otro</option></select>{{/servicios.length}}
+    <label for="kf-message">Cuéntenos el problema</label>
+    <textarea id="kf-message" name="message" rows="4" maxlength="2000" placeholder="Por ejemplo: salta el diferencial al enchufar la lavadora"></textarea>
     <button class="boton" type="submit"{{#formulario.muestra}} disabled{{/formulario.muestra}}>Enviar<svg aria-hidden="true"><use href="#i-flecha"></use></svg></button>
     {{#formulario.muestra}}<p class="form-nota">Formulario de muestra: en la web publicada, los mensajes le llegan al correo.</p>{{/formulario.muestra}}
     <p class="form-nota" id="kairikos-form-note" hidden></p>
