@@ -34,3 +34,4 @@ el navegador del visitante no se conecte a Google.
 - Outfit (texto)
 - Rubik (texto)
 - Barlow (texto)
+- JetBrains Mono (tecnica)

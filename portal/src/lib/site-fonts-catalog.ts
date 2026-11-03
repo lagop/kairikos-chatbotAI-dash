@@ -4,8 +4,9 @@
 
 export interface SiteFont {
   slug: string;
-  /** display: titulares; texto: cuerpo. Es lo que se le dice a la IA. */
-  uso: 'display' | 'texto';
+  /** display: titulares; texto: cuerpo; tecnica: cifras y rótulos
+   *  (monoespaciada). Es lo que se le dice a la IA. */
+  uso: 'display' | 'texto' | 'tecnica';
   categoria: string;
   files: readonly string[];
 }
@@ -354,6 +355,17 @@ export const SITE_FONT_CATALOG: Readonly<Record<string, SiteFont>> = {
       "normal-800-latin.woff2",
       "normal-900-latin-ext.woff2",
       "normal-900-latin.woff2"
+    ]
+  },
+  "JetBrains Mono": {
+    "slug": "jetbrains-mono",
+    "uso": "tecnica",
+    "categoria": "Monospace",
+    "files": [
+      "italic-100-800-latin-ext.woff2",
+      "italic-100-800-latin.woff2",
+      "normal-100-800-latin-ext.woff2",
+      "normal-100-800-latin.woff2"
     ]
   }
 };

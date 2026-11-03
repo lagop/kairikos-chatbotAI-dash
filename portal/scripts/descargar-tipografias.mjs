@@ -27,7 +27,9 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 /** El catálogo. `uso` es lo que se le dice a la IA: display para titulares,
- *  texto para el cuerpo (ver site-template-ai.ts). */
+ *  texto para el cuerpo (ver site-template-ai.ts) y, desde el 03/11/2026,
+ *  tecnica: una monoespaciada para cifras, precios y rótulos (la letra de
+ *  la landing de electricidad de la que salió Oficios · Circuito). */
 const CATALOGO = [
   ['Fraunces', 'display'],
   ['Playfair Display', 'display'],
@@ -56,6 +58,7 @@ const CATALOGO = [
   ['Outfit', 'texto'],
   ['Rubik', 'texto'],
   ['Barlow', 'texto'],
+  ['JetBrains Mono', 'tecnica'],
 ];
 
 const SUBSETS = new Set(['latin', 'latin-ext']);
@@ -169,8 +172,9 @@ const ts = `// Generado por scripts/descargar-tipografias.mjs — no editar a ma
 
 export interface SiteFont {
   slug: string;
-  /** display: titulares; texto: cuerpo. Es lo que se le dice a la IA. */
-  uso: 'display' | 'texto';
+  /** display: titulares; texto: cuerpo; tecnica: cifras y rótulos
+   *  (monoespaciada). Es lo que se le dice a la IA. */
+  uso: 'display' | 'texto' | 'tecnica';
   categoria: string;
   files: readonly string[];
 }
