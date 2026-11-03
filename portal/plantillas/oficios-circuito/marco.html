@@ -283,7 +283,7 @@ p{margin:0 0 var(--s-4)}
 .faq-rejilla{display:grid;gap:var(--s-6)}
 @media (min-width:900px){.faq-rejilla{grid-template-columns:minmax(0,1fr) minmax(0,1.7fr)}.faq-lado{position:sticky;top:7rem;align-self:start}.faq-lado h2{font-size:clamp(1.85rem,3.3vw,2.6rem)}}
 .faq-lado p:not(.rotulo){color:var(--suave);font-size:.98rem;margin-top:var(--s-4)}
-.faq-lado a{font:600 1.35rem/1.2 var(--tecnica);color:var(--tinta);text-decoration:none;letter-spacing:-.02em}
+.faq-lado a{font:600 1.35rem/1.2 var(--display);color:var(--tinta);text-decoration:none;letter-spacing:-.02em}
 .faq-lado a:hover{color:var(--ambar-hondo)}
 .preguntas{border-top:1px solid var(--linea);align-content:start;display:grid}
 .preguntas details{border-bottom:1px solid var(--linea)}
@@ -333,13 +333,19 @@ p{margin:0 0 var(--s-4)}
 .dato>span,.dato>a{align-self:center;min-width:0;overflow-wrap:anywhere}
 .dato a{color:var(--tinta);font-weight:600;text-decoration:none}
 .dato a:hover{color:var(--ambar-hondo)}
-.dato-grande a{font:600 1.35rem/1.2 var(--tecnica);letter-spacing:-.02em}
+.dato-grande a{font:600 1.35rem/1.2 var(--display);letter-spacing:-.02em}
 .dato table{width:100%;border-collapse:collapse;font-size:.95rem;align-self:center}
 .dato th{text-align:left;font-weight:600;color:var(--tinta);padding:.2rem var(--s-4) .2rem 0;vertical-align:top}
-.dato td{padding:.2rem 0;color:var(--cuerpo);text-align:right;font-family:var(--tecnica)}
+.dato td{padding:.2rem 0;color:var(--cuerpo);text-align:right;font-weight:600}
 .formulario{background:var(--blanco);border:1px solid var(--linea);border-radius:24px;padding:clamp(1.4rem,3.4vw,2.4rem);box-shadow:var(--sombra-alta);display:grid}
 .formulario h3{font-size:1.3rem;margin-bottom:var(--s-4)}
 .formulario label{font-size:.88rem;font-weight:600;color:var(--tinta);margin:var(--s-3) 0 .4rem}
+.form-fila{display:grid;gap:0 var(--s-4)}
+@media (min-width:640px){.form-fila{grid-template-columns:repeat(auto-fit,minmax(0,1fr))}}
+.form-campo{display:grid;min-width:0}
+.formulario label span{color:var(--ambar-hondo)}
+.formulario select{width:100%;padding:.85rem 2.6rem .85rem 1rem;border:1px solid var(--linea);border-radius:12px;background:var(--fondo) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%2314171e' stroke-width='1.6'/%3E%3C/svg%3E") no-repeat right 1rem center/.75rem;font:inherit;font-size:.98rem;color:var(--tinta);appearance:none;transition:border-color .2s ease,box-shadow .2s ease}
+.formulario select:focus{outline:none;border-color:var(--ambar);box-shadow:0 0 0 3px var(--suave-ambar)}
 .formulario input,.formulario textarea{width:100%;padding:.85rem 1rem;border:1px solid var(--linea);border-radius:12px;background:var(--fondo);font:inherit;font-size:.98rem;color:var(--tinta);transition:border-color .2s ease,box-shadow .2s ease}
 .formulario textarea{resize:vertical;min-height:7rem}
 .formulario input:focus,.formulario textarea:focus{outline:none;border-color:var(--ambar);box-shadow:0 0 0 3px var(--suave-ambar)}

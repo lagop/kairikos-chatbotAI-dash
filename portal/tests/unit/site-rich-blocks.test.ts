@@ -140,15 +140,15 @@ describe('plazos', () => {
     expect(plazoEnMinutos('Hoy, 2 técnicos')).toBeNull();
   });
 
-  it('las barras: la más rápida llena, las demás más cortas; con menos de dos que se entiendan, ninguna', () => {
-    const b = plazoBarras([{ plazo: '≤ 60 min' }, { plazo: '24 h' }, { plazo: 'Según la zona' }, { plazo: '72 h' }]);
-    expect(b[0]).toBe(100);
+  it('las barras miden la espera: «Inmediato» casi nada, el plazo mayor la más larga; con menos de dos que se entiendan, ninguna', () => {
+    const b = plazoBarras([{ plazo: 'Inmediato' }, { plazo: '≤ 60 min' }, { plazo: 'Según la zona' }, { plazo: '72 h' }]);
+    expect(b[0]).toBe(6);
     expect(b[2]).toBeNull();
-    expect(b[1]!).toBeLessThan(100);
-    expect(b[3]!).toBeLessThan(b[1]!);
-    expect(b[3]).toBe(18);
+    expect(b[1]!).toBeGreaterThan(b[0]!);
+    expect(b[3]!).toBeGreaterThan(b[1]!);
+    expect(b[3]).toBe(80);
     expect(plazoBarras([{ plazo: '24 h' }, { plazo: 'Consultar' }])).toEqual([null, null]);
-    expect(plazoBarras([{ plazo: '24 h' }, { plazo: '1 día' }])).toEqual([100, 100]);
+    expect(plazoBarras([{ plazo: '24 h' }, { plazo: '1 día' }])).toEqual([80, 80]);
   });
 
   it('se pinta con su título al lado, la fila sin plazo entendible va sin barra, y escapa', () => {
@@ -159,7 +159,7 @@ describe('plazos', () => {
     expect(html).toContain('<div class="k-plazos-rejilla"><div class="k-plazos-cabeza">');
     expect(html).toContain('Corte &lt;de&gt; luz');
     expect(html.match(/class="k-plazo-barra"/g)).toHaveLength(2);
-    expect(html).toContain('style="--k-plazo:100%"');
+    expect(html).toContain('style="--k-plazo:80%"');
     expect(html).toContain('<p class="k-plazos-nota">Medias del año</p>');
     expect(richBlockHasContent(block({ tipo: 'plazos' }))).toBe(false);
   });

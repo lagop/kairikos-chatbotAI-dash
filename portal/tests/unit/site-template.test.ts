@@ -179,6 +179,13 @@ describe('motor de plantillas', () => {
     expect(html).not.toContain('Formulario de muestra');
     expect(html).toContain(JSON.stringify(action));
     expect(html).toContain('Llámenos al <a href=\\"tel:+34600000000\\">600 00 00 00</a>');
+    // 03/11/2026 — el script es JavaScript que se puede ejecutar: un «\n» sin
+    // escapar dentro de la plantilla de texto lo rompió y el formulario se
+    // quedó mudo sin que fallara nada más.
+    const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]).find((s) => s.includes('kairikos-form'));
+    expect(() => new Function(script ?? 'throw 0')).not.toThrow();
+    // Y los campos que añade la plantilla viajan delante del mensaje.
+    expect(script).toContain('data-k-etiqueta');
   });
 
   it('varias páginas: un archivo por página, enlaces y fotos relativos a su profundidad', () => {
