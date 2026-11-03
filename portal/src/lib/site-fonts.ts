@@ -99,10 +99,10 @@ export function fontBySlug(slug: string): { family: string; files: readonly stri
 
 /** El catálogo como texto para el encargo a la IA. */
 export function fontCatalogForPrompt(): string {
-  const by = (uso: 'display' | 'texto') =>
+  const by = (uso: 'display' | 'texto' | 'tecnica') =>
     Object.entries(SITE_FONT_CATALOG)
       .filter(([, f]) => f.uso === uso)
       .map(([name]) => name)
       .join(', ');
-  return `para titulares: ${by('display')}; para el texto: ${by('texto')}`;
+  return `para titulares: ${by('display')}; para el texto: ${by('texto')}; monoespaciada, para cifras, precios y rótulos técnicos: ${by('tecnica')}`;
 }
