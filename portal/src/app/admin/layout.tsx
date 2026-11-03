@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { cookies } from 'next/headers';
 import { PortalFooter } from '@/components/portal/PortalFooter';
-import { AdminSidebar } from '@/components/admin/AdminSidebar';
+import { AdminShell } from '@/components/admin/AdminShell';
+import { ADMIN_SIDEBAR_COOKIE } from '@/lib/admin-nav';
 import { ThemeToggle } from '@/components/portal/ThemeToggle';
 
 export const metadata: Metadata = {
@@ -17,8 +19,10 @@ export const metadata: Metadata = {
 // settings/security) no tenían ningún enlace visible en absoluto. Los
 // datos de la navegación viven en lib/admin-nav.ts — un solo sitio,
 // consumido tanto por la versión de escritorio como por el desplegable
-// de móvil dentro de AdminSidebar.
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+// de móvil dentro de AdminSidebar. Desde el 03/11/2026 la barra se puede
+// contraer a solo iconos (AdminShell); la cookie dice cómo la dejaste.
+export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  const mini = (await cookies()).get(ADMIN_SIDEBAR_COOKIE)?.value === 'mini';
   return (
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-kairikos-border bg-kairikos-bg">
@@ -44,12 +48,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </nav>
         </div>
       </header>
-      <div className="flex flex-1">
-        <AdminSidebar />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <main className="mx-auto w-full max-w-page flex-1 px-4 py-6 sm:px-6 sm:py-8">{children}</main>
-        </div>
-      </div>
+      <AdminShell initialMini={mini}>{children}</AdminShell>
       <PortalFooter />
     </div>
   );

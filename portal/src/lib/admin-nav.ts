@@ -27,6 +27,12 @@ export interface AdminNavGroup {
 // — se renderiza aparte, antes de los grupos.
 export const ADMIN_HOME_ITEM: AdminNavItem = { href: '/admin/portal', label: 'Inicio' };
 
+// 03/11/2026 — la barra contraída (solo iconos) se recuerda en esta cookie,
+// que lee el layout del servidor: así la página llega ya pintada como la
+// dejaste. Aquí y no en AdminSidebar: una constante exportada desde un
+// módulo 'use client' llega al servidor como referencia, no como texto.
+export const ADMIN_SIDEBAR_COOKIE = 'kairikos_admin_sidebar';
+
 export const ADMIN_NAV: readonly AdminNavGroup[] = [
   {
     label: 'Clientes',

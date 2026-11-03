@@ -35,6 +35,14 @@ export const ADMIN_GROUP_ICON: Record<string, ReactNode> = {
       <path d="M4 12v5.4A1.6 1.6 0 0 0 5.6 19h12.8a1.6 1.6 0 0 0 1.6-1.6V12" />
     </svg>
   ),
+  // Negocio — barras que suben (03/11/2026: con la barra contraída, el punto
+  // neutro de reserva no se distinguía de nada).
+  Negocio: (
+    <svg {...ICON_PROPS}>
+      <path d="M4 20h16" />
+      <path d="M7 16v-4M12 16V8M17 16V5" />
+    </svg>
+  ),
   // Monitorización — un trazo de pulso.
   Monitorización: (
     <svg {...ICON_PROPS}>
