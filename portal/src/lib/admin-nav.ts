@@ -59,6 +59,8 @@ export const ADMIN_NAV: readonly AdminNavGroup[] = [
       // A11 capa 3 — quien pide su borrador en kairikos.com deja su contacto:
       // es una cola de llamadas, no un archivo.
       { href: '/admin/portal/borradores', label: 'Borradores pedidos' },
+      // Quien ha usado el presupuestador de Web Premium y deja su contacto.
+      { href: '/admin/portal/presupuestos-premium', label: 'Presupuestos Web Premium' },
       { href: '/admin/portal/support', label: 'Solicitudes de ayuda' },
     ],
   },
@@ -80,6 +82,7 @@ export const ADMIN_NAV: readonly AdminNavGroup[] = [
       { href: '/admin/portal/settings/seo', label: 'SEO con IA' },
       { href: '/admin/portal/settings/web', label: 'Webs' },
       { href: '/admin/portal/plantillas', label: 'Plantillas web' },
+      { href: '/admin/portal/settings/presupuestador', label: 'Presupuestador' },
       { href: '/admin/portal/settings/chatbot', label: 'Chatbot' },
       { href: '/admin/portal/settings/alerts', label: 'Alertas' },
       { href: '/admin/portal/settings/security', label: 'Seguridad' },

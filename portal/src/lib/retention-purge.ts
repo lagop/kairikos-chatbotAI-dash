@@ -64,6 +64,7 @@ export const RETENTION_ACTOR_ID = 'system:retention';
 export interface RetentionPurgeResult {
   calculatorLeadsDeleted: number;
   draftRequestsDeleted: number;
+  premiumQuotesDeleted: number;
   ownProspectsDeleted: number;
   ownProspectsMinimized: number;
 }
@@ -136,11 +137,12 @@ async function purgeToolContacts(prisma: PrismaClient, now: Date) {
   // ciudad de un autónomo también le identifican, y lo que no identifica de
   // estas herramientas (las cachés de «¿Qué vendes?», la auditoría pública y
   // la competencia por zona) vive en otras tablas que no guardan contactos.
-  const [calculator, drafts] = await prisma.$transaction([
+  const [calculator, drafts, premium] = await prisma.$transaction([
     prisma.calculatorLead.deleteMany({ where }),
     prisma.publicDraftRequest.deleteMany({ where }),
+    prisma.premiumQuoteRequest.deleteMany({ where }),
   ]);
-  return { calculatorLeadsDeleted: calculator.count, draftRequestsDeleted: drafts.count };
+  return { calculatorLeadsDeleted: calculator.count, draftRequestsDeleted: drafts.count, premiumQuotesDeleted: premium.count };
 }
 
 async function minimizeOpposedProspects(prisma: PrismaClient, now: Date): Promise<number> {

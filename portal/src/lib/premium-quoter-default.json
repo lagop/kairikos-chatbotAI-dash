@@ -1,0 +1,1294 @@
+{
+  "config": {
+    "currency": "€",
+    "rangeLow": 0.92,
+    "rangeHigh": 1.12,
+    "baseWeeks": 3,
+    "launch": {
+      "enabled": true,
+      "discount": 0.25,
+      "spotsLeft": 3,
+      "label": "Precio de lanzamiento"
+    },
+    "installments": 12,
+    "included": [
+      "Diseño a medida, sin plantillas",
+      "Chatbot de Kairikos 24/7 (12 meses incluidos, después {chatbot.starter.mes} €/mes)",
+      "Dos idiomas",
+      "SEO técnico de base",
+      "12 meses de mantenimiento y hosting (después, 79 €/mes)",
+      "Código y contenidos en propiedad"
+    ],
+    "pageScale": {
+      "p1": 1,
+      "p2": 1.6,
+      "p3": 2.6,
+      "p4": 3.8
+    },
+    "ivaNote": "Precios orientativos sin impuestos (IVA o IGIC en Canarias). La propuesta final se ajusta tras una llamada de 20 minutos.",
+    "defaultHero": {
+      "h1": "¿Cuánto cuesta la web que <em>tu negocio</em> merece?",
+      "p": "Elige tu sector, responde unas preguntas y ve tu presupuesto en tiempo real, con el desglose de cada pieza."
+    },
+    "published": false,
+    "socialProof": null,
+    "thanksText": "Te escribimos en menos de 24 horas para enviarte el desglose y concretar la llamada."
+  },
+  "baseSteps": [
+    {
+      "id": "tipo",
+      "kicker": "Proyecto",
+      "title": "¿Qué tipo de proyecto necesitas?",
+      "sub": "Elige tu punto de partida.",
+      "type": "single",
+      "options": [
+        {
+          "id": "nueva",
+          "icon": "sparkle",
+          "label": "Web nueva a medida",
+          "desc": "Diseño exclusivo desde cero, con identidad propia.",
+          "price": 4500,
+          "weeks": 4,
+          "tag": "Más elegida"
+        },
+        {
+          "id": "rediseno",
+          "icon": "refresh",
+          "label": "Rediseño de mi web actual",
+          "desc": "Modernizamos y migramos lo que ya funciona.",
+          "price": 3500,
+          "weeks": 3
+        },
+        {
+          "id": "landing",
+          "icon": "target",
+          "label": "Landing de captación",
+          "desc": "Una página enfocada a un servicio o campaña.",
+          "price": 1500,
+          "weeks": 1
+        },
+        {
+          "id": "multi",
+          "icon": "map",
+          "label": "Grupo o varias sedes",
+          "desc": "Arquitectura multi-sede con páginas propias.",
+          "price": 7500,
+          "weeks": 6
+        }
+      ]
+    },
+    {
+      "id": "paginas",
+      "kicker": "Alcance",
+      "title": "¿Cuántos servicios o secciones quieres presentar?",
+      "sub": "Cada servicio clave suele tener su propia página optimizada.",
+      "type": "single",
+      "options": [
+        {
+          "id": "p1",
+          "icon": "pages",
+          "label": "Hasta 6",
+          "desc": "Lo esencial, bien contado.",
+          "price": 0
+        },
+        {
+          "id": "p2",
+          "icon": "pages",
+          "label": "7 – 15",
+          "desc": "Catálogo completo.",
+          "price": 1000,
+          "weeks": 1
+        },
+        {
+          "id": "p3",
+          "icon": "pages",
+          "label": "16 – 30",
+          "desc": "Varias líneas de negocio o especialidades.",
+          "price": 2200,
+          "weeks": 2
+        },
+        {
+          "id": "p4",
+          "icon": "pages",
+          "label": "Más de 30",
+          "desc": "Incluye blog, casos y fichas de equipo.",
+          "price": 3800,
+          "weeks": 3
+        }
+      ]
+    },
+    {
+      "id": "idiomas",
+      "kicker": "Alcance",
+      "title": "¿En cuántos idiomas?",
+      "sub": "Clave si tu cliente es internacional.",
+      "type": "single",
+      "options": [
+        {
+          "id": "i1",
+          "icon": "globe",
+          "label": "Un idioma",
+          "desc": "Solo español.",
+          "price": 0
+        },
+        {
+          "id": "i2",
+          "icon": "globe",
+          "label": "Dos idiomas",
+          "desc": "Por ejemplo, español + inglés.",
+          "price": 0,
+          "weeks": 1,
+          "tag": "Incluido"
+        },
+        {
+          "id": "i3",
+          "icon": "globe",
+          "label": "Tres o más",
+          "desc": "ES · EN · DE · otros.",
+          "price": 850,
+          "scale": true,
+          "weeks": 1
+        }
+      ]
+    },
+    {
+      "id": "widgets",
+      "kicker": "Experiencia premium",
+      "title": "¿Qué piezas premium quieres incluir?",
+      "sub": "Piezas exclusivas que no encontrarás en una web estándar y que convierten visitas en clientes. Elige las que quieras, o ninguna.",
+      "type": "multi",
+      "optional": true,
+      "options": []
+    },
+    {
+      "id": "contenido",
+      "kicker": "Contenido",
+      "title": "¿Quién se encarga de textos e imágenes?",
+      "sub": "El contenido es lo que más pesa en la percepción premium.",
+      "type": "single",
+      "options": [
+        {
+          "id": "c1",
+          "icon": "pages",
+          "label": "Lo aportamos nosotros",
+          "desc": "Ya tenéis textos y fotos listos.",
+          "price": 0
+        },
+        {
+          "id": "c2",
+          "icon": "pen",
+          "label": "Pulir lo que tenemos",
+          "desc": "Edición, tono de marca y SEO on-page.",
+          "price": 500,
+          "scale": true
+        },
+        {
+          "id": "c3",
+          "icon": "pen",
+          "label": "Redacción completa",
+          "desc": "Copywriting especializado del sector.",
+          "price": 1200,
+          "scale": true,
+          "weeks": 1
+        },
+        {
+          "id": "c4",
+          "icon": "camera",
+          "label": "Redacción + foto y vídeo",
+          "desc": "Sesión profesional: equipo, espacios y vídeo de marca.",
+          "price": 1200,
+          "fixed": 1900,
+          "scale": true,
+          "weeks": 2,
+          "tag": "Premium"
+        }
+      ]
+    },
+    {
+      "id": "crecimiento",
+      "kicker": "Servicios Kairikos",
+      "title": "¿Quieres sumar servicios de Kairikos?",
+      "sub": "Los mismos servicios y precios que cualquier cliente de Kairikos, sin permanencia. Elige los que quieras, o ninguno.",
+      "type": "multi",
+      "optional": true,
+      "options": [
+        {
+          "id": "resenas",
+          "icon": "star",
+          "label": "Reseñas en Google",
+          "desc": "Pide reseña a cada cliente tras su visita y te ayuda a responderlas. Una ficha.",
+          "tag": "Más pedido",
+          "catalog": {
+            "code": "reviews",
+            "tier": "basic"
+          }
+        },
+        {
+          "id": "ficha",
+          "icon": "map",
+          "label": "Ficha de Google gestionada",
+          "desc": "Una publicación semanal y respuesta a cada reseña.",
+          "catalog": {
+            "code": "seo",
+            "addon": "gbp_managed"
+          }
+        },
+        {
+          "id": "seo",
+          "icon": "chart",
+          "label": "SEO y contenido con IA",
+          "desc": "Auditoría, palabras clave y artículos que revisas antes de publicar.",
+          "catalog": {
+            "code": "seo",
+            "tier": "standard"
+          }
+        },
+        {
+          "id": "captacion",
+          "icon": "target",
+          "label": "Captación con IA",
+          "desc": "Convierte las conversaciones del chatbot en contactos y te avisa de los urgentes.",
+          "catalog": {
+            "code": "leads",
+            "tier": "standard"
+          }
+        },
+        {
+          "id": "llamadas",
+          "icon": "chat",
+          "label": "Llamadas recuperadas",
+          "desc": "Atiende las llamadas que no puedes coger y te las pasa por WhatsApp.",
+          "catalog": {
+            "code": "recall",
+            "tier": "essential"
+          }
+        }
+      ]
+    },
+    {
+      "id": "plazo",
+      "kicker": "Plazo",
+      "title": "¿Para cuándo lo necesitas?",
+      "sub": "Un lanzamiento urgente requiere reservar equipo en exclusiva.",
+      "type": "single",
+      "options": [
+        {
+          "id": "flex",
+          "icon": "clock",
+          "label": "Sin prisa",
+          "desc": "Planificamos con calma. Incluye un 5 % de descuento.",
+          "price": 0,
+          "mult": 0.95
+        },
+        {
+          "id": "std",
+          "icon": "cal",
+          "label": "En 1–3 meses",
+          "desc": "Plazo estándar.",
+          "price": 0,
+          "mult": 1
+        },
+        {
+          "id": "urg",
+          "icon": "bolt",
+          "label": "Lo antes posible",
+          "desc": "Prioridad absoluta en el calendario.",
+          "price": 0,
+          "mult": 1.2,
+          "weeksMult": 0.7
+        }
+      ]
+    }
+  ],
+  "sectors": {
+    "dental": {
+      "name": "Clínica dental",
+      "tipoFactor": 0.84,
+      "icon": "tooth",
+      "blurb": "Implantología, ortodoncia, estética dental.",
+      "ticket": "Ticket medio paciente: 1.500–12.000 €",
+      "hero": {
+        "h1": "¿Cuánto cuesta la web que <em>tu clínica</em> merece?",
+        "p": "Responde unas preguntas y ve tu presupuesto en tiempo real, con el desglose de cada pieza."
+      },
+      "patch": {
+        "tipo": {
+          "title": "¿Qué tipo de web necesita tu clínica?",
+          "opts": {
+            "landing": {
+              "label": "Landing de tratamiento",
+              "desc": "Una página para captar pacientes de implantes, ortodoncia…"
+            }
+          }
+        },
+        "paginas": {
+          "title": "¿Cuántos tratamientos quieres presentar?",
+          "sub": "Cada tratamiento suele tener su propia página optimizada.",
+          "opts": {
+            "p1": {
+              "desc": "General, estética, implantes, ortodoncia…"
+            },
+            "p2": {
+              "desc": "Catálogo completo de una clínica media."
+            },
+            "p3": {
+              "desc": "Clínica multidisciplinar con especialidades."
+            }
+          }
+        },
+        "idiomas": {
+          "sub": "Clave si atiendes a residentes extranjeros o turismo dental."
+        },
+        "contenido": {
+          "opts": {
+            "c3": {
+              "desc": "Copywriting sanitario por tratamiento."
+            },
+            "c4": {
+              "desc": "Sesión en clínica: equipo, gabinetes y vídeo de marca."
+            }
+          }
+        }
+      },
+      "widgets": [
+        {
+          "id": "config",
+          "icon": "wand",
+          "label": "Configurador de tratamiento",
+          "desc": "Test visual \"¿Qué necesita tu sonrisa?\" que genera solicitudes cualificadas.",
+          "price": 1800,
+          "weeks": 1,
+          "tag": "Top conversión"
+        },
+        {
+          "id": "financ",
+          "icon": "calc",
+          "label": "Simulador de financiación",
+          "desc": "Cuota mensual en tiempo real con un deslizador.",
+          "price": 550
+        },
+        {
+          "id": "anim",
+          "icon": "cube",
+          "label": "Animación 3D de tratamiento",
+          "desc": "El implante o la ortodoncia explicados con scroll.",
+          "price": 3200,
+          "weeks": 1,
+          "tag": "Efecto wow"
+        },
+        {
+          "id": "antes",
+          "icon": "slider",
+          "label": "Comparador antes / después",
+          "desc": "Galería con cortina deslizante, filtrable por tratamiento.",
+          "price": 450
+        },
+        {
+          "id": "agenda",
+          "icon": "cal",
+          "label": "Cita online integrada",
+          "desc": "Huecos reales conectados a tu software de gestión.",
+          "price": 1200,
+          "weeks": 1
+        },
+        {
+          "id": "tour",
+          "icon": "tour",
+          "label": "Tour virtual de la clínica",
+          "desc": "Recorrido 360º o vídeo inmersivo de las instalaciones.",
+          "price": 850
+        },
+        {
+          "id": "ia",
+          "icon": "chat",
+          "label": "Chatbot con WhatsApp y Telegram",
+          "desc": "Resuelve dudas y deriva a cita fuera de horario. Amplía el chatbot incluido al plan Pro de Kairikos ({chatbot.pro.mes} €/mes en total desde el año 2).",
+          "weeks": 1,
+          "catalog": {
+            "code": "chatbot",
+            "tier": "pro",
+            "minusTier": "starter"
+          }
+        },
+        {
+          "id": "area",
+          "icon": "user",
+          "label": "Área privada del paciente",
+          "desc": "Presupuestos, plan de tratamiento y consentimientos online.",
+          "price": 4500,
+          "weeks": 2
+        },
+        {
+          "id": "resenas",
+          "icon": "star",
+          "label": "Reseñas de Google en vivo",
+          "desc": "Carrusel elegante sincronizado con tu ficha.",
+          "price": 350
+        },
+        {
+          "id": "mapa",
+          "icon": "tooth",
+          "label": "Mapa dental interactivo",
+          "desc": "El paciente señala la zona y descubre tratamientos.",
+          "price": 1500,
+          "weeks": 1
+        }
+      ],
+      "insights": [
+        {
+          "when": {
+            "all": [
+              "anim",
+              "config"
+            ],
+            "none": []
+          },
+          "text": "<b>Combinación ganadora:</b> la animación 3D genera confianza y el configurador la convierte en una cita con contexto clínico."
+        },
+        {
+          "when": {
+            "all": [],
+            "none": [
+              "financ"
+            ]
+          },
+          "text": "<b>Sugerencia:</b> en implantes y ortodoncia el precio es la mayor barrera. Un simulador de financiación suele ser la pieza con mejor retorno por euro invertido."
+        }
+      ]
+    },
+    "estetica": {
+      "name": "Medicina estética y cirugía",
+      "icon": "face",
+      "blurb": "Clínicas estéticas, cirugía plástica, capilar.",
+      "ticket": "Ticket medio paciente: 800–15.000 €",
+      "hero": {
+        "h1": "Una web a la altura de <em>tus resultados</em>.",
+        "p": "Presupuesto instantáneo para clínicas de medicina estética y cirugía. Ve el coste de cada pieza en tiempo real."
+      },
+      "patch": {
+        "tipo": {
+          "title": "¿Qué tipo de web necesita tu clínica?",
+          "opts": {
+            "landing": {
+              "label": "Landing de tratamiento",
+              "desc": "Página de captación para rinoplastia, capilar, láser…"
+            }
+          }
+        },
+        "paginas": {
+          "title": "¿Cuántos tratamientos o procedimientos quieres presentar?",
+          "sub": "Faciales, corporales, capilares, quirúrgicos…",
+          "opts": {
+            "p1": {
+              "desc": "Tratamientos estrella."
+            },
+            "p2": {
+              "desc": "Medicina estética completa."
+            },
+            "p3": {
+              "desc": "Medicina + cirugía con varias especialidades."
+            }
+          }
+        },
+        "idiomas": {
+          "sub": "Imprescindible si captas pacientes internacionales."
+        },
+        "contenido": {
+          "opts": {
+            "c3": {
+              "desc": "Copywriting sanitario con tono aspiracional."
+            },
+            "c4": {
+              "desc": "Sesión en clínica, retratos del equipo médico y vídeo."
+            }
+          }
+        }
+      },
+      "widgets": [
+        {
+          "id": "test",
+          "icon": "wand",
+          "label": "Test \"¿Qué tratamiento es para ti?\"",
+          "desc": "Diagnóstico visual por zonas que deriva a valoración.",
+          "price": 1800,
+          "weeks": 1,
+          "tag": "Top conversión"
+        },
+        {
+          "id": "zonas",
+          "icon": "face",
+          "label": "Mapa corporal interactivo",
+          "desc": "El paciente toca la zona y descubre opciones y resultados.",
+          "price": 1900,
+          "weeks": 1,
+          "tag": "Efecto wow"
+        },
+        {
+          "id": "casos",
+          "icon": "slider",
+          "label": "Galería de casos antes / después",
+          "desc": "Cortina deslizante, filtros por tratamiento y aviso legal.",
+          "price": 600
+        },
+        {
+          "id": "video",
+          "icon": "video",
+          "label": "Videoconsulta de valoración",
+          "desc": "Primera consulta online, con reserva y pago previo.",
+          "price": 1400,
+          "weeks": 1
+        },
+        {
+          "id": "financ",
+          "icon": "calc",
+          "label": "Simulador de financiación",
+          "desc": "Cuota mensual en tiempo real.",
+          "price": 550
+        },
+        {
+          "id": "agenda",
+          "icon": "cal",
+          "label": "Cita online integrada",
+          "desc": "Conectada a tu software de gestión.",
+          "price": 1200,
+          "weeks": 1
+        },
+        {
+          "id": "area",
+          "icon": "user",
+          "label": "Área de paciente pre/postoperatorio",
+          "desc": "Instrucciones, seguimiento y documentos firmados.",
+          "price": 4200,
+          "weeks": 2
+        },
+        {
+          "id": "ia",
+          "icon": "chat",
+          "label": "Chatbot con WhatsApp y Telegram",
+          "desc": "Resuelve dudas frecuentes y agenda valoraciones. Amplía el chatbot incluido al plan Pro de Kairikos ({chatbot.pro.mes} €/mes en total desde el año 2).",
+          "weeks": 1,
+          "catalog": {
+            "code": "chatbot",
+            "tier": "pro",
+            "minusTier": "starter"
+          }
+        },
+        {
+          "id": "resenas",
+          "icon": "star",
+          "label": "Reseñas verificadas en vivo",
+          "desc": "Google, Doctoralia o Trustpilot sincronizados.",
+          "price": 350
+        }
+      ],
+      "insights": [
+        {
+          "when": {
+            "all": [
+              "casos"
+            ],
+            "none": []
+          },
+          "text": "<b>Ojo legal:</b> la publicidad sanitaria con casos reales tiene restricciones y requiere consentimiento expreso. Lo dejamos resuelto en el diseño de la galería."
+        },
+        {
+          "when": {
+            "all": [],
+            "none": [
+              "video"
+            ]
+          },
+          "text": "<b>Sugerencia:</b> la videoconsulta de valoración filtra pacientes y adelanta la decisión, especialmente con pacientes de fuera."
+        }
+      ]
+    },
+    "inmobiliaria": {
+      "name": "Inmobiliaria premium",
+      "icon": "home",
+      "blurb": "Lujo, promotoras, obra nueva, family offices.",
+      "ticket": "Comisión media por operación: 10.000–60.000 €",
+      "hero": {
+        "h1": "Propiedades excepcionales merecen <em>una web excepcional</em>.",
+        "p": "Presupuesto instantáneo para inmobiliarias de lujo y promotoras. Ve el coste de cada pieza en tiempo real."
+      },
+      "patch": {
+        "tipo": {
+          "opts": {
+            "landing": {
+              "label": "Microsite de promoción",
+              "desc": "Web propia para una promoción u obra nueva."
+            },
+            "multi": {
+              "label": "Varias oficinas o promociones",
+              "desc": "Red de oficinas o cartera de promociones."
+            }
+          }
+        },
+        "paginas": {
+          "title": "¿Qué volumen de cartera vas a mostrar?",
+          "sub": "Determina la complejidad de fichas, filtros y sincronización.",
+          "opts": {
+            "p1": {
+              "label": "Hasta 25 inmuebles",
+              "desc": "Cartera boutique, seleccionada."
+            },
+            "p2": {
+              "label": "25 – 100 inmuebles",
+              "desc": "Agencia consolidada."
+            },
+            "p3": {
+              "label": "100 – 500 inmuebles",
+              "desc": "Varias zonas y tipologías."
+            },
+            "p4": {
+              "label": "Más de 500",
+              "desc": "Gran cartera con sincronización continua."
+            }
+          }
+        },
+        "idiomas": {
+          "sub": "El comprador de lujo suele ser internacional."
+        },
+        "contenido": {
+          "opts": {
+            "c4": {
+              "label": "Redacción + foto, vídeo y dron",
+              "desc": "Producción audiovisual de propiedades y marca."
+            }
+          }
+        }
+      },
+      "widgets": [
+        {
+          "id": "buscador",
+          "icon": "search",
+          "label": "Buscador avanzado con mapa",
+          "desc": "Filtros finos, mapa interactivo y búsquedas guardadas.",
+          "price": 2200,
+          "weeks": 1
+        },
+        {
+          "id": "crm",
+          "icon": "layers",
+          "label": "Sincronización con tu CRM",
+          "desc": "Inmovilla, Witei, Idealista… sin duplicar trabajo.",
+          "price": 2200,
+          "weeks": 1,
+          "tag": "Imprescindible"
+        },
+        {
+          "id": "ficha",
+          "icon": "diamond",
+          "label": "Fichas cinematográficas",
+          "desc": "Plantilla editorial por propiedad con vídeo y planos.",
+          "price": 1600,
+          "weeks": 1,
+          "tag": "Efecto wow"
+        },
+        {
+          "id": "tour",
+          "icon": "tour",
+          "label": "Tours virtuales 360º",
+          "desc": "Integración Matterport o similar en cada ficha.",
+          "price": 650
+        },
+        {
+          "id": "tasacion",
+          "icon": "euro",
+          "label": "Valoración online de vivienda",
+          "desc": "Capta propietarios que quieren vender. Lead de alto valor.",
+          "price": 1900,
+          "weeks": 1,
+          "tag": "Top conversión"
+        },
+        {
+          "id": "hipoteca",
+          "icon": "calc",
+          "label": "Calculadora hipotecaria",
+          "desc": "Cuota, ahorro necesario y gastos de compra.",
+          "price": 550
+        },
+        {
+          "id": "privado",
+          "icon": "key",
+          "label": "Área privada off-market",
+          "desc": "Propiedades exclusivas solo para compradores registrados.",
+          "price": 3200,
+          "weeks": 2
+        },
+        {
+          "id": "alertas",
+          "icon": "mail",
+          "label": "Alertas de nuevas propiedades",
+          "desc": "Emails automáticos según la búsqueda del cliente.",
+          "price": 1100,
+          "monthly": 39
+        },
+        {
+          "id": "ia",
+          "icon": "chat",
+          "label": "Chatbot con WhatsApp y Telegram",
+          "desc": "Atiende compradores 24/7 y agenda visitas. Amplía el chatbot incluido al plan Pro de Kairikos ({chatbot.pro.mes} €/mes en total desde el año 2).",
+          "weeks": 1,
+          "catalog": {
+            "code": "chatbot",
+            "tier": "pro",
+            "minusTier": "starter"
+          }
+        }
+      ],
+      "insights": [
+        {
+          "when": {
+            "all": [
+              "tasacion"
+            ],
+            "none": []
+          },
+          "text": "<b>Gran elección:</b> la valoración online es la pieza que más captación de producto genera. Cada propietario captado vale más que diez compradores."
+        },
+        {
+          "when": {
+            "all": [],
+            "none": [
+              "crm"
+            ]
+          },
+          "text": "<b>Sugerencia:</b> sin sincronización con tu CRM, tu equipo duplicará cada alta. Suele amortizarse en pocas semanas."
+        }
+      ]
+    },
+    "legal": {
+      "name": "Despacho legal o financiero",
+      "tipoFactor": 0.84,
+      "icon": "scale",
+      "blurb": "Abogados, asesorías, wealth management.",
+      "ticket": "Valor medio por cliente: 2.000–50.000 €",
+      "hero": {
+        "h1": "Tu prestigio, <em>traducido a web</em>.",
+        "p": "Presupuesto instantáneo para despachos de abogados, asesorías y firmas financieras."
+      },
+      "patch": {
+        "tipo": {
+          "title": "¿Qué tipo de web necesita tu despacho?",
+          "opts": {
+            "landing": {
+              "label": "Landing por área de práctica",
+              "desc": "Captación para una especialidad concreta."
+            },
+            "multi": {
+              "label": "Varias oficinas",
+              "desc": "Firma con presencia en varias ciudades."
+            }
+          }
+        },
+        "paginas": {
+          "title": "¿Cuántas áreas de práctica o servicios?",
+          "sub": "Cada área suele tener página propia y contenido de autoridad.",
+          "opts": {
+            "p1": {
+              "desc": "Despacho especializado."
+            },
+            "p2": {
+              "desc": "Despacho multidisciplinar."
+            },
+            "p3": {
+              "desc": "Firma con varios departamentos."
+            },
+            "p4": {
+              "desc": "Incluye fichas de socios, publicaciones y casos."
+            }
+          }
+        },
+        "contenido": {
+          "opts": {
+            "c3": {
+              "desc": "Redacción jurídica o financiera, rigurosa y clara."
+            },
+            "c4": {
+              "desc": "Retratos corporativos del equipo y vídeo institucional."
+            }
+          }
+        }
+      },
+      "widgets": [
+        {
+          "id": "diagnostico",
+          "icon": "wand",
+          "label": "Test \"¿Tienes un caso?\"",
+          "desc": "Diagnóstico guiado que cualifica la consulta antes de llamar.",
+          "price": 1800,
+          "weeks": 1,
+          "tag": "Top conversión"
+        },
+        {
+          "id": "calc",
+          "icon": "calc",
+          "label": "Calculadora especializada",
+          "desc": "Indemnizaciones, herencias, impuestos, rentabilidad…",
+          "price": 1400,
+          "weeks": 1
+        },
+        {
+          "id": "cita",
+          "icon": "video",
+          "label": "Consulta online con pago previo",
+          "desc": "Reserva de videollamada con cobro integrado.",
+          "price": 1400,
+          "weeks": 1
+        },
+        {
+          "id": "portal",
+          "icon": "key",
+          "label": "Portal privado del cliente",
+          "desc": "Documentos, estado del expediente y mensajería segura.",
+          "price": 4800,
+          "weeks": 2,
+          "tag": "Premium"
+        },
+        {
+          "id": "socios",
+          "icon": "user",
+          "label": "Fichas de socios de autoridad",
+          "desc": "Trayectoria, publicaciones, prensa y contacto directo.",
+          "price": 700
+        },
+        {
+          "id": "insights",
+          "icon": "doc",
+          "label": "Centro de conocimiento",
+          "desc": "Artículos, guías descargables y newsletter.",
+          "price": 1200
+        },
+        {
+          "id": "ia",
+          "icon": "chat",
+          "label": "Chatbot con WhatsApp y Telegram",
+          "desc": "Orienta, recoge datos y agenda. Sin dar asesoramiento. Amplía el chatbot incluido al plan Pro de Kairikos ({chatbot.pro.mes} €/mes en total desde el año 2).",
+          "weeks": 1,
+          "catalog": {
+            "code": "chatbot",
+            "tier": "pro",
+            "minusTier": "starter"
+          }
+        },
+        {
+          "id": "resenas",
+          "icon": "star",
+          "label": "Reseñas y reconocimientos",
+          "desc": "Rankings, premios y reseñas verificadas.",
+          "price": 350
+        }
+      ],
+      "insights": [
+        {
+          "when": {
+            "all": [
+              "diagnostico",
+              "cita"
+            ],
+            "none": []
+          },
+          "text": "<b>Combinación ganadora:</b> el test filtra las consultas y el pago previo elimina las que no van a ningún sitio. Llegan menos llamadas, pero mejores."
+        },
+        {
+          "when": {
+            "all": [],
+            "none": [
+              "insights"
+            ]
+          },
+          "text": "<b>Sugerencia:</b> en servicios profesionales el contenido experto es lo que más pesa en Google y en los asistentes de IA a la hora de recomendar un despacho."
+        }
+      ]
+    },
+    "hotel": {
+      "name": "Hotel boutique y villas",
+      "tipoFactor": 0.71,
+      "icon": "bed",
+      "blurb": "Hoteles boutique, villas, alquiler vacacional de lujo.",
+      "ticket": "Reserva media: 1.500–20.000 €",
+      "hero": {
+        "h1": "Más reservas directas, <em>menos comisiones</em>.",
+        "p": "Presupuesto instantáneo para hoteles boutique y villas de lujo. Ve el coste de cada pieza en tiempo real."
+      },
+      "patch": {
+        "tipo": {
+          "title": "¿Qué tipo de web necesitas?",
+          "opts": {
+            "landing": {
+              "label": "Web de una villa",
+              "desc": "Una propiedad, una experiencia, reserva directa."
+            },
+            "multi": {
+              "label": "Varios hoteles o villas",
+              "desc": "Colección con páginas por propiedad."
+            }
+          }
+        },
+        "paginas": {
+          "title": "¿Cuántas habitaciones, villas o experiencias vas a mostrar?",
+          "sub": "Cada una con su ficha, galería y disponibilidad.",
+          "opts": {
+            "p1": {
+              "label": "Hasta 6 fichas",
+              "desc": "Una villa o un hotel pequeño."
+            },
+            "p2": {
+              "label": "7 – 15 fichas",
+              "desc": "Hotel boutique con experiencias."
+            },
+            "p3": {
+              "label": "16 – 30 fichas",
+              "desc": "Colección de villas o resort pequeño."
+            },
+            "p4": {
+              "label": "Más de 30",
+              "desc": "Grupo hotelero o gran cartera."
+            }
+          }
+        },
+        "idiomas": {
+          "sub": "Tu huésped viene de muchos países: el idioma es conversión directa.",
+          "opts": {
+            "i3": {
+              "tag": "Recomendado"
+            }
+          }
+        },
+        "contenido": {
+          "opts": {
+            "c4": {
+              "label": "Redacción + foto, vídeo y dron",
+              "desc": "Producción audiovisual de espacios y experiencias."
+            }
+          }
+        }
+      },
+      "widgets": [
+        {
+          "id": "motor",
+          "icon": "cal",
+          "label": "Motor de reservas integrado",
+          "desc": "Reserva directa conectada a tu PMS o channel manager.",
+          "price": 1400,
+          "weeks": 1,
+          "tag": "Imprescindible"
+        },
+        {
+          "id": "ventajas",
+          "icon": "diamond",
+          "label": "Bloque \"reserva directa\"",
+          "desc": "Comparador visual de ventajas frente a las OTAs.",
+          "price": 550,
+          "tag": "Top conversión"
+        },
+        {
+          "id": "upsell",
+          "icon": "gift",
+          "label": "Experiencias y upselling",
+          "desc": "Traslados, spa, cenas, excursiones: añadidos a la reserva.",
+          "price": 1800,
+          "weeks": 1
+        },
+        {
+          "id": "galeria",
+          "icon": "video",
+          "label": "Galería inmersiva con vídeo",
+          "desc": "Vídeo a pantalla completa y fotografía editorial.",
+          "price": 1100,
+          "tag": "Efecto wow"
+        },
+        {
+          "id": "entorno",
+          "icon": "map",
+          "label": "Mapa del entorno",
+          "desc": "Playas, restaurantes y planes con recomendaciones propias.",
+          "price": 1000
+        },
+        {
+          "id": "divisa",
+          "icon": "euro",
+          "label": "Multidivisa",
+          "desc": "Precios en la moneda del huésped.",
+          "price": 400
+        },
+        {
+          "id": "conserje",
+          "icon": "chat",
+          "label": "Chatbot con WhatsApp y Telegram",
+          "desc": "Responde, recomienda y cierra reservas 24/7. Amplía el chatbot incluido al plan Pro de Kairikos ({chatbot.pro.mes} €/mes en total desde el año 2).",
+          "weeks": 1,
+          "catalog": {
+            "code": "chatbot",
+            "tier": "pro",
+            "minusTier": "starter"
+          }
+        },
+        {
+          "id": "bonos",
+          "icon": "gift",
+          "label": "Tarjetas regalo",
+          "desc": "Bonos de estancia o experiencias, con pago online.",
+          "price": 1100
+        },
+        {
+          "id": "resenas",
+          "icon": "star",
+          "label": "Reseñas en vivo",
+          "desc": "Google, TripAdvisor, Booking sincronizados.",
+          "price": 350
+        }
+      ],
+      "insights": [
+        {
+          "when": {
+            "all": [
+              "motor",
+              "ventajas"
+            ],
+            "none": []
+          },
+          "text": "<b>Combinación ganadora:</b> el motor directo y el bloque de ventajas desplazan reservas de las OTAs. Cada reserva recuperada ahorra entre un 15 y un 25 % de comisión."
+        },
+        {
+          "when": {
+            "all": [],
+            "none": [
+              "motor"
+            ]
+          },
+          "text": "<b>Sugerencia:</b> sin motor de reservas directo, la web empuja a tus huéspedes hacia Booking. Es la pieza con retorno más medible."
+        }
+      ]
+    },
+    "arquitectura": {
+      "name": "Arquitectura, interiorismo y reformas",
+      "tipoFactor": 0.93,
+      "icon": "ruler",
+      "blurb": "Estudios, interioristas, reformas integrales premium.",
+      "ticket": "Proyecto medio: 20.000–300.000 €",
+      "hero": {
+        "h1": "Tus proyectos, <em>presentados como merecen</em>.",
+        "p": "Presupuesto instantáneo para estudios de arquitectura, interiorismo y reformas de alta gama."
+      },
+      "patch": {
+        "tipo": {
+          "title": "¿Qué tipo de web necesita tu estudio?",
+          "opts": {
+            "landing": {
+              "label": "Landing de servicio",
+              "desc": "Captación para reformas integrales, cocinas, obra nueva…"
+            },
+            "multi": {
+              "label": "Varias oficinas o marcas",
+              "desc": "Estudio con sedes o líneas de negocio diferenciadas."
+            }
+          }
+        },
+        "paginas": {
+          "title": "¿Cuántos proyectos y servicios vas a mostrar?",
+          "sub": "El portfolio es el corazón de la web.",
+          "opts": {
+            "p1": {
+              "label": "Hasta 10 proyectos",
+              "desc": "Selección curada."
+            },
+            "p2": {
+              "label": "11 – 25 proyectos",
+              "desc": "Portfolio consolidado."
+            },
+            "p3": {
+              "label": "26 – 50 proyectos",
+              "desc": "Varias tipologías y servicios."
+            },
+            "p4": {
+              "label": "Más de 50",
+              "desc": "Archivo completo con filtros."
+            }
+          }
+        },
+        "contenido": {
+          "opts": {
+            "c4": {
+              "label": "Redacción + fotografía de arquitectura",
+              "desc": "Fotografía profesional de proyectos y vídeo."
+            }
+          }
+        }
+      },
+      "widgets": [
+        {
+          "id": "portfolio",
+          "icon": "layers",
+          "label": "Portfolio editorial inmersivo",
+          "desc": "Proyectos como reportajes: scroll, planos y detalles.",
+          "price": 2200,
+          "weeks": 1,
+          "tag": "Efecto wow"
+        },
+        {
+          "id": "antes",
+          "icon": "slider",
+          "label": "Comparador antes / después",
+          "desc": "Cortina deslizante para reformas.",
+          "price": 450
+        },
+        {
+          "id": "estimador",
+          "icon": "calc",
+          "label": "Estimador de reforma",
+          "desc": "Metros, calidades y estancias: rango de inversión al momento.",
+          "price": 1900,
+          "weeks": 1,
+          "tag": "Top conversión"
+        },
+        {
+          "id": "render",
+          "icon": "cube",
+          "label": "Visor 3D / render interactivo",
+          "desc": "Explora el proyecto o cambia acabados en tiempo real.",
+          "price": 3400,
+          "weeks": 2
+        },
+        {
+          "id": "proceso",
+          "icon": "clock",
+          "label": "Línea de tiempo del proceso",
+          "desc": "Fases, plazos y qué hace el cliente en cada una.",
+          "price": 600
+        },
+        {
+          "id": "obra",
+          "icon": "key",
+          "label": "Área cliente con seguimiento de obra",
+          "desc": "Fotos semanales, hitos, documentos y pagos.",
+          "price": 4200,
+          "weeks": 2,
+          "tag": "Premium"
+        },
+        {
+          "id": "ia",
+          "icon": "chat",
+          "label": "Chatbot con WhatsApp y Telegram",
+          "desc": "Cualifica el proyecto y agenda la primera visita. Amplía el chatbot incluido al plan Pro de Kairikos ({chatbot.pro.mes} €/mes en total desde el año 2).",
+          "weeks": 1,
+          "catalog": {
+            "code": "chatbot",
+            "tier": "pro",
+            "minusTier": "starter"
+          }
+        },
+        {
+          "id": "resenas",
+          "icon": "star",
+          "label": "Reseñas y prensa",
+          "desc": "Publicaciones, premios y testimonios verificados.",
+          "price": 350
+        }
+      ],
+      "insights": [
+        {
+          "when": {
+            "all": [
+              "estimador"
+            ],
+            "none": []
+          },
+          "text": "<b>Gran elección:</b> el estimador filtra a quien no encaja con tu ticket antes de la primera visita y te ahorra horas de desplazamientos."
+        },
+        {
+          "when": {
+            "all": [],
+            "none": [
+              "portfolio"
+            ]
+          },
+          "text": "<b>Sugerencia:</b> en tu sector el portfolio lo es todo. Un formato editorial inmersivo es lo que separa a un estudio premium de uno más."
+        }
+      ]
+    },
+    "otro": {
+      "name": "Otro sector premium",
+      "icon": "sparkle",
+      "blurb": "Náutica, educación privada, eventos, B2B…",
+      "ticket": "Piezas transversales de alto rendimiento",
+      "hero": {
+        "h1": "¿Cuánto cuesta la web que <em>tu negocio</em> merece?",
+        "p": "Elige tu sector, responde unas preguntas y ve tu presupuesto en tiempo real, con el desglose de cada pieza."
+      },
+      "patch": {},
+      "widgets": [
+        {
+          "id": "test",
+          "icon": "wand",
+          "label": "Configurador o test de producto",
+          "desc": "Guía al visitante hasta la solución adecuada y cualifica el lead.",
+          "price": 1800,
+          "weeks": 1,
+          "tag": "Top conversión"
+        },
+        {
+          "id": "roi",
+          "icon": "calc",
+          "label": "Calculadora de ahorro o ROI",
+          "desc": "Traduce tu valor a números para tu cliente.",
+          "price": 1300,
+          "weeks": 1
+        },
+        {
+          "id": "reserva",
+          "icon": "cal",
+          "label": "Reservas o citas online",
+          "desc": "Agenda, videollamada o visita con confirmación automática.",
+          "price": 1200,
+          "weeks": 1
+        },
+        {
+          "id": "anim",
+          "icon": "cube",
+          "label": "Animación 3D o explicativa",
+          "desc": "Tu producto o proceso contado con scroll.",
+          "price": 3200,
+          "weeks": 1,
+          "tag": "Efecto wow"
+        },
+        {
+          "id": "area",
+          "icon": "key",
+          "label": "Área privada de cliente",
+          "desc": "Documentos, pedidos, seguimiento.",
+          "price": 4500,
+          "weeks": 2
+        },
+        {
+          "id": "crm",
+          "icon": "layers",
+          "label": "Integración con CRM",
+          "desc": "HubSpot, Pipedrive, Salesforce…",
+          "price": 1100
+        },
+        {
+          "id": "ia",
+          "icon": "chat",
+          "label": "Chatbot con WhatsApp y Telegram",
+          "desc": "Responde, cualifica y agenda. Amplía el chatbot incluido al plan Pro de Kairikos ({chatbot.pro.mes} €/mes en total desde el año 2).",
+          "weeks": 1,
+          "catalog": {
+            "code": "chatbot",
+            "tier": "pro",
+            "minusTier": "starter"
+          }
+        },
+        {
+          "id": "resenas",
+          "icon": "star",
+          "label": "Reseñas en vivo",
+          "desc": "Sincronizadas desde tu plataforma.",
+          "price": 350
+        }
+      ],
+      "insights": []
+    }
+  }
+}

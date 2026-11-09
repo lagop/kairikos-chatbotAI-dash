@@ -46,6 +46,17 @@ const nextConfig = {
       // El X-Frame-Options: DENY que pone Traefik no estorba: cuando hay
       // frame-ancestors, los navegadores ignoran X-Frame-Options.
       // Va DESPUÉS de la regla general: con la misma cabecera, gana la última.
+      // 09/11/2026 — el presupuestador de Web Premium va dentro de un marco en
+      // kairikos.com. Solo esa web y solo esta página.
+      {
+        source: '/web-premium',
+        headers: [
+          {
+            key: 'Content-Security-Policy',
+            value: "frame-ancestors https://kairikos.com https://www.kairikos.com; base-uri 'self'; object-src 'none'; upgrade-insecure-requests",
+          },
+        ],
+      },
       {
         source: '/api/admin/portal/site-templates/:templateId/preview',
         headers: [

@@ -6149,3 +6149,56 @@ model PackCoupon {
 
   @@unique([packCode, interval])
 }
+
+// =============================================================================
+// Presupuestador de Kairikos Web Premium (09/11/2026).
+//
+// Sus datos (config, baseSteps, sectors) son una versión nueva cada vez que un
+// operador guarda: la activa es la de número más alto, y volver atrás es copiar
+// una antigua como versión nueva. Así no hace falta tabla de auditoría aparte y
+// se ve quién cambió qué. Sin filas, manda lib/premium-quoter-default.json.
+// =============================================================================
+model PremiumQuoterVersion {
+  id            String   @id @default(uuid()) @db.Uuid
+  version       Int      @unique
+  data          Json
+  note          String?
+  operatorEmail String?  @map("operator_email")
+  createdAt     DateTime @default(now()) @map("created_at")
+}
+
+// Cada presupuesto pedido desde la página de Web Premium: el lead y lo que se
+// le enseñó. `estimate` lo calcula el servidor con la versión `configVersion`;
+// lo que mande el navegador no se guarda. La IP va hasheada con sal, igual que
+// en PublicDraftRequest, y la borra el mismo plazo (retention-purge.ts).
+//
+// status: 'nuevo' | 'contactado' | 'convertido' | 'descartado', el vocabulario
+// de Lead. Las transiciones viven en lib/premium-quoter.ts.
+model PremiumQuoteRequest {
+  id            String  @id @default(uuid()) @db.Uuid
+  ipHash        String  @map("ip_hash")
+  contactName   String  @map("contact_name")
+  company       String
+  email         String
+  phone         String?
+  website       String?
+  callSlot      String  @map("call_slot")
+  sector        String
+  answers       Json
+  estimate      Json
+  configVersion Int     @map("config_version")
+
+  // La casilla de privacidad: cuándo y qué texto aceptó.
+  consentAt      DateTime @map("consent_at")
+  consentVersion String   @map("consent_version")
+
+  status          String    @default("nuevo")
+  statusChangedAt DateTime? @map("status_changed_at")
+  statusChangedBy String?   @map("status_changed_by")
+  contactedAt     DateTime? @map("contacted_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@index([status, createdAt])
+  @@index([ipHash, createdAt])
+  @@index([createdAt])
+}

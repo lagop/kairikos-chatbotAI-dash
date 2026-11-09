@@ -97,7 +97,9 @@ export type NotificationKind =
   | 'churn-risk'
   // 04/10/2026 — la lista diaria de prospectos a los que llamar
   // (lib/daily-call-list.ts).
-  | 'daily-call-list';
+  | 'daily-call-list'
+  // 09/11/2026 — alguien ha pedido un presupuesto de Web Premium.
+  | 'premium-quote';
 
 export const ALLOWED_KINDS: ReadonlySet<NotificationKind> = new Set([
   'stuck',
@@ -111,6 +113,7 @@ export const ALLOWED_KINDS: ReadonlySet<NotificationKind> = new Set([
   'connection-lost',
   'churn-risk',
   'daily-call-list',
+  'premium-quote',
 ]);
 
 // Severity → NotificationKind. Used by review-overdue/fire so the route

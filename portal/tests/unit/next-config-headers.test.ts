@@ -15,4 +15,14 @@ describe('cabeceras de next.config.js', () => {
     expect(rules[preview].headers.find((h) => h.key === 'Content-Security-Policy')?.value).toMatch(/frame-ancestors 'self'/);
     expect(preview).toBeGreaterThan(general);
   });
+
+  it('el presupuestador de Web Premium solo se deja enmarcar desde kairikos.com', async () => {
+    const rules = await nextConfig.headers();
+    const general = rules.findIndex((r) => r.source === '/:path*');
+    const quoter = rules.findIndex((r) => r.source === '/web-premium');
+    const value = rules[quoter].headers.find((h) => h.key === 'Content-Security-Policy')?.value ?? '';
+    expect(value).toContain('frame-ancestors https://kairikos.com https://www.kairikos.com;');
+    expect(value).not.toContain('*');
+    expect(quoter).toBeGreaterThan(general);
+  });
 });
