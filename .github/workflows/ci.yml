@@ -38,7 +38,10 @@ jobs:
 
   playwright-smoke:
     name: Playwright smoke (auth-free, required)
-    runs-on: ubuntu-latest
+    # 09/11/2026 — ubuntu-latest pasó a 26.04 y Playwright 1.60 no instala Chromium
+    # ahí («does not support chromium on ubuntu26.04-x64»). Volver a -latest cuando
+    # una versión de Playwright lo soporte.
+    runs-on: ubuntu-24.04
     env:
       # prisma generate only needs a syntactically valid URL — it never
       # connects. Same placeholder pattern the Dockerfile already uses
@@ -89,7 +92,7 @@ jobs:
 
   playwright-non-staging:
     name: Playwright non-staging (informational — not required)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # WP-02 found the broader non-@staging Playwright suite is not green
     # today independent of this CI change: as of 2026-08-12, 42/74 @smoke
     # tests pass against a fresh dev-mock server (admin-flows.spec.ts and
