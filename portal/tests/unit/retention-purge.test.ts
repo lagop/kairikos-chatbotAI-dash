@@ -30,6 +30,7 @@ const fn = (name: string, value: unknown = { count: 0 }) =>
 const m = {
   calculatorLead: { deleteMany: fn('calculatorLead.deleteMany', { count: 2 }) },
   publicDraftRequest: { deleteMany: fn('publicDraftRequest.deleteMany', { count: 1 }) },
+  premiumQuoteRequest: { deleteMany: fn('premiumQuoteRequest.deleteMany', { count: 1 }) },
   lead: {
     findMany: vi.fn(),
     updateMany: fn('lead.updateMany'),
@@ -77,7 +78,7 @@ describe('herramientas gratuitas', () => {
   it('borra la calculadora y el borrador de web por el último contacto, no por el alta', async () => {
     const result = await runRetentionPurge(prisma, NOW);
 
-    for (const del of [m.calculatorLead.deleteMany, m.publicDraftRequest.deleteMany]) {
+    for (const del of [m.calculatorLead.deleteMany, m.publicDraftRequest.deleteMany, m.premiumQuoteRequest.deleteMany]) {
       const where = (del.mock.calls[0][0] as { where: Where }).where;
       expect(where.createdAt).toEqual({ lt: THREE_YEARS_AGO });
       // Un contacto reciente reinicia el plazo: contactedAt también tiene que
@@ -86,6 +87,7 @@ describe('herramientas gratuitas', () => {
     }
     expect(result.calculatorLeadsDeleted).toBe(2);
     expect(result.draftRequestsDeleted).toBe(1);
+    expect(result.premiumQuotesDeleted).toBe(1);
   });
 });
 

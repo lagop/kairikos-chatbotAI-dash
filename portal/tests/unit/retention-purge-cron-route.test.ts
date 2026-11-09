@@ -36,6 +36,7 @@ function makeRequest(headers: Record<string, string> = {}) {
 const COUNTS = {
   calculatorLeadsDeleted: 1,
   draftRequestsDeleted: 0,
+  premiumQuotesDeleted: 0,
   ownProspectsDeleted: 0,
   ownProspectsMinimized: 2,
 };
