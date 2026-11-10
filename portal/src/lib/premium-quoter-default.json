@@ -7,10 +7,9 @@
     "launch": {
       "enabled": true,
       "discount": 0.25,
-      "spotsLeft": 3,
       "label": "Precio de lanzamiento"
     },
-    "installments": 12,
+    "installments": 0,
     "included": [
       "Diseño a medida, sin plantillas",
       "Chatbot de Kairikos 24/7 (12 meses incluidos, después {chatbot.starter.mes} €/mes)",
@@ -25,7 +24,7 @@
       "p3": 2.6,
       "p4": 3.8
     },
-    "ivaNote": "Precios orientativos sin impuestos (IVA o IGIC en Canarias). La propuesta final se ajusta tras una llamada de 20 minutos.",
+    "ivaNote": "Precio final, sin impuestos añadidos. Es una estimación: la propuesta definitiva se cierra en una llamada de 20 minutos.",
     "defaultHero": {
       "h1": "¿Cuánto cuesta la web que <em>tu negocio</em> merece?",
       "p": "Elige tu sector, responde unas preguntas y ve tu presupuesto en tiempo real, con el desglose de cada pieza."
@@ -216,8 +215,8 @@
           "id": "resenas",
           "icon": "star",
           "label": "Reseñas en Google",
-          "desc": "Pide reseña a cada cliente tras su visita y te ayuda a responderlas. Una ficha.",
-          "tag": "Más pedido",
+          "desc": "Pide reseña a cada cliente tras su visita y te ayuda a responderlas. Una ficha. Te avisamos en cuanto se pueda activar.",
+          "tag": "En lanzamiento",
           "catalog": {
             "code": "reviews",
             "tier": "basic"
@@ -227,11 +226,12 @@
           "id": "ficha",
           "icon": "map",
           "label": "Ficha de Google gestionada",
-          "desc": "Una publicación semanal y respuesta a cada reseña.",
+          "desc": "Una publicación semanal y respuesta a cada reseña. Te avisamos en cuanto se pueda activar.",
           "catalog": {
             "code": "seo",
             "addon": "gbp_managed"
-          }
+          },
+          "tag": "En lanzamiento"
         },
         {
           "id": "seo",
@@ -251,16 +251,6 @@
           "catalog": {
             "code": "leads",
             "tier": "standard"
-          }
-        },
-        {
-          "id": "llamadas",
-          "icon": "chat",
-          "label": "Llamadas recuperadas",
-          "desc": "Atiende las llamadas que no puedes coger y te las pasa por WhatsApp.",
-          "catalog": {
-            "code": "recall",
-            "tier": "essential"
           }
         }
       ]
@@ -387,7 +377,7 @@
           "id": "agenda",
           "icon": "cal",
           "label": "Cita online integrada",
-          "desc": "Huecos reales conectados a tu software de gestión.",
+          "desc": "Huecos reales de tu agenda, conectada a tu software de gestión cuando este lo permite.",
           "price": 1200,
           "weeks": 1
         },
@@ -401,8 +391,8 @@
         {
           "id": "ia",
           "icon": "chat",
-          "label": "Chatbot con WhatsApp y Telegram",
-          "desc": "Resuelve dudas y deriva a cita fuera de horario. Amplía el chatbot incluido al plan Pro de Kairikos ({chatbot.pro.mes} €/mes en total desde el año 2).",
+          "label": "Chatbot también en Telegram y WhatsApp",
+          "desc": "Resuelve dudas fuera de horario y te pasa quien quiere cita. Amplía el chatbot incluido al plan Pro de Kairikos ({chatbot.pro.mes} €/mes en total desde el año 2). WhatsApp está en lanzamiento: hoy contesta en tu web y en Telegram.",
           "weeks": 1,
           "catalog": {
             "code": "chatbot",
@@ -549,7 +539,7 @@
           "id": "agenda",
           "icon": "cal",
           "label": "Cita online integrada",
-          "desc": "Conectada a tu software de gestión.",
+          "desc": "Conectada a tu software de gestión cuando este lo permite.",
           "price": 1200,
           "weeks": 1
         },
@@ -564,8 +554,8 @@
         {
           "id": "ia",
           "icon": "chat",
-          "label": "Chatbot con WhatsApp y Telegram",
-          "desc": "Resuelve dudas frecuentes y agenda valoraciones. Amplía el chatbot incluido al plan Pro de Kairikos ({chatbot.pro.mes} €/mes en total desde el año 2).",
+          "label": "Chatbot también en Telegram y WhatsApp",
+          "desc": "Resuelve dudas frecuentes y te pasa quien quiere valoración. Amplía el chatbot incluido al plan Pro de Kairikos ({chatbot.pro.mes} €/mes en total desde el año 2). WhatsApp está en lanzamiento: hoy contesta en tu web y en Telegram.",
           "weeks": 1,
           "catalog": {
             "code": "chatbot",
@@ -576,8 +566,8 @@
         {
           "id": "resenas",
           "icon": "star",
-          "label": "Reseñas verificadas en vivo",
-          "desc": "Google, Doctoralia o Trustpilot sincronizados.",
+          "label": "Reseñas en vivo",
+          "desc": "Las de Google, sincronizadas con tu ficha; Doctoralia o Trustpilot, con su widget oficial.",
           "price": 350
         }
       ],
@@ -589,7 +579,7 @@
             ],
             "none": []
           },
-          "text": "<b>Ojo legal:</b> la publicidad sanitaria con casos reales tiene restricciones y requiere consentimiento expreso. Lo dejamos resuelto en el diseño de la galería."
+          "text": "<b>Ojo legal:</b> la publicidad sanitaria con casos reales tiene restricciones y requiere el consentimiento expreso de cada paciente. La galería se diseña con sus avisos y su filtro por tratamiento; los consentimientos los recoge la clínica."
         },
         {
           "when": {
@@ -727,8 +717,8 @@
         {
           "id": "ia",
           "icon": "chat",
-          "label": "Chatbot con WhatsApp y Telegram",
-          "desc": "Atiende compradores 24/7 y agenda visitas. Amplía el chatbot incluido al plan Pro de Kairikos ({chatbot.pro.mes} €/mes en total desde el año 2).",
+          "label": "Chatbot también en Telegram y WhatsApp",
+          "desc": "Atiende compradores 24/7 y te pasa quien quiere visitar. Amplía el chatbot incluido al plan Pro de Kairikos ({chatbot.pro.mes} €/mes en total desde el año 2). WhatsApp está en lanzamiento: hoy contesta en tu web y en Telegram.",
           "weeks": 1,
           "catalog": {
             "code": "chatbot",
@@ -863,8 +853,8 @@
         {
           "id": "ia",
           "icon": "chat",
-          "label": "Chatbot con WhatsApp y Telegram",
-          "desc": "Orienta, recoge datos y agenda. Sin dar asesoramiento. Amplía el chatbot incluido al plan Pro de Kairikos ({chatbot.pro.mes} €/mes en total desde el año 2).",
+          "label": "Chatbot también en Telegram y WhatsApp",
+          "desc": "Orienta y recoge los datos del caso, sin dar asesoramiento. Amplía el chatbot incluido al plan Pro de Kairikos ({chatbot.pro.mes} €/mes en total desde el año 2). WhatsApp está en lanzamiento: hoy contesta en tu web y en Telegram.",
           "weeks": 1,
           "catalog": {
             "code": "chatbot",
@@ -876,7 +866,7 @@
           "id": "resenas",
           "icon": "star",
           "label": "Reseñas y reconocimientos",
-          "desc": "Rankings, premios y reseñas verificadas.",
+          "desc": "Rankings, premios y reseñas de Google.",
           "price": 350
         }
       ],
@@ -1016,8 +1006,8 @@
         {
           "id": "conserje",
           "icon": "chat",
-          "label": "Chatbot con WhatsApp y Telegram",
-          "desc": "Responde, recomienda y cierra reservas 24/7. Amplía el chatbot incluido al plan Pro de Kairikos ({chatbot.pro.mes} €/mes en total desde el año 2).",
+          "label": "Chatbot también en Telegram y WhatsApp",
+          "desc": "Responde y recomienda 24/7, y te pasa las peticiones de reserva. Amplía el chatbot incluido al plan Pro de Kairikos ({chatbot.pro.mes} €/mes en total desde el año 2). WhatsApp está en lanzamiento: hoy contesta en tu web y en Telegram.",
           "weeks": 1,
           "catalog": {
             "code": "chatbot",
@@ -1036,7 +1026,7 @@
           "id": "resenas",
           "icon": "star",
           "label": "Reseñas en vivo",
-          "desc": "Google, TripAdvisor, Booking sincronizados.",
+          "desc": "Las de Google, sincronizadas con tu ficha; TripAdvisor, con su widget oficial.",
           "price": 350
         }
       ],
@@ -1170,8 +1160,8 @@
         {
           "id": "ia",
           "icon": "chat",
-          "label": "Chatbot con WhatsApp y Telegram",
-          "desc": "Cualifica el proyecto y agenda la primera visita. Amplía el chatbot incluido al plan Pro de Kairikos ({chatbot.pro.mes} €/mes en total desde el año 2).",
+          "label": "Chatbot también en Telegram y WhatsApp",
+          "desc": "Cualifica el proyecto y te pasa los datos para la primera visita. Amplía el chatbot incluido al plan Pro de Kairikos ({chatbot.pro.mes} €/mes en total desde el año 2). WhatsApp está en lanzamiento: hoy contesta en tu web y en Telegram.",
           "weeks": 1,
           "catalog": {
             "code": "chatbot",
@@ -1183,7 +1173,7 @@
           "id": "resenas",
           "icon": "star",
           "label": "Reseñas y prensa",
-          "desc": "Publicaciones, premios y testimonios verificados.",
+          "desc": "Publicaciones, premios y testimonios de clientes.",
           "price": 350
         }
       ],
@@ -1271,8 +1261,8 @@
         {
           "id": "ia",
           "icon": "chat",
-          "label": "Chatbot con WhatsApp y Telegram",
-          "desc": "Responde, cualifica y agenda. Amplía el chatbot incluido al plan Pro de Kairikos ({chatbot.pro.mes} €/mes en total desde el año 2).",
+          "label": "Chatbot también en Telegram y WhatsApp",
+          "desc": "Responde, cualifica y te pasa cada contacto con sus datos. Amplía el chatbot incluido al plan Pro de Kairikos ({chatbot.pro.mes} €/mes en total desde el año 2). WhatsApp está en lanzamiento: hoy contesta en tu web y en Telegram.",
           "weeks": 1,
           "catalog": {
             "code": "chatbot",
@@ -1284,7 +1274,7 @@
           "id": "resenas",
           "icon": "star",
           "label": "Reseñas en vivo",
-          "desc": "Sincronizadas desde tu plataforma.",
+          "desc": "Las de Google, sincronizadas con tu ficha; las de otras plataformas, con su widget oficial.",
           "price": 350
         }
       ],

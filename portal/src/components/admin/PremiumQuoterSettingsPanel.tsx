@@ -88,18 +88,6 @@ export function PremiumQuoterSettingsPanel({ initialData, version, versions }: {
         </label>
         <div className="flex flex-wrap gap-4">
           <label className="text-sm">
-            <span className="block text-kairikos-muted">Plazas que quedan</span>
-            <input
-              className="input mt-1 w-28"
-              type="number"
-              min={0}
-              value={launch?.spotsLeft ?? 0}
-              disabled={!parsed}
-              onChange={(e) => patchConfig((d) => void (d.config.launch.spotsLeft = Number(e.target.value)))}
-              data-testid="quoter-spots"
-            />
-          </label>
-          <label className="text-sm">
             <span className="block text-kairikos-muted">Descuento de lanzamiento (%)</span>
             <input
               className="input mt-1 w-28"

@@ -12,7 +12,16 @@ import type { QuoterData } from './premium-quoter-engine';
 //
 // Además de la forma, comprueba lo que la forma no ve: que un `patch` apunte a
 // un paso que exista, que los iconos sean conocidos, que `pageScale` cubra las
-// páginas y que no se anuncien «0 plazas» con el lanzamiento encendido.
+// páginas.
+//
+// 11/11/2026 — ya no se anuncian plazas («quedan 3») ni un precio de lista
+// tachado: sin plazas contadas de verdad ni nadie que haya pagado ese precio,
+// las dos cosas son escasez y descuento de referencia inventados (Ley de
+// Competencia Desleal). spotsLeft se sigue aceptando, opcional y sin efecto,
+// porque las versiones ya guardadas lo llevan y el esquema es estricto: si
+// dejara de existir, la versión publicada no pasaría la validación y la página
+// se quedaría en blanco. Las cuotas, con 0, no se ofrecen: hoy solo se puede
+// cobrar una entrada y un pago final.
 // =============================================================================
 
 const catalogRef = z.union([
@@ -94,11 +103,11 @@ const config = z
       .object({
         enabled: z.boolean(),
         discount: num.min(0).max(0.9),
-        spotsLeft: z.number().int().min(0),
+        spotsLeft: z.number().int().min(0).optional(),
         label: z.string().min(1),
       })
       .strict(),
-    installments: z.number().int().min(1).max(60),
+    installments: z.number().int().min(0).max(60),
     included: z.array(z.string().min(1)),
     pageScale: z.record(num.positive()),
     ivaNote: z.string(),
@@ -122,10 +131,6 @@ function crossCheck(data: QuoterData): string[] {
   };
 
   if (data.config.rangeLow > data.config.rangeHigh) problems.push('config: rangeLow no puede ser mayor que rangeHigh.');
-  if (data.config.launch.enabled && data.config.launch.spotsLeft < 1) {
-    // La página diría «quedan 0 plazas» y aun así aplicaría el descuento.
-    problems.push('config.launch: con el lanzamiento encendido tiene que quedar al menos una plaza. Si no quedan, apágalo.');
-  }
 
   const stepIds = data.baseSteps.map((s) => s.id);
   for (const id of duplicates(stepIds)) problems.push(`baseSteps: el paso «${id}» está repetido.`);

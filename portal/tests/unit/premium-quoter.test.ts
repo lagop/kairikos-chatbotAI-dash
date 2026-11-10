@@ -49,7 +49,8 @@ describe('compute', () => {
     const r = compute(resolved(), { sector: 'dental', answers: { sector: 'dental', ...CASO_GUIA } });
     expect(r.list).toBe(11700);
     expect(r.total).toBe(8800);
-    expect(r.perMonth).toBe(735);
+    // 11/11/2026 — los datos de fábrica ya no ofrecen cuotas (installments 0).
+    expect(r.perMonth).toBe(0);
     expect(r.low).toBe(8100);
     expect(r.high).toBe(9850);
     expect(r.monthly).toBe(298);
@@ -98,8 +99,14 @@ describe('precios del catálogo', () => {
     }
   });
 
-  it('llamadas recuperadas toma alta y cuota', () => {
-    const llamadas = resolved().baseSteps.find((s) => s.id === 'crecimiento')!.options.find((o) => o.id === 'llamadas')!;
+  it('un servicio con alta toma alta y cuota', () => {
+    // Llamadas recuperadas salió del presupuestador el 11/11/2026 (sin lanzar, y
+    // será para oficios); se usa aquí solo porque es el que tiene alta.
+    const d = JSON.parse(JSON.stringify(raw)) as QuoterData;
+    d.baseSteps.find((s) => s.id === 'crecimiento')!.options.push({ id: 'llamadas', icon: 'chat', label: 'Llamadas recuperadas', desc: '', catalog: { code: 'recall', tier: 'essential' } });
+    const r = resolveQuoter(d, CATALOG);
+    if (!r.ok) throw new Error('no resuelve');
+    const llamadas = r.quoter.baseSteps.find((s) => s.id === 'crecimiento')!.options.find((o) => o.id === 'llamadas')!;
     expect(llamadas).toMatchObject({ price: 99, monthly: 79 });
   });
 
@@ -151,10 +158,18 @@ describe('validateQuoterData', () => {
     expect(raw.config.published).toBe(false);
     expect(raw.config.socialProof).toBeNull();
   });
-  it('no deja anunciar 0 plazas con el lanzamiento encendido', () => {
+  it('acepta versiones guardadas con spotsLeft y sin él (ya no se muestra)', () => {
     const d = clone();
     d.config.launch.spotsLeft = 0;
-    expect(problemas(d).join()).toMatch(/al menos una plaza/);
+    expect(problemas(d)).toEqual([]);
+    delete d.config.launch.spotsLeft;
+    expect(problemas(d)).toEqual([]);
+  });
+  it('con 0 cuotas no se ofrece cuota mensual', () => {
+    const d = clone();
+    d.config.installments = 0;
+    expect(problemas(d)).toEqual([]);
+    expect(compute(d, { sector: 'dental', answers: { tipo: 'nueva', paginas: 'p1' } }).perMonth).toBe(0);
   });
   it('rechaza un icono desconocido', () => {
     const d = clone();
