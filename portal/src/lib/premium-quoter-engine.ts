@@ -377,6 +377,3 @@ export const QUOTER_CONSENT = {
 } as const;
 
 export const QUOTER_CALL_SLOTS = ['Mañana (9–13 h)', 'Mediodía (13–16 h)', 'Tarde (16–19 h)'] as const;
-
-/** A donde avisa la página cuando va dentro de kairikos.com. */
-export const QUOTER_PARENT_ORIGIN = 'https://kairikos.com';
