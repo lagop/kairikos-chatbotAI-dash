@@ -3,7 +3,9 @@ import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateAdminRequest } from '@/lib/operator-session';
 import { assignSiteToNewContract } from '@/lib/client-site';
-import { createCustomCareOffer, withdrawCustomCareOffer } from '@/lib/custom-care';
+import { createCustomCareOffer, findCustomCareOffer, withdrawCustomCareOffer } from '@/lib/custom-care';
+import { sendCustomCareOfferEmail } from '@/lib/web-quote-email';
+import { logError } from '@/lib/observability';
 import { MAX_TRIAL_MONTHS } from '@/lib/custom-care-rules';
 
 export const dynamic = 'force-dynamic';
@@ -21,6 +23,11 @@ export const runtime = 'nodejs';
  * activa guardando su tarjeta. Por eso no pide TOTP, igual que guardar un
  * presupuesto: el paso que compromete lo da el cliente, con el precio a la
  * vista. Una oferta nueva sustituye a la pendiente de esa web.
+ *
+ * 10/11/2026 — al crearla se avisa al cliente por correo, con el enlace a la
+ * página de su web. Best-effort: si el correo no sale, la oferta queda igual
+ * y la respuesta lo dice (email: 'failed' | 'skipped') para que el operador
+ * avise por otro lado.
  *
  * El id de la URL es el de la web ('web' activa); el cliente sale de ella,
  * nunca del cuerpo.
@@ -58,7 +65,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ clientPr
   const web = await loadActiveWeb(params.clientProductId);
   if (!web) return NextResponse.json({ error: 'web_not_found' }, { status: 404 });
 
-  const result = await prisma.$transaction(async (tx) => {
+  const created = await prisma.$transaction(async (tx) => {
     // Una web antigua puede no tener sitio todavía: se le asigna, como haría
     // su activación (mismo criterio que createWebCareCheckout).
     const clientSiteId =
@@ -71,7 +78,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ clientPr
           productCode: 'web',
         })
       ).clientSiteId;
-    return createCustomCareOffer(tx, {
+    const result = await createCustomCareOffer(tx, {
       clientId: web.clientId,
       tenantId: web.tenantId,
       clientSiteId,
@@ -79,9 +86,36 @@ export async function POST(req: NextRequest, props: { params: Promise<{ clientPr
       trialMonths: body.data.trialMonths,
       actorId: auth.operatorId,
     });
+    return { result, clientSiteId };
   });
+  const { result } = created;
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: ERROR_STATUS[result.error] ?? 400 });
-  return NextResponse.json({ ok: true, offerClientProductId: result.clientProductId }, { status: 201 });
+
+  let email: 'sent' | 'skipped' | 'failed' = 'skipped';
+  const [client, offer] = await Promise.all([
+    prisma.chatbotClient.findUnique({ where: { id: web.clientId }, select: { email: true, companyName: true, name: true } }),
+    findCustomCareOffer(prisma, web.clientId, created.clientSiteId),
+  ]);
+  if (client && offer) {
+    const sent = await sendCustomCareOfferEmail({
+      to: client.email,
+      businessName: client.companyName ?? client.name,
+      priceCents: offer.priceCents,
+      currency: offer.currency,
+      trialMonths: offer.trialMonths,
+      webClientProductId: web.id,
+    });
+    if (!sent.ok) {
+      email = 'failed';
+      logError('custom_care_offer_email.failed', new Error(sent.error), { offerClientProductId: result.clientProductId }, 'warn');
+    } else {
+      email = 'skipped' in sent ? 'skipped' : 'sent';
+    }
+  }
+  return NextResponse.json(
+    { ok: true, offerClientProductId: result.clientProductId, email, emailTo: client?.email ?? null },
+    { status: 201 },
+  );
 }
 
 export async function DELETE(req: NextRequest, props: { params: Promise<{ clientProductId: string }> }) {

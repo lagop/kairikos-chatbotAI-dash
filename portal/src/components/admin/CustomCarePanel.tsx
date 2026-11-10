@@ -37,10 +37,12 @@ export function CustomCarePanel({ webClientProductId, data }: { webClientProduct
   const [months, setMonths] = useState('0');
   const [busy, setBusy] = useState<null | 'offer' | 'withdraw'>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   async function call(kind: 'offer' | 'withdraw', init: RequestInit) {
     setBusy(kind);
     setError(null);
+    setNotice(null);
     try {
       const res = await fetch(`/api/admin/portal/web/${webClientProductId}/custom-care`, {
         ...init,
@@ -50,6 +52,14 @@ export function CustomCarePanel({ webClientProductId, data }: { webClientProduct
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         setError(ERROR_LABEL[body.error ?? ''] ?? 'No se pudo guardar.');
         return;
+      }
+      if (kind === 'offer') {
+        const body = (await res.json().catch(() => ({}))) as { email?: string; emailTo?: string | null };
+        setNotice(
+          body.email === 'sent'
+            ? `Oferta creada. Le hemos avisado por correo${body.emailTo ? ` a ${body.emailTo}` : ''}.`
+            : 'Oferta creada, pero el correo no ha salido: avísale tú para que entre en la página de su web.',
+        );
       }
       setEuros('');
       router.refresh();
@@ -77,8 +87,8 @@ export function CustomCarePanel({ webClientProductId, data }: { webClientProduct
       <header>
         <h3 className="text-base font-semibold">Mantenimiento</h3>
         <p className="mt-1 text-xs text-kairikos-muted">
-          Cuidado de la web con un precio pactado. El cliente lo activa desde la página de su web guardando la tarjeta;
-          Stripe cobra la primera cuota al acabar los meses sin cobrar.
+          Cuidado de la web con un precio pactado. Al ofrecerlo, el cliente recibe un correo con el enlace; lo activa
+          desde la página de su web guardando la tarjeta, y Stripe cobra la primera cuota al acabar los meses sin cobrar.
         </p>
       </header>
 
@@ -158,6 +168,12 @@ export function CustomCarePanel({ webClientProductId, data }: { webClientProduct
             {busy === 'offer' ? 'Guardando…' : data.offer ? 'Sustituir la oferta' : 'Ofrecer al cliente'}
           </button>
         </div>
+      ) : null}
+
+      {notice ? (
+        <p className="text-sm text-kairikos-muted" role="status" data-testid="custom-care-notice">
+          {notice}
+        </p>
       ) : null}
 
       {error ? (

@@ -16,6 +16,8 @@ import {
   sendWebQuoteInvoiceEmail,
   buildWebQuoteSentEmail,
   buildWebQuoteInvoiceEmail,
+  buildCustomCareOfferEmail,
+  sendCustomCareOfferEmail,
 } from '@/lib/web-quote-email';
 
 beforeEach(() => {
@@ -161,5 +163,33 @@ describe('buildWebQuoteInvoiceEmail', () => {
     });
     expect(rendered.html).toContain('/portal/web');
     expect(rendered.html).not.toContain('stripe.com');
+  });
+});
+
+// 10/11/2026 — oferta de mantenimiento «solo mantenimiento».
+describe('buildCustomCareOfferEmail', () => {
+  const BASE = { businessName: 'Aurora & Co', priceCents: 4900, currency: 'eur', trialMonths: 0, webClientProductId: 'cp_web_1' };
+
+  it('dice el precio, cómo activarlo y enlaza a la página de SU web', () => {
+    const r = buildCustomCareOfferEmail(BASE);
+    expect(r.subject).toContain('49,00');
+    expect(r.text).toContain('guarda tu tarjeta');
+    expect(r.text).toContain('La primera cuota se cobra al activarlo');
+    expect(r.text).toContain('Sin permanencia');
+    expect(r.text).toMatch(/\/portal\/web\/cp_web_1$/m);
+    expect(r.html).toContain('/portal/web/cp_web_1');
+    expect(r.html).toContain('Aurora &amp; Co');
+  });
+
+  it('con meses sin cobrar, los cuenta desde la activación y no da una fecha', () => {
+    const r = buildCustomCareOfferEmail({ ...BASE, trialMonths: 12 });
+    expect(r.text).toContain('no se te cobra nada: la primera cuota llega 12 meses después');
+    expect(r.text).not.toMatch(/\b20\d\d\b/);
+    expect(buildCustomCareOfferEmail({ ...BASE, trialMonths: 1 }).text).toContain('al mes siguiente');
+  });
+
+  it('sin clave de Resend no envía, y lo dice', async () => {
+    const res = await sendCustomCareOfferEmail({ ...BASE, to: 'cliente@example.com' });
+    expect(res).toEqual({ ok: true, skipped: true, messageId: null, reason: 'no_api_key' });
   });
 });
