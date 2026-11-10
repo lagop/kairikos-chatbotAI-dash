@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateAdminRequest } from '@/lib/operator-session';
+import { MAX_TRIAL_MONTHS, normalizeMonthlyCents } from '@/lib/custom-care-rules';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -17,6 +18,12 @@ const BodySchema = z
     depositCents: z.number().int().positive().optional(),
     currency: z.string().min(1).optional(),
     description: z.string().min(1),
+    // 11/11/2026 — cuota mensual de mantenimiento (lib/custom-care.ts). null o
+    // 0 = sin mantenimiento; se guarda como null, no existe una cuota de 0 €.
+    monthlyCents: z.number().int().nonnegative().nullable().optional(),
+    // Meses que no se cobra desde que el cliente la activa (12 = el año de
+    // alojamiento incluido). Tope 24: Stripe no admite más de 730 días.
+    monthlyStartsAfterMonths: z.number().int().min(0).max(MAX_TRIAL_MONTHS).optional(),
   })
   .refine((v) => v.depositCents === undefined || v.depositCents < v.amountCents, {
     message: 'deposit_must_be_less_than_amount',
@@ -72,6 +79,8 @@ export async function POST(req: NextRequest) {
         depositCents: body.data.depositCents ?? null,
         currency: body.data.currency ?? 'eur',
         description: body.data.description,
+        monthlyCents: normalizeMonthlyCents(body.data.monthlyCents),
+        ...(body.data.monthlyStartsAfterMonths !== undefined ? { monthlyStartsAfterMonths: body.data.monthlyStartsAfterMonths } : {}),
         createdByOperatorId: operatorId,
       },
     });
@@ -84,6 +93,8 @@ export async function POST(req: NextRequest) {
           depositCents: created.depositCents,
           currency: created.currency,
           description: created.description,
+          monthlyCents: created.monthlyCents,
+          monthlyStartsAfterMonths: created.monthlyStartsAfterMonths,
         },
         actorOperatorId: operatorId,
       },

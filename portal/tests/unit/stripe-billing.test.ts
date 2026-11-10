@@ -562,6 +562,12 @@ describe('expireClientProductFromCheckout (WP-30)', () => {
     });
   });
 
+  it('11/11/2026 — no cancela una oferta de mantenimiento a medida: el cliente puede reintentar el pago', async () => {
+    mockState.findUniqueClientProduct.mockResolvedValueOnce({ status: 'pending_payment', customPriceCents: 8900 });
+    await expireClientProductFromCheckout(makeSession());
+    expect(mockState.clientProductUpdate).not.toHaveBeenCalled();
+  });
+
   it('does not touch a ClientProduct that already turned active (the completed event won the race)', async () => {
     mockState.findUniqueClientProduct.mockResolvedValueOnce({ status: 'active' });
     await expireClientProductFromCheckout(makeSession());

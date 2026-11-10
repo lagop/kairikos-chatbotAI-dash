@@ -9,6 +9,7 @@ import { listRecallQueue } from '@/lib/recall';
 import { listLeadsQueue } from '@/lib/leads';
 import { listWebQuoteQueue } from '@/lib/web-quotes';
 import { listSupportRequests } from '@/lib/support-requests';
+import { monthlyEquivalentCents } from '@/lib/annual-billing';
 
 // =============================================================================
 // Inicio del panel de operador — antes, /admin/portal era un simple
@@ -69,7 +70,11 @@ export default async function AdminHomePage() {
     }),
     prisma.clientProduct.findMany({
       where: { status: 'active' },
-      select: { product: { select: { code: true, name: true, tier: true, priceCents: true, currency: true } } },
+      select: {
+        customPriceCents: true,
+        subscription: { select: { amountCents: true, billingInterval: true } },
+        product: { select: { code: true, name: true, tier: true, priceCents: true, currency: true } },
+      },
     }),
     prisma.chatbotClient.count(),
     listRecallQueue(prisma),
@@ -95,7 +100,13 @@ export default async function AdminHomePage() {
     // 'web' no tiene cuota recurrente (priceCents=0, cobra por
     // presupuesto/setup) — queda fuera de la MRR sin ningún caso
     // especial, es justo lo que su priceCents en cero ya expresa.
-    mrrCents += cp.product.priceCents;
+    //
+    // 11/11/2026 — lo que cobra la suscripción manda sobre el catálogo: un
+    // mantenimiento a medida (lib/custom-care.ts) no cuesta lo que la tarifa.
+    mrrCents +=
+      cp.subscription?.amountCents != null
+        ? monthlyEquivalentCents(cp.subscription.amountCents, cp.subscription.billingInterval)
+        : (cp.customPriceCents ?? cp.product.priceCents);
   }
   const productRows = [...byProduct.values()].sort((a, b) => b.count - a.count);
 

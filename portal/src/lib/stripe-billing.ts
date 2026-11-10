@@ -10,6 +10,7 @@ import {
 } from './product-onboarding';
 import { isProductContracted, isMultiInstanceProduct } from './client-product-access';
 import { assignSiteToNewContract } from './client-site';
+import { createCustomCareOffer } from './custom-care';
 import { LEADS_INCLUDED_CHATBOT_TIERS } from './lead-entitlement';
 import { monthlyEquivalentCents, type BillingInterval } from './annual-billing';
 import { logError } from './observability';
@@ -603,7 +604,7 @@ export async function activateClientProductFromWebQuotePayment(invoice: Stripe.I
     // Fase 4 multi-instancia — la contratación apunta a su negocio. Al
     // ACTIVARSE y no al crearse: un presupuesto que nunca se paga no debe
     // dejar un negocio huérfano. Ver lib/client-site.ts.
-    await assignSiteToNewContract(tx, {
+    const site = await assignSiteToNewContract(tx, {
       clientId: updated.clientId,
       tenantId: updated.tenantId,
       clientProductId: updated.id,
@@ -625,6 +626,25 @@ export async function activateClientProductFromWebQuotePayment(invoice: Stripe.I
     await tx.webQuoteAudit.create({
       data: { webQuoteId: webQuote.id, action: 'paid', actorType: 'system', actorEmail: 'stripe:invoice.paid' },
     });
+    // 11/11/2026 — el presupuesto traía cuota de mantenimiento: queda como
+    // oferta en la página de la web, y el cliente la activa guardando su
+    // tarjeta (lib/custom-care.ts). Aquí, y no al aceptar, porque hasta que
+    // la web está pagada no tiene sitio, y el mantenimiento va por sitio.
+    if (webQuote.monthlyCents) {
+      const offer = await createCustomCareOffer(tx, {
+        clientId: updated.clientId,
+        tenantId: updated.tenantId,
+        clientSiteId: site.clientSiteId,
+        priceCents: webQuote.monthlyCents,
+        trialMonths: webQuote.monthlyStartsAfterMonths,
+        actorId: 'stripe:invoice.paid',
+      });
+      if (!offer.ok) {
+        // No se deshace el pago de la web por esto: el operador ve la web sin
+        // oferta y la crea a mano desde la ficha del cliente.
+        logError('web_quote_paid.custom_care_offer_failed', new Error(offer.error), { webQuoteId: webQuote.id }, 'warn');
+      }
+    }
   });
 }
 
@@ -768,8 +788,13 @@ export async function activateClientProductFromCheckout(session: Stripe.Checkout
 export async function expireClientProductFromCheckout(session: Stripe.Checkout.Session): Promise<void> {
   const cpId = (session.metadata?.kairikos_client_product_id ?? null) as string | null;
   if (!cpId) return;
-  const cp = await prisma.clientProduct.findUnique({ where: { id: cpId }, select: { status: true } });
+  const cp = await prisma.clientProduct.findUnique({ where: { id: cpId }, select: { status: true, customPriceCents: true } });
   if (!cp || cp.status !== 'pending_payment') return;
+  // 11/11/2026 — una oferta de mantenimiento a medida (lib/custom-care.ts) la
+  // creó un operador para este cliente, no el clic de comprar del cliente:
+  // si abandona la página de pago, la oferta sigue ahí para reintentarlo.
+  // Cancelarla le obligaría a pedir otra.
+  if (cp.customPriceCents != null) return;
 
   await prisma.$transaction(async (tx) => {
     const updated = await tx.clientProduct.update({
@@ -880,6 +905,7 @@ export async function getBillingForClient(clientId: string): Promise<ClientBilli
       status: cp.subscription!.status,
       currentPeriodEnd: cp.subscription!.currentPeriodEnd?.toISOString() ?? null,
       cancelAtPeriodEnd: cp.subscription!.cancelAtPeriodEnd,
+      amountCents: cp.subscription!.amountCents,
       product: cp.product,
     }));
 
@@ -915,7 +941,9 @@ export async function getBillingForClient(clientId: string): Promise<ClientBilli
   const upcoming = subscriptions
     .filter((s) => s.status === 'active' || s.status === 'trialing')
     .map((s) => ({
-      amountDueCents: s.product.priceCents,
+      // 11/11/2026 — el importe real de la suscripción (precio pactado,
+      // descuento o precio antiguo) manda sobre el del catálogo.
+      amountDueCents: s.amountCents ?? s.product.priceCents,
       currency: s.product.currency,
       dueAt: s.currentPeriodEnd,
     }))

@@ -79,6 +79,8 @@ describe('buildWebQuoteSentEmail', () => {
       amountCents: 99900,
       currency: 'eur',
       description: 'Sitio web a medida — 5 páginas',
+      monthlyCents: null,
+      monthlyStartsAfterMonths: 12,
     });
     expect(rendered.subject).toContain('999,00');
     expect(rendered.text).toContain('Peluquería Aurora');
@@ -93,9 +95,42 @@ describe('buildWebQuoteSentEmail', () => {
       amountCents: 10000,
       currency: 'eur',
       description: '<script>alert(1)</script>',
+      monthlyCents: null,
+      monthlyStartsAfterMonths: 12,
     });
     expect(rendered.html).not.toContain('<script>alert(1)</script>');
     expect(rendered.html).toContain('&lt;script&gt;');
+  });
+
+  // 11/11/2026 — mantenimiento a medida.
+  it('con cuota, dice cuánto y desde cuándo se cobra', () => {
+    const rendered = buildWebQuoteSentEmail({
+      businessName: 'Aurora',
+      amountCents: 250000,
+      currency: 'eur',
+      description: 'Web premium',
+      monthlyCents: 8900,
+      monthlyStartsAfterMonths: 12,
+    });
+    for (const body of [rendered.text, rendered.html]) {
+      expect(body).toContain('89,00');
+      expect(body).toContain('Los 12 primeros meses van incluidos');
+    }
+  });
+
+  it('sin cuota, dice que no hay mantenimiento y qué pasa con la web', () => {
+    const rendered = buildWebQuoteSentEmail({
+      businessName: 'Aurora',
+      amountCents: 250000,
+      currency: 'eur',
+      description: 'Web premium',
+      monthlyCents: null,
+      monthlyStartsAfterMonths: 12,
+    });
+    for (const body of [rendered.text, rendered.html]) {
+      expect(body).toContain('Sin mantenimiento');
+      expect(body).toContain('te entregamos la web');
+    }
   });
 });
 

@@ -15,6 +15,11 @@ const clientSiteMock = vi.hoisted(() => ({
 }));
 vi.mock('@/lib/client-site', () => clientSiteMock);
 
+// 11/11/2026 — la oferta de mantenimiento tiene sus tests (custom-care.test.ts);
+// aquí solo se comprueba que se pide al pagarse, con el sitio de la web.
+const customCareMock = vi.hoisted(() => ({ createCustomCareOffer: vi.fn() }));
+vi.mock('@/lib/custom-care', () => customCareMock);
+
 const mockState = vi.hoisted(() => ({
   invoicesCreate: vi.fn(),
   invoiceItemsCreate: vi.fn(),
@@ -102,6 +107,10 @@ beforeEach(() => {
     }
   });
   mockState.callOrder.length = 0;
+  customCareMock.createCustomCareOffer.mockReset();
+  customCareMock.createCustomCareOffer.mockResolvedValue({ ok: true, clientProductId: 'cp_care_offer' });
+  clientSiteMock.assignSiteToNewContract.mockReset();
+  clientSiteMock.assignSiteToNewContract.mockResolvedValue({ clientSiteId: 'site_1' });
   mockState.invoicesCreate.mockResolvedValue({ id: 'in_draft_1' });
   mockState.invoiceItemsCreate.mockResolvedValue({ id: 'ii_1' });
   mockState.invoicesFinalize.mockResolvedValue({ id: 'in_draft_1', status: 'open' });
@@ -293,6 +302,56 @@ describe('activateClientProductFromWebQuotePayment', () => {
       clientProductId: 'cp_1',
       productCode: 'web',
     });
+  });
+
+  it('con cuota en el presupuesto, deja la oferta de mantenimiento en el sitio de la web', async () => {
+    mockState.findUniqueClientProduct.mockResolvedValueOnce({
+      id: 'cp_1', clientId: 'c1', productId: 'p1', tenantId: 't1', status: 'quote_pending', product: { code: 'web' },
+    });
+    mockState.findUniqueWebQuote.mockResolvedValueOnce({
+      id: 'wq_1', status: 'invoiced', monthlyCents: 8900, monthlyStartsAfterMonths: 12,
+    });
+    mockState.clientProductUpdate.mockResolvedValueOnce({ id: 'cp_1', clientId: 'c1', productId: 'p1', tenantId: 't1' });
+
+    await activateClientProductFromWebQuotePayment(STRIPE_INVOICE);
+
+    expect(customCareMock.createCustomCareOffer).toHaveBeenCalledWith(expect.anything(), {
+      clientId: 'c1',
+      tenantId: 't1',
+      clientSiteId: 'site_1',
+      priceCents: 8900,
+      trialMonths: 12,
+      actorId: 'stripe:invoice.paid',
+    });
+  });
+
+  it('sin cuota (sin mantenimiento), no hay oferta', async () => {
+    mockState.findUniqueClientProduct.mockResolvedValueOnce({
+      id: 'cp_1', clientId: 'c1', productId: 'p1', tenantId: 't1', status: 'quote_pending', product: { code: 'web' },
+    });
+    mockState.findUniqueWebQuote.mockResolvedValueOnce({
+      id: 'wq_1', status: 'invoiced', monthlyCents: null, monthlyStartsAfterMonths: 12,
+    });
+    mockState.clientProductUpdate.mockResolvedValueOnce({ id: 'cp_1', clientId: 'c1', productId: 'p1', tenantId: 't1' });
+
+    await activateClientProductFromWebQuotePayment(STRIPE_INVOICE);
+
+    expect(mockState.webQuoteUpdate).toHaveBeenCalledWith({ where: { id: 'wq_1' }, data: { status: 'paid' } });
+    expect(customCareMock.createCustomCareOffer).not.toHaveBeenCalled();
+  });
+
+  it('si la oferta falla, la web queda pagada igual', async () => {
+    mockState.findUniqueClientProduct.mockResolvedValueOnce({
+      id: 'cp_1', clientId: 'c1', productId: 'p1', tenantId: 't1', status: 'quote_pending', product: { code: 'web' },
+    });
+    mockState.findUniqueWebQuote.mockResolvedValueOnce({
+      id: 'wq_1', status: 'invoiced', monthlyCents: 8900, monthlyStartsAfterMonths: 12,
+    });
+    mockState.clientProductUpdate.mockResolvedValueOnce({ id: 'cp_1', clientId: 'c1', productId: 'p1', tenantId: 't1' });
+    customCareMock.createCustomCareOffer.mockResolvedValueOnce({ ok: false, error: 'care_product_missing' });
+
+    await expect(activateClientProductFromWebQuotePayment(STRIPE_INVOICE)).resolves.toBeUndefined();
+    expect(mockState.webQuoteUpdate).toHaveBeenCalledWith({ where: { id: 'wq_1' }, data: { status: 'paid' } });
   });
 
   const DEPOSIT_INVOICE = {

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { maintenanceLine } from '@/lib/custom-care-rules';
 
 export interface ClientWebQuoteData {
   status: string;
@@ -11,6 +12,9 @@ export interface ClientWebQuoteData {
   depositCents: number | null;
   currency: string;
   description: string;
+  /** 11/11/2026 — cuota de mantenimiento; null = sin mantenimiento. */
+  monthlyCents: number | null;
+  monthlyStartsAfterMonths: number;
 }
 
 export interface ClientWebQuoteInvoiceData {
@@ -128,6 +132,9 @@ export function WebQuoteCard({
               {formatPrice(webQuote.amountCents - webQuote.depositCents, webQuote.currency)}
             </p>
           ) : null}
+          <p className="text-sm text-kairikos-text" data-testid="web-quote-card-maintenance">
+            {maintenanceLine(webQuote.monthlyCents, webQuote.monthlyStartsAfterMonths, webQuote.currency)}
+          </p>
           {error ? (
             <p className="text-sm text-kairikos-danger" data-testid="web-quote-card-error">
               {error}

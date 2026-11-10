@@ -21,6 +21,8 @@ import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
 import { tierLabel } from '@/lib/public-catalog';
 import { ProductAssignment, type AssignableProduct, type ClientProductRow } from '@/components/admin/ProductAssignment';
 import { WebQuoteEditor, type WebQuoteData, type WebQuoteInvoiceData } from '@/components/admin/WebQuoteEditor';
+import { CustomCarePanel, type CustomCarePanelData } from '@/components/admin/CustomCarePanel';
+import { getWebCareState } from '@/lib/web-care';
 import {
   ChannelsOperatorPanel,
   type TelegramConnectionRow,
@@ -60,6 +62,8 @@ interface WebProjectEntry {
   label: string;
   webQuote: WebQuoteData | null;
   invoice: WebQuoteInvoiceData | null;
+  /** 11/11/2026 — su mantenimiento (contratado, oferta a medida pendiente). */
+  care: CustomCarePanelData;
 }
 
 function isProductCode(value: string): value is ProductCode {
@@ -406,10 +410,25 @@ export default async function AdminClientDetailPage(props: PageProps) {
           });
           webProjects = await Promise.all(
             webCps.map(async (webCp, index) => {
-              const [webQuoteRow, brief] = await Promise.all([
+              const [webQuoteRow, brief, careState] = await Promise.all([
                 prisma.webQuote.findUnique({ where: { clientProductId: webCp.id } }),
                 prisma.webBrief.findUnique({ where: { clientProductId: webCp.id }, select: { businessName: true } }),
+                webCp.status === 'active' && webCp.clientSiteId
+                  ? getWebCareState(prisma, client.id, webCp.clientSiteId)
+                  : Promise.resolve(null),
               ]);
+              const care: CustomCarePanelData = {
+                webActive: webCp.status === 'active',
+                contract: careState?.contract
+                  ? {
+                      status: careState.contract.status,
+                      customPriceCents: careState.contract.customPriceCents,
+                      nextChargeAt: careState.contract.nextChargeAt,
+                    }
+                  : null,
+                offer: careState?.customOffer ?? null,
+                catalogPriceCents: careState?.offer?.priceCents ?? null,
+              };
               let invoice: WebQuoteInvoiceData | null = null;
               if (
                 webQuoteRow &&
@@ -486,12 +505,15 @@ export default async function AdminClientDetailPage(props: PageProps) {
                       depositCents: webQuoteRow.depositCents,
                       currency: webQuoteRow.currency,
                       description: webQuoteRow.description,
+                      monthlyCents: webQuoteRow.monthlyCents,
+                      monthlyStartsAfterMonths: webQuoteRow.monthlyStartsAfterMonths,
                       sentAt: webQuoteRow.sentAt?.toISOString() ?? null,
                       acceptedAt: webQuoteRow.acceptedAt?.toISOString() ?? null,
                       cancelledAt: webQuoteRow.cancelledAt?.toISOString() ?? null,
                     }
                   : null,
                 invoice,
+                care,
               };
             }),
           );
@@ -1175,6 +1197,7 @@ export default async function AdminClientDetailPage(props: PageProps) {
                     webQuote={project.webQuote}
                     invoice={project.invoice}
                   />
+                  <CustomCarePanel webClientProductId={project.clientProductId} data={project.care} />
                   <div className="card mt-3" data-testid="client-website-section">
                     <header className="mb-3">
                       <h3 className="text-base font-semibold">Su web</h3>

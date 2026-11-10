@@ -62,6 +62,8 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
       amountCents: updated.amountCents,
       currency: updated.currency,
       description: updated.description,
+      monthlyCents: updated.monthlyCents,
+      monthlyStartsAfterMonths: updated.monthlyStartsAfterMonths,
     });
     if (!result.ok) {
       logError('web_quote_email.sent_failed', new Error(result.error), { route: 'POST web-quotes/[id]/send', webQuoteId: updated.id });
