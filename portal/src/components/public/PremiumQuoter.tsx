@@ -9,7 +9,6 @@ import {
   priceText,
   QUOTER_CALL_SLOTS,
   QUOTER_CONSENT,
-  QUOTER_PARENT_ORIGIN,
   round50,
   type QuoterAnswers,
   type QuoterData,
@@ -28,10 +27,15 @@ import styles from './PremiumQuoter.module.css';
 // avanza con un setTimeout, y ese temporizador tiene que ver la respuesta
 // recién elegida, no la de cuando se creó el cierre.
 //
-// La analítica no sale de aquí. Dentro de kairikos.com los eventos se pasan a
-// la página madre, y es ella quien los manda a GA4 si el visitante aceptó las
-// cookies. Directamente en el portal no se manda nada: es otro dominio, sin
-// aviso de cookies propio. Nunca llevan datos de la persona.
+// La analítica no sale de aquí. Quien inserta el presupuestador pasa onEvent:
+// en kairikos.com es window.kairikosEvento, que solo manda a GA4 si el
+// visitante aceptó las cookies. En /web-premium del portal no se manda nada: es
+// otro dominio, sin aviso de cookies propio. Nunca llevan datos de la persona.
+//
+// 10/11/2026 — dentro de kairikos.com va insertado en la página (src/embed/),
+// no en un marco: el marco tenía su propio scroll dentro del de la página. Por
+// eso las distancias que dependen de la página de alrededor (la cabecera fija,
+// los botones flotantes) se leen de variables CSS que pone quien lo inserta.
 // =============================================================================
 
 const cx = (...names: (string | false | undefined)[]) =>
@@ -65,10 +69,10 @@ function Rich({ text }: { text: string }): ReactNode {
   });
 }
 
-function emit(evento: string, datos: Record<string, string | number>) {
-  if (window.parent === window) return;
-  window.parent.postMessage({ fuente: 'kairikos-presupuestador', evento, datos }, QUOTER_PARENT_ORIGIN);
-}
+/** Avisa a la analítica de quien lo inserta. Nunca lleva datos de la persona. */
+export type QuoterEventSink = (evento: string, datos: Record<string, string | number>) => void;
+
+const DEFAULT_SUBMIT_URL = '/api/public/presupuestador';
 
 interface State {
   sector: string | null;
@@ -77,8 +81,21 @@ interface State {
   showResult: boolean;
 }
 
-export function PremiumQuoter({ quoter, embedded, preview }: { quoter: QuoterData; embedded: boolean; preview: boolean }) {
+export function PremiumQuoter({
+  quoter,
+  embedded,
+  preview,
+  onEvent,
+  submitUrl = DEFAULT_SUBMIT_URL,
+}: {
+  quoter: QuoterData;
+  embedded: boolean;
+  preview: boolean;
+  onEvent?: QuoterEventSink;
+  submitUrl?: string;
+}) {
   const { config, sectors, baseSteps } = quoter;
+  const emit = useCallback<QuoterEventSink>((evento, datos) => onEvent?.(evento, datos), [onEvent]);
   const [state, setState] = useState<State>({ sector: null, step: 0, answers: {}, showResult: false });
   const stateRef = useRef(state);
   const commit = useCallback((next: State) => {
@@ -109,7 +126,7 @@ export function PremiumQuoter({ quoter, embedded, preview }: { quoter: QuoterDat
     fromHash();
     window.addEventListener('hashchange', fromHash);
     return () => window.removeEventListener('hashchange', fromHash);
-  }, [sectors, commit]);
+  }, [sectors, commit, emit]);
 
   // --- el titular se funde al cambiar de sector ---------------------------------
   const target = sec ? sec.hero : config.defaultHero;
@@ -163,8 +180,15 @@ export function PremiumQuoter({ quoter, embedded, preview }: { quoter: QuoterDat
     }
     if (cur.step < all.length - 1) commit({ ...cur, step: cur.step + 1 });
     else commit({ ...cur, showResult: true });
-    window.scrollTo({ top: (wrapRef.current?.offsetTop ?? 20) - 20, behavior: 'smooth' });
-  }, [quoter, commit]);
+    // Con la posición en la página, no offsetTop: insertado en otra web, el
+    // padre de referencia puede ser cualquier cosa. Y por debajo de la cabecera
+    // fija de esa web, si la tiene.
+    const wrap = wrapRef.current;
+    if (wrap) {
+      const offset = parseFloat(getComputedStyle(wrap).getPropertyValue('--quoter-sticky-top')) || 20;
+      window.scrollTo({ top: wrap.getBoundingClientRect().top + window.scrollY - offset, behavior: 'smooth' });
+    }
+  }, [quoter, commit, emit]);
 
   function choose(stepId: string, type: 'single' | 'multi', isSector: boolean | undefined, id: string) {
     const cur = stateRef.current;
@@ -231,7 +255,7 @@ export function PremiumQuoter({ quoter, embedded, preview }: { quoter: QuoterDat
       <main className={styles.wrap} ref={wrapRef}>
         <section className={cx('card', 'stepper')} aria-live="polite" data-testid="quoter-stepper">
           {state.showResult && sec ? (
-            <Result quoter={quoter} sectorId={state.sector as string} answers={state.answers} onEdit={() => commit({ ...stateRef.current, step: 1, showResult: false })} />
+            <Result quoter={quoter} sectorId={state.sector as string} answers={state.answers} emit={emit} submitUrl={submitUrl} onEdit={() => commit({ ...stateRef.current, step: 1, showResult: false })} />
           ) : (
             <>
               <div className={styles.progress}>
@@ -383,7 +407,21 @@ export function PremiumQuoter({ quoter, embedded, preview }: { quoter: QuoterDat
   );
 }
 
-function Result({ quoter, sectorId, answers, onEdit }: { quoter: QuoterData; sectorId: string; answers: QuoterAnswers; onEdit: () => void }) {
+function Result({
+  quoter,
+  sectorId,
+  answers,
+  emit,
+  submitUrl,
+  onEdit,
+}: {
+  quoter: QuoterData;
+  sectorId: string;
+  answers: QuoterAnswers;
+  emit: QuoterEventSink;
+  submitUrl: string;
+  onEdit: () => void;
+}) {
   const { config } = quoter;
   const sec = quoter.sectors[sectorId];
   const selection = { sector: sectorId, answers };
@@ -404,7 +442,7 @@ function Result({ quoter, sectorId, answers, onEdit }: { quoter: QuoterData; sec
     setError(null);
     const fields = Object.fromEntries(new FormData(f)) as Record<string, string>;
     try {
-      const res = await fetch('/api/public/presupuestador', {
+      const res = await fetch(submitUrl, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ ...fields, consent: fields.consent === 'on', sector: sectorId, respuestas: answers }),

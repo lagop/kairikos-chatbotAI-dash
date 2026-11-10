@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "NODE_ENV=development next dev -p 3001",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && node scripts/build-embed.mjs && next build",
     "start": "next start -p 3001",
     "lint": "next lint",
     "test": "playwright test",
@@ -29,7 +29,8 @@
     "smoke:internal-state-transition": "tsx scripts/smoke-internal-state-transition.ts",
     "smoke:kaia-12714": "tsx scripts/smoke-kaia-12714-operator-forgot-password.ts",
     "test:unit": "vitest run",
-    "test:unit:watch": "vitest"
+    "test:unit:watch": "vitest",
+    "predev": "node scripts/build-embed.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -65,6 +66,7 @@
     "@types/web-push": "^3.6.4",
     "@vitest/ui": "^4.1.8",
     "autoprefixer": "^10.5.2",
+    "esbuild": "0.28.0",
     "eslint": "^8.57.0",
     "eslint-config-next": "^15.5.26",
     "postcss": "^8.5.16",

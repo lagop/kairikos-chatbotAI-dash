@@ -10,3 +10,6 @@ out
 .tsbuildinfo
 next-env.d.ts
 .env*
+
+# El presupuestador para insertar en kairikos.com: lo genera scripts/build-embed.mjs.
+/public/embed/

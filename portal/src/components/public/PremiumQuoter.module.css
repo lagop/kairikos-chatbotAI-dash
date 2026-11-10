@@ -18,7 +18,8 @@
   --line:#E2DCCD; --line-strong:#CFC6B5; --sage:#9E4028; --sage-2:#BE4F33; --sage-soft:#F7E6DF; --gold:#8E3621; --gold-soft:#F6F2E7;
   --radius:18px; --shadow:0 1px 2px rgba(20,24,31,.04),0 12px 32px -12px rgba(20,24,31,.14);
   --font-serif:'Instrument Serif',Georgia,'Times New Roman',serif;
-  --font-sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+  /* Quien inserta el presupuestador puede darle su letra (kairikos.com usa Geist). */
+  --font-sans:var(--quoter-font-sans,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif);
   font-family:var(--font-sans);background:var(--cream);color:var(--ink);line-height:1.5;min-height:100vh;-webkit-text-size-adjust:100%;
 }
 :where(.root) *{box-sizing:border-box;margin:0;padding:0}
@@ -38,6 +39,10 @@ header.top{max-width:1180px;margin:0 auto;padding:28px 24px 0;display:flex;align
 .hero p{margin-top:16px;color:var(--ink-2);max-width:600px;font-size:17px}
 
 .wrap{max-width:1180px;margin:0 auto;padding:0 24px 80px;display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:28px;align-items:start}
+/* 10/11/2026 — la columna ocupa todo el alto de la fila: con align-items:start
+   medía lo mismo que el resumen y el sticky no tenía recorrido. En el
+   prototipo tampoco se quedaba pegado. */
+.summary-col{align-self:stretch}
 .card{background:var(--paper);border:1px solid var(--line);border-radius:24px;box-shadow:var(--shadow)}
 
 /* steps */
@@ -82,7 +87,7 @@ header.top{max-width:1180px;margin:0 auto;padding:28px 24px 0;display:flex;align
 .hint{font-size:13px;color:var(--muted)}
 
 /* summary */
-.summary{position:sticky;top:20px;padding:26px;overflow:hidden}
+.summary{position:sticky;top:var(--quoter-sticky-top,20px);padding:26px;overflow:hidden}
 .summary:before{content:"";position:absolute;inset:0 0 auto 0;height:4px;background:linear-gradient(90deg,var(--sage),var(--gold))}
 .summary .lbl{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
 .summary .total{font-size:44px;line-height:1;margin:10px 0 4px}
@@ -127,7 +132,7 @@ form.lead input:focus,form.lead select:focus{border-color:var(--sage)}
 @media (max-width:960px){
   .wrap{grid-template-columns:1fr}
   .summary-col{display:none}
-  .mbar{display:flex;position:fixed;left:12px;right:12px;bottom:12px;z-index:20;background:var(--ink);color:var(--cream);border-radius:18px;padding:12px 16px;align-items:center;justify-content:space-between;box-shadow:0 20px 40px -10px rgba(0,0,0,.35)}
+  .mbar{display:flex;position:fixed;left:var(--quoter-mbar-left,12px);right:var(--quoter-mbar-right,12px);bottom:var(--quoter-mbar-bottom,12px);z-index:20;background:var(--ink);color:var(--cream);border-radius:18px;padding:12px 16px;align-items:center;justify-content:space-between;box-shadow:0 20px 40px -10px rgba(0,0,0,.35)}
   .mbar b{font-family:var(--font-serif);font-weight:400;font-size:22px}
   .mbar span{font-size:11px;opacity:.7;text-transform:uppercase;letter-spacing:.08em;display:block}
   .mbar .m{text-align:right;font-size:13px}

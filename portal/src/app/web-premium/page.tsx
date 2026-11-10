@@ -11,10 +11,10 @@ export const dynamic = 'force-dynamic';
 // /web-premium (09/11/2026) — el presupuestador de Kairikos Web Premium.
 //
 // Pública y sin sesión, como /calculadora; cae fuera del matcher de
-// src/middleware.ts. Pensada para ir dentro de un marco en kairikos.com
-// (?embed=1 quita la cabecera de marca, que allí ya la pone la web): es una sola
-// implementación, y sus datos se cambian sin desplegar la web. Por eso es la
-// única página del portal que deja enmarcarse desde fuera (next.config.js).
+// src/middleware.ts. Es la vista previa del operador y la versión suelta: en
+// kairikos.com el mismo componente va insertado en la página por un script
+// (src/embed/presupuestador.tsx), sin marco. Hasta el 10/11/2026 iba en un
+// marco, y tenía su propio scroll dentro del de la página.
 //
 // Nace apagada: mientras `config.published` sea false solo la ve un operador.
 // Los buscadores no la indexan; la página que debe posicionar es la de
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function WebPremiumPage({ searchParams }: { searchParams: Promise<{ embed?: string }> }) {
+export default async function WebPremiumPage() {
   if (!isDatabaseConfigured) notFound();
   const loaded = await loadResolvedQuoter(prisma);
   if (!loaded.ok) notFound();
@@ -40,13 +40,12 @@ export default async function WebPremiumPage({ searchParams }: { searchParams: P
     preview = true;
   }
 
-  const { embed } = await searchParams;
   return (
     <>
       {/* Solo esta página usa la serif: no merece ir en el layout de todo el portal. */}
       {/* eslint-disable-next-line @next/next/no-css-tags */}
       <link rel="stylesheet" href="/fuentes/instrument-serif/fuentes.css" />
-      <PremiumQuoter quoter={loaded.quoter} embedded={embed === '1'} preview={preview} />
+      <PremiumQuoter quoter={loaded.quoter} embedded={false} preview={preview} />
     </>
   );
 }
