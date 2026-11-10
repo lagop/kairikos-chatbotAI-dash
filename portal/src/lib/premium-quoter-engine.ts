@@ -101,7 +101,9 @@ export interface QuoterConfig {
   rangeLow: number;
   rangeHigh: number;
   baseWeeks: number;
-  launch: { enabled: boolean; discount: number; spotsLeft: number; label: string };
+  /** spotsLeft ya no se muestra (11/11/2026); ver premium-quoter-schema.ts. */
+  launch: { enabled: boolean; discount: number; spotsLeft?: number; label: string };
+  /** 0 = no se ofrecen cuotas. */
   installments: number;
   included: string[];
   pageScale: Record<string, number>;
@@ -303,7 +305,7 @@ export function compute(q: QuoterData, { sector, answers }: QuoterSelection): Qu
   return {
     list,
     total,
-    perMonth: Math.ceil(total / (q.config.installments || 12) / 5) * 5,
+    perMonth: q.config.installments > 0 ? Math.ceil(total / q.config.installments / 5) * 5 : 0,
     low: round50(total * q.config.rangeLow),
     high: round50(total * q.config.rangeHigh),
     monthly,

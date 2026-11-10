@@ -9,7 +9,6 @@ import {
   priceText,
   QUOTER_CALL_SLOTS,
   QUOTER_CONSENT,
-  round50,
   type QuoterAnswers,
   type QuoterData,
 } from '@/lib/premium-quoter-engine';
@@ -326,9 +325,7 @@ export function PremiumQuoter({
               </div>
             ) : null}
             {L.enabled ? (
-              <div className={styles.launch}>
-                {L.label} · −{Math.round(L.discount * 100)} % · quedan {L.spotsLeft} plazas
-              </div>
+              <div className={styles.launch}>{L.label}</div>
             ) : null}
             <div className={styles.lbl}>Inversión estimada</div>
             <div className={cx('total', 'serif')}>
@@ -341,12 +338,7 @@ export function PremiumQuoter({
                 '—'
               )}
             </div>
-            {r.total && L.enabled ? (
-              <div className={styles.strike}>
-                Precio de lista <s>{fmt(quoter, round50(r.list))}</s>
-              </div>
-            ) : null}
-            {r.total ? (
+            {r.total && r.perMonth ? (
               <div className={styles.cuotas}>
                 o {config.installments} cuotas de <b>{fmt(quoter, r.perMonth)}/mes</b> sin recargo
               </div>
@@ -483,19 +475,13 @@ function Result({
             <b>
               {fmt(quoter, r.low)} – {fmt(quoter, r.high)}
             </b>
-            {L.enabled ? (
-              <small className={styles.was}>
-                Precio de lista:{' '}
-                <s>
-                  {fmt(quoter, round50(r.list * config.rangeLow))} – {fmt(quoter, round50(r.list * config.rangeHigh))}
-                </s>
-              </small>
-            ) : null}
           </div>
-          <div className={styles.box}>
-            <span>O en {config.installments} cuotas sin recargo</span>
-            <b>{fmt(quoter, r.perMonth)}/mes</b>
-          </div>
+          {r.perMonth ? (
+            <div className={styles.box}>
+              <span>O en {config.installments} cuotas sin recargo</span>
+              <b>{fmt(quoter, r.perMonth)}/mes</b>
+            </div>
+          ) : null}
           {r.monthly ? (
             <div className={styles.box}>
               <span>Servicios Kairikos</span>
@@ -507,7 +493,7 @@ function Result({
             <b>{r.weeks} semanas</b>
           </div>
         </div>
-        {L.enabled ? <div className={cx('launch', 'big-l')}>Quedan {L.spotsLeft} plazas a precio de lanzamiento. A cambio, te pedimos poder publicar tu caso y tus resultados a los 3 meses.</div> : null}
+        {L.enabled ? <div className={cx('launch', 'big-l')}>{L.label}. A cambio, te pedimos poder publicar tu caso y tus resultados a los 3 meses.</div> : null}
         <div className={styles.inclbox}>
           <b>Siempre incluido</b>
           <ul>
@@ -528,7 +514,7 @@ function Result({
               Recibe la propuesta detallada
             </h3>
             <p className={styles.hint} style={{ marginBottom: 14 }}>
-              Te enviamos el desglose en PDF y reservamos una llamada de 20 minutos para afinarlo.
+              Te enviamos el desglose y reservamos una llamada de 20 minutos para afinarlo.
             </p>
             <form className={styles.lead} onSubmit={submit} noValidate data-testid="quoter-form">
               <label>

@@ -78,8 +78,12 @@ export default async function AdminPremiumQuotePage({ params }: { params: Promis
           <dd>
             {eur(estimate.low)} – {eur(estimate.high)}
           </dd>
-          <dt className="text-kairikos-muted">Cuota</dt>
-          <dd>{eur(estimate.perMonth)}/mes</dd>
+          {estimate.perMonth ? (
+            <>
+              <dt className="text-kairikos-muted">Cuota</dt>
+              <dd>{eur(estimate.perMonth)}/mes</dd>
+            </>
+          ) : null}
           <dt className="text-kairikos-muted">Servicios Kairikos</dt>
           <dd>{eur(estimate.monthly)}/mes</dd>
           <dt className="text-kairikos-muted">Plazo</dt>
