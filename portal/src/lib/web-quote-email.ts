@@ -1,5 +1,6 @@
 import 'server-only';
 import { notifyFromAddress } from './email-sender';
+import { maintenanceLine } from './custom-care-rules';
 
 // =============================================================================
 // WebQuote v2 — email notifications to the client when a quote arrives
@@ -69,8 +70,12 @@ export function buildWebQuoteSentEmail(vars: {
   amountCents: number;
   currency: string;
   description: string;
+  /** 11/11/2026 — la cuota de mantenimiento; null = sin mantenimiento, y se dice. */
+  monthlyCents: number | null;
+  monthlyStartsAfterMonths: number;
 }): { subject: string; text: string; html: string } {
   const price = formatPrice(vars.amountCents, vars.currency);
+  const maintenance = maintenanceLine(vars.monthlyCents, vars.monthlyStartsAfterMonths, vars.currency);
   const subject = `Tu presupuesto de web está listo — ${price}`;
   const text = [
     `Hola ${vars.businessName},`,
@@ -78,6 +83,8 @@ export function buildWebQuoteSentEmail(vars: {
     `Preparamos un presupuesto para tu proyecto de web: ${price}.`,
     '',
     vars.description,
+    '',
+    maintenance,
     '',
     `Puedes revisarlo y aceptarlo desde el portal: ${PORTAL_WEB_URL}`,
     '',
@@ -87,6 +94,7 @@ export function buildWebQuoteSentEmail(vars: {
     `<p>Hola ${escapeHtml(vars.businessName)},</p>`,
     `<p>Preparamos un presupuesto para tu proyecto de web: <strong>${escapeHtml(price)}</strong>.</p>`,
     `<p>${escapeHtml(vars.description)}</p>`,
+    `<p>${escapeHtml(maintenance)}</p>`,
     `<p><a href="${escapeHtml(PORTAL_WEB_URL)}">Revisar y aceptar el presupuesto</a></p>`,
     '<p>— Kairikos</p>',
   ].join('\n');
@@ -100,6 +108,8 @@ export async function sendWebQuoteSentEmail(input: {
   amountCents: number;
   currency: string;
   description: string;
+  monthlyCents: number | null;
+  monthlyStartsAfterMonths: number;
 }): Promise<SendWebQuoteEmailResult> {
   return sendEmail(input.to, buildWebQuoteSentEmail(input));
 }

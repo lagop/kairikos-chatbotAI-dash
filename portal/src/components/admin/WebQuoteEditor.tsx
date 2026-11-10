@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { TotpStepUpModal } from '@/components/portal/TotpStepUpModal';
+import { MAX_TRIAL_MONTHS, maintenanceLine } from '@/lib/custom-care-rules';
 
 export interface WebQuoteData {
   id: string;
@@ -14,6 +15,9 @@ export interface WebQuoteData {
   depositCents: number | null;
   currency: string;
   description: string;
+  /** 11/11/2026 — cuota de mantenimiento (lib/custom-care.ts); null = sin. */
+  monthlyCents: number | null;
+  monthlyStartsAfterMonths: number;
   sentAt: string | null;
   acceptedAt: string | null;
   cancelledAt: string | null;
@@ -111,6 +115,10 @@ export function WebQuoteEditor({
     webQuote?.depositCents != null ? (webQuote.depositCents / 100).toFixed(2) : '',
   );
   const [description, setDescription] = useState(webQuote?.description ?? '');
+  const [monthlyEuros, setMonthlyEuros] = useState(
+    webQuote?.monthlyCents != null ? (webQuote.monthlyCents / 100).toFixed(2) : '',
+  );
+  const [startsAfter, setStartsAfter] = useState(String(webQuote?.monthlyStartsAfterMonths ?? 12));
   const [channel, setChannel] = useState<'transfer' | 'cash'>('transfer');
   const [reference, setReference] = useState('');
 
@@ -157,18 +165,36 @@ export function WebQuoteEditor({
       showToast({ kind: 'error', message: 'El adelanto debe ser mayor a 0 y menor al monto total.' });
       return;
     }
+    // Vacía o 0 = sin mantenimiento (se guarda null).
+    const monthlyCents = monthlyEuros.trim() ? Math.round(parseFloat(monthlyEuros) * 100) : 0;
+    const monthlyStartsAfterMonths = Number(startsAfter);
+    if (!Number.isFinite(monthlyCents) || monthlyCents < 0) {
+      showToast({ kind: 'error', message: 'La cuota mensual no es un importe válido.' });
+      return;
+    }
+    if (!Number.isInteger(monthlyStartsAfterMonths) || monthlyStartsAfterMonths < 0 || monthlyStartsAfterMonths > MAX_TRIAL_MONTHS) {
+      showToast({ kind: 'error', message: `Los meses sin cobrar van de 0 a ${MAX_TRIAL_MONTHS}.` });
+      return;
+    }
     setBusyKey('save');
     try {
       const res = webQuote
         ? await fetch(`/api/admin/portal/web-quotes/${webQuote.id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ amountCents, depositCents, description }),
+            body: JSON.stringify({ amountCents, depositCents, description, monthlyCents, monthlyStartsAfterMonths }),
           })
         : await fetch('/api/admin/portal/web-quotes', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ clientProductId, amountCents, ...(depositCents !== null ? { depositCents } : {}), description }),
+            body: JSON.stringify({
+              clientProductId,
+              amountCents,
+              ...(depositCents !== null ? { depositCents } : {}),
+              description,
+              monthlyCents,
+              monthlyStartsAfterMonths,
+            }),
           });
       const body = await safeJson(res);
       if (res.ok) {
@@ -375,6 +401,50 @@ export function WebQuoteEditor({
               </p>
             ) : null}
           </div>
+          <div className="flex flex-wrap gap-4">
+            <div>
+              <label className="label" htmlFor="web-quote-monthly">
+                Mantenimiento (EUR/mes, opcional)
+              </label>
+              <input
+                id="web-quote-monthly"
+                type="number"
+                step="0.01"
+                min="0"
+                className="input w-40"
+                placeholder="Sin mantenimiento"
+                value={monthlyEuros}
+                onChange={(e) => setMonthlyEuros(e.target.value)}
+                data-testid="web-quote-monthly-input"
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="web-quote-starts-after">
+                Meses sin cobrar
+              </label>
+              <input
+                id="web-quote-starts-after"
+                type="number"
+                step="1"
+                min="0"
+                max={MAX_TRIAL_MONTHS}
+                className="input w-28"
+                value={startsAfter}
+                onChange={(e) => setStartsAfter(e.target.value)}
+                disabled={!monthlyEuros.trim() || parseFloat(monthlyEuros) <= 0}
+                data-testid="web-quote-starts-after-input"
+              />
+            </div>
+          </div>
+          <p className="-mt-1 text-xs text-kairikos-muted" data-testid="web-quote-maintenance-preview">
+            El cliente leerá: «
+            {maintenanceLine(
+              monthlyEuros.trim() && parseFloat(monthlyEuros) > 0 ? Math.round(parseFloat(monthlyEuros) * 100) : null,
+              Number(startsAfter) || 0,
+              'eur',
+            )}
+            »
+          </p>
           <div>
             <label className="label" htmlFor="web-quote-description">
               Qué incluye (el cliente lo ve tal cual)
@@ -421,6 +491,9 @@ export function WebQuoteEditor({
                 {formatPrice(webQuote.amountCents - webQuote.depositCents, webQuote.currency)}
               </p>
             ) : null}
+            <p className="mt-1 text-xs text-kairikos-muted" data-testid="web-quote-maintenance">
+              {maintenanceLine(webQuote.monthlyCents, webQuote.monthlyStartsAfterMonths, webQuote.currency)}
+            </p>
           </div>
 
           {status === 'cancelled' ? (

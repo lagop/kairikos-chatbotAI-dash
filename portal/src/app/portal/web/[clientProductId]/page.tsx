@@ -107,6 +107,8 @@ export default async function PortalWebProjectPage(
           depositCents: context.webQuote.depositCents,
           currency: context.webQuote.currency,
           description: context.webQuote.description,
+          monthlyCents: context.webQuote.monthlyCents,
+          monthlyStartsAfterMonths: context.webQuote.monthlyStartsAfterMonths,
         }
       : null;
     if (
@@ -198,6 +200,7 @@ export default async function PortalWebProjectPage(
             webClientProductId={webClientProduct.id}
             offer={care.offer}
             contract={care.contract}
+            customOffer={care.customOffer}
             checkoutReturn={searchParams.checkout ?? null}
           />
         ) : null}

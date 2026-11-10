@@ -829,6 +829,14 @@ model ClientProduct {
   // coarse value, same relationship 'pending_payment' already has to
   // the plain self-serve Stripe Checkout flow.
   status             String    @default("active")
+  // 11/11/2026 — precio pactado con ESTE cliente, en vez del del catálogo.
+  // Hoy solo lo usa el mantenimiento a medida ('web_care', lib/custom-care.ts):
+  // la fila nace en 'pending_payment' como una oferta y el cliente la activa
+  // guardando su tarjeta en Stripe. Null = el precio del catálogo, lo de siempre.
+  customPriceCents   Int?      @map("custom_price_cents")
+  // Meses que no se cobran desde que el cliente la activa (el periodo de
+  // prueba de la suscripción en Stripe). Solo tiene sentido con customPriceCents.
+  customTrialMonths  Int?      @map("custom_trial_months")
   subscribedAt       DateTime  @default(now()) @map("subscribed_at")
   cancelledAt        DateTime? @map("cancelled_at")
   createdBy          String?   @map("created_by")
@@ -2575,16 +2583,24 @@ model WebQuote {
 
   status String @default("draft")
 
-  amountCents  Int    @map("amount_cents")
+  amountCents              Int    @map("amount_cents")
   // Optional advance/deposit — when set, billing splits into a deposit
   // invoice (amountCents - depositCents left as the final balance) instead
   // of a single invoice for the full amount. Null preserves today's
   // single-payment behavior unchanged. Operator-entered free amount, not a
   // fixed percentage — every quote here is already custom-priced.
-  depositCents Int?   @map("deposit_cents")
-  currency     String @default("eur")
+  depositCents             Int?   @map("deposit_cents")
+  currency                 String @default("eur")
   // Free text the CLIENT sees verbatim — what this quote covers.
-  description  String
+  description              String
+  // 11/11/2026 — cuota mensual de mantenimiento pactada en el presupuesto.
+  // Null = sin mantenimiento (y el cliente lo ve escrito). Al pagarse la web,
+  // se convierte en una oferta de 'web_care' con este precio
+  // (lib/custom-care.ts), que el cliente activa guardando la tarjeta.
+  monthlyCents             Int?   @map("monthly_cents")
+  // Cuántos meses tras activarla empieza a cobrarse (12 = el año de
+  // alojamiento incluido). 0 = desde el primer mes.
+  monthlyStartsAfterMonths Int    @default(12) @map("monthly_starts_after_months")
 
   createdByOperatorId String?   @map("created_by_operator_id") @db.Uuid
   sentAt              DateTime? @map("sent_at")
