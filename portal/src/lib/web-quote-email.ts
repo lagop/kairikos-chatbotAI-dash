@@ -163,3 +163,58 @@ export async function sendWebQuoteInvoiceEmail(input: {
 }): Promise<SendWebQuoteEmailResult> {
   return sendEmail(input.to, buildWebQuoteInvoiceEmail(input));
 }
+
+// -----------------------------------------------------------------------------
+// 10/11/2026 — oferta de mantenimiento a medida para una web que ya existe
+// («solo mantenimiento», lib/custom-care.ts). Sin este correo la oferta solo
+// se veía si el cliente entraba por su cuenta en la página de su web.
+//
+// La fecha de la primera cuota NO va en el correo: Stripe la calcula desde el
+// día en que el cliente activa, no desde hoy. Se dice en meses; la fecha
+// exacta la ve en el portal antes de guardar la tarjeta.
+//
+// Las ofertas que nacen al pagarse un presupuesto con cuota no lo mandan: el
+// cliente ya leyó la cuota en el correo y en la tarjeta del presupuesto.
+// -----------------------------------------------------------------------------
+
+export function buildCustomCareOfferEmail(vars: {
+  businessName: string;
+  priceCents: number;
+  currency: string;
+  trialMonths: number;
+  webClientProductId: string;
+}): { subject: string; text: string; html: string } {
+  const price = formatPrice(vars.priceCents, vars.currency);
+  const url = `${PORTAL_WEB_URL}/${vars.webClientProductId}`;
+  const subject = `El mantenimiento de tu web — ${price}/mes`;
+  const when =
+    vars.trialMonths <= 0
+      ? 'La primera cuota se cobra al activarlo, y después cada mes.'
+      : vars.trialMonths === 1
+        ? 'Al activarlo no se te cobra nada: la primera cuota llega al mes siguiente, y después cada mes.'
+        : `Al activarlo no se te cobra nada: la primera cuota llega ${vars.trialMonths} meses después, y después cada mes.`;
+  const lines = [
+    `Te hemos preparado el mantenimiento de tu web, con el precio que acordamos: ${price}/mes.`,
+    'Incluye el alojamiento, el dominio, las copias de seguridad y los cambios que pactamos.',
+    `Para activarlo, entra en la página de tu web en el portal y guarda tu tarjeta. ${when} Sin permanencia.`,
+  ];
+  const text = [`Hola ${vars.businessName},`, '', ...lines.flatMap((l) => [l, '']), `Activarlo: ${url}`, '', '— Kairikos'].join('\n');
+  const html = [
+    `<p>Hola ${escapeHtml(vars.businessName)},</p>`,
+    ...lines.map((l) => `<p>${escapeHtml(l)}</p>`),
+    `<p><a href="${escapeHtml(url)}">Activar el mantenimiento</a></p>`,
+    '<p>— Kairikos</p>',
+  ].join('\n');
+  return { subject, text, html };
+}
+
+export async function sendCustomCareOfferEmail(input: {
+  to: string;
+  businessName: string;
+  priceCents: number;
+  currency: string;
+  trialMonths: number;
+  webClientProductId: string;
+}): Promise<SendWebQuoteEmailResult> {
+  return sendEmail(input.to, buildCustomCareOfferEmail(input));
+}
