@@ -101,9 +101,13 @@ window.addEventListener('kairikos:chat_link', (e) => gtag('event', 'chat_link', 
 
 ## Enlaces (`data-links="same-origin"`)
 
-En las respuestas del bot se convierten en `<a>` los enlaces markdown `[texto](url)`
-y las URL `http(s)` sueltas **solo si** son rutas que empiezan por `/` (no `//`) o
-tienen el mismo origen que `location.origin`. Todo lo demás (otro dominio,
+En las respuestas del bot se convierten en `<a>` los enlaces markdown `[texto](url)`,
+las URL `http(s)` sueltas y las rutas sueltas (`/reserva/?origen=chat`), **solo si**
+son rutas que empiezan por `/` (no `//`) o tienen el mismo origen que
+`location.origin`. Una ruta suelta cuenta si va al principio o tras un espacio o un
+signo de apertura y sigue una letra o un número: «y/o» o «24/7» no son enlaces. Es
+la forma en la que el bot da las rutas de verdad: las copia de las preguntas
+frecuentes tal cual, sin markdown. Todo lo demás (otro dominio,
 `javascript:`, `mailto:`…) queda como el texto que era. La puntuación final de una
 URL suelta no forma parte del enlace. El DOM se construye nodo a nodo: nunca
 `innerHTML` con texto del servidor.
