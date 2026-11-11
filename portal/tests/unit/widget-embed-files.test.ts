@@ -64,6 +64,12 @@ describe('public/widget/embed.v2.js', () => {
     }
   });
 
+  // Safari anterior a 16.4 no entiende el lookbehind: una sola regex con
+  // (?<= o (?<! hace que el script entero falle al cargar en esos iPhone.
+  it('no usa lookbehind en las expresiones regulares', () => {
+    expect(source).not.toMatch(/\(\?<[=!]/);
+  });
+
   it('no deja caracteres separadores de línea literales (rompen el parser)', () => {
     const separadores = String.fromCharCode(0x2028, 0x2029);
     for (const ch of separadores) expect(source.includes(ch)).toBe(false);

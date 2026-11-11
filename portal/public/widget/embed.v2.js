@@ -268,9 +268,19 @@
   // por "/" (no "//", que es otro dominio) y URL absolutas http(s) con el
   // mismo origen que la página. Todo lo demás —otro dominio, javascript:,
   // mailto:, data:…— se queda como el texto que era. Nada pasa por innerHTML.
+  //
+  // Tres formas: markdown [texto](url), URL absoluta suelta y ruta suelta
+  // («reserva aquí: /reserva/?origen=chat»). La tercera se añadió el 11/11/2026
+  // al probar contra producción: el bot copia las rutas de las preguntas
+  // frecuentes tal cual, sin markdown, y quedaban como texto. Solo cuenta si va
+  // al principio o tras un espacio o signo de apertura, y si sigue una letra,
+  // un número, «_» o «-»: así «y/o», «24/7» o «//otro-dominio» no son enlaces.
+  // Sin lookbehind a propósito: Safari anterior a 16.4 no lo entiende y la
+  // regex rompería el script entero.
   // ---------------------------------------------------------------------------
 
-  var LINK_RE = /\[([^\]\n]{1,200})\]\(([^()\s]{1,500})\)|(https?:\/\/[^\s<>"'()\[\]]+)/g;
+  var LINK_RE =
+    /\[([^\]\n]{1,200})\]\(([^()\s]{1,500})\)|(https?:\/\/[^\s<>"'()\[\]]+)|(^|[\s(«"'¿¡:])(\/[A-Za-z0-9_\-][^\s<>"'()\[\]«»]*)/g;
 
   function safeHref(raw) {
     if (!raw) return null;
@@ -315,12 +325,16 @@
       var label;
       var target;
       var trailing = '';
+      // Dónde empieza el enlace: en una ruta suelta, después del espacio o
+      // signo que la precede (que se queda como texto).
+      var start = match.index;
       if (match[1] !== undefined) {
         label = match[1];
         target = match[2];
       } else {
-        // URL suelta: la puntuación final es de la frase, no de la URL.
-        var url = match[3];
+        // URL o ruta suelta: la puntuación final es de la frase, no del enlace.
+        var url = match[3] !== undefined ? match[3] : match[5];
+        if (match[3] === undefined) start = match.index + match[4].length;
         var punct = /[.,;:!?…]+$/.exec(url);
         if (punct) {
           trailing = punct[0];
@@ -332,9 +346,9 @@
       }
       var href = safeHref(target);
       if (!href) continue;
-      if (match.index > last) container.appendChild(document.createTextNode(text.slice(last, match.index)));
+      if (start > last) container.appendChild(document.createTextNode(text.slice(last, start)));
       container.appendChild(makeLink(label, href));
-      last = match.index + whole.length;
+      last = start + whole.length;
       // La puntuación que se separó vuelve como texto en la siguiente vuelta.
       LINK_RE.lastIndex = last;
     }
