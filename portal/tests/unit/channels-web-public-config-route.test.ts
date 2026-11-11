@@ -91,6 +91,8 @@ describe('GET /api/public/channels/web/config', () => {
       primaryColor: '#0E6B5E',
       position: 'bottom-right',
       chatEndpoint: 'https://portal.kairikos.com/api/public/channels/web/message',
+      // Widget v2 — sin perfil de clínica, null. v1 lo ignora.
+      sensitiveDataNotice: null,
     });
     expect(body.clientId).toBeUndefined();
     expect(body.publicToken).toBeUndefined();
@@ -181,6 +183,48 @@ describe('GET /api/public/channels/web/config', () => {
     expect(mockState.stepFindMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ clientProductId: 'cp_web', activeForBot: true }) }),
     );
+  });
+});
+
+// Widget v2 — aviso de no escribir datos de salud. Sale del paso 1 aprobado
+// del chatbot (`vertical`), no de nada que mande el navegador.
+describe('sensitiveDataNotice', () => {
+  const PERFIL = { nombre_comercial: 'Clínica Orly', idiomas: ['ES', 'EN'], idioma_por_defecto: 'ES' };
+
+  beforeEach(() => {
+    mockState.embedFindUnique.mockResolvedValue({ clientId: 'c1', status: 'active', primaryColor: '#000', position: 'bottom-right' });
+  });
+
+  async function getConfig(vertical: string | null, lang?: string) {
+    mockState.stepFindMany.mockResolvedValue(vertical ? [{ stepKey: '1', payload: { ...PERFIL, vertical } }] : []);
+    const { GET } = await import('@/app/api/public/channels/web/config/route');
+    const req = makeRequest('wgt_aviso_' + Math.random().toString(36).slice(2));
+    if (lang) req.nextUrl.searchParams.set('lang', lang);
+    return (await GET(req)).json();
+  }
+
+  it('una clínica lo recibe, con el texto acordado', async () => {
+    const body = await getConfig('clinica');
+    expect(body.sensitiveDataNotice).toBe(
+      'Por tu privacidad, no escribas aquí datos de salud. Para tu caso concreto, pide cita.',
+    );
+  });
+
+  it('en inglés cuando el widget pide ?lang=en', async () => {
+    const body = await getConfig('clinica', 'en');
+    expect(body.sensitiveDataNotice).toMatch(/health information/);
+  });
+
+  it('cualquier otro sector, null', async () => {
+    for (const vertical of ['abogado', 'inmobiliaria', 'gestoria', 'otro']) {
+      const body = await getConfig(vertical);
+      expect(body.sensitiveDataNotice).toBeNull();
+    }
+  });
+
+  it('sin paso 1 aprobado, null — no se supone que sea una clínica', async () => {
+    const body = await getConfig(null);
+    expect(body.sensitiveDataNotice).toBeNull();
   });
 });
 

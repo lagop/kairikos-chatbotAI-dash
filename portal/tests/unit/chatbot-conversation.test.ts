@@ -682,3 +682,26 @@ describe('replyToIncomingMessage — aviso al negocio cuando el bot deriva', () 
     expect(mockState.sendHandoffAlertEmail).not.toHaveBeenCalled();
   });
 });
+
+// Widget v2 — el contexto de la visita llega al motor para ESTE turno y a
+// ningún sitio más: no es algo que haya dicho la persona.
+describe('replyToIncomingMessage — contexto de la visita (widget v2)', () => {
+  const LINEA = 'El visitante está en la página «/implantes».';
+
+  it('se lo pasa al motor', async () => {
+    await replyToIncomingMessage(prismaMock, { ...BASE, visitorContext: LINEA });
+    expect(mockState.generateBotReply).toHaveBeenCalledWith(expect.objectContaining({ visitorContext: LINEA }));
+  });
+
+  it('no entra en el transcript', async () => {
+    await replyToIncomingMessage(prismaMock, { ...BASE, visitorContext: LINEA });
+    const transcript = transcriptOf(mockState.create.mock.calls[0][0]);
+    expect(JSON.stringify(transcript)).not.toContain('/implantes');
+    expect(transcript[0]).toMatchObject({ role: 'user', content: 'quiero pedir cita' });
+  });
+
+  it('sin él, el motor no recibe la clave', async () => {
+    await replyToIncomingMessage(prismaMock, BASE);
+    expect(mockState.generateBotReply.mock.calls[0][0]).not.toHaveProperty('visitorContext');
+  });
+});

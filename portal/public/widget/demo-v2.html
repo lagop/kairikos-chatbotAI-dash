@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Widget v2 — página de prueba</title>
+<!--
+  Página de prueba de embed.v2.js. Contrato en docs/widget-v2.md.
+
+  Dos modos:
+   - Simulado (por defecto): la página intercepta SUS PROPIAS llamadas a
+     /api/public/channels/web/* y contesta con datos de ejemplo (una clínica,
+     con aviso de datos de salud y respuestas con enlaces). Sirve para probar
+     la API, los eventos, los enlaces, el tema y el teclado sin base de datos.
+     El widget no sabe nada de esto: es el mismo archivo que en producción.
+   - Real: ?token=wgt_… usa las rutas de verdad del portal que sirve esta
+     página. Sin base de datos la configuración da 503 y el widget no se pinta.
+
+  Los atributos data-* se leen al cargar el script, así que se eligen por la
+  URL: ?lang=en&theme=dark&links=none&launcher=bubble&offset=88&accent=%23c2410c
+  El script se carga de forma perezosa, al primer botón que usa la API, como lo
+  hará la web Signature.
+-->
+<style>
+  :root { color-scheme: light dark; --bg:#f6f5f2; --fg:#1d1d1b; --muted:#5d5d58; --card:#fff; --line:#dedcd5; --accent:#1f7f77; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#141513; --fg:#ecebe6; --muted:#a9a8a1; --card:#1d1e1b; --line:#34352f; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; padding:24px 16px 120px; }
+  main { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p.lead { color: var(--muted); margin: 0 0 20px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; }
+  button, .chip { font: inherit; min-height: 44px; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
+  button.primary { background: var(--accent); color: #fff; border-color: transparent; }
+  button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  code { font-size: 13px; }
+  #log { font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; background: var(--bg); border:1px solid var(--line); border-radius: 8px; padding: 8px; height: 180px; overflow:auto; white-space: pre-wrap; margin:0; }
+  .modes a { color: var(--accent); }
+  .bar { position: fixed; left: 0; right: 0; bottom: 0; height: 72px; display:flex; align-items:center; justify-content:center; gap: 12px; background: var(--card); border-top: 1px solid var(--line); z-index: 10; }
+  #status { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Widget v2 — página de prueba</h1>
+  <p class="lead">Carga <code>/widget/embed.v2.js</code> con <code>data-launcher="none"</code>: no hay burbuja, el chat se abre con los botones de abajo. <span id="mode"></span></p>
+
+  <section>
+    <h2>Abrir y cerrar</h2>
+    <div class="row">
+      <button class="primary" id="b-open" type="button">Abrir el chat</button>
+      <button id="b-open-msg" type="button">Abrir con «¿Hacéis implantes?»</button>
+      <button id="b-close" type="button">close()</button>
+      <button id="b-toggle" type="button">toggle()</button>
+      <button id="b-isopen" type="button">isOpen()</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Contexto, tema y textos</h2>
+    <div class="row">
+      <button id="b-ctx" type="button">setContext({ page: '/tratamientos/implantes', topic: 'implantes' })</button>
+      <button id="b-ctx-bad" type="button">setContext con 7 claves y un valor largo</button>
+      <button id="b-light" type="button">setTheme('light')</button>
+      <button id="b-dark" type="button">setTheme('dark')</button>
+      <button id="b-conf" type="button">configure(saludo y sugerencias en inglés)</button>
+    </div>
+    <p id="status">Último contexto enviado al servidor: —</p>
+  </section>
+
+  <section>
+    <h2>Eventos en <code>window</code></h2>
+    <pre id="log" aria-live="off"></pre>
+  </section>
+
+  <section class="modes">
+    <h2>Variantes (se leen al cargar el script)</h2>
+    <div class="row">
+      <a href="?">Por defecto (simulado)</a> ·
+      <a href="?lang=en">Inglés</a> ·
+      <a href="?theme=dark">Oscuro</a> ·
+      <a href="?theme=auto">Auto</a> ·
+      <a href="?links=none">Sin enlaces</a> ·
+      <a href="?launcher=bubble&amp;offset=">Con burbuja (como v1)</a> ·
+      <a href="?accent=%23f2c94c&amp;font=Georgia,serif">Acento claro + otra letra</a>
+    </div>
+  </section>
+
+  <section id="tratamientos">
+    <h2>Página de destino de los enlaces</h2>
+    <p>Los enlaces que da el bot simulado apuntan a esta misma página (<code>#tratamientos</code>, <code>?seccion=reservar</code>). Uno a otro dominio y uno <code>javascript:</code> deben quedarse como texto.</p>
+  </section>
+</main>
+
+<div class="bar"><strong>Alisio (prueba)</strong><button class="primary" id="b-bar" type="button">Pregunta al asistente</button></div>
+
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var token = params.get('token');
+  var simulated = !token;
+  document.getElementById('mode').textContent = simulated
+    ? 'Modo simulado: las respuestas son de ejemplo.'
+    : 'Modo real con el token ' + token + '.';
+
+  var log = document.getElementById('log');
+  function write(line) {
+    var t = new Date().toLocaleTimeString();
+    log.textContent += t + '  ' + line + '\n';
+    log.scrollTop = log.scrollHeight;
+  }
+  ['chat_ready', 'chat_open', 'chat_close', 'chat_message', 'chat_contact', 'chat_link'].forEach(function (name) {
+    window.addEventListener('kairikos:' + name, function (e) {
+      write('kairikos:' + name + ' ' + JSON.stringify(e.detail));
+    });
+  });
+
+  // ---- Modo simulado: respuestas de ejemplo para las rutas del widget ----
+  if (simulated) {
+    var realFetch = window.fetch.bind(window);
+    var json = function (body, status) {
+      return Promise.resolve(new Response(JSON.stringify(body), { status: status || 200, headers: { 'Content-Type': 'application/json' } }));
+    };
+    window.fetch = function (input, init) {
+      var url = typeof input === 'string' ? input : input.url;
+      if (url.indexOf('/api/public/channels/web/config') !== -1) {
+        var en = url.indexOf('lang=en') !== -1;
+        return json({
+          businessName: 'Alisio Dental Studio',
+          welcomeMessage: '¡Hola! Soy el asistente de Alisio. ¿En qué te ayudo?',
+          farewellMessage: null,
+          suggestedPrompts: ['Horario', 'Implantes', 'Quiero que me llaméis'],
+          primaryColor: '#0E6B5E',
+          position: 'bottom-right',
+          chatEndpoint: location.origin + '/api/public/channels/web/message',
+          sensitiveDataNotice: en
+            ? "For your privacy, please don't share health information here. For your specific case, book an appointment."
+            : 'Por tu privacidad, no escribas aquí datos de salud. Para tu caso concreto, pide cita.',
+        });
+      }
+      if (url.indexOf('/api/public/channels/web/message') !== -1) {
+        var body = JSON.parse(init.body);
+        document.getElementById('status').textContent =
+          'Último contexto enviado al servidor: ' + (body.context ? JSON.stringify(body.context) : '— (sin context)');
+        var text = String(body.message).toLowerCase();
+        var reply, mode = 'portal', askContact = false;
+        if (/llam|contact|call/.test(text)) {
+          reply = 'Te paso con alguien del equipo.';
+          askContact = true;
+        } else if (/fallo|error/.test(text)) {
+          return json({ success: true, data: { reply: 'Gracias por tu mensaje…', mode: 'fallback', contactIntent: false, askContact: false } });
+        } else {
+          reply =
+            'Sí, hacemos implantes. Tienes los detalles en [la página de tratamientos](/widget/demo-v2.html#tratamientos) ' +
+            'y puedes reservar aquí: ' + location.origin + '/widget/demo-v2.html?seccion=reservar.\n' +
+            'Esto NO debe ser enlace: [otro dominio](https://example.com/x), [script](javascript:alert(1)), ' +
+            'https://evil.example/phish y //evil.example/x.';
+        }
+        return new Promise(function (resolve) {
+          setTimeout(function () {
+            resolve(json({ success: true, data: { sessionId: body.sessionId, reply: reply, mode: mode, contactIntent: askContact, askContact: askContact } }));
+          }, 500);
+        });
+      }
+      if (url.indexOf('/api/public/channels/web/contact') !== -1) {
+        return json({ success: true });
+      }
+      return realFetch(input, init);
+    };
+  }
+
+  // ---- Carga perezosa del script, al primer uso de la API ----
+  var loading = null;
+  function chat() {
+    if (window.KairikosChat) return Promise.resolve(window.KairikosChat);
+    if (loading) return loading;
+    loading = new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = '/widget/embed.v2.js';
+      s.async = true;
+      s.setAttribute('data-space-token', token || 'wgt_demo');
+      s.setAttribute('data-launcher', params.get('launcher') === 'bubble' ? 'bubble' : 'none');
+      s.setAttribute('data-lang', params.get('lang') || 'es');
+      s.setAttribute('data-theme', params.get('theme') || 'light');
+      s.setAttribute('data-links', params.get('links') || 'same-origin');
+      if (params.get('font')) s.setAttribute('data-font', params.get('font'));
+      else s.setAttribute('data-font', "'Albert Sans', system-ui, sans-serif");
+      if (params.get('accent')) s.setAttribute('data-accent', params.get('accent'));
+      else s.setAttribute('data-accent', '#1f7f77');
+      var offset = params.has('offset') ? params.get('offset') : '88';
+      if (offset) s.setAttribute('data-offset', offset);
+      s.onload = function () { resolve(window.KairikosChat); };
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+    return loading;
+  }
+
+  function on(id, fn) {
+    document.getElementById(id).addEventListener('click', function () {
+      chat().then(fn);
+    });
+  }
+  on('b-open', function (c) { c.open(); });
+  on('b-bar', function (c) { c.open(); });
+  on('b-open-msg', function (c) { c.open({ message: '¿Hacéis implantes?' }); });
+  on('b-close', function (c) { c.close(); });
+  on('b-toggle', function (c) { c.toggle(); });
+  on('b-isopen', function (c) { write('isOpen() → ' + c.isOpen()); });
+  on('b-ctx', function (c) {
+    c.setContext({ page: '/tratamientos/implantes', topic: 'implantes', lang: document.documentElement.lang });
+    write('setContext hecho');
+  });
+  on('b-ctx-bad', function (c) {
+    c.setContext({ a: '1', b: '2', c: '3', d: '4', e: '5', f: '6', g: '7', page: new Array(300).join('x') });
+    write('setContext con 7 claves: se envían las 5 primeras, recortadas');
+  });
+  on('b-light', function (c) { c.setTheme('light'); });
+  on('b-dark', function (c) { c.setTheme('dark'); });
+  on('b-conf', function (c) {
+    c.configure({ welcome: 'Hi! I am the Alisio assistant. How can I help?', prompts: ['Opening hours', 'Implants', 'Call me back'] });
+    write('configure hecho');
+  });
+
+  // Atributos que se leen al cargar: si la URL los trae, se carga ya.
+  if (params.get('launcher') === 'bubble') chat();
+
+  // Volver de un enlace del chat: con data-links="same-origin" el widget
+  // guarda la conversación en sessionStorage, pero con carga perezosa nadie
+  // carga el script en la página nueva. Si el chat estaba abierto, se carga ya
+  // y él solo reabre el panel con el hilo. Este es el patrón para la web.
+  try {
+    var saved = JSON.parse(sessionStorage.getItem('kairikos-chat-v2:' + (token || 'wgt_demo')) || 'null');
+    if (saved && saved.open) chat();
+  } catch (e) {}
+})();
+</script>
+</body>
+</html>
