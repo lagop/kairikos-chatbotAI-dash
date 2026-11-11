@@ -3,6 +3,7 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { buildChatbotContext } from '@/lib/chatbot-config';
 import { resolveChatbotForChannel } from '@/lib/client-product-access';
 import { InMemoryRateLimiter } from '@/lib/operator-crypto';
+import { sensitiveDataNoticeFor } from '@/lib/web-widget-context';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -103,6 +104,13 @@ export async function GET(req: NextRequest) {
       primaryColor: embed.primaryColor,
       position: embed.position,
       chatEndpoint: `${publicOrigin(req)}/api/public/channels/web/message`,
+      // Widget v2 — aviso de no escribir datos de salud, solo para clínicas
+      // (paso 1, `vertical`). null para el resto; embed.js (v1) lo ignora.
+      // `?lang=en` lo pide embed.v2.js cuando la web va en inglés.
+      sensitiveDataNotice: sensitiveDataNoticeFor(
+        context.config.perfil,
+        req.nextUrl.searchParams.get('lang'),
+      ),
     },
     { headers: CORS_HEADERS },
   );

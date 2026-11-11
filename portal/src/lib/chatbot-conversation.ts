@@ -74,6 +74,11 @@ export interface ReplyToIncomingMessageInput {
   /** Canal de origen, tal y como se guarda en Lead.channel. */
   channel: string;
   message: string;
+  /** Widget v2 — línea opcional sobre dónde está el visitante (la página, el
+   *  tratamiento), ya redactada por web-widget-context.ts. Va al prompt de
+   *  ESTE turno y a ningún sitio más: no entra en el transcript ni cambia el
+   *  mensaje guardado, porque no es algo que haya dicho la persona. */
+  visitorContext?: string | null;
   now?: Date;
 }
 
@@ -306,6 +311,7 @@ export async function replyToIncomingMessage(
     message: input.message,
     now,
     knowledge,
+    ...(input.visitorContext ? { visitorContext: input.visitorContext } : {}),
   });
 
   const entries: unknown[] = [...priorTranscript, userEntry];

@@ -6,6 +6,7 @@ import { replyToIncomingMessage } from '@/lib/chatbot-conversation';
 import { InMemoryRateLimiter } from '@/lib/operator-crypto';
 import { clientIpFromHeaders } from '@/lib/client-ip';
 import { isReservedSessionId } from '@/lib/conversation-session-id';
+import { buildVisitorContextLine, parseVisitorContext } from '@/lib/web-widget-context';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -51,6 +52,8 @@ const BodySchema = z.object({
   publicToken: z.string().trim().min(1),
   sessionId: z.string().trim().min(1).max(200).refine((id) => !isReservedSessionId(id)),
   message: z.string().trim().min(1).max(4000),
+  // Se valida aparte (parseVisitorContext): aquí solo se deja pasar.
+  context: z.unknown().optional(),
 });
 
 // Este endpoint SÍ gasta — cada llamada válida golpea el motor de IA. El
@@ -113,6 +116,11 @@ export async function POST(req: NextRequest) {
     );
   }
   const { publicToken, sessionId, message } = body.data;
+  // Widget v2 — `context` opcional ({ page, topic, lang… }). Fuera de
+  // BodySchema a propósito: uno inválido se ignora en vez de dar 400, porque
+  // es un extra y no puede dejar al visitante sin respuesta. embed.js (v1)
+  // nunca lo manda. Ver web-widget-context.ts y docs/widget-v2.md.
+  const visitorContext = buildVisitorContextLine(parseVisitorContext(body.data.context));
 
   const ipKey = `${publicToken}:${clientIpFromHeaders(req.headers)}`;
   if (
@@ -165,6 +173,7 @@ export async function POST(req: NextRequest) {
     channel: 'web',
     key: { kind: 'exact', externalSessionId: sessionId },
     message,
+    ...(visitorContext ? { visitorContext } : {}),
   });
 
   if ('skipped' in result) {
