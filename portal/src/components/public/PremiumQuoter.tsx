@@ -91,6 +91,16 @@ function DemoLink({ sectorId, demo, emit }: { sectorId: string; demo: { url: str
   );
 }
 
+/**
+ * La barra fija del móvil sobra si el presupuestador aún no asoma por abajo o
+ * si ya ha terminado: su final lleva 80 px de margen para ella, y cuando ese
+ * final sube por encima del borde de la pantalla, lo que hay debajo es página.
+ */
+function barOutOfPlace(el: HTMLElement): boolean {
+  const box = el.getBoundingClientRect();
+  return box.top > window.innerHeight - 120 || box.bottom < window.innerHeight - 24;
+}
+
 export function PremiumQuoter({
   quoter,
   embedded,
@@ -170,6 +180,36 @@ export function PremiumQuoter({
     return () => cancelAnimationFrame(raf);
   }, [r.total]);
 
+  // --- la barra del móvil, solo mientras se ve el presupuestador ----------------
+  // Va fija abajo. Cuando el presupuestador ya ha pasado (o aún no ha llegado),
+  // taparía lo que la página tenga debajo: en kairikos.com, las webs de ejemplo
+  // y el pie. Se mide en cada scroll: el presupuestador cambia de alto con cada
+  // paso y un IntersectionObserver no sabe dónde acaba respecto a la barra.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [barAway, setBarAway] = useState(false);
+  useEffect(() => {
+    let raf = 0;
+    const measure = () => {
+      raf = 0;
+      if (rootRef.current) setBarAway(barOutOfPlace(rootRef.current));
+    };
+    const schedule = () => {
+      if (!raf) raf = requestAnimationFrame(measure);
+    };
+    measure();
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    return () => {
+      window.removeEventListener('scroll', schedule);
+      window.removeEventListener('resize', schedule);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
+  // Cada paso cambia el alto: se vuelve a medir sin esperar al scroll.
+  useEffect(() => {
+    if (rootRef.current) setBarAway(barOutOfPlace(rootRef.current));
+  }, [state.step, state.sector, state.showResult]);
+
   // --- avanzar ------------------------------------------------------------------
   const advancing = useRef(false);
   const next = useCallback(() => {
@@ -235,7 +275,7 @@ export function PremiumQuoter({
   const totalText = r.total ? fmt(quoter, shown) : '—';
 
   return (
-    <div className={styles.root}>
+    <div className={styles.root} ref={rootRef}>
       {preview ? <div className={styles.previewBanner}>Vista previa de operador: esta página todavía no está publicada.</div> : null}
 
       {embedded ? null : (
@@ -400,7 +440,7 @@ export function PremiumQuoter({
         </aside>
       </main>
 
-      <div className={styles.mbar}>
+      <div className={barAway ? `${styles.mbar} ${styles.away}` : styles.mbar}>
         <div>
           <span>Inversión estimada</span>
           <b>{totalText}</b>

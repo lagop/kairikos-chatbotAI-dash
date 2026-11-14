@@ -142,6 +142,9 @@ form.lead input:focus,form.lead select:focus{border-color:var(--sage)}
   .mbar b{font-family:var(--font-serif);font-weight:400;font-size:22px}
   .mbar span{font-size:11px;opacity:.7;text-transform:uppercase;letter-spacing:.08em;display:block}
   .mbar .m{text-align:right;font-size:13px}
+  /* Fuera del presupuestador la barra se aparta para no tapar la página. */
+  .mbar{transition:opacity .2s ease,transform .2s ease,visibility .2s}
+  .mbar.away{opacity:0;transform:translateY(16px);visibility:hidden;pointer-events:none}
   .stepper{padding:22px}
   form.lead{grid-template-columns:1fr}
   .root{padding-bottom:80px}
