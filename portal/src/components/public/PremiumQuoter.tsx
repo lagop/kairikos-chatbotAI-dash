@@ -80,6 +80,17 @@ interface State {
   showResult: boolean;
 }
 
+/** Web de ejemplo del sector (demo de Kairikos Signature): en otra pestaña, para no perder el presupuesto. */
+function DemoLink({ sectorId, demo, emit }: { sectorId: string; demo: { url: string; label: string }; emit: QuoterEventSink }) {
+  return (
+    <a className={styles.demo} href={demo.url} target="_blank" rel="noopener" onClick={() => emit('presupuestador_demo', { sector: sectorId })}>
+      Ver una web de ejemplo: {demo.label}{' '}
+      <span aria-hidden="true">↗</span>
+      <span className={styles.oculto}> (se abre en otra pestaña)</span>
+    </a>
+  );
+}
+
 export function PremiumQuoter({
   quoter,
   embedded,
@@ -324,6 +335,7 @@ export function PremiumQuoter({
                 {sec.name}
               </div>
             ) : null}
+            {sec?.demo && state.sector ? <DemoLink sectorId={state.sector} demo={sec.demo} emit={emit} /> : null}
             {L.enabled ? (
               <div className={styles.launch}>{L.label}</div>
             ) : null}
@@ -508,6 +520,7 @@ function Result({
         <div className={styles.insight}>
           <Rich text={insightFor(quoter, selection)} />
         </div>
+        {sec.demo ? <DemoLink sectorId={sectorId} demo={sec.demo} emit={emit} /> : null}
         {sent ? null : (
           <>
             <h3 className={styles.serif} style={{ fontSize: 22, marginBottom: 4 }}>

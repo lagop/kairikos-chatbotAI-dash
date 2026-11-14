@@ -176,6 +176,18 @@ describe('validateQuoterData', () => {
     d.sectors.dental.widgets[0].icon = 'nope';
     expect(problemas(d).join()).toMatch(/icono «nope»/);
   });
+  it('la web de ejemplo de un sector es opcional y va por https', () => {
+    expect(raw.sectors.dental.demo?.url).toMatch(/^https:\/\//);
+    const d = clone();
+    delete d.sectors.dental.demo;
+    expect(problemas(d)).toEqual([]);
+    d.sectors.dental.demo = { url: 'http://signature-demo.kairikos.cloud/', label: 'Alisio' };
+    expect(problemas(d).join()).toMatch(/https/);
+    d.sectors.dental.demo = { url: 'https://signature-demo.kairikos.cloud/', label: '' };
+    expect(problemas(d)).not.toEqual([]);
+    (d.sectors.dental as unknown as { demo: Record<string, string> }).demo = { url: 'https://signature-demo.kairikos.cloud/', label: 'Alisio', extra: 'x' };
+    expect(problemas(d)).not.toEqual([]);
+  });
   it('rechaza un patch a una opción que no existe', () => {
     const d = clone();
     d.sectors.dental.patch.tipo.opts = { fantasma: { label: 'x' } };

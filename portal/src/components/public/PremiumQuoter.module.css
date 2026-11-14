@@ -116,6 +116,12 @@ header.top{max-width:1180px;margin:0 auto;padding:28px 24px 0;display:flex;align
 .result .big .box b{display:block;font-family:var(--font-serif);font-weight:400;font-size:30px;margin-top:6px;line-height:1.1}
 .result .insight{border-left:3px solid var(--gold);background:var(--gold-soft);padding:14px 16px;border-radius:0 12px 12px 0;font-size:14px;color:var(--ink-2);margin-bottom:22px}
 .result .insight b{color:var(--ink)}
+/* Web de ejemplo del sector (14/11/2026): enlace discreto, con el acento del texto, nunca un segundo botón. Con .root delante para ganar a «.root a» */
+.root .demo{display:inline-block;font-size:13px;font-weight:600;color:var(--sage);text-decoration:underline;text-underline-offset:3px;margin:0 0 12px}
+.root .demo:hover{color:var(--gold)}
+.root .demo:focus-visible{outline:2px solid var(--sage);outline-offset:2px;border-radius:4px}
+.root .result .demo{font-size:14px;margin:-8px 0 22px}
+.oculto{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 form.lead{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
 form.lead .full{grid-column:1/-1}
 form.lead label{font-size:12px;font-weight:700;color:var(--ink-2);display:flex;flex-direction:column;gap:6px}

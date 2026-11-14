@@ -92,6 +92,8 @@ export interface QuoterSector {
   patch: Record<string, QuoterStepPatch>;
   widgets: QuoterOption[];
   insights: QuoterInsight[];
+  /** Web de ejemplo del sector, si la hay (ver premium-quoter-schema.ts). */
+  demo?: { url: string; label: string };
 }
 
 export interface QuoterConfig {

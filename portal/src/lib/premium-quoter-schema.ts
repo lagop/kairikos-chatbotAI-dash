@@ -81,6 +81,16 @@ const sector = z
     hero,
     patch: z.record(patch),
     widgets: z.array(option),
+    // Web de ejemplo del sector (demo de Kairikos Signature). Opcional: solo los
+    // sectores que ya tienen una. Se abre en otra pestaña desde el resumen y el
+    // resultado.
+    demo: z
+      .object({
+        url: z.string().url().refine((u) => u.startsWith('https://'), 'la demo tiene que ir por https'),
+        label: z.string().min(1).max(80),
+      })
+      .strict()
+      .optional(),
     insights: z.array(
       z
         .object({
