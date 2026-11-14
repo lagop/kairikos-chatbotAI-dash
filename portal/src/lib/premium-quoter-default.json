@@ -444,7 +444,11 @@
           },
           "text": "<b>Sugerencia:</b> en implantes y ortodoncia el precio es la mayor barrera. Un simulador de financiación suele ser la pieza con mejor retorno por euro invertido."
         }
-      ]
+      ],
+      "demo": {
+        "url": "https://signature-demo.kairikos.cloud/",
+        "label": "Alisio Dental Studio (clínica ficticia)"
+      }
     },
     "estetica": {
       "name": "Medicina estética y cirugía",
@@ -590,7 +594,11 @@
           },
           "text": "<b>Sugerencia:</b> la videoconsulta de valoración filtra pacientes y adelanta la decisión, especialmente con pacientes de fuera."
         }
-      ]
+      ],
+      "demo": {
+        "url": "https://signature-estetica.kairikos.cloud/",
+        "label": "Claraboya (clínica ficticia)"
+      }
     },
     "inmobiliaria": {
       "name": "Inmobiliaria premium",
