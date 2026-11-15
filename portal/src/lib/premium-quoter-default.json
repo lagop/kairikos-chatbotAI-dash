@@ -1058,7 +1058,11 @@
           },
           "text": "<b>Sugerencia:</b> sin motor de reservas directo, la web empuja a tus huéspedes hacia Booking. Es la pieza con retorno más medible."
         }
-      ]
+      ],
+      "demo": {
+        "url": "https://signature-hotel.kairikos.cloud/",
+        "label": "Sombra Buena (hotel ficticio)"
+      }
     },
     "arquitectura": {
       "name": "Arquitectura, interiorismo y reformas",
