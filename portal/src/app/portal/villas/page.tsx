@@ -1,0 +1,202 @@
+import type { Metadata } from 'next';
+import Link from 'next/link';
+import { prisma, isDatabaseConfigured } from '@/lib/prisma';
+import { requirePortalSession } from '@/lib/session';
+import { resolveClientFromSession } from '@/lib/portal-session';
+import { PageHeading } from '@/components/portal/PageHeading';
+import { EmptyState } from '@/components/portal/EmptyState';
+import { VillasPanel, type VillasPanelData } from '@/components/portal/VillasPanel';
+import { findRentalForClient, rentalToday } from '@/lib/villas/rental';
+import { fromDbDate, toDbDate } from '@/lib/villas/dates';
+import { hasStripeKey, isLiveModeAllowed } from '@/lib/villas/stripe-deposit';
+import { isBlocking } from '@/lib/villas/request-rules';
+import { portalBaseUrl } from '@/lib/portal-base-url';
+
+export const dynamic = 'force-dynamic';
+
+export const metadata: Metadata = {
+  title: 'Reservas de villas',
+  robots: { index: false, follow: false },
+};
+
+// =============================================================================
+// Reserva propia para villas — el panel del dueño (/portal/villas).
+//
+// Lo primero son las solicitudes que esperan respuesta, con su plazo: es lo
+// único urgente. Debajo, cada villa (precios, temporadas, calendarios), las
+// condiciones y Stripe, y el código para pegar el widget en la web.
+//
+// No sale en el menú del portal: el enlace lo da el correo de cada solicitud
+// y el operador al activarlo. El menú es común a todos los clientes y este
+// producto lo tienen pocos (ver portal-nav.ts).
+// =============================================================================
+
+export default async function VillasPage() {
+  await requirePortalSession();
+  const resolved = isDatabaseConfigured ? await resolveClientFromSession() : null;
+  const rental = resolved?.source === 'database' ? await findRentalForClient(prisma, resolved.clientId) : null;
+
+  if (!rental) {
+    return (
+      <div>
+        <PageHeading eyebrow="Reservas" title="Reserva propia para villas" />
+        <EmptyState
+          title="No está activa en tu cuenta"
+          description="La reserva propia para villas (calendario, sincronización con Airbnb y Booking, solicitudes y depósito con Stripe) se contrata con tu web Signature."
+          action={
+            <Link href="/portal/support" className="btn-primary">
+              Hablar con soporte
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
+
+  const now = new Date();
+  const today = rentalToday(rental, now);
+  const [villas, requests] = await Promise.all([
+    prisma.villa.findMany({
+      where: { rentalId: rental.id },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+      include: {
+        seasons: { orderBy: { startDate: 'asc' } },
+        feeds: { orderBy: { createdAt: 'asc' } },
+        blocks: { where: { feedId: null, endDate: { gt: toDbDate(today) } }, orderBy: { startDate: 'asc' } },
+      },
+    }),
+    prisma.villaBookingRequest.findMany({
+      where: {
+        rentalId: rental.id,
+        OR: [{ status: { in: ['pending', 'accepted'] } }, { checkOut: { gt: toDbDate(today) } }, { updatedAt: { gt: new Date(now.getTime() - 30 * 86_400_000) } }],
+      },
+      orderBy: [{ checkIn: 'asc' }],
+      take: 200,
+    }),
+  ]);
+
+  const base = portalBaseUrl();
+  const blockingByVilla = new Map<string, Array<{ id: string; start: string; end: string }>>();
+  for (const r of requests) {
+    if (!isBlocking(r, now)) continue;
+    const list = blockingByVilla.get(r.villaId) ?? [];
+    list.push({ id: r.id, start: fromDbDate(r.checkIn), end: fromDbDate(r.checkOut) });
+    blockingByVilla.set(r.villaId, list);
+  }
+  const importedBlocks = await prisma.villaBlock.findMany({
+    where: { villaId: { in: villas.map((v) => v.id) }, feedId: { not: null }, endDate: { gt: toDbDate(today) } },
+    select: { villaId: true, startDate: true, endDate: true, feed: { select: { label: true } } },
+  });
+
+  const data: VillasPanelData = {
+    today,
+    timeZone: rental.timeZone,
+    settings: {
+      businessName: rental.businessName,
+      ownerEmail: rental.ownerEmail,
+      ownerPhone: rental.ownerPhone,
+      siteUrl: rental.siteUrl,
+      timeZone: rental.timeZone,
+      depositPercent: rental.depositPercent,
+      confirmHours: rental.confirmHours,
+      paymentHours: rental.paymentHours,
+      balanceNote: rental.balanceNote,
+      cancellationNote: rental.cancellationNote,
+    },
+    stripe: {
+      configured: hasStripeKey(rental),
+      mode: rental.stripeKeyMode,
+      hint: rental.stripeKeyHint,
+      liveAllowed: isLiveModeAllowed(),
+    },
+    embed: {
+      publicToken: rental.publicToken,
+      scriptUrl: `${base}/widget/villas.v1.js`,
+    },
+    villas: villas.map((v) => ({
+      id: v.id,
+      slug: v.slug,
+      name: v.name,
+      maxGuests: v.maxGuests,
+      nightlyCents: v.nightlyCents,
+      minNights: v.minNights,
+      cleaningFeeCents: v.cleaningFeeCents,
+      vatRateBps: v.vatRateBps,
+      touristTaxCents: v.touristTaxCents,
+      isActive: v.isActive,
+      icalExportUrl: `${base}/api/public/villas/ical/${v.icalToken}.ics`,
+      seasons: v.seasons.map((s) => ({
+        name: s.name,
+        startDate: fromDbDate(s.startDate),
+        endDate: fromDbDate(s.endDate),
+        nightlyCents: s.nightlyCents,
+        minNights: s.minNights,
+      })),
+      feeds: v.feeds.map((f) => ({
+        id: f.id,
+        label: f.label,
+        host: (() => {
+          try {
+            return new URL(f.url).hostname;
+          } catch {
+            return f.url;
+          }
+        })(),
+        lastSyncedAt: f.lastSyncedAt?.toISOString() ?? null,
+        lastStatus: f.lastStatus,
+        lastError: f.lastError,
+        eventCount: f.eventCount,
+      })),
+      manualBlocks: v.blocks.map((b) => ({ id: b.id, start: fromDbDate(b.startDate), end: fromDbDate(b.endDate), note: b.note })),
+    })),
+    requests: requests.map((r) => {
+      const checkIn = fromDbDate(r.checkIn);
+      const checkOut = fromDbDate(r.checkOut);
+      // Aviso, no bloqueo: una pendiente que ya choca con algo ocupado. Aceptarla
+      // fallará igualmente; así el dueño lo ve antes de pulsar.
+      const clash =
+        r.status === 'pending'
+          ? [
+              ...(blockingByVilla.get(r.villaId) ?? []).filter((b) => b.id !== r.id && b.start < checkOut && checkIn < b.end).map(() => 'otra reserva'),
+              ...importedBlocks
+                .filter((b) => b.villaId === r.villaId && fromDbDate(b.startDate) < checkOut && checkIn < fromDbDate(b.endDate))
+                .map((b) => b.feed?.label ?? 'iCal'),
+            ]
+          : [];
+      return {
+        id: r.id,
+        reference: r.reference,
+        villaId: r.villaId,
+        status: r.status,
+        checkIn,
+        checkOut,
+        adults: r.adults,
+        children: r.children,
+        guestName: r.guestName,
+        guestEmail: r.guestEmail,
+        guestPhone: r.guestPhone,
+        message: r.message,
+        totalCents: r.totalCents,
+        depositCents: r.depositCents,
+        expiresAt: r.expiresAt.toISOString(),
+        paymentDueAt: r.paymentDueAt?.toISOString() ?? null,
+        paidAt: r.paidAt?.toISOString() ?? null,
+        declineReason: r.declineReason,
+        createdAt: r.createdAt.toISOString(),
+        source: r.source,
+        clashesWith: Array.from(new Set(clash)),
+      };
+    }),
+  };
+
+  return (
+    <div>
+      <PageHeading
+        eyebrow="Reservas"
+        title="Reserva propia para villas"
+        description="Las solicitudes llegan desde tu web. Tú decides: al aceptar, el huésped recibe el enlace para pagar el depósito con Stripe. Nada se cobra antes."
+      />
+      <VillasPanel data={data} />
+    </div>
+  );
+}
