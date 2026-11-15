@@ -905,7 +905,7 @@
       "tipoFactor": 0.71,
       "icon": "bed",
       "blurb": "Hoteles boutique, villas, alquiler vacacional de lujo.",
-      "ticket": "Reserva media: 1.500–20.000 €",
+      "ticket": "Reserva media: 600–20.000 €",
       "hero": {
         "h1": "Más reservas directas, <em>menos comisiones</em>.",
         "p": "Presupuesto instantáneo para hoteles boutique y villas de lujo. Ve el coste de cada pieza en tiempo real."
@@ -967,11 +967,31 @@
         {
           "id": "motor",
           "icon": "cal",
-          "label": "Motor de reservas integrado",
-          "desc": "Reserva directa conectada a tu PMS o channel manager.",
-          "price": 1400,
+          "label": "Enlazada con tu motor de reservas",
+          "desc": "Fechas y habitación se eligen en tu web; el pago, en tu motor de reservas.",
+          "price": 900,
           "weeks": 1,
-          "tag": "Imprescindible"
+          "tag": "Imprescindible",
+          "group": "motor"
+        },
+        {
+          "id": "motorvivo",
+          "icon": "cal",
+          "label": "Precios y disponibilidad en vivo",
+          "desc": "Dentro de tu web, si tu motor de reservas tiene interfaz abierta. Se presupuesta al ver tu sistema.",
+          "price": 2500,
+          "weeks": 2,
+          "from": true,
+          "group": "motor"
+        },
+        {
+          "id": "reservavillas",
+          "icon": "home",
+          "label": "Reserva directa para villas",
+          "desc": "Calendario con precios por temporada, solicitud que confirmas tú y depósito. Según el número de villas.",
+          "price": 1800,
+          "weeks": 2,
+          "from": true
         },
         {
           "id": "ventajas",
@@ -1036,9 +1056,52 @@
           "label": "Reseñas en vivo",
           "desc": "Las de Google, sincronizadas con tu ficha; TripAdvisor, con su widget oficial.",
           "price": 350
+        },
+        {
+          "id": "prellegada",
+          "icon": "key",
+          "label": "Pre-llegada y check-in online",
+          "desc": "Datos de los huéspedes y preferencias antes de llegar, conectado con tu sistema de gestión cuando lo permite.",
+          "price": 1600,
+          "weeks": 1
+        },
+        {
+          "id": "eventos",
+          "icon": "layers",
+          "label": "Bodas, eventos y casa entera",
+          "desc": "Espacios, capacidad y petición de presupuesto en tres pasos.",
+          "price": 1200,
+          "weeks": 1
+        },
+        {
+          "id": "googlehoteles",
+          "icon": "search",
+          "label": "Conexión con Google Hoteles",
+          "desc": "Tu precio directo junto al de las plataformas en Google. Necesita un motor de reservas que lo publique.",
+          "price": 900
+        },
+        {
+          "id": "guia",
+          "icon": "doc",
+          "label": "Guía del huésped",
+          "desc": "Wifi, horarios, cena y planes en el móvil, con el QR de la habitación.",
+          "price": 1300,
+          "weeks": 1
         }
       ],
       "insights": [
+        {
+          "when": {
+            "all": [
+              "googlehoteles"
+            ],
+            "none": [
+              "motor",
+              "motorvivo"
+            ]
+          },
+          "text": "<b>Ojo:</b> Google Hoteles necesita un motor de reservas que publique tus precios. Añade el enlace con tu motor o los precios en vivo."
+        },
         {
           "when": {
             "all": [
@@ -1051,9 +1114,21 @@
         },
         {
           "when": {
+            "all": [
+              "motorvivo",
+              "ventajas"
+            ],
+            "none": []
+          },
+          "text": "<b>Combinación ganadora:</b> precios en vivo y el bloque de ventajas desplazan reservas de las OTAs. Cada reserva recuperada ahorra entre un 15 y un 25 % de comisión."
+        },
+        {
+          "when": {
             "all": [],
             "none": [
-              "motor"
+              "motor",
+              "motorvivo",
+              "reservavillas"
             ]
           },
           "text": "<b>Sugerencia:</b> sin motor de reservas directo, la web empuja a tus huéspedes hacia Booking. Es la pieza con retorno más medible."

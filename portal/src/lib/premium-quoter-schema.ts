@@ -46,6 +46,9 @@ const option = z
     fixed: num.min(0).optional(),
     tag: z.string().optional(),
     catalog: catalogRef.optional(),
+    // 15/11/2026 — precio «desde» y opciones excluyentes (ver el motor).
+    from: z.boolean().optional(),
+    group: z.string().min(1).max(40).optional(),
   })
   .strict();
 
@@ -149,9 +152,16 @@ function crossCheck(data: QuoterData): string[] {
     if (!stepIds.includes(needed)) problems.push(`baseSteps: falta el paso «${needed}».`);
   }
 
+  // «Desde» sin precio no dice nada, y un grupo solo tiene sentido donde se puede elegir más de una.
+  const extras = (where: string, o: QuoterData['baseSteps'][number]['options'][number], multi: boolean) => {
+    if (o.from && !(typeof o.price === 'number' && o.price > 0)) problems.push(`${where}: «desde» necesita un precio mayor que cero.`);
+    if (o.group && !multi) problems.push(`${where}: «group» solo vale en pasos de elección múltiple.`);
+  };
+
   for (const s of data.baseSteps) {
     for (const id of duplicates(s.options.map((o) => o.id))) problems.push(`Paso «${s.id}»: la opción «${id}» está repetida.`);
     for (const o of s.options) icon(`Paso «${s.id}», opción «${o.id}»`, o.icon);
+    for (const o of s.options) extras(`Paso «${s.id}», opción «${o.id}»`, o, s.type === 'multi');
     if (s.id === 'tipo') {
       for (const o of s.options) {
         // tipoFactor multiplica este precio: sin él sale NaN.
@@ -173,6 +183,9 @@ function crossCheck(data: QuoterData): string[] {
     icon(`Sector «${id}»`, sec.icon);
     for (const dup of duplicates(sec.widgets.map((w) => w.id))) problems.push(`Sector «${id}»: la pieza «${dup}» está repetida.`);
     for (const w of sec.widgets) icon(`Sector «${id}», pieza «${w.id}»`, w.icon);
+    // El paso de piezas es múltiple en el motor (buildSteps pone ahí sec.widgets).
+    const widgetsMulti = data.baseSteps.find((s) => s.id === 'widgets')?.type === 'multi';
+    for (const w of sec.widgets) extras(`Sector «${id}», pieza «${w.id}»`, w, widgetsMulti);
 
     for (const [stepId, p] of Object.entries(sec.patch)) {
       const target = data.baseSteps.find((s) => s.id === stepId);

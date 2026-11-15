@@ -53,6 +53,17 @@ export interface QuoterOption {
   note?: string;
   /** Solo en los datos: de dónde sale el importe. Resuelto ya no está. */
   catalog?: CatalogRef;
+  /**
+   * El precio es un mínimo («desde»): suma lo mismo al total, pero se enseña
+   * como «desde» y el resultado avisa de que esa pieza se cierra al ver el
+   * sistema del cliente (15/11/2026, niveles del motor de reservas de hotel).
+   */
+  from?: boolean;
+  /**
+   * Opciones excluyentes dentro de un paso múltiple: elegir una quita las otras
+   * del mismo grupo (p. ej. motor enlazado o motor en vivo, nunca los dos).
+   */
+  group?: string;
 }
 
 export interface QuoterStep {
@@ -148,6 +159,11 @@ export interface QuoterEstimate {
   monthly: number;
   weeks: number;
   lines: [string, string][];
+  /**
+   * Piezas elegidas con precio «desde». Opcional porque las solicitudes
+   * guardadas antes del 15/11/2026 no lo llevan.
+   */
+  fromLabels?: string[];
 }
 
 // --- Del catálogo a los datos ------------------------------------------------
@@ -288,6 +304,7 @@ export function compute(q: QuoterData, { sector, answers }: QuoterSelection): Qu
   let weeks = q.config.baseWeeks;
   let weeksMult = 1;
   const lines: [string, string][] = [];
+  const fromLabels: string[] = [];
   buildSteps(q, sector).forEach((s) => {
     if (s.sector) return;
     selectedOptions(s, answers).forEach((o) => {
@@ -296,7 +313,8 @@ export function compute(q: QuoterData, { sector, answers }: QuoterSelection): Qu
       weeks += o.weeks || 0;
       if (o.mult) mult *= o.mult;
       if (o.weeksMult) weeksMult *= o.weeksMult;
-      if (o.price) lines.push([o.label, fmt(q, cost(q, answers, o))]);
+      if (o.price) lines.push([o.label, `${o.from ? 'desde ' : ''}${fmt(q, cost(q, answers, o))}`]);
+      if (o.price && o.from) fromLabels.push(o.label);
       if (o.monthly) lines.push([o.label, `${fmt(q, o.monthly)}/mes`]);
       if (o.mult && o.mult !== 1) lines.push([o.label, `${o.mult > 1 ? '+' : '−'}${Math.round(Math.abs(o.mult - 1) * 100)} %`]);
     });
@@ -313,12 +331,32 @@ export function compute(q: QuoterData, { sector, answers }: QuoterSelection): Qu
     monthly,
     weeks: Math.max(1, Math.round(weeks * weeksMult)),
     lines,
+    fromLabels,
   };
+}
+
+/** El aviso de las piezas «desde», o null si no hay ninguna elegida. */
+export function fromNote(r: Pick<QuoterEstimate, 'fromLabels'>): string | null {
+  const labels = r.fromLabels ?? [];
+  if (!labels.length) return null;
+  const which = labels.length === 1 ? `«${labels[0]}» tiene` : `${labels.map((l) => `«${l}»`).join(', ')} tienen`;
+  return `${which} precio «desde»: el importe final se cierra cuando vemos tu sistema.`;
+}
+
+/**
+ * Marca o desmarca una opción de un paso múltiple. Si la opción tiene `group`,
+ * al marcarla se quitan las demás de su grupo.
+ */
+export function toggleMulti(step: QuoterStep, current: string[], id: string): string[] {
+  if (current.includes(id)) return current.filter((x) => x !== id);
+  const group = step.options.find((o) => o.id === id)?.group;
+  const rivals = group ? new Set(step.options.filter((o) => o.group === group && o.id !== id).map((o) => o.id)) : new Set<string>();
+  return [...current.filter((x) => !rivals.has(x)), id];
 }
 
 export function priceText(q: QuoterData, answers: QuoterAnswers, o: QuoterOption): string {
   if (o.note) return o.note;
-  if (o.price) return `+${fmt(q, cost(q, answers, o))}${o.monthly ? ` · ${fmt(q, o.monthly)}/mes` : ''}`;
+  if (o.price) return `${o.from ? 'desde ' : ''}+${fmt(q, cost(q, answers, o))}${o.monthly ? ` · ${fmt(q, o.monthly)}/mes` : ''}`;
   if (o.monthly) return `${fmt(q, o.monthly)}/mes`;
   if (o.mult && o.mult !== 1) return `${o.mult > 1 ? '+' : '−'}${Math.round(Math.abs(o.mult - 1) * 100)} %`;
   return 'Incluido';
@@ -355,6 +393,9 @@ export function checkAnswers(q: QuoterData, sector: string, raw: Record<string, 
     if (step.type === 'multi') {
       if (value === undefined) continue;
       if (!Array.isArray(value) || value.some((v) => typeof v !== 'string' || !known.has(v))) return { ok: false, step: step.id };
+      // Dos opciones del mismo grupo a la vez solo llegan si alguien se salta la interfaz.
+      const groups = step.options.filter((o) => o.group && (value as string[]).includes(o.id)).map((o) => o.group);
+      if (new Set(groups).size !== groups.length) return { ok: false, step: step.id };
       answers[step.id] = [...new Set(value as string[])];
     } else {
       if (value === undefined && step.optional) continue;

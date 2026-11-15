@@ -93,6 +93,8 @@ header.top{max-width:1180px;margin:0 auto;padding:28px 24px 0;display:flex;align
 .summary .total{font-size:44px;line-height:1;margin:10px 0 4px}
 .summary .total small{font-size:16px;color:var(--muted);font-family:var(--font-sans);font-weight:600}
 .summary .range{font-size:13px;color:var(--ink-2)}
+/* Piezas con precio «desde» (15/11/2026) */
+.from{font-size:12.5px;line-height:1.5;color:var(--ink-2);margin:8px 0 0}
 .summary .monthly{margin-top:14px;display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-radius:12px;background:var(--sage-soft);font-size:13px;font-weight:600;color:var(--sage)}
 .summary .monthly b{font-size:16px}
 .summary ul{list-style:none;margin-top:18px;border-top:1px solid var(--line);padding-top:12px;max-height:280px;overflow:auto}
