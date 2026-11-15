@@ -19,7 +19,13 @@ import {
   type CallbackSlot,
 } from './recall-slots';
 import { isNumberBlocked } from './recall-blocklist';
-import { LEGAL_NOTICE_TEXT, LEGAL_NOTICE_VERSION } from './recall-optout';
+import { LEGAL_NOTICES } from './recall-optout';
+import {
+  callerLanguageFor,
+  parseCallerLanguages,
+  templateKey,
+  type CallerLanguage,
+} from './recall-caller-language';
 import { recordSend, metaMessageId } from './message-ledger';
 import { recordLegalBasis } from './contacts';
 import { sendPushToClient } from './push-notifications';
@@ -151,6 +157,10 @@ export interface CallerTemplateChoice {
   template: { name: string; languageCode: string };
   /** Si el cuerpo que Meta tiene APROBADO para este nombre lleva el aviso. */
   includesLegalNotice: boolean;
+  /** El idioma de la plantilla elegida, que puede no ser el pedido: sin la
+   *  traducción aprobada se manda la española. Los parámetros (la hora de
+   *  apertura, la lista de huecos) se escriben en ESTE. */
+  language: CallerLanguage;
 }
 
 /**
@@ -169,37 +179,81 @@ export interface CallerTemplateChoice {
  * los otros intentan la versión con aviso sin reclamarla).
  *
  * Pura y exportada: lo que decide no depende de la red ni de la base.
+ *
+ * 15/11/2026 — `language`: el idioma que sugiere el número (ver
+ * recall-caller-language.ts). Se usa su traducción de la versión con aviso
+ * si está aprobada; si no, todo sigue como antes, en español. `approved`
+ * guarda claves de templateKey: el nombre para el español,
+ * `nombre@idioma` para las traducciones.
  */
 export function chooseCallerTemplate(
   kind: CallerTemplateKind,
   approved: ReadonlySet<string>,
+  language: CallerLanguage = 'es',
 ): CallerTemplateChoice | null {
   const variants = CALLER_TEMPLATE_VARIANTS[kind];
+  // Las traducciones solo existen de la versión con aviso: la antigua sin
+  // aviso es anterior a los idiomas y no se traduce.
+  if (language !== 'es' && approved.has(templateKey(variants.withNotice.name, language))) {
+    return {
+      template: { name: variants.withNotice.name, languageCode: language },
+      includesLegalNotice: true,
+      language,
+    };
+  }
   if (approved.has(variants.withNotice.name)) {
-    return { template: variants.withNotice, includesLegalNotice: true };
+    return { template: variants.withNotice, includesLegalNotice: true, language: 'es' };
   }
   if (approved.has(variants.legacy.name)) {
-    return { template: variants.legacy, includesLegalNotice: false };
+    return { template: variants.legacy, includesLegalNotice: false, language: 'es' };
   }
   return null;
 }
 
-/** Los nombres de primer contacto que este negocio tiene APROBADOS, según el
- *  espejo que mantiene syncTemplateStatuses cada ciclo. Una sola consulta
- *  por mensaje. */
+/** Las plantillas de primer contacto que este negocio tiene APROBADAS, como
+ *  claves de templateKey, según el espejo que mantiene syncTemplateStatuses
+ *  cada ciclo. Una sola consulta por mensaje. */
 async function approvedCallerTemplateNames(prisma: PrismaClient, connectionId: string): Promise<Set<string>> {
   const names = Object.values(CALLER_TEMPLATE_VARIANTS).flatMap((v) => [v.withNotice.name, v.legacy.name]);
   const rows = await prisma.whatsappTemplate.findMany({
     where: { connectionId, status: 'APPROVED', name: { in: names } },
-    select: { name: true },
+    select: { name: true, languageCode: true },
   });
-  return new Set(rows.map((r) => r.name));
+  return new Set(rows.map((r) => templateKey(r.name, r.languageCode)));
 }
 
 /** Used when a client has no open hours at all in the coming week, so
  *  describeNextOpening has nothing to offer. Promising no time beats
- *  printing an empty parameter, which Meta rejects outright. */
-const VAGUE_OPENING = 'en cuanto abramos';
+ *  printing an empty parameter, which Meta rejects outright.
+ *
+ *  Por idioma: va dentro de «abrimos {{2}}» / «we open {{2}}» / «wir öffnen
+ *  {{2}}» y del SMS («te contestamos …»), así que tiene que leerse bien en
+ *  las dos frases. */
+const VAGUE_OPENING: Readonly<Record<CallerLanguage, string>> = {
+  es: 'en cuanto abramos',
+  en: 'soon',
+  de: 'bald',
+};
+
+/** El SMS de respaldo, en el idioma pedido: no pasa por Meta, así que no
+ *  depende de ninguna aprobación. Lleva siempre el aviso de su idioma. */
+function smsBody(language: CallerLanguage, business: string, opening: string | null): string {
+  const notice = LEGAL_NOTICES[language].text;
+  switch (language) {
+    case 'en':
+      return opening === null
+        ? `Hi, this is ${business}. We saw your call and will get back to you right away. ${notice}`
+        : `Hi, this is ${business}. We saw your call and will get back to you ${opening}. ${notice}`;
+    case 'de':
+      return opening === null
+        ? `Hallo, hier ist ${business}. Wir haben Ihren Anruf gesehen und melden uns gleich bei Ihnen. ${notice}`
+        : `Hallo, hier ist ${business}. Wir haben Ihren Anruf gesehen und melden uns ${opening} bei Ihnen. ${notice}`;
+    default:
+      return opening === null
+        ? `Hola, somos ${business}. Hemos visto tu llamada y te contestamos enseguida. ${notice}`
+        : `Hola, somos ${business}. Hemos visto tu llamada y te contestamos ${opening}. ${notice}`;
+  }
+}
 
 /**
  * Could this number plausibly receive WhatsApp?
@@ -249,6 +303,9 @@ interface CallRow {
     ownerWhatsapp: string | null;
     timezone: string;
     businessHours: unknown;
+    /** 15/11/2026 — idiomas de primer contacto activos (ver
+     *  recall-caller-language.ts). Opcional: sin él, solo español. */
+    callerLanguages?: string[] | null;
     metaConnection: {
       id: string;
       externalId: string;
@@ -292,6 +349,7 @@ const CALL_SELECT = {
       ownerWhatsapp: true,
       timezone: true,
       businessHours: true,
+      callerLanguages: true,
       metaConnection: {
         select: {
           id: true,
@@ -405,6 +463,10 @@ async function resolveCaller(
      * sellaba el aviso sobre plantillas aprobadas SIN él.
      */
     legalNotice?: boolean;
+    /** 15/11/2026 — el idioma del mensaje que salió. Decide qué versión del
+     *  aviso se sella (cada idioma tiene la suya, ver LEGAL_NOTICES) y se
+     *  guarda en la llamada para contestarle después en el mismo. */
+    language?: CallerLanguage;
   } = {},
 ): Promise<void> {
   // La evidencia del aviso —en la llamada y en el contacto— exige las dos
@@ -439,8 +501,9 @@ async function resolveCaller(
       // marcarla como avisada sería falsificar el único registro que
       // defiende al cliente en una reclamación.
       ...(noticeDelivered
-        ? { legalNoticeVersion: LEGAL_NOTICE_VERSION, legalNoticeSentAt: extra.sent }
+        ? { legalNoticeVersion: LEGAL_NOTICES[extra.language ?? 'es'].version, legalNoticeSentAt: extra.sent }
         : {}),
+      ...(extra.sent && extra.language ? { callerLanguage: extra.language } : {}),
     },
   });
 }
@@ -458,6 +521,7 @@ async function offerableSlots(
   call: CallRow,
   hours: BusinessHours,
   now: Date,
+  language: CallerLanguage,
 ): Promise<CallbackSlot[]> {
   const horizon = new Date(now.getTime() + SLOT_HORIZON_DAYS * 24 * 60 * 60_000);
   const booked = await prisma.callEvent.findMany({
@@ -470,6 +534,7 @@ async function offerableSlots(
 
   return buildCallbackSlots(hours, now, call.subscription.timezone, {
     taken: booked.map((row) => row.callbackSlotAt!).filter(Boolean),
+    language,
   });
 }
 
@@ -519,6 +584,9 @@ export async function notifyCaller(
   const hours = parseBusinessHours(call.subscription.businessHours);
   const open = isWithinBusinessHours(hours, now, call.subscription.timezone);
   const business = businessNameOf(call);
+  // 15/11/2026 — el idioma que sugiere el prefijo, si el negocio lo tiene
+  // activo; si no, español. Ver recall-caller-language.ts.
+  const wanted = callerLanguageFor(call.fromNumber, parseCallerLanguages(call.subscription.callerLanguages));
 
   // --- WhatsApp first, when the number could plausibly have it ----------
   let lastError = 'no_channel_available';
@@ -558,20 +626,23 @@ export async function notifyCaller(
       // Esencial (plan de precios del 01/10/2026) no lleva franjas: recibe
       // el mensaje de siempre, abierto o cerrado, como si no las hubiera.
       const offersSlots = recallTierIncludesExtras(call.subscription.clientProduct?.product?.tier);
-      const slotsChoice = open || !offersSlots ? null : chooseCallerTemplate('slots', approved);
-      const slots = slotsChoice ? await offerableSlots(prisma, call, hours, now) : [];
+      const slotsChoice = open || !offersSlots ? null : chooseCallerTemplate('slots', approved, wanted);
+      // Las horas, en el idioma de la plantilla que de verdad va a salir.
+      const slots = slotsChoice ? await offerableSlots(prisma, call, hours, now, slotsChoice.language) : [];
       const useSlots = slotsChoice !== null && slots.length >= MIN_OFFERED_SLOTS;
 
       // Sin ninguna versión aprobada en el espejo (sincronización caída, o
       // un alta muy reciente) se intenta la versión con aviso —la única que
       // existe en las altas nuevas— pero SIN reclamar el aviso. Equivocarse
-      // aquí debe ser hacia no reclamarlo, nunca hacia reclamarlo.
+      // aquí debe ser hacia no reclamarlo, nunca hacia reclamarlo. Y en
+      // español: una traducción sin aprobación conocida no se arriesga.
       const baseKind: CallerTemplateKind = open ? 'open' : 'closed';
       const choice: CallerTemplateChoice = useSlots
         ? slotsChoice!
-        : (chooseCallerTemplate(baseKind, approved) ?? {
+        : (chooseCallerTemplate(baseKind, approved, wanted) ?? {
             template: CALLER_TEMPLATE_VARIANTS[baseKind].withNotice,
             includesLegalNotice: false,
+            language: 'es',
           });
 
       const template = useSlots
@@ -580,7 +651,11 @@ export async function notifyCaller(
           ? { ...choice.template, bodyParams: [business] }
           : {
               ...choice.template,
-              bodyParams: [business, describeNextOpening(hours, now, call.subscription.timezone) ?? VAGUE_OPENING],
+              bodyParams: [
+                business,
+                describeNextOpening(hours, now, call.subscription.timezone, choice.language) ??
+                  VAGUE_OPENING[choice.language],
+              ],
             };
 
       const sent = await sendTemplate(credentials.token, credentials.phoneNumberId, call.fromNumber, template);
@@ -624,6 +699,7 @@ export async function notifyCaller(
           contactId: call.contactId,
           // Solo si la plantilla que Meta ha enviado lleva el aviso de verdad.
           legalNotice: choice.includesLegalNotice,
+          language: choice.language,
         });
         return { status: 'sent', channel: 'whatsapp' };
       }
@@ -652,11 +728,14 @@ export async function notifyCaller(
   // Limitación conocida y escrita donde se nota: no hay ruta de SMS
   // entrante en el repo, así que un "BAJA" contestado por SMS no se
   // procesa solo — ver la cabecera de recall-optout.ts.
-  const body = open
-    ? `Hola, somos ${business}. Hemos visto tu llamada y te contestamos enseguida. ${LEGAL_NOTICE_TEXT}`
-    : `Hola, somos ${business}. Hemos visto tu llamada y te contestamos ${
-        describeNextOpening(hours, now, call.subscription.timezone) ?? VAGUE_OPENING
-      }. ${LEGAL_NOTICE_TEXT}`;
+  //
+  // 15/11/2026 — en el idioma que sugiere el número (`wanted`): el SMS no
+  // pasa por Meta, así que no espera a ninguna aprobación.
+  const body = smsBody(
+    wanted,
+    business,
+    open ? null : (describeNextOpening(hours, now, call.subscription.timezone, wanted) ?? VAGUE_OPENING[wanted]),
+  );
 
   const sms = await provider.sendSms({ to: call.fromNumber, from, body });
 
@@ -681,7 +760,12 @@ export async function notifyCaller(
   if (sms.ok) {
     // El SMS lleva el aviso siempre: su texto se construye aquí mismo y no
     // depende de ninguna aprobación de Meta.
-    await resolveCaller(prisma, call.id, 'sms', { sent: now, contactId: call.contactId, legalNotice: true });
+    await resolveCaller(prisma, call.id, 'sms', {
+      sent: now,
+      contactId: call.contactId,
+      legalNotice: true,
+      language: wanted,
+    });
     return { status: 'sent', channel: 'sms' };
   }
   return finishCallerFailure(prisma, call, sms.error, false);

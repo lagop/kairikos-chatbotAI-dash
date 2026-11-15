@@ -769,9 +769,9 @@ describe('summarizeTemplateApproval', () => {
       names,
     );
     expect(s.problems).toEqual([
-      { name: 'b', status: 'SUBMIT_FAILED', reason: 'Invalid parameter', required: true },
-      { name: 'c', status: 'PAUSED', reason: null, required: true },
-      { name: 'y', status: 'REJECTED', reason: 'INVALID_FORMAT', required: false },
+      { name: 'b', languageCode: 'es', status: 'SUBMIT_FAILED', reason: 'Invalid parameter', required: true },
+      { name: 'c', languageCode: 'es', status: 'PAUSED', reason: null, required: true },
+      { name: 'y', languageCode: 'es', status: 'REJECTED', reason: 'INVALID_FORMAT', required: false },
     ]);
   });
 

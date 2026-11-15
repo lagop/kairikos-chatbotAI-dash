@@ -35,8 +35,11 @@ function TemplateApproval({ summary }: { summary: TemplateApprovalSummary }) {
       {problems.length > 0 ? (
         <ul className="space-y-0.5 text-kairikos-danger" data-testid="recall-queue-templates-problems">
           {problems.map((p) => (
-            <li key={p.name}>
-              <span className="font-mono">{p.name}</span> {TEMPLATE_STATUS_LABEL[p.status] ?? p.status}
+            <li key={`${p.name}@${p.languageCode}`}>
+              <span className="font-mono">{p.name}</span>
+              {/* Las traducciones (15/11/2026) comparten nombre con la española. */}
+              {p.languageCode !== 'es' ? <span className="font-mono"> ({p.languageCode})</span> : null}{' '}
+              {TEMPLATE_STATUS_LABEL[p.status] ?? p.status}
               {p.required ? ' (obligatoria: para el alta)' : ''}
               {p.reason ? ` — ${p.reason}` : ''}
             </li>

@@ -4,7 +4,8 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { authenticateInternalRequest, internalAuthFailureResponse } from '@/lib/internal-auth';
 import { applyDigestReply } from '@/lib/recall-reviews';
 import { applyCallbackReply, callbackReplyText, sendCallbackReply } from '@/lib/recall-callbacks';
-import { applyOptOut, OPT_OUT_CONFIRMATION } from '@/lib/recall-optout';
+import { applyOptOut, OPT_OUT_CONFIRMATIONS } from '@/lib/recall-optout';
+import { callerLanguageFor, parseCallerLanguages } from '@/lib/recall-caller-language';
 import { decryptMetaToken } from '@/lib/meta-business';
 import { captureVoiceNote, resolveDraftWithReply } from '@/lib/recall-voice-capture';
 
@@ -103,6 +104,8 @@ export async function POST(req: NextRequest) {
       id: true,
       tenantId: true,
       ownerWhatsapp: true,
+      // 15/11/2026 — para confirmar la baja en el idioma de quien escribe.
+      callerLanguages: true,
       client: { select: { name: true, companyName: true } },
     },
   });
@@ -204,10 +207,16 @@ export async function POST(req: NextRequest) {
       // que reutilice su función de envío — que es genérica pese al
       // nombre.
       if (!optOut.alreadySuppressed) {
+        // En el idioma en que se le escribe a ese número (15/11/2026).
+        // `from` es el wa_id de Meta: internacional, pero sin el «+».
+        const language = callerLanguageFor(
+          `+${body.data.from.replace(/^\+/, '')}`,
+          parseCallerLanguages(subscription.callerLanguages),
+        );
         await sendCallbackReply(prisma, {
           clientId: connection.clientId,
           to: body.data.from,
-          text: OPT_OUT_CONFIRMATION,
+          text: OPT_OUT_CONFIRMATIONS[language],
         });
       }
       return NextResponse.json({ handled: true, outcome: optOut });

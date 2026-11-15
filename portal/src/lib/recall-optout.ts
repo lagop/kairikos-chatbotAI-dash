@@ -1,6 +1,7 @@
 import 'server-only';
 import type { PrismaClient } from '@prisma/client';
 import { normaliseE164 } from './recall-blocklist';
+import type { CallerLanguage } from './recall-caller-language';
 
 // =============================================================================
 // Fase 0 — el aviso de oposición y la baja de quien llamó.
@@ -69,6 +70,28 @@ export const LEGAL_NOTICE_VERSION = '2026-09-v1';
  */
 export const LEGAL_NOTICE_TEXT = 'Si no quieres recibir más mensajes nuestros, responde BAJA.';
 
+/**
+ * 15/11/2026 — el aviso en cada idioma de primer contacto (ver
+ * recall-caller-language.ts).
+ *
+ * CADA IDIOMA TIENE SU PROPIA VERSIÓN, y es lo que se sella en el CallEvent:
+ * así `legalNoticeVersion` sigue diciendo por sí sola qué texto exacto leyó
+ * esa persona, sin cruzarla con nada. El español conserva la suya
+ * ('2026-09-v1'): su texto no cambia.
+ *
+ * Las mismas reglas que arriba: al cambiar un texto se le da versión nueva y
+ * el viejo pasa a PREVIOUS_NOTICES; y la traducción también necesita la
+ * revisión jurídica antes del primer envío real.
+ */
+export const LEGAL_NOTICES: Readonly<Record<CallerLanguage, { version: string; text: string }>> = {
+  es: { version: LEGAL_NOTICE_VERSION, text: LEGAL_NOTICE_TEXT },
+  en: { version: '2026-11-en-v1', text: "If you don't want to receive more messages from us, reply STOP." },
+  de: {
+    version: '2026-11-de-v1',
+    text: 'Wenn Sie keine weiteren Nachrichten von uns erhalten möchten, antworten Sie STOPP.',
+  },
+};
+
 /** Histórico. Append-only: una versión publicada no se edita ni se borra. */
 export const PREVIOUS_NOTICES: Readonly<Record<string, string>> = {};
 
@@ -81,6 +104,14 @@ export const PREVIOUS_NOTICES: Readonly<Record<string, string>> = {};
  * otra comunicación comercial no consentida.
  */
 export const OPT_OUT_CONFIRMATION = 'Hecho, no volverás a recibir mensajes nuestros.';
+
+/** La confirmación en el idioma en que se le escribe (ver
+ *  recall-caller-language.ts). Mismo criterio: una frase, nada comercial. */
+export const OPT_OUT_CONFIRMATIONS: Readonly<Record<CallerLanguage, string>> = {
+  es: OPT_OUT_CONFIRMATION,
+  en: "Done, you won't receive any more messages from us.",
+  de: 'Erledigt, Sie erhalten keine weiteren Nachrichten mehr von uns.',
+};
 
 /** Motivo con el que se marca el bloqueo, para distinguirlo del que pone
  *  el dueño a mano contra un comercial pesado. */
@@ -140,6 +171,27 @@ const EXACT_OPT_OUTS = new Set([
   'borradme',
   'borrame',
   'eliminadme',
+  // 15/11/2026 — inglés y alemán, ahora que el aviso sale en esos idiomas
+  // («reply STOP», «antworten Sie STOPP»). Ya normalizado: sin apóstrofos
+  // ni diéresis («don't» es «don t»).
+  'opt out',
+  'remove me',
+  'no more messages',
+  'stop messaging me',
+  'stop texting me',
+  'don t message me',
+  'do not message me',
+  'leave me alone',
+  'stopp',
+  'abmelden',
+  'abbestellen',
+  'austragen',
+  'bitte austragen',
+  'keine nachrichten',
+  'keine nachrichten mehr',
+  'bitte keine nachrichten mehr',
+  'nicht mehr schreiben',
+  'schreiben sie mir nicht mehr',
 ]);
 
 /**
@@ -151,7 +203,18 @@ const EXACT_OPT_OUTS = new Set([
  * leería como una baja. Suprimiríamos a alguien que estaba pidiendo
  * justo lo contrario, y en silencio.
  */
-const OPT_OUT_TOKENS = ['baja', 'stop', 'unsubscribe', 'basta', 'borrame', 'borradme'];
+const OPT_OUT_TOKENS = [
+  'baja',
+  'stop',
+  'unsubscribe',
+  'basta',
+  'borrame',
+  'borradme',
+  'stopp',
+  'abmelden',
+  'abbestellen',
+  'austragen',
+];
 const SHORT_MESSAGE_WORDS = 4;
 
 /**

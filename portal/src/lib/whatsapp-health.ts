@@ -3,6 +3,7 @@ import type { PrismaClient } from '@prisma/client';
 import { decryptMetaToken } from './meta-business';
 import { listMessageTemplates, isAccessTokenError } from './whatsapp-api';
 import { findTemplateTextDrift, allRecallTemplateDefinitions } from './recall-templates';
+import { CALLER_LANGUAGES } from './recall-caller-language';
 import {
   renderStuck,
   renderConnectionLost,
@@ -121,7 +122,13 @@ export async function syncTemplateStatuses(
       // coinciden manda Meta, así que esto avisa en vez de callar. Ver
       // findTemplateTextDrift — nació de tres plantillas que llevaban
       // semanas enviándose con los acentos rotos.
-      const drifts = findTemplateTextDrift(listed.data.data ?? [], allRecallTemplateDefinitions());
+      // Con todas las traducciones: si una cuenta tiene la alemana, se
+      // compara con la alemana (por nombre e idioma); si no la tiene, no
+      // hay nada que comparar.
+      const drifts = findTemplateTextDrift(
+        listed.data.data ?? [],
+        allRecallTemplateDefinitions(undefined, CALLER_LANGUAGES),
+      );
       for (const drift of drifts) {
         result.drifted += 1;
         logError(

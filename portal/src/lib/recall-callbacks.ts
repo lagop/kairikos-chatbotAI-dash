@@ -3,6 +3,7 @@ import type { PrismaClient, Prisma } from '@prisma/client';
 import { decryptMetaToken } from './meta-business';
 import { sendMessage } from './whatsapp-api';
 import { slotsFromJson, parseSlotChoice, type CallbackSlot } from './recall-slots';
+import { isCallerLanguage, type CallerLanguage } from './recall-caller-language';
 import { logError } from './observability';
 
 // =============================================================================
@@ -27,11 +28,16 @@ import { logError } from './observability';
  *  seguro, a horas que ya han pasado. */
 export const CALLBACK_REPLY_WINDOW_HOURS = 24;
 
+/**
+ * `language` (15/11/2026) es el idioma en que se le mandó la oferta
+ * (CallEvent.callerLanguage): el acuse va en ese mismo idioma, que es el de
+ * las horas que leyó. Las ofertas de antes de esa columna son español.
+ */
 export type CallbackReplyOutcome =
-  | { status: 'scheduled'; slot: CallbackSlot; movedFrom?: CallbackSlot }
-  | { status: 'declined' }
-  | { status: 'unclear' }
-  | { status: 'no_slot_free' }
+  | { status: 'scheduled'; slot: CallbackSlot; movedFrom?: CallbackSlot; language: CallerLanguage }
+  | { status: 'declined'; language: CallerLanguage }
+  | { status: 'unclear'; language: CallerLanguage }
+  | { status: 'no_slot_free'; language: CallerLanguage }
   | { status: 'ignored'; reason: 'no_open_offer' | 'already_chosen' };
 
 export interface CallbackReplyInput {
@@ -58,6 +64,7 @@ interface OfferRow {
   callbackOfferedSlots: Prisma.JsonValue;
   callbackOfferedAt: Date | null;
   callbackSlotAt: Date | null;
+  callerLanguage?: string | null;
 }
 
 /**
@@ -112,6 +119,7 @@ async function resolveCallbackReply(
       callbackOfferedSlots: true,
       callbackOfferedAt: true,
       callbackSlotAt: true,
+      callerLanguage: true,
     },
   })) as OfferRow[];
 
@@ -126,9 +134,11 @@ async function resolveCallbackReply(
   const slots = slotsFromJson(offer.callbackOfferedSlots);
   if (slots.length === 0) return { status: 'ignored', reason: 'no_open_offer' };
 
+  const language: CallerLanguage = isCallerLanguage(offer.callerLanguage) ? offer.callerLanguage : 'es';
+
   const choice = parseSlotChoice(input.text, slots.length);
-  if (choice.kind === 'unclear') return { status: 'unclear' };
-  if (choice.kind === 'none') return { status: 'declined' };
+  if (choice.kind === 'unclear') return { status: 'unclear', language };
+  if (choice.kind === 'none') return { status: 'declined', language };
 
   const wanted = slots[choice.index - 1];
 
@@ -136,7 +146,7 @@ async function resolveCallbackReply(
   // llevado ese hueco. Se comprueba ahora, no antes: la oferta es de hace
   // minutos u horas.
   const free = await firstFreeSlot(prisma, input.subscriptionId, wanted, slots, now);
-  if (!free) return { status: 'no_slot_free' };
+  if (!free) return { status: 'no_slot_free', language };
 
   await prisma.callEvent.update({
     where: { id: offer.id },
@@ -144,8 +154,8 @@ async function resolveCallbackReply(
   });
 
   return free.at.getTime() === wanted.at.getTime()
-    ? { status: 'scheduled', slot: free }
-    : { status: 'scheduled', slot: free, movedFrom: wanted };
+    ? { status: 'scheduled', slot: free, language }
+    : { status: 'scheduled', slot: free, movedFrom: wanted, language };
 }
 
 /**
@@ -188,22 +198,61 @@ async function firstFreeSlot(
  * comprobarlo.
  */
 export function callbackReplyText(outcome: CallbackReplyOutcome, businessName: string): string | null {
+  // 'ignored' no se contesta: no era una respuesta a nuestra oferta.
+  if (outcome.status === 'ignored') return null;
+  const texts = REPLY_TEXTS[outcome.language] ?? REPLY_TEXTS.es;
   switch (outcome.status) {
     case 'scheduled':
-      return outcome.movedFrom
-        ? `Ese hueco se acaba de ocupar, así que te hemos apuntado ${outcome.slot.label}. Si no te viene bien, dinos qué hora te encaja.`
-        : `Hecho: te llamamos ${outcome.slot.label}. Si te surge algo, escríbenos por aquí.`;
+      return outcome.movedFrom ? texts.moved(outcome.slot.label) : texts.scheduled(outcome.slot.label);
     case 'declined':
-      return `Sin problema. Dinos a qué hora te viene bien y te llamamos desde ${businessName}.`;
+      return texts.declined(businessName);
     case 'unclear':
-      return 'Perdona, no te hemos entendido. Contéstanos solo con el número de la opción que prefieras (1, 2 o 3).';
+      return texts.unclear;
     case 'no_slot_free':
-      return 'Se nos han ocupado esos huecos. Dinos a qué hora te viene bien y te llamamos.';
-    default:
-      // 'ignored' no se contesta: no era una respuesta a nuestra oferta.
-      return null;
+      return texts.noSlotFree;
   }
 }
+
+/** Los acuses en cada idioma. `label` ya viene en el idioma de la oferta
+ *  (ver formatSlotLabel). En alemán, de usted, como el resto de mensajes. */
+const REPLY_TEXTS: Readonly<
+  Record<
+    CallerLanguage,
+    {
+      moved: (label: string) => string;
+      scheduled: (label: string) => string;
+      declined: (business: string) => string;
+      unclear: string;
+      noSlotFree: string;
+    }
+  >
+> = {
+  es: {
+    moved: (label) =>
+      `Ese hueco se acaba de ocupar, así que te hemos apuntado ${label}. Si no te viene bien, dinos qué hora te encaja.`,
+    scheduled: (label) => `Hecho: te llamamos ${label}. Si te surge algo, escríbenos por aquí.`,
+    declined: (business) => `Sin problema. Dinos a qué hora te viene bien y te llamamos desde ${business}.`,
+    unclear: 'Perdona, no te hemos entendido. Contéstanos solo con el número de la opción que prefieras (1, 2 o 3).',
+    noSlotFree: 'Se nos han ocupado esos huecos. Dinos a qué hora te viene bien y te llamamos.',
+  },
+  en: {
+    moved: (label) =>
+      `That time has just been taken, so we'll call you ${label} instead. If that doesn't suit you, tell us what time works.`,
+    scheduled: (label) => `Done: we'll call you ${label}. If anything comes up, write to us here.`,
+    declined: (business) => `No problem. Tell us what time suits you and we'll call you from ${business}.`,
+    unclear: "Sorry, we didn't understand. Please reply with just the number of the option you prefer (1, 2 or 3).",
+    noSlotFree: "Those times have just been taken. Tell us what time suits you and we'll call you.",
+  },
+  de: {
+    moved: (label) =>
+      `Diese Uhrzeit ist gerade vergeben worden, deshalb rufen wir Sie stattdessen ${label} an. Wenn Ihnen das nicht passt, sagen Sie uns, welche Uhrzeit Ihnen recht ist.`,
+    scheduled: (label) => `Erledigt: Wir rufen Sie ${label} an. Falls etwas dazwischenkommt, schreiben Sie uns einfach hier.`,
+    declined: (business) => `Kein Problem. Sagen Sie uns, wann es Ihnen passt, und wir rufen Sie von ${business} aus an.`,
+    unclear:
+      'Entschuldigung, das haben wir nicht verstanden. Antworten Sie bitte nur mit der Nummer der Option, die Ihnen passt (1, 2 oder 3).',
+    noSlotFree: 'Diese Zeiten sind leider schon vergeben. Sagen Sie uns, wann es Ihnen passt, und wir rufen Sie an.',
+  },
+};
 
 /**
  * Contesta por WhatsApp con un mensaje libre.
