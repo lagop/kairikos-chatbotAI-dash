@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Reserva de villas — página de prueba</title>
+<!--
+  Página de prueba de villas.v1.js. Plan: docs/plan-reserva-villas.md.
+
+  Dos modos:
+   - Simulado (por defecto): la página intercepta SUS PROPIAS llamadas a
+     /api/public/villas/* y contesta con tres villas de ejemplo (temporadas,
+     noches ocupadas, IVA, depósito). Sirve para enseñar el widget y probar el
+     teclado, los eventos y el tema sin base de datos. La solicitud no se
+     guarda en ningún sitio. El widget no sabe nada de esto: es el mismo
+     archivo que en producción.
+   - Real: ?token=vil_… usa las rutas de verdad del portal que sirve esta
+     página (crea la solicitud, manda los correos y aparece en /portal/villas).
+
+  ?lang=en para inglés; ?unidad=, ?entrada=, ?salida=, ?adultos= y ?origen= como
+  en el motor de la web.
+-->
+<style>
+  :root { color-scheme: light dark; --bg:#f6f5f2; --fg:#1d1d1b; --muted:#5d5d58; --card:#fff; --line:#dedcd5; --accent:#2f6f4f; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#141513; --fg:#ecebe6; --muted:#a9a8a1; --card:#1d1e1b; --line:#34352f; --accent:#7cc39b; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 Georgia, "Iowan Old Style", serif; padding:24px 16px 64px; }
+  main { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 26px; margin: 0 0 4px; font-weight: 600; }
+  p.lead { color: var(--muted); margin: 0 0 20px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; margin-bottom:16px; }
+  h2 { font-size: 16px; margin: 0 0 10px; }
+  code { font-size: 13px; }
+  .modes a { color: var(--accent); }
+  #log { font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; background: var(--bg); border:1px solid var(--line); border-radius: 8px; padding: 8px; height: 140px; overflow:auto; white-space: pre-wrap; margin:0; }
+  /* Así viste una web Signature el widget: solo variables. */
+  [data-kairikos-villas] { --kv-accent: var(--accent); --kv-muted: var(--muted); --kv-line: var(--line); --kv-radius: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Villas Sombra Buena</h1>
+  <p class="lead">Página de prueba de <code>/widget/villas.v1.js</code>: calendario, precio total con IVA y solicitud que confirma el anfitrión. <span id="mode"></span></p>
+
+  <section>
+    <h2>Reservar</h2>
+    <div id="widget" data-privacy-url="#privacidad"></div>
+  </section>
+
+  <section>
+    <h2>Eventos <code>kairikos:booking_*</code></h2>
+    <pre id="log" aria-live="off"></pre>
+  </section>
+
+  <p class="modes"><a href="?">Simulado</a> · <a href="?lang=en">Simulado en inglés</a> · <a href="?unidad=castano&amp;entrada=2026-12-28&amp;salida=2027-01-02&amp;adultos=4&amp;origen=google">Con fechas en la URL</a></p>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  var params = new URLSearchParams(location.search);
+  var realToken = params.get('token');
+  var lang = params.get('lang') === 'en' ? 'en' : 'es';
+  var el = document.getElementById('widget');
+  el.setAttribute('data-kairikos-villas', realToken || 'vil_demo_sombra_buena');
+  el.setAttribute('data-lang', lang);
+  document.getElementById('mode').textContent = realToken ? 'Modo real: ' + realToken.slice(0, 12) + '…' : 'Modo simulado: no se guarda nada.';
+
+  var log = document.getElementById('log');
+  ['booking_start', 'booking_dates', 'booking_unit', 'booking_submit'].forEach(function (name) {
+    window.addEventListener('kairikos:' + name, function (e) {
+      log.textContent += name + ' ' + JSON.stringify(e.detail) + '\n';
+      log.scrollTop = log.scrollHeight;
+    });
+  });
+
+  if (!realToken) installMock();
+
+  var s = document.createElement('script');
+  s.src = '/widget/villas.v1.js';
+  s.async = true;
+  document.body.appendChild(s);
+
+  // --- Datos de ejemplo ---------------------------------------------------------
+  // Mismas reglas que lib/villas/pricing.ts, en pequeño: IVA incluido, gana la
+  // temporada más corta, estancia mínima de la noche de llegada, depósito 30 %.
+  function installMock() {
+    function iso(d) { return d.toISOString().slice(0, 10); }
+    function add(s, n) { return iso(new Date(Date.parse(s + 'T00:00:00Z') + n * 864e5)); }
+    var today = iso(new Date());
+    var y = Number(today.slice(0, 4));
+    var villas = [
+      { slug: 'alcornoque', name: 'Villa Alcornoque', maxGuests: 4, nightly: 18000, minNights: 2, cleaning: 6000 },
+      { slug: 'castano', name: 'Villa Castaño', maxGuests: 6, nightly: 24000, minNights: 3, cleaning: 8000 },
+      { slug: 'encina', name: 'Villa Encina', maxGuests: 2, nightly: 14000, minNights: 2, cleaning: 4500 },
+    ];
+    function seasonsFor(v) {
+      var list = [];
+      [y, y + 1].forEach(function (yy) {
+        list.push({ name: lang === 'en' ? 'Summer' : 'Verano', start: yy + '-07-01', end: yy + '-08-31', nightly: Math.round(v.nightly * 1.4), minNights: 5 });
+        list.push({ name: lang === 'en' ? 'Christmas' : 'Navidad', start: yy + '-12-20', end: (yy + 1) + '-01-06', nightly: Math.round(v.nightly * 1.6), minNights: 4 });
+      });
+      return list;
+    }
+    function rate(v, d) {
+      var best = null;
+      seasonsFor(v).forEach(function (s) {
+        if (d < s.start || d > s.end) return;
+        var span = Date.parse(s.end) - Date.parse(s.start);
+        if (!best || span < best.span) best = { s: s, span: span };
+      });
+      return best ? { season: best.s.name, nightly: best.s.nightly, minNights: best.s.minNights } : { season: null, nightly: v.nightly, minNights: v.minNights };
+    }
+    // Ocupación inventada y estable: un hash del nombre y la fecha.
+    function busy(v, d) {
+      var h = 0, key = v.slug + d;
+      for (var i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) | 0;
+      return Math.abs(h) % 9 === 0 || Math.abs(h >> 3) % 13 === 0;
+    }
+    function free(v, d) { return d >= today && !busy(v, d); }
+    function json(body, status) { return Promise.resolve(new Response(JSON.stringify(body), { status: status || 200, headers: { 'Content-Type': 'application/json' } })); }
+    var realFetch = window.fetch.bind(window);
+    window.fetch = function (input, init) {
+      var url = new URL(typeof input === 'string' ? input : input.url, location.href);
+      var m = url.pathname.match(/^\/api\/public\/villas\/([^/]+)(\/[a-z]+)?$/);
+      if (!m) return realFetch(input, init);
+      var q = url.searchParams;
+      var v = villas.filter(function (x) { return x.slug === q.get('villa'); })[0];
+      if (!m[2]) {
+        return json({
+          businessName: 'Villas Sombra Buena', currency: 'EUR', today: today, depositPercent: 30, confirmHours: 24, paymentHours: 48,
+          balanceNote: lang === 'en' ? 'The balance is paid on arrival, by card or cash.' : 'El resto se paga a la llegada, con tarjeta o en efectivo.',
+          cancellationNote: lang === 'en' ? 'Free cancellation up to 30 days before arrival; after that the deposit is not refunded.' : 'Cancelas gratis hasta 30 días antes de la llegada; después, el depósito no se devuelve.',
+          depositReady: true,
+          villas: villas.map(function (x) { return { slug: x.slug, name: x.name, maxGuests: x.maxGuests, minNights: x.minNights, fromNightlyCents: x.nightly, cleaningFeeCents: x.cleaning }; }),
+        });
+      }
+      if (m[2] === '/calendar') {
+        var from = (q.get('desde') || today.slice(0, 7)) + '-01';
+        var d0 = new Date(from + 'T00:00:00Z');
+        var to = iso(new Date(Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth() + Number(q.get('meses') || 2), 1)));
+        var days = [];
+        for (var d = from; d < to; d = add(d, 1)) {
+          var r = rate(v, d);
+          days.push({ date: d, available: free(v, d), nightlyCents: r.nightly, minNights: r.minNights });
+        }
+        return json({ villa: v.slug, from: from, to: to, today: today, days: days });
+      }
+      if (m[2] === '/quote') {
+        var ci = q.get('entrada'), co = q.get('salida'), adults = Number(q.get('adultos')), children = Number(q.get('ninos'));
+        if (adults + children > v.maxGuests) return json({ ok: false, error: 'too_many_guests' });
+        var min = rate(v, ci).minNights;
+        var lines = [], nights = 0, ok = true;
+        for (var n = ci; n < co; n = add(n, 1)) {
+          var rr = rate(v, n); nights++;
+          if (!free(v, n)) ok = false;
+          var line = lines.filter(function (l) { return l.season === rr.season && l.nightlyCents === rr.nightly; })[0];
+          if (line) { line.nights++; line.subtotalCents += rr.nightly; } else lines.push({ season: rr.season, nights: 1, nightlyCents: rr.nightly, subtotalCents: rr.nightly });
+        }
+        if (nights < min) return json({ ok: false, error: 'min_nights', minNights: min });
+        var acc = lines.reduce(function (a, l) { return a + l.subtotalCents; }, 0);
+        var total = acc + v.cleaning;
+        var deposit = Math.round(total * 0.3);
+        return json({ ok: true, available: ok, quote: {
+          checkIn: ci, checkOut: co, nights: nights, adults: adults, children: children, lines: lines, accommodationCents: acc,
+          cleaningFeeCents: v.cleaning, touristTaxCents: 0, totalCents: total, vatCents: Math.round(total * 1000 / 11000), vatRateBps: 1000,
+          depositPercent: 30, depositCents: deposit, balanceCents: total - deposit, minNights: min, currency: 'EUR',
+        } });
+      }
+      if (m[2] === '/requests') {
+        return json({ ok: true, reference: 'VR-DEMO42', statusUrl: null, confirmHours: 24 }, 201);
+      }
+      return realFetch(input, init);
+    };
+  }
+})();
+</script>
+</body>
+</html>
