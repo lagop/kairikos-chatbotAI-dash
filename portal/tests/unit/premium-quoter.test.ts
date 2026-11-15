@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('server-only', () => ({}));
 
 import defaultData from '@/lib/premium-quoter-default.json';
-import { checkAnswers, compute, insightFor, resolveQuoter, type QuoterCatalog, type QuoterData } from '@/lib/premium-quoter-engine';
+import { buildSteps, checkAnswers, compute, fromNote, insightFor, priceText, resolveQuoter, toggleMulti, type QuoterCatalog, type QuoterData } from '@/lib/premium-quoter-engine';
 import { validateQuoterData } from '@/lib/premium-quoter-schema';
 import { canMovePremiumQuote, createPremiumQuoteRequest, MAX_REQUESTS_PER_IP_PER_DAY, saveQuoterVersion } from '@/lib/premium-quoter';
 
@@ -310,5 +310,53 @@ describe('canMovePremiumQuote', () => {
     expect(canMovePremiumQuote('convertido', 'contactado')).toBe(true);
     expect(canMovePremiumQuote('convertido', 'descartado')).toBe(false);
     expect(canMovePremiumQuote('nuevo', 'nuevo')).toBe(false);
+  });
+});
+
+describe('precio «desde» y opciones excluyentes (sector hotel, 15/11/2026)', () => {
+  const q = () => resolved();
+  const base = { tipo: 'nueva', paginas: 'p1', idiomas: 'i2', contenido: 'c3', plazo: 'std' };
+
+  it('el motor en vivo se enseña y se desglosa como «desde» y suma al total', () => {
+    const d = q();
+    const widgets = buildSteps(d, 'hotel').find((s) => s.id === 'widgets')!;
+    const vivo = widgets.options.find((o) => o.id === 'motorvivo')!;
+    expect(priceText(d, base, vivo).startsWith('desde +2.500')).toBe(true);
+    const sin = compute(d, { sector: 'hotel', answers: { ...base, widgets: [] } });
+    const con = compute(d, { sector: 'hotel', answers: { ...base, widgets: ['motorvivo'] } });
+    expect(con.list - sin.list).toBe(2500);
+    expect(con.lines.find((l) => l[0] === vivo.label)?.[1]).toMatch(/^desde /);
+    expect(con.fromLabels).toEqual([vivo.label]);
+    expect(fromNote(con)).toMatch(/precio «desde»/);
+    expect(fromNote(sin)).toBeNull();
+    expect(fromNote({})).toBeNull();
+  });
+
+  it('enlazado y en vivo se excluyen; la reserva de villas se puede sumar', () => {
+    const widgets = buildSteps(q(), 'hotel').find((s) => s.id === 'widgets')!;
+    expect(toggleMulti(widgets, ['motor', 'ventajas'], 'motorvivo')).toEqual(['ventajas', 'motorvivo']);
+    expect(toggleMulti(widgets, ['motorvivo'], 'reservavillas')).toEqual(['motorvivo', 'reservavillas']);
+    expect(toggleMulti(widgets, ['motorvivo'], 'motorvivo')).toEqual([]);
+    expect(checkAnswers(q(), 'hotel', { ...base, widgets: ['motor', 'motorvivo'] })).toEqual({ ok: false, step: 'widgets' });
+    expect(checkAnswers(q(), 'hotel', { ...base, widgets: ['motor', 'reservavillas'] }).ok).toBe(true);
+  });
+
+  it('el aviso de Google Hoteles sale si no hay motor', () => {
+    const sel = (widgets: string[]) => ({ sector: 'hotel', answers: { ...base, widgets } });
+    expect(insightFor(q(), sel(['googlehoteles']))).toMatch(/Google Hoteles necesita/);
+    expect(insightFor(q(), sel(['googlehoteles', 'motor']))).not.toMatch(/Google Hoteles necesita/);
+    expect(insightFor(q(), sel(['reservavillas']))).not.toMatch(/sin motor/);
+  });
+
+  it('valida: «desde» necesita precio y el grupo solo vale en pasos múltiples', () => {
+    const d = JSON.parse(JSON.stringify(raw)) as QuoterData;
+    d.sectors.hotel.widgets[0].price = 0;
+    d.sectors.hotel.widgets[0].from = true;
+    expect(validateQuoterData(d).ok).toBe(false);
+    const e = JSON.parse(JSON.stringify(raw)) as QuoterData;
+    e.baseSteps.find((s) => s.type === 'single')!.options[0].group = 'x';
+    const r = validateQuoterData(e);
+    expect(r.ok ? '' : r.problems.join()).toMatch(/group/);
+    expect(validateQuoterData(raw).ok).toBe(true);
   });
 });

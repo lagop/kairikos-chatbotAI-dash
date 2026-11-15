@@ -5,10 +5,12 @@ import {
   buildSteps,
   compute,
   fmt,
+  fromNote,
   insightFor,
   priceText,
   QUOTER_CALL_SLOTS,
   QUOTER_CONSENT,
+  toggleMulti,
   type QuoterAnswers,
   type QuoterData,
 } from '@/lib/premium-quoter-engine';
@@ -243,10 +245,11 @@ export function PremiumQuoter({
   function choose(stepId: string, type: 'single' | 'multi', isSector: boolean | undefined, id: string) {
     const cur = stateRef.current;
     if (type === 'multi') {
-      const arr = new Set(Array.isArray(cur.answers[stepId]) ? (cur.answers[stepId] as string[]) : []);
-      if (arr.has(id)) arr.delete(id);
-      else arr.add(id);
-      commit({ ...cur, answers: { ...cur.answers, [stepId]: [...arr] } });
+      const prev = Array.isArray(cur.answers[stepId]) ? (cur.answers[stepId] as string[]) : [];
+      const step = steps.find((x) => x.id === stepId);
+      // Con grupo (opciones excluyentes), marcar una quita las demás del grupo.
+      const value = step ? toggleMulti(step, prev, id) : prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      commit({ ...cur, answers: { ...cur.answers, [stepId]: value } });
       return;
     }
     let base = cur;
@@ -398,6 +401,7 @@ export function PremiumQuoter({
             <div className={styles.range}>
               {r.total ? `Horquilla orientativa: ${fmt(quoter, r.low)} – ${fmt(quoter, r.high)}` : sec ? 'Elige el tipo de proyecto' : 'Empieza eligiendo tu sector'}
             </div>
+            {fromNote(r) ? <p className={styles.from}>{fromNote(r)}</p> : null}
             {r.monthly ? (
               <div className={styles.monthly}>
                 <span>Servicios Kairikos</span>
@@ -545,6 +549,7 @@ function Result({
             <b>{r.weeks} semanas</b>
           </div>
         </div>
+        {fromNote(r) ? <p className={styles.from}>{fromNote(r)}</p> : null}
         {L.enabled ? <div className={cx('launch', 'big-l')}>{L.label}. A cambio, te pedimos poder publicar tu caso y tus resultados a los 3 meses.</div> : null}
         <div className={styles.inclbox}>
           <b>Siempre incluido</b>
