@@ -43,6 +43,8 @@ import { isStuck, stuckThresholdDays } from '@/lib/recall';
 import { loadRecallOwnerSettings, type RecallOwnerSettingsView } from '@/lib/recall-owner-settings';
 import { RecallOwnerSettingsCard } from '@/components/portal/RecallOwnerSettingsCard';
 import { RecallManualMetaConnectCard } from '@/components/admin/RecallManualMetaConnectCard';
+import { RecallCallerLanguagesCard } from '@/components/admin/RecallCallerLanguagesCard';
+import { parseCallerLanguages, type CallerLanguage } from '@/lib/recall-caller-language';
 import { resolvePortalChatbot, type PortalChatbotSelection } from '@/lib/portal-chatbot';
 import { ChatbotPicker } from '@/components/portal/ChatbotPicker';
 
@@ -269,6 +271,8 @@ export default async function AdminClientDetailPage(props: PageProps) {
   // three-part pattern as every block above.
   let recall: RecallPanelData | null = null;
   let recallOwnerSettings: RecallOwnerSettingsView | null = null;
+  // 15/11/2026 — idiomas para quien llama (RecallCallerLanguagesCard).
+  let recallCallerLanguages: CallerLanguage[] | null = null;
   // SEO con IA, Fase A — populated only when productCode === 'seo', same
   // pattern as every block above.
   let seoProfile: SeoProfilePanelData | null = null;
@@ -611,6 +615,7 @@ export default async function AdminClientDetailPage(props: PageProps) {
               forwardingVerifiedAt: true,
               greetingRecordedAt: true,
               ownerWhatsapp: true,
+              callerLanguages: true,
               virtualNumber: { select: { e164: true } },
               metaConnection: { select: { status: true, displayPhoneNumber: true } },
               // Bounded: the panel answers "what did the last few callers
@@ -673,6 +678,7 @@ export default async function AdminClientDetailPage(props: PageProps) {
               (subscription.status === 'forwarding_verified' && subscription.forwardingVerifiedAt) ||
               subscription.createdAt;
             recallOwnerSettings = await loadRecallOwnerSettings(prisma, { subscriptionId: subscription.id });
+            recallCallerLanguages = parseCallerLanguages(subscription.callerLanguages);
             recall = {
               subscriptionId: subscription.id,
               status: subscription.status,
@@ -1162,6 +1168,9 @@ export default async function AdminClientDetailPage(props: PageProps) {
                     }}
                   />
                 </div>
+              ) : null}
+              {recall && recallCallerLanguages ? (
+                <RecallCallerLanguagesCard subscriptionId={recall.subscriptionId} initial={recallCallerLanguages} />
               ) : null}
             </section>
           ) : null}

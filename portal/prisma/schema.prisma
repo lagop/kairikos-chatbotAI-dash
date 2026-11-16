@@ -4976,6 +4976,13 @@ model RecallSubscription {
   lastDigestAt  DateTime? @map("last_digest_at")
   lastReportAt  DateTime? @map("last_report_at")
 
+  // 15/11/2026 — en qué idiomas puede escribirse a quien llamó: 'es', 'en',
+  // 'de'. El de cada llamada lo elige el prefijo del número
+  // (src/lib/recall-caller-language.ts); el español está siempre y es el de
+  // por defecto. Activar un idioma hace que el barrido de plantillas mande a
+  // Meta las de primer contacto en ese idioma (recall-templates.ts).
+  callerLanguages String[] @default(["es"]) @map("caller_languages")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -5212,6 +5219,12 @@ model CallEvent {
   // existe para impedir.
   legalNoticeVersion String?   @map("legal_notice_version")
   legalNoticeSentAt  DateTime? @map("legal_notice_sent_at")
+
+  // 15/11/2026 — en qué idioma salió el primer mensaje ('es' | 'en' | 'de'),
+  // el que de verdad viajó (si la plantilla en su idioma no estaba aprobada,
+  // es 'es'). El acuse de la devolución y la confirmación posteriores van en
+  // el mismo. Null en las llamadas anteriores, que fueron todas en español.
+  callerLanguage String? @map("caller_language")
 
   ownerNotifyError    String? @map("owner_notify_error")
   ownerNotifyAttempts Int     @default(0) @map("owner_notify_attempts")

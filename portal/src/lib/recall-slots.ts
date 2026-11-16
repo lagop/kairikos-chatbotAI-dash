@@ -1,4 +1,5 @@
-import { isWithinBusinessHours, type BusinessHours } from './recall-hours';
+import { isWithinBusinessHours, describeDayAndTime, type BusinessHours, type DayKey } from './recall-hours';
+import type { CallerLanguage } from './recall-caller-language';
 
 // =============================================================================
 // Fase 3 — huecos para devolver la llamada.
@@ -61,15 +62,9 @@ export interface CallbackSlot {
   label: string;
 }
 
-const DAY_LABEL: readonly string[] = [
-  'domingo',
-  'lunes',
-  'martes',
-  'miércoles',
-  'jueves',
-  'viernes',
-  'sábado',
-];
+/** getUTCDay → la clave de día de recall-hours.ts, que es quien tiene los
+ *  nombres de los días en cada idioma. */
+const WEEKDAY_KEY: readonly DayKey[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
 interface ZonedParts {
   /** 'YYYY-MM-DD' local, para comparar días sin tocar husos. */
@@ -120,21 +115,22 @@ function zonedParts(at: Date, timezone: string): ZonedParts {
  * 'hoy a las 17:30' | 'mañana a las 9:00' | 'el martes a las 11:00'.
  *
  * Mismo registro que describeNextOpening en recall-hours.ts: lo lee un
- * desconocido en un WhatsApp, no un operador en un panel.
+ * desconocido en un WhatsApp, no un operador en un panel. En inglés o
+ * alemán, 'tomorrow at 9:00' / 'morgen um 9:00 Uhr' (describeDayAndTime).
  */
-export function formatSlotLabel(at: Date, now: Date, timezone: string): string {
+export function formatSlotLabel(at: Date, now: Date, timezone: string, language: CallerLanguage = 'es'): string {
   const slot = zonedParts(at, timezone);
   const today = zonedParts(now, timezone).date;
   const time = `${slot.hour}:${String(slot.minute).padStart(2, '0')}`;
 
-  if (slot.date === today) return `hoy a las ${time}`;
+  if (slot.date === today) return describeDayAndTime('today', time, language);
 
   // Mañana es el día local siguiente. Se compara por cadena de fecha, no
   // sumando 24 horas, que en el cambio de hora no da el día siguiente.
   const tomorrow = zonedParts(new Date(now.getTime() + 24 * 60 * 60_000), timezone).date;
-  if (slot.date === tomorrow) return `mañana a las ${time}`;
+  if (slot.date === tomorrow) return describeDayAndTime('tomorrow', time, language);
 
-  return `el ${DAY_LABEL[slot.weekday]} a las ${time}`;
+  return describeDayAndTime(WEEKDAY_KEY[slot.weekday], time, language);
 }
 
 /** El primer instante de la rejilla que está al menos SLOT_LEAD_MINUTES
@@ -152,6 +148,10 @@ export interface BuildSlotsOptions {
    *  dos veces. Se comparan por instante exacto, que es lo que se guarda. */
   taken?: readonly Date[];
   max?: number;
+  /** El idioma de las etiquetas (ver recall-caller-language.ts). Español
+   *  por defecto. Las etiquetas se guardan tal cual con la oferta, así que
+   *  el acuse posterior repite las palabras que esa persona leyó. */
+  language?: CallerLanguage;
 }
 
 /**
@@ -186,7 +186,7 @@ export function buildCallbackSlots(
     const spacedEnough = lastPicked === null || ms - lastPicked >= spacingMs;
 
     if (spacedEnough && !takenMs.has(ms) && isWithinBusinessHours(hours, cursor, timezone)) {
-      slots.push({ at: cursor, label: formatSlotLabel(cursor, now, timezone) });
+      slots.push({ at: cursor, label: formatSlotLabel(cursor, now, timezone, options.language) });
       lastPicked = ms;
     }
 
@@ -220,7 +220,23 @@ export type SlotChoice =
 /** Palabras con las que alguien dice que no le vale ninguna. Sin acentos y
  *  de una sola palabra, porque se comparan después de normalizar — igual
  *  que NONE_WORDS en recall-digest.ts. */
-const NONE_WORDS = ['ninguno', 'ninguna', 'ningun', 'nada', 'no', 'cero', 'none'];
+const NONE_WORDS = [
+  'ninguno',
+  'ninguna',
+  'ningun',
+  'nada',
+  'no',
+  'cero',
+  'none',
+  // 15/11/2026 — la oferta también sale en inglés y alemán.
+  'neither',
+  'nope',
+  'nein',
+  'keiner',
+  'keine',
+  'keins',
+  'nichts',
+];
 
 /**
  * Lee lo que de verdad escribió quien llamó.

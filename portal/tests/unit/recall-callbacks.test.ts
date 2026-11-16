@@ -122,13 +122,13 @@ describe('applyCallbackReply — resolver la elección', () => {
 
   it('un «ninguno» no apunta nada', async () => {
     const result = await applyCallbackReply(prisma, { ...INPUT, text: 'ninguna me viene bien' });
-    expect(result).toEqual({ status: 'declined' });
+    expect(result).toEqual({ status: 'declined', language: 'es' });
     expect(state.update).not.toHaveBeenCalled();
   });
 
   it('un mensaje que no se entiende no inventa una elección', async () => {
     const result = await applyCallbackReply(prisma, { ...INPUT, text: 'buenas, gracias' });
-    expect(result).toEqual({ status: 'unclear' });
+    expect(result).toEqual({ status: 'unclear', language: 'es' });
     expect(state.update).not.toHaveBeenCalled();
   });
 
@@ -165,12 +165,12 @@ describe('applyCallbackReply — dos personas, un hueco', () => {
     // Pide el segundo y está cogido: el primero es antes, así que no vale.
     withTaken([SLOT_B]);
     const result = await applyCallbackReply(prisma, { ...INPUT, text: '2' });
-    expect(result).toEqual({ status: 'no_slot_free' });
+    expect(result).toEqual({ status: 'no_slot_free', language: 'es' });
   });
 
   it('sin ningún hueco libre de los suyos, no elige por él', async () => {
     withTaken([SLOT_A, SLOT_B]);
-    expect(await applyCallbackReply(prisma, { ...INPUT, text: '1' })).toEqual({ status: 'no_slot_free' });
+    expect(await applyCallbackReply(prisma, { ...INPUT, text: '1' })).toEqual({ status: 'no_slot_free', language: 'es' });
     expect(state.update).not.toHaveBeenCalled();
   });
 });

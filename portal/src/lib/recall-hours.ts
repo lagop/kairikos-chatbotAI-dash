@@ -14,6 +14,8 @@
 // with full ICU.
 // =============================================================================
 
+import type { CallerLanguage } from './recall-caller-language';
+
 /** 'HH:MM'–'HH:MM' in the subscription's own timezone. */
 export type Interval = readonly [string, string];
 
@@ -34,15 +36,37 @@ const WEEKDAY_TO_KEY: Readonly<Record<string, DayKey>> = {
   Sun: 'sun',
 };
 
-const DAY_LABEL: Readonly<Record<DayKey, string>> = {
-  mon: 'lunes',
-  tue: 'martes',
-  wed: 'miércoles',
-  thu: 'jueves',
-  fri: 'viernes',
-  sat: 'sábado',
-  sun: 'domingo',
+const DAY_LABEL: Readonly<Record<CallerLanguage, Readonly<Record<DayKey, string>>>> = {
+  es: { mon: 'lunes', tue: 'martes', wed: 'miércoles', thu: 'jueves', fri: 'viernes', sat: 'sábado', sun: 'domingo' },
+  en: { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' },
+  de: { mon: 'Montag', tue: 'Dienstag', wed: 'Mittwoch', thu: 'Donnerstag', fri: 'Freitag', sat: 'Samstag', sun: 'Sonntag' },
 };
+
+/**
+ * «hoy a las 9:00» / «today at 9:00» / «heute um 9:00 Uhr», y lo mismo con
+ * mañana o un día de la semana. La comparten describeNextOpening y
+ * formatSlotLabel (recall-slots.ts): el mismo registro en los dos mensajes,
+ * y una sola tabla de días por idioma.
+ *
+ * El inglés va con reloj de 24 horas, igual que los otros dos: «17:30» no se
+ * presta a confusión, y «5:30» sin «pm» sí.
+ */
+export function describeDayAndTime(day: 'today' | 'tomorrow' | DayKey, time: string, language: CallerLanguage = 'es'): string {
+  switch (language) {
+    case 'en':
+      if (day === 'today') return `today at ${time}`;
+      if (day === 'tomorrow') return `tomorrow at ${time}`;
+      return `on ${DAY_LABEL.en[day]} at ${time}`;
+    case 'de':
+      if (day === 'today') return `heute um ${time} Uhr`;
+      if (day === 'tomorrow') return `morgen um ${time} Uhr`;
+      return `am ${DAY_LABEL.de[day]} um ${time} Uhr`;
+    default:
+      if (day === 'today') return `hoy a las ${time}`;
+      if (day === 'tomorrow') return `mañana a las ${time}`;
+      return `el ${DAY_LABEL.es[day]} a las ${time}`;
+  }
+}
 
 /**
  * What a Spanish trades business typically works, used when the client
@@ -202,12 +226,19 @@ export function isWithinBusinessHours(hours: BusinessHours, at: Date, timezone: 
 /**
  * Human phrasing of when the business opens next, for the out-of-hours
  * message: 'hoy a las 16:00', 'mañana a las 8:00', 'el lunes a las 8:00'.
+ * In English or German (15/11/2026, see recall-caller-language.ts):
+ * 'tomorrow at 8:00', 'am Montag um 8:00 Uhr'.
  *
  * Returns null when nothing opens in the next week — a client with no
  * open hours at all. The caller must then fall back to wording that
  * promises no time, rather than printing 'null' at a stranger.
  */
-export function describeNextOpening(hours: BusinessHours, at: Date, timezone: string): string | null {
+export function describeNextOpening(
+  hours: BusinessHours,
+  at: Date,
+  timezone: string,
+  language: CallerLanguage = 'es',
+): string | null {
   const { day, minutes } = getZoned(at, timezone);
 
   let cursor = day;
@@ -219,10 +250,7 @@ export function describeNextOpening(hours: BusinessHours, at: Date, timezone: st
 
     for (const start of starts) {
       if (offset > 0 || start > minutes) {
-        const time = formatMinutes(start);
-        if (offset === 0) return `hoy a las ${time}`;
-        if (offset === 1) return `mañana a las ${time}`;
-        return `el ${DAY_LABEL[cursor]} a las ${time}`;
+        return describeDayAndTime(offset === 0 ? 'today' : offset === 1 ? 'tomorrow' : cursor, formatMinutes(start), language);
       }
     }
     cursor = nextDay(cursor);

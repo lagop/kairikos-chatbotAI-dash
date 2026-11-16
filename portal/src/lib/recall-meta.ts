@@ -6,6 +6,7 @@ import { resolveTokenExpiry, isUnusableToken } from './meta-token-expiry';
 import { subscribeWaba, getPhoneNumbersForWaba, getPhoneNumberInfo, syncSmbAppState } from './whatsapp-api';
 import { submitAllRecallTemplates, sendForwardingInstructions, type TemplateSubmissionOutcome } from './recall-templates';
 import { deliverChannelEvent } from './channel-webhook';
+import { parseCallerLanguages } from './recall-caller-language';
 import { logError } from './observability';
 
 // =============================================================================
@@ -84,7 +85,7 @@ export async function connectRecallWhatsapp(
 ): Promise<ConnectRecallWhatsappResult> {
   const subscription = await prisma.recallSubscription.findUnique({
     where: { id: params.subscriptionId },
-    select: { id: true, clientId: true, status: true },
+    select: { id: true, clientId: true, status: true, callerLanguages: true },
   });
   if (!subscription || subscription.clientId !== params.clientId) {
     return { ok: false, error: 'subscription_not_found' };
@@ -144,7 +145,9 @@ export async function connectRecallWhatsapp(
 }
 
 export interface BindRecallMetaConnectionInput {
-  subscription: { id: string; clientId: string; status: string };
+  /** `callerLanguages` (15/11/2026): con qué idiomas de primer contacto se
+   *  mandan las plantillas al conectar. Sin él, solo español. */
+  subscription: { id: string; clientId: string; status: string; callerLanguages?: string[] | null };
   clientId: string;
   tenantId: string | null;
   accessToken: string;
@@ -273,7 +276,11 @@ export async function bindRecallMetaConnection(
   // syncSmbAppState above, which stay useful to repeat every time.
   let templatesSubmitted: TemplateSubmissionOutcome[] | null = null;
   if (willAdvance) {
-    templatesSubmitted = await submitAllRecallTemplates(accessToken, input.wabaId);
+    templatesSubmitted = await submitAllRecallTemplates(
+      accessToken,
+      input.wabaId,
+      parseCallerLanguages(subscription.callerLanguages),
+    );
   }
 
   // 2026-09-17 — un alta que ya esperaba el desvío y reconecta su WhatsApp
@@ -399,7 +406,7 @@ export async function connectRecallWhatsappManually(
 ): Promise<ConnectManualResult> {
   const subscription = await prisma.recallSubscription.findUnique({
     where: { id: params.subscriptionId },
-    select: { id: true, clientId: true, status: true, client: { select: { tenantId: true } } },
+    select: { id: true, clientId: true, status: true, callerLanguages: true, client: { select: { tenantId: true } } },
   });
   if (!subscription) return { ok: false, error: 'subscription_not_found' };
   if (!canBindMetaConnection(subscription.status)) return { ok: false, error: 'invalid_status' };

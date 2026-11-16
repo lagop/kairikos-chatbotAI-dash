@@ -54,6 +54,7 @@ import {
   CALLBACK_REMINDER_LEAD_MINUTES,
   CALLBACK_REMINDER_GRACE_MINUTES,
 } from '@/lib/recall-messaging';
+import { LEGAL_NOTICE_TEXT } from '@/lib/recall-optout';
 
 const state = {
   callFindUnique: vi.fn(),
@@ -868,5 +869,91 @@ describe('la versión aprobada en Meta decide si el aviso se da por dado', () =>
     await run({ fromNumber: '+34910555444' });
     expect(telephony.sentSms[0].body).toContain('responde BAJA');
     expect(stampedNotice()).toBe(true);
+  });
+});
+
+// =============================================================================
+// 15/11/2026 — el idioma de quien llama.
+//
+// El prefijo sugiere el idioma; el cliente decide cuáles tiene activos; la
+// traducción solo se usa cuando Meta la ha aprobado. En cualquier otro caso
+// se escribe en español, como siempre.
+// =============================================================================
+describe('notifyCaller — idioma de quien llama', () => {
+  const GERMAN = '+4915112345678';
+  const night = new Date('2026-07-07T21:40:00.000Z');
+  const atNight = (overrides: Record<string, unknown>) =>
+    run({ startedAt: new Date(night.getTime() - 5 * 60 * 1000), ...overrides }, night);
+  const lastUpdate = () => Object.assign({}, ...state.callUpdate.mock.calls.map((c) => c[0].data));
+  const withGerman = [
+    ...APPROVED_WITH_NOTICE.map((r) => ({ ...r, languageCode: 'es' })),
+    { name: 'recall_caller_open_v2', languageCode: 'de' },
+    { name: 'recall_caller_closed_v2', languageCode: 'de' },
+    { name: 'recall_caller_slots_v2', languageCode: 'de' },
+  ];
+
+  it('un cliente sin idiomas activos escribe en español también a un número alemán', async () => {
+    state.whatsappTemplateFindMany.mockResolvedValue(withGerman);
+    await run({ fromNumber: GERMAN });
+    expect(mockState.sendTemplate.mock.calls[0][3]).toMatchObject({ name: 'recall_caller_open_v2', languageCode: 'es' });
+    expect(lastUpdate()).toMatchObject({ legalNoticeVersion: '2026-09-v1', callerLanguage: 'es' });
+  });
+
+  it('con el alemán activo y aprobado, en alemán: plantilla, hora y evidencia del aviso', async () => {
+    state.whatsappTemplateFindMany.mockResolvedValue(withGerman);
+    await atNight({
+      fromNumber: GERMAN,
+      subscription: { callerLanguages: ['es', 'de'], clientProduct: { product: { tier: 'essential' } } },
+    });
+    const template = mockState.sendTemplate.mock.calls[0][3];
+    expect(template).toMatchObject({ name: 'recall_caller_closed_v2', languageCode: 'de' });
+    expect(template.bodyParams).toEqual(['Fontanería Aurora', 'morgen um 8:00 Uhr']);
+    expect(lastUpdate()).toMatchObject({ legalNoticeVersion: '2026-11-de-v1', callerLanguage: 'de' });
+  });
+
+  it('la oferta de huecos en alemán guarda las etiquetas en alemán (el acuse sale de ahí)', async () => {
+    state.whatsappTemplateFindMany.mockResolvedValue(withGerman);
+    await atNight({ fromNumber: GERMAN, subscription: { callerLanguages: ['es', 'de'] } });
+    const template = mockState.sendTemplate.mock.calls[0][3];
+    expect(template).toMatchObject({ name: 'recall_caller_slots_v2', languageCode: 'de' });
+    expect(template.bodyParams[1]).toMatch(/^1\) .+ Uhr · 2\) /);
+    expect(lastUpdate().callerLanguage).toBe('de');
+  });
+
+  it('con el alemán activo pero aún sin aprobar, en español (y con el aviso español)', async () => {
+    state.whatsappTemplateFindMany.mockResolvedValue(APPROVED_WITH_NOTICE.map((r) => ({ ...r, languageCode: 'es' })));
+    await atNight({
+      fromNumber: GERMAN,
+      subscription: { callerLanguages: ['es', 'de'], clientProduct: { product: { tier: 'essential' } } },
+    });
+    const template = mockState.sendTemplate.mock.calls[0][3];
+    expect(template).toMatchObject({ name: 'recall_caller_closed_v2', languageCode: 'es' });
+    expect(template.bodyParams[1]).toBe('mañana a las 8:00');
+    expect(lastUpdate()).toMatchObject({ legalNoticeVersion: '2026-09-v1', callerLanguage: 'es' });
+  });
+
+  it('un número británico con solo el alemán activo, en español', async () => {
+    state.whatsappTemplateFindMany.mockResolvedValue(withGerman);
+    await run({ fromNumber: '+447700900123', subscription: { callerLanguages: ['es', 'de'] } });
+    expect(mockState.sendTemplate.mock.calls[0][3].languageCode).toBe('es');
+  });
+
+  // El SMS no pasa por Meta: su texto lo escribe el código y sale en el idioma
+  // del número aunque la plantilla de WhatsApp no estuviera aprobada.
+  it('el SMS de respaldo sale en el idioma del número, con su aviso', async () => {
+    mockState.sendTemplate.mockResolvedValue({ ok: false, error: 'undeliverable', code: 131026 });
+    await atNight({ fromNumber: GERMAN, subscription: { callerLanguages: ['es', 'de'] } });
+    expect(telephony.sentSms[0].body).toBe(
+      'Hallo, hier ist Fontanería Aurora. Wir haben Ihren Anruf gesehen und melden uns morgen um 8:00 Uhr bei Ihnen. ' +
+        'Wenn Sie keine weiteren Nachrichten von uns erhalten möchten, antworten Sie STOPP.',
+    );
+    expect(lastUpdate()).toMatchObject({ legalNoticeVersion: '2026-11-de-v1', callerLanguage: 'de' });
+  });
+
+  it('el SMS en español no cambia ni una coma', async () => {
+    await run({ fromNumber: '+34910555444' });
+    expect(telephony.sentSms[0].body).toBe(
+      `Hola, somos Fontanería Aurora. Hemos visto tu llamada y te contestamos enseguida. ${LEGAL_NOTICE_TEXT}`,
+    );
   });
 });

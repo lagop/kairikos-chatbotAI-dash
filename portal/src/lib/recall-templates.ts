@@ -5,7 +5,8 @@ import { DIGEST_TEMPLATES } from './recall-digest';
 import { REPORT_TEMPLATE } from './recall-reports';
 import { createMessageTemplate, sendTemplate, isAccessTokenError } from './whatsapp-api';
 import { markConnectionNeedsReconnect } from './whatsapp-health';
-import { LEGAL_NOTICE_TEXT } from './recall-optout';
+import { LEGAL_NOTICE_TEXT, LEGAL_NOTICES } from './recall-optout';
+import { CALLER_LANGUAGES, parseCallerLanguages, templateKey, type CallerLanguage } from './recall-caller-language';
 import { REVIEW_TEMPLATE } from './review-request-campaign';
 import { RECOVERY_TEMPLATE_DEFINITIONS } from './recovery-templates';
 import { recordSend, metaMessageId } from './message-ledger';
@@ -230,11 +231,93 @@ export function reviewRequestTemplateDefinition(portalUrl: string | undefined): 
   };
 }
 
+// =============================================================================
+// 15/11/2026 — las de primer contacto en inglés y alemán.
+//
+// MISMO NOMBRE, OTRO IDIOMA. En Meta una plantilla es un nombre con una o
+// varias traducciones (language), y el envío elige cuál con `languageCode`.
+// El espejo ya lo admitía (WhatsappTemplate es único por conexión, nombre e
+// idioma). Así recall_caller_open_v2 en 'de' es la traducción de la española
+// y no una plantilla aparte que haya que seguir por su cuenta.
+//
+// Solo las tres de primer contacto: son las que lee quien llamó. Las del
+// dueño (recado, resumen, informe, desvío, recordatorio) siguen en español,
+// que es el idioma del negocio.
+//
+// NO SON OBLIGATORIAS para el alta, y NO SE MANDAN A META salvo a los
+// clientes que tienen el idioma activo (RecallSubscription.callerLanguages,
+// por defecto solo español). Al activarlo, ensureRecallTemplatesSubmitted las
+// manda en el ciclo siguiente, igual que hace con cualquier plantilla que le
+// falte a un negocio. Mientras Meta no las aprueba, se envía la española
+// (chooseCallerTemplate, recall-messaging.ts).
+//
+// Mismo aviso que el resto: primer borrador, que lo lea alguien con la voz
+// del producto en ese idioma antes del primer cliente. En alemán, de usted.
+// =============================================================================
+
+type TranslatedLanguage = Exclude<CallerLanguage, 'es'>;
+
+function callerTranslation(
+  language: TranslatedLanguage,
+  texts: { open: string; closed: string; slots: string; examples: { business: string; opening: string; slots: string } },
+): RecallTemplateDefinition[] {
+  const notice = LEGAL_NOTICES[language].text;
+  return [
+    {
+      name: RECALL_TEMPLATES.callerOpenWithNotice.name,
+      languageCode: language,
+      category: 'UTILITY',
+      bodyText: `${texts.open} ${notice}`,
+      bodyExamples: [texts.examples.business],
+    },
+    {
+      name: RECALL_TEMPLATES.callerClosedWithNotice.name,
+      languageCode: language,
+      category: 'UTILITY',
+      bodyText: `${texts.closed} ${notice}`,
+      bodyExamples: [texts.examples.business, texts.examples.opening],
+    },
+    {
+      name: RECALL_TEMPLATES.callerSlotsWithNotice.name,
+      languageCode: language,
+      category: 'UTILITY',
+      bodyText: `${texts.slots} ${notice}`,
+      bodyExamples: [texts.examples.business, texts.examples.slots],
+    },
+  ];
+}
+
+export const CALLER_TEMPLATE_TRANSLATIONS: Readonly<Record<TranslatedLanguage, readonly RecallTemplateDefinition[]>> = {
+  en: callerTranslation('en', {
+    open: "Hi, this is the assistant for {{1}}. We saw your call and couldn't answer — we'll message you as soon as we can.",
+    closed: "Hi, this is the assistant for {{1}}. We're closed right now and open {{2}}. We'll get back to you as soon as we open.",
+    slots:
+      "Hi, this is the assistant for {{1}}. We're closed right now. If you like, we can call you back at one of these times: {{2}}. Reply with the number you prefer.",
+    examples: { business: 'Hotel Aurora', opening: 'tomorrow at 9:00', slots: '1) today at 17:30 · 2) tomorrow at 9:00' },
+  }),
+  de: callerTranslation('de', {
+    open: 'Hallo, hier ist der Assistent von {{1}}. Wir haben Ihren Anruf gesehen, konnten aber nicht rangehen – wir schreiben Ihnen, sobald wir können.',
+    closed:
+      'Hallo, hier ist der Assistent von {{1}}. Im Moment haben wir geschlossen, wir öffnen {{2}}. Sobald wir geöffnet haben, melden wir uns bei Ihnen.',
+    slots:
+      'Hallo, hier ist der Assistent von {{1}}. Im Moment haben wir geschlossen. Wenn Sie möchten, rufen wir Sie zu einer dieser Zeiten zurück: {{2}}. Antworten Sie mit der Nummer, die Ihnen passt.',
+    examples: {
+      business: 'Hotel Aurora',
+      opening: 'morgen um 9:00 Uhr',
+      slots: '1) heute um 17:30 Uhr · 2) morgen um 9:00 Uhr',
+    },
+  }),
+};
+
 /** Todo lo que un negocio de recall necesita tener en Meta, obligatorio o
  *  no. Una función y no una constante porque la invitación a reseña
- *  depende del dominio del portal, que se lee al usarla. */
+ *  depende del dominio del portal, que se lee al usarla.
+ *
+ *  `languages`: los idiomas de primer contacto del negocio. Por defecto
+ *  solo español, que es lo de siempre. */
 export function allRecallTemplateDefinitions(
   portalUrl: string | undefined = process.env.NEXT_PUBLIC_PORTAL_URL,
+  languages: readonly CallerLanguage[] = ['es'],
 ): RecallTemplateDefinition[] {
   const review = reviewRequestTemplateDefinition(portalUrl);
   return [
@@ -250,6 +333,9 @@ export function allRecallTemplateDefinitions(
       bodyText,
       bodyExamples,
     })),
+    ...parseCallerLanguages(languages)
+      .filter((lang): lang is TranslatedLanguage => lang !== 'es')
+      .flatMap((lang) => CALLER_TEMPLATE_TRANSLATIONS[lang]),
   ];
 }
 
@@ -294,15 +380,17 @@ function normalizeTemplateText(value: string): string {
  * tener plantillas de otros productos, o las de ejemplo de Meta.
  */
 export function findTemplateTextDrift(
-  remote: Array<{ name?: string; components?: Array<{ type?: string; text?: string }> }>,
-  definitions: ReadonlyArray<{ name: string; bodyText: string }>,
+  remote: Array<{ name?: string; language?: string; components?: Array<{ type?: string; text?: string }> }>,
+  definitions: ReadonlyArray<{ name: string; bodyText: string; languageCode?: string }>,
 ): TemplateTextDrift[] {
-  const expectedByName = new Map(definitions.map((def) => [def.name, def.bodyText]));
+  // 15/11/2026 — por nombre E IDIOMA: recall_caller_open_v2 en alemán no
+  // es un desvío de la española. Una definición sin idioma es español.
+  const expectedByKey = new Map(definitions.map((def) => [templateKey(def.name, def.languageCode), def.bodyText]));
   const drifts: TemplateTextDrift[] = [];
 
   for (const template of remote) {
     if (!template.name) continue;
-    const expected = expectedByName.get(template.name);
+    const expected = expectedByKey.get(templateKey(template.name, template.language));
     if (expected === undefined) continue;
 
     const body = (template.components ?? []).find((c) => c.type === 'BODY');
@@ -339,9 +427,11 @@ export interface TemplateSubmissionOutcome {
 export async function submitAllRecallTemplates(
   accessToken: string,
   wabaId: string,
+  /** Los idiomas de primer contacto del negocio (por defecto, español). */
+  languages: readonly CallerLanguage[] = ['es'],
 ): Promise<TemplateSubmissionOutcome[]> {
   const outcomes: TemplateSubmissionOutcome[] = [];
-  for (const def of allRecallTemplateDefinitions()) {
+  for (const def of allRecallTemplateDefinitions(undefined, languages)) {
     const result = await createMessageTemplate(accessToken, wabaId, {
       name: def.name,
       languageCode: def.languageCode,
@@ -361,6 +451,12 @@ export async function submitAllRecallTemplates(
 }
 
 const REQUIRED_TEMPLATE_NAMES = RECALL_TEMPLATE_DEFINITIONS.map((def) => def.name);
+
+/** Las obligatorias son todas españolas (un test lo vigila), y el recuento
+ *  del alta deja fuera las traducciones: desde que las hay, un mismo nombre
+ *  puede estar aprobado en alemán y pendiente en español, y contar por
+ *  nombre daría el alta por buena antes de tiempo. */
+const TRANSLATED_TEMPLATE_LANGUAGES: string[] = CALLER_LANGUAGES.filter((lang) => lang !== 'es');
 
 // =============================================================================
 // 28/09/2026 — cuántas plantillas tiene aprobadas cada cliente, para la cola
@@ -393,20 +489,28 @@ export interface TemplateApprovalSummary {
   optional: { approved: number; total: number };
   /** Obligatorias que todavía no se han enviado a Meta (sin fila). */
   requiredNotSubmitted: string[];
-  problems: Array<{ name: string; status: string; reason: string | null; required: boolean }>;
+  /** `languageCode` (15/11/2026): la misma plantilla puede tener un
+   *  problema en alemán y no en español. */
+  problems: Array<{ name: string; languageCode: string; status: string; reason: string | null; required: boolean }>;
 }
 
-/** Pura, para probarla sin base de datos. */
+/**
+ * Pura, para probarla sin base de datos.
+ *
+ * `names` son claves de templateKey (recall-caller-language.ts): el nombre
+ * para el español, `nombre@idioma` para las traducciones. Una fila sin
+ * `languageCode` cuenta como español.
+ */
 export function summarizeTemplateApproval(
-  rows: ReadonlyArray<{ name: string; status: string; rejectedReason: string | null }>,
+  rows: ReadonlyArray<{ name: string; languageCode?: string | null; status: string; rejectedReason: string | null }>,
   names: { required: readonly string[]; optional: readonly string[] },
 ): TemplateApprovalSummary {
-  const byName = new Map(rows.map((r) => [r.name, r]));
+  const byKey = new Map(rows.map((r) => [templateKey(r.name, r.languageCode), r]));
   const required = new Set(names.required);
   const known = [...names.required, ...names.optional];
 
   const count = (list: readonly string[], status: string) =>
-    list.filter((n) => byName.get(n)?.status === status).length;
+    list.filter((n) => byKey.get(n)?.status === status).length;
 
   return {
     required: {
@@ -415,17 +519,27 @@ export function summarizeTemplateApproval(
       total: names.required.length,
     },
     optional: { approved: count(names.optional, 'APPROVED'), total: names.optional.length },
-    requiredNotSubmitted: names.required.filter((n) => !byName.has(n)),
+    requiredNotSubmitted: names.required.filter((n) => !byKey.has(n)),
     problems: known
-      .map((n) => byName.get(n))
-      .filter((r): r is NonNullable<typeof r> => r !== undefined && TEMPLATE_PROBLEM_STATUSES.has(r.status))
-      .map((r) => ({ name: r.name, status: r.status, reason: r.rejectedReason, required: required.has(r.name) }))
+      .map((key) => ({ key, row: byKey.get(key) }))
+      .filter((e): e is { key: string; row: NonNullable<typeof e.row> } =>
+        e.row !== undefined && TEMPLATE_PROBLEM_STATUSES.has(e.row.status),
+      )
+      .map(({ key, row }) => ({
+        name: row.name,
+        languageCode: row.languageCode || 'es',
+        status: row.status,
+        reason: row.rejectedReason,
+        required: required.has(key),
+      }))
       // Las que paran el alta, primero.
       .sort((a, b) => Number(b.required) - Number(a.required)),
   };
 }
 
-/** Un resumen por conexión de WhatsApp, con UNA consulta para toda la cola. */
+/** Un resumen por conexión de WhatsApp, con UNA consulta para toda la cola
+ *  (y otra para saber qué idiomas tiene activos cada negocio: las
+ *  traducciones solo cuentan como opcionales donde están activas). */
 export async function templateApprovalByConnection(
   prisma: PrismaClient,
   connectionIds: readonly string[],
@@ -434,16 +548,25 @@ export async function templateApprovalByConnection(
   if (connectionIds.length === 0) return result;
 
   const requiredSet = new Set(REQUIRED_TEMPLATE_NAMES);
-  const optional = allRecallTemplateDefinitions()
-    .map((d) => d.name)
-    .filter((n) => !requiredSet.has(n));
 
-  const rows = await prisma.whatsappTemplate.findMany({
-    where: { connectionId: { in: [...connectionIds] } },
-    select: { connectionId: true, name: true, status: true, rejectedReason: true },
-  });
+  const [rows, subscriptions] = await Promise.all([
+    prisma.whatsappTemplate.findMany({
+      where: { connectionId: { in: [...connectionIds] } },
+      select: { connectionId: true, name: true, languageCode: true, status: true, rejectedReason: true },
+    }),
+    prisma.recallSubscription.findMany({
+      where: { metaConnectionId: { in: [...connectionIds] } },
+      select: { metaConnectionId: true, callerLanguages: true },
+    }),
+  ]);
 
   for (const id of connectionIds) {
+    const languages = parseCallerLanguages(
+      subscriptions.filter((s) => s.metaConnectionId === id).flatMap((s) => s.callerLanguages ?? []),
+    );
+    const optional = allRecallTemplateDefinitions(undefined, languages)
+      .map((d) => templateKey(d.name, d.languageCode))
+      .filter((key) => !requiredSet.has(key));
     result.set(
       id,
       summarizeTemplateApproval(
@@ -592,6 +715,9 @@ export async function advanceSubscriptionsWithApprovedTemplates(
       where: {
         connectionId: subscription.metaConnectionId,
         name: { in: REQUIRED_TEMPLATE_NAMES },
+        // Fuera las traducciones, no «solo 'es'»: una fila antigua dada de
+        // alta a mano como 'es_ES' contaba antes y tiene que seguir contando.
+        languageCode: { notIn: TRANSLATED_TEMPLATE_LANGUAGES },
         status: 'APPROVED',
       },
     });
@@ -685,9 +811,14 @@ export async function advanceSubscriptionsWithApprovedTemplates(
 export const SUBMIT_FAILED_RETRY_HOURS = 24;
 
 /** Los nombres que cuentan como "ya enviados" en el espejo: todos, salvo
- *  los SUBMIT_FAILED cuyo último intento tiene más de un día. */
+ *  los SUBMIT_FAILED cuyo último intento tiene más de un día.
+ *
+ *  Con `languageCode` en las filas (15/11/2026) devuelve claves de
+ *  templateKey: el nombre para el español y `nombre@idioma` para las
+ *  traducciones. Sin él, nombres sueltos, como siempre (lo reutiliza
+ *  prospecting-templates.ts). */
 export function namesAlreadySubmitted(
-  rows: ReadonlyArray<{ name: string; status: string; lastCheckedAt: Date | null }>,
+  rows: ReadonlyArray<{ name: string; languageCode?: string | null; status: string; lastCheckedAt: Date | null }>,
   now: Date,
 ): Set<string> {
   const retryBefore = now.getTime() - SUBMIT_FAILED_RETRY_HOURS * 60 * 60 * 1000;
@@ -697,19 +828,26 @@ export function namesAlreadySubmitted(
         (row) =>
           row.status !== 'SUBMIT_FAILED' || (row.lastCheckedAt !== null && row.lastCheckedAt.getTime() > retryBefore),
       )
-      .map((row) => row.name),
+      .map((row) => ('languageCode' in row ? templateKey(row.name, row.languageCode) : row.name)),
   );
 }
 
 /** Qué definiciones faltan en un negocio, dado lo que ya hay en su espejo
  *  (con cualquier estado: una rechazada por Meta en revisión no se reenvía
  *  sola, eso lo decide una persona). Pura y exportada para probarla sin
- *  red. */
+ *  red.
+ *
+ *  `existingNames` son claves de templateKey, y `languages` los idiomas de
+ *  primer contacto del negocio: las traducciones solo faltan donde el idioma
+ *  está activo. */
 export function missingTemplateDefinitions(
   existingNames: ReadonlySet<string>,
   portalUrl: string | undefined = process.env.NEXT_PUBLIC_PORTAL_URL,
+  languages: readonly CallerLanguage[] = ['es'],
 ): RecallTemplateDefinition[] {
-  return allRecallTemplateDefinitions(portalUrl).filter((def) => !existingNames.has(def.name));
+  return allRecallTemplateDefinitions(portalUrl, languages).filter(
+    (def) => !existingNames.has(templateKey(def.name, def.languageCode)),
+  );
 }
 
 export interface EnsureTemplatesResult {
@@ -732,6 +870,9 @@ export async function ensureRecallTemplatesSubmitted(
   const subscriptions = await prisma.recallSubscription.findMany({
     where: { status: { notIn: ['cancelled', 'paid', 'contract_signed'] }, metaConnectionId: { not: null } },
     select: {
+      // 15/11/2026 — los idiomas de primer contacto: activar el alemán en un
+      // negocio es lo que hace que aquí falten sus traducciones y se manden.
+      callerLanguages: true,
       metaConnection: {
         select: {
           id: true,
@@ -747,10 +888,19 @@ export async function ensureRecallTemplatesSubmitted(
     },
   });
 
-  let budget = MAX_SUBMISSIONS_PER_TICK;
   // Dos suscripciones pueden compartir conexión (una baja y un alta nueva
-  // del mismo negocio). Sin esto, la segunda leería el espejo antes de que
-  // el upsert de la primera fuese visible y reenviaría lo mismo.
+  // del mismo negocio). Se recorre cada conexión UNA vez —sin esto, la
+  // segunda leería el espejo antes de que el upsert de la primera fuese
+  // visible y reenviaría lo mismo— con los idiomas de todas sus
+  // suscripciones juntos.
+  const languagesByConnection = new Map<string, CallerLanguage[]>();
+  for (const sub of subscriptions) {
+    if (!sub.metaConnection) continue;
+    const previous = languagesByConnection.get(sub.metaConnection.id) ?? [];
+    languagesByConnection.set(sub.metaConnection.id, parseCallerLanguages([...previous, ...(sub.callerLanguages ?? [])]));
+  }
+
+  let budget = MAX_SUBMISSIONS_PER_TICK;
   const seen = new Set<string>();
 
   for (const { metaConnection: connection } of subscriptions) {
@@ -764,9 +914,13 @@ export async function ensureRecallTemplatesSubmitted(
 
     const existing = await prisma.whatsappTemplate.findMany({
       where: { connectionId: connection.id },
-      select: { name: true, status: true, lastCheckedAt: true },
+      select: { name: true, languageCode: true, status: true, lastCheckedAt: true },
     });
-    const missing = missingTemplateDefinitions(namesAlreadySubmitted(existing, now));
+    const missing = missingTemplateDefinitions(
+      namesAlreadySubmitted(existing, now),
+      undefined,
+      languagesByConnection.get(connection.id) ?? ['es'],
+    );
 
     for (const def of missing) {
       if (budget <= 0) break;
