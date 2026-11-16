@@ -158,6 +158,32 @@ No atrapa el foco (no es modal).
 | `POST /api/public/channels/web/message` | Acepta `context` opcional. Se valida aparte (`src/lib/web-widget-context.ts`): todo o nada, uno inválido se ignora sin 400. Llega al motor como una línea («El visitante está en la página «/x» (tema: y)»), rotulada en el prompt como dato de la visita y no instrucciones. No se guarda en el transcript. |
 | `GET /api/public/channels/web/config` | Añade `sensitiveDataNotice`: texto cuando el paso 1 aprobado del chatbot tiene `vertical: 'clinica'`, `null` en otro caso. `?lang=en` o `?lang=de` lo da en ese idioma (otro valor, español). Con `?lang=`, el saludo **por defecto** (el negocio no escribió el suyo en el paso 9) sale traducido; un saludo propio del negocio no se toca. |
 
+## Dominios permitidos
+
+Desde el 16/11/2026 cada widget puede tener una lista de webs desde las que
+funciona (`ChatWebEmbed.allowedOrigins`, hasta 10). Vale para v1 y v2: ninguno de
+los dos archivos cambia, lo comprueba el servidor.
+
+- **Vacía** (lo que tienen todos los widgets hasta que alguien la rellena): sin
+  restricción, como siempre.
+- **Con algo**: `config`, `message` y `contact` miran la cabecera `Origin` (o, si
+  falta, el origen del `Referer`) y, si no está en la lista, contestan lo mismo que
+  a un widget apagado, con las cabeceras CORS de siempre. `message` no llega a
+  llamar al motor, que es lo que gasta el tope mensual. Sin `Origin` ni `Referer`
+  tampoco contesta. Hay que poner cada variante que se use: `https://www.x.com` y
+  `https://x.com` son orígenes distintos, y `http://localhost:4321` para probar en
+  local.
+
+La edita el cliente en **Portal → Canales → Web** («Webs donde funciona el chat»,
+una por línea; se guarda normalizada: `www.x.com/contacto` queda
+`https://www.x.com`). Ruta: `PUT /api/portal/channels/web/origins`. Cada cambio
+deja una fila en `chat_web_embed_audit` con la lista de antes y la de después. El
+operador todavía no tiene pantalla para editarla.
+
+**Limitación aceptada:** `Origin` lo pone el navegador, pero cualquiera lo falsea
+desde curl. La lista impide reutilizar el snippet en otra web —el abuso fácil—, no
+un script. Contra eso siguen los frenos por minuto de cada ruta y el tope mensual.
+
 ## Idiomas
 
 `es` (por defecto), `en` y `de` (desde el 15/11/2026). Se mira la parte principal
