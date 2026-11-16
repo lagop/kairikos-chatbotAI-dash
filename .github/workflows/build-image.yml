@@ -23,6 +23,22 @@ env:
   # Once docker/* releases Node 24-native versions, this can go.
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
+# Una construcción por rama, en orden. Sin esto, dos fusiones seguidas
+# construyen a la vez y las dos suben `latest`: gana la que termina
+# última, no la del commit más nuevo. Pasó el 16/11/2026 con #404 y #406:
+# la de #404 subió `latest` después que la de #406, los dos despliegues
+# instalaron la imagen de #404 y la migración de #406 no se aplicó hasta
+# reconstruir a mano.
+#
+# cancel-in-progress: false — una construcción a medias no se corta. Si
+# llegan varias mientras tanto, GitHub deja solo la última pendiente y
+# cancela las intermedias, que es lo correcto: la última contiene todo.
+# Una construcción cancelada no despliega (deploy.yml filtra por
+# conclusion == 'success').
+concurrency:
+  group: build-portal-image-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
