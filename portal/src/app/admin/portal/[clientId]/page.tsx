@@ -20,6 +20,7 @@ import { PRODUCT_CODES, PRODUCT_CATALOGS, getProductCatalog, type ProductCode } 
 import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
 import { tierLabel } from '@/lib/public-catalog';
 import { ProductAssignment, type AssignableProduct, type ClientProductRow } from '@/components/admin/ProductAssignment';
+import { VILLAS_PRODUCT_CODE } from '@/lib/villas/rental';
 import { WebQuoteEditor, type WebQuoteData, type WebQuoteInvoiceData } from '@/components/admin/WebQuoteEditor';
 import { CustomCarePanel, type CustomCarePanelData } from '@/components/admin/CustomCarePanel';
 import { getWebCareState } from '@/lib/web-care';
@@ -327,7 +328,11 @@ export default async function AdminClientDetailPage(props: PageProps) {
           }),
           prisma.product.findMany({
             // kind 'plan': los packs de uso no son contrataciones (01/10/2026).
-            where: { isActive: true, kind: 'plan' },
+            // Y la reserva de villas (16/11/2026): es un addon, pero no cuelga
+            // de otra contratación como Cuidado de la web o la Ficha de Google;
+            // se vende dentro de un presupuesto de Signature y se paga fuera
+            // de Stripe, así que el operador la activa desde aquí.
+            where: { isActive: true, OR: [{ kind: 'plan' }, { code: VILLAS_PRODUCT_CODE }] },
             orderBy: [{ code: 'asc' }, { tier: 'asc' }],
           }),
         ]);
