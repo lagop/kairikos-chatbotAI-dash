@@ -4,6 +4,7 @@ import { logError } from '@/lib/observability';
 import { isFeedDue, syncFeed } from './ical-sync';
 import { rentalToday } from './rental';
 import { expirePendingRequests, reconcileAcceptedRequests } from './requests';
+import { processVillaExits } from './exit';
 
 // =============================================================================
 // Reserva propia para villas — el pase del cron (/api/cron/villas-tick).
@@ -12,10 +13,13 @@ import { expirePendingRequests, reconcileAcceptedRequests } from './requests';
 // «¿toca ya?» vive aquí (isFeedDue, los plazos de cada solicitud), no en la
 // cadencia. Idempotente: llamarlo dos veces seguidas no hace nada la segunda.
 //
-// Tres cosas, en este orden:
+// Cuatro cosas, en este orden:
 //   1. Leer los iCal que tocan (cada 30 min por calendario), con tope por pase.
 //   2. Caducar las pendientes sin respuesta.
 //   3. Repasar las aceptadas: confirmar las pagadas, caducar las vencidas.
+//   4. Bajas: avisar al dueño una vez y purgar al acabar el plazo (exit.ts).
+//      Va después de 3 para que un depósito pagado en el último momento
+//      quede confirmado (y en la exportación) antes de borrar nada.
 // =============================================================================
 
 const MAX_FEEDS_PER_TICK = 25;
@@ -26,10 +30,12 @@ export interface VillasSweepResult {
   pendingExpired: number;
   paymentsConfirmed: number;
   paymentsExpired: number;
+  exitsNotified: number;
+  rentalsPurged: number;
 }
 
 export async function sweepVillas(db: PrismaClient, now: Date = new Date()): Promise<VillasSweepResult> {
-  const result: VillasSweepResult = { feedsSynced: 0, feedsFailed: 0, pendingExpired: 0, paymentsConfirmed: 0, paymentsExpired: 0 };
+  const result: VillasSweepResult = { feedsSynced: 0, feedsFailed: 0, pendingExpired: 0, paymentsConfirmed: 0, paymentsExpired: 0, exitsNotified: 0, rentalsPurged: 0 };
 
   const feeds = await db.villaCalendarFeed.findMany({
     where: { villa: { isActive: true, rental: { clientProduct: { status: 'active' } } } },
@@ -59,6 +65,13 @@ export async function sweepVillas(db: PrismaClient, now: Date = new Date()): Pro
     result.paymentsExpired = reconciled.expired;
   } catch (err) {
     logError('villas.sweep.reconcile', err, {}, 'error');
+  }
+  try {
+    const exits = await processVillaExits(db, now);
+    result.exitsNotified = exits.notified;
+    result.rentalsPurged = exits.purged;
+  } catch (err) {
+    logError('villas.sweep.exits', err, {}, 'error');
   }
   return result;
 }

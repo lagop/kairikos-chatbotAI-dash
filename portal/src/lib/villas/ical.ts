@@ -164,7 +164,9 @@ function icalStamp(now: Date): string {
   return now.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
 }
 
-export function buildIcs(calendarName: string, events: readonly ExportEvent[], now: Date = new Date()): string {
+/** `description` va en X-WR-CALDESC: hoy solo la usa el calendario congelado
+ *  de una baja (exit-rules.ts) para decir que ya no se actualiza. */
+export function buildIcs(calendarName: string, events: readonly ExportEvent[], now: Date = new Date(), description?: string): string {
   const stamp = icalStamp(now);
   const lines = [
     'BEGIN:VCALENDAR',
@@ -173,6 +175,7 @@ export function buildIcs(calendarName: string, events: readonly ExportEvent[], n
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     `X-WR-CALNAME:${escapeText(calendarName)}`,
+    ...(description ? [`X-WR-CALDESC:${escapeText(description)}`] : []),
   ];
   for (const e of events) {
     lines.push(

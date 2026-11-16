@@ -89,6 +89,58 @@ del propietario; el módulo aísla Stripe en `lib/villas/stripe.ts` para cambiar
 - Cron: `/api/cron/villas-tick` (lee iCal, caduca plazos, repasa pagos), añadido a `scripts/scheduler.sh`.
 - Avisos por correo (Resend, mismo molde que el resto; nunca lanzan): al dueño por solicitud nueva y por depósito pagado; al huésped al recibirla, al aceptarla (con el enlace de pago), al rechazarla o caducar, y al confirmarse.
 
+## Baja del cliente
+
+Aprobado por el propietario el 16/11/2026. La web Signature es del cliente
+(«código y contenidos en propiedad»); este módulo es un servicio del portal
+ligado a la suscripción. Al darse de baja, `ClientProduct.status` pasa a
+`cancelled` y no entra nada nuevo, pero el dueño no se queda sin sus datos ni
+con un calendario que de repente miente.
+
+**Plazo de gracia: 30 días desde la baja** (`EXIT_GRACE_DAYS`,
+`lib/villas/exit-rules.ts`), y nunca menos de 7 días desde el aviso al dueño
+(si el aviso sale tarde, el plazo se alarga). Treinta días es lo habitual para
+la devolución de datos al terminar un encargo y da para pasar un ciclo de
+facturación; pasado ese tiempo los datos de los huéspedes no deben seguir aquí.
+
+| Estado de la contratación | Widget | Panel | iCal público | Exportar |
+| --- | --- | --- | --- | --- |
+| `active` | normal | completo | en vivo | sí |
+| `paused` | sin servicio | completo | congelado | sí |
+| impago u otros | sin servicio | solo lectura | congelado | sí |
+| `cancelled`, dentro del plazo | sin servicio | solo lectura | congelado | sí |
+| `cancelled`, fuera del plazo | sin servicio | «no está activa» | 404 | solo el operador, hasta la purga |
+
+- **Exportación** (RGPD art. 28.3.g). Desde el panel (`/api/portal/villas/export`) y desde el operador (`/api/admin/portal/villas/export?clientId=…`):
+  - Solicitudes y reservas (CSV): fechas, villa, estado, importes con IVA, depósito y resto, datos del huésped, mensaje, consentimiento y pago.
+  - Villas, precios y temporadas (CSV), con las URL de los calendarios importados.
+  - Un `.ics` por villa con lo confirmado y los bloqueos. Este sí lleva referencia y nombre, porque es del dueño.
+  - El registro de cambios (CSV).
+  - Cada descarga queda auditada (`exported`, con quién la hizo). Los CSV llevan BOM para Excel, importes con punto decimal y fechas ISO, y protegen contra fórmulas (`lib/lead-export.ts`).
+- **Aviso al dueño.** No se engancha a los distintos sitios donde se cancela una contratación. Lo da el cron (`lib/villas/exit.ts`): ve la contratación `cancelled`, marca `exit_notified_at` y manda un correo con tres pasos:
+  1. Quitar de Airbnb y Booking la URL iCal de cada villa.
+  2. Descargar los datos.
+  3. Quitar el widget de la web.
+
+  El correo dice también la fecha límite y cuántas reservas confirmadas siguen valiendo. El panel en solo lectura enseña lo mismo. Mientras el servicio está activo, «Tus datos» en el panel ya avisa de lo que pasará.
+- **iCal congelado, no vacío.** Durante el plazo, el `.ics` público sigue sirviendo el último estado, con `X-WR-CALDESC`, que dice desde cuándo no se actualiza y que hay que quitar la URL.
+  - Por qué es lo más seguro: las reservas directas ya confirmadas siguen valiendo después de la baja. Si el calendario diera 404 o saliera vacío, Airbnb o Booking podrían soltar esas fechas y venderlas otra vez, y eso es una reserva doble.
+  - Congelado, lo peor que pasa es que se bloquee de más hasta que el dueño quite la URL, que es justo lo que se le pide.
+  - Al acabar el plazo, 404.
+- **Widget sin servicio.** Si la carga inicial devuelve 404 (`not_found` o `not_contracted`), `villas.v1.js` no enseña ningún error.
+  - Enseña el contacto que el dueño dejó en el fragmento: `data-fallback-url` (otro sistema de reservas), `data-fallback-email` o `data-fallback-phone`.
+  - Sin ninguno de los tres, el bloque desaparece.
+  - Un fallo de red o un 5xx sigue enseñando «No se ha podido cargar el calendario».
+  - Emite `kairikos:booking_unavailable` (sin datos personales).
+- **Solicitudes en curso.**
+  - Las pendientes caducan solas en su plazo (como mucho 72 h) y se avisa al huésped. Ya no se pueden aceptar, porque el panel es de solo lectura.
+  - Las aceptadas pueden pagarse hasta su plazo: el dueño ya se comprometió. El cron sigue conciliándolas antes de purgar nada.
+- **Purga.** Al acabar el plazo, el cron borra la `VillaRental`, y con ella, en cascada: villas, temporadas, calendarios, bloqueos, solicitudes, la clave de Stripe cifrada y su auditoría.
+  - Queda una fila `villas_data_purged` en `clientProductAudit`, que no se borra, para poder responder cuándo y por qué ya no están.
+  - Sin aviso previo no se purga nunca.
+  - Reactivar dentro del plazo (`POST /api/admin/portal/villas`) anula la baja y pone `exit_notified_at` a null.
+- Migración: `20261116090000_reserva_villas_baja` (`villa_rental.exit_notified_at`).
+
 ## Variables de entorno nuevas
 
 `VILLAS_STRIPE_CREDENTIAL_ENCRYPTION_KEY` (32 bytes hex) y

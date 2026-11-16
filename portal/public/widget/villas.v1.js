@@ -4,8 +4,16 @@
  * Plan y decisiones: docs/plan-reserva-villas.md. Uso:
  *
  *   <div data-kairikos-villas="vil_..." data-lang="es|en"
- *        data-villa="alcornoque" data-privacy-url="/privacidad"></div>
+ *        data-villa="alcornoque" data-privacy-url="/privacidad"
+ *        data-fallback-email="reservas@ejemplo.es"></div>
  *   <script src="https://portal.kairikos.cloud/widget/villas.v1.js" async></script>
+ *
+ * Sin servicio (el token no existe o la contratación ya no está activa, la
+ * API responde 404): en vez de un error en la web del cliente, se enseña el
+ * contacto que el dueño dejó en el fragmento —data-fallback-url (otro sistema
+ * de reservas), data-fallback-email o data-fallback-phone— y, sin ninguno, el
+ * bloque desaparece. Un fallo puntual (red, 5xx) sigue diciendo que no se ha
+ * podido cargar, porque ahí reintentar sí tiene sentido.
  *
  * Lo que hace: calendario por villa con el precio de cada noche, huéspedes,
  * precio TOTAL con IVA y su desglose antes de enviar nada, y el formulario de
@@ -92,6 +100,7 @@
         generic: 'No se ha podido enviar. Inténtalo de nuevo.',
         load: 'No se ha podido cargar el calendario.',
       },
+      fallback: { intro: 'Para reservar, contacta directamente con nosotros.', url: 'Reservar', email: 'Escríbenos', phone: 'Llámanos' },
       locale: 'es-ES',
     },
     en: {
@@ -142,6 +151,7 @@
         generic: 'The request could not be sent. Please try again.',
         load: 'The calendar could not be loaded.',
       },
+      fallback: { intro: 'To book, please contact us directly.', url: 'Book now', email: 'Email us', phone: 'Call us' },
       locale: 'en-GB',
     },
   };
@@ -178,6 +188,8 @@
     '.kv-sum .kv-note{display:block;border:0;color:var(--kv-muted);font-size:.85em;padding-top:0}',
     '.kv-btn{font:inherit;font-weight:600;background:var(--kv-accent);color:#fff;border:0;border-radius:var(--kv-radius);padding:.8rem 1.2rem;min-height:48px;cursor:pointer;width:100%}',
     '.kv-btn[disabled]{opacity:.6;cursor:default}',
+    '.kv-fallback p{margin:0 0 .5rem}',
+    '.kv-fallback a.kv-btn{display:inline-block;width:auto;text-decoration:none;text-align:center}',
     '.kv-check{display:flex;gap:.5rem;align-items:flex-start;font-size:.9em;margin:.75rem 0}',
     '.kv-check input{width:auto;min-height:0;margin-top:.2rem}',
     '.kv-hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}',
@@ -270,7 +282,13 @@
     this.root.classList.add('kv');
     this.root.setAttribute('lang', this.lang);
     this.fetchJson('/api/public/villas/' + encodeURIComponent(this.token)).then(function (r) {
-      if (r.status !== 200 || !r.body.villas || r.body.villas.length === 0) {
+      // 404 (not_found / not_contracted) o sin villas que enseñar: no hay
+      // servicio, y eso no se arregla reintentando.
+      if (r.status === 404 || (r.status === 200 && (!r.body.villas || r.body.villas.length === 0))) {
+        self.renderFallback();
+        return;
+      }
+      if (r.status !== 200) {
         self.root.replaceChildren(h('p', { class: 'kv-err', text: self.t.errors.load }));
         return;
       }
@@ -288,6 +306,34 @@
     }).catch(function () {
       self.root.replaceChildren(h('p', { class: 'kv-err', text: self.t.errors.load }));
     });
+  };
+
+  /** Salida digna sin servicio: el contacto del fragmento o nada. Los valores
+   *  vienen del HTML del propio dueño, pero se validan igual: solo http(s),
+   *  un email con forma de email y un teléfono con dígitos. */
+  Widget.prototype.renderFallback = function () {
+    var root = this.root;
+    var t = this.t.fallback;
+    var links = [];
+    var url = (root.getAttribute('data-fallback-url') || '').trim();
+    if (url) {
+      try {
+        var parsed = new URL(url, window.location.href);
+        if (parsed.protocol === 'https:' || parsed.protocol === 'http:') links.push(h('a', { class: 'kv-btn', href: parsed.href, text: t.url }));
+      } catch (e) { /* URL rota: se ignora */ }
+    }
+    var email = (root.getAttribute('data-fallback-email') || '').trim();
+    if (/^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(email)) links.push(h('a', { href: 'mailto:' + email, text: t.email + ': ' + email }));
+    var phone = (root.getAttribute('data-fallback-phone') || '').trim();
+    var tel = phone.replace(/[^\d+]/g, '');
+    if (tel.replace(/\D/g, '').length >= 6) links.push(h('a', { href: 'tel:' + tel, text: t.phone + ': ' + phone }));
+    emit('booking_unavailable', { fallback: links.length > 0 });
+    if (links.length === 0) {
+      root.replaceChildren();
+      root.hidden = true;
+      return;
+    }
+    root.replaceChildren(h('div', { class: 'kv-fallback' }, [h('p', { text: t.intro })].concat(links.map(function (a) { return h('p', null, [a]); }))));
   };
 
   Widget.prototype.villaInfo = function () {

@@ -6275,6 +6275,11 @@ model VillaRental {
   stripeKeyHint       String? @map("stripe_key_hint")
   stripeKeyMode       String? @map("stripe_key_mode")
 
+  // Baja del cliente (lib/villas/exit-rules.ts): cuándo salió el aviso al
+  // dueño con el plazo para exportar y quitar el iCal. Null mientras no haya
+  // baja; vuelve a null si se reactiva. Sin aviso, el cron no purga.
+  exitNotifiedAt DateTime? @map("exit_notified_at")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

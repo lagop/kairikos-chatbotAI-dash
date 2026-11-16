@@ -29,7 +29,14 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ token: s
   if (!isDatabaseConfigured) return corsJson({ error: 'service_unavailable' }, 503);
 
   const rental = await findRentalByPublicToken(prisma, token);
-  if (!rental) return corsJson({ error: 'not_found' }, 404);
+  if (!rental) {
+    // El widget distingue «no hay servicio» (404, pinta la salida que el dueño
+    // dejó en el fragmento o nada) de un fallo puntual (5xx/red, pide
+    // reintentar). not_contracted: el token existió pero la contratación ya no
+    // está activa. No dice más: es una ruta pública.
+    const known = /^vil_[A-Za-z0-9_-]{10,60}$/.test(token) && (await prisma.villaRental.count({ where: { publicToken: token } })) > 0;
+    return corsJson({ error: known ? 'not_contracted' : 'not_found' }, 404);
+  }
   const today = rentalToday(rental);
 
   return corsJson(

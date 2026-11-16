@@ -5,8 +5,8 @@ import { requirePortalSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { EmptyState } from '@/components/portal/EmptyState';
-import { VillasPanel, type VillasPanelData } from '@/components/portal/VillasPanel';
-import { findRentalForClient, rentalToday } from '@/lib/villas/rental';
+import { VillasExitView, VillasPanel, type VillasPanelData } from '@/components/portal/VillasPanel';
+import { findRentalForOwner, rentalToday } from '@/lib/villas/rental';
 import { fromDbDate, toDbDate } from '@/lib/villas/dates';
 import { hasStripeKey, isLiveModeAllowed } from '@/lib/villas/stripe-deposit';
 import { isBlocking } from '@/lib/villas/request-rules';
@@ -34,7 +34,38 @@ export const metadata: Metadata = {
 export default async function VillasPage() {
   await requirePortalSession();
   const resolved = isDatabaseConfigured ? await resolveClientFromSession() : null;
-  const rental = resolved?.source === 'database' ? await findRentalForClient(prisma, resolved.clientId) : null;
+  const owner = resolved?.source === 'database' ? await findRentalForOwner(prisma, resolved.clientId) : null;
+
+  // Dada de baja dentro del plazo, o suspendida sin estar en pausa (impago,
+  // pendiente de pago): solo lectura y exportación. Pausada sigue siendo el
+  // panel de siempre (las rutas de escritura la aceptan).
+  if (owner && owner.state !== 'active' && owner.rental.clientProduct.status !== 'paused') {
+    const exitNow = new Date();
+    const [exitVillas, upcomingConfirmed] = await Promise.all([
+      prisma.villa.findMany({
+        where: { rentalId: owner.rental.id },
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        select: { id: true, name: true, icalToken: true },
+      }),
+      prisma.villaBookingRequest.count({
+        where: { rentalId: owner.rental.id, status: 'confirmed', checkOut: { gt: toDbDate(rentalToday(owner.rental, exitNow)) } },
+      }),
+    ]);
+    const exitBase = portalBaseUrl();
+    return (
+      <div>
+        <PageHeading eyebrow="Reservas" title="Reserva propia para villas" />
+        <VillasExitView
+          mode={owner.state === 'grace' ? 'grace' : 'suspended'}
+          graceEndsAt={owner.graceEndsAt?.toISOString() ?? null}
+          timeZone={owner.rental.timeZone}
+          villas={exitVillas.map((v) => ({ id: v.id, name: v.name, icalExportUrl: `${exitBase}/api/public/villas/ical/${v.icalToken}.ics` }))}
+          upcomingConfirmed={upcomingConfirmed}
+        />
+      </div>
+    );
+  }
+  const rental = owner?.rental ?? null;
 
   if (!rental) {
     return (

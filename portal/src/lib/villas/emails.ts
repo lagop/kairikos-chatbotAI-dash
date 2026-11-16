@@ -154,6 +154,39 @@ export function buildOwnerPaidEmail(s: StaySummary, guestName: string): Rendered
   );
 }
 
+/**
+ * Baja del cliente (exit-rules.ts): lo sale el cron una vez, al ver la
+ * contratación cancelada. Tres cosas que el dueño tiene que hacer antes de
+ * `graceEndsAt`, en el orden en que importan: quitar nuestro iCal de las
+ * plataformas (o seguirán bloqueando fechas), llevarse sus datos y quitar el
+ * widget de su web.
+ */
+export function buildOwnerExitEmail(input: {
+  businessName: string;
+  graceEndsAt: Date;
+  timeZone: string;
+  villaNames: string[];
+  upcomingConfirmed: number;
+}): RenderedEmail {
+  const deadline = formatDeadline(input.graceEndsAt, 'es', input.timeZone);
+  const villas = input.villaNames.length > 0 ? input.villaNames.join(', ') : 'tus villas';
+  return render(
+    `Baja de la reserva de villas · tienes hasta el ${deadline} para llevarte tus datos`,
+    [
+      `La reserva propia de ${input.businessName} se ha dado de baja. Ya no entran solicitudes nuevas desde tu web; tus datos siguen en el portal hasta el ${deadline} y después se borran.`,
+      `1. Quita de Airbnb y Booking la URL de calendario de Kairikos de cada villa (${villas}). Desde hoy no se actualiza: hasta esa fecha sigue enseñando las fechas que había ocupadas, para que nadie te reserve encima, pero cualquier cambio tuyo ya no llegará. En Airbnb: Calendario → Disponibilidad → Conectar calendarios. En Booking: Tarifas y disponibilidad → Sincronizar calendarios.`,
+      '2. Descarga tus datos desde el portal: las solicitudes y reservas con los datos de cada huésped, tus villas con precios y temporadas, un calendario .ics por villa y el registro de cambios.',
+      `3. Quita el calendario de reservas de tu web, o cambia el enlace por tu nuevo sistema. Mientras siga puesto, enseña el contacto alternativo que hayas configurado o no enseña nada.`,
+      input.upcomingConfirmed > 0
+        ? `Tienes ${input.upcomingConfirmed} reserva(s) confirmada(s) por venir: siguen valiendo. Los datos de esos huéspedes están en la exportación y los depósitos, en tu cuenta de Stripe.`
+        : 'No tienes reservas confirmadas por venir.',
+    ],
+    [],
+    { label: 'Descargar mis datos', url: `${portalBaseUrl()}/portal/villas` },
+    '— Kairikos',
+  );
+}
+
 // --- Al huésped ----------------------------------------------------------------
 
 export type GuestEmailKind = 'received' | 'accepted' | 'declined' | 'expired_pending' | 'expired_payment' | 'confirmed' | 'cancelled';

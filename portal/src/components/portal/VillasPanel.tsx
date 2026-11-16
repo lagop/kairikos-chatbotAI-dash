@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
+import { EXIT_GRACE_DAYS } from '@/lib/villas/exit-rules';
 
 // =============================================================================
 // Reserva propia para villas — el panel del dueño (cliente). Los datos llegan
@@ -222,7 +223,115 @@ export function VillasPanel({ data }: { data: VillasPanelData }) {
       </Section>
 
       <Section title="En tu web" description="Pega esto donde quieras el calendario de reserva. Hereda las fuentes y colores de tu web.">
-        <pre className="card overflow-x-auto whitespace-pre text-xs">{`<div data-kairikos-villas="${data.embed.publicToken}" data-lang="es"></div>\n<script src="${data.embed.scriptUrl}" async></script>`}</pre>
+        <pre className="card overflow-x-auto whitespace-pre text-xs">{`<div data-kairikos-villas="${data.embed.publicToken}" data-lang="es"\n     data-fallback-email="${data.settings.ownerEmail ?? 'reservas@tuweb.es'}"></div>\n<script src="${data.embed.scriptUrl}" async></script>`}</pre>
+        <p className="max-w-2xl text-sm text-kairikos-muted">
+          <code>data-fallback-email</code>, <code>data-fallback-phone</code> o <code>data-fallback-url</code>: lo que enseña el calendario si algún día el servicio
+          deja de estar activo (un enlace para escribirte, llamarte o reservar por otro lado). Sin ninguno, no enseña nada.
+        </p>
+      </Section>
+
+      <Section title="Tus datos" description="Descárgalos cuando quieras. Son tuyos: las solicitudes con los datos de cada huésped, tus villas y precios, el calendario de cada villa y el registro de cambios.">
+        <ExportLinks villas={data.villas} />
+        <p className="card max-w-2xl text-sm">
+          Si algún día das de baja el servicio: tendrás {EXIT_GRACE_DAYS_TEXT} para descargar todo desde aquí y, sobre todo, tendrás que quitar de Airbnb y Booking
+          la URL de calendario de Kairikos de cada villa, porque deja de actualizarse. Después se borra.
+        </p>
+      </Section>
+    </div>
+  );
+}
+
+const EXIT_GRACE_DAYS_TEXT = `${EXIT_GRACE_DAYS} días`;
+
+function ExportLinks({ villas }: { villas: Array<{ id: string; name: string }> }) {
+  const link = (query: string) => `/api/portal/villas/export?${query}`;
+  return (
+    <ul className="flex flex-wrap gap-2 text-sm">
+      <li>
+        <a className="btn-ghost" href={link('tipo=solicitudes')} download>
+          Solicitudes y reservas (CSV)
+        </a>
+      </li>
+      <li>
+        <a className="btn-ghost" href={link('tipo=villas')} download>
+          Villas, precios y temporadas (CSV)
+        </a>
+      </li>
+      {villas.map((v) => (
+        <li key={v.id}>
+          <a className="btn-ghost" href={link(`tipo=ics&villa=${v.id}`)} download>
+            Calendario de {v.name} (.ics)
+          </a>
+        </li>
+      ))}
+      <li>
+        <a className="btn-ghost" href={link('tipo=auditoria')} download>
+          Registro de cambios (CSV)
+        </a>
+      </li>
+    </ul>
+  );
+}
+
+/**
+ * La página durante la baja (o con la contratación suspendida sin estar en
+ * pausa): solo lectura. Lo que importa es que se lleve los datos y quite el
+ * iCal de las plataformas antes de `graceEndsAt`.
+ */
+export function VillasExitView({
+  mode,
+  graceEndsAt,
+  timeZone,
+  villas,
+  upcomingConfirmed,
+}: {
+  mode: 'grace' | 'suspended';
+  graceEndsAt: string | null;
+  timeZone: string;
+  villas: Array<{ id: string; name: string; icalExportUrl: string }>;
+  upcomingConfirmed: number;
+}) {
+  return (
+    <div>
+      <div className="card border-kairikos-warning/50 text-sm">
+        {mode === 'grace' && graceEndsAt ? (
+          <p>
+            El servicio está dado de baja. Ya no entran solicitudes desde tu web. Tus datos siguen aquí hasta el <strong>{when(graceEndsAt, timeZone)}</strong>; después se
+            borran.
+          </p>
+        ) : (
+          <p>El servicio no está activo ahora mismo: no entran solicitudes desde tu web. Puedes descargar tus datos; para reactivarlo, habla con soporte.</p>
+        )}
+        {upcomingConfirmed > 0 ? (
+          <p className="mt-2">
+            Tienes {upcomingConfirmed} reserva(s) confirmada(s) por venir: siguen valiendo. Los datos de esos huéspedes están en «Solicitudes y reservas».
+          </p>
+        ) : null}
+      </div>
+
+      <Section title="1. Quita el calendario de Kairikos de Airbnb y Booking" description="Ya no se actualiza. Mientras dure el plazo sigue enseñando las fechas que había ocupadas, para que nadie te reserve encima, pero ningún cambio tuyo llegará.">
+        <ul className="space-y-2 text-sm">
+          {villas.map((v) => (
+            <li key={v.id} className="card">
+              <strong>{v.name}</strong>
+              <code className="mt-1 block break-all text-xs">{v.icalExportUrl}</code>
+            </li>
+          ))}
+        </ul>
+        <p className="max-w-2xl text-sm text-kairikos-muted">
+          En Airbnb: Calendario → Disponibilidad → Conectar calendarios. En Booking: Tarifas y disponibilidad → Sincronizar calendarios. Busca esta URL y elimínala.
+        </p>
+      </Section>
+
+      <Section title="2. Descarga tus datos">
+        <ExportLinks villas={villas} />
+      </Section>
+
+      <Section title="3. Quita el calendario de reservas de tu web">
+        <p className="max-w-2xl text-sm text-kairikos-muted">
+          Mientras siga pegado, enseña el contacto alternativo que pusiste en <code>data-fallback-email</code>, <code>data-fallback-phone</code> o{' '}
+          <code>data-fallback-url</code>, o no enseña nada.
+        </p>
       </Section>
     </div>
   );

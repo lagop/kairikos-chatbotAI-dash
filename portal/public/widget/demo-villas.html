@@ -53,7 +53,7 @@
     <pre id="log" aria-live="off"></pre>
   </section>
 
-  <p class="modes"><a href="?">Simulado</a> · <a href="?lang=en">Simulado en inglés</a> · <a href="?unidad=castano&amp;entrada=2026-12-28&amp;salida=2027-01-02&amp;adultos=4&amp;origen=google">Con fechas en la URL</a></p>
+  <p class="modes"><a href="?">Simulado</a> · <a href="?lang=en">Simulado en inglés</a> · <a href="?unidad=castano&amp;entrada=2026-12-28&amp;salida=2027-01-02&amp;adultos=4&amp;origen=google">Con fechas en la URL</a> · <a href="?sinservicio=1&amp;contacto=1">Sin servicio, con contacto</a> · <a href="?sinservicio=1">Sin servicio, sin contacto</a></p>
 </main>
 
 <script>
@@ -62,13 +62,20 @@
   var params = new URLSearchParams(location.search);
   var realToken = params.get('token');
   var lang = params.get('lang') === 'en' ? 'en' : 'es';
+  // Baja del cliente: la API contesta 404 not_contracted y el widget enseña el
+  // contacto del fragmento (data-fallback-*) o desaparece.
+  var noService = params.get('sinservicio') === '1';
   var el = document.getElementById('widget');
+  if (params.get('contacto') === '1') {
+    el.setAttribute('data-fallback-email', 'reservas@sombrabuena.example');
+    el.setAttribute('data-fallback-phone', '+34 928 000 000');
+  }
   el.setAttribute('data-kairikos-villas', realToken || 'vil_demo_sombra_buena');
   el.setAttribute('data-lang', lang);
   document.getElementById('mode').textContent = realToken ? 'Modo real: ' + realToken.slice(0, 12) + '…' : 'Modo simulado: no se guarda nada.';
 
   var log = document.getElementById('log');
-  ['booking_start', 'booking_dates', 'booking_unit', 'booking_submit'].forEach(function (name) {
+  ['booking_start', 'booking_dates', 'booking_unit', 'booking_submit', 'booking_unavailable'].forEach(function (name) {
     window.addEventListener('kairikos:' + name, function (e) {
       log.textContent += name + ' ' + JSON.stringify(e.detail) + '\n';
       log.scrollTop = log.scrollHeight;
@@ -127,6 +134,7 @@
       if (!m) return realFetch(input, init);
       var q = url.searchParams;
       var v = villas.filter(function (x) { return x.slug === q.get('villa'); })[0];
+      if (noService) return json({ error: 'not_contracted' }, 404);
       if (!m[2]) {
         return json({
           businessName: 'Villas Sombra Buena', currency: 'EUR', today: today, depositPercent: 30, confirmHours: 24, paymentHours: 48,

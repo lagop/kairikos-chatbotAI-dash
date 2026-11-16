@@ -4,6 +4,7 @@ import { fromDbDate, todayIn, toDbDate, type IsoDate } from './dates';
 import type { SeasonRule, VillaPricing } from './pricing';
 import type { BusyRange } from './availability';
 import { generatePublicToken } from './request-rules';
+import { serviceState } from './exit-rules';
 
 // =============================================================================
 // Reserva propia para villas — acceso a la base de datos compartido.
@@ -141,6 +142,22 @@ export async function findRentalForClient(db: Db, clientId: string) {
   });
 }
 
+/**
+ * La VillaRental del cliente para LEER y EXPORTAR, también dada de baja dentro
+ * del plazo de gracia (exit-rules.ts). Las rutas que escriben siguen usando
+ * findRentalForClient: durante la baja el panel es de solo lectura.
+ */
+export async function findRentalForOwner(db: Db, clientId: string, now: Date = new Date()) {
+  const rental = await db.villaRental.findFirst({
+    where: { clientId, clientProduct: { product: { code: VILLAS_PRODUCT_CODE } } },
+    include: { clientProduct: { select: { status: true, cancelledAt: true, changedAt: true } } },
+  });
+  if (!rental) return null;
+  const exit = serviceState(rental.clientProduct, rental.exitNotifiedAt, now);
+  if (exit.state === 'closed') return null;
+  return { rental, ...exit };
+}
+
 export type ActivateResult =
   | { ok: true; rentalId: string; clientProductId: string; created: boolean }
   | { ok: false; error: 'client_not_found' | 'product_missing' };
@@ -182,8 +199,13 @@ export async function activateVillaRental(
     });
   }
 
-  const existing = await db.villaRental.findUnique({ where: { clientProductId: contract.id }, select: { id: true } });
-  if (existing) return { ok: true, rentalId: existing.id, clientProductId: contract.id, created: false };
+  const existing = await db.villaRental.findUnique({ where: { clientProductId: contract.id }, select: { id: true, exitNotifiedAt: true } });
+  if (existing) {
+    // Vuelve dentro del plazo de gracia: la baja queda anulada y, si algún
+    // día se da de baja otra vez, el aviso tiene que salir de nuevo.
+    if (existing.exitNotifiedAt) await db.villaRental.update({ where: { id: existing.id }, data: { exitNotifiedAt: null } });
+    return { ok: true, rentalId: existing.id, clientProductId: contract.id, created: false };
+  }
 
   const rental = await db.villaRental.create({
     data: {
