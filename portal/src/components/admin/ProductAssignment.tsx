@@ -56,6 +56,12 @@ const STATUS_PILL: Record<string, string> = {
   quote_pending: 'pill-warning',
 };
 
+// Sin precio de catálogo (la reserva de villas): se cobra en su presupuesto,
+// no hay cuota que enseñar. «0,00 €/mes» parecía gratis.
+function optionPrice(cents: number, currency: string): string {
+  return cents > 0 ? `${formatPrice(cents, currency)}/mes` : 'según presupuesto';
+}
+
 function formatPrice(cents: number, currency: string): string {
   return new Intl.NumberFormat('es-ES', { style: 'currency', currency }).format(cents / 100);
 }
@@ -146,6 +152,9 @@ export function ProductAssignment({ clientId, assigned, assignable }: ProductAss
       <header className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Productos contratados</h2>
       </header>
+      <p className="text-sm text-kairikos-muted" data-testid="product-assignment-note">
+        Asignar aquí activa el producto sin cobro por Stripe: el cliente lo paga por otro medio (transferencia, presupuesto de Signature).
+      </p>
 
       {toast ? (
         <div
@@ -226,7 +235,7 @@ export function ProductAssignment({ clientId, assigned, assignable }: ProductAss
             >
               {assignable.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name} · {formatPrice(p.priceCents, p.currency)}/mes
+                  {p.name} · {optionPrice(p.priceCents, p.currency)}
                 </option>
               ))}
             </select>

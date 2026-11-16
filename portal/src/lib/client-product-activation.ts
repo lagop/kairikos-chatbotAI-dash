@@ -9,6 +9,7 @@ import {
 } from './product-onboarding';
 import { isMultiInstanceProduct } from './client-product-access';
 import { assignSiteToNewContract } from './client-site';
+import { ensureVillaRentalForContract, VILLAS_PRODUCT_CODE } from './villas/rental';
 
 // =============================================================================
 // Activar un ClientProduct sin pasar por Stripe — un operador decide que
@@ -48,7 +49,7 @@ export async function activateClientProductForOperator(
 ): Promise<ActivateProductResult> {
   const { clientId, productId } = params;
 
-  const client = await prisma.chatbotClient.findUnique({ where: { id: clientId }, select: { id: true, tenantId: true } });
+  const client = await prisma.chatbotClient.findUnique({ where: { id: clientId }, select: { id: true, tenantId: true, companyName: true, name: true } });
   if (!client) return { ok: false, error: 'client_not_found' };
 
   const product = await prisma.product.findUnique({ where: { id: productId }, select: { id: true, isActive: true, code: true, tier: true } });
@@ -103,6 +104,22 @@ export async function activateClientProductForOperator(
         actorId: actor.operatorId,
       },
     });
+    // Reserva de villas (16/11/2026): el módulo vive en su VillaRental, no
+    // solo en la contratación. Sin esto, asignarla desde «Productos
+    // contratados» daba una contratación activa con el panel /portal/villas
+    // vacío, y reactivarla no anulaba la baja en curso. Dentro de la misma
+    // transacción: o queda todo o nada.
+    if (product.code === VILLAS_PRODUCT_CODE) {
+      // Ya está en marcha: no tiene asistente de configuración que recorrer.
+      await tx.clientProduct.update({ where: { id: clientProduct.id }, data: { onboardingState: 'live' } });
+      await ensureVillaRentalForContract(tx, {
+        clientProductId: clientProduct.id,
+        clientId,
+        tenantId: client.tenantId,
+        businessName: client.companyName ?? client.name,
+        actorId: `operator:${actor.operatorId}`,
+      });
+    }
     return clientProduct;
   });
 

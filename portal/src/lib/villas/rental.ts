@@ -5,6 +5,7 @@ import type { SeasonRule, VillaPricing } from './pricing';
 import type { BusyRange } from './availability';
 import { generatePublicToken } from './request-rules';
 import { serviceState } from './exit-rules';
+import { assignSiteToNewContract } from '../client-site';
 
 // =============================================================================
 // Reserva propia para villas — acceso a la base de datos compartido.
@@ -199,26 +200,52 @@ export async function activateVillaRental(
     });
   }
 
-  const existing = await db.villaRental.findUnique({ where: { clientProductId: contract.id }, select: { id: true, exitNotifiedAt: true } });
+  // El negocio al que pertenece la contratación, como en cualquier alta de
+  // operador (lib/client-product-activation.ts). Idempotente.
+  await assignSiteToNewContract(db, { clientId: client.id, tenantId: client.tenantId, clientProductId: contract.id, productCode: VILLAS_PRODUCT_CODE });
+
+  const r = await ensureVillaRentalForContract(db, {
+    clientProductId: contract.id,
+    clientId: client.id,
+    tenantId: client.tenantId,
+    businessName: client.companyName ?? client.name,
+    actorId,
+  });
+  return { ok: true, rentalId: r.rentalId, clientProductId: contract.id, created: r.created };
+}
+
+/**
+ * La VillaRental de una contratación 'villas' ya activa: la crea vacía, con el
+ * token del widget, si no existe; si existe y estaba en el plazo de gracia de
+ * una baja, anula la baja. La usan las dos altas de operador: la de
+ * POST /api/admin/portal/villas y la del panel «Productos contratados»
+ * (activateClientProductForOperator), para que activar o reactivar por
+ * cualquiera de las dos deje el módulo igual.
+ */
+export async function ensureVillaRentalForContract(
+  db: Prisma.TransactionClient,
+  input: { clientProductId: string; clientId: string; tenantId: string | null; businessName: string; actorId: string },
+): Promise<{ rentalId: string; created: boolean }> {
+  const existing = await db.villaRental.findUnique({ where: { clientProductId: input.clientProductId }, select: { id: true, exitNotifiedAt: true } });
   if (existing) {
     // Vuelve dentro del plazo de gracia: la baja queda anulada y, si algún
     // día se da de baja otra vez, el aviso tiene que salir de nuevo.
     if (existing.exitNotifiedAt) await db.villaRental.update({ where: { id: existing.id }, data: { exitNotifiedAt: null } });
-    return { ok: true, rentalId: existing.id, clientProductId: contract.id, created: false };
+    return { rentalId: existing.id, created: false };
   }
 
   const rental = await db.villaRental.create({
     data: {
-      clientProductId: contract.id,
-      clientId: client.id,
-      tenantId: client.tenantId,
+      clientProductId: input.clientProductId,
+      clientId: input.clientId,
+      tenantId: input.tenantId,
       publicToken: generatePublicToken('vil'),
-      businessName: client.companyName ?? client.name,
+      businessName: input.businessName,
     },
     select: { id: true },
   });
-  await auditVilla(db, { rentalId: rental.id, clientId: client.id, entity: 'rental', entityId: rental.id, action: 'created', actor: actorId });
-  return { ok: true, rentalId: rental.id, clientProductId: contract.id, created: true };
+  await auditVilla(db, { rentalId: rental.id, clientId: input.clientId, entity: 'rental', entityId: rental.id, action: 'created', actor: input.actorId });
+  return { rentalId: rental.id, created: true };
 }
 
 /** El correo al que van los avisos del dueño: el suyo propio si lo puso, y si
