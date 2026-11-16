@@ -19,6 +19,7 @@
 
   Los atributos data-* se leen al cargar el script, así que se eligen por la
   URL: ?lang=en&theme=dark&links=none&launcher=bubble&offset=88&accent=%23c2410c
+  (lang: es, en o de).
   El script se carga de forma perezosa, al primer botón que usa la API, como lo
   hará la web Signature.
 -->
@@ -67,6 +68,7 @@
       <button id="b-light" type="button">setTheme('light')</button>
       <button id="b-dark" type="button">setTheme('dark')</button>
       <button id="b-conf" type="button">configure(saludo y sugerencias en inglés)</button>
+      <button id="b-conf-de" type="button">configure(saludo y sugerencias en alemán)</button>
     </div>
     <p id="status">Último contexto enviado al servidor: —</p>
   </section>
@@ -78,9 +80,11 @@
 
   <section class="modes">
     <h2>Variantes (se leen al cargar el script)</h2>
+    <p>En inglés o alemán, escribe «fallo» para ver una respuesta de reserva del servidor traducida por el widget, o «Rückruf» / «call» para el formulario de contacto.</p>
     <div class="row">
       <a href="?">Por defecto (simulado)</a> ·
       <a href="?lang=en">Inglés</a> ·
+      <a href="?lang=de">Alemán</a> ·
       <a href="?theme=dark">Oscuro</a> ·
       <a href="?theme=auto">Auto</a> ·
       <a href="?links=none">Sin enlaces</a> ·
@@ -102,6 +106,9 @@
   var params = new URLSearchParams(location.search);
   var token = params.get('token');
   var simulated = !token;
+  // El idioma de la página sigue al del widget, como en una web multidioma
+  // (lo usa setContext más abajo).
+  if (params.get('lang')) document.documentElement.lang = params.get('lang');
   document.getElementById('mode').textContent = simulated
     ? 'Modo simulado: las respuestas son de ejemplo.'
     : 'Modo real con el token ' + token + '.';
@@ -127,7 +134,13 @@
     window.fetch = function (input, init) {
       var url = typeof input === 'string' ? input : input.url;
       if (url.indexOf('/api/public/channels/web/config') !== -1) {
-        var en = url.indexOf('lang=en') !== -1;
+        // Los mismos textos que da el portal (src/lib/web-widget-context.ts).
+        var lang = (/[?&]lang=([a-z]+)/.exec(url) || [])[1] || 'es';
+        var notices = {
+          es: 'Por tu privacidad, no escribas aquí datos de salud. Para tu caso concreto, pide cita.',
+          en: "For your privacy, please don't share health information here. For your specific case, book an appointment.",
+          de: 'Zum Schutz Ihrer Privatsphäre teilen Sie hier bitte keine Gesundheitsdaten. Für Ihren konkreten Fall vereinbaren Sie bitte einen Termin.',
+        };
         return json({
           businessName: 'Alisio Dental Studio',
           welcomeMessage: '¡Hola! Soy el asistente de Alisio. ¿En qué te ayudo?',
@@ -136,9 +149,7 @@
           primaryColor: '#0E6B5E',
           position: 'bottom-right',
           chatEndpoint: location.origin + '/api/public/channels/web/message',
-          sensitiveDataNotice: en
-            ? "For your privacy, please don't share health information here. For your specific case, book an appointment."
-            : 'Por tu privacidad, no escribas aquí datos de salud. Para tu caso concreto, pide cita.',
+          sensitiveDataNotice: notices[lang] || notices.es,
         });
       }
       if (url.indexOf('/api/public/channels/web/message') !== -1) {
@@ -147,7 +158,7 @@
           'Último contexto enviado al servidor: ' + (body.context ? JSON.stringify(body.context) : '— (sin context)');
         var text = String(body.message).toLowerCase();
         var reply, mode = 'portal', askContact = false;
-        if (/llam|contact|call/.test(text)) {
+        if (/llam|contact|call|ruf|kontakt/.test(text)) {
           reply = 'Te paso con alguien del equipo.';
           askContact = true;
         } else if (/fallo|error/.test(text)) {
@@ -223,6 +234,13 @@
   on('b-dark', function (c) { c.setTheme('dark'); });
   on('b-conf', function (c) {
     c.configure({ welcome: 'Hi! I am the Alisio assistant. How can I help?', prompts: ['Opening hours', 'Implants', 'Call me back'] });
+    write('configure hecho');
+  });
+  on('b-conf-de', function (c) {
+    c.configure({
+      welcome: 'Hallo! Ich bin der Assistent von Alisio. Wie kann ich Ihnen helfen?',
+      prompts: ['Öffnungszeiten', 'Implantate', 'Bitte um Rückruf'],
+    });
     write('configure hecho');
   });
 

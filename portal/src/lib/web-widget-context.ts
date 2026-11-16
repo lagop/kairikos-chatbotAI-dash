@@ -99,17 +99,53 @@ export function buildVisitorContextLine(context: VisitorContext | null): string 
 // 'clinica'`; para el resto de sectores es null y v2 no pinta nada. v1 ignora
 // el campo.
 //
-// El texto en inglés existe porque las webs Signature van en inglés
-// (`data-lang="en"` → `?lang=en` en la petición de configuración). No es parte
-// de lo que el negocio configura: es un texto nuestro, como el aviso de IA.
+// Los textos en inglés y alemán existen porque las webs Signature van en varios
+// idiomas (`data-lang="en"` → `?lang=en` en la petición de configuración; el
+// alemán, desde el 15/11/2026, para hoteles). No son parte de lo que el negocio
+// configura: son textos nuestros, como el aviso de IA.
 // -----------------------------------------------------------------------------
 
-export const SENSITIVE_DATA_NOTICE = {
+/** Idiomas de la interfaz de embed.v2.js. El primero es el de siempre. */
+export const WIDGET_LANGS = ['es', 'en', 'de'] as const;
+export type WidgetLang = (typeof WIDGET_LANGS)[number];
+
+/** El `?lang=` de la petición de configuración. Lo que no sea un idioma
+ *  conocido (o falte) es español, igual que antes de que hubiera idiomas. */
+export function parseWidgetLang(raw: string | null | undefined): WidgetLang {
+  const code = String(raw ?? '')
+    .trim()
+    .toLowerCase()
+    .split(/[-_]/)[0];
+  return (WIDGET_LANGS as readonly string[]).includes(code) ? (code as WidgetLang) : 'es';
+}
+
+export const SENSITIVE_DATA_NOTICE: Record<WidgetLang, string> = {
   es: 'Por tu privacidad, no escribas aquí datos de salud. Para tu caso concreto, pide cita.',
   en: "For your privacy, please don't share health information here. For your specific case, book an appointment.",
-} as const;
+  de: 'Zum Schutz Ihrer Privatsphäre teilen Sie hier bitte keine Gesundheitsdaten. Für Ihren konkreten Fall vereinbaren Sie bitte einen Termin.',
+};
 
 export function sensitiveDataNoticeFor(perfil: Record<string, unknown>, lang: string | null): string | null {
   if (perfil?.vertical !== 'clinica') return null;
-  return lang === 'en' ? SENSITIVE_DATA_NOTICE.en : SENSITIVE_DATA_NOTICE.es;
+  return SENSITIVE_DATA_NOTICE[parseWidgetLang(lang)];
+}
+
+// -----------------------------------------------------------------------------
+// Saludo por defecto.
+//
+// Si el negocio no ha escrito su saludo en el paso 9, buildChatbotContext da
+// «¡Hola! ¿En qué puedo ayudarte?». En una web en inglés o alemán ese saludo
+// por defecto sale traducido. El saludo que SÍ escribió el negocio no se toca
+// (puede estar ya en el idioma de su web): las webs que quieren otro saludo
+// por idioma lo ponen con `KairikosChat.configure({ welcome })`.
+// -----------------------------------------------------------------------------
+
+export const DEFAULT_WELCOME: Record<WidgetLang, string> = {
+  es: '¡Hola! ¿En qué puedo ayudarte?',
+  en: 'Hi! How can I help you?',
+  de: 'Hallo! Wie kann ich Ihnen helfen?',
+};
+
+export function welcomeMessageFor(welcome: string, lang: string | null): string {
+  return welcome === DEFAULT_WELCOME.es ? DEFAULT_WELCOME[parseWidgetLang(lang)] : welcome;
 }

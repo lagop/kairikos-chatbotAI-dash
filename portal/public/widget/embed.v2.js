@@ -4,7 +4,7 @@
  * Contrato completo en docs/widget-v2.md. Resumen:
  *
  *   <script src="https://portal.kairikos.com/widget/embed.v2.js" data-space-token="wgt_..." async
- *     data-launcher="bubble|none" data-lang="es|en" data-theme="light|dark|auto"
+ *     data-launcher="bubble|none" data-lang="es|en|de" data-theme="light|dark|auto"
  *     data-font="..." data-accent="#1f7f77" data-links="none|same-origin" data-offset="88"></script>
  *
  * Por qué un archivo nuevo y no cambios en embed.js: todos los clientes cargan
@@ -61,21 +61,11 @@
     return value == null ? '' : String(value).trim();
   }
 
-  var OPTIONS = {
-    launcher: attr('data-launcher') === 'none' ? 'none' : 'bubble',
-    lang: attr('data-lang') === 'en' ? 'en' : 'es',
-    theme: attr('data-theme') === 'dark' || attr('data-theme') === 'auto' ? attr('data-theme') : 'light',
-    font: attr('data-font'),
-    accent: attr('data-accent'),
-    links: attr('data-links') === 'same-origin' ? 'same-origin' : 'none',
-    offset: (function () {
-      var raw = attr('data-offset');
-      if (!raw) return null;
-      var n = parseInt(raw, 10);
-      return isFinite(n) && n >= 0 && n <= 1000 ? n : null;
-    })(),
-  };
-
+  // Textos de la interfaz, uno por idioma. Para añadir un idioma basta con un
+  // bloque más con las mismas claves (un test lo comprueba) y su traducción
+  // de las respuestas de reserva en SERVER_REPLIES. El alemán (15/11/2026) es
+  // para webs de hotel con huésped extranjero; trata de usted, como es lo
+  // normal en una web en alemán.
   var TEXTS = {
     es: {
       open: 'Abrir chat',
@@ -115,23 +105,80 @@
       contactFail: "I couldn't save it. Please try again.",
       contactThanks: 'Thanks. The team will write to you as soon as they can.',
     },
+    de: {
+      open: 'Chat öffnen',
+      close: 'Chat schließen',
+      dialog: 'Chat mit ',
+      aiNotice: 'KI-Assistent. Er kann Fehler machen.',
+      placeholder: 'Nachricht schreiben…',
+      send: 'Senden',
+      typing: 'Schreibt…',
+      prompts: 'Vorschläge',
+      fallbackReply:
+        'Entschuldigung, Ihre Nachricht konnte nicht verarbeitet werden. Bitte versuchen Sie es gleich noch einmal.',
+      connError: 'Entschuldigung, es gab ein Verbindungsproblem. Bitte versuchen Sie es gleich noch einmal.',
+      contactTitle: 'Hinterlassen Sie Ihre Telefonnummer oder E-Mail-Adresse, und das Team meldet sich bei Ihnen.',
+      contactName: 'Ihr Name (optional)',
+      contactValue: 'Telefon oder E-Mail',
+      contactSend: 'Meine Daten senden',
+      contactShort: 'Bitte geben Sie eine Telefonnummer oder eine E-Mail-Adresse ein.',
+      contactFail: 'Das hat leider nicht geklappt. Bitte versuchen Sie es noch einmal.',
+      contactThanks: 'Vielen Dank. Das Team meldet sich so bald wie möglich bei Ihnen.',
+    },
   };
-  var T = TEXTS[OPTIONS.lang];
 
   // Las respuestas de reserva del servidor (traspaso, tope, fallo de la IA)
-  // están escritas en español en la ruta /message. En una web en inglés se
-  // sustituyen aquí por su traducción, según `mode`. Las respuestas normales
-  // del bot (`mode: 'portal'`) no se tocan: el motor ya contesta en el idioma
-  // del visitante si el negocio tiene el inglés en el paso 1.
-  var EN_SERVER_REPLIES = {
-    human: 'Someone from the team is with you now. Write your message here and they will see it shortly.',
-    cap: "I can't reply here right now. Leave your question with an email or phone number and the team will get back to you shortly.",
-    fallbackContact:
-      'Thanks for writing. To help you better, tell me your name and an email or phone number, and the team will reply shortly.',
-    fallback:
-      "Thanks for your message. I can't give you a detailed answer right now, but the team will review it. If you like, leave me your contact details.",
-    unavailable: 'This chat is not available right now.',
+  // están escritas en español en la ruta /message. En una web en otro idioma
+  // se sustituyen aquí por su traducción, según `mode`. Las respuestas
+  // normales del bot (`mode: 'portal'`) no se tocan: el motor ya contesta en
+  // el idioma del visitante si el negocio lo tiene en los idiomas del paso 1.
+  var SERVER_REPLIES = {
+    en: {
+      human: 'Someone from the team is with you now. Write your message here and they will see it shortly.',
+      cap: "I can't reply here right now. Leave your question with an email or phone number and the team will get back to you shortly.",
+      fallbackContact:
+        'Thanks for writing. To help you better, tell me your name and an email or phone number, and the team will reply shortly.',
+      fallback:
+        "Thanks for your message. I can't give you a detailed answer right now, but the team will review it. If you like, leave me your contact details.",
+      unavailable: 'This chat is not available right now.',
+    },
+    de: {
+      human: 'Jemand aus dem Team ist jetzt für Sie da. Schreiben Sie Ihre Nachricht hier, sie wird in Kürze gelesen.',
+      cap: 'Ich kann hier gerade nicht antworten. Hinterlassen Sie Ihre Frage mit E-Mail-Adresse oder Telefonnummer, und das Team meldet sich in Kürze bei Ihnen.',
+      fallbackContact:
+        'Danke für Ihre Nachricht. Damit wir Ihnen besser helfen können, nennen Sie mir bitte Ihren Namen und eine E-Mail-Adresse oder Telefonnummer. Das Team antwortet in Kürze.',
+      fallback:
+        'Danke für Ihre Nachricht. Im Moment kann ich Ihnen keine ausführliche Antwort geben, aber das Team sieht sie sich an. Wenn Sie möchten, hinterlassen Sie mir Ihre Kontaktdaten.',
+      unavailable: 'Dieser Chat ist im Moment nicht verfügbar.',
+    },
   };
+
+  /** El idioma de la interfaz: el de data-lang si hay textos para él, y si
+   *  no, español. Se mira la parte principal de la etiqueta y sin mayúsculas,
+   *  así que «de-AT» o «EN» también valen. Sin atributo o con un idioma que
+   *  no está en TEXTS, español, como siempre. */
+  function pickLang(raw) {
+    var code = String(raw || '')
+      .toLowerCase()
+      .split(/[-_]/)[0];
+    return Object.prototype.hasOwnProperty.call(TEXTS, code) ? code : 'es';
+  }
+
+  var OPTIONS = {
+    launcher: attr('data-launcher') === 'none' ? 'none' : 'bubble',
+    lang: pickLang(attr('data-lang')),
+    theme: attr('data-theme') === 'dark' || attr('data-theme') === 'auto' ? attr('data-theme') : 'light',
+    font: attr('data-font'),
+    accent: attr('data-accent'),
+    links: attr('data-links') === 'same-origin' ? 'same-origin' : 'none',
+    offset: (function () {
+      var raw = attr('data-offset');
+      if (!raw) return null;
+      var n = parseInt(raw, 10);
+      return isFinite(n) && n >= 0 && n <= 1000 ? n : null;
+    })(),
+  };
+  var T = TEXTS[OPTIONS.lang];
 
   // ---------------------------------------------------------------------------
   // Estado
@@ -749,9 +796,10 @@
   function serverReplyText(json) {
     var data = (json && json.data) || {};
     var mode = typeof data.mode === 'string' ? data.mode : 'error';
-    if (OPTIONS.lang === 'en' && mode !== 'portal') {
-      if (mode === 'fallback') return data.contactIntent ? EN_SERVER_REPLIES.fallbackContact : EN_SERVER_REPLIES.fallback;
-      if (EN_SERVER_REPLIES[mode]) return EN_SERVER_REPLIES[mode];
+    var replies = SERVER_REPLIES[OPTIONS.lang];
+    if (replies && mode !== 'portal') {
+      if (mode === 'fallback') return data.contactIntent ? replies.fallbackContact : replies.fallback;
+      if (Object.prototype.hasOwnProperty.call(replies, mode)) return replies[mode];
       return T.fallbackReply;
     }
     return data.reply || T.fallbackReply;
@@ -996,9 +1044,9 @@
   function init() {
     if (!portalOrigin) return;
     var url = portalOrigin + '/api/public/channels/web/config?token=' + encodeURIComponent(publicToken);
-    // Solo con data-lang="en": así una petición de v2 sin atributos es la
-    // misma que la de v1.
-    if (OPTIONS.lang === 'en') url += '&lang=en';
+    // Solo en un idioma que no sea el español: así una petición de v2 sin
+    // atributos es la misma que la de v1.
+    if (OPTIONS.lang !== 'es') url += '&lang=' + OPTIONS.lang;
     fetch(url)
       .then(function (res) {
         if (!res.ok) throw new Error('config_not_ok');

@@ -27,7 +27,7 @@ webs Kairikos Signature (la primera, la demo dental *Alisio Dental Studio*).
 |---|---|---|---|
 | `data-space-token` | `wgt_…` | — (obligatorio) | El widget del cliente. |
 | `data-launcher` | `bubble` \| `none` | `bubble` | `none`: sin burbuja; la web lo abre con la API. |
-| `data-lang` | `es` \| `en` | `es` | Textos de la interfaz. Con `en` también pide la configuración con `?lang=en` (aviso de salud en inglés) y traduce las respuestas de reserva del servidor. |
+| `data-lang` | `es` \| `en` \| `de` | `es` | Textos de la interfaz. Con `en` o `de` también pide la configuración con `?lang=en` / `?lang=de` (aviso de salud y saludo por defecto en ese idioma) y traduce las respuestas de reserva del servidor. Ver «Idiomas». |
 | `data-theme` | `light` \| `dark` \| `auto` | `light` | `auto` sigue `prefers-color-scheme`, también si cambia en vivo. |
 | `data-font` | `font-family` CSS | sistema | La fuente tiene que estar cargada en la página (las `@font-face` del documento valen dentro del Shadow DOM). |
 | `data-accent` | color CSS | `primaryColor` del portal | El texto sobre el acento se elige por contraste (blanco o casi negro). Con el color del portal, blanco como en v1. |
@@ -156,14 +156,32 @@ No atrapa el foco (no es modal).
 | Ruta | Cambio (compatible con v1) |
 |---|---|
 | `POST /api/public/channels/web/message` | Acepta `context` opcional. Se valida aparte (`src/lib/web-widget-context.ts`): todo o nada, uno inválido se ignora sin 400. Llega al motor como una línea («El visitante está en la página «/x» (tema: y)»), rotulada en el prompt como dato de la visita y no instrucciones. No se guarda en el transcript. |
-| `GET /api/public/channels/web/config` | Añade `sensitiveDataNotice`: texto cuando el paso 1 aprobado del chatbot tiene `vertical: 'clinica'`, `null` en otro caso. `?lang=en` lo da en inglés. |
+| `GET /api/public/channels/web/config` | Añade `sensitiveDataNotice`: texto cuando el paso 1 aprobado del chatbot tiene `vertical: 'clinica'`, `null` en otro caso. `?lang=en` o `?lang=de` lo da en ese idioma (otro valor, español). Con `?lang=`, el saludo **por defecto** (el negocio no escribió el suyo en el paso 9) sale traducido; un saludo propio del negocio no se toca. |
+
+## Idiomas
+
+`es` (por defecto), `en` y `de` (desde el 15/11/2026). Se mira la parte principal
+de la etiqueta sin mayúsculas: `de-AT` o `EN` valen. Un idioma que no está cae en
+español, como antes.
+
+Lo que traduce el idioma: los textos del widget (botones, aviso de IA, campo,
+formulario de contacto, errores), el aviso de datos de salud y el saludo por
+defecto (los da el servidor con `?lang=`) y las respuestas de reserva del servidor
+(las traduce el widget). Lo que **no**: el saludo y las sugerencias que escribió el
+negocio — la web los pone en su idioma con `configure()` — y las respuestas del
+bot, que salen en el idioma del visitante si el negocio lo tiene en el paso 1.
+
+Para añadir otro idioma: un bloque más en `TEXTS` y en `SERVER_REPLIES` de
+`embed.v2.js` (un test exige las mismas claves que el español), y el idioma en
+`WIDGET_LANGS`, `SENSITIVE_DATA_NOTICE` y `DEFAULT_WELCOME` de
+`src/lib/web-widget-context.ts`.
 
 ## Limitaciones conocidas
 
 - Las respuestas de reserva del servidor (`human`, `cap`, `fallback`,
-  `unavailable`) están en español en la ruta; con `data-lang="en"` las traduce el
-  widget según `mode`. Las respuestas del motor salen en inglés solo si el negocio
-  tiene `EN` en los idiomas del paso 1.
+  `unavailable`) están en español en la ruta; con `data-lang="en"` o `"de"` las
+  traduce el widget según `mode`. Las respuestas del motor salen en inglés o
+  alemán solo si el negocio tiene `EN` o `DE` en los idiomas del paso 1.
 - El contexto lo puede falsear cualquiera que llame a la ruta, igual que el
   mensaje. No da más poder que el mensaje: es orientación, no autorización.
 - Sin enlaces activados no hay continuidad entre páginas (como v1).
