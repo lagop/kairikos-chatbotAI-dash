@@ -37,19 +37,22 @@ vi.mock('@/lib/chatbot-conversation', () => ({
 }));
 
 let ipSeq = 0;
-function makeRequest(body: unknown) {
+function makeRequest(body: unknown, extraHeaders: Record<string, string> = {}) {
   // Una IP distinta por petición: el tope por visitante (30/09/2026) vive en
   // el módulo y se acumularía entre tests. El que prueba ese tope usa la suya.
   ipSeq += 1;
-  return { json: async () => body, headers: new Headers({ 'x-real-ip': `203.0.113.${ipSeq % 250}` }) } as unknown as NextRequest;
+  return {
+    json: async () => body,
+    headers: new Headers({ 'x-real-ip': `203.0.113.${ipSeq % 250}`, ...extraHeaders }),
+  } as unknown as NextRequest;
 }
 
 const VALID_BODY = { publicToken: 'wgt_1', sessionId: 'web-abc123', message: 'hola' };
 const activeEmbed = { clientId: 'c1', clientProductId: null, tenantId: 't1', status: 'active' };
 
-async function post(body: unknown) {
+async function post(body: unknown, headers: Record<string, string> = {}) {
   const { POST } = await import('@/app/api/public/channels/web/message/route');
-  return POST(makeRequest(body));
+  return POST(makeRequest(body, headers));
 }
 
 beforeEach(() => {
@@ -261,5 +264,51 @@ describe('context (widget v2)', () => {
   it('el límite exacto (5 claves, 120 caracteres) sí vale', async () => {
     await post(body({ page: 'p'.repeat(120), topic: 't', lang: 'en', a: '1', b: '2' }));
     expect(engineInput().visitorContext).toContain('a: 1; b: 2');
+  });
+});
+
+// Dominios permitidos (16/11/2026) — lo importante es que desde otra web NO se
+// llama al motor: es lo que gasta el tope mensual del cliente.
+describe('POST /api/public/channels/web/message — dominios permitidos', () => {
+  // Un token por petición: el freno de 20/min por widget vive en el módulo y
+  // los tests de arriba ya lo gastan con wgt_1.
+  const tokenBody = () => ({ ...VALID_BODY, publicToken: 'wgt_' + Math.random().toString(36).slice(2) });
+  const conLista = { ...activeEmbed, allowedOrigins: ['https://www.clinica.example', 'http://localhost:4321'] };
+
+  it('lista vacía: contesta sin mirar el origen', async () => {
+    mockState.embedFindUnique.mockResolvedValue({ ...activeEmbed, allowedOrigins: [] });
+    const res = await post(tokenBody(), { origin: 'https://otra.example' });
+    expect((await res.json()).data.mode).toBe('portal');
+    expect(mockState.replyToIncomingMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('origen en la lista: contesta', async () => {
+    mockState.embedFindUnique.mockResolvedValue(conLista);
+    const res = await post(tokenBody(), { origin: 'http://localhost:4321' });
+    expect((await res.json()).data.mode).toBe('portal');
+  });
+
+  it('origen fuera de la lista: la respuesta de widget apagado, con CORS, y sin llamar al motor', async () => {
+    mockState.embedFindUnique.mockResolvedValue(conLista);
+    const res = await post(tokenBody(), { origin: 'https://copion.example' });
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    expect(json.success).toBe(false);
+    expect(json.data).toMatchObject({ mode: 'unavailable', error: 'context_lookup_failed' });
+    expect(mockState.replyToIncomingMessage).not.toHaveBeenCalled();
+  });
+
+  it('sin cabecera Origin, con lista: no contesta (un curl sin cabeceras)', async () => {
+    mockState.embedFindUnique.mockResolvedValue(conLista);
+    const res = await post(tokenBody());
+    expect((await res.json()).data.mode).toBe('unavailable');
+    expect(mockState.replyToIncomingMessage).not.toHaveBeenCalled();
+  });
+
+  it('Origin: null (iframe con sandbox) no cuenta como origen', async () => {
+    mockState.embedFindUnique.mockResolvedValue(conLista);
+    const res = await post(tokenBody(), { origin: 'null' });
+    expect((await res.json()).data.mode).toBe('unavailable');
   });
 });

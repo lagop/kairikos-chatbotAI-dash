@@ -257,3 +257,52 @@ describe('freno de peticiones', () => {
     expect(res.status).not.toBe(429);
   });
 });
+
+// Dominios permitidos (16/11/2026) — ver lib/web-widget-origin.ts. Desde una web
+// fuera de la lista, la misma respuesta que un widget apagado, con CORS.
+describe('GET /api/public/channels/web/config — dominios permitidos', () => {
+  const embed = (allowedOrigins: string[]) => ({
+    clientId: 'c1',
+    status: 'active',
+    primaryColor: '#000',
+    position: 'bottom-right',
+    allowedOrigins,
+  });
+  const token = () => 'wgt_origen_' + Math.random().toString(36).slice(2);
+
+  it('lista vacía: contesta desde cualquier web, y sin cabecera Origin', async () => {
+    mockState.embedFindUnique.mockResolvedValue(embed([]));
+    const { GET } = await import('@/app/api/public/channels/web/config/route');
+    expect((await GET(makeRequest(token(), { origin: 'https://otra.example' }))).status).toBe(200);
+    expect((await GET(makeRequest(token()))).status).toBe(200);
+  });
+
+  it('origen en la lista: contesta', async () => {
+    mockState.embedFindUnique.mockResolvedValue(embed(['https://www.clinica.example']));
+    const { GET } = await import('@/app/api/public/channels/web/config/route');
+    const res = await GET(makeRequest(token(), { origin: 'https://www.clinica.example' }));
+    expect(res.status).toBe(200);
+  });
+
+  it('origen fuera de la lista: 404 como un widget apagado, con CORS', async () => {
+    mockState.embedFindUnique.mockResolvedValue(embed(['https://www.clinica.example']));
+    const { GET } = await import('@/app/api/public/channels/web/config/route');
+    const res = await GET(makeRequest(token(), { origin: 'https://copion.example' }));
+    expect(res.status).toBe(404);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    expect(await res.json()).toEqual({ error: 'not_found' });
+  });
+
+  it('sin Origin ni Referer, con lista: 404', async () => {
+    mockState.embedFindUnique.mockResolvedValue(embed(['https://www.clinica.example']));
+    const { GET } = await import('@/app/api/public/channels/web/config/route');
+    expect((await GET(makeRequest(token()))).status).toBe(404);
+  });
+
+  it('sin Origin pero con Referer de una web de la lista: contesta', async () => {
+    mockState.embedFindUnique.mockResolvedValue(embed(['https://www.clinica.example']));
+    const { GET } = await import('@/app/api/public/channels/web/config/route');
+    const res = await GET(makeRequest(token(), { referer: 'https://www.clinica.example/tratamientos?x=1' }));
+    expect(res.status).toBe(200);
+  });
+});

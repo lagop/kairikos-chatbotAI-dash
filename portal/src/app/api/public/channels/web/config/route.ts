@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
+import { isWidgetOriginAllowed } from '@/lib/web-widget-origin';
 import { buildChatbotContext } from '@/lib/chatbot-config';
 import { resolveChatbotForChannel } from '@/lib/client-product-access';
 import { InMemoryRateLimiter } from '@/lib/operator-crypto';
@@ -81,7 +82,9 @@ export async function GET(req: NextRequest) {
   }
 
   const embed = await prisma.chatWebEmbed.findUnique({ where: { publicToken: token } });
-  if (!embed || embed.status !== 'active') {
+  // Dominios permitidos (16/11/2026): desde una web que no está en la lista,
+  // lo mismo que un widget apagado. Ver lib/web-widget-origin.ts.
+  if (!embed || embed.status !== 'active' || !isWidgetOriginAllowed(embed.allowedOrigins, req.headers)) {
     return NextResponse.json({ error: 'not_found' }, { status: 404, headers: CORS_HEADERS });
   }
 

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
+import { isWidgetOriginAllowed } from '@/lib/web-widget-origin';
 import { resolveChatbotForChannel } from '@/lib/client-product-access';
 import { replyToIncomingMessage } from '@/lib/chatbot-conversation';
 import { InMemoryRateLimiter } from '@/lib/operator-crypto';
@@ -144,7 +145,9 @@ export async function POST(req: NextRequest) {
   const embed = await prisma.chatWebEmbed.findUnique({ where: { publicToken } });
   const contactIntent = CONTACT_INTENT_RE.test(message);
 
-  if (!embed || embed.status !== 'active') {
+  // Dominios permitidos (16/11/2026): desde una web que no está en la lista,
+  // lo mismo que un widget apagado. Ver lib/web-widget-origin.ts.
+  if (!embed || embed.status !== 'active' || !isWidgetOriginAllowed(embed.allowedOrigins, req.headers)) {
     // Mismo texto y forma que el "Respond (widget not available)" de
     // n8n — el widget no distingue token inválido de widget apagado, y
     // no debe: no hay nada útil que un visitante pueda hacer con esa

@@ -52,8 +52,8 @@ const CONVERSATION = {
   ],
 };
 
-function makeRequest(body: unknown) {
-  return { json: async () => body } as unknown as NextRequest;
+function makeRequest(body: unknown, headers: Record<string, string> = {}) {
+  return { json: async () => body, headers: new Headers(headers) } as unknown as NextRequest;
 }
 
 function validBody(extra: Record<string, unknown> = {}) {
@@ -183,5 +183,42 @@ describe('POST /api/public/channels/web/contact', () => {
     const res = await POST(makeRequest(validBody()));
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
     expect((await OPTIONS()).status).toBe(204);
+  });
+});
+
+// Dominios permitidos (16/11/2026) — ver lib/web-widget-origin.ts.
+describe('POST /api/public/channels/web/contact — dominios permitidos', () => {
+  const conLista = { ...ACTIVE_EMBED, allowedOrigins: ['https://www.clinica.example'] };
+
+  it('lista vacía: guarda el contacto venga de donde venga', async () => {
+    mockState.embedFindUnique.mockResolvedValue({ ...ACTIVE_EMBED, allowedOrigins: [] });
+    const { POST } = await import('@/app/api/public/channels/web/contact/route');
+    const res = await POST(makeRequest(validBody(), { origin: 'https://otra.example' }));
+    expect(res.status).toBe(200);
+  });
+
+  it('origen en la lista: guarda el contacto', async () => {
+    mockState.embedFindUnique.mockResolvedValue(conLista);
+    const { POST } = await import('@/app/api/public/channels/web/contact/route');
+    const res = await POST(makeRequest(validBody(), { origin: 'https://www.clinica.example' }));
+    expect(res.status).toBe(200);
+    expect(mockState.conversationUpdate).toHaveBeenCalled();
+  });
+
+  it('origen fuera de la lista: 404 como un widget apagado, con CORS, sin tocar nada', async () => {
+    mockState.embedFindUnique.mockResolvedValue(conLista);
+    const { POST } = await import('@/app/api/public/channels/web/contact/route');
+    const res = await POST(makeRequest(validBody(), { origin: 'https://copion.example' }));
+    expect(res.status).toBe(404);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    expect(mockState.conversationUpdate).not.toHaveBeenCalled();
+    expect(mockState.sendWidgetContactEmail).not.toHaveBeenCalled();
+  });
+
+  it('sin cabecera Origin, con lista: 404', async () => {
+    mockState.embedFindUnique.mockResolvedValue(conLista);
+    const { POST } = await import('@/app/api/public/channels/web/contact/route');
+    const res = await POST(makeRequest(validBody()));
+    expect(res.status).toBe(404);
   });
 });
