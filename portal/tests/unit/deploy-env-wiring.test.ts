@@ -89,3 +89,23 @@ describe('LEAD_WEBHOOK_ENCRYPTION_KEY llega al contenedor', () => {
     expect(repo('.github/workflows/deploy.yml')).toContain('LEAD_WEBHOOK_ENCRYPTION_KEY=${{ secrets.LEAD_WEBHOOK_ENCRYPTION_KEY }}');
   });
 });
+
+// 15/11/2026 — Reserva propia para villas (docs/plan-reserva-villas.md). La
+// clave que cifra la clave de Stripe de cada dueño es un secreto; el
+// interruptor del modo real es una variable pública y, mientras llegue vacía,
+// solo se aceptan claves de prueba: que se pierda en un despliegue apaga los
+// cobros reales en vez de encenderlos.
+describe('las variables de la reserva de villas llegan al contenedor', () => {
+  it.each([
+    ['VILLAS_STRIPE_CREDENTIAL_ENCRYPTION_KEY', 'secrets'],
+    ['VILLAS_STRIPE_LIVE_ENABLED', 'vars'],
+  ] as const)('%s está en .env.example, docker-compose.yml y deploy.yml', (name, source) => {
+    expect(portal('.env.example'), '.env.example').toMatch(new RegExp(`^${name}=`, 'm'));
+    expect(repo('docker-compose.yml'), 'docker-compose.yml').toContain(`${name}:`);
+    expect(repo('.github/workflows/deploy.yml'), 'deploy.yml').toContain(`${name}=\${{ ${source}.${name} }}`);
+  });
+
+  it('el modo real viene apagado en .env.example', () => {
+    expect(portal('.env.example')).toMatch(/^VILLAS_STRIPE_LIVE_ENABLED=(false)?$/m);
+  });
+});

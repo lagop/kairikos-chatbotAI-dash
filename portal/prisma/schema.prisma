@@ -892,6 +892,8 @@ model ClientProduct {
   chatbotUsage               ChatbotUsage?
   googleSeoConnection        GoogleSeoConnection?
   googleAnalyticsConnection  GoogleAnalyticsConnection?
+  // Reserva propia para villas (15/11/2026) — la configuración del módulo.
+  villaRental                VillaRental?
 
   // Real DB-level uniqueness for every code except 'web' lives in a raw-SQL
   // partial unique index (see this migration's .sql) — Prisma can't express
@@ -6230,4 +6232,261 @@ model PremiumQuoteRequest {
   @@index([status, createdAt])
   @@index([ipHash, createdAt])
   @@index([createdAt])
+}
+
+// =============================================================================
+// Reserva propia para villas (15/11/2026) — el nivel 3 del motor de reservas
+// de Signature. Plan y decisiones: docs/plan-reserva-villas.md.
+//
+// Una contratación 'villas' (Product.kind 'addon', una por cliente) tiene UNA
+// VillaRental con la configuración y, dentro, una o varias villas. Lo que se
+// reserva es una SOLICITUD que el dueño confirma antes de cobrar: iCal no es
+// tiempo real y cobrar al momento acabaría en dobles reservas con dinero ya
+// cobrado.
+//
+// Fechas de estancia en columnas DATE (sin hora ni zona): una noche es un día
+// del calendario de la villa, no un instante. Los rangos de bloqueo y de
+// solicitud son [entrada, salida) — la noche de salida no se ocupa.
+// =============================================================================
+model VillaRental {
+  id               String  @id @default(uuid()) @db.Uuid
+  clientProductId  String  @unique @map("client_product_id") @db.Uuid
+  clientId         String  @map("client_id")
+  tenantId         String? @map("tenant_id") @db.Uuid
+  // Identificador público del widget (vil_…). No es un secreto: va pegado en
+  // el HTML de la web del cliente, como ChatWebEmbed.publicToken.
+  publicToken      String  @unique @map("public_token")
+  // Nombre con el que firman los correos al huésped («Villas Sombra Buena»).
+  businessName     String  @map("business_name")
+  // A dónde van los avisos al dueño. Null = el email de la cuenta del cliente.
+  ownerEmail       String? @map("owner_email")
+  // Teléfono o WhatsApp que se enseña al huésped en los correos. Opcional.
+  ownerPhone       String? @map("owner_phone")
+  // Web del cliente: a dónde vuelve el huésped desde la página de su solicitud.
+  siteUrl          String? @map("site_url")
+  // Zona horaria de las villas: decide qué día es «hoy» (no se puede llegar
+  // ayer). Europe/Madrid o Atlantic/Canary.
+  timeZone         String  @default("Europe/Madrid") @map("time_zone")
+  depositPercent   Int     @default(30) @map("deposit_percent")
+  // Plazo del dueño para contestar una solicitud, y del huésped para pagar
+  // el depósito una vez aceptada. Ver lib/villas/request-rules.ts.
+  confirmHours     Int     @default(24) @map("confirm_hours")
+  paymentHours     Int     @default(48) @map("payment_hours")
+  // Dos frases del dueño que el huésped lee antes de pagar: cuándo y cómo se
+  // paga el resto, y qué pasa si cancela. Texto libre; sin ellas, el widget
+  // no promete nada que el dueño no haya escrito.
+  balanceNote      String? @map("balance_note")
+  cancellationNote String? @map("cancellation_note")
+
+  // Clave restringida de Stripe DEL DUEÑO (el depósito es su dinero, no el de
+  // Kairikos). AES-256-GCM con VILLAS_STRIPE_CREDENTIAL_ENCRYPTION_KEY; nunca
+  // en la auditoría. stripeKeyHint son los 4 últimos caracteres, para que el
+  // panel diga cuál hay puesta. stripeKeyMode: 'test' | 'live'.
+  stripeKeyCiphertext Bytes?  @map("stripe_key_ciphertext")
+  stripeKeyIv         Bytes?  @map("stripe_key_iv")
+  stripeKeyTag        Bytes?  @map("stripe_key_tag")
+  stripeKeyHint       String? @map("stripe_key_hint")
+  stripeKeyMode       String? @map("stripe_key_mode")
+
+  // Baja del cliente (lib/villas/exit-rules.ts): cuándo salió el aviso al
+  // dueño con el plazo para exportar y quitar el iCal. Null mientras no haya
+  // baja; vuelve a null si se reactiva. Sin aviso, el cron no purga.
+  exitNotifiedAt DateTime? @map("exit_notified_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  clientProduct ClientProduct         @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
+  villas        Villa[]
+  requests      VillaBookingRequest[]
+  audits        VillaRentalAudit[]
+
+  @@index([clientId])
+  @@map("villa_rental")
+}
+
+model Villa {
+  id               String  @id @default(uuid()) @db.Uuid
+  rentalId         String  @map("rental_id") @db.Uuid
+  clientId         String  @map("client_id")
+  // Identificador corto para la URL de la web (?unidad=alcornoque).
+  slug             String
+  name             String
+  maxGuests        Int     @map("max_guests")
+  // Precio base por noche, IVA INCLUIDO, en céntimos: es lo que ve el huésped.
+  nightlyCents     Int     @map("nightly_cents")
+  minNights        Int     @default(2) @map("min_nights")
+  cleaningFeeCents Int     @default(0) @map("cleaning_fee_cents")
+  // IVA en puntos básicos (1000 = 10 %). Solo se usa para desglosarlo.
+  vatRateBps       Int     @default(1000) @map("vat_rate_bps")
+  // Tasa turística por adulto y noche, fuera de la base del IVA. 0 = no hay.
+  touristTaxCents  Int     @default(0) @map("tourist_tax_cents")
+  // Token de la URL del iCal de salida. Es un secreto ligero: quien lo tenga
+  // ve qué días están ocupados, nada más.
+  icalToken        String  @unique @map("ical_token")
+  isActive         Boolean @default(true) @map("is_active")
+  sortOrder        Int     @default(0) @map("sort_order")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  rental   VillaRental           @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+  seasons  VillaSeason[]
+  feeds    VillaCalendarFeed[]
+  blocks   VillaBlock[]
+  requests VillaBookingRequest[]
+
+  @@unique([rentalId, slug])
+  @@index([clientId])
+  @@map("villa")
+}
+
+// Temporada: [startDate, endDate] con la última noche INCLUIDA (así la escribe
+// un dueño: «del 20 de diciembre al 6 de enero»). Si dos se solapan gana la más
+// corta (lib/villas/pricing.ts).
+model VillaSeason {
+  id           String   @id @default(uuid()) @db.Uuid
+  villaId      String   @map("villa_id") @db.Uuid
+  name         String
+  startDate    DateTime @map("start_date") @db.Date
+  endDate      DateTime @map("end_date") @db.Date
+  nightlyCents Int      @map("nightly_cents")
+  minNights    Int      @map("min_nights")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  villa Villa @relation(fields: [villaId], references: [id], onDelete: Cascade)
+
+  @@index([villaId])
+  @@map("villa_season")
+}
+
+// Calendario de otra plataforma que se importa (la URL de exportación iCal de
+// Airbnb, Booking…). La URL va en claro: solo da acceso a saber qué días están
+// ocupados. Nunca se copia entera en la auditoría (solo el host).
+//   lastStatus: 'ok' | 'error' | null (aún no leído)
+model VillaCalendarFeed {
+  id           String    @id @default(uuid()) @db.Uuid
+  villaId      String    @map("villa_id") @db.Uuid
+  label        String
+  url          String
+  lastSyncedAt DateTime? @map("last_synced_at")
+  lastStatus   String?   @map("last_status")
+  lastError    String?   @map("last_error")
+  eventCount   Int       @default(0) @map("event_count")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  villa  Villa        @relation(fields: [villaId], references: [id], onDelete: Cascade)
+  blocks VillaBlock[]
+
+  @@index([villaId])
+  @@map("villa_calendar_feed")
+}
+
+// Noches no disponibles que no son una solicitud: las importadas por iCal
+// (feedId puesto; cada lectura sustituye las de su calendario) y las que pone
+// el dueño a mano (feedId null). [startDate, endDate): endDate es la salida.
+model VillaBlock {
+  id        String   @id @default(uuid()) @db.Uuid
+  villaId   String   @map("villa_id") @db.Uuid
+  feedId    String?  @map("feed_id") @db.Uuid
+  startDate DateTime @map("start_date") @db.Date
+  endDate   DateTime @map("end_date") @db.Date
+  // UID del VEVENT importado, o null en los manuales.
+  uid       String?
+  note      String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  villa Villa              @relation(fields: [villaId], references: [id], onDelete: Cascade)
+  feed  VillaCalendarFeed? @relation(fields: [feedId], references: [id], onDelete: Cascade)
+
+  @@index([villaId, startDate])
+  @@index([feedId])
+  @@map("villa_block")
+}
+
+// La solicitud de un huésped. status (transiciones en lib/villas/request-rules.ts):
+//   'pending'   esperando al dueño, hasta expiresAt. NO bloquea fechas.
+//   'accepted'  aceptada, esperando el depósito hasta paymentDueAt. Bloquea.
+//   'confirmed' depósito pagado. Bloquea.
+//   'declined'  rechazada por el dueño, o sola ('dates_taken') al confirmarse
+//               otra que se solapa.
+//   'expired'   nadie contestó a tiempo, o no se pagó a tiempo.
+//   'cancelled' el dueño la anuló después de aceptarla. El reembolso, si toca,
+//               lo hace el dueño desde su Stripe.
+model VillaBookingRequest {
+  id         String  @id @default(uuid()) @db.Uuid
+  // Lo que se le dice al huésped y al dueño («VR-7K3Q9P»).
+  reference  String  @unique
+  // Llave de la página del huésped (/reserva-villa/<token>): larga, aleatoria
+  // y sin cuenta. Quien la tenga ve la solicitud y puede pagar el depósito.
+  guestToken String  @unique @map("guest_token")
+  rentalId   String  @map("rental_id") @db.Uuid
+  villaId    String  @map("villa_id") @db.Uuid
+  clientId   String  @map("client_id")
+  tenantId   String? @map("tenant_id") @db.Uuid
+
+  checkIn  DateTime @map("check_in") @db.Date
+  checkOut DateTime @map("check_out") @db.Date
+  adults   Int
+  children Int      @default(0)
+
+  guestName  String   @map("guest_name")
+  guestEmail String   @map("guest_email")
+  guestPhone String?  @map("guest_phone")
+  message    String?
+  // 'es' | 'en': idioma de los correos y de la página del huésped.
+  lang       String   @default("es")
+  consentAt  DateTime @map("consent_at")
+
+  // El presupuesto CONGELADO al enviar (StayQuote de lib/villas/pricing.ts):
+  // cambiar una temporada después no cambia lo que el dueño aceptó.
+  quote        Json
+  totalCents   Int    @map("total_cents")
+  depositCents Int    @map("deposit_cents")
+  currency     String @default("EUR")
+
+  status        String    @default("pending")
+  expiresAt     DateTime  @map("expires_at")
+  decidedAt     DateTime? @map("decided_at")
+  declineReason String?   @map("decline_reason")
+  paymentDueAt  DateTime? @map("payment_due_at")
+
+  stripeSessionId       String?   @map("stripe_session_id")
+  stripePaymentIntentId String?   @map("stripe_payment_intent_id")
+  paidAt                DateTime? @map("paid_at")
+  // De dónde vino (?origen= de la web: 'google', 'chat'…). Solo para medir.
+  source                String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  rental VillaRental @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+  villa  Villa       @relation(fields: [villaId], references: [id], onDelete: Cascade)
+
+  @@index([rentalId, status])
+  @@index([villaId, status, checkIn])
+  @@index([status, expiresAt])
+  @@index([status, paymentDueAt])
+  @@map("villa_booking_request")
+}
+
+// Append-only. actor: 'client:<clientId>' | 'operator:<operatorId>' | 'guest'
+// | 'system'. metadata nunca lleva la clave de Stripe ni una URL de iCal entera.
+//   entity: 'rental' | 'villa' | 'feed' | 'block' | 'request'
+model VillaRentalAudit {
+  id        String   @id @default(uuid()) @db.Uuid
+  rentalId  String   @map("rental_id") @db.Uuid
+  clientId  String   @map("client_id")
+  entity    String
+  entityId  String   @map("entity_id")
+  action    String
+  actor     String
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  rental VillaRental @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+
+  @@index([rentalId, createdAt])
+  @@index([entity, entityId])
+  @@map("villa_rental_audit")
 }

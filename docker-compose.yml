@@ -201,6 +201,10 @@ services:
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       STRIPE_CREDENTIAL_ENCRYPTION_KEY: ${STRIPE_CREDENTIAL_ENCRYPTION_KEY:-}
+      # Reserva propia para villas: cifra la clave de Stripe de cada dueño, y
+      # el interruptor de cobros reales (vacío = solo modo test).
+      VILLAS_STRIPE_CREDENTIAL_ENCRYPTION_KEY: ${VILLAS_STRIPE_CREDENTIAL_ENCRYPTION_KEY:-}
+      VILLAS_STRIPE_LIVE_ENABLED: ${VILLAS_STRIPE_LIVE_ENABLED:-}
       # 'prospecting' — Google Places has the same admin-configurable
       # fallback pattern as Stripe above (/admin/portal/settings/integrations
       # → IntegrationCredential). GOOGLE_PLACES_API_KEY was never wired in
