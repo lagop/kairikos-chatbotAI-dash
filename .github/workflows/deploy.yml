@@ -37,6 +37,14 @@ on:
     branches: [main, kaia-743-staging-runner]
   workflow_dispatch:
 
+# Un despliegue cada vez: hay una sola VPS. Dos a la vez (uno por push de
+# infraestructura y otro por workflow_run, o dos workflow_run seguidos)
+# se pisaban el docker compose. El pendiente espera; si llega otro, GitHub
+# cancela el intermedio y se queda con el último, que lleva todo.
+concurrency:
+  group: deploy-hostinger-vps
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -351,7 +359,12 @@ jobs:
           #
           # Vacío = no se exige versión; se comprueba que el portal está
           # vivo, que es todo lo que un despliegue sin imagen puede prometer.
-          ESPERADA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || '' }}
+          #
+          # Lo mismo vale para la construcción de scheduler/backup: no toca
+          # la imagen del portal, así que solo se exige versión cuando el
+          # workflow_run viene de «Build and push portal image».
+          ESPERADA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Build and push portal image' && github.event.workflow_run.head_sha || '' }}
+          GH_TOKEN: ${{ github.token }}
           PORTAL_URL: ${{ vars.NEXT_PUBLIC_PORTAL_URL }}
           PORTAL_API_KEY: ${{ secrets.PORTAL_API_KEY }}
         run: |
@@ -390,6 +403,18 @@ jobs:
             if [ "${DESPLEGADA}" = "${ESPERADA}" ]; then
               echo "✅ En producción corre ${DESPLEGADA} (intento ${intento})"
               exit 0
+            fi
+            # Si mientras tanto se construyó un commit posterior, `latest` ya
+            # es esa imagen y es la que se instala: también vale, porque
+            # contiene este commit. Lo dice la API de comparación de GitHub
+            # («ahead»: DESPLEGADA es descendiente de ESPERADA). Una versión
+            # más VIEJA sigue fallando, que es el caso que hay que ver.
+            if [ -n "${DESPLEGADA}" ]; then
+              RELACION=$(gh api "repos/${GITHUB_REPOSITORY}/compare/${ESPERADA}...${DESPLEGADA}" --jq '.status' 2>/dev/null || true)
+              if [ "${RELACION}" = "ahead" ]; then
+                echo "✅ En producción corre ${DESPLEGADA}, posterior a ${ESPERADA} y que lo contiene (intento ${intento})"
+                exit 0
+              fi
             fi
             echo "intento ${intento}/30 — en producción: ${DESPLEGADA:-sin respuesta}"
             sleep 10
