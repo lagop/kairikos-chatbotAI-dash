@@ -71,6 +71,8 @@ export async function POST(req: NextRequest, props: { params: Promise<{ villaId:
       return NextResponse.json({ ok: true, ...result });
     }
     case 'add_block': {
+      // Cerrar el pasado no sirve de nada y ensucia el histórico del calendario.
+      if (body.data.start < today) return NextResponse.json({ error: 'past_dates' }, { status: 400 });
       const nights = nightsBetween(body.data.start, body.data.end);
       if (nights < 1 || nights > 366) return NextResponse.json({ error: 'invalid_range' }, { status: 400 });
       const block = await prisma.villaBlock.create({

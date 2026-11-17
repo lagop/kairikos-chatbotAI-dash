@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { CALENDAR_MONTHS_AHEAD, clampMonth, monthWeeks, nightFor, occupancyForVilla, type OccupancyRange } from '@/lib/villas/panel-calendar';
+import {
+  CALENDAR_MONTHS_AHEAD,
+  CALENDAR_MONTHS_BACK,
+  calendarHistoryStart,
+  checkCloseRange,
+  clampMonth,
+  entriesInRange,
+  monthWeeks,
+  nightFor,
+  occupancyForVilla,
+  rangeFromNights,
+  type OccupancyRange,
+} from '@/lib/villas/panel-calendar';
 
 const villa = {
   id: 'v1',
@@ -90,10 +102,45 @@ describe('monthWeeks', () => {
 });
 
 describe('clampMonth', () => {
-  it('no baja del mes de hoy ni pasa del tope', () => {
-    expect(clampMonth('2026-10-01', '2026-11-17')).toBe('2026-11-01');
+  it('va de doce meses atrás a diecisiete adelante', () => {
+    expect(CALENDAR_MONTHS_BACK).toBe(12);
+    expect(CALENDAR_MONTHS_AHEAD).toBe(17);
+    expect(calendarHistoryStart('2026-11-17')).toBe('2025-11-01');
+    expect(clampMonth('2026-10-20', '2026-11-17')).toBe('2026-10-01');
+    expect(clampMonth('2020-01-01', '2026-11-17')).toBe('2025-11-01');
     expect(clampMonth('2026-12-20', '2026-11-17')).toBe('2026-12-01');
     expect(clampMonth('2040-01-01', '2026-11-17')).toBe('2028-04-01');
-    expect(CALENDAR_MONTHS_AHEAD).toBe(17);
+  });
+});
+
+describe('rangos seleccionados en el calendario', () => {
+  const ranges: OccupancyRange[] = [
+    { id: 'r1', kind: 'confirmed', start: '2026-12-10', end: '2026-12-14', label: 'Reserva' },
+    { id: 'p1', kind: 'pending', start: '2026-12-02', end: '2026-12-05', label: 'Solicitud' },
+    { id: 'i1', kind: 'ical', start: '2026-12-12', end: '2026-12-13', label: 'Airbnb' },
+  ];
+
+  it('dos noches pulsadas, en cualquier orden, cierran también la última', () => {
+    expect(rangeFromNights('2026-12-03', '2026-12-01')).toEqual({ start: '2026-12-01', end: '2026-12-04' });
+    expect(rangeFromNights('2026-12-01', '2026-12-01')).toEqual({ start: '2026-12-01', end: '2026-12-02' });
+  });
+
+  it('entriesInRange respeta [entrada, salida) y puede dejar fuera la propia solicitud', () => {
+    expect(entriesInRange(ranges, '2026-12-05', '2026-12-10')).toEqual([]);
+    expect(entriesInRange(ranges, '2026-12-01', '2026-12-13').map((r) => r.id)).toEqual(['r1', 'i1', 'p1']);
+    expect(entriesInRange(ranges, '2026-12-10', '2026-12-14', 'r1').map((r) => r.id)).toEqual(['i1']);
+  });
+
+  it('se pueden cerrar noches libres, avisando de las solicitudes que quedan dentro', () => {
+    expect(checkCloseRange(ranges, '2026-12-05', '2026-12-10', '2026-11-17')).toEqual({ ok: true, nights: 5, pending: [] });
+    const withPending = checkCloseRange(ranges, '2026-12-01', '2026-12-06', '2026-11-17');
+    expect(withPending.ok && withPending.pending.map((r) => r.id)).toEqual(['p1']);
+  });
+
+  it('no se cierra en el pasado, encima de algo que ocupa, ni más de un año', () => {
+    expect(checkCloseRange(ranges, '2026-11-16', '2026-11-18', '2026-11-17')).toMatchObject({ ok: false, reason: 'past' });
+    expect(checkCloseRange(ranges, '2026-12-08', '2026-12-11', '2026-11-17')).toMatchObject({ ok: false, reason: 'occupied' });
+    expect(checkCloseRange([], '2026-12-01', '2027-12-03', '2026-11-17')).toMatchObject({ ok: false, reason: 'too_long' });
+    expect(checkCloseRange([], '2026-11-17', '2026-11-18', '2026-11-17').ok).toBe(true);
   });
 });

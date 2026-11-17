@@ -115,13 +115,67 @@ export function monthWeeks(month: IsoDate, ranges: readonly OccupancyRange[]): A
   return weeks;
 }
 
-/** Hasta dónde se puede avanzar: los datos del panel son de hoy en adelante. */
+/** Hasta dónde se puede avanzar. */
 export const CALENDAR_MONTHS_AHEAD = 17;
 
-/** Mueve el mes sin salirse de [mes de hoy, mes de hoy + CALENDAR_MONTHS_AHEAD]. */
+/**
+ * Cuántos meses hacia atrás. La página carga el histórico desde
+ * calendarHistoryStart: estancias confirmadas, cierres manuales y lo que siga
+ * en los iCal importados (Airbnb y Booking suelen quitar pronto lo pasado, así
+ * que de ellos el histórico sale incompleto: limitación conocida).
+ */
+export const CALENDAR_MONTHS_BACK = 12;
+
+/** El primer día que el calendario puede enseñar. */
+export function calendarHistoryStart(today: IsoDate): IsoDate {
+  return addMonths(startOfMonth(today), -CALENDAR_MONTHS_BACK);
+}
+
+/** Mueve el mes sin salirse de [inicio del histórico, mes de hoy + CALENDAR_MONTHS_AHEAD]. */
 export function clampMonth(month: IsoDate, today: IsoDate): IsoDate {
-  const min = startOfMonth(today);
-  const max = addMonths(min, CALENDAR_MONTHS_AHEAD);
+  const min = calendarHistoryStart(today);
+  const max = addMonths(startOfMonth(today), CALENDAR_MONTHS_AHEAD);
   const m = startOfMonth(month);
   return m < min ? min : m > max ? max : m;
+}
+
+// --- Rangos seleccionados ------------------------------------------------------
+
+/** Dos noches pulsadas, en el orden que sea, a un rango [entrada, salida): la
+ *  última noche pulsada SÍ se cierra, así que la salida es el día siguiente. */
+export function rangeFromNights(a: IsoDate, b: IsoDate): { start: IsoDate; end: IsoDate } {
+  const [first, last] = a <= b ? [a, b] : [b, a];
+  return { start: first, end: addDays(last, 1) };
+}
+
+/** Lo que toca [start, end), en orden de prioridad. `excludeId` deja fuera la
+ *  propia solicitud cuando se mira con qué se cruza. */
+export function entriesInRange(ranges: readonly OccupancyRange[], start: IsoDate, end: IsoDate, excludeId?: string): OccupancyRange[] {
+  return ranges
+    .filter((r) => r.id !== excludeId && r.start < end && start < r.end)
+    .sort((a, b) => OCCUPANCY_KINDS.indexOf(a.kind) - OCCUPANCY_KINDS.indexOf(b.kind) || (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
+}
+
+/** El tope de la ruta add_block. */
+export const MAX_CLOSE_NIGHTS = 366;
+
+export type CloseCheck =
+  | { ok: true; nights: number; pending: OccupancyRange[] }
+  | { ok: false; reason: 'past' | 'occupied' | 'too_long'; blockers: OccupancyRange[] };
+
+/**
+ * ¿Se pueden cerrar a mano esas noches desde el calendario? No en el pasado,
+ * no encima de algo que ya ocupa (cerrar encima de una reserva no la anula, y
+ * dejaría dos cosas en la misma noche), y no más de un año. Las solicitudes
+ * por responder no lo impiden, pero se devuelven para avisar: cerrar no las
+ * rechaza.
+ */
+export function checkCloseRange(ranges: readonly OccupancyRange[], start: IsoDate, end: IsoDate, today: IsoDate): CloseCheck {
+  if (start < today) return { ok: false, reason: 'past', blockers: [] };
+  const inRange = entriesInRange(ranges, start, end);
+  const blockers = inRange.filter((r) => r.kind !== 'pending');
+  if (blockers.length > 0) return { ok: false, reason: 'occupied', blockers };
+  const nights = Math.round((toDbDate(end).getTime() - toDbDate(start).getTime()) / 86_400_000);
+  if (nights > MAX_CLOSE_NIGHTS) return { ok: false, reason: 'too_long', blockers: [] };
+  return { ok: true, nights, pending: inRange.filter((r) => r.kind === 'pending') };
 }

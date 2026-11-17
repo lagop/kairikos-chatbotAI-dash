@@ -12,6 +12,7 @@ import { hasStripeKey, isLiveModeAllowed } from '@/lib/villas/stripe-deposit';
 import { isBlocking } from '@/lib/villas/request-rules';
 import { portalBaseUrl } from '@/lib/portal-base-url';
 import { VILLAS_TAB_PARAM, parseVillasTab } from '@/lib/villas/panel-tabs';
+import { calendarHistoryStart } from '@/lib/villas/panel-calendar';
 
 export const dynamic = 'force-dynamic';
 
@@ -91,14 +92,17 @@ export default async function VillasPage(props: { searchParams: Promise<Record<s
 
   const now = new Date();
   const today = rentalToday(rental, now);
-  const [villas, requests] = await Promise.all([
+  // El calendario de ocupación enseña también los últimos meses: cierres
+  // manuales, bloqueos importados y estancias confirmadas desde aquí.
+  const historyFrom = toDbDate(calendarHistoryStart(today));
+  const [villas, requests, pastStays] = await Promise.all([
     prisma.villa.findMany({
       where: { rentalId: rental.id },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
       include: {
         seasons: { orderBy: { startDate: 'asc' } },
         feeds: { orderBy: { createdAt: 'asc' } },
-        blocks: { where: { feedId: null, endDate: { gt: toDbDate(today) } }, orderBy: { startDate: 'asc' } },
+        blocks: { where: { feedId: null, endDate: { gt: historyFrom } }, orderBy: { startDate: 'asc' } },
       },
     }),
     prisma.villaBookingRequest.findMany({
@@ -108,6 +112,12 @@ export default async function VillasPage(props: { searchParams: Promise<Record<s
       },
       orderBy: [{ checkIn: 'asc' }],
       take: 200,
+    }),
+    prisma.villaBookingRequest.findMany({
+      where: { rentalId: rental.id, status: 'confirmed', checkOut: { gt: historyFrom, lte: toDbDate(today) } },
+      orderBy: [{ checkIn: 'asc' }],
+      take: 500,
+      select: { id: true, villaId: true, status: true, reference: true, guestName: true, checkIn: true, checkOut: true },
     }),
   ]);
 
@@ -120,7 +130,7 @@ export default async function VillasPage(props: { searchParams: Promise<Record<s
     blockingByVilla.set(r.villaId, list);
   }
   const importedBlocks = await prisma.villaBlock.findMany({
-    where: { villaId: { in: villas.map((v) => v.id) }, feedId: { not: null }, endDate: { gt: toDbDate(today) } },
+    where: { villaId: { in: villas.map((v) => v.id) }, feedId: { not: null }, endDate: { gt: historyFrom } },
     select: { villaId: true, startDate: true, endDate: true, feed: { select: { label: true } } },
   });
 
@@ -189,6 +199,15 @@ export default async function VillasPage(props: { searchParams: Promise<Record<s
       importedBlocks: importedBlocks
         .filter((b) => b.villaId === v.id)
         .map((b) => ({ start: fromDbDate(b.startDate), end: fromDbDate(b.endDate), label: b.feed?.label ?? 'iCal' })),
+    })),
+    pastStays: pastStays.map((r) => ({
+      id: r.id,
+      villaId: r.villaId,
+      status: r.status,
+      reference: r.reference,
+      guestName: r.guestName,
+      checkIn: fromDbDate(r.checkIn),
+      checkOut: fromDbDate(r.checkOut),
     })),
     requests: requests.map((r) => {
       const checkIn = fromDbDate(r.checkIn);
