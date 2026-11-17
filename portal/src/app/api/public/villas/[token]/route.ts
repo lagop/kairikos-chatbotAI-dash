@@ -38,6 +38,7 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ token: s
     return corsJson({ error: known ? 'not_contracted' : 'not_found' }, 404);
   }
   const today = rentalToday(rental);
+  const depositReady = hasStripeKey(rental);
 
   return corsJson(
     {
@@ -51,12 +52,14 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ token: s
       paymentHours: rental.paymentHours,
       balanceNote: rental.balanceNote,
       cancellationNote: rental.cancellationNote,
-      depositReady: hasStripeKey(rental),
+      depositReady,
       villas: rental.villas.map((v) => ({
         slug: v.slug,
         name: v.name,
         maxGuests: v.maxGuests,
         minNights: v.minNights,
+        // Sin Stripe no se puede aceptar sola (requests.ts): la web no lo promete.
+        instantBooking: v.instantBooking && depositReady,
         fromNightlyCents: fromPriceCents(toPricing(v), toSeasons(v.seasons), today),
         cleaningFeeCents: v.cleaningFeeCents,
       })),

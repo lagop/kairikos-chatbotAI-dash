@@ -122,13 +122,37 @@ export function guestRequestUrl(guestToken: string): string {
 
 // --- Al dueño ------------------------------------------------------------------
 
+/** Por qué la reserva inmediata dejó una solicitud pendiente (DecisionError de requests.ts). */
+export function instantFallbackText(reason: string): string {
+  switch (reason) {
+    case 'conflict':
+      return 'al volver a leer tus calendarios, alguna de esas noches ya estaba ocupada';
+    case 'feeds_failed':
+      return 'no se ha podido leer alguno de tus calendarios de Airbnb o Booking, y sin eso no se acepta sola';
+    case 'stripe_not_configured':
+      return 'falta tu clave de Stripe, y sin ella el huésped no podría pagar el depósito';
+    default:
+      return 'ha fallado algo al aceptarla';
+  }
+}
+
 export function buildOwnerNewRequestEmail(
   s: StaySummary,
-  extra: { guestName: string; guestEmail: string; guestPhone: string | null; message: string | null; expiresAt: Date; timeZone: string },
+  extra: {
+    guestName: string;
+    guestEmail: string;
+    guestPhone: string | null;
+    message: string | null;
+    expiresAt: Date;
+    timeZone: string;
+    /** La villa tiene reserva inmediata pero esta no se ha podido aceptar sola: por qué. */
+    instantFallback?: string | null;
+  },
 ): RenderedEmail {
   const subject = `Nueva solicitud · ${s.villaName} · ${formatDay(s.checkIn, 'es')} (${s.nights} noches)`;
   const paragraphs = [
     `${extra.guestName} quiere reservar ${s.villaName}. Todavía no se ha cobrado nada.`,
+    ...(extra.instantFallback ? [`${s.villaName} tiene la reserva inmediata activada, pero esta solicitud no se ha podido aceptar sola: ${instantFallbackText(extra.instantFallback)}. Te toca aceptarla o rechazarla a mano.`] : []),
     'Antes de aceptar, mira que esas fechas sigan libres en Airbnb y Booking. Al aceptar, el portal vuelve a leer tus calendarios y no te deja si aparece un solape. El huésped recibe entonces el enlace para pagar el depósito.',
     `Tienes hasta el ${formatDeadline(extra.expiresAt, 'es', extra.timeZone)} para contestar; después la solicitud caduca y se avisa al huésped.`,
     ...(extra.message ? [`Mensaje del huésped: «${extra.message}»`] : []),
@@ -183,6 +207,70 @@ export function buildOwnerExitEmail(input: {
     ],
     [],
     { label: 'Descargar mis datos', url: `${portalBaseUrl()}/portal/villas` },
+    '— Kairikos',
+  );
+}
+
+/**
+ * Calendarios de Airbnb/Booking que llevan horas sin poder leerse
+ * (feed-alerts.ts). Un correo por dueño con todos los que fallan, una vez por
+ * racha. Lo importante va primero: mientras falle, lo que entre por esa
+ * plataforma no se ve aquí.
+ */
+export function buildOwnerFeedFailingEmail(input: {
+  businessName: string;
+  timeZone: string;
+  feeds: Array<{ villaName: string; label: string; host: string; reason: string; since: Date; instantBooking: boolean }>;
+}): RenderedEmail {
+  const one = input.feeds.length === 1;
+  const first = input.feeds[0];
+  const subject = one
+    ? `No podemos leer el calendario de ${first.label} de ${first.villaName}`
+    : `No podemos leer ${input.feeds.length} calendarios de tus villas`;
+  const anyInstant = input.feeds.some((f) => f.instantBooking);
+  return render(
+    subject,
+    [
+      one
+        ? `Desde el portal no conseguimos leer el calendario de ${first.label} de ${first.villaName}. Mientras falle, las reservas nuevas que entren por ahí no llegan aquí y tu web podría ofrecer noches que ya están ocupadas.`
+        : `Desde el portal no conseguimos leer estos calendarios de ${input.businessName}. Mientras fallen, las reservas nuevas que entren por esas plataformas no llegan aquí y tu web podría ofrecer noches que ya están ocupadas.`,
+      'Hasta que se arregle, mira esa plataforma antes de aceptar ninguna solicitud.',
+      ...(anyInstant
+        ? ['La reserva inmediata de esa villa queda en pausa: las solicitudes nuevas te llegarán para aceptarlas a mano hasta que el calendario vuelva a leerse.']
+        : []),
+      'Casi siempre es que la URL ha cambiado (Airbnb y Booking la cambian si regeneras el enlace) o que el anuncio ya no existe. Copia otra vez la URL de exportación del calendario en la plataforma, quita la antigua en el portal y pega la nueva.',
+      'Si vuelve a leerse bien no tienes que hacer nada. Si más adelante vuelve a fallar, te avisaremos otra vez.',
+    ],
+    input.feeds.map((f) => [`${f.villaName} · ${f.label} (${f.host})`, `${f.reason}; falla desde el ${formatDeadline(f.since, 'es', input.timeZone)}`]),
+    { label: 'Revisar los calendarios en el portal', url: `${portalBaseUrl()}/portal/villas?seccion=villas` },
+    '— Kairikos',
+  );
+}
+
+/**
+ * Reserva inmediata (requests.ts): la solicitud se ha aceptado sola y el
+ * huésped ya tiene el enlace del depósito. El dueño no tiene que hacer nada,
+ * pero sí puede cancelarla si ve un problema que el portal no ve.
+ */
+export function buildOwnerInstantBookingEmail(
+  s: StaySummary,
+  extra: { guestName: string; guestEmail: string; guestPhone: string | null; message: string | null; paymentDueAt: Date; timeZone: string },
+): RenderedEmail {
+  const rows: Array<[string, string]> = [
+    ...summaryRows(s, 'es'),
+    ['Email', extra.guestEmail],
+    ...(extra.guestPhone ? ([['Teléfono', extra.guestPhone]] as Array<[string, string]>) : []),
+  ];
+  return render(
+    `Reserva inmediata · ${s.villaName} · ${formatDay(s.checkIn, 'es')} (${s.nights} noches)`,
+    [
+      `${extra.guestName} ha reservado ${s.villaName} con la reserva inmediata. El portal ha vuelto a leer tus calendarios, las noches seguían libres y la ha aceptado sola.`,
+      `El huésped ya tiene el enlace para pagar el depósito; tiene hasta el ${formatDeadline(extra.paymentDueAt, 'es', extra.timeZone)}. Cuando lo pague te llegará otro correo y la reserva quedará confirmada. Si no lo paga, las fechas se liberan solas.`,
+      'Si ves algún problema (por ejemplo, una reserva que entró en Airbnb hace unos minutos y aún no sale en su calendario), puedes cancelarla desde el portal.',
+      ...(extra.message ? [`Mensaje del huésped: «${extra.message}»`] : []),
+    ],
+    rows,
+    { label: 'Ver en el portal', url: `${portalBaseUrl()}/portal/villas` },
     '— Kairikos',
   );
 }

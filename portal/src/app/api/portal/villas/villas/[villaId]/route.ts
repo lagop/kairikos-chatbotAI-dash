@@ -12,7 +12,7 @@ export const runtime = 'nodejs';
 
 /**
  * PATCH /api/portal/villas/villas/[villaId]
- *   body: { ...campos de la villa (parciales), isActive?, seasons? }
+ *   body: { ...campos de la villa (parciales), isActive?, instantBooking?, seasons? }
  *
  * `seasons`, si viene, SUSTITUYE todas las temporadas de la villa: el panel
  * edita la tabla entera y la guarda de una vez, en una transacción. Las
@@ -23,7 +23,7 @@ export const runtime = 'nodejs';
  * salida da 404.
  */
 const BodySchema = VillaFieldsSchema.partial()
-  .extend({ isActive: z.boolean().optional(), seasons: SeasonsSchema.optional() })
+  .extend({ isActive: z.boolean().optional(), instantBooking: z.boolean().optional(), seasons: SeasonsSchema.optional() })
   .strict();
 
 export async function PATCH(req: NextRequest, props: { params: Promise<{ villaId: string }> }) {

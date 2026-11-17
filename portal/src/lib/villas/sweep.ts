@@ -5,6 +5,7 @@ import { isFeedDue, syncFeed } from './ical-sync';
 import { rentalToday } from './rental';
 import { expirePendingRequests, reconcileAcceptedRequests } from './requests';
 import { processVillaExits } from './exit';
+import { alertFailingFeeds } from './feed-alerts';
 
 // =============================================================================
 // Reserva propia para villas — el pase del cron (/api/cron/villas-tick).
@@ -13,8 +14,9 @@ import { processVillaExits } from './exit';
 // «¿toca ya?» vive aquí (isFeedDue, los plazos de cada solicitud), no en la
 // cadencia. Idempotente: llamarlo dos veces seguidas no hace nada la segunda.
 //
-// Cuatro cosas, en este orden:
+// Cinco cosas, en este orden:
 //   1. Leer los iCal que tocan (cada 30 min por calendario), con tope por pase.
+//   1b. Avisar al dueño de los que llevan horas fallando (feed-alerts.ts).
 //   2. Caducar las pendientes sin respuesta.
 //   3. Repasar las aceptadas: confirmar las pagadas, caducar las vencidas.
 //   4. Bajas: avisar al dueño una vez y purgar al acabar el plazo (exit.ts).
@@ -27,6 +29,7 @@ const MAX_FEEDS_PER_TICK = 25;
 export interface VillasSweepResult {
   feedsSynced: number;
   feedsFailed: number;
+  feedAlertsSent: number;
   pendingExpired: number;
   paymentsConfirmed: number;
   paymentsExpired: number;
@@ -35,7 +38,7 @@ export interface VillasSweepResult {
 }
 
 export async function sweepVillas(db: PrismaClient, now: Date = new Date()): Promise<VillasSweepResult> {
-  const result: VillasSweepResult = { feedsSynced: 0, feedsFailed: 0, pendingExpired: 0, paymentsConfirmed: 0, paymentsExpired: 0, exitsNotified: 0, rentalsPurged: 0 };
+  const result: VillasSweepResult = { feedsSynced: 0, feedsFailed: 0, feedAlertsSent: 0, pendingExpired: 0, paymentsConfirmed: 0, paymentsExpired: 0, exitsNotified: 0, rentalsPurged: 0 };
 
   const feeds = await db.villaCalendarFeed.findMany({
     where: { villa: { isActive: true, rental: { clientProduct: { status: 'active' } } } },
@@ -54,6 +57,11 @@ export async function sweepVillas(db: PrismaClient, now: Date = new Date()): Pro
     }
   }
 
+  try {
+    result.feedAlertsSent = await alertFailingFeeds(db, now);
+  } catch (err) {
+    logError('villas.sweep.feed_alerts', err, {}, 'error');
+  }
   try {
     result.pendingExpired = await expirePendingRequests(db, now);
   } catch (err) {

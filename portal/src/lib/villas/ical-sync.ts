@@ -104,13 +104,18 @@ export async function syncFeed(
     }
     await tx.villaCalendarFeed.update({
       where: { id: feed.id },
-      data: { lastSyncedAt: now, lastStatus: 'ok', lastError: null, eventCount: events.length },
+      // Una lectura buena corta la racha de fallos: si vuelve a fallar, se
+      // avisará otra vez (feed-alerts.ts).
+      data: { lastSyncedAt: now, lastStatus: 'ok', lastError: null, eventCount: events.length, errorSince: null, alertedAt: null },
     });
   });
   return { ok: true, events: events.length };
 }
 
 async function markError(db: Db, feedId: string, error: string, now: Date): Promise<FeedSyncResult> {
+  // El inicio de la racha solo se pone en el primer fallo: así el aviso al
+  // dueño sabe cuánto lleva fallando, no cuándo falló la última vez.
+  await db.villaCalendarFeed.updateMany({ where: { id: feedId, errorSince: null }, data: { errorSince: now } });
   await db.villaCalendarFeed.update({
     where: { id: feedId },
     data: { lastSyncedAt: now, lastStatus: 'error', lastError: error.slice(0, 200) },

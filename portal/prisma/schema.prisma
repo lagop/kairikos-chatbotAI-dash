@@ -6326,6 +6326,10 @@ model Villa {
   icalToken        String  @unique @map("ical_token")
   isActive         Boolean @default(true) @map("is_active")
   sortOrder        Int     @default(0) @map("sort_order")
+  // Reserva inmediata: la solicitud se acepta sola al llegar (si las fechas
+  // siguen libres al releer los iCal) y el huésped va directo a pagar el
+  // depósito. Por defecto no: ver docs/plan-reserva-villas.md.
+  instantBooking   Boolean @default(false) @map("instant_booking")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -6373,6 +6377,10 @@ model VillaCalendarFeed {
   lastStatus   String?   @map("last_status")
   lastError    String?   @map("last_error")
   eventCount   Int       @default(0) @map("event_count")
+  // Desde cuándo falla seguido (null si la última lectura fue bien) y cuándo
+  // se avisó al dueño de esa racha (lib/villas/feed-alerts.ts).
+  errorSince   DateTime? @map("error_since")
+  alertedAt    DateTime? @map("alerted_at")
   createdAt    DateTime  @default(now()) @map("created_at")
 
   villa  Villa        @relation(fields: [villaId], references: [id], onDelete: Cascade)

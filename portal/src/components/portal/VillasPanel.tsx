@@ -5,7 +5,9 @@ import { useRouter } from 'next/navigation';
 import { EXIT_GRACE_DAYS } from '@/lib/villas/exit-rules';
 import { DEFAULT_VILLAS_TAB, VILLAS_TABS, neighbourVillasTab, pendingBadgeText, villasTabHref, type VillasTabId } from '@/lib/villas/panel-tabs';
 import { villaStartsOpen, villaSyncSummary } from '@/lib/villas/panel-summary';
+import { feedErrorText } from '@/lib/villas/feed-alert-rules';
 import { VillasCalendar, type CalendarFocus } from '@/components/portal/VillasCalendar';
+import { VillasMonthSummary } from '@/components/portal/VillasMonthSummary';
 
 // =============================================================================
 // Reserva propia para villas — el panel del dueño (cliente). Los datos llegan
@@ -49,16 +51,17 @@ export interface VillasPanelData {
     vatRateBps: number;
     touristTaxCents: number;
     isActive: boolean;
+    instantBooking: boolean;
     icalExportUrl: string;
     seasons: Array<{ name: string; startDate: string; endDate: string; nightlyCents: number; minNights: number }>;
-    feeds: Array<{ id: string; label: string; host: string; lastSyncedAt: string | null; lastStatus: string | null; lastError: string | null; eventCount: number }>;
+    feeds: Array<{ id: string; label: string; host: string; lastSyncedAt: string | null; lastStatus: string | null; lastError: string | null; errorSince: string | null; eventCount: number }>;
     /** Desde el inicio del histórico del calendario: la lista de la villa enseña solo los que no han acabado. */
     manualBlocks: Array<{ id: string; start: string; end: string; note: string | null }>;
     /** Noches ocupadas en Airbnb/Booking (iCal), de hoy en adelante: para el calendario. */
     importedBlocks: Array<{ start: string; end: string; label: string }>;
   }>;
   /** Estancias confirmadas ya terminadas, para el histórico del calendario (las de `requests` son las recientes). */
-  pastStays: Array<{ id: string; villaId: string; status: string; reference: string; guestName: string; checkIn: string; checkOut: string }>;
+  pastStays: Array<{ id: string; villaId: string; status: string; reference: string; guestName: string; checkIn: string; checkOut: string; totalCents: number }>;
   requests: Array<{
     id: string;
     reference: string;
@@ -330,6 +333,12 @@ export function VillasPanel({ data, initialTab = DEFAULT_VILLAS_TAB }: { data: V
           <VillasCalendar villas={data.villas} requests={calendarRequests} today={data.today} actions={calendarActions} focus={calendarFocus} />
         </Section>
 
+        {data.villas.length > 0 ? (
+          <Section title="Resumen del mes" description="Noches vendidas desde tu web, ocupación contando Airbnb y Booking, e ingresos de las reservas confirmadas.">
+            <VillasMonthSummary villas={data.villas} stays={calendarRequests} today={data.today} />
+          </Section>
+        ) : null}
+
         <Section title={`Próximas reservas confirmadas (${confirmed.length})`}>
           {confirmed.length === 0 ? <p className="text-sm text-kairikos-muted">Todavía ninguna.</p> : null}
           {confirmed.map((r) => (
@@ -357,7 +366,7 @@ export function VillasPanel({ data, initialTab = DEFAULT_VILLAS_TAB }: { data: V
       <TabPanel id="villas" active={tab === 'villas'}>
         <Section title="Tus villas" description="Precios por noche con IVA incluido: es lo que ve el huésped. Las temporadas mandan sobre el precio base; si dos se solapan, gana la más corta.">
           {data.villas.map((v) => (
-            <VillaCard key={v.id} villa={v} defaultOpen={villaStartsOpen(data.villas.length, v.feeds)} today={data.today} />
+            <VillaCard key={v.id} villa={v} defaultOpen={villaStartsOpen(data.villas.length, v.feeds)} today={data.today} stripeConfigured={data.stripe.configured} />
           ))}
           <NewVillaForm />
         </Section>
@@ -586,8 +595,20 @@ function Field({ label, children, hint }: { label: string; children: ReactNode; 
 // Plegable (ver lib/villas/panel-summary.ts). El cuerpo queda montado y lleva
 // `hidden` cuando está cerrada, igual que las pestañas: plegar una villa no
 // puede tirar las temporadas que se estaban editando sin guardar.
-function VillaCard({ villa, defaultOpen, today }: { villa: VillasPanelData['villas'][number]; defaultOpen: boolean; today: string }) {
+function VillaCard({
+  villa,
+  defaultOpen,
+  today,
+  stripeConfigured,
+}: {
+  villa: VillasPanelData['villas'][number];
+  defaultOpen: boolean;
+  today: string;
+  stripeConfigured: boolean;
+}) {
   const [open, setOpen] = useState(defaultOpen);
+  const [instant, setInstant] = useState(villa.instantBooking);
+  const feedsFailing = villa.feeds.some((f) => f.lastStatus === 'error');
   const sync = villaSyncSummary(villa.feeds);
   const bodyId = `villa-body-${villa.id}`;
   const { busy, message, run } = useAction();
@@ -610,6 +631,14 @@ function VillaCard({ villa, defaultOpen, today }: { villa: VillasPanelData['vill
     });
   }
 
+  // Se guarda al marcar, sin el botón de la villa: es una decisión aparte de
+  // los precios y no debería depender de que el resto del formulario valide.
+  async function toggleInstant(next: boolean) {
+    setInstant(next);
+    const done = await run('PATCH', `/api/portal/villas/villas/${villa.id}`, { instantBooking: next }, next ? 'Reserva inmediata activada.' : 'Reserva inmediata desactivada.');
+    if (!done) setInstant(!next);
+  }
+
   return (
     <article className="card text-sm" data-testid="villa-card">
       <h3>
@@ -630,6 +659,7 @@ function VillaCard({ villa, defaultOpen, today }: { villa: VillasPanelData['vill
           </span>
           <span className="flex flex-wrap items-center gap-2 text-xs font-normal">
             {!villa.isActive ? <span className="pill-muted">Oculta en la web</span> : null}
+            {villa.instantBooking ? <span className="pill-muted">Reserva inmediata</span> : null}
             <span className={sync.tone === 'ok' ? 'pill-success' : sync.tone === 'danger' ? 'pill-danger' : 'pill-muted'} data-testid="villa-card-sync">
               {sync.text}
             </span>
@@ -686,6 +716,29 @@ function VillaCard({ villa, defaultOpen, today }: { villa: VillasPanelData['vill
             Guardar villa
           </button>
         </form>
+
+        <div data-testid="villa-instant">
+          <h4 className="font-semibold">Reserva inmediata</h4>
+          <label className="mt-1 flex items-start gap-2">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={instant}
+              disabled={busy}
+              onChange={(e) => toggleInstant(e.currentTarget.checked)}
+              data-testid="villa-instant-toggle"
+            />
+            <span>Aceptar sola cada solicitud si las fechas siguen libres: el huésped va directo a pagar el depósito, sin esperar tu respuesta.</span>
+          </label>
+          <p className="mt-1 max-w-2xl text-xs text-kairikos-muted">
+            Antes de aceptarla, el portal vuelve a leer tus calendarios. Si alguna noche está ocupada o algún calendario no se puede leer, te llega como una solicitud normal. Lo que no puede ver es una reserva hecha en Airbnb o Booking hace unos minutos que aún no sale en su calendario: si pasa, cancélala desde aquí.
+          </p>
+          {instant && !stripeConfigured ? (
+            <p className="mt-1 text-xs text-kairikos-warning">Sin tu clave de Stripe no se acepta sola: hasta que la guardes, te llegarán como solicitudes normales.</p>
+          ) : instant && feedsFailing ? (
+            <p className="mt-1 text-xs text-kairikos-warning">Ahora mismo en pausa: algún calendario de esta villa no se puede leer (míralo abajo).</p>
+          ) : null}
+        </div>
 
         <div>
           <h4 className="font-semibold">Temporadas</h4>
@@ -764,7 +817,12 @@ function VillaCard({ villa, defaultOpen, today }: { villa: VillasPanelData['vill
                   {f.lastStatus === 'ok'
                     ? `${f.eventCount} bloqueos, leído ${f.lastSyncedAt ? new Date(f.lastSyncedAt).toLocaleString('es-ES') : ''}`
                     : f.lastStatus === 'error'
-                      ? <span className="text-kairikos-danger">error al leer ({f.lastError})</span>
+                      ? (
+                          <span className="text-kairikos-danger" title={f.lastError ?? undefined}>
+                            error al leer: {feedErrorText(f.lastError)}
+                            {f.errorSince ? ` (desde ${new Date(f.errorSince).toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })})` : ''}
+                          </span>
+                        )
                       : 'sin leer todavía'}
                 </span>
                 <button type="button" className="btn-ghost" disabled={busy} onClick={() => run('POST', `/api/portal/villas/villas/${villa.id}/calendar`, { action: 'remove_feed', feedId: f.id }, 'Quitado.')}>

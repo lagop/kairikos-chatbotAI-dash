@@ -117,7 +117,7 @@ export default async function VillasPage(props: { searchParams: Promise<Record<s
       where: { rentalId: rental.id, status: 'confirmed', checkOut: { gt: historyFrom, lte: toDbDate(today) } },
       orderBy: [{ checkIn: 'asc' }],
       take: 500,
-      select: { id: true, villaId: true, status: true, reference: true, guestName: true, checkIn: true, checkOut: true },
+      select: { id: true, villaId: true, status: true, reference: true, guestName: true, checkIn: true, checkOut: true, totalCents: true },
     }),
   ]);
 
@@ -170,6 +170,7 @@ export default async function VillasPage(props: { searchParams: Promise<Record<s
       vatRateBps: v.vatRateBps,
       touristTaxCents: v.touristTaxCents,
       isActive: v.isActive,
+      instantBooking: v.instantBooking,
       icalExportUrl: `${base}/api/public/villas/ical/${v.icalToken}.ics`,
       seasons: v.seasons.map((s) => ({
         name: s.name,
@@ -191,6 +192,7 @@ export default async function VillasPage(props: { searchParams: Promise<Record<s
         lastSyncedAt: f.lastSyncedAt?.toISOString() ?? null,
         lastStatus: f.lastStatus,
         lastError: f.lastError,
+        errorSince: f.errorSince?.toISOString() ?? null,
         eventCount: f.eventCount,
       })),
       manualBlocks: v.blocks.map((b) => ({ id: b.id, start: fromDbDate(b.startDate), end: fromDbDate(b.endDate), note: b.note })),
@@ -208,6 +210,7 @@ export default async function VillasPage(props: { searchParams: Promise<Record<s
       guestName: r.guestName,
       checkIn: fromDbDate(r.checkIn),
       checkOut: fromDbDate(r.checkOut),
+      totalCents: r.totalCents,
     })),
     requests: requests.map((r) => {
       const checkIn = fromDbDate(r.checkIn);

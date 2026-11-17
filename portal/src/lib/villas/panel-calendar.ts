@@ -120,9 +120,9 @@ export const CALENDAR_MONTHS_AHEAD = 17;
 
 /**
  * Cuántos meses hacia atrás. La página carga el histórico desde
- * calendarHistoryStart: estancias confirmadas, cierres manuales y lo que siga
- * en los iCal importados (Airbnb y Booking suelen quitar pronto lo pasado, así
- * que de ellos el histórico sale incompleto: limitación conocida).
+ * calendarHistoryStart: estancias confirmadas y cierres manuales. De los iCal
+ * importados no hay histórico: cada lectura guarda solo de ayer en adelante
+ * (ical-sync.ts), así que en los meses pasados no salen. Limitación conocida.
  */
 export const CALENDAR_MONTHS_BACK = 12;
 

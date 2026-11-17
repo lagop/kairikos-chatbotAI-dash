@@ -14,7 +14,9 @@ export const runtime = 'nodejs';
  * POST /api/public/villas/[token]/requests — el huésped envía su solicitud.
  *
  * NO es una reserva ni cobra nada: crea una solicitud 'pending' que el dueño
- * acepta o rechaza (lib/villas/requests.ts). El precio lo calcula el servidor
+ * acepta o rechaza (lib/villas/requests.ts). Si la villa tiene reserva
+ * inmediata y las fechas siguen libres, sale ya 'accepted' (`status`) y el
+ * huésped va a `statusUrl` a pagar el depósito. El precio lo calcula el servidor
  * con las temporadas de ese momento y queda congelado en la solicitud; lo que
  * mande el navegador como total no se usa.
  *
@@ -76,6 +78,8 @@ export async function POST(req: NextRequest, props: { params: Promise<{ token: s
         ok: true,
         reference: result.reference,
         statusUrl: result.statusUrl,
+        status: result.status,
+        paymentDueAt: result.paymentDueAt,
         confirmHours: rental.confirmHours,
         totalCents: result.quote.totalCents,
         depositCents: result.quote.depositCents,
