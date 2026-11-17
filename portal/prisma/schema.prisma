@@ -2753,14 +2753,55 @@ model ChatWebEmbed {
   primaryColor    String   @default("#0E6B5E") @map("primary_color")
   // 'bottom-right' | 'bottom-left'
   position        String   @default("bottom-right")
+  // 16/11/2026 — orígenes desde los que puede usarse el widget
+  // ('https://www.ejemplo.com', sin ruta). Vacía = cualquiera, que es lo que
+  // tenían todos los widgets antes de existir la columna. Ver
+  // lib/web-widget-origin.ts: el token es público a propósito, y sin esto
+  // cualquiera podía pegarlo en otra web y gastar el cupo del cliente.
+  allowedOrigins  String[] @default([]) @map("allowed_origins")
   createdAt       DateTime @default(now()) @map("created_at")
 
-  client        ChatbotClient  @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  clientProduct ClientProduct? @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
-  tenant        Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  client        ChatbotClient       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientProduct ClientProduct?      @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
+  tenant        Tenant?             @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  audits        ChatWebEmbedAudit[]
 
   @@index([clientId])
   @@index([tenantId])
+}
+
+// Cambios del widget web hechos por el cliente o por un operador.
+// Append-only. Hoy solo registra `allowed_origins_updated`; el color y la
+// posición se cambiaban (y se siguen cambiando) sin rastro, por ser solo
+// apariencia. La lista de orígenes decide desde dónde funciona el chat de un
+// negocio: un cambio así necesita saber quién lo hizo.
+//
+// Cascade y no Restrict: el widget solo desaparece cuando se borra el
+// cliente entero (ChatWebEmbed cuelga de ChatbotClient con Cascade), y un
+// Restrict aquí impediría borrar al cliente.
+model ChatWebEmbedAudit {
+  id       String  @id @default(uuid()) @db.Uuid
+  embedId  String  @map("embed_id") @db.Uuid
+  clientId String  @map("client_id")
+  tenantId String? @map("tenant_id") @db.Uuid
+
+  // 'allowed_origins_updated'
+  action String
+  before Json?
+  after  Json?
+
+  // 'client' | 'operator'
+  actorType       String   @default("client") @map("actor_type")
+  actorOperatorId String?  @map("actor_operator_id") @db.Uuid
+  // Email del operador, o 'client:<clientId>'.
+  actorEmail      String?  @map("actor_email")
+  changedAt       DateTime @default(now()) @map("changed_at")
+
+  embed ChatWebEmbed @relation(fields: [embedId], references: [id], onDelete: Cascade)
+
+  @@index([embedId, changedAt])
+  @@index([clientId])
+  @@map("chat_web_embed_audit")
 }
 
 // Canal Telegram — el cliente pega el token de un bot que él mismo creó

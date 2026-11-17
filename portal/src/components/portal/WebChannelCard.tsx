@@ -31,6 +31,8 @@ export interface WebEmbedSummary {
   status: 'active' | 'disabled';
   primaryColor: string;
   position: 'bottom-right' | 'bottom-left';
+  /** Webs desde las que funciona el widget (16/11/2026). Vacía = cualquiera. */
+  allowedOrigins: string[];
 }
 
 const ERROR_LABEL: Record<string, string> = {
@@ -38,6 +40,17 @@ const ERROR_LABEL: Record<string, string> = {
   forbidden: 'Este producto no está disponible ahora mismo.',
   service_unavailable: 'No disponible en este momento — contacta con soporte.',
   invalid_body: 'Color u posición inválidos.',
+};
+
+// Mismo tope que MAX_ALLOWED_ORIGINS de lib/web-widget-origin.ts, repetido
+// aquí porque un componente de cliente no importa libs del servidor. El
+// servidor es quien valida de verdad; esto solo evita un viaje en balde.
+const MAX_ORIGINS = 10;
+
+const ORIGINS_ERROR_LABEL: Record<string, string> = {
+  invalid_origin: 'Esta dirección no es una web válida',
+  too_many_origins: `Como mucho ${MAX_ORIGINS} webs.`,
+  invalid_body: 'La lista no es válida.',
 };
 
 export function WebChannelCard({
@@ -57,6 +70,9 @@ export function WebChannelCard({
   const [copied, setCopied] = useState(false);
   const [color, setColor] = useState(embed?.primaryColor ?? '#0E6B5E');
   const [position, setPosition] = useState<'bottom-right' | 'bottom-left'>(embed?.position ?? 'bottom-right');
+  const [originsText, setOriginsText] = useState((embed?.allowedOrigins ?? []).join('\n'));
+  const [originsError, setOriginsError] = useState<string | null>(null);
+  const [originsSaved, setOriginsSaved] = useState(false);
 
   const isActive = embed?.status === 'active';
   const origin = useSyncExternalStore(noopSubscribe, browserOrigin, serverOrigin);
@@ -117,6 +133,42 @@ export function WebChannelCard({
       router.refresh();
     } catch (err) {
       setError(`Error de red: ${err instanceof Error ? err.message : 'desconocido'}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveOrigins() {
+    setOriginsError(null);
+    setOriginsSaved(false);
+    const lines = originsText
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean);
+    if (lines.length > MAX_ORIGINS) {
+      setOriginsError(ORIGINS_ERROR_LABEL.too_many_origins);
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch(withChatbot('/api/portal/channels/web/origins', clientProductId), {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ allowedOrigins: lines }),
+      });
+      const detail = await res.json().catch(() => null);
+      if (!res.ok) {
+        const label = ORIGINS_ERROR_LABEL[detail?.error] ?? ERROR_LABEL[detail?.error] ?? 'No se pudo guardar la lista.';
+        setOriginsError(detail?.error === 'invalid_origin' && detail?.value ? `${label}: «${detail.value}».` : label);
+        return;
+      }
+      // El servidor la devuelve normalizada («www.x.com/contacto» →
+      // «https://www.x.com»): se enseña tal cual quedó guardada.
+      if (Array.isArray(detail?.allowedOrigins)) setOriginsText(detail.allowedOrigins.join('\n'));
+      setOriginsSaved(true);
+      router.refresh();
+    } catch (err) {
+      setOriginsError(`Error de red: ${err instanceof Error ? err.message : 'desconocido'}`);
     } finally {
       setBusy(false);
     }
@@ -212,6 +264,50 @@ export function WebChannelCard({
             >
               {busy ? 'Guardando…' : 'Guardar'}
             </button>
+          </div>
+
+          <div className="space-y-2 border-t border-kairikos-border pt-3">
+            <label className="block text-xs font-medium text-kairikos-muted" htmlFor="web-allowed-origins">
+              Webs donde funciona el chat
+            </label>
+            <p className="text-xs text-kairikos-muted">
+              Una por línea, por ejemplo <code>https://www.tunegocio.com</code>. Si la dejas vacía, el chat funciona en
+              cualquier web donde se pegue el snippet. Si pones alguna, solo en esas: así nadie puede copiar tu snippet a
+              otra web y gastar tus mensajes del mes.
+            </p>
+            <textarea
+              id="web-allowed-origins"
+              className="input min-h-[84px] font-mono text-xs"
+              value={originsText}
+              onChange={(e) => {
+                setOriginsText(e.target.value);
+                setOriginsSaved(false);
+              }}
+              placeholder={'https://www.tunegocio.com\nhttps://tunegocio.com'}
+              spellCheck={false}
+              data-testid="web-allowed-origins"
+            />
+            {originsError ? (
+              <p className="text-sm text-kairikos-danger" data-testid="web-origins-error">
+                {originsError}
+              </p>
+            ) : null}
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={saveOrigins}
+                disabled={busy}
+                data-testid="web-save-origins"
+              >
+                {busy ? 'Guardando…' : 'Guardar webs'}
+              </button>
+              {originsSaved ? (
+                <span className="text-sm text-kairikos-muted" data-testid="web-origins-saved">
+                  Guardado ✓
+                </span>
+              ) : null}
+            </div>
           </div>
 
           <button type="button" className="btn-ghost" onClick={disable} disabled={busy} data-testid="web-disable-button">

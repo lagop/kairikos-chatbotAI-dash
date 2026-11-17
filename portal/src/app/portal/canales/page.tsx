@@ -84,7 +84,7 @@ export default async function PortalCanalesPage(
       chatbotId
         ? prisma.chatWebEmbed.findFirst({
             where: { clientId: resolved.clientId, clientProductId: chatbotId },
-            select: { publicToken: true, status: true, primaryColor: true, position: true },
+            select: { publicToken: true, status: true, primaryColor: true, position: true, allowedOrigins: true },
           })
         : null,
     ]);
@@ -114,6 +114,7 @@ export default async function PortalCanalesPage(
           status: webRow.status as WebEmbedSummary['status'],
           primaryColor: webRow.primaryColor,
           position: webRow.position as WebEmbedSummary['position'],
+          allowedOrigins: webRow.allowedOrigins,
         }
       : null;
   }
