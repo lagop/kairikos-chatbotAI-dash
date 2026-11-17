@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { EXIT_GRACE_DAYS } from '@/lib/villas/exit-rules';
 import { DEFAULT_VILLAS_TAB, VILLAS_TABS, neighbourVillasTab, pendingBadgeText, villasTabHref, type VillasTabId } from '@/lib/villas/panel-tabs';
 import { villaStartsOpen, villaSyncSummary } from '@/lib/villas/panel-summary';
+import { VillasCalendar } from '@/components/portal/VillasCalendar';
 
 // =============================================================================
 // Reserva propia para villas — el panel del dueño (cliente). Los datos llegan
@@ -52,6 +53,8 @@ export interface VillasPanelData {
     seasons: Array<{ name: string; startDate: string; endDate: string; nightlyCents: number; minNights: number }>;
     feeds: Array<{ id: string; label: string; host: string; lastSyncedAt: string | null; lastStatus: string | null; lastError: string | null; eventCount: number }>;
     manualBlocks: Array<{ id: string; start: string; end: string; note: string | null }>;
+    /** Noches ocupadas en Airbnb/Booking (iCal), de hoy en adelante: para el calendario. */
+    importedBlocks: Array<{ start: string; end: string; label: string }>;
   }>;
   requests: Array<{
     id: string;
@@ -292,6 +295,13 @@ export function VillasPanel({ data, initialTab = DEFAULT_VILLAS_TAB }: { data: V
             ))}
           </Section>
         ) : null}
+
+        <Section
+          title="Calendario de ocupación"
+          description="Lo que ocupa cada noche, junto: tus reservas, lo que llega de Airbnb y Booking y lo que has cerrado a mano. Es para mirar; al aceptar una solicitud el portal vuelve a comprobarlo."
+        >
+          <VillasCalendar villas={data.villas} requests={data.requests} today={data.today} />
+        </Section>
 
         <Section title={`Próximas reservas confirmadas (${confirmed.length})`}>
           {confirmed.length === 0 ? <p className="text-sm text-kairikos-muted">Todavía ninguna.</p> : null}
