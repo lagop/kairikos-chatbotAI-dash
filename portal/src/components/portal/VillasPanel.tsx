@@ -1,11 +1,11 @@
 'use client';
 
-import { useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { EXIT_GRACE_DAYS } from '@/lib/villas/exit-rules';
 import { DEFAULT_VILLAS_TAB, VILLAS_TABS, neighbourVillasTab, pendingBadgeText, villasTabHref, type VillasTabId } from '@/lib/villas/panel-tabs';
 import { villaStartsOpen, villaSyncSummary } from '@/lib/villas/panel-summary';
-import { VillasCalendar } from '@/components/portal/VillasCalendar';
+import { VillasCalendar, type CalendarFocus } from '@/components/portal/VillasCalendar';
 
 // =============================================================================
 // Reserva propia para villas — el panel del dueño (cliente). Los datos llegan
@@ -52,10 +52,13 @@ export interface VillasPanelData {
     icalExportUrl: string;
     seasons: Array<{ name: string; startDate: string; endDate: string; nightlyCents: number; minNights: number }>;
     feeds: Array<{ id: string; label: string; host: string; lastSyncedAt: string | null; lastStatus: string | null; lastError: string | null; eventCount: number }>;
+    /** Desde el inicio del histórico del calendario: la lista de la villa enseña solo los que no han acabado. */
     manualBlocks: Array<{ id: string; start: string; end: string; note: string | null }>;
     /** Noches ocupadas en Airbnb/Booking (iCal), de hoy en adelante: para el calendario. */
     importedBlocks: Array<{ start: string; end: string; label: string }>;
   }>;
+  /** Estancias confirmadas ya terminadas, para el histórico del calendario (las de `requests` son las recientes). */
+  pastStays: Array<{ id: string; villaId: string; status: string; reference: string; guestName: string; checkIn: string; checkOut: string }>;
   requests: Array<{
     id: string;
     reference: string;
@@ -103,6 +106,8 @@ const ERROR_TEXT: Record<string, string> = {
   slug_taken: 'Ya hay una villa con ese identificador.',
   invalid_url: 'Tiene que ser la URL https de exportación del calendario.',
   too_many_feeds: 'Como mucho seis calendarios por villa.',
+  past_dates: 'No se pueden cerrar noches que ya han pasado.',
+  invalid_range: 'Revisa las fechas: como mínimo una noche y como mucho un año.',
   invalid_body: 'Revisa los campos marcados.',
 };
 
@@ -186,6 +191,28 @@ function TabPanel({ id, active, children }: { id: VillasTabId; active: boolean; 
 
 export function VillasPanel({ data, initialTab = DEFAULT_VILLAS_TAB }: { data: VillasPanelData; initialTab?: VillasTabId }) {
   const [tab, setTab] = useState<VillasTabId>(initialTab);
+  // El calendario no llama a la red: cerrar y abrir fechas pasa por aquí, con
+  // las mismas rutas que el formulario de cada villa.
+  const calendarAction = useAction();
+  const [calendarFocus, setCalendarFocus] = useState<CalendarFocus | null>(null);
+  const calendarRequests = useMemo(() => {
+    const seen = new Set(data.requests.map((r) => r.id));
+    return [...data.requests, ...data.pastStays.filter((r) => !seen.has(r.id))];
+  }, [data.requests, data.pastStays]);
+  const calendarActions = {
+    busy: calendarAction.busy,
+    notice: <Notice message={calendarAction.message} />,
+    closeNights: async (villaId: string, start: string, end: string, note: string) =>
+      (await calendarAction.run('POST', `/api/portal/villas/villas/${villaId}/calendar`, { action: 'add_block', start, end, note: note || undefined }, 'Cerrado.')) !== null,
+    openBlock: async (villaId: string, blockId: string) =>
+      (await calendarAction.run('POST', `/api/portal/villas/villas/${villaId}/calendar`, { action: 'remove_block', blockId }, 'Abierto.')) !== null,
+  };
+  function showInCalendar(r: VillasPanelData['requests'][number]) {
+    // El aviso de la última acción del calendario («Abierto.») ya no viene a cuento.
+    calendarAction.setMessage(null);
+    const what = r.status === 'pending' ? 'Solicitud' : r.status === 'accepted' ? 'Aceptada' : 'Reserva';
+    setCalendarFocus({ requestId: r.id, villaId: r.villaId, checkIn: r.checkIn, checkOut: r.checkOut, label: `${what} ${r.reference} · ${r.guestName}`, nonce: Date.now() });
+  }
   const tabRefs = useRef<Partial<Record<VillasTabId, HTMLButtonElement | null>>>({});
 
   function selectTab(next: VillasTabId, focus = false) {
@@ -284,14 +311,14 @@ export function VillasPanel({ data, initialTab = DEFAULT_VILLAS_TAB }: { data: V
         <Section title={`Esperan tu respuesta (${pending.length})`} description="Mira tus calendarios de Airbnb y Booking antes de aceptar. Al aceptar, el portal vuelve a leerlos y no te deja si aparece un solape.">
           {pending.length === 0 ? <p className="text-sm text-kairikos-muted">Ninguna ahora mismo.</p> : null}
           {pending.map((r) => (
-            <RequestCard key={r.id} r={r} villaName={villaName.get(r.villaId) ?? ''} timeZone={data.timeZone} />
+            <RequestCard key={r.id} r={r} villaName={villaName.get(r.villaId) ?? ''} timeZone={data.timeZone} onShowInCalendar={() => showInCalendar(r)} />
           ))}
         </Section>
 
         {accepted.length > 0 ? (
           <Section title={`Aceptadas, esperando el depósito (${accepted.length})`}>
             {accepted.map((r) => (
-              <RequestCard key={r.id} r={r} villaName={villaName.get(r.villaId) ?? ''} timeZone={data.timeZone} />
+              <RequestCard key={r.id} r={r} villaName={villaName.get(r.villaId) ?? ''} timeZone={data.timeZone} onShowInCalendar={() => showInCalendar(r)} />
             ))}
           </Section>
         ) : null}
@@ -300,13 +327,13 @@ export function VillasPanel({ data, initialTab = DEFAULT_VILLAS_TAB }: { data: V
           title="Calendario de ocupación"
           description="Lo que ocupa cada noche, junto: tus reservas, lo que llega de Airbnb y Booking y lo que has cerrado a mano. Es para mirar; al aceptar una solicitud el portal vuelve a comprobarlo."
         >
-          <VillasCalendar villas={data.villas} requests={data.requests} today={data.today} />
+          <VillasCalendar villas={data.villas} requests={calendarRequests} today={data.today} actions={calendarActions} focus={calendarFocus} />
         </Section>
 
         <Section title={`Próximas reservas confirmadas (${confirmed.length})`}>
           {confirmed.length === 0 ? <p className="text-sm text-kairikos-muted">Todavía ninguna.</p> : null}
           {confirmed.map((r) => (
-            <RequestCard key={r.id} r={r} villaName={villaName.get(r.villaId) ?? ''} timeZone={data.timeZone} />
+            <RequestCard key={r.id} r={r} villaName={villaName.get(r.villaId) ?? ''} timeZone={data.timeZone} onShowInCalendar={() => showInCalendar(r)} />
           ))}
         </Section>
 
@@ -330,7 +357,7 @@ export function VillasPanel({ data, initialTab = DEFAULT_VILLAS_TAB }: { data: V
       <TabPanel id="villas" active={tab === 'villas'}>
         <Section title="Tus villas" description="Precios por noche con IVA incluido: es lo que ve el huésped. Las temporadas mandan sobre el precio base; si dos se solapan, gana la más corta.">
           {data.villas.map((v) => (
-            <VillaCard key={v.id} villa={v} defaultOpen={villaStartsOpen(data.villas.length, v.feeds)} />
+            <VillaCard key={v.id} villa={v} defaultOpen={villaStartsOpen(data.villas.length, v.feeds)} today={data.today} />
           ))}
           <NewVillaForm />
         </Section>
@@ -477,7 +504,17 @@ function StatusBadge({ status, reason }: { status: string; reason?: string | nul
   return <span className="rounded-full border border-kairikos-border px-2 py-0.5 text-xs">{label[status] ?? status}</span>;
 }
 
-function RequestCard({ r, villaName, timeZone }: { r: VillasPanelData['requests'][number]; villaName: string; timeZone: string }) {
+function RequestCard({
+  r,
+  villaName,
+  timeZone,
+  onShowInCalendar,
+}: {
+  r: VillasPanelData['requests'][number];
+  villaName: string;
+  timeZone: string;
+  onShowInCalendar?: () => void;
+}) {
   const { busy, message, run } = useAction();
   const act = (action: string, extra: Record<string, unknown> = {}, ok = 'Hecho.') => run('POST', `/api/portal/villas/requests/${r.id}`, { action, ...extra }, ok);
   return (
@@ -525,6 +562,11 @@ function RequestCard({ r, villaName, timeZone }: { r: VillasPanelData['requests'
             Cancelar
           </button>
         ) : null}
+        {onShowInCalendar ? (
+          <button type="button" className="btn-ghost" onClick={onShowInCalendar} data-testid="villas-request-show-calendar">
+            Ver en el calendario
+          </button>
+        ) : null}
       </div>
       <Notice message={message} />
     </article>
@@ -544,7 +586,7 @@ function Field({ label, children, hint }: { label: string; children: ReactNode; 
 // Plegable (ver lib/villas/panel-summary.ts). El cuerpo queda montado y lleva
 // `hidden` cuando está cerrada, igual que las pestañas: plegar una villa no
 // puede tirar las temporadas que se estaban editando sin guardar.
-function VillaCard({ villa, defaultOpen }: { villa: VillasPanelData['villas'][number]; defaultOpen: boolean }) {
+function VillaCard({ villa, defaultOpen, today }: { villa: VillasPanelData['villas'][number]; defaultOpen: boolean; today: string }) {
   const [open, setOpen] = useState(defaultOpen);
   const sync = villaSyncSummary(villa.feeds);
   const bodyId = `villa-body-${villa.id}`;
@@ -758,7 +800,7 @@ function VillaCard({ villa, defaultOpen }: { villa: VillasPanelData['villas'][nu
         <div>
           <h4 className="font-semibold">Noches cerradas a mano</h4>
           <ul className="mt-1 space-y-1">
-            {villa.manualBlocks.map((b) => (
+            {villa.manualBlocks.filter((b) => b.end > today).map((b) => (
               <li key={b.id} className="flex flex-wrap items-center justify-between gap-2">
                 <span>
                   {day(b.start)} → {day(b.end)} {b.note ? `· ${b.note}` : ''}
