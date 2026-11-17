@@ -58,3 +58,33 @@ export const PORTAL_NAV: readonly PortalNavItem[] = [
 ] as const;
 
 export const PORTAL_PROFILE_ITEM: PortalNavItem = { href: '/portal/perfil', label: 'Mi perfil' };
+
+// Reserva propia para villas — la única entrada que NO es común a todos los
+// clientes. El producto es un extra de Signature que activa el operador y
+// tienen pocos, así que no está en PORTAL_NAV: enseñarlo a todos sería un
+// enlace a «No está activa en tu cuenta» para casi cualquiera. Pero dejarlo
+// fuera del todo (como nació) tenía un fallo peor: quien SÍ lo tiene solo
+// llegaba al panel por el botón de un correo o escribiendo la URL. Ahora el
+// layout pregunta si el cliente tiene la contratación y, si la tiene, la
+// entrada sale justo debajo de «Web», que es con lo que se vende.
+export const PORTAL_VILLAS_ITEM: PortalNavItem = { href: '/portal/villas', label: 'Reservas de villas' };
+
+export interface PortalNavOptions {
+  /** El cliente tiene la reserva de villas (activa, pausada o en el plazo de baja). */
+  readonly villas?: boolean;
+}
+
+/**
+ * El menú de ESTE cliente: PORTAL_NAV más las entradas que dependen de lo que
+ * tiene contratado. Cabecera, barra lateral y menú móvil pintan lo que
+ * devuelve esta función, nunca PORTAL_NAV a secas, para que los tres sigan
+ * enseñando lo mismo (el motivo de WP-04, arriba).
+ */
+export function portalNavFor(options: PortalNavOptions = {}): readonly PortalNavItem[] {
+  if (!options.villas) return PORTAL_NAV;
+  const afterWeb = PORTAL_NAV.findIndex((item) => item.href === '/portal/web') + 1;
+  // Si algún día «Web» sale de la lista, findIndex da -1 y la entrada va al
+  // final; mejor ahí que encima de «Resumen».
+  const at = afterWeb > 0 ? afterWeb : PORTAL_NAV.length;
+  return [...PORTAL_NAV.slice(0, at), PORTAL_VILLAS_ITEM, ...PORTAL_NAV.slice(at)];
+}

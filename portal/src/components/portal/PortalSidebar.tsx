@@ -1,13 +1,13 @@
 import Link from 'next/link';
-import { PORTAL_NAV, PORTAL_PROFILE_ITEM, type PortalNavItem } from '@/lib/portal-nav';
+import { portalNavFor, PORTAL_PROFILE_ITEM, type PortalNavItem } from '@/lib/portal-nav';
 import { ICON_BY_HREF, FALLBACK_ICON } from '@/components/portal/portal-nav-icons';
 import { CollapsibleNavGroup } from '@/components/portal/CollapsibleNavGroup';
 
 // The profile item is a separate account-level link, not a portal
 // "section" — appended after PORTAL_NAV rather than folded into it, same
 // way the header treats it (its own dropdown/mobile entry, not one of the
-// main nav pills).
-const SIDEBAR_ITEMS: readonly PortalNavItem[] = [...PORTAL_NAV, PORTAL_PROFILE_ITEM];
+// main nav pills). The list is built per render, not as a module constant:
+// it depends on what this client has contracted (portalNavFor).
 
 function isItemActive(item: PortalNavItem, pathname: string): boolean {
   return item.href === '/portal'
@@ -60,7 +60,8 @@ function SidebarLink({ item, pathname, nested }: { item: PortalNavItem; pathname
   );
 }
 
-export function PortalSidebar({ pathname }: { pathname: string }) {
+export function PortalSidebar({ pathname, showVillas = false }: { pathname: string; showVillas?: boolean }) {
+  const SIDEBAR_ITEMS: readonly PortalNavItem[] = [...portalNavFor({ villas: showVillas }), PORTAL_PROFILE_ITEM];
   const topLevelItems = SIDEBAR_ITEMS.filter((item) => !item.parentHref);
 
   return (

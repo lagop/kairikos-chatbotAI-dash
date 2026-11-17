@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { PORTAL_NAV } from '@/lib/portal-nav';
+import { portalNavFor } from '@/lib/portal-nav';
 import { ThemeToggle } from '@/components/portal/ThemeToggle';
 import { PortalMobileNav } from '@/components/portal/PortalMobileNav';
 import { UserMenu } from '@/components/portal/UserMenu';
@@ -7,10 +7,14 @@ import { UserMenu } from '@/components/portal/UserMenu';
 export function PortalHeader({
   email,
   businessName,
+  showVillas = false,
 }: {
   email: string | null;
   businessName?: string;
+  /** El cliente tiene la reserva de villas: su entrada sale en el menú (ver portal-nav.ts). */
+  showVillas?: boolean;
 }) {
+  const navItems = portalNavFor({ villas: showVillas });
   return (
     <header className="sticky top-0 z-10 border-b border-kairikos-border bg-kairikos-bg/80 backdrop-blur">
       <div className="mx-auto flex max-w-page items-center justify-between px-4 py-3 sm:px-6">
@@ -31,7 +35,7 @@ export function PortalHeader({
           ) : null}
         </div>
         <div className="flex items-center gap-1">
-          <PortalMobileNav />
+          <PortalMobileNav showVillas={showVillas} />
           <ThemeToggle />
           {email ? <UserMenu email={email} businessName={businessName} /> : null}
         </div>
@@ -47,7 +51,7 @@ export function PortalHeader({
           row below. */}
       <nav aria-label="Navegación principal" className="hidden border-t border-kairikos-border/60 sm:block lg:hidden">
         <ul className="mx-auto flex max-w-page gap-1 overflow-x-auto px-4 py-2 sm:px-6">
-          {PORTAL_NAV.map((item) => (
+          {navItems.map((item) => (
             <li key={item.href}>
               <Link
                 href={item.href}

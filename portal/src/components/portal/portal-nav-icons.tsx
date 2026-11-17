@@ -69,6 +69,16 @@ export const ICON_BY_HREF: Record<string, ReactNode> = {
       <path d="M12 3c2.5 2.5 4 5.8 4 9s-1.5 6.5-4 9c-2.5-2.5-4-5.8-4-9s1.5-6.5 4-9z" />
     </svg>
   ),
+  // Reserva de villas — una hoja de calendario con una casa dentro: se
+  // distingue del tejado de «Resumen» y del globo de «Web», su vecino.
+  '/portal/villas': (
+    <svg {...ICON_PROPS}>
+      <rect x="4" y="6" width="16" height="14" rx="2" />
+      <path d="M4 10.5h16" />
+      <path d="M8.5 4v4M15.5 4v4" />
+      <path d="M9.5 17v-2.5l2.5-2 2.5 2V17z" />
+    </svg>
+  ),
   '/portal/llamadas': (
     <svg {...ICON_PROPS}>
       <path
