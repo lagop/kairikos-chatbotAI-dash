@@ -26,9 +26,11 @@ export const metadata: Metadata = {
 // único urgente. Debajo, cada villa (precios, temporadas, calendarios), las
 // condiciones y Stripe, y el código para pegar el widget en la web.
 //
-// No sale en el menú del portal: el enlace lo da el correo de cada solicitud
-// y el operador al activarlo. El menú es común a todos los clientes y este
-// producto lo tienen pocos (ver portal-nav.ts).
+// En el menú sale solo a quien tiene la contratación (portalNavFor, en
+// portal-nav.ts; lo decide el layout) y el resumen (/portal) le pone una
+// tarjeta. Al resto no: el producto lo tienen pocos y el menú base es común.
+// Antes no salía en ningún sitio y solo se llegaba por el correo de cada
+// solicitud.
 // =============================================================================
 
 export default async function VillasPage() {

@@ -12,6 +12,7 @@ import { getDashboardData } from '@/lib/dashboard-data';
 import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
 import { PRODUCT_CODES, PRODUCT_CATALOGS, type ProductCode } from '@/lib/catalogs';
 import { logError } from '@/lib/observability';
+import { findRentalForOwner } from '@/lib/villas/rental';
 import type { OnboardingStatus } from '@/types/portal';
 
 function isProductCode(value: string): value is ProductCode {
@@ -106,6 +107,30 @@ export default async function PortalHome(
     }
   }
 
+  // Reserva propia para villas — es un extra (Product.kind 'addon'), y
+  // getDashboardData solo trae planes, así que nunca tenía tarjeta aquí: el
+  // dueño entraba al portal y no había ni rastro de su panel. Igual que el
+  // bloque de arriba, va aparte y con su propio try: es un acceso, no un dato
+  // del que dependa el resto de la página. La regla es la del panel y la del
+  // menú (findRentalForOwner): también sale en el plazo de gracia de una baja,
+  // para que pueda descargar sus datos.
+  let villas: { readOnly: boolean; pending: number } | null = null;
+  if (isDatabaseConfigured && resolved.source === 'database') {
+    try {
+      const owner = await findRentalForOwner(prisma, resolved.clientId);
+      if (owner) {
+        // Misma condición que /portal/villas para pasar a solo lectura.
+        const readOnly = owner.state !== 'active' && owner.rental.clientProduct.status !== 'paused';
+        const pending = readOnly
+          ? 0
+          : await prisma.villaBookingRequest.count({ where: { rentalId: owner.rental.id, status: 'pending' } });
+        villas = { readOnly, pending };
+      }
+    } catch (err) {
+      logError('portal_home.villas', err, { route: '/portal', clientId: resolved.clientId });
+    }
+  }
+
   // WP-08 AC, carried over from /portal/dashboard: a visitor whose
   // Supabase env looks like dev-mock but whose DATABASE_URL is genuinely
   // configured and reachable is a real half-configured-environment class,
@@ -182,7 +207,7 @@ export default async function PortalHome(
         {data.client.name}
       </span>
 
-      {data.products.length === 0 ? (
+      {data.products.length === 0 && villas ? null : data.products.length === 0 ? (
         <div className="card text-sm text-kairikos-muted">
           Todavía no tienes productos activos en tu cuenta. Si crees que esto es un error, contacta con soporte.
         </div>
@@ -197,6 +222,37 @@ export default async function PortalHome(
           ))}
         </div>
       )}
+
+      {villas ? (
+        <section className="card" aria-labelledby="villas-resumen" data-testid="villas-summary-card">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 id="villas-resumen" className="text-lg font-semibold">
+              Reserva propia para villas
+            </h2>
+            {villas.readOnly ? (
+              <span className="pill-muted">Solo lectura</span>
+            ) : villas.pending > 0 ? (
+              <span className="pill-warning" data-testid="villas-summary-pending">
+                {villas.pending === 1 ? '1 solicitud por responder' : `${villas.pending} solicitudes por responder`}
+              </span>
+            ) : (
+              <span className="pill-success">Al día</span>
+            )}
+          </div>
+          <p className="text-sm text-kairikos-muted">
+            {villas.readOnly
+              ? 'El servicio no está activo. Todavía puedes entrar a consultar y descargar tus datos.'
+              : 'Solicitudes de tus huéspedes, precios y temporadas, calendarios de Airbnb y Booking, y el depósito con Stripe.'}
+          </p>
+          <Link
+            href="/portal/villas"
+            className="mt-4 inline-flex items-center gap-2 text-sm text-kairikos-accent2 hover:underline"
+            data-testid="villas-summary-link"
+          >
+            {villas.readOnly ? 'Ver y descargar mis datos →' : 'Abrir el panel de reservas →'}
+          </Link>
+        </section>
+      ) : null}
 
       {chatbotSummary ? (
         <>

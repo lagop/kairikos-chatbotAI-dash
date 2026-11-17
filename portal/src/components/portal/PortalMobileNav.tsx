@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { PORTAL_NAV, PORTAL_PROFILE_ITEM, type PortalNavItem } from '@/lib/portal-nav';
+import { portalNavFor, PORTAL_PROFILE_ITEM, type PortalNavItem } from '@/lib/portal-nav';
 import { ICON_BY_HREF, FALLBACK_ICON } from '@/components/portal/portal-nav-icons';
 import { CollapsibleNavGroup } from '@/components/portal/CollapsibleNavGroup';
 
@@ -14,7 +14,6 @@ import { CollapsibleNavGroup } from '@/components/portal/CollapsibleNavGroup';
 // fixes that, and reuses the same Chatbot > Onboarding/Conversaciones
 // grouping PortalSidebar already renders on desktop instead of a flat
 // list — one hierarchy, two presentations.
-const MOBILE_NAV_ITEMS: readonly PortalNavItem[] = [...PORTAL_NAV, PORTAL_PROFILE_ITEM];
 
 function isItemActive(item: PortalNavItem, pathname: string): boolean {
   return item.href === '/portal'
@@ -69,7 +68,8 @@ function DrawerLink({
   );
 }
 
-export function PortalMobileNav() {
+export function PortalMobileNav({ showVillas = false }: { showVillas?: boolean }) {
+  const MOBILE_NAV_ITEMS: readonly PortalNavItem[] = [...portalNavFor({ villas: showVillas }), PORTAL_PROFILE_ITEM];
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const pathname = usePathname();

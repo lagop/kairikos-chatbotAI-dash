@@ -9,6 +9,7 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { MOCK_CLIENT, DEV_MOCK_CLIENT_BY_EMAIL } from '@/lib/portal-data';
+import { findRentalForOwner } from '@/lib/villas/rental';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,6 +39,11 @@ export const dynamic = 'force-dynamic';
 export default async function PortalLayout({ children }: { children: ReactNode }) {
   let email: string | null = null;
   let businessName: string | undefined;
+  // La entrada «Reservas de villas» del menú solo sale a quien tiene la
+  // contratación (ver portal-nav.ts). Se decide aquí porque el layout es el
+  // único sitio que pinta los tres menús.
+  let villasClientId: string | null = null;
+  let showVillas = false;
 
   try {
     const session = await getSession();
@@ -59,6 +65,7 @@ export default async function PortalLayout({ children }: { children: ReactNode }
             select: { companyName: true },
           });
           businessName = client?.companyName ?? undefined;
+          villasClientId = resolved.clientId;
         } else {
           const mock = DEV_MOCK_CLIENT_BY_EMAIL.get(resolved.email.toLowerCase()) ?? MOCK_CLIENT;
           businessName = mock.companyName ?? undefined;
@@ -69,11 +76,24 @@ export default async function PortalLayout({ children }: { children: ReactNode }
     console.error('[portal] layout session lookup crashed:', err);
   }
 
+  // En su propio try: si esta lectura falla, el menú sale sin la entrada y el
+  // resto de la cabecera (correo, nombre del negocio) no se pierde con ella.
+  // La regla es la misma del panel —findRentalForOwner—, así que la entrada
+  // sigue durante el plazo de gracia de una baja, que es cuando el dueño
+  // tiene que poder entrar a descargar sus datos, y desaparece al cerrarse.
+  if (villasClientId) {
+    try {
+      showVillas = (await findRentalForOwner(prisma, villasClientId)) !== null;
+    } catch (err) {
+      console.error('[portal] layout villas lookup crashed:', err);
+    }
+  }
+
   return (
     <div className="flex min-h-screen flex-col">
-      <PortalHeader email={email} businessName={businessName} />
+      <PortalHeader email={email} businessName={businessName} showVillas={showVillas} />
       <div className="mx-auto flex w-full max-w-page flex-1">
-        <PortalSidebarMount />
+        <PortalSidebarMount showVillas={showVillas} />
         <main id="contenido" className="w-full flex-1 px-4 py-6 sm:px-6 sm:py-8">
           {children}
         </main>
