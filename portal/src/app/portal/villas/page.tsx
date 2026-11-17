@@ -11,6 +11,7 @@ import { fromDbDate, toDbDate } from '@/lib/villas/dates';
 import { hasStripeKey, isLiveModeAllowed } from '@/lib/villas/stripe-deposit';
 import { isBlocking } from '@/lib/villas/request-rules';
 import { portalBaseUrl } from '@/lib/portal-base-url';
+import { VILLAS_TAB_PARAM, parseVillasTab } from '@/lib/villas/panel-tabs';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,7 +34,9 @@ export const metadata: Metadata = {
 // solicitud.
 // =============================================================================
 
-export default async function VillasPage() {
+export default async function VillasPage(props: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  // ?seccion= elige la pestaña con la que abre el panel (panel-tabs.ts).
+  const initialTab = parseVillasTab((await props.searchParams)[VILLAS_TAB_PARAM]);
   await requirePortalSession();
   const resolved = isDatabaseConfigured ? await resolveClientFromSession() : null;
   const owner = resolved?.source === 'database' ? await findRentalForOwner(prisma, resolved.clientId) : null;
@@ -229,7 +232,7 @@ export default async function VillasPage() {
         title="Reserva propia para villas"
         description="Las solicitudes llegan desde tu web. Tú decides: al aceptar, el huésped recibe el enlace para pagar el depósito con Stripe. Nada se cobra antes."
       />
-      <VillasPanel data={data} />
+      <VillasPanel data={data} initialTab={initialTab} />
     </div>
   );
 }

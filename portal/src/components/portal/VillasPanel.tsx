@@ -1,14 +1,22 @@
 'use client';
 
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { EXIT_GRACE_DAYS } from '@/lib/villas/exit-rules';
+import { DEFAULT_VILLAS_TAB, VILLAS_TABS, neighbourVillasTab, villasTabHref, type VillasTabId } from '@/lib/villas/panel-tabs';
 
 // =============================================================================
 // Reserva propia para villas — el panel del dueño (cliente). Los datos llegan
 // ya preparados de /portal/villas/page.tsx; cada acción llama a su ruta de
 // /api/portal/villas/* y refresca la página. Ninguna regla de negocio vive
 // aquí: aceptar, rechazar o cobrar lo decide lib/villas/requests.ts.
+//
+// Va en cuatro pestañas (lib/villas/panel-tabs.ts). Los cuatro paneles están
+// SIEMPRE montados y el que no toca lleva `hidden`: si se desmontaran, cambiar
+// de pestaña borraría un formulario a medio rellenar (una temporada, la clave
+// de Stripe). La pestaña vive en el estado y se copia a la URL con
+// history.replaceState, sin navegar: así no se vuelve a pedir toda la página
+// al servidor por cambiar de pestaña, y aun así un enlace o un F5 la conservan.
 // =============================================================================
 
 export interface VillasPanelData {
@@ -155,7 +163,45 @@ function Section({ title, description, children }: { title: string; description?
   );
 }
 
-export function VillasPanel({ data }: { data: VillasPanelData }) {
+function TabPanel({ id, active, children }: { id: VillasTabId; active: boolean; children: ReactNode }) {
+  return (
+    <div
+      role="tabpanel"
+      id={`villas-panel-${id}`}
+      aria-labelledby={`villas-tab-${id}`}
+      hidden={!active}
+      data-testid={`villas-panel-${id}`}
+      // Section abre con mt-10 para separarse de la sección anterior; pegada a
+      // la barra de pestañas ese hueco sobra.
+      className="[&>section:first-child]:mt-6"
+    >
+      {children}
+    </div>
+  );
+}
+
+export function VillasPanel({ data, initialTab = DEFAULT_VILLAS_TAB }: { data: VillasPanelData; initialTab?: VillasTabId }) {
+  const [tab, setTab] = useState<VillasTabId>(initialTab);
+  const tabRefs = useRef<Partial<Record<VillasTabId, HTMLButtonElement | null>>>({});
+
+  function selectTab(next: VillasTabId, focus = false) {
+    setTab(next);
+    window.history.replaceState(null, '', villasTabHref(next, window.location.pathname));
+    if (focus) tabRefs.current[next]?.focus();
+  }
+
+  // Teclado de un tablist: flechas para moverse, Inicio/Fin a los extremos.
+  function onTabKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    let next: VillasTabId | null = null;
+    if (event.key === 'ArrowRight') next = neighbourVillasTab(tab, 1);
+    else if (event.key === 'ArrowLeft') next = neighbourVillasTab(tab, -1);
+    else if (event.key === 'Home') next = VILLAS_TABS[0].id;
+    else if (event.key === 'End') next = VILLAS_TABS[VILLAS_TABS.length - 1].id;
+    if (!next) return;
+    event.preventDefault();
+    selectTab(next, true);
+  }
+
   const villaName = new Map(data.villas.map((v) => [v.id, v.name]));
   const pending = data.requests.filter((r) => r.status === 'pending');
   const accepted = data.requests.filter((r) => r.status === 'accepted');
@@ -165,78 +211,137 @@ export function VillasPanel({ data }: { data: VillasPanelData }) {
   return (
     <div>
       {!data.stripe.configured ? (
-        <p className="card border-kairikos-warning/50 text-sm">
-          Falta tu clave de Stripe: puedes recibir solicitudes, pero no aceptarlas hasta guardarla en «Stripe» (abajo).
+        // Fuera de las pestañas: sin la clave no se puede aceptar nada, y eso
+        // hay que verlo se esté en la pestaña que se esté.
+        <p className="card flex flex-wrap items-center justify-between gap-3 border-kairikos-warning/50 text-sm" data-testid="villas-stripe-missing">
+          <span>Falta tu clave de Stripe: puedes recibir solicitudes, pero no aceptarlas hasta guardarla.</span>
+          {tab !== 'cobros' ? (
+            <button type="button" className="btn-ghost" onClick={() => selectTab('cobros')}>
+              Ir a «Cobros y condiciones»
+            </button>
+          ) : null}
         </p>
       ) : null}
 
-      <Section title={`Esperan tu respuesta (${pending.length})`} description="Mira tus calendarios de Airbnb y Booking antes de aceptar. Al aceptar, el portal vuelve a leerlos y no te deja si aparece un solape.">
-        {pending.length === 0 ? <p className="text-sm text-kairikos-muted">Ninguna ahora mismo.</p> : null}
-        {pending.map((r) => (
-          <RequestCard key={r.id} r={r} villaName={villaName.get(r.villaId) ?? ''} timeZone={data.timeZone} />
-        ))}
-      </Section>
+      <div
+        role="tablist"
+        aria-label="Secciones de la reserva de villas"
+        onKeyDown={onTabKeyDown}
+        className="mt-6 flex gap-0.5 overflow-x-auto sm:gap-1 overflow-y-hidden border-b border-kairikos-border"
+      >
+        {VILLAS_TABS.map((t) => {
+          const selected = t.id === tab;
+          return (
+            <button
+              key={t.id}
+              ref={(el) => {
+                tabRefs.current[t.id] = el;
+              }}
+              type="button"
+              role="tab"
+              id={`villas-tab-${t.id}`}
+              aria-selected={selected}
+              aria-controls={`villas-panel-${t.id}`}
+              tabIndex={selected ? 0 : -1}
+              data-testid={`villas-tab-${t.id}`}
+              onClick={() => selectTab(t.id)}
+              className={[
+                'inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-2 py-2.5 text-sm transition sm:gap-2 sm:px-3',
+                selected
+                  ? 'border-kairikos-accent font-semibold text-kairikos-text'
+                  : 'border-transparent text-kairikos-muted hover:border-kairikos-border hover:text-kairikos-text',
+              ].join(' ')}
+            >
+              <span className="sm:hidden">{t.short}</span>
+              <span className="hidden sm:inline">{t.label}</span>
+              {t.id === 'reservas' && pending.length > 0 ? (
+                <span className="pill-warning" aria-label={`${pending.length} por responder`}>
+                  {pending.length}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
 
-      {accepted.length > 0 ? (
-        <Section title={`Aceptadas, esperando el depósito (${accepted.length})`}>
-          {accepted.map((r) => (
+      <TabPanel id="reservas" active={tab === 'reservas'}>
+        <Section title={`Esperan tu respuesta (${pending.length})`} description="Mira tus calendarios de Airbnb y Booking antes de aceptar. Al aceptar, el portal vuelve a leerlos y no te deja si aparece un solape.">
+          {pending.length === 0 ? <p className="text-sm text-kairikos-muted">Ninguna ahora mismo.</p> : null}
+          {pending.map((r) => (
             <RequestCard key={r.id} r={r} villaName={villaName.get(r.villaId) ?? ''} timeZone={data.timeZone} />
           ))}
         </Section>
-      ) : null}
 
-      <Section title={`Próximas reservas confirmadas (${confirmed.length})`}>
-        {confirmed.length === 0 ? <p className="text-sm text-kairikos-muted">Todavía ninguna.</p> : null}
-        {confirmed.map((r) => (
-          <RequestCard key={r.id} r={r} villaName={villaName.get(r.villaId) ?? ''} timeZone={data.timeZone} />
-        ))}
-      </Section>
-
-      {others.length > 0 ? (
-        <Section title="Historial reciente">
-          <ul className="divide-y divide-kairikos-border text-sm">
-            {others.map((r) => (
-              <li key={r.id} className="flex flex-wrap justify-between gap-2 py-2">
-                <span>
-                  <span className="font-mono">{r.reference}</span> · {villaName.get(r.villaId)} · {day(r.checkIn)} → {day(r.checkOut)} · {r.guestName}
-                </span>
-                <StatusBadge status={r.status} reason={r.declineReason} />
-              </li>
+        {accepted.length > 0 ? (
+          <Section title={`Aceptadas, esperando el depósito (${accepted.length})`}>
+            {accepted.map((r) => (
+              <RequestCard key={r.id} r={r} villaName={villaName.get(r.villaId) ?? ''} timeZone={data.timeZone} />
             ))}
-          </ul>
+          </Section>
+        ) : null}
+
+        <Section title={`Próximas reservas confirmadas (${confirmed.length})`}>
+          {confirmed.length === 0 ? <p className="text-sm text-kairikos-muted">Todavía ninguna.</p> : null}
+          {confirmed.map((r) => (
+            <RequestCard key={r.id} r={r} villaName={villaName.get(r.villaId) ?? ''} timeZone={data.timeZone} />
+          ))}
         </Section>
-      ) : null}
 
-      <Section title="Tus villas" description="Precios por noche con IVA incluido: es lo que ve el huésped. Las temporadas mandan sobre el precio base; si dos se solapan, gana la más corta.">
-        {data.villas.map((v) => (
-          <VillaCard key={v.id} villa={v} />
-        ))}
-        <NewVillaForm />
-      </Section>
+        {others.length > 0 ? (
+          <Section title="Historial reciente">
+            <ul className="divide-y divide-kairikos-border text-sm">
+              {others.map((r) => (
+                <li key={r.id} className="flex flex-wrap justify-between gap-2 py-2">
+                  <span>
+                    <span className="font-mono">{r.reference}</span> · {villaName.get(r.villaId)} · {day(r.checkIn)} → {day(r.checkOut)} · {r.guestName}
+                  </span>
+                  <StatusBadge status={r.status} reason={r.declineReason} />
+                </li>
+              ))}
+            </ul>
+          </Section>
+        ) : null}
 
-      <Section title="Condiciones y avisos">
-        <SettingsForm settings={data.settings} />
-      </Section>
+      </TabPanel>
 
-      <Section title="Stripe" description="El depósito se cobra en TU cuenta de Stripe. Crea una clave restringida con «Checkout Sessions: escritura» (Desarrolladores → Claves de API) y pégala aquí. Se guarda cifrada.">
-        <StripeForm stripe={data.stripe} />
-      </Section>
+      <TabPanel id="villas" active={tab === 'villas'}>
+        <Section title="Tus villas" description="Precios por noche con IVA incluido: es lo que ve el huésped. Las temporadas mandan sobre el precio base; si dos se solapan, gana la más corta.">
+          {data.villas.map((v) => (
+            <VillaCard key={v.id} villa={v} />
+          ))}
+          <NewVillaForm />
+        </Section>
 
-      <Section title="En tu web" description="Pega esto donde quieras el calendario de reserva. Hereda las fuentes y colores de tu web.">
-        <pre className="card overflow-x-auto whitespace-pre text-xs">{`<div data-kairikos-villas="${data.embed.publicToken}" data-lang="es"\n     data-fallback-email="${data.settings.ownerEmail ?? 'reservas@tuweb.es'}"></div>\n<script src="${data.embed.scriptUrl}" async></script>`}</pre>
-        <p className="max-w-2xl text-sm text-kairikos-muted">
-          <code>data-fallback-email</code>, <code>data-fallback-phone</code> o <code>data-fallback-url</code>: lo que enseña el calendario si algún día el servicio
-          deja de estar activo (un enlace para escribirte, llamarte o reservar por otro lado). Sin ninguno, no enseña nada.
-        </p>
-      </Section>
+      </TabPanel>
 
-      <Section title="Tus datos" description="Descárgalos cuando quieras. Son tuyos: las solicitudes con los datos de cada huésped, tus villas y precios, el calendario de cada villa y el registro de cambios.">
-        <ExportLinks villas={data.villas} />
-        <p className="card max-w-2xl text-sm">
-          Si algún día das de baja el servicio: tendrás {EXIT_GRACE_DAYS_TEXT} para descargar todo desde aquí y, sobre todo, tendrás que quitar de Airbnb y Booking
-          la URL de calendario de Kairikos de cada villa, porque deja de actualizarse. Después se borra.
-        </p>
-      </Section>
+      <TabPanel id="cobros" active={tab === 'cobros'}>
+        <Section title="Condiciones y avisos">
+          <SettingsForm settings={data.settings} />
+        </Section>
+
+        <Section title="Stripe" description="El depósito se cobra en TU cuenta de Stripe. Crea una clave restringida con «Checkout Sessions: escritura» (Desarrolladores → Claves de API) y pégala aquí. Se guarda cifrada.">
+          <StripeForm stripe={data.stripe} />
+        </Section>
+
+      </TabPanel>
+
+      <TabPanel id="web" active={tab === 'web'}>
+        <Section title="En tu web" description="Pega esto donde quieras el calendario de reserva. Hereda las fuentes y colores de tu web.">
+          <pre className="card overflow-x-auto whitespace-pre text-xs">{`<div data-kairikos-villas="${data.embed.publicToken}" data-lang="es"\n     data-fallback-email="${data.settings.ownerEmail ?? 'reservas@tuweb.es'}"></div>\n<script src="${data.embed.scriptUrl}" async></script>`}</pre>
+          <p className="max-w-2xl text-sm text-kairikos-muted">
+            <code>data-fallback-email</code>, <code>data-fallback-phone</code> o <code>data-fallback-url</code>: lo que enseña el calendario si algún día el servicio
+            deja de estar activo (un enlace para escribirte, llamarte o reservar por otro lado). Sin ninguno, no enseña nada.
+          </p>
+        </Section>
+
+        <Section title="Tus datos" description="Descárgalos cuando quieras. Son tuyos: las solicitudes con los datos de cada huésped, tus villas y precios, el calendario de cada villa y el registro de cambios.">
+          <ExportLinks villas={data.villas} />
+          <p className="card max-w-2xl text-sm">
+            Si algún día das de baja el servicio: tendrás {EXIT_GRACE_DAYS_TEXT} para descargar todo desde aquí y, sobre todo, tendrás que quitar de Airbnb y Booking
+            la URL de calendario de Kairikos de cada villa, porque deja de actualizarse. Después se borra.
+          </p>
+        </Section>
+      </TabPanel>
     </div>
   );
 }
