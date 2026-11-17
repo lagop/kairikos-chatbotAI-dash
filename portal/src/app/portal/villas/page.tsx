@@ -184,6 +184,11 @@ export default async function VillasPage(props: { searchParams: Promise<Record<s
         eventCount: f.eventCount,
       })),
       manualBlocks: v.blocks.map((b) => ({ id: b.id, start: fromDbDate(b.startDate), end: fromDbDate(b.endDate), note: b.note })),
+      // Ya se leían para avisar de solapes en las pendientes; ahora también
+      // van al panel, que los pinta en el calendario de ocupación.
+      importedBlocks: importedBlocks
+        .filter((b) => b.villaId === v.id)
+        .map((b) => ({ start: fromDbDate(b.startDate), end: fromDbDate(b.endDate), label: b.feed?.label ?? 'iCal' })),
     })),
     requests: requests.map((r) => {
       const checkIn = fromDbDate(r.checkIn);

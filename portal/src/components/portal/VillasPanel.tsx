@@ -3,7 +3,9 @@
 import { useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { EXIT_GRACE_DAYS } from '@/lib/villas/exit-rules';
-import { DEFAULT_VILLAS_TAB, VILLAS_TABS, neighbourVillasTab, villasTabHref, type VillasTabId } from '@/lib/villas/panel-tabs';
+import { DEFAULT_VILLAS_TAB, VILLAS_TABS, neighbourVillasTab, pendingBadgeText, villasTabHref, type VillasTabId } from '@/lib/villas/panel-tabs';
+import { villaStartsOpen, villaSyncSummary } from '@/lib/villas/panel-summary';
+import { VillasCalendar } from '@/components/portal/VillasCalendar';
 
 // =============================================================================
 // Reserva propia para villas — el panel del dueño (cliente). Los datos llegan
@@ -51,6 +53,8 @@ export interface VillasPanelData {
     seasons: Array<{ name: string; startDate: string; endDate: string; nightlyCents: number; minNights: number }>;
     feeds: Array<{ id: string; label: string; host: string; lastSyncedAt: string | null; lastStatus: string | null; lastError: string | null; eventCount: number }>;
     manualBlocks: Array<{ id: string; start: string; end: string; note: string | null }>;
+    /** Noches ocupadas en Airbnb/Booking (iCal), de hoy en adelante: para el calendario. */
+    importedBlocks: Array<{ start: string; end: string; label: string }>;
   }>;
   requests: Array<{
     id: string;
@@ -256,8 +260,20 @@ export function VillasPanel({ data, initialTab = DEFAULT_VILLAS_TAB }: { data: V
               <span className="hidden sm:inline">{t.label}</span>
               {t.id === 'reservas' && pending.length > 0 ? (
                 <span className="pill-warning" aria-label={`${pending.length} por responder`}>
-                  {pending.length}
+                  {pendingBadgeText(pending.length)}
                 </span>
+              ) : null}
+              {/* Un punto y no una pastilla con texto: en móvil las cuatro
+                  pestañas caben justas (ver pendingBadgeText). El aviso de
+                  arriba ya lo explica; esto solo dice en cuál está. */}
+              {t.id === 'cobros' && !data.stripe.configured ? (
+                <span
+                  role="img"
+                  aria-label="falta la clave de Stripe"
+                  title="Falta la clave de Stripe"
+                  data-testid="villas-tab-stripe-missing"
+                  className="inline-block h-2 w-2 shrink-0 rounded-full bg-kairikos-warning"
+                />
               ) : null}
             </button>
           );
@@ -279,6 +295,13 @@ export function VillasPanel({ data, initialTab = DEFAULT_VILLAS_TAB }: { data: V
             ))}
           </Section>
         ) : null}
+
+        <Section
+          title="Calendario de ocupación"
+          description="Lo que ocupa cada noche, junto: tus reservas, lo que llega de Airbnb y Booking y lo que has cerrado a mano. Es para mirar; al aceptar una solicitud el portal vuelve a comprobarlo."
+        >
+          <VillasCalendar villas={data.villas} requests={data.requests} today={data.today} />
+        </Section>
 
         <Section title={`Próximas reservas confirmadas (${confirmed.length})`}>
           {confirmed.length === 0 ? <p className="text-sm text-kairikos-muted">Todavía ninguna.</p> : null}
@@ -307,7 +330,7 @@ export function VillasPanel({ data, initialTab = DEFAULT_VILLAS_TAB }: { data: V
       <TabPanel id="villas" active={tab === 'villas'}>
         <Section title="Tus villas" description="Precios por noche con IVA incluido: es lo que ve el huésped. Las temporadas mandan sobre el precio base; si dos se solapan, gana la más corta.">
           {data.villas.map((v) => (
-            <VillaCard key={v.id} villa={v} />
+            <VillaCard key={v.id} villa={v} defaultOpen={villaStartsOpen(data.villas.length, v.feeds)} />
           ))}
           <NewVillaForm />
         </Section>
@@ -518,7 +541,13 @@ function Field({ label, children, hint }: { label: string; children: ReactNode; 
   );
 }
 
-function VillaCard({ villa }: { villa: VillasPanelData['villas'][number] }) {
+// Plegable (ver lib/villas/panel-summary.ts). El cuerpo queda montado y lleva
+// `hidden` cuando está cerrada, igual que las pestañas: plegar una villa no
+// puede tirar las temporadas que se estaban editando sin guardar.
+function VillaCard({ villa, defaultOpen }: { villa: VillasPanelData['villas'][number]; defaultOpen: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const sync = villaSyncSummary(villa.feeds);
+  const bodyId = `villa-body-${villa.id}`;
   const { busy, message, run } = useAction();
   const [seasons, setSeasons] = useState(villa.seasons.map((s) => ({ ...s, price: fromCents(s.nightlyCents) })));
   const [feed, setFeed] = useState({ label: 'Airbnb', url: '' });
@@ -540,186 +569,224 @@ function VillaCard({ villa }: { villa: VillasPanelData['villas'][number] }) {
   }
 
   return (
-    <article className="card space-y-5 text-sm">
-      <form onSubmit={saveFields} className="space-y-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h3 className="text-base font-semibold">{villa.name}</h3>
-          <span className="text-xs text-kairikos-muted">
-            En la web: <code>?unidad={villa.slug}</code>
+    <article className="card text-sm" data-testid="villa-card">
+      <h3>
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={bodyId}
+          onClick={() => setOpen((v) => !v)}
+          data-testid="villa-card-toggle"
+          className="flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2 text-left"
+        >
+          <span className="min-w-0">
+            <span className="block text-base font-semibold">{villa.name}</span>
+            <span className="block text-xs font-normal text-kairikos-muted">
+              {eur(villa.nightlyCents)} / noche · hasta {villa.maxGuests} huéspedes · mín. {villa.minNights} {villa.minNights === 1 ? 'noche' : 'noches'}
+              {villa.seasons.length > 0 ? ` · ${villa.seasons.length} ${villa.seasons.length === 1 ? 'temporada' : 'temporadas'}` : ''}
+            </span>
           </span>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-4">
-          <Field label="Nombre">
-            <input className="input" name="name" defaultValue={villa.name} required />
-          </Field>
-          <Field label="Huéspedes máx.">
-            <input className="input" name="maxGuests" type="number" min={1} max={40} defaultValue={villa.maxGuests} required />
-          </Field>
-          <Field label="Precio base / noche (€)">
-            <input className="input" name="nightly" inputMode="decimal" defaultValue={fromCents(villa.nightlyCents)} required />
-          </Field>
-          <Field label="Estancia mínima (noches)">
-            <input className="input" name="minNights" type="number" min={1} max={30} defaultValue={villa.minNights} required />
-          </Field>
-          <Field label="Limpieza (€ por estancia)">
-            <input className="input" name="cleaning" inputMode="decimal" defaultValue={fromCents(villa.cleaningFeeCents)} />
-          </Field>
-          <Field label="IVA incluido (%)">
-            <input className="input" name="vat" inputMode="decimal" defaultValue={villa.vatRateBps / 100} />
-          </Field>
-          <Field label="Tasa turística (€ adulto/noche)" hint="0 si tu comunidad no la tiene.">
-            <input className="input" name="tax" inputMode="decimal" defaultValue={fromCents(villa.touristTaxCents)} />
-          </Field>
-          <label className="flex items-center gap-2 pt-6">
-            <input type="checkbox" name="isActive" defaultChecked={villa.isActive} /> Visible en la web
-          </label>
-        </div>
-        <button className="btn-primary" disabled={busy}>
-          Guardar villa
+          <span className="flex flex-wrap items-center gap-2 text-xs font-normal">
+            {!villa.isActive ? <span className="pill-muted">Oculta en la web</span> : null}
+            <span className={sync.tone === 'ok' ? 'pill-success' : sync.tone === 'danger' ? 'pill-danger' : 'pill-muted'} data-testid="villa-card-sync">
+              {sync.text}
+            </span>
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+              className={`shrink-0 text-kairikos-muted transition-transform ${open ? 'rotate-180' : ''}`}
+            >
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </span>
         </button>
-      </form>
+      </h3>
 
-      <div>
-        <h4 className="font-semibold">Temporadas</h4>
-        <p className="text-xs text-kairikos-muted">De la primera a la última noche, ambas incluidas. La estancia mínima es la de la noche de llegada.</p>
-        <table className="mt-2 w-full text-left">
-          <thead className="text-xs text-kairikos-muted">
-            <tr>
-              <th className="py-1 font-normal">Nombre</th>
-              <th className="font-normal">Desde</th>
-              <th className="font-normal">Hasta</th>
-              <th className="font-normal">€ / noche</th>
-              <th className="font-normal">Mín. noches</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {seasons.map((s, i) => (
-              <tr key={i}>
-                {(['name', 'startDate', 'endDate', 'price', 'minNights'] as const).map((key) => (
-                  <td key={key} className="py-1 pr-2">
-                    <input
-                      aria-label={key}
-                      className="input"
-                      type={key === 'startDate' || key === 'endDate' ? 'date' : key === 'minNights' ? 'number' : 'text'}
-                      value={String(s[key])}
-                      onChange={(e) => setSeasons((all) => all.map((x, j) => (j === i ? { ...x, [key]: key === 'minNights' ? Number(e.target.value) : e.target.value } : x)))}
-                    />
-                  </td>
-                ))}
-                <td>
-                  <button type="button" className="btn-ghost" onClick={() => setSeasons((all) => all.filter((_, j) => j !== i))}>
-                    Quitar
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <div className="mt-2 flex flex-wrap gap-2">
-          <button
-            type="button"
-            className="btn-ghost"
-            onClick={() =>
-              setSeasons((all) => [...all, { name: 'Temporada alta', startDate: '', endDate: '', price: fromCents(villa.nightlyCents), nightlyCents: villa.nightlyCents, minNights: villa.minNights }])
-            }
-          >
-            Añadir temporada
-          </button>
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={busy}
-            onClick={() =>
-              run('PATCH', `/api/portal/villas/villas/${villa.id}`, {
-                seasons: seasons.map((s) => ({ name: s.name, startDate: s.startDate, endDate: s.endDate, nightlyCents: toCents(String(s.price)), minNights: Number(s.minNights) })),
-              })
-            }
-          >
-            Guardar temporadas
-          </button>
-        </div>
-      </div>
-
-      <div>
-        <h4 className="font-semibold">Calendarios</h4>
-        <p className="text-xs text-kairikos-muted">
-          Pega en Airbnb y Booking («Importar calendario») esta dirección, para que vean lo que se reserva aquí:
-        </p>
-        <input className="input mt-1 font-mono text-xs" readOnly value={villa.icalExportUrl} onFocus={(e) => e.currentTarget.select()} aria-label="URL del calendario de salida" />
-        <p className="mt-3 text-xs text-kairikos-muted">Y aquí, la dirección de exportación de cada plataforma (se leen cada 30 minutos y al aceptar una solicitud):</p>
-        <ul className="mt-1 space-y-1">
-          {villa.feeds.map((f) => (
-            <li key={f.id} className="flex flex-wrap items-center justify-between gap-2">
-              <span>
-                <strong>{f.label}</strong> · {f.host} ·{' '}
-                {f.lastStatus === 'ok'
-                  ? `${f.eventCount} bloqueos, leído ${f.lastSyncedAt ? new Date(f.lastSyncedAt).toLocaleString('es-ES') : ''}`
-                  : f.lastStatus === 'error'
-                    ? <span className="text-kairikos-danger">error al leer ({f.lastError})</span>
-                    : 'sin leer todavía'}
-              </span>
-              <button type="button" className="btn-ghost" disabled={busy} onClick={() => run('POST', `/api/portal/villas/villas/${villa.id}/calendar`, { action: 'remove_feed', feedId: f.id }, 'Quitado.')}>
-                Quitar
-              </button>
-            </li>
-          ))}
-        </ul>
-        <form
-          className="mt-2 grid gap-2 sm:grid-cols-[10rem,1fr,auto,auto]"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            const done = await run('POST', `/api/portal/villas/villas/${villa.id}/calendar`, { action: 'add_feed', ...feed }, 'Calendario añadido y leído.');
-            if (done) setFeed({ label: 'Airbnb', url: '' });
-          }}
-        >
-          <select className="input" value={feed.label} onChange={(e) => setFeed({ ...feed, label: e.target.value })} aria-label="Plataforma">
-            <option>Airbnb</option>
-            <option>Booking</option>
-            <option>Vrbo</option>
-            <option>Otro</option>
-          </select>
-          <input className="input" type="url" placeholder="https://www.airbnb.es/calendar/ical/….ics" value={feed.url} onChange={(e) => setFeed({ ...feed, url: e.target.value })} required aria-label="URL de exportación iCal" />
+      <div id={bodyId} hidden={!open} className="mt-5 space-y-5">
+        <form onSubmit={saveFields} className="space-y-3">
+          <p className="text-xs text-kairikos-muted">
+            En la web: <code>?unidad={villa.slug}</code>
+          </p>
+          <div className="grid gap-3 sm:grid-cols-4">
+            <Field label="Nombre">
+              <input className="input" name="name" defaultValue={villa.name} required />
+            </Field>
+            <Field label="Huéspedes máx.">
+              <input className="input" name="maxGuests" type="number" min={1} max={40} defaultValue={villa.maxGuests} required />
+            </Field>
+            <Field label="Precio base / noche (€)">
+              <input className="input" name="nightly" inputMode="decimal" defaultValue={fromCents(villa.nightlyCents)} required />
+            </Field>
+            <Field label="Estancia mínima (noches)">
+              <input className="input" name="minNights" type="number" min={1} max={30} defaultValue={villa.minNights} required />
+            </Field>
+            <Field label="Limpieza (€ por estancia)">
+              <input className="input" name="cleaning" inputMode="decimal" defaultValue={fromCents(villa.cleaningFeeCents)} />
+            </Field>
+            <Field label="IVA incluido (%)">
+              <input className="input" name="vat" inputMode="decimal" defaultValue={villa.vatRateBps / 100} />
+            </Field>
+            <Field label="Tasa turística (€ adulto/noche)" hint="0 si tu comunidad no la tiene.">
+              <input className="input" name="tax" inputMode="decimal" defaultValue={fromCents(villa.touristTaxCents)} />
+            </Field>
+            <label className="flex items-center gap-2 pt-6">
+              <input type="checkbox" name="isActive" defaultChecked={villa.isActive} /> Visible en la web
+            </label>
+          </div>
           <button className="btn-primary" disabled={busy}>
-            Añadir
-          </button>
-          <button type="button" className="btn-ghost" disabled={busy} onClick={() => run('POST', `/api/portal/villas/villas/${villa.id}/calendar`, { action: 'sync' }, 'Calendarios leídos.')}>
-            Leer ahora
+            Guardar villa
           </button>
         </form>
-      </div>
 
-      <div>
-        <h4 className="font-semibold">Noches cerradas a mano</h4>
-        <ul className="mt-1 space-y-1">
-          {villa.manualBlocks.map((b) => (
-            <li key={b.id} className="flex flex-wrap items-center justify-between gap-2">
-              <span>
-                {day(b.start)} → {day(b.end)} {b.note ? `· ${b.note}` : ''}
-              </span>
-              <button type="button" className="btn-ghost" disabled={busy} onClick={() => run('POST', `/api/portal/villas/villas/${villa.id}/calendar`, { action: 'remove_block', blockId: b.id }, 'Abierto.')}>
-                Abrir
-              </button>
-            </li>
-          ))}
-        </ul>
-        <form
-          className="mt-2 grid gap-2 sm:grid-cols-[auto,auto,1fr,auto]"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            const done = await run('POST', `/api/portal/villas/villas/${villa.id}/calendar`, { action: 'add_block', ...block }, 'Cerrado.');
-            if (done) setBlock({ start: '', end: '', note: '' });
-          }}
-        >
-          <input className="input" type="date" value={block.start} onChange={(e) => setBlock({ ...block, start: e.target.value })} required aria-label="Primera noche" />
-          <input className="input" type="date" value={block.end} onChange={(e) => setBlock({ ...block, end: e.target.value })} required aria-label="Día de salida" />
-          <input className="input" placeholder="Motivo (solo lo ves tú)" value={block.note} onChange={(e) => setBlock({ ...block, note: e.target.value })} aria-label="Motivo" />
-          <button className="btn-ghost" disabled={busy}>
-            Cerrar fechas
-          </button>
-        </form>
+        <div>
+          <h4 className="font-semibold">Temporadas</h4>
+          <p className="text-xs text-kairikos-muted">De la primera a la última noche, ambas incluidas. La estancia mínima es la de la noche de llegada.</p>
+          <table className="mt-2 w-full text-left">
+            <thead className="text-xs text-kairikos-muted">
+              <tr>
+                <th className="py-1 font-normal">Nombre</th>
+                <th className="font-normal">Desde</th>
+                <th className="font-normal">Hasta</th>
+                <th className="font-normal">€ / noche</th>
+                <th className="font-normal">Mín. noches</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {seasons.map((s, i) => (
+                <tr key={i}>
+                  {(['name', 'startDate', 'endDate', 'price', 'minNights'] as const).map((key) => (
+                    <td key={key} className="py-1 pr-2">
+                      <input
+                        aria-label={key}
+                        className="input"
+                        type={key === 'startDate' || key === 'endDate' ? 'date' : key === 'minNights' ? 'number' : 'text'}
+                        value={String(s[key])}
+                        onChange={(e) => setSeasons((all) => all.map((x, j) => (j === i ? { ...x, [key]: key === 'minNights' ? Number(e.target.value) : e.target.value } : x)))}
+                      />
+                    </td>
+                  ))}
+                  <td>
+                    <button type="button" className="btn-ghost" onClick={() => setSeasons((all) => all.filter((_, j) => j !== i))}>
+                      Quitar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() =>
+                setSeasons((all) => [...all, { name: 'Temporada alta', startDate: '', endDate: '', price: fromCents(villa.nightlyCents), nightlyCents: villa.nightlyCents, minNights: villa.minNights }])
+              }
+            >
+              Añadir temporada
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={busy}
+              onClick={() =>
+                run('PATCH', `/api/portal/villas/villas/${villa.id}`, {
+                  seasons: seasons.map((s) => ({ name: s.name, startDate: s.startDate, endDate: s.endDate, nightlyCents: toCents(String(s.price)), minNights: Number(s.minNights) })),
+                })
+              }
+            >
+              Guardar temporadas
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <h4 className="font-semibold">Calendarios</h4>
+          <p className="text-xs text-kairikos-muted">
+            Pega en Airbnb y Booking («Importar calendario») esta dirección, para que vean lo que se reserva aquí:
+          </p>
+          <input className="input mt-1 font-mono text-xs" readOnly value={villa.icalExportUrl} onFocus={(e) => e.currentTarget.select()} aria-label="URL del calendario de salida" />
+          <p className="mt-3 text-xs text-kairikos-muted">Y aquí, la dirección de exportación de cada plataforma (se leen cada 30 minutos y al aceptar una solicitud):</p>
+          <ul className="mt-1 space-y-1">
+            {villa.feeds.map((f) => (
+              <li key={f.id} className="flex flex-wrap items-center justify-between gap-2">
+                <span>
+                  <strong>{f.label}</strong> · {f.host} ·{' '}
+                  {f.lastStatus === 'ok'
+                    ? `${f.eventCount} bloqueos, leído ${f.lastSyncedAt ? new Date(f.lastSyncedAt).toLocaleString('es-ES') : ''}`
+                    : f.lastStatus === 'error'
+                      ? <span className="text-kairikos-danger">error al leer ({f.lastError})</span>
+                      : 'sin leer todavía'}
+                </span>
+                <button type="button" className="btn-ghost" disabled={busy} onClick={() => run('POST', `/api/portal/villas/villas/${villa.id}/calendar`, { action: 'remove_feed', feedId: f.id }, 'Quitado.')}>
+                  Quitar
+                </button>
+              </li>
+            ))}
+          </ul>
+          <form
+            className="mt-2 grid gap-2 sm:grid-cols-[10rem,1fr,auto,auto]"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const done = await run('POST', `/api/portal/villas/villas/${villa.id}/calendar`, { action: 'add_feed', ...feed }, 'Calendario añadido y leído.');
+              if (done) setFeed({ label: 'Airbnb', url: '' });
+            }}
+          >
+            <select className="input" value={feed.label} onChange={(e) => setFeed({ ...feed, label: e.target.value })} aria-label="Plataforma">
+              <option>Airbnb</option>
+              <option>Booking</option>
+              <option>Vrbo</option>
+              <option>Otro</option>
+            </select>
+            <input className="input" type="url" placeholder="https://www.airbnb.es/calendar/ical/….ics" value={feed.url} onChange={(e) => setFeed({ ...feed, url: e.target.value })} required aria-label="URL de exportación iCal" />
+            <button className="btn-primary" disabled={busy}>
+              Añadir
+            </button>
+            <button type="button" className="btn-ghost" disabled={busy} onClick={() => run('POST', `/api/portal/villas/villas/${villa.id}/calendar`, { action: 'sync' }, 'Calendarios leídos.')}>
+              Leer ahora
+            </button>
+          </form>
+        </div>
+
+        <div>
+          <h4 className="font-semibold">Noches cerradas a mano</h4>
+          <ul className="mt-1 space-y-1">
+            {villa.manualBlocks.map((b) => (
+              <li key={b.id} className="flex flex-wrap items-center justify-between gap-2">
+                <span>
+                  {day(b.start)} → {day(b.end)} {b.note ? `· ${b.note}` : ''}
+                </span>
+                <button type="button" className="btn-ghost" disabled={busy} onClick={() => run('POST', `/api/portal/villas/villas/${villa.id}/calendar`, { action: 'remove_block', blockId: b.id }, 'Abierto.')}>
+                  Abrir
+                </button>
+              </li>
+            ))}
+          </ul>
+          <form
+            className="mt-2 grid gap-2 sm:grid-cols-[auto,auto,1fr,auto]"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const done = await run('POST', `/api/portal/villas/villas/${villa.id}/calendar`, { action: 'add_block', ...block }, 'Cerrado.');
+              if (done) setBlock({ start: '', end: '', note: '' });
+            }}
+          >
+            <input className="input" type="date" value={block.start} onChange={(e) => setBlock({ ...block, start: e.target.value })} required aria-label="Primera noche" />
+            <input className="input" type="date" value={block.end} onChange={(e) => setBlock({ ...block, end: e.target.value })} required aria-label="Día de salida" />
+            <input className="input" placeholder="Motivo (solo lo ves tú)" value={block.note} onChange={(e) => setBlock({ ...block, note: e.target.value })} aria-label="Motivo" />
+            <button className="btn-ghost" disabled={busy}>
+              Cerrar fechas
+            </button>
+          </form>
+        </div>
+        <Notice message={message} />
       </div>
-      <Notice message={message} />
     </article>
   );
 }
