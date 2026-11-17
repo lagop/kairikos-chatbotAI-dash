@@ -52,7 +52,6 @@ interface ScanCandidate {
   companyName: string;
   contactEmail: string;
   contactName: string;
-  vertical: string | null;
   tier: string;
   lastDraftAt: string;
   lastSubmittedAt: string | null;
@@ -67,7 +66,6 @@ interface ScanRow {
   companyName: string;
   contactEmail: string;
   contactName: string;
-  vertical: string | null;
   tier: string;
   lastDraftAt: Date;
   lastSubmittedAt: Date | null;
@@ -119,7 +117,6 @@ export async function POST(req: NextRequest) {
       companyName: row.companyName,
       contactEmail: row.contactEmail,
       contactName: row.contactName,
-      vertical: row.vertical,
       tier: row.tier,
       lastDraftAt: row.lastDraftAt.toISOString(),
       lastSubmittedAt: row.lastSubmittedAt ? row.lastSubmittedAt.toISOString() : null,
@@ -178,6 +175,12 @@ export const runtime = 'nodejs';
  *      with `milestone='wizard_abandoned'` in the last 7 days.
  */
 async function scanWizardAbandoned(): Promise<ScanRow[]> {
+  // «ChatbotClient» nunca ha tenido columna `vertical`: el escaneo la pedía
+  // desde KAIA-2103 (24/06/2026) y fallaba siempre con 42703, así que n8n no
+  // recibía candidatos y el correo de asistente abandonado no salía nunca.
+  // El vertical vive en el paso 1 del asistente y nadie lo usaba aguas abajo
+  // (el disparo solo lee clientId, lastDraftAt, lastStepKey y horas), así que
+  // se quita. tests/unit/wizard-abandoned-scan.test.ts comprueba las columnas.
   // Use Prisma's $queryRaw with tagged template for parameterization.
   // The window/dedup are constants in the route (not env-driven) so we
   // interpolate the interval directly.
@@ -191,7 +194,6 @@ async function scanWizardAbandoned(): Promise<ScanRow[]> {
         c."companyName" AS "companyName",
         c.email         AS "contactEmail",
         c.name          AS "contactName",
-        c.vertical      AS "vertical",
         c.tier          AS "tier"
       FROM "ChatbotClient" c
       WHERE c.state IN ('in-progress', 'go-live-pending')
@@ -227,7 +229,6 @@ async function scanWizardAbandoned(): Promise<ScanRow[]> {
       c."companyName"                       AS "companyName",
       c."contactEmail"                      AS "contactEmail",
       c."contactName"                       AS "contactName",
-      c."vertical"                          AS "vertical",
       c."tier"                              AS "tier",
       ld.last_draft_at                      AS "lastDraftAt",
       ls.last_submitted_at                  AS "lastSubmittedAt",
@@ -255,7 +256,6 @@ async function scanWizardAbandoned(): Promise<ScanRow[]> {
     companyName: row.companyName,
     contactEmail: row.contactEmail,
     contactName: row.contactName,
-    vertical: row.vertical ?? null,
     tier: row.tier,
     lastDraftAt: new Date(row.lastDraftAt),
     lastSubmittedAt: row.lastSubmittedAt ? new Date(row.lastSubmittedAt) : null,
@@ -271,7 +271,6 @@ interface RawScanRow {
   companyName: string;
   contactEmail: string;
   contactName: string;
-  vertical: string | null;
   tier: string;
   lastDraftAt: Date | string;
   lastSubmittedAt: Date | string | null;
