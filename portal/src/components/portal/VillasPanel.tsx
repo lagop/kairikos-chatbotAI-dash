@@ -260,6 +260,18 @@ export function VillasPanel({ data, initialTab = DEFAULT_VILLAS_TAB }: { data: V
                   {pendingBadgeText(pending.length)}
                 </span>
               ) : null}
+              {/* Un punto y no una pastilla con texto: en móvil las cuatro
+                  pestañas caben justas (ver pendingBadgeText). El aviso de
+                  arriba ya lo explica; esto solo dice en cuál está. */}
+              {t.id === 'cobros' && !data.stripe.configured ? (
+                <span
+                  role="img"
+                  aria-label="falta la clave de Stripe"
+                  title="Falta la clave de Stripe"
+                  data-testid="villas-tab-stripe-missing"
+                  className="inline-block h-2 w-2 shrink-0 rounded-full bg-kairikos-warning"
+                />
+              ) : null}
             </button>
           );
         })}
