@@ -43,6 +43,16 @@ export function villasTabHref(tab: VillasTabId, pathname = '/portal/villas'): st
   return tab === DEFAULT_VILLAS_TAB ? pathname : `${pathname}?${VILLAS_TAB_PARAM}=${tab}`;
 }
 
+/**
+ * El número del contador de «Reservas». A 360 px las cuatro pestañas caben
+ * justas con un contador de una cifra; con dos, la cuarta volvía a quedar
+ * fuera de la fila. El número exacto sigue en el aria-label y en el título de
+ * la sección.
+ */
+export function pendingBadgeText(count: number): string {
+  return count > 9 ? '9+' : String(count);
+}
+
 /** La pestaña vecina para las flechas del teclado; da la vuelta en los extremos. */
 export function neighbourVillasTab(current: VillasTabId, step: 1 | -1): VillasTabId {
   const i = VILLAS_TABS.findIndex((t) => t.id === current);
