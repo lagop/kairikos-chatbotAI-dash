@@ -464,8 +464,8 @@ export function VillasCalendar({
       {actions?.notice}
 
       <p className="text-xs text-kairikos-muted">
-        Cada día marca la noche que empieza ese día, así que el día de salida aparece libre. Airbnb y Booking se leen cada 30 minutos; de los meses
-        pasados enseñan solo lo que aún publican.
+        Cada día marca la noche que empieza ese día, así que el día de salida aparece libre. Airbnb y Booking se leen cada 30 minutos y solo se
+        guarda lo que no ha terminado: en los meses pasados salen tus reservas y tus cierres, pero no lo de esas plataformas.
       </p>
     </div>
   );

@@ -16,6 +16,7 @@ import { auditVilla, loadBusyRanges, ownerNotifyEmail, rentalToday, toPricing, t
 import { syncVillaFeeds, type SafeFetchFn } from './ical-sync';
 import {
   buildGuestEmail,
+  buildOwnerInstantBookingEmail,
   buildOwnerNewRequestEmail,
   buildOwnerPaidEmail,
   formatDay,
@@ -51,8 +52,14 @@ import {
 //      pasar las dos.
 //   2. Al CONFIRMARSE (pago), las pendientes que se solapan se rechazan solas.
 // Lo que no se puede evitar desde aquí es una reserva de Airbnb hecha después
-// de aceptar y antes de que Airbnb lea nuestro iCal: por eso el dueño confirma
-// a mano y el plan lo deja escrito como límite del producto.
+// de aceptar y antes de que Airbnb lea nuestro iCal: por eso, por defecto, el
+// dueño confirma a mano y el plan lo deja escrito como límite del producto.
+//
+// Reserva inmediata (Villa.instantBooking, opcional): al crear la solicitud se
+// acepta sola con el MISMO acceptVillaRequest, que además exige entonces que
+// todos los iCal de la villa se hayan podido leer. Si algo falla (un solape,
+// un calendario que no se lee, sin Stripe) se queda pendiente y sigue el
+// camino de siempre: nunca se pierde una solicitud por intentar aceptarla.
 // =============================================================================
 
 type RentalForEmails = Pick<
@@ -129,7 +136,17 @@ export interface CreateRequestInput {
 }
 
 export type CreateRequestResult =
-  | { ok: true; reference: string; guestToken: string; statusUrl: string; quote: StayQuote; duplicate: boolean }
+  | {
+      ok: true;
+      reference: string;
+      guestToken: string;
+      statusUrl: string;
+      quote: StayQuote;
+      duplicate: boolean;
+      /** 'accepted' si la reserva inmediata la ha aceptado: el huésped ya puede pagar. */
+      status: 'pending' | 'accepted';
+      paymentDueAt: string | null;
+    }
   | { ok: false; error: QuoteError | 'villa_not_found' | 'unavailable'; minNights?: number };
 
 type RentalWithVillas = VillaRental & { villas: Array<Villa & { seasons: Parameters<typeof toSeasons>[0] }> };
@@ -139,6 +156,7 @@ export async function createVillaRequest(
   rental: RentalWithVillas,
   input: CreateRequestInput,
   now: Date = new Date(),
+  opts: { fetchFn?: SafeFetchFn } = {},
 ): Promise<CreateRequestResult> {
   const villa = rental.villas.find((v) => v.slug === input.villaSlug && v.isActive);
   if (!villa) return { ok: false, error: 'villa_not_found' };
@@ -158,6 +176,7 @@ export async function createVillaRequest(
 
   // Un doble envío (doble clic, red lenta) no crea dos solicitudes: la misma
   // persona, villa y fechas en las últimas 24 h devuelve la que ya hay.
+  // También si la reserva inmediata ya la aceptó.
   const email = input.guestEmail.trim().toLowerCase();
   const existing = await db.villaBookingRequest.findFirst({
     where: {
@@ -165,13 +184,22 @@ export async function createVillaRequest(
       guestEmail: email,
       checkIn: toDbDate(input.checkIn),
       checkOut: toDbDate(input.checkOut),
-      status: 'pending',
+      status: { in: ['pending', 'accepted'] },
       createdAt: { gt: addHours(now, -24) },
     },
-    select: { reference: true, guestToken: true },
+    select: { reference: true, guestToken: true, status: true, paymentDueAt: true },
   });
   if (existing) {
-    return { ok: true, reference: existing.reference, guestToken: existing.guestToken, statusUrl: guestRequestUrl(existing.guestToken), quote, duplicate: true };
+    return {
+      ok: true,
+      reference: existing.reference,
+      guestToken: existing.guestToken,
+      statusUrl: guestRequestUrl(existing.guestToken),
+      quote,
+      duplicate: true,
+      status: existing.status === 'accepted' ? 'accepted' : 'pending',
+      paymentDueAt: existing.paymentDueAt?.toISOString() ?? null,
+    };
   }
 
   let created: VillaBookingRequest | null = null;
@@ -224,6 +252,63 @@ export async function createVillaRequest(
   });
 
   const summary = summaryOf(created, villa.name, rental.businessName);
+  const base = {
+    ok: true as const,
+    reference: created.reference,
+    guestToken: created.guestToken,
+    statusUrl: guestRequestUrl(created.guestToken),
+    quote,
+    duplicate: false,
+  };
+
+  let instantFallback: DecisionError | null = null;
+  if (villa.instantBooking) {
+    // acceptVillaRequest ya avisa al huésped («aceptada, paga el depósito»):
+    // aquí solo falta el correo al dueño. Un fallo inesperado deja la
+    // solicitud pendiente, que es lo mismo que habría sin reserva inmediata.
+    let accepted: AcceptResult;
+    try {
+      accepted = await acceptVillaRequest(db, {
+        rentalId: rental.id,
+        requestId: created.id,
+        actor: 'system:instant',
+        now,
+        fetchFn: opts.fetchFn,
+        requireAllFeeds: true,
+      });
+    } catch (err) {
+      logError('villas.request.instant_failed', err, { requestId: created.id }, 'error');
+      accepted = { ok: false, error: 'invalid_transition' };
+    }
+    if (accepted.ok) {
+      await notify(
+        'owner_instant_booking',
+        await ownerNotifyEmail(db, rental),
+        buildOwnerInstantBookingEmail(summary, {
+          guestName: created.guestName,
+          guestEmail: created.guestEmail,
+          guestPhone: created.guestPhone,
+          message: created.message,
+          paymentDueAt: new Date(accepted.paymentDueAt),
+          timeZone: rental.timeZone,
+        }),
+        created.guestEmail,
+        { requestId: created.id },
+      );
+      return { ...base, status: 'accepted', paymentDueAt: accepted.paymentDueAt };
+    }
+    instantFallback = accepted.error;
+    await auditVilla(db, {
+      rentalId: rental.id,
+      clientId: rental.clientId,
+      entity: 'request',
+      entityId: created.id,
+      action: 'instant_fallback',
+      actor: 'system',
+      metadata: { reason: accepted.error },
+    });
+  }
+
   await Promise.all([
     notify(
       'owner_new_request',
@@ -235,6 +320,7 @@ export async function createVillaRequest(
         message: created.message,
         expiresAt: created.expiresAt,
         timeZone: rental.timeZone,
+        instantFallback,
       }),
       created.guestEmail,
       { requestId: created.id },
@@ -242,7 +328,7 @@ export async function createVillaRequest(
     notifyGuest('received', created, villa.name, rental, db),
   ]);
 
-  return { ok: true, reference: created.reference, guestToken: created.guestToken, statusUrl: guestRequestUrl(created.guestToken), quote, duplicate: false };
+  return { ...base, status: 'pending', paymentDueAt: null };
 }
 
 // --- Decidir (dueño, desde el panel) -------------------------------------------------
@@ -260,7 +346,9 @@ export type DecisionError =
   | 'invalid_transition'
   | 'expired'
   | 'conflict'
-  | 'stripe_not_configured';
+  | 'stripe_not_configured'
+  /** Solo con requireAllFeeds (reserva inmediata): algún iCal de la villa no se ha podido leer. */
+  | 'feeds_failed';
 
 export type AcceptResult =
   | { ok: true; paymentDueAt: string; icalSync: { feeds: number; failed: number } }
@@ -268,7 +356,7 @@ export type AcceptResult =
 
 export async function acceptVillaRequest(
   db: PrismaClient,
-  params: { rentalId: string; requestId: string; actor: string; now?: Date; fetchFn?: SafeFetchFn },
+  params: { rentalId: string; requestId: string; actor: string; now?: Date; fetchFn?: SafeFetchFn; requireAllFeeds?: boolean },
 ): Promise<AcceptResult> {
   const now = params.now ?? new Date();
   const request = await loadOwnedRequest(db, params.rentalId, params.requestId);
@@ -284,6 +372,9 @@ export async function acceptVillaRequest(
   // aceptación porque Booking tarda en contestar dejaría al dueño sin poder
   // trabajar, y él ya ha mirado sus calendarios.
   const icalSync = await syncVillaFeeds(db, request.villaId, { today, fetchFn: params.fetchFn });
+  // Sin el dueño mirando (reserva inmediata), seguir «con lo que había» no
+  // vale: un calendario que no se lee puede esconder justo la reserva que choca.
+  if (params.requireAllFeeds && icalSync.failed > 0) return { ok: false, error: 'feeds_failed' };
 
   const checkIn = fromDbDate(request.checkIn);
   const checkOut = fromDbDate(request.checkOut);

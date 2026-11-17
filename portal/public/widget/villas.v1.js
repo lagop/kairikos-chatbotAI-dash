@@ -87,6 +87,11 @@
       sentTitle: 'Solicitud enviada',
       sentBody: function (ref, h) { return 'Tu referencia es ' + ref + '. El anfitrión confirma en menos de ' + h + ' horas; hasta entonces no se cobra nada. Te hemos enviado un correo con el resumen.'; },
       viewRequest: 'Ver tu solicitud',
+      instantNote: function (h) { return 'Reserva inmediata: al enviar recibes el enlace para pagar el depósito, y la reserva queda confirmada al pagarlo. Tienes ' + h + ' horas para hacerlo.'; },
+      sendInstant: 'Reservar',
+      instantTitle: 'Fechas reservadas',
+      instantBody: function (ref) { return 'Tu referencia es ' + ref + '. Las fechas estaban libres y se han apartado para ti: paga el depósito para confirmar la reserva. Te hemos enviado el enlace por correo.'; },
+      payNow: 'Pagar el depósito',
       errors: {
         min_nights: function (n) { return 'Para esa llegada, la estancia mínima es de ' + n + ' noches.'; },
         too_many_guests: 'Sois más de los que caben en esta villa.',
@@ -138,6 +143,11 @@
       sentTitle: 'Request sent',
       sentBody: function (ref, h) { return 'Your reference is ' + ref + '. The host confirms within ' + h + ' hours; nothing is charged until then. We have emailed you a summary.'; },
       viewRequest: 'See your request',
+      instantNote: function (h) { return 'Instant booking: after sending you get the link to pay the deposit, and the booking is confirmed once it is paid. You have ' + h + ' hours to pay it.'; },
+      sendInstant: 'Book now',
+      instantTitle: 'Dates held for you',
+      instantBody: function (ref) { return 'Your reference is ' + ref + '. The dates were available and are held for you: pay the deposit to confirm the booking. We have emailed you the link.'; },
+      payNow: 'Pay the deposit',
       errors: {
         min_nights: function (n) { return 'For that arrival day, the minimum stay is ' + n + ' nights.'; },
         too_many_guests: 'That is more guests than this villa sleeps.',
@@ -190,6 +200,7 @@
     '.kv-btn[disabled]{opacity:.6;cursor:default}',
     '.kv-fallback p{margin:0 0 .5rem}',
     '.kv-fallback a.kv-btn{display:inline-block;width:auto;text-decoration:none;text-align:center}',
+    '.kv-done a.kv-btn{display:block;box-sizing:border-box;text-decoration:none;text-align:center}',
     '.kv-check{display:flex;gap:.5rem;align-items:flex-start;font-size:.9em;margin:.75rem 0}',
     '.kv-check input{width:auto;min-height:0;margin-top:.2rem}',
     '.kv-hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}',
@@ -637,7 +648,10 @@
     rows.push(row(t.deposit(q.depositPercent), q.depositCents));
     rows.push(row(t.balance, q.balanceCents));
     var info = this.state.info;
-    var notes = [h('p', { class: 'kv-hint', text: t.noCharge(info.confirmHours) })];
+    // Reserva inmediata (solo si el servidor la ofrece para esta villa): no es
+    // «una solicitud que el anfitrión confirma», es ir directo al depósito.
+    var instant = Boolean((this.villaInfo() || {}).instantBooking);
+    var notes = [h('p', { class: 'kv-hint', text: instant ? t.instantNote(info.paymentHours) : t.noCharge(info.confirmHours) })];
     if (info.balanceNote) notes.push(h('p', { class: 'kv-hint', text: info.balanceNote }));
     if (info.cancellationNote) notes.push(h('p', { class: 'kv-hint', text: info.cancellationNote }));
     return h('div', null, [h('div', { class: 'kv-sum' }, rows)].concat(notes));
@@ -661,7 +675,7 @@
       h('div', { class: 'kv-row' }, [field('message', t.message, 'textarea', false)]),
       h('div', { class: 'kv-hp', 'aria-hidden': 'true' }, [h('input', { name: 'website', tabindex: '-1', autocomplete: 'off' })]),
       h('div', { class: 'kv-check' }, [h('input', { type: 'checkbox', id: this.id('consent'), name: 'consent', required: true, 'data-kv-id': 'consent' }), consentLabel]),
-      h('button', { type: 'submit', class: 'kv-btn', 'data-kv-id': 'send', disabled: s.sending, text: s.sending ? t.sending : t.send }),
+      h('button', { type: 'submit', class: 'kv-btn', 'data-kv-id': 'send', disabled: s.sending, text: s.sending ? t.sending : ((this.villaInfo() || {}).instantBooking ? t.sendInstant : t.send) }),
     ]);
     return form;
   };
@@ -721,6 +735,15 @@
   Widget.prototype.renderDone = function () {
     var t = this.t;
     var d = this.state.done;
+    // El servidor decide: si la reserva inmediata no ha podido aceptarla (un
+    // solape, un calendario que no se lee), llega 'pending' y se dice lo de siempre.
+    if (d.status === 'accepted' && d.reference && d.statusUrl) {
+      return h('div', { class: 'kv-done', role: 'status' }, [
+        h('h3', { tabindex: '-1', 'data-kv-id': 'done', text: t.instantTitle }),
+        h('p', { text: t.instantBody(d.reference) }),
+        h('p', null, [h('a', { class: 'kv-btn', href: d.statusUrl, 'data-kv-id': 'pay', text: t.payNow })]),
+      ]);
+    }
     return h('div', { class: 'kv-done', role: 'status' }, [
       h('h3', { tabindex: '-1', 'data-kv-id': 'done', text: t.sentTitle }),
       h('p', { text: d.reference ? t.sentBody(d.reference, d.confirmHours || this.state.info.confirmHours) : t.sentTitle }),

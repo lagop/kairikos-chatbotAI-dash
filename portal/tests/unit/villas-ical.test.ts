@@ -126,7 +126,7 @@ describe('isFeedDue', () => {
 function fakeDb() {
   const tx = {
     villaBlock: { deleteMany: vi.fn().mockResolvedValue({ count: 3 }), createMany: vi.fn().mockResolvedValue({ count: 2 }) },
-    villaCalendarFeed: { update: vi.fn().mockResolvedValue({}) },
+    villaCalendarFeed: { update: vi.fn().mockResolvedValue({}), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
   };
   const db = {
     ...tx,
@@ -148,7 +148,7 @@ describe('syncFeed', () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({ villaId: 'villa-1', feedId: 'feed-1', note: 'Reserved' });
     expect(rows[0].startDate.toISOString()).toBe('2026-12-14T00:00:00.000Z');
-    expect(tx.villaCalendarFeed.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ lastStatus: 'ok', eventCount: 2 }) }));
+    expect(tx.villaCalendarFeed.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ lastStatus: 'ok', eventCount: 2, errorSince: null, alertedAt: null }) }));
   });
 
   it('deja fuera lo que ya terminó', async () => {
@@ -170,5 +170,7 @@ describe('syncFeed', () => {
     expect(db.$transaction).not.toHaveBeenCalled();
     expect(tx.villaBlock.deleteMany).not.toHaveBeenCalled();
     expect(tx.villaCalendarFeed.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ lastStatus: 'error', lastError: error }) }));
+    // La racha empieza en el primer fallo y no se mueve en los siguientes.
+    expect(tx.villaCalendarFeed.updateMany).toHaveBeenCalledWith({ where: { id: 'feed-1', errorSince: null }, data: { errorSince: expect.any(Date) } });
   });
 });

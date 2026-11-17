@@ -99,7 +99,8 @@
     var y = Number(today.slice(0, 4));
     var villas = [
       { slug: 'alcornoque', name: 'Villa Alcornoque', maxGuests: 4, nightly: 18000, minNights: 2, cleaning: 6000 },
-      { slug: 'castano', name: 'Villa Castaño', maxGuests: 6, nightly: 24000, minNights: 3, cleaning: 8000 },
+      // Castaño enseña la reserva inmediata: se acepta sola y el huésped va a pagar.
+      { slug: 'castano', name: 'Villa Castaño', maxGuests: 6, nightly: 24000, minNights: 3, cleaning: 8000, instant: true },
       { slug: 'encina', name: 'Villa Encina', maxGuests: 2, nightly: 14000, minNights: 2, cleaning: 4500 },
     ];
     function seasonsFor(v) {
@@ -141,7 +142,7 @@
           balanceNote: lang === 'en' ? 'The balance is paid on arrival, by card or cash.' : 'El resto se paga a la llegada, con tarjeta o en efectivo.',
           cancellationNote: lang === 'en' ? 'Free cancellation up to 30 days before arrival; after that the deposit is not refunded.' : 'Cancelas gratis hasta 30 días antes de la llegada; después, el depósito no se devuelve.',
           depositReady: true,
-          villas: villas.map(function (x) { return { slug: x.slug, name: x.name, maxGuests: x.maxGuests, minNights: x.minNights, fromNightlyCents: x.nightly, cleaningFeeCents: x.cleaning }; }),
+          villas: villas.map(function (x) { return { slug: x.slug, name: x.name, maxGuests: x.maxGuests, minNights: x.minNights, fromNightlyCents: x.nightly, cleaningFeeCents: x.cleaning, instantBooking: Boolean(x.instant) }; }),
         });
       }
       if (m[2] === '/calendar') {
@@ -177,7 +178,14 @@
         } });
       }
       if (m[2] === '/requests') {
-        return json({ ok: true, reference: 'VR-DEMO42', statusUrl: null, confirmHours: 24 }, 201);
+        var body = {};
+        try { body = JSON.parse((init && init.body) || '{}'); } catch (e) { /* demo */ }
+        var asked = villas.filter(function (x) { return x.slug === body.villa; })[0];
+        if (asked && asked.instant) {
+          // En la demo no hay página de pago: el enlace no lleva a ningún sitio.
+          return json({ ok: true, reference: 'VR-DEMO43', statusUrl: '#pagar-deposito-demo', status: 'accepted', paymentDueAt: null, confirmHours: 24 }, 201);
+        }
+        return json({ ok: true, reference: 'VR-DEMO42', statusUrl: null, status: 'pending', confirmHours: 24 }, 201);
       }
       return realFetch(input, init);
     };

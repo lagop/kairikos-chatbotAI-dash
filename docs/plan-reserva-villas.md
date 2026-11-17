@@ -28,6 +28,22 @@ el dueño mira sus calendarios antes de aceptar y el portal además vuelve a lee
 los iCal de esa villa en el momento de aceptar: si aparece un solape, la
 aceptación se rechaza. Nada se cobra hasta entonces.
 
+### Reserva inmediata (opcional, por villa)
+
+Algunos dueños prefieren que el huésped no espere. Con `Villa.instantBooking`
+(desactivada por defecto, se activa en la ficha de cada villa) la solicitud se
+acepta sola al llegar, con la misma lógica que la aceptación a mano
+(`acceptVillaRequest`), y el huésped pasa directo a pagar el depósito. La
+reserva sigue siendo firme solo al pagar, igual que antes.
+
+Se acepta sola solo si: las noches siguen libres tras releer los iCal de la
+villa, **todos** esos iCal se han podido leer en ese momento (con el dueño
+mirando, un calendario caído no bloquea; sin él, sí) y hay clave de Stripe. Si
+falla cualquiera, queda como solicitud normal y el correo al dueño dice por
+qué. El riesgo que el dueño asume, y que el panel le explica al activarla: una
+reserva hecha en Airbnb o Booking hace minutos que aún no sale en su iCal. Si
+pasa, la cancela desde el panel antes del pago o después.
+
 ## Ciclo de una solicitud
 
 ```
@@ -76,6 +92,8 @@ del propietario; el módulo aísla Stripe en `lib/villas/stripe.ts` para cambiar
 - **Entrada**: por villa, las URL de exportación de Airbnb, Booking u otra. El cron las lee cada 30 min (y al aceptar una solicitud). Cada lectura sustituye los bloqueos de ese calendario. URL filtradas como cualquier URL que escribe el cliente (solo `https`, sin hosts internos), con tiempo y tamaño máximos.
 - **Salida**: `/api/public/villas/ical/<token>.ics` por villa, con las solicitudes aceptadas y confirmadas, los bloqueos manuales y los importados (así Airbnb se entera de lo de Booking y al revés). El dueño la pega en Airbnb y Booking. Solo dice «Reservado»: ni nombres ni correos.
 - Limitación conocida: un bloqueo importado de Booking vuelve a salir en el calendario que lee Airbnb (y al revés). Es lo que se quiere (que Airbnb sepa lo de Booking), pero una cancelación tarda dos refrescos en desaparecer del todo.
+- Solo se guarda lo que no ha terminado (de ayer en adelante): de Airbnb y Booking no hay histórico, ni en el calendario del panel ni en el resumen del mes.
+- **Aviso de calendario caído**: si un iCal lleva 3 horas fallando seguido (`errorSince`), el cron manda un correo al dueño con todos los suyos que fallan y qué suele arreglarlo (`lib/villas/feed-alerts.ts`). Una vez por racha (`alertedAt`); una lectura buena la corta.
 
 ## Dónde vive en el portal
 
@@ -86,8 +104,9 @@ del propietario; el módulo aísla Stripe en `lib/villas/stripe.ts` para cambiar
 - Página del huésped: `/reserva-villa/<token>` (estado, resumen y botón de pagar el depósito). El token es largo y aleatorio; no hace falta cuenta.
 - Rutas públicas con CORS abierto en `/api/public/villas/<token>/…` (ficha, calendario, presupuesto, solicitud), con límite por token.
 - Widget: `public/widget/villas.v1.js`, JS sin dependencias, en el DOM de la página con clases `kv-` y variables CSS para que la web Signature lo vista. Emite los eventos `kairikos:booking_*` del contrato del hotel, sin datos personales. Demo: `/widget/demo-villas.html`.
-- Cron: `/api/cron/villas-tick` (lee iCal, caduca plazos, repasa pagos), añadido a `scripts/scheduler.sh`.
-- Avisos por correo (Resend, mismo molde que el resto; nunca lanzan): al dueño por solicitud nueva y por depósito pagado; al huésped al recibirla, al aceptarla (con el enlace de pago), al rechazarla o caducar, y al confirmarse.
+- Cron: `/api/cron/villas-tick` (lee iCal, avisa de los que fallan, caduca plazos, repasa pagos), añadido a `scripts/scheduler.sh`.
+- Resumen del mes en la pestaña «Reservas»: noches vendidas aquí (confirmadas), ocupación contando Airbnb/Booking, noches cerradas e ingresos de las confirmadas repartidos por noche (`lib/villas/panel-month-summary.ts`). No es lo cobrado: aquí solo se cobra el depósito.
+- Avisos por correo (Resend, mismo molde que el resto; nunca lanzan): al dueño por solicitud nueva, por reserva inmediata, por depósito pagado y por calendario que no se lee; al huésped al recibirla, al aceptarla (con el enlace de pago), al rechazarla o caducar, y al confirmarse.
 
 ## Baja del cliente
 
