@@ -7,12 +7,14 @@ import {
   fmt,
   fromNote,
   insightFor,
+  presetAnswers,
   priceText,
   QUOTER_CALL_SLOTS,
   QUOTER_CONSENT,
   toggleMulti,
   type QuoterAnswers,
   type QuoterData,
+  type QuoterPreset,
 } from '@/lib/premium-quoter-engine';
 import { QUOTER_ICONS } from '@/lib/premium-quoter-icons';
 import styles from './PremiumQuoter.module.css';
@@ -212,6 +214,16 @@ export function PremiumQuoter({
     if (rootRef.current) setBarAway(barOutOfPlace(rootRef.current));
   }, [state.step, state.sector, state.showResult]);
 
+  // --- volver arriba del presupuestador, por debajo de la cabecera fija ----------
+  // Con la posición en la página, no offsetTop: insertado en otra web, el padre
+  // de referencia puede ser cualquier cosa.
+  const scrollToTop = useCallback(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const offset = parseFloat(getComputedStyle(wrap).getPropertyValue('--quoter-sticky-top')) || 20;
+    window.scrollTo({ top: wrap.getBoundingClientRect().top + window.scrollY - offset, behavior: 'smooth' });
+  }, []);
+
   // --- avanzar ------------------------------------------------------------------
   const advancing = useRef(false);
   const next = useCallback(() => {
@@ -232,15 +244,18 @@ export function PremiumQuoter({
     }
     if (cur.step < all.length - 1) commit({ ...cur, step: cur.step + 1 });
     else commit({ ...cur, showResult: true });
-    // Con la posición en la página, no offsetTop: insertado en otra web, el
-    // padre de referencia puede ser cualquier cosa. Y por debajo de la cabecera
-    // fija de esa web, si la tiene.
-    const wrap = wrapRef.current;
-    if (wrap) {
-      const offset = parseFloat(getComputedStyle(wrap).getPropertyValue('--quoter-sticky-top')) || 20;
-      window.scrollTo({ top: wrap.getBoundingClientRect().top + window.scrollY - offset, behavior: 'smooth' });
-    }
-  }, [quoter, commit, emit]);
+    scrollToTop();
+  }, [quoter, commit, emit, scrollToTop]);
+
+  // Un plan marca sus opciones y va directo al resultado. «Modificar respuestas»
+  // vuelve al primer paso con todo marcado: desde ahí es un presupuesto a medida.
+  function choosePreset(p: QuoterPreset) {
+    const cur = stateRef.current;
+    if (!cur.sector) return;
+    emit('presupuestador_plan', { sector: cur.sector, plan: p.id });
+    commit({ ...cur, answers: presetAnswers(cur.sector, p), showResult: true });
+    scrollToTop();
+  }
 
   function choose(stepId: string, type: 'single' | 'multi', isSector: boolean | undefined, id: string) {
     const cur = stateRef.current;
@@ -325,6 +340,27 @@ export function PremiumQuoter({
                   <h2 className={styles.serif}>{s.title}</h2>
                   <p>{s.sub}</p>
                 </div>
+                {state.sector && state.step === 1 && sec?.presets?.length ? (
+                  <div className={styles.presets} data-testid="quoter-presets">
+                    <h3 className={styles['presets-head']}>¿Prefieres empezar por un plan?</h3>
+                    <p className={styles['presets-sub']}>Marca sus piezas y te enseña el presupuesto. Después puedes cambiar lo que quieras.</p>
+                    <div className={cx('opts', 'preset-opts')}>
+                      {sec.presets.map((p) => {
+                        const pr = compute(quoter, { sector: state.sector, answers: presetAnswers(state.sector as string, p) });
+                        return (
+                          <button key={p.id} type="button" className={cx('opt', 'preset')} data-testid={`quoter-plan-${p.id}`} onClick={() => choosePreset(p)}>
+                            <span className={styles.t}>{p.label}</span>
+                            <span className={styles.d}>{p.desc}</span>
+                            <span className={styles.p}>
+                              {fmt(quoter, pr.low)} – {fmt(quoter, pr.high)}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className={styles['presets-or']}>O contesta paso a paso:</p>
+                  </div>
+                ) : null}
                 <div className={cx('opts', s.sector && 'sectors')} role={s.type === 'multi' ? 'group' : 'radiogroup'} aria-label={s.title}>
                   {s.options.map((o) => {
                     const on = s.type === 'multi' ? Array.isArray(sel) && sel.includes(o.id) : sel === o.id;

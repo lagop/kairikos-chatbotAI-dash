@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('server-only', () => ({}));
 
 import defaultData from '@/lib/premium-quoter-default.json';
-import { buildSteps, checkAnswers, compute, fromNote, insightFor, priceText, resolveQuoter, toggleMulti, type QuoterCatalog, type QuoterData } from '@/lib/premium-quoter-engine';
+import { buildSteps, checkAnswers, compute, fromNote, insightFor, presetAnswers, priceText, resolveQuoter, toggleMulti, type QuoterCatalog, type QuoterData } from '@/lib/premium-quoter-engine';
 import { validateQuoterData } from '@/lib/premium-quoter-schema';
 import { canMovePremiumQuote, createPremiumQuoteRequest, MAX_REQUESTS_PER_IP_PER_DAY, saveQuoterVersion } from '@/lib/premium-quoter';
 
@@ -126,6 +126,36 @@ describe('recomendaciones como datos', () => {
   it('sin piezas, la sugerencia general', () => {
     expect(insightFor(q, { sector: 'dental', answers: {} })).toContain('las piezas premium');
   });
+  it('inmobiliaria: las piezas sobre el plano avisan si falta la ficha, antes que nada', () => {
+    expect(insightFor(q, { sector: 'inmobiliaria', answers: { widgets: ['comparar', 'tasacion'] } })).toContain('Fichas cinematográficas');
+    expect(insightFor(q, { sector: 'inmobiliaria', answers: { widgets: ['alquiler', 'crm'] } })).toContain('sección de alquiler');
+    expect(insightFor(q, { sector: 'inmobiliaria', answers: { widgets: ['ficha', 'comparar', 'crm'] } })).not.toContain('Ojo');
+    expect(insightFor(q, { sector: 'inmobiliaria', answers: { widgets: ['tasacion', 'informe', 'crm'] } })).toContain('exclusiva');
+    expect(insightFor(q, { sector: 'inmobiliaria', answers: { widgets: ['informe'] } })).toContain('informe para el propietario se alimenta');
+  });
+});
+
+describe('planes del sector', () => {
+  const q = resolved();
+  const planes = q.sectors.inmobiliaria.presets ?? [];
+
+  it('inmobiliaria tiene los tres planes, y suman lo publicado en la demo', () => {
+    expect(planes.map((p) => p.id)).toEqual(['esencial', 'captacion', 'completa']);
+    const lista = planes.map((p) => compute(q, { sector: 'inmobiliaria', answers: presetAnswers('inmobiliaria', p) }).list);
+    expect(lista).toEqual([6650, 10750, 19950]);
+  });
+  it('cada plan pasa la misma comprobación que las respuestas de un visitante', () => {
+    for (const p of planes) expect(checkAnswers(q, 'inmobiliaria', presetAnswers('inmobiliaria', p)).ok).toBe(true);
+  });
+  it('presetAnswers copia las listas: cambiar la respuesta no toca el plan', () => {
+    const a = presetAnswers('inmobiliaria', planes[0]);
+    (a.widgets as string[]).push('sol');
+    expect(planes[0].select.widgets).toEqual(['ficha', 'hipoteca']);
+    expect(a.sector).toBe('inmobiliaria');
+  });
+  it('los sectores sin planes siguen igual', () => {
+    expect(q.sectors.dental.presets).toBeUndefined();
+  });
 });
 
 describe('checkAnswers', () => {
@@ -202,6 +232,26 @@ describe('validateQuoterData', () => {
     const d = clone();
     d.baseSteps = d.baseSteps.filter((s) => s.id !== 'paginas');
     expect(problemas(d).join()).toMatch(/paginas/);
+  });
+  it('rechaza un plan con una pieza que no existe, sin un paso obligatorio o con un paso inventado', () => {
+    const d = clone();
+    const plan = () => d.sectors.inmobiliaria.presets![0];
+    plan().select.widgets = ['ficha', 'fantasma'];
+    expect(problemas(d).join()).toMatch(/plan «esencial»: el paso «widgets»/);
+    plan().select.widgets = ['ficha'];
+    delete plan().select.tipo;
+    expect(problemas(d).join()).toMatch(/plan «esencial»: el paso «tipo»/);
+    plan().select.tipo = 'nueva';
+    plan().select.inventado = 'x';
+    expect(problemas(d).join()).toMatch(/no existe el paso «inventado»/);
+  });
+  it('rechaza dos planes con el mismo id y un id que no va en una URL', () => {
+    const d = clone();
+    const planes = d.sectors.inmobiliaria.presets!;
+    planes[1].id = planes[0].id;
+    expect(problemas(d).join()).toMatch(/repetido/);
+    planes[1].id = 'Con Espacios';
+    expect(problemas(d)).not.toEqual([]);
   });
   it('rechaza una clave desconocida en una opción', () => {
     const d = clone() as unknown as { baseSteps: { options: Record<string, unknown>[] }[] };

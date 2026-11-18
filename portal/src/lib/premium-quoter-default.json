@@ -632,15 +632,15 @@
             },
             "p2": {
               "label": "25 – 100 inmuebles",
-              "desc": "Agencia consolidada."
+              "desc": "Agencia consolidada, con ficha estándar desde tu CRM."
             },
             "p3": {
               "label": "100 – 500 inmuebles",
-              "desc": "Varias zonas y tipologías."
+              "desc": "Varias zonas y tipologías, con ficha estándar desde tu CRM."
             },
             "p4": {
               "label": "Más de 500",
-              "desc": "Gran cartera con sincronización continua."
+              "desc": "Gran cartera con sincronización continua, con ficha estándar desde tu CRM."
             }
           }
         },
@@ -661,7 +661,7 @@
           "id": "buscador",
           "icon": "search",
           "label": "Buscador avanzado con mapa",
-          "desc": "Filtros finos, mapa interactivo y búsquedas guardadas.",
+          "desc": "Filtros por metros útiles, zona y precio, mapa y colecciones. La búsqueda se puede enviar por enlace.",
           "price": 2200,
           "weeks": 1
         },
@@ -669,7 +669,7 @@
           "id": "crm",
           "icon": "layers",
           "label": "Sincronización con tu CRM",
-          "desc": "Inmovilla, Witei, Idealista… sin duplicar trabajo.",
+          "desc": "Tu cartera entra sola desde la exportación de tu CRM (Inmovilla, Witei y otros), sin dar de alta dos veces.",
           "price": 2200,
           "weeks": 1,
           "tag": "Imprescindible"
@@ -678,7 +678,7 @@
           "id": "ficha",
           "icon": "diamond",
           "label": "Fichas cinematográficas",
-          "desc": "Plantilla editorial por propiedad con vídeo y planos.",
+          "desc": "Ficha de cada casa con plano interactivo a escala (hasta diez casas), estancias medidas y vídeo.",
           "price": 1600,
           "weeks": 1,
           "tag": "Efecto wow"
@@ -687,7 +687,7 @@
           "id": "tour",
           "icon": "tour",
           "label": "Tours virtuales 360º",
-          "desc": "Integración Matterport o similar en cada ficha.",
+          "desc": "Recorrido 360° de cada casa con visor propio, sin cookies de terceros: tus fotos 360° o el visor de tu proveedor.",
           "price": 650
         },
         {
@@ -703,7 +703,7 @@
           "id": "hipoteca",
           "icon": "calc",
           "label": "Calculadora hipotecaria",
-          "desc": "Cuota, ahorro necesario y gastos de compra.",
+          "desc": "Impuestos, gastos, cuota y ahorro necesario, y lo que cuesta mantener la casa cada año.",
           "price": 550
         },
         {
@@ -723,6 +723,67 @@
           "monthly": 39
         },
         {
+          "id": "comparar",
+          "icon": "layers",
+          "label": "Comparar y selección para tu comprador",
+          "desc": "Hasta tres casas con sus planos a la misma escala, y un enlace con las casas que eliges para cada comprador.",
+          "price": 900
+        },
+        {
+          "id": "sol",
+          "icon": "sparkle",
+          "label": "El sol por horas",
+          "desc": "Qué estancias reciben sol, a qué hora y en qué época del año, sobre el plano de cada casa.",
+          "price": 650
+        },
+        {
+          "id": "dossier",
+          "icon": "pages",
+          "label": "Dossier en PDF de cada casa",
+          "desc": "La ficha como dossier imprimible, con plano, cifras, costes y contacto, en los idiomas de la web.",
+          "price": 450
+        },
+        {
+          "id": "disponibilidad",
+          "icon": "map",
+          "label": "Obra nueva: disponibilidad y plano por tipo",
+          "desc": "Viviendas libres, reservadas y vendidas, plano de cada tipo, forma de pago y calendario.",
+          "price": 1200,
+          "weeks": 1
+        },
+        {
+          "id": "reforma",
+          "icon": "pen",
+          "label": "Reforma simulada",
+          "desc": "Cuatro imágenes de cómo podría quedar una casa para reformar, etiquetadas «Simulación», con horquilla de coste.",
+          "price": 550
+        },
+        {
+          "id": "planos",
+          "icon": "diamond",
+          "label": "Diez planos a escala más",
+          "desc": "Las fichas incluyen diez. Cada pack añade otras diez casas, redibujadas y medidas.",
+          "price": 650,
+          "weeks": 1
+        },
+        {
+          "id": "informe",
+          "icon": "key",
+          "label": "Informe para el propietario",
+          "desc": "Página privada para quien vende: visitas a la ficha, contactos y comentarios de las visitas. Bajo pedido, en 3 o 4 semanas.",
+          "price": 2400,
+          "weeks": 3,
+          "tag": "Capta exclusivas"
+        },
+        {
+          "id": "alquiler",
+          "icon": "home",
+          "label": "Sección de alquiler",
+          "desc": "Cartera de alquiler con filtros, ficha con plano y lo que se paga al entrar, y página para propietarios con la horquilla de renta.",
+          "price": 1900,
+          "weeks": 1
+        },
+        {
           "id": "ia",
           "icon": "chat",
           "label": "Chatbot también en Telegram y WhatsApp",
@@ -739,11 +800,87 @@
         {
           "when": {
             "all": [
+              "comparar"
+            ],
+            "none": [
+              "ficha"
+            ]
+          },
+          "text": "<b>Ojo:</b> comparar trabaja sobre el plano a escala de cada casa: va con las Fichas cinematográficas."
+        },
+        {
+          "when": {
+            "all": [
+              "sol"
+            ],
+            "none": [
+              "ficha"
+            ]
+          },
+          "text": "<b>Ojo:</b> el sol por horas trabaja sobre el plano a escala de cada casa: va con las Fichas cinematográficas."
+        },
+        {
+          "when": {
+            "all": [
+              "planos"
+            ],
+            "none": [
+              "ficha"
+            ]
+          },
+          "text": "<b>Ojo:</b> el pack de planos trabaja sobre el plano a escala de cada casa: va con las Fichas cinematográficas."
+        },
+        {
+          "when": {
+            "all": [
+              "alquiler"
+            ],
+            "none": [
+              "ficha"
+            ]
+          },
+          "text": "<b>Ojo:</b> la sección de alquiler usa el mismo plano a escala que la venta: va con las Fichas cinematográficas."
+        },
+        {
+          "when": {
+            "all": [
+              "tasacion",
+              "informe"
+            ],
+            "none": []
+          },
+          "text": "<b>Gran elección:</b> valoración e informe para el propietario juntos son el argumento más fuerte para pedir la exclusiva."
+        },
+        {
+          "when": {
+            "all": [
               "tasacion"
             ],
             "none": []
           },
           "text": "<b>Gran elección:</b> la valoración online es la pieza que más captación de producto genera. Cada propietario captado vale más que diez compradores."
+        },
+        {
+          "when": {
+            "all": [
+              "informe"
+            ],
+            "none": [
+              "crm"
+            ]
+          },
+          "text": "<b>Sugerencia:</b> el informe para el propietario se alimenta de tu cartera: va mejor con la sincronización con tu CRM."
+        },
+        {
+          "when": {
+            "all": [
+              "alertas"
+            ],
+            "none": [
+              "crm"
+            ]
+          },
+          "text": "<b>Sugerencia:</b> las alertas avisan de las casas nuevas de tu cartera: van mejor con la sincronización con tu CRM."
         },
         {
           "when": {
@@ -753,6 +890,64 @@
             ]
           },
           "text": "<b>Sugerencia:</b> sin sincronización con tu CRM, tu equipo duplicará cada alta. Suele amortizarse en pocas semanas."
+        }
+      ],
+      "presets": [
+        {
+          "id": "esencial",
+          "label": "Esencial",
+          "desc": "Boutique con hasta 25 casas: web a medida, fichas a escala y coste de compra.",
+          "select": {
+            "tipo": "nueva",
+            "paginas": "p1",
+            "idiomas": "i2",
+            "widgets": [
+              "ficha",
+              "hipoteca"
+            ],
+            "contenido": "c1",
+            "plazo": "std"
+          }
+        },
+        {
+          "id": "captacion",
+          "label": "Captación",
+          "desc": "Para conseguir más exclusivas: añade la valoración online y el buscador.",
+          "select": {
+            "tipo": "nueva",
+            "paginas": "p1",
+            "idiomas": "i2",
+            "widgets": [
+              "ficha",
+              "hipoteca",
+              "tasacion",
+              "buscador"
+            ],
+            "contenido": "c1",
+            "plazo": "std"
+          }
+        },
+        {
+          "id": "completa",
+          "label": "Cartera completa",
+          "desc": "Cartera grande o internacional: CRM, alertas, fuera de mercado, tours, tercer idioma y redacción.",
+          "select": {
+            "tipo": "nueva",
+            "paginas": "p1",
+            "idiomas": "i3",
+            "widgets": [
+              "ficha",
+              "hipoteca",
+              "tasacion",
+              "buscador",
+              "crm",
+              "alertas",
+              "privado",
+              "tour"
+            ],
+            "contenido": "c3",
+            "plazo": "std"
+          }
         }
       ]
     },

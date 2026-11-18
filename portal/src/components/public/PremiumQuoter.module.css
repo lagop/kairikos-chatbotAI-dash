@@ -137,6 +137,14 @@ form.lead input:focus,form.lead select:focus{border-color:var(--sage)}
 
 /* mobile */
 .mbar{display:none}
+/* 18/11/2026 — planes del sector: atajos al principio del primer paso. */
+.presets{margin-top:22px;padding:18px;border:1.5px solid var(--line);border-radius:var(--radius);background:var(--sage-soft)}
+.presets-head{font-size:16px;font-weight:700;line-height:1.3;margin:0}
+.presets-sub{font-size:13px;color:var(--ink-2);line-height:1.45;margin:4px 0 0}
+.preset-opts{margin-top:14px}
+.opt.preset{min-height:0}
+.opt.preset .t{padding-right:0}
+.presets-or{margin:18px 0 -8px;font-size:13px;font-weight:700;color:var(--ink-2)}
 @media (max-width:960px){
   .wrap{grid-template-columns:1fr}
   .summary-col{display:none}
