@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { PageHeading } from '@/components/portal/PageHeading';
 import { WizardBlockProgress, type WizardBlockProgressStep } from '@/components/portal/WizardBlockProgress';
 import { StepForm, type WizardSavedState } from '@/components/portal/wizard-steps/StepForm';
+import type { PerfilIdiomas } from '@/lib/wizard-schemas';
 import { getProductCatalog } from '@/lib/catalogs';
 import { withChatbot } from '@/lib/wizard-url';
 
@@ -36,6 +37,8 @@ interface WizardStepShellProps {
    *  there's no correspondence for this step yet, or because the client
    *  already has their own saved data here. */
   inheritedFrom?: { field: string; fromProductCode: string }[];
+  /** Idiomas del paso 1, solo en el paso 2 (trato por idioma). */
+  perfilIdiomas?: PerfilIdiomas | null;
 }
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
@@ -269,6 +272,7 @@ export function WizardStepShell(props: WizardStepShellProps) {
                 ? (props.savedPayload?.plantilla_base as string | undefined) ?? null
                 : null
             }
+            perfilIdiomas={props.perfilIdiomas ?? null}
           />
         </div>
       ) : (
@@ -282,6 +286,7 @@ export function WizardStepShell(props: WizardStepShellProps) {
             effectivePayload={props.effectivePayload}
             savedPayload={props.savedPayload}
             saved={props.saved}
+            perfilIdiomas={props.perfilIdiomas ?? null}
           />
         </div>
       )}

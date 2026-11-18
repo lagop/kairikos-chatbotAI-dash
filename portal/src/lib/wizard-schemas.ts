@@ -60,9 +60,56 @@ export const step1Schema = z.object({
 );
 
 // ---------- Step 2: Personalidad y límites ----------
+const tratamientoEnum = z.enum(['tu', 'usted'], { errorMap: () => ({ message: 'required' }) });
+
+// 18/11/2026 — trato por idioma. `tratamiento` era uno para todos los
+// idiomas, y un negocio que tutea en español pero trata de «Sie» en alemán
+// (la demo inmobiliaria Alféizar) no podía decirlo. Opcional y por idioma:
+// en el idioma que no esté manda `tratamiento`, así que lo ya guardado sigue
+// igual. Un idioma vacío ("" o null: «igual que el general») se descarta, y
+// sin ninguno con valor el campo desaparece.
+const tratamientoIdiomaOpt = z.preprocess(
+  (v) => (v === '' || v == null ? undefined : v),
+  tratamientoEnum.optional(),
+);
+export const tratamientoPorIdiomaSchema = z.preprocess(
+  (v) => {
+    if (v == null) return undefined;
+    if (typeof v !== 'object' || Array.isArray(v)) return v;
+    const hasAny = Object.values(v as Record<string, unknown>).some((x) => x !== '' && x != null);
+    return hasAny ? v : undefined;
+  },
+  z
+    .object({
+      ES: tratamientoIdiomaOpt,
+      EN: tratamientoIdiomaOpt,
+      DE: tratamientoIdiomaOpt,
+    })
+    .optional(),
+);
+
+/** Lo que el paso 2 necesita del paso 1 para ofrecer el trato por idioma. */
+export interface PerfilIdiomas {
+  idiomas: ('ES' | 'EN' | 'DE')[];
+  idiomaPorDefecto: string | null;
+}
+
+/** Lee los idiomas de un payload guardado del paso 1 (sin tipar: viene de
+ *  la base de datos). null si no hay paso 1 o no trae idiomas. */
+export function perfilIdiomasFromStep1(payload: Record<string, unknown> | null): PerfilIdiomas | null {
+  if (!payload) return null;
+  const raw = payload.idiomas;
+  if (!Array.isArray(raw)) return null;
+  const idiomas = (['ES', 'EN', 'DE'] as const).filter((i) => raw.includes(i));
+  if (idiomas.length === 0) return null;
+  const def = payload.idioma_por_defecto;
+  return { idiomas: [...idiomas], idiomaPorDefecto: typeof def === 'string' ? def : null };
+}
+
 export const step2Schema = z.object({
   tono: z.enum(['formal', 'cercano'], { errorMap: () => ({ message: 'required' }) }),
-  tratamiento: z.enum(['tu', 'usted'], { errorMap: () => ({ message: 'required' }) }),
+  tratamiento: tratamientoEnum,
+  tratamiento_por_idioma: tratamientoPorIdiomaSchema,
   ejemplos_respuesta: z
     .array(
       z.object({

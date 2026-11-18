@@ -183,6 +183,53 @@ function section(title: string, payload: unknown): string {
   return `## ${title}\n${JSON.stringify(payload ?? {}, null, 0)}`;
 }
 
+const IDIOMAS_TRATO = ['ES', 'EN', 'DE'] as const;
+type IdiomaTrato = (typeof IDIOMAS_TRATO)[number];
+
+/** Cómo se dice cada trato en cada idioma, para que el modelo no tenga que
+ *  adivinar qué es «usted» en alemán. El inglés no tiene dos pronombres: el
+ *  trato se nota en el registro. */
+const TRATO_EN_IDIOMA: Record<IdiomaTrato, Record<'tu' | 'usted', string>> = {
+  ES: { tu: 'tú', usted: 'usted' },
+  EN: { tu: 'registro cercano', usted: 'registro formal' },
+  DE: { tu: '«du»', usted: '«Sie»' },
+};
+
+/** 18/11/2026 — el trato por idioma del paso 2 (`tratamiento_por_idioma`),
+ *  solo de los idiomas que el perfil tiene marcados y con un valor válido.
+ *  La configuración llega de la base de datos sin tipar, así que se lee con
+ *  cuidado. Exportada para probarla sin montar el prompt entero. */
+export function tratamientoPorIdioma(config: BotConfig): Partial<Record<IdiomaTrato, 'tu' | 'usted'>> {
+  const raw = (config.personalidad ?? {}).tratamiento_por_idioma;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const idiomas = (config.perfil ?? {}).idiomas;
+  const marcados = Array.isArray(idiomas) ? idiomas : null;
+  const out: Partial<Record<IdiomaTrato, 'tu' | 'usted'>> = {};
+  for (const idioma of IDIOMAS_TRATO) {
+    const v = (raw as Record<string, unknown>)[idioma];
+    if (v !== 'tu' && v !== 'usted') continue;
+    if (marcados && !marcados.includes(idioma)) continue;
+    out[idioma] = v;
+  }
+  return out;
+}
+
+/** Final de la regla 1: el trato. Sin trato por idioma, la frase de siempre
+ *  (el prompt de los bots que no lo usan no cambia). */
+function tratoRule(config: BotConfig): string {
+  const base = 'Usa siempre el `tono` y el `tratamiento` (tú/usted) de la personalidad.';
+  const porIdioma = Object.entries(tratamientoPorIdioma(config)) as [IdiomaTrato, 'tu' | 'usted'][];
+  if (porIdioma.length === 0) return base;
+  const lista = porIdioma
+    .map(([idioma, trato]) => `${idioma} → ${trato} (${TRATO_EN_IDIOMA[idioma][trato]})`)
+    .join('; ');
+  return (
+    'Usa siempre el `tono` de la personalidad. Trato: si respondes en un idioma de `tratamiento_por_idioma`, ' +
+    `usa ese (${lista}); en los demás idiomas, el \`tratamiento\` (tú/usted) general. ` +
+    'Mantén el mismo trato en toda la conversación.'
+  );
+}
+
 /** Techo de material recuperado que entra en el prompt. Un documento largo
  *  troceado puede devolver cuatro fragmentos de 1.200 caracteres; sin este
  *  corte, la base de conocimiento empujaría fuera del contexto justo la
@@ -270,7 +317,9 @@ export function buildSystemPrompt(input: GenerateBotReplyInput, schedule: Schedu
     // la lista decide. Limitación aceptada: la configuración está escrita en el
     // idioma principal, así que en los demás el bot la traduce al vuelo — no
     // hay un texto revisado por el negocio en ese idioma.
-    '1. Idioma: si el visitante te escribe en uno de los `idiomas` del perfil (ES = español, EN = inglés, DE = alemán), respóndele en ese idioma. Si escribe en otro, o no se distingue, responde en el de `idioma_por_defecto`. Si respondes en un idioma distinto del de la configuración, tradúcela fielmente, sin añadir nada. Usa siempre el `tono` y el `tratamiento` (tú/usted) de la personalidad.',
+    // 18/11/2026 — el trato puede cambiar por idioma (`tratamiento_por_idioma`,
+    // paso 2): la demo Alféizar tutea en español y trata de «Sie» en alemán.
+    `1. Idioma: si el visitante te escribe en uno de los \`idiomas\` del perfil (ES = español, EN = inglés, DE = alemán), respóndele en ese idioma. Si escribe en otro, o no se distingue, responde en el de \`idioma_por_defecto\`. Si respondes en un idioma distinto del de la configuración, tradúcela fielmente, sin añadir nada. ${tratoRule(config)}`,
     restrictedPricing
       ? '2. PROHIBIDO dar precios, tarifas, importes o rangos. Este negocio no publica precios por chat: di que el precio se confirma personalmente y ofrece pasar con alguien del equipo. Nunca inventes una cifra ni la estimes.'
       : '2. Solo puedes dar los precios que aparecen literalmente en los servicios. Para cualquier servicio con `precio_tipo: "consultar"`, o que no esté en la lista, no des cifra: ofrece confirmarlo con el equipo.',
