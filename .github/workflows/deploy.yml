@@ -394,8 +394,17 @@ jobs:
             exit 1
           fi
 
-          echo "Esperando a que ${PORTAL_URL} responda con ${ESPERADA}"
-          for intento in $(seq 1 30); do
+          # Hostinger contesta al encargo en un segundo y aplica el despliegue
+          # después: descarga la imagen (casi 2 GB) y recrea el contenedor.
+          # Suele tardar unos 3 minutos, pero el 18/11/2026 tardó 7 y 9 (#417 y
+          # #418) y la espera de 5 minutos dio dos fallos que no lo eran: el
+          # portal siguió sirviendo la versión anterior y la nueva llegó sola.
+          # 70 intentos de ~10 s son unos 12 minutos. Si la versión llega antes,
+          # se sale en cuanto aparece; solo un despliegue que de verdad no se
+          # aplica espera la ventana entera.
+          INTENTOS=70
+          echo "Esperando a que ${PORTAL_URL} responda con ${ESPERADA} (hasta ${INTENTOS} intentos, ~12 min)"
+          for intento in $(seq 1 "${INTENTOS}"); do
             RESPUESTA=$(curl -sS --max-time 15 \
               -H "x-kairikos-internal-key: ${PORTAL_API_KEY}" \
               "${PORTAL_URL}/api/internal/health-probe/ping" || true)
@@ -416,8 +425,8 @@ jobs:
                 exit 0
               fi
             fi
-            echo "intento ${intento}/30 — en producción: ${DESPLEGADA:-sin respuesta}"
+            echo "intento ${intento}/${INTENTOS} — en producción: ${DESPLEGADA:-sin respuesta}"
             sleep 10
           done
-          echo "::error::La VPS sigue sin servir ${ESPERADA} cinco minutos después. El despliegue de Hostinger dio OK pero no se aplicó: relanza este workflow y comprueba la VPS."
+          echo "::error::La VPS sigue sin servir ${ESPERADA} unos 12 minutos después; corre ${DESPLEGADA:-una versión desconocida (el portal no contesta)}. Hostinger aceptó el despliegue, pero no se ha aplicado: comprueba en la VPS la revisión de kairikos-portal-app antes de relanzar este workflow, porque puede seguir aplicándose."
           exit 1
