@@ -270,7 +270,7 @@ export function buildSystemPrompt(input: GenerateBotReplyInput, schedule: Schedu
     // la lista decide. Limitación aceptada: la configuración está escrita en el
     // idioma principal, así que en los demás el bot la traduce al vuelo — no
     // hay un texto revisado por el negocio en ese idioma.
-    '1. Idioma: si el visitante te escribe en uno de los `idiomas` del perfil (ES = español, EN = inglés), respóndele en ese idioma. Si escribe en otro, o no se distingue, responde en el de `idioma_por_defecto`. Si respondes en un idioma distinto del de la configuración, tradúcela fielmente, sin añadir nada. Usa siempre el `tono` y el `tratamiento` (tú/usted) de la personalidad.',
+    '1. Idioma: si el visitante te escribe en uno de los `idiomas` del perfil (ES = español, EN = inglés, DE = alemán), respóndele en ese idioma. Si escribe en otro, o no se distingue, responde en el de `idioma_por_defecto`. Si respondes en un idioma distinto del de la configuración, tradúcela fielmente, sin añadir nada. Usa siempre el `tono` y el `tratamiento` (tú/usted) de la personalidad.',
     restrictedPricing
       ? '2. PROHIBIDO dar precios, tarifas, importes o rangos. Este negocio no publica precios por chat: di que el precio se confirma personalmente y ofrece pasar con alguien del equipo. Nunca inventes una cifra ni la estimes.'
       : '2. Solo puedes dar los precios que aparecen literalmente en los servicios. Para cualquier servicio con `precio_tipo: "consultar"`, o que no esté en la lista, no des cifra: ofrece confirmarlo con el equipo.',
