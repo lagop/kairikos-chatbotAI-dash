@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { getStep } from '@/messages/wizard-es';
-import { step2Schema, type Step2Input } from '@/lib/wizard-schemas';
+import { step2Schema, type PerfilIdiomas, type Step2Input } from '@/lib/wizard-schemas';
 import {
   DISCLAIMER_BY_VERTICAL,
   TEMAS_PROHIBIDOS_BY_VERTICAL,
@@ -20,8 +20,13 @@ import {
 interface Props {
   value: Step2Input | null;
   vertical: string | null;
+  /** Idiomas del paso 1. Sin ellos (o con uno solo) no se ofrece el trato
+   *  por idioma. */
+  perfilIdiomas?: PerfilIdiomas | null;
   onChange: (value: Step2Input) => void;
 }
+
+type TratoPorIdioma = NonNullable<Step2Input['tratamiento_por_idioma']>;
 
 const TONO_OPTIONS = [
   { value: 'formal', label: 'Formal' },
@@ -32,8 +37,19 @@ const TRATAMIENTO_OPTIONS = [
   { value: 'usted', label: 'Usted' },
 ];
 
-export function Step2Personalidad({ value, vertical, onChange }: Props) {
+export function Step2Personalidad({ value, vertical, perfilIdiomas, onChange }: Props) {
   const step = getStep(2);
+  const tpi = step.fields.tratamiento_por_idioma;
+  // 18/11/2026 — trato por idioma: uno por cada idioma marcado en el paso 1
+  // salvo el principal, que usa el `tratamiento` de arriba.
+  const otrosIdiomas = (perfilIdiomas?.idiomas ?? []).filter(
+    (i) => i !== (perfilIdiomas?.idiomaPorDefecto ?? perfilIdiomas?.idiomas[0]),
+  );
+  const tratoIdiomaOptions = [
+    { value: '', label: tpi.options?.igual ?? 'Igual que arriba' },
+    { value: 'tu', label: tpi.options?.tu ?? 'Tú' },
+    { value: 'usted', label: tpi.options?.usted ?? 'Usted' },
+  ];
   const safeVertical = vertical && TEMAS_PROHIBIDOS_BY_VERTICAL[vertical] ? vertical : 'otro';
   const defaultChecklist = TEMAS_PROHIBIDOS_BY_VERTICAL[safeVertical] ?? [];
   const defaultDisclaimer = DISCLAIMER_BY_VERTICAL[safeVertical] ?? '';
@@ -58,6 +74,15 @@ export function Step2Personalidad({ value, vertical, onChange }: Props) {
   };
 
   const err = (path: string) => errorMap.get(path);
+
+  // Los idiomas que no se muestran conservan lo guardado: desmarcar un
+  // idioma en el paso 1 no borra su trato.
+  const setTratoIdioma = (idioma: keyof TratoPorIdioma, v: string) => {
+    const next: TratoPorIdioma = { ...(data.tratamiento_por_idioma ?? {}) };
+    if (v === 'tu' || v === 'usted') next[idioma] = v;
+    else delete next[idioma];
+    set({ tratamiento_por_idioma: Object.keys(next).length > 0 ? next : undefined });
+  };
   const tpsOptions = defaultChecklist.map((k) => ({
     value: k,
     label: TEMAS_PROHIBIDOS_LABELS[k] ?? k,
@@ -98,6 +123,26 @@ export function Step2Personalidad({ value, vertical, onChange }: Props) {
         onChange={(v) => set({ tratamiento: v as Step2Input['tratamiento'] })}
         error={err('tratamiento')}
       />
+
+      {otrosIdiomas.length > 0 ? (
+        <div>
+          <p className="mb-1.5 block text-sm font-medium text-kairikos-text">{tpi.label}</p>
+          <p className="mb-2 text-xs text-kairikos-muted">{tpi.helper}</p>
+          <div className="space-y-3">
+            {otrosIdiomas.map((idioma) => (
+              <RadioGroup
+                key={idioma}
+                legend={tpi.subfields[idioma]?.label ?? idioma}
+                name={`tratamiento_por_idioma.${idioma}`}
+                options={tratoIdiomaOptions}
+                value={data.tratamiento_por_idioma?.[idioma] ?? ''}
+                onChange={(v) => setTratoIdioma(idioma, v)}
+                error={err(`tratamiento_por_idioma.${idioma}`)}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div>
         <p className="mb-1.5 block text-sm font-medium text-kairikos-text">

@@ -121,6 +121,20 @@
             "usted": "Usted"
           }
         },
+        "tratamiento_por_idioma": {
+          "label": "Trato en otros idiomas",
+          "helper": "Si en otro idioma el bot debe tratar distinto. Ej.: tú en español y «Sie» (usted) en alemán",
+          "options": {
+            "igual": "Igual que arriba",
+            "tu": "Tú",
+            "usted": "Usted"
+          },
+          "subfields": {
+            "ES": { "label": "En español" },
+            "EN": { "label": "En inglés (más cercano o más formal)" },
+            "DE": { "label": "En alemán (du / Sie)" }
+          }
+        },
         "ejemplos_respuesta": {
           "label": "Ejemplos",
           "helper": "Añade ejemplos de respuestas (opcional)",

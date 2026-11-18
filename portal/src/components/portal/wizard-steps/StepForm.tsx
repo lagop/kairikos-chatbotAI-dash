@@ -3,6 +3,7 @@ import { getStep, getCommon } from '@/messages/wizard-es';
 import { WizardFormProvider, useWizardForm, type WizardFormState } from './WizardFormProvider';
 import { Step1Perfil } from './Step1Perfil';
 import { Step2Personalidad } from './Step2Personalidad';
+import type { PerfilIdiomas } from '@/lib/wizard-schemas';
 import { Step3Servicios } from './Step3Servicios';
 import { Step4Faq } from './Step4Faq';
 import { Step5Horario } from './Step5Horario';
@@ -59,6 +60,9 @@ export interface StepFormProps {
   onChange?: (payload: Record<string, unknown>) => void;
   isSubmitting?: boolean;
   step10Consentimiento?: string | null;
+  /** Idiomas del paso 1, para el trato por idioma del paso 2. Cada página
+   *  del asistente carga solo su paso, así que llegan aparte. */
+  perfilIdiomas?: PerfilIdiomas | null;
 }
 
 const BLOCK_LABELS: Record<string, string> = {
@@ -182,6 +186,7 @@ export function StepForm(props: StepFormProps) {
         <StepFields
           stepNumber={stepNumber}
           step10Consentimiento={props.step10Consentimiento ?? null}
+          perfilIdiomas={props.perfilIdiomas ?? null}
           onChange={props.onChange}
         />
       </WizardFormProvider>
@@ -192,10 +197,12 @@ export function StepForm(props: StepFormProps) {
 function StepFields({
   stepNumber,
   step10Consentimiento,
+  perfilIdiomas,
   onChange,
 }: {
   stepNumber: number;
   step10Consentimiento: string | null;
+  perfilIdiomas: PerfilIdiomas | null;
   onChange?: (payload: Record<string, unknown>) => void;
 }) {
   const form = useWizardForm();
@@ -213,7 +220,7 @@ function StepFields({
     case 1:
       return <Step1Perfil value={form.values[1] as Step1Input | null} onChange={(v) => form.setStepValue(1, v as unknown as Record<string, unknown>)} />;
     case 2:
-      return <Step2Personalidad value={form.values[2] as Step2Input | null} vertical={vertical} onChange={(v) => form.setStepValue(2, v as unknown as Record<string, unknown>)} />;
+      return <Step2Personalidad value={form.values[2] as Step2Input | null} vertical={vertical} perfilIdiomas={perfilIdiomas} onChange={(v) => form.setStepValue(2, v as unknown as Record<string, unknown>)} />;
     case 3:
       return <Step3Servicios value={form.values[3] as Step3Input | null} vertical={vertical} onChange={(v) => form.setStepValue(3, v as unknown as Record<string, unknown>)} />;
     case 4:

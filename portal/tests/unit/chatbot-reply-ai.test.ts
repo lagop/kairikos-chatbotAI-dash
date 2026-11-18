@@ -27,6 +27,7 @@ import {
   toBusinessHours,
   restorePrefill,
   isChatbotReplyConfigured,
+  tratamientoPorIdioma,
 } from '@/lib/chatbot-reply-ai';
 import type { BotConfig } from '@/lib/chatbot-config';
 
@@ -187,6 +188,57 @@ describe('buildSystemPrompt — las reglas que protegen al negocio', () => {
     const prompt = promptFor(makeConfig());
     expect(prompt).toContain('`idiomas` del perfil');
     expect(prompt).not.toContain('SIEMPRE en el idioma de `idioma_por_defecto`');
+  });
+
+  describe('trato por idioma (tratamiento_por_idioma)', () => {
+    // 18/11/2026 — la demo Alféizar tutea en español y trata de «Sie» en
+    // alemán; con un único `tratamiento` el bot tuteaba también en alemán.
+    const alfeizar = () =>
+      makeConfig({
+        perfil: { nombre_comercial: 'Alféizar', idioma_por_defecto: 'ES', idiomas: ['ES', 'EN', 'DE'] },
+        personalidad: {
+          tono: 'cercano',
+          tratamiento: 'tu',
+          tratamiento_por_idioma: { DE: 'usted' },
+          temas_prohibidos: { checklist: [] },
+        },
+      });
+
+    it('sin trato por idioma, la regla 1 es la de siempre', () => {
+      const prompt = promptFor(makeConfig());
+      expect(prompt).toContain('Usa siempre el `tono` y el `tratamiento` (tú/usted) de la personalidad.');
+      expect(prompt).not.toContain('`tratamiento_por_idioma`');
+    });
+
+    it('con DE: usted, manda «Sie» en alemán y el general en los demás', () => {
+      const prompt = promptFor(alfeizar());
+      expect(prompt).toContain('DE → usted («Sie»)');
+      expect(prompt).toContain('en los demás idiomas, el `tratamiento` (tú/usted) general');
+      expect(prompt).not.toContain('Usa siempre el `tono` y el `tratamiento`');
+    });
+
+    it('lee solo idiomas marcados en el perfil y valores válidos', () => {
+      const config = makeConfig({
+        perfil: { nombre_comercial: 'X', idioma_por_defecto: 'ES', idiomas: ['ES', 'EN'] },
+        personalidad: {
+          tono: 'formal',
+          tratamiento: 'usted',
+          tratamiento_por_idioma: { EN: 'tu', DE: 'usted', FR: 'tu', ES: 'vos' },
+        },
+      });
+      expect(tratamientoPorIdioma(config)).toEqual({ EN: 'tu' });
+      expect(promptFor(config)).toContain('EN → tu (registro cercano)');
+    });
+
+    it('tolera configuraciones sin el campo o con basura', () => {
+      expect(tratamientoPorIdioma(makeConfig())).toEqual({});
+      expect(
+        tratamientoPorIdioma(makeConfig({ personalidad: { tratamiento: 'tu', tratamiento_por_idioma: 'usted' } })),
+      ).toEqual({});
+      expect(
+        tratamientoPorIdioma(makeConfig({ personalidad: { tratamiento: 'tu', tratamiento_por_idioma: ['DE'] } })),
+      ).toEqual({});
+    });
   });
 
   it('nombra los tres idiomas que admite el paso 1', () => {

@@ -21,6 +21,7 @@ import { PRODUCT_CODES } from '@/lib/catalogs';
 import { isProductContracted, resolveContractedInstance } from '@/lib/client-product-access';
 import { readWizardStep } from '@/lib/wizard-client';
 import { jsonToObject } from '@/lib/wizard-tier-prisma';
+import { perfilIdiomasFromStep1, type PerfilIdiomas } from '@/lib/wizard-schemas';
 import { getCrossProductSeed } from '@/lib/cross-product-seed';
 import { WizardStepShell } from '@/components/portal/WizardStepShell';
 import { getDevMockClientById } from '@/lib/portal-data';
@@ -289,6 +290,16 @@ export default async function WizardStepPage(props: PageProps) {
     ? { ...resolvedStep.effectivePayload, ...inheritedSeed.payload }
     : resolvedStep.effectivePayload;
 
+  // 18/11/2026 — el paso 2 ofrece un trato por cada idioma marcado en el
+  // paso 1, y esta página solo carga su paso: se lee el 1 aparte.
+  let perfilIdiomas: PerfilIdiomas | null = null;
+  if (stepNumber === 2) {
+    const step1 = await readWizardStep(prisma, resolved.clientId, CHATBOT_PRODUCT_CODE, '1', chatbot.clientProductId);
+    perfilIdiomas = perfilIdiomasFromStep1(
+      jsonToObject((step1?.latest?.payload ?? step1?.active?.payload ?? null) as Parameters<typeof jsonToObject>[0]),
+    );
+  }
+
   return (
     <WizardStepShell
       productCode={CHATBOT_PRODUCT_CODE}
@@ -313,6 +324,7 @@ export default async function WizardStepPage(props: PageProps) {
       isDatabaseConfigured={true}
       clientProductId={incomingChatbotId}
       steps={steps}
+      perfilIdiomas={perfilIdiomas}
     />
   );
 }
