@@ -93,6 +93,20 @@ export interface QuoterHero {
   p: string;
 }
 
+/**
+ * Un plan del sector (18/11/2026): un atajo que marca opciones que ya existen.
+ * No lleva precio: el importe lo calcula compute() con esas respuestas, igual
+ * que si el visitante las hubiera elegido una a una, así que no puede quedarse
+ * desfasado cuando cambie un precio o el descuento de lanzamiento.
+ */
+export interface QuoterPreset {
+  id: string;
+  label: string;
+  desc: string;
+  /** Respuestas por paso: un id en los de elección única, una lista en los múltiples. */
+  select: QuoterAnswers;
+}
+
 export interface QuoterSector {
   name: string;
   icon: string;
@@ -105,6 +119,8 @@ export interface QuoterSector {
   insights: QuoterInsight[];
   /** Web de ejemplo del sector, si la hay (ver premium-quoter-schema.ts). */
   demo?: { url: string; label: string };
+  /** Planes para empezar con un clic, si el sector los tiene (ver QuoterPreset). */
+  presets?: QuoterPreset[];
 }
 
 export interface QuoterConfig {
@@ -352,6 +368,13 @@ export function toggleMulti(step: QuoterStep, current: string[], id: string): st
   const group = step.options.find((o) => o.id === id)?.group;
   const rivals = group ? new Set(step.options.filter((o) => o.group === group && o.id !== id).map((o) => o.id)) : new Set<string>();
   return [...current.filter((x) => !rivals.has(x)), id];
+}
+
+/** Las respuestas de un plan, como si se hubieran elegido a mano (copia: el estado no comparte listas con los datos). */
+export function presetAnswers(sectorId: string, preset: QuoterPreset): QuoterAnswers {
+  const answers: QuoterAnswers = { sector: sectorId };
+  for (const [step, value] of Object.entries(preset.select)) answers[step] = Array.isArray(value) ? [...value] : value;
+  return answers;
 }
 
 export function priceText(q: QuoterData, answers: QuoterAnswers, o: QuoterOption): string {

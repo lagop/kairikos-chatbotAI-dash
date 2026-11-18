@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { QUOTER_ICONS } from './premium-quoter-icons';
-import type { QuoterData } from './premium-quoter-engine';
+import { buildSteps, checkAnswers, type QuoterData } from './premium-quoter-engine';
 
 // =============================================================================
 // Presupuestador de Web Premium — qué se puede guardar (09/11/2026).
@@ -66,6 +66,18 @@ const step = z
 
 const hero = z.object({ h1: z.string().min(1), p: z.string() }).strict();
 
+// 18/11/2026 — planes del sector: atajos que marcan opciones existentes, sin
+// precio propio (ver QuoterPreset en el motor). Lo que eligen se comprueba en
+// crossCheck con las mismas reglas que las respuestas de un visitante.
+const preset = z
+  .object({
+    id: z.string().regex(/^[a-z0-9-]+$/, 'solo minúsculas, números y guiones').max(40),
+    label: z.string().min(1).max(40),
+    desc: z.string().min(1).max(200),
+    select: z.record(z.union([z.string(), z.array(z.string())])),
+  })
+  .strict();
+
 const patch = z
   .object({
     title: z.string().optional(),
@@ -94,6 +106,7 @@ const sector = z
       })
       .strict()
       .optional(),
+    presets: z.array(preset).max(4).optional(),
     insights: z.array(
       z
         .object({
@@ -203,6 +216,19 @@ function crossCheck(data: QuoterData): string[] {
       for (const ref of [...insight.when.all, ...insight.when.none]) {
         if (!widgetIds.includes(ref)) problems.push(`Sector «${id}»: una recomendación usa la pieza «${ref}», que no existe.`);
       }
+    }
+
+    // Un plan tiene que llevar a un presupuesto completo y válido: si no, el
+    // botón dejaría al visitante en un resultado que el servidor rechaza.
+    const presets = sec.presets ?? [];
+    for (const dup of duplicates(presets.map((p) => p.id))) problems.push(`Sector «${id}»: el plan «${dup}» está repetido.`);
+    const stepIdsOfSector = buildSteps(data, id).map((s) => s.id);
+    for (const p of presets) {
+      for (const key of Object.keys(p.select)) {
+        if (key === 'sector' || !stepIdsOfSector.includes(key)) problems.push(`Sector «${id}», plan «${p.id}»: no existe el paso «${key}».`);
+      }
+      const check = checkAnswers(data, id, p.select);
+      if (!check.ok) problems.push(`Sector «${id}», plan «${p.id}»: el paso «${check.step}» falta o no tiene una opción válida.`);
     }
   }
   return problems;
