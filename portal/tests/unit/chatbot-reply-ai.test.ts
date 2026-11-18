@@ -189,6 +189,11 @@ describe('buildSystemPrompt — las reglas que protegen al negocio', () => {
     expect(prompt).not.toContain('SIEMPRE en el idioma de `idioma_por_defecto`');
   });
 
+  it('nombra los tres idiomas que admite el paso 1', () => {
+    const prompt = promptFor(makeConfig());
+    expect(prompt).toContain('ES = español, EN = inglés, DE = alemán');
+  });
+
   it('exige consentimiento antes de pedir datos personales', () => {
     const prompt = promptFor(makeConfig());
     expect(prompt).toContain('texto_consentimiento');

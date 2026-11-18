@@ -24,11 +24,14 @@ const VERTICALS: { value: string; label: string }[] = [
   { value: 'otro', label: 'Otro' },
 ];
 
-// 24/10/2026 — fuera el Alemán: ningún cliente lo tenía marcado y no lo
-// vendemos. Si vuelve, añadirlo también a step1Schema (wizard-schemas.ts).
+// 18/11/2026 — vuelve el Alemán (se quitó el 24/10/2026, #310, porque nadie
+// lo usaba): las webs Signature se venden con alemán, el widget v2 ya habla
+// alemán (#404) y Llamadas también (#406). Va también en step1Schema
+// (wizard-schemas.ts) y en la regla 1 del prompt (chatbot-reply-ai.ts).
 const IDIOMAS: { value: string; label: string }[] = [
   { value: 'ES', label: 'Español' },
   { value: 'EN', label: 'Inglés' },
+  { value: 'DE', label: 'Alemán' },
 ];
 
 export function Step1Perfil({ value, onChange }: Props) {
