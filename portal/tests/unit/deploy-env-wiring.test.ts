@@ -109,3 +109,29 @@ describe('las variables de la reserva de villas llegan al contenedor', () => {
     expect(portal('.env.example')).toMatch(/^VILLAS_STRIPE_LIVE_ENABLED=(false)?$/m);
   });
 });
+
+// 19/11/2026 — Cartera inmobiliaria (decisión A: fotos en un volumen de la
+// VPS). CARTERA_FOTOS_DIR no es un secreto: es la ruta del volumen dentro del
+// contenedor, fija en deploy.yml. Si se pierde en un despliegue, el compose
+// cae en el mismo valor por defecto; lo que no puede pasar es que la ruta del
+// volumen y la variable dejen de coincidir, porque las fotos darían 404 sin
+// error ninguno.
+describe('las fotos de la cartera llegan al contenedor', () => {
+  const RUTA = '/data/cartera-fotos';
+
+  it('CARTERA_FOTOS_DIR está en .env.example, docker-compose.yml y deploy.yml', () => {
+    expect(portal('.env.example')).toMatch(/^CARTERA_FOTOS_DIR=/m);
+    expect(repo('docker-compose.yml')).toContain(`CARTERA_FOTOS_DIR: \${CARTERA_FOTOS_DIR:-${RUTA}}`);
+    expect(repo('.github/workflows/deploy.yml')).toContain(`CARTERA_FOTOS_DIR=${RUTA}`);
+  });
+
+  it('el volumen cartera-fotos está declarado y montado en esa misma ruta', () => {
+    const compose = repo('docker-compose.yml');
+    expect(compose).toContain(`- cartera-fotos:${RUTA}`);
+    expect(compose).toMatch(/^ {2}cartera-fotos:\s*\n\s+name: kairikos-portal-cartera-fotos/m);
+  });
+
+  it('la imagen crea el punto de montaje con dueño nextjs (el contenedor no corre como root)', () => {
+    expect(portal('Dockerfile')).toContain(`mkdir -p ${RUTA} && chown nextjs:nodejs ${RUTA}`);
+  });
+});

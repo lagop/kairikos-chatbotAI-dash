@@ -79,6 +79,16 @@ export const ICON_BY_HREF: Record<string, ReactNode> = {
       <path d="M9.5 17v-2.5l2.5-2 2.5 2V17z" />
     </svg>
   ),
+  // Cartera inmobiliaria — un edificio con ventanas: distinto de la casa con
+  // calendario de villas, que puede salir justo encima.
+  '/portal/cartera': (
+    <svg {...ICON_PROPS}>
+      <path d="M5 21V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v16" />
+      <path d="M15 10h3a1 1 0 0 1 1 1v10" />
+      <path d="M3 21h18" />
+      <path d="M8.5 8h3M8.5 12h3M8.5 16h3" />
+    </svg>
+  ),
   '/portal/llamadas': (
     <svg {...ICON_PROPS}>
       <path

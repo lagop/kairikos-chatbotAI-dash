@@ -74,7 +74,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-cert
     # If the builder didn't produce /app/public (no public/ dir in the
     # Next.js app), the destination is still there as an empty dir, and
     # Next.js handles the empty-public case fine.
-    && mkdir -p ./public
+    && mkdir -p ./public \
+    # Cartera inmobiliaria: punto de montaje del volumen cartera-fotos. Con
+    # dueño nextjs para que Docker copie ese dueño al volumen nuevo y el
+    # contenedor (USER nextjs) pueda escribir las fotos.
+    && mkdir -p /data/cartera-fotos && chown nextjs:nodejs /data/cartera-fotos
 
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static    ./.next/static
