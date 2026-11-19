@@ -1,7 +1,7 @@
 // =============================================================================
 // COPIA del formato propio de la cartera, versión 1. NO SE EDITA AQUÍ.
 //
-// Origen: kairikos-signature-inmobiliaria, origin/main 42e3725:
+// Origen: kairikos-signature-inmobiliaria, origin/main 4af0aaf:
 //   - src/lib/cartera-feed.ts, entero, cambiando solo `import { z } from 'astro/zod'`
 //     por 'zod';
 //   - mediaSchema de src/lib/media.ts (allí importa de 'astro:content'), que aquí va
@@ -48,8 +48,12 @@ const zone = z.enum(['costa', 'pueblo', 'golf', 'interior']);
 
 // Fotos: las sirve el portal (decisión A, volumen de la VPS) y la web las descarga al construir. La primera es la portada.
 // Sin EXIF ni GPS: el portal las vuelve a codificar al subirlas.
+// http solo en la máquina local: el test de contrato sirve ahí su foto de ejemplo (scripts/contrato-cartera.mjs).
 export const photoSchema = z.object({
-  url: z.string().url().startsWith('https://'),
+  url: z
+    .string()
+    .url()
+    .refine((u) => u.startsWith('https://') || /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(u), 'la foto tiene que ir por https'),
   width: z.number().int().positive(),
   height: z.number().int().positive(),
   alt: t.partial().default({}),

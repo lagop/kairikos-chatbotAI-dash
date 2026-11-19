@@ -99,6 +99,15 @@ describe('el feed que genera el portal es ese formato', () => {
     expect(photos[1].alt).toEqual({ es: 'Salón', en: 'Living room' });
   });
 
+  it('http solo vale en la máquina local; fuera de ella, la casa con fotos se queda fuera', () => {
+    const c101 = ventas.find((h) => h.ref === 'C-101')!;
+    const photos = [{ id: id(1), width: 2400, height: 1600, position: 0, alt: null }];
+    for (const local of ['http://localhost:3000', 'http://127.0.0.1:3002']) {
+      expect(buildFeed([row('venta', c101, { photos })], { baseUrl: local }).skipped, local).toEqual([]);
+    }
+    expect(buildFeed([row('venta', c101, { photos })], { baseUrl: 'http://portal.example.test' }).skipped).toEqual([{ ref: 'C-101', reason: 'invalid' }]);
+  });
+
   it('las fotos son siempre las de su tabla, nunca un `photos` metido en el JSON', () => {
     const c101 = ventas.find((h) => h.ref === 'C-101')!;
     const { feed } = buildFeed([{ ...row('venta', c101), data: c101 }], { baseUrl: BASE });
