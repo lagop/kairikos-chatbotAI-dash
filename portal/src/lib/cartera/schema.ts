@@ -49,11 +49,14 @@ const zone = z.enum(['costa', 'pueblo', 'golf', 'interior']);
 // Fotos: las sirve el portal (decisión A, volumen de la VPS) y la web las descarga al construir. La primera es la portada.
 // Sin EXIF ni GPS: el portal las vuelve a codificar al subirlas.
 // http solo en la máquina local: el test de contrato sirve ahí su foto de ejemplo (scripts/contrato-cartera.mjs).
+// En una web que sigue sin el portal, la foto es un archivo de src/content/fotos/: así la deja la exportación de la
+// cartera (docs/exportacion.md). El feed del portal nunca las manda así.
+export const LOCAL_PHOTO = /^fotos\/[a-z]-\d{2,4}\/[a-z0-9_-]+\.(jpe?g|png|webp)$/;
+const remote = (u: string) => (u.startsWith('https://') || /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(u)) && URL.canParse(u);
 export const photoSchema = z.object({
   url: z
     .string()
-    .url()
-    .refine((u) => u.startsWith('https://') || /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(u), 'la foto tiene que ir por https'),
+    .refine((u) => LOCAL_PHOTO.test(u) || remote(u), 'la foto tiene que ir por https o ser un archivo de src/content/fotos/ (fotos/<ref>/<archivo>.jpg)'),
   width: z.number().int().positive(),
   height: z.number().int().positive(),
   alt: t.partial().default({}),
