@@ -13,7 +13,7 @@ import { NextRequest } from 'next/server';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import demo from '../fixtures/cartera/demo-homes.json';
+import demo from '../fixtures/cartera/cartera-feed.json';
 
 const state = vi.hoisted(() => ({
   siteFindFirst: vi.fn(),
@@ -35,7 +35,7 @@ import { GET as feedGet } from '@/app/api/public/cartera/[token]/feed/route';
 import { GET as photoGet } from '@/app/api/public/cartera/foto/[photoId]/route';
 import { findSiteByFeedToken, findSiteForClient, findSiteForOwner } from '@/lib/cartera/site';
 import { resolvePhotoPath } from '@/lib/cartera/photos';
-import { carteraFeedSchema } from '@/lib/cartera/schema';
+import { feedSchema, ventaFeedSchema } from '@/lib/cartera/schema';
 
 const TOKEN = 'car_abcdefghijklmnopqrstuv';
 const SITE_ID = '11111111-1111-4111-8111-111111111111';
@@ -115,8 +115,8 @@ describe('GET /api/public/cartera/[token]/feed', () => {
 
   it('pide a la base de datos sin borradores y devuelve un feed válido con ETag', async () => {
     state.siteFindFirst.mockResolvedValue({ id: SITE_ID });
-    const v = demo.ventas[0] as Record<string, unknown>;
-    const a = demo.alquileres[0] as Record<string, unknown>;
+    const { photos: _vp, ...v } = demo.ventas[0] as Record<string, unknown>;
+    const { photos: _ap, ...a } = demo.alquileres[0] as Record<string, unknown>;
     state.homeFindMany.mockResolvedValue([
       { ref: v.ref, operation: 'venta', status: 'venta', data: v, errors: null, photos: [{ id: PHOTO_ID, width: 2400, height: 1600, position: 0, alt: null }] },
       { ref: a.ref, operation: 'alquiler', status: 'disponible', data: a, errors: [{ message: 'falta algo' }], photos: [] },
@@ -129,7 +129,8 @@ describe('GET /api/public/cartera/[token]/feed', () => {
     expect(res.headers.get('access-control-allow-origin')).toBeNull();
 
     const body = await res.json();
-    expect(carteraFeedSchema.safeParse(body).success).toBe(true);
+    expect(feedSchema.safeParse(body).success).toBe(true);
+    expect(ventaFeedSchema.safeParse(body.ventas[0]).success).toBe(true);
     expect(body.ventas.map((h: { ref: string }) => h.ref)).toEqual([v.ref]);
     // La de errores se queda fuera.
     expect(body.alquileres).toEqual([]);

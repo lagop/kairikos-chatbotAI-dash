@@ -1,101 +1,119 @@
 // =============================================================================
 // Cartera — el test de contrato del feed (docs/fase1-cartera.md, «El formato
 // propio»). El esquema vive en la plantilla web; lib/cartera/schema.ts es su
-// copia. Los ejemplos son las casas de la demo Alféizar
-// (tests/fixtures/cartera/demo-homes.json), las mismas que usa el test de la
-// web: si uno de los dos repositorios cambia el formato sin el otro, falla.
+// copia literal. El ejemplo es el mismo que valida el test de la web
+// (tests/fixtures/cartera/cartera-feed.json = su tests/fixtures/cartera-feed.json):
+// si uno de los dos repositorios cambia el formato sin el otro, falla.
 //
-// Además fija las reglas de qué sale en el feed: nunca un borrador ni una casa
-// con errores; las vendidas y alquiladas sí.
+// Además fija que lo que GENERA el portal es ese formato —una casa del ejemplo
+// guardada como fila del portal sale igual en el feed— y las reglas de qué
+// sale: nunca un borrador ni una casa con errores; las vendidas y alquiladas sí.
 // =============================================================================
 
 import { describe, expect, it } from 'vitest';
-import demo from '../fixtures/cartera/demo-homes.json';
-import { alquilerDataSchema, carteraFeedSchema, ventaDataSchema } from '@/lib/cartera/schema';
-import { buildFeed, etagMatches, isPublishable, type FeedHomeRow } from '@/lib/cartera/feed';
+import example from '../fixtures/cartera/cartera-feed.json';
+import { alquilerFeedSchema, feedSchema, ventaFeedSchema } from '@/lib/cartera/schema';
+import { buildFeed, etagMatches, isPublishable, type CarteraFeed, type FeedHomeRow } from '@/lib/cartera/feed';
 
 const BASE = 'https://portal.example.test';
 const NOW = new Date('2026-11-19T10:00:00Z');
 
-let seq = 0;
-function photoId(): string {
-  seq += 1;
-  return `00000000-0000-4000-8000-${String(seq).padStart(12, '0')}`;
+type Home = Record<string, unknown> & { ref: string; status: string };
+const ventas = example.ventas as unknown as Home[];
+const alquileres = example.alquileres as unknown as Home[];
+
+const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+
+/** Una casa del ejemplo como la guardaría el portal: `data` sin fotos, fotos en su tabla. */
+function row(operation: 'venta' | 'alquiler', home: Home, over: Partial<FeedHomeRow> = {}): FeedHomeRow {
+  const { photos: _photos, ...data } = home;
+  return { ref: home.ref, operation, status: home.status, data, errors: null, photos: [], ...over };
 }
 
-function row(operation: 'venta' | 'alquiler', data: Record<string, unknown>, over: Partial<FeedHomeRow> = {}): FeedHomeRow {
-  return {
-    ref: String(data.ref),
-    operation,
-    status: String(data.status),
-    data,
-    errors: null,
-    photos: [
-      { id: photoId(), width: 2400, height: 1600, position: 1, alt: { es: 'Salón', en: 'Living room', de: 'Wohnzimmer' } },
-      { id: photoId(), width: 2400, height: 1600, position: 0, alt: null },
-    ],
-    ...over,
-  };
+const exampleRows = (): FeedHomeRow[] => [...ventas.map((h) => row('venta', h)), ...alquileres.map((h) => row('alquiler', h))];
+
+/** Lo que exige la web: el envoltorio y, una a una, cada casa. */
+function expectValidFeed(feed: CarteraFeed) {
+  const json = JSON.parse(JSON.stringify(feed));
+  expect(feedSchema.safeParse(json).success).toBe(true);
+  for (const h of json.ventas) {
+    const r = ventaFeedSchema.safeParse(h);
+    expect(r.success, `${h.ref}: ${r.success ? '' : JSON.stringify(r.error.issues.slice(0, 2))}`).toBe(true);
+  }
+  for (const h of json.alquileres) {
+    const r = alquilerFeedSchema.safeParse(h);
+    expect(r.success, `${h.ref}: ${r.success ? '' : JSON.stringify(r.error.issues.slice(0, 2))}`).toBe(true);
+  }
 }
 
-const demoRows = (): FeedHomeRow[] => [
-  ...demo.ventas.map((v) => row('venta', v as Record<string, unknown>)),
-  ...demo.alquileres.map((a) => row('alquiler', a as Record<string, unknown>)),
-];
-
-describe('las casas de la demo son el formato propio', () => {
-  it('cada venta valida contra el esquema de datos', () => {
-    expect(demo.ventas.length).toBeGreaterThan(0);
-    for (const v of demo.ventas) expect(ventaDataSchema.safeParse(v).success, String(v.ref)).toBe(true);
+describe('el ejemplo de la web valida contra la copia del esquema', () => {
+  it('el envoltorio', () => {
+    expect(feedSchema.safeParse(example).success).toBe(true);
   });
 
-  it('cada alquiler valida contra el esquema de datos', () => {
-    expect(demo.alquileres.length).toBeGreaterThan(0);
-    for (const a of demo.alquileres) expect(alquilerDataSchema.safeParse(a).success, String(a.ref)).toBe(true);
+  it('cada casa, una a una', () => {
+    expect(ventas.length).toBeGreaterThan(0);
+    expect(alquileres.length).toBeGreaterThan(0);
+    expectValidFeed(example as unknown as CarteraFeed);
   });
 
-  it('no llevan lo que se queda en el repositorio de la web (plano, nivel, reforma)', () => {
-    for (const h of [...demo.ventas, ...demo.alquileres]) {
-      expect(h).not.toHaveProperty('plan');
-      expect(h).not.toHaveProperty('level');
-      expect(h).not.toHaveProperty('reform');
-    }
+  it('un campo de más es un error: el plano nunca viaja en el feed', () => {
+    expect(ventaFeedSchema.safeParse({ ...ventas[0], level: 'escala' }).success).toBe(false);
+    expect(alquilerFeedSchema.safeParse({ ...alquileres[0], plan: { floors: [] } }).success).toBe(false);
   });
 });
 
-describe('el feed generado valida contra el esquema de la web', () => {
-  it('con todas las casas de la demo', () => {
-    const { feed, skipped } = buildFeed(demoRows(), { baseUrl: BASE, now: NOW });
+describe('el feed que genera el portal es ese formato', () => {
+  it('cada casa del ejemplo, guardada como fila del portal, sale igual en el feed', () => {
+    const { feed, skipped } = buildFeed(exampleRows(), { baseUrl: BASE, now: NOW });
     expect(skipped).toEqual([]);
-    expect(feed.ventas).toHaveLength(demo.ventas.length);
-    expect(feed.alquileres).toHaveLength(demo.alquileres.length);
-
-    const parsed = carteraFeedSchema.safeParse(JSON.parse(JSON.stringify(feed)));
-    expect(parsed.success, parsed.success ? '' : JSON.stringify(parsed.error.issues.slice(0, 3))).toBe(true);
+    expectValidFeed(feed);
     expect(feed).toMatchObject({ version: 1, generatedAt: '2026-11-19T10:00:00.000Z' });
+
+    const expected = (schema: typeof ventaFeedSchema | typeof alquilerFeedSchema, h: Home) => schema.parse({ ...h, photos: [] });
+    const byRef = <T extends { ref: string }>(list: T[]) => new Map(list.map((h) => [h.ref, h]));
+    const vs = byRef(feed.ventas);
+    const as = byRef(feed.alquileres);
+    for (const h of ventas) expect(vs.get(h.ref), h.ref).toEqual(expected(ventaFeedSchema, h));
+    for (const h of alquileres) expect(as.get(h.ref), h.ref).toEqual(expected(alquilerFeedSchema, h));
   });
 
-  it('cada casa lleva sus fotos por orden, con URL del portal y alt en los tres idiomas', () => {
-    const { feed } = buildFeed(demoRows(), { baseUrl: BASE, now: NOW });
-    const first = feed.ventas[0];
-    expect(first.photos).toHaveLength(2);
+  it('las fotos salen por orden, con URL https del portal y alt solo en los idiomas que lo tienen', () => {
+    const c101 = ventas.find((h) => h.ref === 'C-101')!;
+    const { feed } = buildFeed(
+      [
+        row('venta', c101, {
+          photos: [
+            { id: id(2), width: 2400, height: 1600, position: 1, alt: { es: 'Salón', en: 'Living room', de: '' } },
+            { id: id(1), width: 2400, height: 1600, position: 0, alt: null },
+          ],
+        }),
+      ],
+      { baseUrl: BASE },
+    );
+    expectValidFeed(feed);
+    const photos = feed.ventas[0].photos;
     // La de position 0 es la portada aunque llegue la segunda.
-    expect(first.photos[0].alt).toEqual({ es: '', en: '', de: '' });
-    expect(first.photos[1].alt).toEqual({ es: 'Salón', en: 'Living room', de: 'Wohnzimmer' });
-    expect(first.photos[0].url).toMatch(/^https:\/\/portal\.example\.test\/api\/public\/cartera\/foto\/[0-9a-f-]{36}$/);
-    expect(first.photos[0]).toMatchObject({ width: 2400, height: 1600 });
+    expect(photos.map((p) => p.url)).toEqual([`${BASE}/api/public/cartera/foto/${id(1)}`, `${BASE}/api/public/cartera/foto/${id(2)}`]);
+    expect(photos[0].alt).toEqual({});
+    expect(photos[1].alt).toEqual({ es: 'Salón', en: 'Living room' });
+  });
+
+  it('las fotos son siempre las de su tabla, nunca un `photos` metido en el JSON', () => {
+    const c101 = ventas.find((h) => h.ref === 'C-101')!;
+    const { feed } = buildFeed([{ ...row('venta', c101), data: c101 }], { baseUrl: BASE });
+    expect(feed.ventas[0].photos).toEqual([]);
   });
 
   it('referencia y estado salen de las columnas, no del JSON', () => {
-    const v = demo.ventas[0] as Record<string, unknown>;
-    const { feed } = buildFeed([row('venta', { ...v, status: 'venta' }, { status: 'reservada' })], { baseUrl: BASE, now: NOW });
+    const { feed } = buildFeed([row('venta', { ...ventas[0], status: 'venta' }, { status: 'reservada' })], { baseUrl: BASE });
     expect(feed.ventas[0].status).toBe('reservada');
   });
 });
 
 describe('qué casas salen en el feed', () => {
-  const venta = demo.ventas[0] as Record<string, unknown>;
-  const alquiler = demo.alquileres[0] as Record<string, unknown>;
+  const venta = ventas[0];
+  const alquiler = alquileres[0];
 
   it('un borrador nunca sale', () => {
     const { feed } = buildFeed([row('venta', venta, { status: 'borrador' }), row('alquiler', alquiler, { status: 'borrador' })], { baseUrl: BASE });
@@ -123,11 +141,16 @@ describe('qué casas salen en el feed', () => {
   });
 
   it('una casa sin errores apuntados que no valida se queda fuera, y no tumba el resto', () => {
-    const { energy: _energy, ...sinCertificado } = venta;
-    const other = demo.ventas[1] as Record<string, unknown>;
-    const { feed, skipped } = buildFeed([row('venta', sinCertificado), row('venta', other)], { baseUrl: BASE });
-    expect(skipped).toEqual([{ ref: String(venta.ref), reason: 'invalid' }]);
-    expect(feed.ventas.map((h) => h.ref)).toEqual([other.ref]);
+    const conCertificado = ventas.find((h) => h.type !== 'parcela' && h.ref !== venta.ref)!;
+    const { energy: _energy, ...sinCertificado } = ventas.find((h) => h.type !== 'parcela')!;
+    const { feed, skipped } = buildFeed([row('venta', sinCertificado as Home), row('venta', conCertificado)], { baseUrl: BASE });
+    expect(skipped).toEqual([{ ref: sinCertificado.ref, reason: 'invalid' }]);
+    expect(feed.ventas.map((h) => h.ref)).toEqual([conCertificado.ref]);
+  });
+
+  it('un campo que no es del formato en el JSON deja la casa fuera', () => {
+    const { skipped } = buildFeed([row('venta', { ...venta, level: 'escala' })], { baseUrl: BASE });
+    expect(skipped).toEqual([{ ref: venta.ref, reason: 'invalid' }]);
   });
 
   it('un estado de venta en un alquiler no valida', () => {
@@ -138,11 +161,11 @@ describe('qué casas salen en el feed', () => {
 
 describe('ETag del feed', () => {
   it('no cambia con generatedAt, sí con el contenido', () => {
-    const a = buildFeed(demoRows().map((r, i) => ({ ...r, photos: r.photos.map((p, j) => ({ ...p, id: `00000000-0000-4000-8000-${String(i * 10 + j).padStart(12, '0')}` })) })), { baseUrl: BASE, now: NOW });
-    const b = buildFeed(demoRows().map((r, i) => ({ ...r, photos: r.photos.map((p, j) => ({ ...p, id: `00000000-0000-4000-8000-${String(i * 10 + j).padStart(12, '0')}` })) })), { baseUrl: BASE, now: new Date() });
+    const a = buildFeed(exampleRows(), { baseUrl: BASE, now: NOW });
+    const b = buildFeed(exampleRows(), { baseUrl: BASE, now: new Date() });
     expect(a.etag).toBe(b.etag);
 
-    const changed = demoRows();
+    const changed = exampleRows();
     changed[0] = { ...changed[0], status: 'reservada' };
     expect(buildFeed(changed, { baseUrl: BASE }).etag).not.toBe(a.etag);
   });
