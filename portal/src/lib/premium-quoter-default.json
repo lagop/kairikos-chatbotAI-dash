@@ -949,7 +949,11 @@
             "plazo": "std"
           }
         }
-      ]
+      ],
+      "demo": {
+        "url": "https://signature-inmobiliaria.kairikos.cloud/",
+        "label": "Alféizar (inmobiliaria ficticia)"
+      }
     },
     "legal": {
       "name": "Despacho legal o financiero",
