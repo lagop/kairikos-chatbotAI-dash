@@ -6,6 +6,7 @@ import { auditCartera, loadFeedRows, type Db } from './site';
 import { buildFeed } from './feed';
 import { ACTIVE_BUILD_STATUSES, applyNotice, decideLaunch, isStale, removalGuard, stillPendingAfterOk, UNKNOWN_AFTER_MS, type BuildNotice, type LaunchDecision } from './publish-rules';
 import { renderAgencyFailedEmail, renderOperatorFailedEmail, sendCarteraEmail, type FailedBuildInfo } from './emails';
+import { purgeOldEnquiries } from './enquiries';
 
 // =============================================================================
 // Cartera — publicar la web desde el portal (PR 4). Las reglas viven en
@@ -293,15 +294,23 @@ export interface CarteraSweepResult {
   held: number;
   failed: number;
   skipped: number;
+  /** Contactos de más de 24 meses borrados en esta pasada (PR 5). */
+  enquiriesPurged: number;
 }
 
 /**
  * GET /api/cron/cartera-tick, cada 5 minutos (scripts/scheduler.sh). Idempotente:
- * la lógica de «¿toca ya?» vive en decideLaunch, no en la cadencia. Los pasos
- * del PR 5 (purga de contactos) y del PR 6 (bajas) se añaden aquí detrás.
+ * la lógica de «¿toca ya?» vive en decideLaunch y en isPurgeDue, no en la
+ * cadencia. Las bajas (PR 6) se añaden aquí detrás.
  */
 export async function sweepCartera(prisma: PrismaClient, now: Date = new Date()): Promise<CarteraSweepResult> {
-  const result: CarteraSweepResult = { stale: 0, launched: 0, held: 0, failed: 0, skipped: 0 };
+  const result: CarteraSweepResult = { stale: 0, launched: 0, held: 0, failed: 0, skipped: 0, enquiriesPurged: 0 };
+  // Primero la purga: no depende de nada de lo demás y no debe esperar a GitHub.
+  try {
+    result.enquiriesPurged = (await purgeOldEnquiries(prisma, now)).deleted;
+  } catch (err) {
+    logError('cartera.sweep_purge', err, {});
+  }
   result.stale = await markStaleBuilds(prisma, now);
 
   const sites = await prisma.carteraSite.findMany({

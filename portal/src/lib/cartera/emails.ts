@@ -72,14 +72,33 @@ export function renderOperatorFailedEmail(info: FailedBuildInfo): RenderedEmail 
 
 export type SendResult = { ok: true; messageId: string } | { ok: true; skipped: true; reason: 'no_api_key' | 'no_recipient' } | { ok: false; error: string };
 
-export async function sendCarteraEmail(to: string | null | undefined, email: RenderedEmail): Promise<SendResult> {
+/** El remitente de Kairikos con otro nombre a la vista (el de la agencia, en
+ *  los correos al comprador): «Agencia X <ops@kairikos.com>». */
+export function fromWithName(name: string): string {
+  const base = notifyFromAddress();
+  const address = /<([^>]+)>/.exec(base)?.[1] ?? base;
+  // eslint-disable-next-line no-control-regex
+  const clean = name.replace(/[\u0000-\u001f\u007f<>"]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
+  return clean ? `${clean} <${address}>` : base;
+}
+
+export async function sendCarteraEmail(
+  to: string | null | undefined,
+  email: RenderedEmail,
+  opts: { from?: string; replyTo?: string | null } = {},
+): Promise<SendResult> {
   if (!to || !to.includes('@')) return { ok: true, skipped: true, reason: 'no_recipient' };
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) return { ok: true, skipped: true, reason: 'no_api_key' };
   try {
     const { Resend } = await import('resend');
     const resend = new Resend(apiKey);
-    const result = await resend.emails.send({ from: notifyFromAddress(), to: [to], ...email });
+    const result = await resend.emails.send({
+      from: opts.from ?? notifyFromAddress(),
+      to: [to],
+      ...(opts.replyTo && opts.replyTo.includes('@') ? { replyTo: opts.replyTo } : {}),
+      ...email,
+    });
     if (result.error) return { ok: false, error: result.error.message };
     return { ok: true, messageId: result.data?.id ?? 'unknown' };
   } catch (err) {

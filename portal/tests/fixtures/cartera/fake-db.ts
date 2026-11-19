@@ -20,6 +20,7 @@ const cleanData = (data: Record<string, unknown>) => Object.fromEntries(Object.e
 
 function matches(row: Record<string, unknown>, where: Record<string, unknown> = {}): boolean {
   return Object.entries(where).every(([key, cond]) => {
+    if (key === 'OR') return (cond as Array<Record<string, unknown>>).some((w) => matches(row, w));
     const value = row[key];
     if (cond === null) return value === null || value === undefined;
     if (cond instanceof Date) return value instanceof Date && value.getTime() === cond.getTime();
@@ -31,6 +32,7 @@ function matches(row: Record<string, unknown>, where: Record<string, unknown> = 
       if ('startsWith' in c) return typeof value === 'string' && value.startsWith(String(c.startsWith));
       if ('lte' in c) return value instanceof Date && value.getTime() <= (c.lte as Date).getTime();
       if ('lt' in c) return value instanceof Date && value.getTime() < (c.lt as Date).getTime();
+      if ('gte' in c) return value instanceof Date && value.getTime() >= (c.gte as Date).getTime();
       return true;
     }
     return value === cond;
@@ -70,6 +72,9 @@ export function fakeCarteraDb(opts: { failNextHomeCreate?: boolean } = {}) {
   const audits: Array<Record<string, unknown>> = [];
   const sites: Row[] = [];
   const clients: Row[] = [];
+  const enquiries: Row[] = [];
+  const leads: Row[] = [];
+  const leadAudits: Array<Record<string, unknown>> = [];
   let failNext = opts.failNextHomeCreate ?? false;
 
   const withPhotos = (h: Row) => {
@@ -162,6 +167,33 @@ export function fakeCarteraDb(opts: { failNextHomeCreate?: boolean } = {}) {
         return { count: list.length };
       },
     },
+    carteraEnquiry: {
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        const row: Row = { id: randomUUID(), status: 'nuevo', leadId: null, name: null, refs: [], payload: {}, createdAt: new Date(), updatedAt: new Date(), ...clone(data) };
+        enquiries.push(row);
+        return { id: row.id };
+      },
+      count: async ({ where }: { where: Record<string, unknown> }) => enquiries.filter((e) => matches(e, where)).length,
+      findFirst: async ({ where }: { where: Record<string, unknown> }) => clone(enquiries.find((e) => matches(e, where)) ?? null),
+      findMany: async ({ where, orderBy, take }: { where: Record<string, unknown>; orderBy?: unknown; take?: number }) =>
+        sortBy(enquiries.filter((e) => matches(e, where)), orderBy)
+          .slice(0, take ?? Infinity)
+          .map(clone),
+      update: async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => Object.assign(enquiries.find((e) => e.id === where.id)!, clone(data), { updatedAt: new Date() }),
+      deleteMany: async ({ where }: { where: Record<string, unknown> }) => {
+        const gone = enquiries.filter((e) => matches(e, where));
+        for (const e of gone) enquiries.splice(enquiries.indexOf(e), 1);
+        return { count: gone.length };
+      },
+    },
+    lead: {
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        const row: Row = { id: randomUUID(), ...clone(data) };
+        leads.push(row);
+        return { id: row.id };
+      },
+    },
+    leadAudit: { create: async ({ data }: { data: Record<string, unknown> }) => void leadAudits.push(clone(data)) },
     carteraAudit: { create: async ({ data }: { data: Record<string, unknown> }) => void audits.push(clone(data)) },
     chatbotClient: { findUnique: async ({ where }: { where: { id: string } }) => clone(clients.find((c) => c.id === where.id) ?? null) },
     // El bloqueo del sitio (SELECT … FOR UPDATE): aquí todo es secuencial.
@@ -182,6 +214,8 @@ export function fakeCarteraDb(opts: { failNextHomeCreate?: boolean } = {}) {
       githubRepo: input.githubRepo === undefined ? 'lagop/web-prueba' : input.githubRepo,
       workflowFile: 'publicar.yml',
       siteUrl: 'https://agencia.example',
+      tenantId: null,
+      enquiriesPurgedAt: null,
       pendingSince: null,
       lastChangeAt: null,
       lastDispatchAt: null,
@@ -191,11 +225,11 @@ export function fakeCarteraDb(opts: { failNextHomeCreate?: boolean } = {}) {
       clientProduct: { status: input.contractStatus ?? 'active', product: { code: 'cartera' } },
     };
     sites.push(site);
-    clients.push({ id: String(site.clientId), email: 'agencia@example.com' });
+    clients.push({ id: String(site.clientId), email: 'agencia@example.com', name: 'Lucía Ortega', companyName: 'Alféizar Inmobiliaria' });
     return site as Row & { clientId: string; salePrefix: string; rentPrefix: string; agents: Prisma.JsonValue };
   }
 
-  return { db, homes, photos, builds, audits, sites, addSite };
+  return { db, homes, photos, builds, audits, sites, enquiries, leads, leadAudits, addSite };
 }
 
 export type FakeCarteraDb = ReturnType<typeof fakeCarteraDb>;

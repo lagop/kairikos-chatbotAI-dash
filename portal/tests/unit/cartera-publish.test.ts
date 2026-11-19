@@ -149,7 +149,7 @@ describe('lanzar', () => {
     expect(siteRow(site.id).pendingSince).toBeInstanceOf(Date);
 
     const r = await sweepCartera(asPrisma(), new Date(Date.now() + MIN));
-    expect(r).toEqual({ stale: 0, launched: 1, held: 0, failed: 0, skipped: 0 });
+    expect(r).toEqual({ stale: 0, launched: 1, held: 0, failed: 0, skipped: 0, enquiriesPurged: 0 });
     expect(f.builds).toHaveLength(1);
     expect(f.builds[0]).toMatchObject({ siteId: site.id, trigger: 'cambio', status: 'enviada', homeCount: 2 });
     expect(siteRow(site.id).lastDispatchAt).toEqual(f.builds[0].dispatchedAt);
@@ -387,7 +387,7 @@ describe('el cron', () => {
     expect((await cronGet(new NextRequest('http://localhost/api/cron/cartera-tick'))).status).toBe(401);
     const ok = await cronGet(new NextRequest('http://localhost/api/cron/cartera-tick', { headers: { authorization: 'Bearer cron-de-prueba' } }));
     expect(ok.status).toBe(200);
-    expect(await ok.json()).toEqual({ stale: 0, launched: 0, held: 0, failed: 0, skipped: 0 });
+    expect(await ok.json()).toEqual({ stale: 0, launched: 0, held: 0, failed: 0, skipped: 0, enquiriesPurged: 0 });
   });
 });
 

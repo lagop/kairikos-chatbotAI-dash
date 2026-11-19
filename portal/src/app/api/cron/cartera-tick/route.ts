@@ -11,8 +11,9 @@ export const maxDuration = 60;
  * Cartera — GET /api/cron/cartera-tick
  *
  * Pasa a «desconocida» lo que lleva 45 minutos sin noticias y publica lo
- * pendiente de cada sitio (lib/cartera/publish.ts, sweepCartera). La purga de
- * contactos (PR 5) y las bajas (PR 6) se añadirán al mismo barrido.
+ * pendiente de cada sitio y borra los contactos de más de 24 meses, una vez al
+ * día (lib/cartera/publish.ts, sweepCartera). Las bajas (PR 6) se añadirán al
+ * mismo barrido.
  *
  * Idempotente: el scheduler la llama cada 5 minutos y la lógica de «¿toca
  * ya?» vive en decideLaunch, no en la cadencia. Añadida a scripts/scheduler.sh

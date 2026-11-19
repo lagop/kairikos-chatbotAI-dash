@@ -6586,6 +6586,9 @@ model CarteraSite {
   lastPublishedCount Int?      @map("last_published_count")
   // Baja del cliente, como VillaRental.exitNotifiedAt (lib/cartera/site.ts).
   exitNotifiedAt     DateTime? @map("exit_notified_at")
+  // Última pasada de la purga de contactos de más de 24 meses (PR 5). El
+  // cron la corre cada 5 minutos; esto la deja en una vez al día por sitio.
+  enquiriesPurgedAt  DateTime? @map("enquiries_purged_at")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
