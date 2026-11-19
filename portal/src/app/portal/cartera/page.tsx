@@ -8,6 +8,7 @@ import { EmptyState } from '@/components/portal/EmptyState';
 import { CarteraPanel } from '@/components/portal/CarteraPanel';
 import { findSiteForOwner } from '@/lib/cartera/site';
 import { listHomesForPanel } from '@/lib/cartera/homes';
+import { loadPublicationForPanel } from '@/lib/cartera/publish';
 import { HOME_STATUSES, STATUS_LABELS } from '@/lib/cartera/home-rules';
 
 export const dynamic = 'force-dynamic';
@@ -53,7 +54,10 @@ export default async function CarteraPage() {
   }
 
   const readOnly = owner.state !== 'active' && owner.site.clientProduct.status !== 'paused';
-  const homes = await listHomesForPanel(prisma, owner.site.id);
+  const [homes, publication] = await Promise.all([
+    listHomesForPanel(prisma, owner.site.id),
+    loadPublicationForPanel(prisma, owner.site, owner.site.clientProduct.status),
+  ]);
 
   return (
     <div>
@@ -66,10 +70,10 @@ export default async function CarteraPage() {
         data={{
           readOnly,
           graceEndsAt: owner.state === 'grace' ? (owner.graceEndsAt?.toISOString() ?? null) : null,
-          pendingSince: owner.site.pendingSince?.toISOString() ?? null,
           statusLabels: STATUS_LABELS,
           statuses: { venta: HOME_STATUSES.venta, alquiler: HOME_STATUSES.alquiler },
           homes,
+          publication,
         }}
       />
     </div>

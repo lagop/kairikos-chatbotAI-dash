@@ -18,3 +18,12 @@ export const FEED_READS_PER_MINUTE = 30;
 export function allowFeedRead(token: string): boolean {
   return feedLimiter.check(`cartera-feed:${token}`, FEED_READS_PER_MINUTE);
 }
+
+// Avisos de publicación: dos por ejecución (curl los reintenta hasta tres
+// veces). Treinta por minuto y token sobra para cualquier uso legítimo.
+const noticeLimiter = new InMemoryRateLimiter(60 * 1000);
+export const NOTICES_PER_MINUTE = 30;
+
+export function allowBuildNotice(token: string): boolean {
+  return noticeLimiter.check(`cartera-notice:${token}`, NOTICES_PER_MINUTE);
+}

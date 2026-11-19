@@ -4,15 +4,20 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Notice, ReadOnlyBanner, call, dateTimeText, errorMessage, priceText, type NoticeMessage } from './cartera-ui';
+import { PublicationHistory, PublicationStatus, type CarteraPublicationData } from './CarteraPublication';
 
 // =============================================================================
-// Cartera — el panel de la agencia, pestaña «Casas» (PR 2). Los datos llegan
-// preparados de /portal/cartera/page.tsx; «Nueva casa» crea el borrador por
-// POST /api/portal/cartera/casas y abre su ficha (/portal/cartera/<id>).
+// Cartera — el panel de la agencia. Los datos llegan preparados de
+// /portal/cartera/page.tsx.
 //
-// Solo la pestaña Casas: Contactos, Publicación y Exportar llegan con sus PR
-// (3, 4 y 6). La barra de pestañas va ya, con una, para que el panel no
-// cambie de forma cuando lleguen.
+//   - Casas (PR 2): «Nueva casa» crea el borrador por POST
+//     /api/portal/cartera/casas y abre su ficha (/portal/cartera/<id>). Encima
+//     de la tabla, el estado de la última publicación y «Publicar ahora» (PR 4).
+//   - Publicación (PR 4): el historial (CarteraPublication.tsx).
+//
+// Contactos y Exportar llegan con sus PR. Los dos paneles están SIEMPRE
+// montados y el que no toca lleva `hidden`, como en VillasPanel: cambiar de
+// pestaña no pierde los filtros.
 // =============================================================================
 
 export interface CarteraPanelRow {
@@ -31,11 +36,17 @@ export interface CarteraPanelRow {
 export interface CarteraPanelData {
   readOnly: boolean;
   graceEndsAt: string | null;
-  pendingSince: string | null;
   statusLabels: Record<string, string>;
   statuses: { venta: readonly string[]; alquiler: readonly string[] };
   homes: CarteraPanelRow[];
+  publication: CarteraPublicationData;
 }
+
+type TabId = 'casas' | 'publicacion';
+const TABS: Array<{ id: TabId; label: string }> = [
+  { id: 'casas', label: 'Casas' },
+  { id: 'publicacion', label: 'Publicación' },
+];
 
 const OPERATION_LABELS: Record<string, string> = { venta: 'Venta', alquiler: 'Alquiler' };
 
@@ -48,6 +59,7 @@ function statusPill(status: string, hasErrors: boolean): string {
 
 export function CarteraPanel({ data }: { data: CarteraPanelData }) {
   const router = useRouter();
+  const [tab, setTab] = useState<TabId>('casas');
   const [operation, setOperation] = useState<'todas' | 'venta' | 'alquiler'>('todas');
   const [status, setStatus] = useState('todos');
   const [choosing, setChoosing] = useState(false);
@@ -84,20 +96,36 @@ export function CarteraPanel({ data }: { data: CarteraPanelData }) {
       {data.readOnly ? <ReadOnlyBanner graceEndsAt={data.graceEndsAt} /> : null}
 
       <div role="tablist" aria-label="Secciones de la cartera" className="mt-6 flex gap-1 overflow-x-auto overflow-y-hidden border-b border-kairikos-border">
-        <button
-          type="button"
-          role="tab"
-          id="cartera-tab-casas"
-          aria-selected
-          aria-controls="cartera-panel-casas"
-          className="inline-flex items-center gap-2 whitespace-nowrap border-b-2 border-kairikos-accent px-3 py-2.5 text-sm font-semibold text-kairikos-text"
-        >
-          Casas
-          <span className="pill-muted">{data.homes.length}</span>
-        </button>
+        {TABS.map((t) => {
+          const selected = t.id === tab;
+          const last = data.publication.builds[0];
+          return (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              id={`cartera-tab-${t.id}`}
+              aria-selected={selected}
+              aria-controls={`cartera-panel-${t.id}`}
+              tabIndex={selected ? 0 : -1}
+              onClick={() => setTab(t.id)}
+              data-testid={`cartera-tab-${t.id}`}
+              className={[
+                'inline-flex items-center gap-2 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm transition',
+                selected ? 'border-kairikos-accent font-semibold text-kairikos-text' : 'border-transparent text-kairikos-muted hover:border-kairikos-border hover:text-kairikos-text',
+              ].join(' ')}
+            >
+              {t.label}
+              {t.id === 'casas' ? <span className="pill-muted">{data.homes.length}</span> : null}
+              {t.id === 'publicacion' && last?.status === 'fallida' ? <span className="pill-danger">Fallida</span> : null}
+            </button>
+          );
+        })}
       </div>
 
-      <div role="tabpanel" id="cartera-panel-casas" aria-labelledby="cartera-tab-casas" className="mt-6 space-y-4">
+      <div role="tabpanel" id="cartera-panel-casas" aria-labelledby="cartera-tab-casas" hidden={tab !== 'casas'} className="mt-6 space-y-4">
+        <PublicationStatus data={data.publication} readOnly={data.readOnly} />
+
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="flex flex-wrap gap-3">
             <label className="block text-sm">
@@ -151,10 +179,6 @@ export function CarteraPanel({ data }: { data: CarteraPanelData }) {
           ) : null}
         </div>
         <Notice message={message} />
-
-        {data.pendingSince ? (
-          <p className="text-sm text-kairikos-muted">Hay cambios que tu web todavía no tiene: se publican solos.</p>
-        ) : null}
 
         {data.homes.length === 0 ? (
           <p className="card text-sm text-kairikos-muted">Todavía no hay ninguna casa. Con «Nueva casa» das de alta la primera: se guarda como borrador hasta que la completes.</p>
@@ -211,6 +235,13 @@ export function CarteraPanel({ data }: { data: CarteraPanelData }) {
             </table>
           </div>
         )}
+      </div>
+
+      <div role="tabpanel" id="cartera-panel-publicacion" aria-labelledby="cartera-tab-publicacion" hidden={tab !== 'publicacion'} className="mt-6 space-y-4">
+        <p className="max-w-2xl text-sm text-kairikos-muted">
+          Cada publicación reconstruye tu web con las casas que no son borrador y no tienen avisos. Si una falla, la web anterior sigue en pie y se te avisa por correo.
+        </p>
+        <PublicationHistory builds={data.publication.builds} />
       </div>
     </div>
   );

@@ -81,6 +81,18 @@ export async function findSiteByFeedToken(db: Db, token: string) {
   });
 }
 
+/** El sitio por el token del feed para el AVISO de una publicación (PR 4),
+ *  sea cual sea el estado de la contratación: una publicación lanzada justo
+ *  antes de una pausa o una baja tiene que poder contar cómo acabó. Lo que
+ *  autentica el aviso es el secreto de publicación, no el token. */
+export async function findSiteForBuildNotice(db: Db, token: string) {
+  if (!isFeedTokenShape(token)) return null;
+  return db.carteraSite.findFirst({
+    where: { feedToken: token, clientProduct: { product: { code: CARTERA_PRODUCT_CODE } } },
+    select: { id: true, clientId: true, siteUrl: true, githubRepo: true, buildSecretHash: true },
+  });
+}
+
 /** El sitio del cliente para ESCRIBIR: activo o en pausa. Una contratación
  *  por cliente (no es multi-instancia), así que no hay que elegir. */
 export async function findSiteForClient(db: Db, clientId: string) {

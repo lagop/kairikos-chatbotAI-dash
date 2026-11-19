@@ -209,6 +209,10 @@ services:
       # viven en el volumen cartera-fotos, montado aquí abajo en esta ruta. Con
       # `:-` y no `-`: declarada y vacía también cae en el valor por defecto.
       CARTERA_FOTOS_DIR: ${CARTERA_FOTOS_DIR:-/data/cartera-fotos}
+      # Token de grano fino de GitHub para lanzar publicar.yml de cada web
+      # Signature (permiso de Actions, solo esos repositorios). Vacío = el
+      # portal no publica: los cambios se quedan pendientes.
+      CARTERA_GITHUB_TOKEN: ${CARTERA_GITHUB_TOKEN:-}
       # 'prospecting' — Google Places has the same admin-configurable
       # fallback pattern as Stripe above (/admin/portal/settings/integrations
       # → IntegrationCredential). GOOGLE_PLACES_API_KEY was never wired in

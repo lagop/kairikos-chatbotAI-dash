@@ -6578,6 +6578,10 @@ model CarteraSite {
   agents             Json      @default("[]")
   // Publicación (PR 4): hay cambios sin publicar desde pendingSince.
   pendingSince       DateTime? @map("pending_since")
+  // El último cambio que afecta a la web (PR 4). pendingSince guarda el MÁS
+  // ANTIGUO sin publicar; este, el más reciente: una publicación correcta solo
+  // limpia pendingSince si no hubo cambios después de lanzarla.
+  lastChangeAt       DateTime? @map("last_change_at")
   lastDispatchAt     DateTime? @map("last_dispatch_at")
   lastPublishedCount Int?      @map("last_published_count")
   // Baja del cliente, como VillaRental.exitNotifiedAt (lib/cartera/site.ts).
@@ -6692,17 +6696,28 @@ model CarteraEnquiry {
 model CarteraBuild {
   id           String    @id @default(uuid()) @db.Uuid
   siteId       String    @map("site_id") @db.Uuid
+  // cambio (el cron) · manual («Publicar ahora») · externa (a mano en GitHub
+  // o una subida a main: llega solo por el aviso, con buildId null).
   trigger      String
   homeCount    Int       @map("home_count")
   dispatchedAt DateTime  @default(now()) @map("dispatched_at")
   finishedAt   DateTime? @map("finished_at")
+  // enviada · en_curso · ok · fallida · desconocida (sin noticias en 45 min).
   status       String    @default("enviada")
   runUrl       String?   @map("run_url")
   error        String?
+  // Lo que cuenta el aviso de publicar.yml (docs/publicacion.md de la web):
+  // dónde falló (construir · subir), la publicación de la VPS y el commit.
+  stage        String?
+  release      String?
+  commitSha    String?   @map("commit_sha")
+  // El último aviso recibido: las «sin noticias en 45 minutos» se cuentan desde aquí.
+  lastNoticeAt DateTime? @map("last_notice_at")
 
   site CarteraSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
 
   @@index([siteId, dispatchedAt])
+  @@index([siteId, runUrl])
   @@map("cartera_build")
 }
 
