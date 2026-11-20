@@ -7,7 +7,7 @@
     "launch": {
       "enabled": true,
       "discount": 0.25,
-      "label": "Precio de lanzamiento"
+      "label": "Precio de lanzamiento · 5 primeros proyectos"
     },
     "installments": 0,
     "included": [
@@ -15,7 +15,7 @@
       "Chatbot de Kairikos 24/7 (12 meses incluidos, después {chatbot.starter.mes} €/mes)",
       "Dos idiomas",
       "SEO técnico de base",
-      "12 meses de mantenimiento y hosting (después, desde 29 €/mes según las piezas)",
+      "12 meses de Cuidado Premium: hosting, cambios, chat y normativa al día (después, 129 €/mes; 179 €/mes con cartera o reserva de villas)",
       "Código y contenidos en propiedad"
     ],
     "pageScale": {
@@ -770,7 +770,7 @@
           "id": "informe",
           "icon": "key",
           "label": "Informe para el propietario",
-          "desc": "Página privada para quien vende: visitas a la ficha, contactos y comentarios de las visitas. Bajo pedido, en 3 o 4 semanas.",
+          "desc": "Página privada para quien vende: contactos, visitas hechas, comentarios y cambios de precio. Bajo pedido, en 3 o 4 semanas.",
           "price": 2400,
           "weeks": 3,
           "tag": "Capta exclusivas"

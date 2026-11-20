@@ -7,7 +7,14 @@
 // =============================================================================
 
 import { describe, it, expect, vi } from 'vitest';
-import { firstChargeDate, maintenanceLine, normalizeMonthlyCents, NO_MAINTENANCE_TEXT } from '@/lib/custom-care-rules';
+import {
+  CARE_TIERS,
+  firstChargeDate,
+  maintenanceLine,
+  MAX_TRIAL_MONTHS,
+  normalizeMonthlyCents,
+  NO_MAINTENANCE_TEXT,
+} from '@/lib/custom-care-rules';
 import { createCustomCareOffer, findCustomCareOffer, withdrawCustomCareOffer } from '@/lib/custom-care';
 
 describe('normalizeMonthlyCents', () => {
@@ -30,6 +37,24 @@ describe('firstChargeDate', () => {
   it('un 31 que no existe en el mes de destino se queda en su último día', () => {
     expect(firstChargeDate(new Date('2027-01-31T00:00:00Z'), 1).toISOString()).toBe('2027-02-28T00:00:00.000Z');
     expect(firstChargeDate(new Date('2027-01-31T00:00:00Z'), 13).toISOString()).toBe('2028-02-29T00:00:00.000Z');
+  });
+});
+
+describe('CARE_TIERS', () => {
+  it('los tres niveles del 20/11/2026: 29, 129 y 179 €/mes; los Premium con 12 meses incluidos', () => {
+    expect(CARE_TIERS.map((t) => [t.monthlyCents, t.includedMonths])).toEqual([
+      [2900, 0],
+      [12900, 12],
+      [17900, 12],
+    ]);
+    for (const t of CARE_TIERS) {
+      expect(normalizeMonthlyCents(t.monthlyCents)).toBe(t.monthlyCents);
+      expect(t.includedMonths).toBeLessThanOrEqual(MAX_TRIAL_MONTHS);
+    }
+  });
+  it('el presupuesto de una web Premium lo dice tal cual', () => {
+    const premium = CARE_TIERS[1];
+    expect(maintenanceLine(premium.monthlyCents, premium.includedMonths, 'eur')).toContain('Los 12 primeros meses van incluidos');
   });
 });
 

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { MAX_TRIAL_MONTHS } from '@/lib/custom-care-rules';
+import { CareTierPresets } from '@/components/admin/CareTierPresets';
 
 // =============================================================================
 // 11/11/2026 — el mantenimiento de UNA web, visto por el operador: qué tiene
@@ -132,41 +133,50 @@ export function CustomCarePanel({ webClientProductId, data }: { webClientProduct
           aparece sola.
         </p>
       ) : !data.contract ? (
-        <div className="flex flex-wrap items-end gap-3">
-          <div>
-            <label className="label" htmlFor={`custom-care-price-${webClientProductId}`}>
-              Cuota (EUR/mes)
-            </label>
-            <input
-              id={`custom-care-price-${webClientProductId}`}
-              type="number"
-              step="0.01"
-              min="0"
-              className="input w-32"
-              value={euros}
-              onChange={(e) => setEuros(e.target.value)}
-              data-testid="custom-care-price"
-            />
+        <div className="space-y-2">
+          <CareTierPresets
+            testIdPrefix="custom-care"
+            onPick={(value, includedMonths) => {
+              setEuros(value);
+              setMonths(String(includedMonths));
+            }}
+          />
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="label" htmlFor={`custom-care-price-${webClientProductId}`}>
+                Cuota (EUR/mes)
+              </label>
+              <input
+                id={`custom-care-price-${webClientProductId}`}
+                type="number"
+                step="0.01"
+                min="0"
+                className="input w-32"
+                value={euros}
+                onChange={(e) => setEuros(e.target.value)}
+                data-testid="custom-care-price"
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor={`custom-care-months-${webClientProductId}`}>
+                Meses sin cobrar
+              </label>
+              <input
+                id={`custom-care-months-${webClientProductId}`}
+                type="number"
+                step="1"
+                min="0"
+                max={MAX_TRIAL_MONTHS}
+                className="input w-24"
+                value={months}
+                onChange={(e) => setMonths(e.target.value)}
+                data-testid="custom-care-months"
+              />
+            </div>
+            <button type="button" className="btn-primary" disabled={busy !== null || !euros.trim()} onClick={offer} data-testid="custom-care-offer-button">
+              {busy === 'offer' ? 'Guardando…' : data.offer ? 'Sustituir la oferta' : 'Ofrecer al cliente'}
+            </button>
           </div>
-          <div>
-            <label className="label" htmlFor={`custom-care-months-${webClientProductId}`}>
-              Meses sin cobrar
-            </label>
-            <input
-              id={`custom-care-months-${webClientProductId}`}
-              type="number"
-              step="1"
-              min="0"
-              max={MAX_TRIAL_MONTHS}
-              className="input w-24"
-              value={months}
-              onChange={(e) => setMonths(e.target.value)}
-              data-testid="custom-care-months"
-            />
-          </div>
-          <button type="button" className="btn-primary" disabled={busy !== null || !euros.trim()} onClick={offer} data-testid="custom-care-offer-button">
-            {busy === 'offer' ? 'Guardando…' : data.offer ? 'Sustituir la oferta' : 'Ofrecer al cliente'}
-          </button>
         </div>
       ) : null}
 
