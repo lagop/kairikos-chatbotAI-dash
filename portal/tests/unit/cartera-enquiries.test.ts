@@ -118,6 +118,12 @@ describe('la validación por tipo', () => {
     expect(enquirySchema.parse({ ...WEB_BODIES.valuation, beds: null })).toMatchObject({ beds: null });
   });
 
+  it('admite las referencias con el prefijo de cualquier agencia, de una a tres letras', () => {
+    expect(enquirySchema.safeParse({ ...WEB_BODIES.visit, ref: 'VEN-110' }).success).toBe(true);
+    expect(enquirySchema.safeParse({ ...WEB_BODIES.saved_email, refs: ['AL-204', 'C-101'] }).success).toBe(true);
+    expect(enquirySchema.safeParse({ ...WEB_BODIES.visit, ref: 'VENT-110' }).success).toBe(false);
+  });
+
   it('un campo que no está en el contrato se ignora, no se rechaza', () => {
     const r = enquirySchema.parse({ ...WEB_BODIES.report, utm: 'x', nuevo: { a: 1 } });
     expect(r).not.toHaveProperty('utm');

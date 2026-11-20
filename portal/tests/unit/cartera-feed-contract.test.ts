@@ -12,7 +12,8 @@
 
 import { describe, expect, it } from 'vitest';
 import example from '../fixtures/cartera/cartera-feed.json';
-import { alquilerFeedSchema, feedSchema, ventaFeedSchema } from '@/lib/cartera/schema';
+import { alquilerFeedSchema, feedSchema, REF, ventaFeedSchema } from '@/lib/cartera/schema';
+import { nextRef, validateHome } from '@/lib/cartera/home-rules';
 import { buildFeed, etagMatches, isPublishable, type CarteraFeed, type FeedHomeRow } from '@/lib/cartera/feed';
 
 const BASE = 'https://portal.example.test';
@@ -60,6 +61,43 @@ describe('el ejemplo de la web valida contra la copia del esquema', () => {
   it('un campo de más es un error: el plano nunca viaja en el feed', () => {
     expect(ventaFeedSchema.safeParse({ ...ventas[0], level: 'escala' }).success).toBe(false);
     expect(alquilerFeedSchema.safeParse({ ...alquileres[0], plan: { floors: [] } }).success).toBe(false);
+  });
+});
+
+// Hasta el 20/11/2026 el formato solo admitía los agentes de la demo y los prefijos
+// C/P/A: el feed de cualquier otra agencia salía vacío (buildFeed deja fuera lo que
+// no valida). Ahora fija la forma y cada lado comprueba sus agentes.
+describe('los agentes y prefijos de cada agencia', () => {
+  const site = { agents: [{ key: 'pepa-ruiz' }] };
+
+  it('una casa con el agente y los prefijos de otra agencia valida y sale en el feed', () => {
+    const venta = { ...ventas[0], ref: 'VEN-101', agent: 'pepa-ruiz' };
+    const alquiler = { ...alquileres[0], ref: 'AL-201', agent: 'pepa-ruiz' };
+    expect(validateHome('venta', { ref: 'VEN-101', status: venta.status, data: row('venta', venta).data }, site)).toEqual([]);
+    expect(validateHome('alquiler', { ref: 'AL-201', status: alquiler.status, data: row('alquiler', alquiler).data }, site)).toEqual([]);
+    const { feed, skipped } = buildFeed([row('venta', venta), row('alquiler', alquiler)], { baseUrl: BASE, now: NOW });
+    expect(skipped).toEqual([]);
+    expectValidFeed(feed);
+    expect(feed.ventas.map((h) => [h.ref, h.agent])).toEqual([['VEN-101', 'pepa-ruiz']]);
+    expect(feed.alquileres.map((h) => h.ref)).toEqual(['AL-201']);
+  });
+
+  it('las referencias que reparte el portal con cualquier prefijo válido las admite el formato', () => {
+    for (const prefix of ['C', 'AL', 'VEN']) {
+      const ref = nextRef([], prefix, 'venta');
+      expect(ref).toBe(`${prefix}-101`);
+      expect(REF.test(ref!)).toBe(true);
+    }
+  });
+
+  it('el formato sigue fijando la forma: ni minúsculas en la referencia ni espacios en el agente', () => {
+    for (const ref of ['c-101', 'VENT-101', 'C-1011', 'C101']) expect(ventaFeedSchema.safeParse({ ...ventas[0], ref }).success, ref).toBe(false);
+    for (const agent of ['Pepa', 'pepa ruiz', '', '1pepa']) expect(ventaFeedSchema.safeParse({ ...ventas[0], agent }).success, agent).toBe(false);
+  });
+
+  it('el portal sigue exigiendo un agente de la lista de su agencia', () => {
+    const data = row('venta', { ...ventas[0], agent: 'lucia' }).data;
+    expect(validateHome('venta', { ref: 'C-101', status: 'venta', data }, site)).toContainEqual({ path: 'agent', message: 'Agente: no está en la lista de la agencia.' });
   });
 });
 

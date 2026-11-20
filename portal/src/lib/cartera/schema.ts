@@ -1,7 +1,7 @@
 // =============================================================================
 // COPIA del formato propio de la cartera, versión 1. NO SE EDITA AQUÍ.
 //
-// Origen: kairikos-signature-inmobiliaria, origin/main 4af0aaf:
+// Origen: kairikos-signature-inmobiliaria, origin/main 50c3e0f (su PR 1):
 //   - src/lib/cartera-feed.ts, entero, cambiando solo `import { z } from 'astro/zod'`
 //     por 'zod';
 //   - mediaSchema de src/lib/media.ts (allí importa de 'astro:content'), que aquí va
@@ -10,12 +10,13 @@
 // contrato (tests/unit/cartera-feed-contract.test.ts) usa el mismo ejemplo que el
 // suyo, tests/fixtures/cartera-feed.json, copiado en tests/fixtures/cartera/.
 //
-// LIMITACIÓN CONOCIDA (19/11/2026): `agent` es el enum de los agentes de la DEMO
-// (lucia, elena, daniel) y `ref` exige C-/P-/A- con tres cifras. Para la demo
-// Alféizar vale tal cual. Con la primera agencia real, el feed de sus casas no
-// validaría (buildFeed las deja fuera): el formato compartido tiene que admitir los
-// agentes y prefijos de cada agencia (CarteraSite.agents, salePrefix, rentPrefix)
-// antes de dar de alta a ningún cliente. Se decide en la plantilla, no aquí.
+// Agentes y prefijos (20/11/2026): hasta esta copia, `agent` era el enum de la demo
+// (lucia, elena, daniel) y `ref` exigía C-/P-/A-, así que el feed de cualquier otra
+// agencia no validaba. Ahora el formato solo fija la forma: la clave de agente de
+// CarteraSite.agents y el prefijo de salePrefix/rentPrefix (de una a tres
+// mayúsculas) con tres cifras. Que el agente exista lo comprueban los dos lados por
+// su cuenta: el portal contra CarteraSite.agents (validateHome) y la web contra su
+// src/config/agents.ts (su lector para el build si no está).
 // =============================================================================
 
 // Formato propio de la cartera, versión 1 (docs/fase1-cartera.md, «El formato propio»).
@@ -43,7 +44,16 @@ export type Media = z.infer<typeof mediaSchema>;
 const t = z.object({ es: z.string(), en: z.string(), de: z.string() });
 const letter = z.enum(['A', 'B', 'C', 'D', 'E', 'F', 'G']);
 const energy = z.object({ consumo: letter, kwh: z.number(), emisiones: letter, co2: z.number() });
-const agent = z.enum(['lucia', 'elena', 'daniel']);
+// Agente: la clave de src/config/agents.ts de la web de cada agencia (en la demo, lucia, elena y daniel). El formato solo
+// fija su forma, la misma que acepta el portal (CarteraSite.agents); que exista en ESTA web lo comprueba el lector
+// (src/lib/cartera-loader.ts) y la colección la estrecha a sus agentes (src/content.config.ts). Hasta el 20/11/2026 era
+// el enum de la demo, y el feed de cualquier otra agencia no validaba.
+const agent = z.string().regex(/^[a-z][a-z0-9-]{0,39}$/, 'la clave del agente va en minúsculas, números y guiones (la de src/config/agents.ts)');
+// Referencia: el prefijo de la agencia (de una a tres mayúsculas; en la demo, C y P en venta y A en alquiler) y tres cifras.
+// Venta y alquiler van en listas separadas del feed: el prefijo no dice la operación. Que una referencia no se repita entre
+// las dos lo comprueba el lector, porque el plano se une por ella.
+export const REF = /^[A-Z]{1,3}-\d{3}$/;
+const ref = z.string().regex(REF, 'la referencia es el prefijo de la agencia (de una a tres mayúsculas), un guion y tres cifras');
 const zone = z.enum(['costa', 'pueblo', 'golf', 'interior']);
 
 // Fotos: las sirve el portal (decisión A, volumen de la VPS) y la web las descarga al construir. La primera es la portada.
@@ -51,7 +61,7 @@ const zone = z.enum(['costa', 'pueblo', 'golf', 'interior']);
 // http solo en la máquina local: el test de contrato sirve ahí su foto de ejemplo (scripts/contrato-cartera.mjs).
 // En una web que sigue sin el portal, la foto es un archivo de src/content/fotos/: así la deja la exportación de la
 // cartera (docs/exportacion.md). El feed del portal nunca las manda así.
-export const LOCAL_PHOTO = /^fotos\/[a-z]-\d{2,4}\/[a-z0-9_-]+\.(jpe?g|png|webp)$/;
+export const LOCAL_PHOTO = /^fotos\/[a-z]{1,3}-\d{2,4}\/[a-z0-9_-]+\.(jpe?g|png|webp)$/;
 const remote = (u: string) => (u.startsWith('https://') || /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(u)) && URL.canParse(u);
 export const photoSchema = z.object({
   url: z
@@ -87,8 +97,8 @@ export type Escala = z.infer<typeof escalaSchema>;
 
 // --- Venta ---
 const venta = z.object({
-  // C-: cartera pública. P-: fuera de mercado.
-  ref: z.string().regex(/^[CP]-\d{3}$/),
+  // En la demo, C- es la cartera pública y P- la que está fuera de mercado; lo que la saca del mercado es `private`.
+  ref,
   // Fuera de mercado: no entra en /comprar, ni en comparar, ni tiene ficha pública. En la demo solo se ve en /privado.
   private: z.boolean().default(false),
   status: z.enum(['proximamente', 'venta', 'reservada', 'vendida']),
@@ -139,7 +149,7 @@ const ventaRules = (d: z.infer<typeof venta>, ctx: z.RefinementCtx) => {
 // --- Alquiler ---
 // Colección aparte de la venta: otra ley (LAU), otro cliente y otras cifras; comparte el plano en datos y su geometría.
 const alquiler = z.object({
-  ref: z.string().regex(/^A-\d{3}$/),
+  ref,
   status: z.enum(['disponible', 'reservada', 'alquilada']),
   // «larga»: vivienda habitual (LAU art. 2), contrato de un año prorrogable hasta cinco por ley.
   // «temporada»: vivienda temporal (LAU art. 2.3, tras el RDL 29/2026): quien está fuera de su vivienda habitual por
