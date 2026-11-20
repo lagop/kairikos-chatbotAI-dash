@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { perfilIdiomasFromStep1, step2Schema } from '@/lib/wizard-schemas';
+import { perfilFromStep1, perfilIdiomasFromStep1, step2Schema } from '@/lib/wizard-schemas';
 
 // Paso 2 del asistente: el trato (tú/usted) puede cambiar por idioma con
 // `tratamiento_por_idioma` (18/11/2026). Opcional: lo ya guardado, sin el
@@ -44,6 +44,34 @@ describe('step2Schema · tratamiento_por_idioma', () => {
     const r = step2Schema.safeParse({ ...base, tratamiento_por_idioma: { FR: 'usted', DE: 'usted' } });
     expect(r.success).toBe(true);
     if (r.success) expect(r.data.tratamiento_por_idioma).toEqual({ DE: 'usted' });
+  });
+});
+
+describe('perfilFromStep1', () => {
+  // 20/11/2026 — fuera de la página del paso 1, el sector y el nombre salen
+  // de aquí; antes no llegaban y todos los pasos caían en el sector «otro».
+  it('lee sector, nombre comercial e idiomas del paso 1 guardado', () => {
+    expect(
+      perfilFromStep1({
+        vertical: 'inmobiliaria',
+        nombre_comercial: 'Alféizar',
+        idiomas: ['ES', 'EN', 'DE'],
+        idioma_por_defecto: 'ES',
+      }),
+    ).toEqual({
+      vertical: 'inmobiliaria',
+      nombreComercial: 'Alféizar',
+      idiomas: { idiomas: ['ES', 'EN', 'DE'], idiomaPorDefecto: 'ES' },
+    });
+  });
+
+  it('null sin paso 1; campos ausentes o vacíos quedan en null', () => {
+    expect(perfilFromStep1(null)).toBeNull();
+    expect(perfilFromStep1({ vertical: '', nombre_comercial: 3 })).toEqual({
+      vertical: null,
+      nombreComercial: null,
+      idiomas: null,
+    });
   });
 });
 

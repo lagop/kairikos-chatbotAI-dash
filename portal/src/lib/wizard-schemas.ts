@@ -106,6 +106,29 @@ export function perfilIdiomasFromStep1(payload: Record<string, unknown> | null):
   return { idiomas: [...idiomas], idiomaPorDefecto: typeof def === 'string' ? def : null };
 }
 
+/** Lo que los demás pasos necesitan del paso 1: sector (plantillas por
+ *  defecto de los pasos 2, 3, 6 y 10), nombre comercial (paso 9) e idiomas
+ *  (trato por idioma del paso 2). */
+export interface PerfilPaso1 {
+  vertical: string | null;
+  nombreComercial: string | null;
+  idiomas: PerfilIdiomas | null;
+}
+
+/** 20/11/2026 — cada página del asistente carga solo su paso, y los pasos
+ *  leían el sector y el nombre de `form.values[1]`, que fuera del paso 1
+ *  siempre está vacío: todos caían en el sector «otro». La página lee el
+ *  paso 1 guardado y lo pasa con esto. null si no hay paso 1. */
+export function perfilFromStep1(payload: Record<string, unknown> | null): PerfilPaso1 | null {
+  if (!payload) return null;
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() !== '' ? v : null);
+  return {
+    vertical: str(payload.vertical),
+    nombreComercial: str(payload.nombre_comercial),
+    idiomas: perfilIdiomasFromStep1(payload),
+  };
+}
+
 export const step2Schema = z.object({
   tono: z.enum(['formal', 'cercano'], { errorMap: () => ({ message: 'required' }) }),
   tratamiento: tratamientoEnum,
