@@ -1,7 +1,7 @@
 // =============================================================================
 // COPIA del formato propio de la cartera, versión 1. NO SE EDITA AQUÍ.
 //
-// Origen: kairikos-signature-inmobiliaria, 6d226fd (rama cartera-agentes-y-prefijos, PR 1):
+// Origen: kairikos-signature-inmobiliaria, origin/main 50c3e0f (su PR 1):
 //   - src/lib/cartera-feed.ts, entero, cambiando solo `import { z } from 'astro/zod'`
 //     por 'zod';
 //   - mediaSchema de src/lib/media.ts (allí importa de 'astro:content'), que aquí va
