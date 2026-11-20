@@ -14,7 +14,9 @@ name: Deploy to Hostinger VPS
 # workflow ya NO dispara por push directo — espera al evento
 # workflow_run de cualquiera de esas dos construcciones, así que el
 # deploy solo puede empezar cuando la imagen que va a desplegar ya
-# existe de verdad. Un push que NO toca ninguna imagen (docker-compose.yml,
+# existe de verdad. Si el commit construye LAS DOS, despliega solo el
+# workflow_run de la última en terminar (paso `turno`, 20/11/2026).
+# Un push que NO toca ninguna imagen (docker-compose.yml,
 # este mismo archivo, nginx/, etc.) no necesita esperar a nada —
 # paths-ignore deja que el trigger por push siga disparando directo
 # para esos casos, igual que antes.
@@ -84,6 +86,115 @@ jobs:
           else
             echo "saltar=false" >> "$GITHUB_OUTPUT"
           fi
+
+      # Un commit que toca a la vez portal/** y scripts/(scheduler|backup)
+      # lanza DOS construcciones, y cada una dispara su propio workflow_run.
+      # La que acaba antes —casi siempre la del scheduler, que tarda ~45 s
+      # frente a ~3,5 min del portal— desplegaba sin esperar a la otra: el
+      # docker-compose.yml nuevo con `portal-app:latest` todavía en la
+      # versión ANTERIOR.
+      #
+      # Pasó el 20/11/2026 con 211d2781 (la fusión de la cartera): la imagen
+      # del scheduler terminó a las 10:08:31, el despliegue 44716680749
+      # arrancó a las 10:08:34 y recreó `app` y `migrate` con la imagen
+      # vieja —`migrate` vio 151 migraciones y ninguna pendiente—. La del
+      # portal terminó a las 10:11:17 y el segundo despliegue dejó todo bien
+      # a las 10:13. Cuatro minutos con el código viejo y el compose nuevo;
+      # sin daño esa vez, pero con una migración y un código que dependan uno
+      # del otro lo habría habido.
+      #
+      # Regla: despliega SOLO el workflow_run de la última construcción de
+      # este commit en terminar, y solo si todas terminaron bien. Se mira el
+      # estado real en la API, no el nombre de quien dispara:
+      #   - otra construcción del mismo commit sigue en marcha → se salta;
+      #     cuando acabe, su propio workflow_run desplegará.
+      #   - todas terminadas → despliega la que terminó la última
+      #     (updated_at, y el id para desempatar). Si las dos acaban casi a
+      #     la vez y los dos despliegues ven ambas terminadas, solo uno
+      #     coincide con la última: no hay despliegue doble.
+      #   - otra se canceló → se salta sin error: build-image.yml y
+      #     build-support-images.yml solo cancelan una construcción PENDIENTE
+      #     cuando llega otra más nueva de la misma rama, y el despliegue de
+      #     esa más nueva lo lleva todo.
+      #   - otra falló → no se despliega y el job falla: instalar la mitad
+      #     de un commit es justo lo que esta guarda evita. Al relanzar la
+      #     construcción fallida, su workflow_run desplegará el commit entero.
+      #
+      # De cada construcción cuenta su ejecución más reciente para este
+      # commit: un workflow_dispatch posterior sobre el mismo SHA sustituye a
+      # la del push. Las construcciones se buscan por NOMBRE, el mismo que
+      # lista `on.workflow_run.workflows` arriba: si se renombra una, hay que
+      # cambiarlo en los dos sitios.
+      #
+      # De paso fija qué revisión exige el verificador de abajo: la de este
+      # commit siempre que el commit haya construido imagen del portal,
+      # venga el workflow_run de la construcción que venga.
+      - name: ¿Falta otra construcción de este commit? Entonces despliega ella
+        id: turno
+        if: ${{ github.event_name == 'workflow_run' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          DISPARO_ID: ${{ github.event.workflow_run.id }}
+          DISPARO_NOMBRE: ${{ github.event.workflow_run.name }}
+        run: |
+          set -eu
+          NOMBRES='["Build and push portal image","Build and push scheduler/backup images"]'
+
+          RUNS=''
+          for intento in 1 2 3; do
+            if RUNS=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${SHA}&per_page=100"); then
+              break
+            fi
+            RUNS=''
+            sleep 5
+          done
+          if [ -z "${RUNS}" ]; then
+            echo "::error::No se pudo consultar a GitHub qué construcciones tiene ${SHA}. No se despliega a ciegas: relanza este workflow."
+            exit 1
+          fi
+
+          CONSTRUCCIONES=$(printf '%s' "${RUNS}" | jq -c --argjson nombres "${NOMBRES}" '
+            [.workflow_runs[] | select(.name as $n | $nombres | index($n))]
+            | group_by(.name) | map(max_by([.created_at, .id]))')
+
+          echo "Construcciones de ${SHA} (disparó ${DISPARO_NOMBRE}, run ${DISPARO_ID}):"
+          printf '%s' "${CONSTRUCCIONES}" | jq -r '.[] | "  - \(.name): \(.status)/\(.conclusion // "-") (run \(.id), \(.updated_at))"'
+
+          PENDIENTES=$(printf '%s' "${CONSTRUCCIONES}" | jq -r '[.[] | select(.status != "completed") | .name] | join(", ")')
+          if [ -n "${PENDIENTES}" ]; then
+            echo "Sigue en marcha: ${PENDIENTES}. Desplegará su workflow_run cuando termine, con todas las imágenes de este commit."
+            echo "saltar=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          CANCELADAS=$(printf '%s' "${CONSTRUCCIONES}" | jq -r '[.[] | select(.conclusion == "cancelled") | .name] | join(", ")')
+          FALLIDAS=$(printf '%s' "${CONSTRUCCIONES}" | jq -r '[.[] | select(.conclusion != "success" and .conclusion != "cancelled") | "\(.name) (\(.conclusion))"] | join(", ")')
+          if [ -n "${FALLIDAS}" ]; then
+            echo "::error::No se despliega ${SHA}: falló ${FALLIDAS}. Desplegar ahora instalaría solo parte del commit. Relanza la construcción fallida; al terminar bien, su workflow_run desplegará el commit entero."
+            exit 1
+          fi
+          if [ -n "${CANCELADAS}" ]; then
+            echo "Se canceló ${CANCELADAS}: la sustituyó una construcción más nueva de la rama, y su despliegue lleva también este commit."
+            echo "saltar=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          ULTIMA=$(printf '%s' "${CONSTRUCCIONES}" | jq -r 'max_by([.updated_at, .id]) | .id')
+          if [ "${ULTIMA}" != "${DISPARO_ID}" ]; then
+            echo "La última construcción en terminar es la run ${ULTIMA}, no esta; despliega su workflow_run."
+            echo "saltar=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Todas las construcciones de ${SHA} terminaron bien y esta es la última: se despliega."
+          echo "saltar=false" >> "$GITHUB_OUTPUT"
+          if printf '%s' "${CONSTRUCCIONES}" | jq -e 'any(.[]; .name == "Build and push portal image")' > /dev/null; then
+            echo "esperada=${SHA}" >> "$GITHUB_OUTPUT"
+          else
+            echo "esperada=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout
         # En un workflow_run, github.sha/github.ref apuntan al ESTADO
         # ACTUAL de la rama del propio workflow, no necesariamente al
@@ -96,7 +207,7 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Deploy to Hostinger VPS
-        if: ${{ steps.guard.outputs.saltar != 'true' }}
+        if: ${{ steps.guard.outputs.saltar != 'true' && steps.turno.outputs.saltar != 'true' }}
         uses: hostinger/deploy-on-vps@v2
         with:
           api-key: ${{ secrets.HOSTINGER_API_KEY }}
@@ -350,7 +461,7 @@ jobs:
       # rato no coincide, el job FALLA — que es el punto: que se entere
       # quien despliega y no el cliente.
       - name: Verificar que la versión desplegada es esta
-        if: ${{ steps.guard.outputs.saltar != 'true' }}
+        if: ${{ steps.guard.outputs.saltar != 'true' && steps.turno.outputs.saltar != 'true' }}
         env:
           # Solo hay commit que exigir cuando este despliegue viene DETRÁS
           # de una construcción de imagen. Un despliegue de infraestructura
@@ -366,10 +477,18 @@ jobs:
           # Vacío = no se exige versión; se comprueba que el portal está
           # vivo, que es todo lo que un despliegue sin imagen puede prometer.
           #
-          # Lo mismo vale para la construcción de scheduler/backup: no toca
-          # la imagen del portal, así que solo se exige versión cuando el
-          # workflow_run viene de «Build and push portal image».
-          ESPERADA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Build and push portal image' && github.event.workflow_run.head_sha || '' }}
+          # Lo mismo vale para un commit que solo reconstruye scheduler/backup:
+          # no toca la imagen del portal. Pero la decisión NO puede tomarse
+          # por el nombre de la construcción que dispara: hasta el 20/11/2026
+          # se exigía versión solo si el workflow_run venía de «Build and push
+          # portal image», y el despliegue prematuro de 211d2781 —disparado
+          # por la del scheduler— cayó en la rama «sin imagen nueva», vio que
+          # el portal contestaba (con 64822289, la versión anterior) y dio
+          # verde. Ahora la fija el paso `turno`: el SHA del commit si el
+          # commit construyó imagen del portal, venga de donde venga el
+          # disparo; vacío si no. Fuera de workflow_run el paso no corre y
+          # queda vacía, como antes.
+          ESPERADA: ${{ steps.turno.outputs.esperada }}
           GH_TOKEN: ${{ github.token }}
           PORTAL_URL: ${{ vars.NEXT_PUBLIC_PORTAL_URL }}
           PORTAL_API_KEY: ${{ secrets.PORTAL_API_KEY }}
