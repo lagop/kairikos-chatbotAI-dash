@@ -50,3 +50,27 @@ export function maintenanceLine(monthlyCents: number | null, startsAfterMonths: 
   if (startsAfterMonths === 1) return `Mantenimiento: ${price}/mes. El primer mes va incluido; la cuota empieza a cobrarse después.`;
   return `Mantenimiento: ${price}/mes. Los ${startsAfterMonths} primeros meses van incluidos; la cuota empieza a cobrarse después.`;
 }
+
+/**
+ * Los niveles de mantenimiento de una web (decisión del propietario,
+ * 20/11/2026). Rellenan la cuota y los meses sin cobrar del formulario; el
+ * operador puede cambiarlos antes de guardar. Una web Premium se vende con
+ * 12 meses de Cuidado Premium incluidos.
+ */
+export const CARE_TIERS = [
+  { key: 'care', label: 'Cuidado', monthlyCents: 2900, includedMonths: 0, hint: 'Web sencilla: hosting, seguridad y copias.' },
+  {
+    key: 'premium',
+    label: 'Cuidado Premium',
+    monthlyCents: 12900,
+    includedMonths: 12,
+    hint: 'Web Premium: hasta 2 h de cambios al mes, chat y normativa al día.',
+  },
+  {
+    key: 'premium_modules',
+    label: 'Premium con módulos',
+    monthlyCents: 17900,
+    includedMonths: 12,
+    hint: 'Web Premium con cartera o reserva de villas.',
+  },
+] as const;

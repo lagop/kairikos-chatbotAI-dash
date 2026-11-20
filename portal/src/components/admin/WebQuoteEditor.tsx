@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { TotpStepUpModal } from '@/components/portal/TotpStepUpModal';
 import { MAX_TRIAL_MONTHS, maintenanceLine } from '@/lib/custom-care-rules';
+import { CareTierPresets } from '@/components/admin/CareTierPresets';
 
 export interface WebQuoteData {
   id: string;
@@ -401,6 +402,13 @@ export function WebQuoteEditor({
               </p>
             ) : null}
           </div>
+          <CareTierPresets
+            testIdPrefix="web-quote"
+            onPick={(value, includedMonths) => {
+              setMonthlyEuros(value);
+              setStartsAfter(String(includedMonths));
+            }}
+          />
           <div className="flex flex-wrap gap-4">
             <div>
               <label className="label" htmlFor="web-quote-monthly">
