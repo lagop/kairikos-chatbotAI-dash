@@ -27,8 +27,24 @@ function escapeHtml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+/**
+ * Las URL de un texto ya escapado, como enlaces. Hasta el 20/11/2026 iban como
+ * texto: algunos clientes de correo no las enlazan solos, y el propietario las
+ * vio sin poder pulsarlas en los primeros correos de producción. Aquí todo el
+ * texto lo escribe el portal (el panel, la web que pone el operador, la
+ * ejecución de GitHub), así que enlazar cualquier http(s) es seguro. En el
+ * aviso de contacto, que lleva lo que escribió el comprador, solo se enlaza lo
+ * que monta el portal (enquiry-rules.ts).
+ */
+export function linkify(escaped: string): string {
+  return escaped.replace(/https?:\/\/[^\s<>"]+/g, (raw) => {
+    const url = raw.replace(/[.,;:!?)]+$/, '');
+    return `<a href="${url}">${url}</a>${raw.slice(url.length)}`;
+  });
+}
+
 function toHtml(paragraphs: string[]): string {
-  return paragraphs.map((p) => `<p>${escapeHtml(p)}</p>`).join('\n');
+  return paragraphs.map((p) => `<p>${linkify(escapeHtml(p))}</p>`).join('\n');
 }
 
 export interface FailedBuildInfo {
@@ -104,15 +120,15 @@ export function fromWithName(name: string): string {
   const base = notifyFromAddress();
   const address = /<([^>]+)>/.exec(base)?.[1] ?? base;
   // eslint-disable-next-line no-control-regex
-  const clean = name.replace(/[\u0000-\u001f\u007f<>"]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
+  const clean = name
+    .replace(/[\u0000-\u001f\u007f<>"]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
   return clean ? `${clean} <${address}>` : base;
 }
 
-export async function sendCarteraEmail(
-  to: string | null | undefined,
-  email: RenderedEmail,
-  opts: { from?: string; replyTo?: string | null } = {},
-): Promise<SendResult> {
+export async function sendCarteraEmail(to: string | null | undefined, email: RenderedEmail, opts: { from?: string; replyTo?: string | null } = {}): Promise<SendResult> {
   if (!to || !to.includes('@')) return { ok: true, skipped: true, reason: 'no_recipient' };
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) return { ok: true, skipped: true, reason: 'no_api_key' };
