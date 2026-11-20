@@ -252,8 +252,8 @@ services:
       # La imagen crea /data/cartera-fotos con dueño nextjs, y Docker copia
       # ese dueño al volumen la primera vez que lo monta; sin eso, el
       # contenedor (que no corre como root) no podría escribir en él.
-      # OJO: la copia de seguridad diaria (servicio backup) hoy solo vuelca
-      # Postgres. Antes del primer cliente real hay que incluir este volumen.
+      # La copia de seguridad diaria (servicio backup) lo monta en solo
+      # lectura y lo guarda junto al volcado de Postgres (20/11/2026).
       - cartera-fotos:/data/cartera-fotos
     labels:
       traefik.enable: "true"
@@ -416,6 +416,11 @@ services:
       BACKUP_OFFSITE_SECRET_ACCESS_KEY: ${BACKUP_OFFSITE_SECRET_ACCESS_KEY:-}
     volumes:
       - backups:/backups
+      # Las fotos de la cartera (20/11/2026): no están en Postgres y hasta
+      # hoy no las copiaba nadie. Solo lectura: la copia nunca las toca.
+      # Un tar por día, enlazado al anterior si no cambian (ver la cabecera
+      # de scripts/backup-postgres.sh).
+      - cartera-fotos:/cartera-fotos:ro
     depends_on:
       postgres:
         condition: service_healthy
