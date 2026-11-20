@@ -43,7 +43,10 @@ export const PURGE_EVERY_MS = 24 * 60 * 60 * 1000;
 
 // --- Validación --------------------------------------------------------------
 
-const REF = /^[A-Z]-\d{2,4}$/;
+// El prefijo es el de la agencia, de una a tres mayúsculas (CarteraSite.salePrefix /
+// rentPrefix, REF en schema.ts). Hasta el 20/11/2026 aquí se exigía una sola letra
+// y una agencia con prefijo «VEN» no habría recibido ningún contacto con referencia.
+const REF = /^[A-Z]{1,3}-\d{2,4}$/;
 const ZONE = /^[a-z0-9-]{1,40}$/;
 
 const zone = z.string().regex(ZONE);
