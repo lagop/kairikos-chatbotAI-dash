@@ -116,7 +116,14 @@ export const enquirySchema = z.discriminatedUnion('kind', [
       .default([])
       .transform((list) => [...new Set(list)]),
     // `Number('')` es 0 y `Number('x')` es NaN, que JSON manda como null.
-    beds: z.number().int().min(0).max(50).nullable().optional().transform((v) => v ?? null),
+    beds: z
+      .number()
+      .int()
+      .min(0)
+      .max(50)
+      .nullable()
+      .optional()
+      .transform((v) => v ?? null),
     marketing: z.boolean().default(false),
   }),
   z.object({ ...common, kind: z.literal('landlord'), zone: optionalZone, service: optionalChoice(['buscar', 'gestion'] as const) }),
@@ -280,7 +287,11 @@ const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
 /** Una línea de cabecera segura: sin saltos de línea ni caracteres de control. */
 export function headerSafe(s: string): string {
   // eslint-disable-next-line no-control-regex
-  return s.replace(/[\u0000-\u001f\u007f<>"]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
+  return s
+    .replace(/[\u0000-\u001f\u007f<>"]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
 }
 
 const SAVED_TEXT: Record<Lang, { subject: (agency: string) => string; intro: (agency: string) => string; list: string; footer: (agency: string) => string }> = {
@@ -346,11 +357,22 @@ export function renderAgencyEnquiryEmail(input: {
   panelUrl: string;
 }): RenderedEmail {
   const label = KIND_LABELS[input.kind as EnquiryKind] ?? input.kind;
+  // En el HTML solo se enlazan las URL que monta el portal (la ficha y el panel),
+  // nunca algo que haya escrito el comprador: el formulario es público y no debe
+  // poder meter enlaces pulsables en el correo de la agencia. Hasta el 20/11/2026
+  // iban todas como texto y algunos clientes de correo no las enlazaban.
+  const links = new Map<string, string>();
   const homeLines = input.refs.map((ref) => {
     const h = input.homes.get(ref);
     if (!h) return `${ref} (ya no está publicada)`;
-    return input.siteUrl ? `${ref} · ${h.title.es} — ${homeUrl(input.siteUrl, h, 'es')}` : `${ref} · ${h.title.es}`;
+    if (!input.siteUrl) return `${ref} · ${h.title.es}`;
+    const url = homeUrl(input.siteUrl, h, 'es');
+    const line = `${ref} · ${h.title.es} — ${url}`;
+    links.set(line, url);
+    return line;
   });
+  const panelLine = `Todos tus contactos: ${input.panelUrl}`;
+  links.set(panelLine, input.panelUrl);
   const lines = [
     `Nuevo contacto desde tu web: ${label}.`,
     '',
@@ -361,9 +383,16 @@ export function renderAgencyEnquiryEmail(input: {
     ...(homeLines.length ? ['', input.refs.length === 1 ? 'Casa:' : 'Casas:', ...homeLines] : []),
     '',
     `Aceptó la política de privacidad el ${input.consentAt.toISOString().slice(0, 16).replace('T', ' ')} (UTC).`,
-    `Todos tus contactos: ${input.panelUrl}`,
+    panelLine,
   ].filter((l, i, all) => l !== '' || (i > 0 && all[i - 1] !== ''));
-  const html = lines.map((l) => (l ? `<p>${escapeHtml(l)}</p>` : '')).join('\n');
+  const html = lines
+    .map((l) => {
+      if (!l) return '';
+      const url = links.get(l);
+      if (!url) return `<p>${escapeHtml(l)}</p>`;
+      return `<p>${escapeHtml(l.slice(0, l.length - url.length))}<a href="${escapeHtml(url)}">${escapeHtml(url)}</a></p>`;
+    })
+    .join('\n');
   const who = input.name ? ` de ${headerSafe(input.name)}` : '';
   const refsText = input.refs.length ? ` (${input.refs.slice(0, 3).join(', ')}${input.refs.length > 3 ? '…' : ''})` : '';
   return { subject: `${label}${who}${refsText}`, text: lines.join('\n'), html };
@@ -373,8 +402,5 @@ export function renderAgencyEnquiryEmail(input: {
 export function leadSummary(kind: string, summary: string, refs: readonly string[], homes: ReadonlyMap<string, EnquiryHome>): string {
   const label = KIND_LABELS[kind as EnquiryKind] ?? kind;
   const named = refs.map((r) => (homes.get(r) ? `${r} (${homes.get(r)!.title.es})` : r));
-  return [`Web inmobiliaria · ${label}.`, summary ? `${summary}.` : '', named.length ? `${named.length === 1 ? 'Casa' : 'Casas'}: ${named.join(', ')}.` : '']
-    .filter(Boolean)
-    .join(' ')
-    .slice(0, 2000);
+  return [`Web inmobiliaria · ${label}.`, summary ? `${summary}.` : '', named.length ? `${named.length === 1 ? 'Casa' : 'Casas'}: ${named.join(', ')}.` : ''].filter(Boolean).join(' ').slice(0, 2000);
 }
