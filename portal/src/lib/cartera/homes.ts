@@ -41,13 +41,19 @@ export function siteAgents(site: {
   });
 }
 
-/** Hay cambios que la web todavía no tiene. Se queda la fecha más antigua:
- *  el cron publica lo que lleva más tiempo esperando. */
+/** Hay cambios que la web todavía no tiene. pendingSince se queda con la
+ *  fecha más antigua (el cron publica lo que lleva más tiempo esperando) y
+ *  lastChangeAt con la más reciente: una publicación correcta solo limpia
+ *  pendingSince si no hubo cambios después de lanzarla (lib/cartera/publish.ts). */
 export async function markPending(
   db: Db,
   siteId: string,
   now: Date = new Date(),
 ): Promise<void> {
+  await db.carteraSite.updateMany({
+    where: { id: siteId },
+    data: { lastChangeAt: now },
+  });
   await db.carteraSite.updateMany({
     where: { id: siteId, pendingSince: null },
     data: { pendingSince: now },

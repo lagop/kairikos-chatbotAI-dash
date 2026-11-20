@@ -135,3 +135,19 @@ describe('las fotos de la cartera llegan al contenedor', () => {
     expect(portal('Dockerfile')).toContain(`mkdir -p ${RUTA} && chown nextjs:nodejs ${RUTA}`);
   });
 });
+
+// 20/11/2026 — Cartera, PR 4: el token con el que el portal lanza publicar.yml
+// de cada web. Sin él en deploy.yml, cada despliegue lo vacía en la VPS y las
+// casas se quedan «pendientes» para siempre sin ningún error (trampa nº 2). Y
+// el cron que publica tiene que estar en scheduler.sh (trampa nº 1).
+describe('la publicación de la cartera llega a producción', () => {
+  it('CARTERA_GITHUB_TOKEN está en .env.example, docker-compose.yml y deploy.yml (como secreto)', () => {
+    expect(portal('.env.example')).toMatch(/^CARTERA_GITHUB_TOKEN=/m);
+    expect(repo('docker-compose.yml')).toContain('CARTERA_GITHUB_TOKEN: ${CARTERA_GITHUB_TOKEN:-}');
+    expect(repo('.github/workflows/deploy.yml')).toContain('CARTERA_GITHUB_TOKEN=${{ secrets.CARTERA_GITHUB_TOKEN }}');
+  });
+
+  it('el scheduler llama a /api/cron/cartera-tick', () => {
+    expect(repo('scripts/scheduler.sh')).toMatch(/ENDPOINTS="[^"]*\/api\/cron\/cartera-tick[ "]/);
+  });
+});

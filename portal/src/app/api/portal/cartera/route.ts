@@ -21,7 +21,7 @@ export async function GET() {
     prisma.carteraBuild.findFirst({
       where: { siteId: ctx.site.id },
       orderBy: { dispatchedAt: 'desc' },
-      select: { status: true, dispatchedAt: true, finishedAt: true, homeCount: true, runUrl: true },
+      select: { status: true, trigger: true, dispatchedAt: true, finishedAt: true, homeCount: true, runUrl: true, error: true, stage: true },
     }),
   ]);
   return NextResponse.json({

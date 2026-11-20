@@ -21,10 +21,7 @@ import { deleteHomePhoto, reorderHomePhotos, setHomePhotoAlt, uploadHomePhoto } 
 import { buildFeed } from '@/lib/cartera/feed';
 import { alquilerFeedSchema, feedSchema, ventaFeedSchema } from '@/lib/cartera/schema';
 import { fullAlquiler, fullVenta } from '../fixtures/cartera/full-homes';
-
-type Row = Record<string, unknown> & { id: string };
-const clone = <T,>(v: T): T => structuredClone(v);
-const dbNullToNull = (v: unknown) => (v === Prisma.DbNull ? null : v);
+import { fakeCarteraDb } from '../fixtures/cartera/fake-db';
 
 const SITE = {
   id: randomUUID(),
@@ -37,78 +34,11 @@ const SITE = {
   ] as Prisma.JsonValue,
 };
 
-/** Lo justo de Prisma para estas funciones, con el índice único (site, ref). */
+/** La base falsa compartida (tests/fixtures/cartera/fake-db.ts), con el sitio de SITE. */
 function fakeDb(opts: { failCreateOnce?: boolean } = {}) {
-  const homes: Row[] = [];
-  const photos: Row[] = [];
-  const audits: Array<Record<string, unknown>> = [];
-  const site: Row = { id: SITE.id, pendingSince: null };
-  let failNext = opts.failCreateOnce ?? false;
-
-  const withPhotos = (h: Row) => ({
-    ...clone(h),
-    photos: photos.filter((p) => p.homeId === h.id).sort((a, b) => Number(a.position) - Number(b.position)).map(clone),
-    _count: { photos: photos.filter((p) => p.homeId === h.id).length },
-  });
-  const matchHome = (h: Row, where: Record<string, unknown>) =>
-    (!where.id || h.id === where.id) &&
-    (!where.siteId || h.siteId === where.siteId) &&
-    (!(where.ref as { startsWith?: string })?.startsWith || String(h.ref).startsWith((where.ref as { startsWith: string }).startsWith)) &&
-    (!(where.status as { not?: string })?.not || h.status !== (where.status as { not: string }).not);
-
-  const db = {
-    carteraHome: {
-      findMany: async ({ where }: { where: Record<string, unknown> }) => homes.filter((h) => matchHome(h, where)).map(withPhotos),
-      findFirst: async ({ where }: { where: Record<string, unknown> }) => {
-        const h = homes.find((x) => matchHome(x, where));
-        return h ? withPhotos(h) : null;
-      },
-      create: async ({ data }: { data: Record<string, unknown> }) => {
-        if (failNext || homes.some((h) => h.siteId === data.siteId && h.ref === data.ref)) {
-          failNext = false;
-          // La otra alta se quedó la referencia mientras esta calculaba la suya.
-          homes.push({ id: randomUUID(), siteId: data.siteId, ref: data.ref, status: 'borrador', data: {}, errors: null, operation: data.operation, firstPublishedAt: null, slugLocked: false, updatedAt: new Date() });
-          throw new Prisma.PrismaClientKnownRequestError('Unique constraint failed', { code: 'P2002', clientVersion: '5.22.0' });
-        }
-        const row: Row = { id: randomUUID(), price: null, title: null, slugLocked: false, firstPublishedAt: null, createdAt: new Date(), updatedAt: new Date(), ...clone({ ...data, errors: dbNullToNull(data.errors) }) };
-        homes.push(row);
-        return { id: row.id };
-      },
-      update: async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
-        const h = homes.find((x) => x.id === where.id)!;
-        Object.assign(h, clone({ ...data, errors: dbNullToNull(data.errors) }), { updatedAt: new Date() });
-        return clone(h);
-      },
-      delete: async ({ where }: { where: { id: string } }) => {
-        homes.splice(homes.findIndex((h) => h.id === where.id), 1);
-        for (let i = photos.length - 1; i >= 0; i--) if (photos[i].homeId === where.id) photos.splice(i, 1);
-      },
-    },
-    carteraPhoto: {
-      count: async ({ where }: { where: { homeId: string } }) => photos.filter((p) => p.homeId === where.homeId).length,
-      findFirst: async ({ where, orderBy }: { where: { id?: string; homeId: string }; orderBy?: unknown }) => {
-        const list = photos.filter((p) => p.homeId === where.homeId && (!where.id || p.id === where.id));
-        if (orderBy) list.sort((a, b) => Number(b.position) - Number(a.position));
-        return list[0] ? clone(list[0]) : null;
-      },
-      findMany: async ({ where }: { where: { homeId: string } }) => photos.filter((p) => p.homeId === where.homeId).sort((a, b) => Number(a.position) - Number(b.position)).map(clone),
-      create: async ({ data }: { data: Row }) => {
-        photos.push(clone(data));
-        return clone(data);
-      },
-      update: async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => Object.assign(photos.find((p) => p.id === where.id)!, clone(data)),
-      delete: async ({ where }: { where: { id: string } }) => photos.splice(photos.findIndex((p) => p.id === where.id), 1),
-    },
-    carteraSite: {
-      updateMany: async ({ data }: { data: Record<string, unknown> }) => {
-        if (site.pendingSince === null) Object.assign(site, data);
-        return { count: 1 };
-      },
-    },
-    carteraAudit: { create: async ({ data }: { data: Record<string, unknown> }) => void audits.push(clone(data)) },
-    $transaction: async <T,>(fn: (tx: unknown) => Promise<T>) => fn(db),
-  };
-  return { db, homes, photos, audits, site };
+  const f = fakeCarteraDb({ failNextHomeCreate: opts.failCreateOnce });
+  const site = f.addSite({ id: SITE.id, clientId: SITE.clientId });
+  return { db: f.db, homes: f.homes, photos: f.photos, audits: f.audits, site };
 }
 
 /** Un PNG mínimo: firma y cabecera IHDR con sus medidas. Basta para inspectImage. */
