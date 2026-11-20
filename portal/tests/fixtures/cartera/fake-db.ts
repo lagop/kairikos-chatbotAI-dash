@@ -20,6 +20,7 @@ const cleanData = (data: Record<string, unknown>) => Object.fromEntries(Object.e
 
 function matches(row: Record<string, unknown>, where: Record<string, unknown> = {}): boolean {
   return Object.entries(where).every(([key, cond]) => {
+    if (key === 'OR') return (cond as Array<Record<string, unknown>>).some((w) => matches(row, w));
     const value = row[key];
     if (cond === null) return value === null || value === undefined;
     if (cond instanceof Date) return value instanceof Date && value.getTime() === cond.getTime();
@@ -31,6 +32,7 @@ function matches(row: Record<string, unknown>, where: Record<string, unknown> = 
       if ('startsWith' in c) return typeof value === 'string' && value.startsWith(String(c.startsWith));
       if ('lte' in c) return value instanceof Date && value.getTime() <= (c.lte as Date).getTime();
       if ('lt' in c) return value instanceof Date && value.getTime() < (c.lt as Date).getTime();
+      if ('gte' in c) return value instanceof Date && value.getTime() >= (c.gte as Date).getTime();
       return true;
     }
     return value === cond;
@@ -61,6 +63,9 @@ export interface FakeSiteInput {
   lastPublishedCount?: number | null;
   feedToken?: string;
   buildSecretHash?: string | null;
+  /** La baja (PR 6): cuándo se canceló y cuándo se avisó a la agencia. */
+  cancelledAt?: Date | null;
+  exitNotifiedAt?: Date | null;
 }
 
 export function fakeCarteraDb(opts: { failNextHomeCreate?: boolean } = {}) {
@@ -70,6 +75,10 @@ export function fakeCarteraDb(opts: { failNextHomeCreate?: boolean } = {}) {
   const audits: Array<Record<string, unknown>> = [];
   const sites: Row[] = [];
   const clients: Row[] = [];
+  const enquiries: Row[] = [];
+  const leads: Row[] = [];
+  const leadAudits: Array<Record<string, unknown>> = [];
+  const productAudits: Array<Record<string, unknown>> = [];
   let failNext = opts.failNextHomeCreate ?? false;
 
   const withPhotos = (h: Row) => {
@@ -80,6 +89,7 @@ export function fakeCarteraDb(opts: { failNextHomeCreate?: boolean } = {}) {
 
   const db = {
     carteraHome: {
+      count: async ({ where }: { where: Record<string, unknown> }) => homes.filter((h) => matches(h, where)).length,
       findMany: async ({ where, orderBy }: { where?: Record<string, unknown>; orderBy?: unknown }) => sortBy(homes.filter((h) => matches(h, where)), orderBy).map(withPhotos),
       findFirst: async ({ where }: { where: Record<string, unknown> }) => {
         const h = homes.find((x) => matches(x, where));
@@ -111,12 +121,20 @@ export function fakeCarteraDb(opts: { failNextHomeCreate?: boolean } = {}) {
       },
     },
     carteraPhoto: {
-      count: async ({ where }: { where: Record<string, unknown> }) => photos.filter((p) => matches(p, where)).length,
+      count: async ({ where }: { where: Record<string, unknown> }) => photos.filter((p) => matches({ ...p, home: homes.find((h) => h.id === p.homeId) }, where)).length,
       findFirst: async ({ where, orderBy }: { where: Record<string, unknown>; orderBy?: unknown }) => {
         const list = sortBy(photos.filter((p) => matches(p, where)), orderBy);
         return list[0] ? clone(list[0]) : null;
       },
       findMany: async ({ where, orderBy }: { where: Record<string, unknown>; orderBy?: unknown }) => sortBy(photos.filter((p) => matches(p, where)), orderBy ?? { position: 'asc' }).map(clone),
+      // La de la ruta pública: la foto con su casa y el estado de la contratación.
+      findUnique: async ({ where }: { where: { id: string } }) => {
+        const p = photos.find((x) => x.id === where.id);
+        const h = p && homes.find((x) => x.id === p.homeId);
+        const s = h && sites.find((x) => x.id === h.siteId);
+        if (!p || !h || !s) return null;
+        return { ...clone(p), home: { status: h.status, errors: clone(h.errors), site: { clientProduct: clone(s.clientProduct) } } };
+      },
       create: async ({ data }: { data: Row }) => {
         photos.push(clone(data));
         return clone(data);
@@ -140,6 +158,19 @@ export function fakeCarteraDb(opts: { failNextHomeCreate?: boolean } = {}) {
         for (const s of list) Object.assign(s, clone(data));
         return { count: list.length };
       },
+      // El ON DELETE CASCADE de Postgres: casas (y sus fotos), publicaciones y contactos.
+      delete: async ({ where }: { where: { id: string } }) => {
+        const drop = <T extends Record<string, unknown>>(list: T[], keep: (x: T) => boolean) => {
+          for (let i = list.length - 1; i >= 0; i--) if (!keep(list[i])) list.splice(i, 1);
+        };
+        const homeIds = new Set(homes.filter((h) => h.siteId === where.id).map((h) => h.id));
+        drop(photos, (p) => !homeIds.has(p.homeId as string));
+        drop(homes, (h) => h.siteId !== where.id);
+        drop(builds, (b) => b.siteId !== where.id);
+        drop(enquiries, (e) => e.siteId !== where.id);
+        drop(audits, (a) => a.siteId !== where.id);
+        drop(sites, (x) => x.id !== where.id);
+      },
     },
     carteraBuild: {
       findFirst: async ({ where, orderBy }: { where: Record<string, unknown>; orderBy?: unknown }) => {
@@ -162,6 +193,34 @@ export function fakeCarteraDb(opts: { failNextHomeCreate?: boolean } = {}) {
         return { count: list.length };
       },
     },
+    carteraEnquiry: {
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        const row: Row = { id: randomUUID(), status: 'nuevo', leadId: null, name: null, refs: [], payload: {}, createdAt: new Date(), updatedAt: new Date(), ...clone(data) };
+        enquiries.push(row);
+        return { id: row.id };
+      },
+      count: async ({ where }: { where: Record<string, unknown> }) => enquiries.filter((e) => matches(e, where)).length,
+      findFirst: async ({ where }: { where: Record<string, unknown> }) => clone(enquiries.find((e) => matches(e, where)) ?? null),
+      findMany: async ({ where, orderBy, take }: { where: Record<string, unknown>; orderBy?: unknown; take?: number }) =>
+        sortBy(enquiries.filter((e) => matches(e, where)), orderBy)
+          .slice(0, take ?? Infinity)
+          .map(clone),
+      update: async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => Object.assign(enquiries.find((e) => e.id === where.id)!, clone(data), { updatedAt: new Date() }),
+      deleteMany: async ({ where }: { where: Record<string, unknown> }) => {
+        const gone = enquiries.filter((e) => matches(e, where));
+        for (const e of gone) enquiries.splice(enquiries.indexOf(e), 1);
+        return { count: gone.length };
+      },
+    },
+    lead: {
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        const row: Row = { id: randomUUID(), ...clone(data) };
+        leads.push(row);
+        return { id: row.id };
+      },
+    },
+    leadAudit: { create: async ({ data }: { data: Record<string, unknown> }) => void leadAudits.push(clone(data)) },
+    clientProductAudit: { create: async ({ data }: { data: Record<string, unknown> }) => void productAudits.push(clone(data)) },
     carteraAudit: { create: async ({ data }: { data: Record<string, unknown> }) => void audits.push(clone(data)) },
     chatbotClient: { findUnique: async ({ where }: { where: { id: string } }) => clone(clients.find((c) => c.id === where.id) ?? null) },
     // El bloqueo del sitio (SELECT … FOR UPDATE): aquí todo es secuencial.
@@ -182,20 +241,30 @@ export function fakeCarteraDb(opts: { failNextHomeCreate?: boolean } = {}) {
       githubRepo: input.githubRepo === undefined ? 'lagop/web-prueba' : input.githubRepo,
       workflowFile: 'publicar.yml',
       siteUrl: 'https://agencia.example',
+      tenantId: null,
+      enquiriesPurgedAt: null,
+      exitNotifiedAt: input.exitNotifiedAt ?? null,
+      clientProductId: randomUUID(),
       pendingSince: null,
       lastChangeAt: null,
       lastDispatchAt: null,
       lastPublishedCount: input.lastPublishedCount ?? null,
       feedToken: input.feedToken ?? `car_${randomUUID().replace(/-/g, '')}`,
       buildSecretHash: input.buildSecretHash ?? null,
-      clientProduct: { status: input.contractStatus ?? 'active', product: { code: 'cartera' } },
+      clientProduct: {
+        status: input.contractStatus ?? 'active',
+        cancelledAt: input.cancelledAt ?? null,
+        changedAt: input.cancelledAt ?? new Date('2026-11-01T00:00:00Z'),
+        productId: 'product-cartera',
+        product: { code: 'cartera' },
+      },
     };
     sites.push(site);
-    clients.push({ id: String(site.clientId), email: 'agencia@example.com' });
+    clients.push({ id: String(site.clientId), email: 'agencia@example.com', name: 'Lucía Ortega', companyName: 'Alféizar Inmobiliaria' });
     return site as Row & { clientId: string; salePrefix: string; rentPrefix: string; agents: Prisma.JsonValue };
   }
 
-  return { db, homes, photos, builds, audits, sites, addSite };
+  return { db, homes, photos, builds, audits, sites, enquiries, leads, leadAudits, productAudits, addSite };
 }
 
 export type FakeCarteraDb = ReturnType<typeof fakeCarteraDb>;

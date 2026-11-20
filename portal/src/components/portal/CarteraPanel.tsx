@@ -5,6 +5,8 @@ import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Notice, ReadOnlyBanner, call, dateTimeText, errorMessage, priceText, type NoticeMessage } from './cartera-ui';
 import { PublicationHistory, PublicationStatus, type CarteraPublicationData } from './CarteraPublication';
+import { CarteraEnquiries, type CarteraEnquiryRow } from './CarteraEnquiries';
+import { CarteraExport } from './CarteraExport';
 
 // =============================================================================
 // Cartera — el panel de la agencia. Los datos llegan preparados de
@@ -13,9 +15,12 @@ import { PublicationHistory, PublicationStatus, type CarteraPublicationData } fr
 //   - Casas (PR 2): «Nueva casa» crea el borrador por POST
 //     /api/portal/cartera/casas y abre su ficha (/portal/cartera/<id>). Encima
 //     de la tabla, el estado de la última publicación y «Publicar ahora» (PR 4).
+//   - Contactos (PR 5): lo que llega de la web (CarteraEnquiries.tsx).
 //   - Publicación (PR 4): el historial (CarteraPublication.tsx).
+//   - Exportar (PR 6): el ZIP de la cartera (CarteraExport.tsx), también en la
+//     gracia de una baja.
 //
-// Contactos y Exportar llegan con sus PR. Los dos paneles están SIEMPRE
+// Los paneles están SIEMPRE
 // montados y el que no toca lleva `hidden`, como en VillasPanel: cambiar de
 // pestaña no pierde los filtros.
 // =============================================================================
@@ -40,12 +45,16 @@ export interface CarteraPanelData {
   statuses: { venta: readonly string[]; alquiler: readonly string[] };
   homes: CarteraPanelRow[];
   publication: CarteraPublicationData;
+  enquiries: CarteraEnquiryRow[];
+  enquiryKindLabels: Record<string, string>;
 }
 
-type TabId = 'casas' | 'publicacion';
+type TabId = 'casas' | 'contactos' | 'publicacion' | 'exportar';
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'casas', label: 'Casas' },
+  { id: 'contactos', label: 'Contactos' },
   { id: 'publicacion', label: 'Publicación' },
+  { id: 'exportar', label: 'Exportar' },
 ];
 
 const OPERATION_LABELS: Record<string, string> = { venta: 'Venta', alquiler: 'Alquiler' };
@@ -72,6 +81,7 @@ export function CarteraPanel({ data }: { data: CarteraPanelData }) {
     return Array.from(new Set(list));
   }, [operation, data.statuses]);
 
+  const newEnquiries = data.enquiries.filter((e) => e.status === 'nuevo').length;
   const homes = data.homes.filter((h) => (operation === 'todas' || h.operation === operation) && (status === 'todos' || h.status === status));
 
   async function create(op: 'venta' | 'alquiler') {
@@ -117,6 +127,7 @@ export function CarteraPanel({ data }: { data: CarteraPanelData }) {
             >
               {t.label}
               {t.id === 'casas' ? <span className="pill-muted">{data.homes.length}</span> : null}
+              {t.id === 'contactos' && newEnquiries > 0 ? <span className="pill-warning">{newEnquiries}</span> : null}
               {t.id === 'publicacion' && last?.status === 'fallida' ? <span className="pill-danger">Fallida</span> : null}
             </button>
           );
@@ -237,11 +248,19 @@ export function CarteraPanel({ data }: { data: CarteraPanelData }) {
         )}
       </div>
 
+      <div role="tabpanel" id="cartera-panel-contactos" aria-labelledby="cartera-tab-contactos" hidden={tab !== 'contactos'} className="mt-6">
+        <CarteraEnquiries rows={data.enquiries} kindLabels={data.enquiryKindLabels} readOnly={data.readOnly} />
+      </div>
+
       <div role="tabpanel" id="cartera-panel-publicacion" aria-labelledby="cartera-tab-publicacion" hidden={tab !== 'publicacion'} className="mt-6 space-y-4">
         <p className="max-w-2xl text-sm text-kairikos-muted">
           Cada publicación reconstruye tu web con las casas que no son borrador y no tienen avisos. Si una falla, la web anterior sigue en pie y se te avisa por correo.
         </p>
         <PublicationHistory builds={data.publication.builds} />
+      </div>
+
+      <div role="tabpanel" id="cartera-panel-exportar" aria-labelledby="cartera-tab-exportar" hidden={tab !== 'exportar'} className="mt-6">
+        <CarteraExport readOnly={data.readOnly} />
       </div>
     </div>
   );

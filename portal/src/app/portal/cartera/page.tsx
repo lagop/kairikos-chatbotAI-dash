@@ -9,6 +9,8 @@ import { CarteraPanel } from '@/components/portal/CarteraPanel';
 import { findSiteForOwner } from '@/lib/cartera/site';
 import { listHomesForPanel } from '@/lib/cartera/homes';
 import { loadPublicationForPanel } from '@/lib/cartera/publish';
+import { listEnquiriesForPanel } from '@/lib/cartera/enquiries';
+import { KIND_LABELS } from '@/lib/cartera/enquiry-rules';
 import { HOME_STATUSES, STATUS_LABELS } from '@/lib/cartera/home-rules';
 
 export const dynamic = 'force-dynamic';
@@ -22,8 +24,8 @@ export const metadata: Metadata = {
 // Cartera de Signature inmobiliaria — el panel de la agencia (/portal/cartera).
 //
 // PR 2 («Portal, panel»): la pestaña Casas (tabla, filtros y «Nueva casa») y
-// la ficha de cada casa (/portal/cartera/<id>). Contactos, Publicación y
-// Exportar llegan en sus PR. Ver docs/fase1-cartera.md de la plantilla web.
+// la ficha de cada casa (/portal/cartera/<id>). Publicación (PR 4) y
+// Contactos (PR 5); Exportar llega con su PR. Ver docs/fase1-cartera.md de la plantilla web.
 //
 // En el menú sale solo a quien tiene la contratación (portalNavFor, en
 // portal-nav.ts; lo decide el layout con findSiteForOwner). En la gracia de
@@ -54,9 +56,10 @@ export default async function CarteraPage() {
   }
 
   const readOnly = owner.state !== 'active' && owner.site.clientProduct.status !== 'paused';
-  const [homes, publication] = await Promise.all([
+  const [homes, publication, enquiries] = await Promise.all([
     listHomesForPanel(prisma, owner.site.id),
     loadPublicationForPanel(prisma, owner.site, owner.site.clientProduct.status),
+    listEnquiriesForPanel(prisma, owner.site.id),
   ]);
 
   return (
@@ -74,6 +77,8 @@ export default async function CarteraPage() {
           statuses: { venta: HOME_STATUSES.venta, alquiler: HOME_STATUSES.alquiler },
           homes,
           publication,
+          enquiries,
+          enquiryKindLabels: KIND_LABELS,
         }}
       />
     </div>

@@ -6,6 +6,8 @@ import { auditCartera, loadFeedRows, type Db } from './site';
 import { buildFeed } from './feed';
 import { ACTIVE_BUILD_STATUSES, applyNotice, decideLaunch, isStale, removalGuard, stillPendingAfterOk, UNKNOWN_AFTER_MS, type BuildNotice, type LaunchDecision } from './publish-rules';
 import { renderAgencyFailedEmail, renderOperatorFailedEmail, sendCarteraEmail, type FailedBuildInfo } from './emails';
+import { purgeOldEnquiries } from './enquiries';
+import { processCarteraExits, type CarteraExitResult } from './exit';
 
 // =============================================================================
 // Cartera — publicar la web desde el portal (PR 4). Las reglas viven en
@@ -293,15 +295,31 @@ export interface CarteraSweepResult {
   held: number;
   failed: number;
   skipped: number;
+  /** Contactos de más de 24 meses borrados en esta pasada (PR 5). */
+  enquiriesPurged: number;
+  /** Bajas (PR 6): agencias avisadas y sitios purgados en esta pasada. */
+  exits: CarteraExitResult;
 }
 
 /**
  * GET /api/cron/cartera-tick, cada 5 minutos (scripts/scheduler.sh). Idempotente:
- * la lógica de «¿toca ya?» vive en decideLaunch, no en la cadencia. Los pasos
- * del PR 5 (purga de contactos) y del PR 6 (bajas) se añaden aquí detrás.
+ * la lógica de «¿toca ya?» vive en decideLaunch y en isPurgeDue, no en la
+ * cadencia. Las bajas (PR 6) se añaden aquí detrás.
  */
 export async function sweepCartera(prisma: PrismaClient, now: Date = new Date()): Promise<CarteraSweepResult> {
-  const result: CarteraSweepResult = { stale: 0, launched: 0, held: 0, failed: 0, skipped: 0 };
+  const result: CarteraSweepResult = { stale: 0, launched: 0, held: 0, failed: 0, skipped: 0, enquiriesPurged: 0, exits: { notified: 0, purged: 0 } };
+  // Primero la purga: no depende de nada de lo demás y no debe esperar a GitHub.
+  try {
+    result.enquiriesPurged = (await purgeOldEnquiries(prisma, now)).deleted;
+  } catch (err) {
+    logError('cartera.sweep_purge', err, {});
+  }
+  // Las bajas, igual de independientes: cada sitio va en su try (exit.ts).
+  try {
+    result.exits = await processCarteraExits(prisma, now);
+  } catch (err) {
+    logError('cartera.sweep_exits', err, {});
+  }
   result.stale = await markStaleBuilds(prisma, now);
 
   const sites = await prisma.carteraSite.findMany({
