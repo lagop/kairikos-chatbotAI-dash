@@ -205,6 +205,14 @@ services:
       # el interruptor de cobros reales (vacío = solo modo test).
       VILLAS_STRIPE_CREDENTIAL_ENCRYPTION_KEY: ${VILLAS_STRIPE_CREDENTIAL_ENCRYPTION_KEY:-}
       VILLAS_STRIPE_LIVE_ENABLED: ${VILLAS_STRIPE_LIVE_ENABLED:-}
+      # Cartera inmobiliaria (decisión A, 19/11/2026): las fotos de las casas
+      # viven en el volumen cartera-fotos, montado aquí abajo en esta ruta. Con
+      # `:-` y no `-`: declarada y vacía también cae en el valor por defecto.
+      CARTERA_FOTOS_DIR: ${CARTERA_FOTOS_DIR:-/data/cartera-fotos}
+      # Token de grano fino de GitHub para lanzar publicar.yml de cada web
+      # Signature (permiso de Actions, solo esos repositorios). Vacío = el
+      # portal no publica: los cambios se quedan pendientes.
+      CARTERA_GITHUB_TOKEN: ${CARTERA_GITHUB_TOKEN:-}
       # 'prospecting' — Google Places has the same admin-configurable
       # fallback pattern as Stripe above (/admin/portal/settings/integrations
       # → IntegrationCredential). GOOGLE_PLACES_API_KEY was never wired in
@@ -239,6 +247,14 @@ services:
       # mismo certresolver, misma pareja de entrypoints. Red declarada
       # como externa más abajo — la crea la pila de Traefik, no ésta.
       - root_default
+    volumes:
+      # Cartera inmobiliaria: fotos de las casas (lib/cartera/photos.ts).
+      # La imagen crea /data/cartera-fotos con dueño nextjs, y Docker copia
+      # ese dueño al volumen la primera vez que lo monta; sin eso, el
+      # contenedor (que no corre como root) no podría escribir en él.
+      # OJO: la copia de seguridad diaria (servicio backup) hoy solo vuelca
+      # Postgres. Antes del primer cliente real hay que incluir este volumen.
+      - cartera-fotos:/data/cartera-fotos
     labels:
       traefik.enable: "true"
       # `app` está en DOS redes (portal-net y root_default), y sin esto
@@ -549,6 +565,10 @@ volumes:
     name: kairikos-portal-pgdata
   backups:
     name: kairikos-portal-backups
+  # Cartera inmobiliaria: fotos de las casas. Con nombre fijo para que un
+  # `docker compose down` o un cambio de proyecto no lo deje huérfano.
+  cartera-fotos:
+    name: kairikos-portal-cartera-fotos
   # Whisper model weights. Named so a `docker compose down` doesn't force
   # a multi-hundred-megabyte re-download on the next boot.
   whisper-data:

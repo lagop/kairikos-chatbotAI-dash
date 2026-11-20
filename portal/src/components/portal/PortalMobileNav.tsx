@@ -68,8 +68,8 @@ function DrawerLink({
   );
 }
 
-export function PortalMobileNav({ showVillas = false }: { showVillas?: boolean }) {
-  const MOBILE_NAV_ITEMS: readonly PortalNavItem[] = [...portalNavFor({ villas: showVillas }), PORTAL_PROFILE_ITEM];
+export function PortalMobileNav({ showVillas = false, showCartera = false }: { showVillas?: boolean; showCartera?: boolean }) {
+  const MOBILE_NAV_ITEMS: readonly PortalNavItem[] = [...portalNavFor({ villas: showVillas, cartera: showCartera }), PORTAL_PROFILE_ITEM];
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const pathname = usePathname();

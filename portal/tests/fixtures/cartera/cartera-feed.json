@@ -1,0 +1,1152 @@
+{
+  "version": 1,
+  "generatedAt": "2026-11-19T18:41:26Z",
+  "ventas": [
+    {
+      "ref": "C-101",
+      "status": "venta",
+      "type": "piso",
+      "zone": "costa",
+      "slugs": {
+        "es": "piso-primera-linea-terraza-al-mar-c-101",
+        "en": "seafront-flat-with-terrace-c-101",
+        "de": "wohnung-erste-meereslinie-terrasse-zum-meer-c-101"
+      },
+      "title": {
+        "es": "Piso de 2 dormitorios en primera línea, con terraza al mar",
+        "en": "2-bedroom seafront flat with a terrace facing the sea",
+        "de": "Wohnung mit 2 Schlafzimmern in erster Meereslinie, mit Terrasse zum Meer"
+      },
+      "summary": {
+        "es": "Tercera planta con ascensor. El salón y el dormitorio principal dan al sur, a una terraza de 18,4 m² sobre el paseo. Reformado en 2021.",
+        "en": "Third floor with a lift. The living room and main bedroom face south onto an 18.4 m² terrace above the promenade. Renovated in 2021.",
+        "de": "Dritte Etage mit Aufzug. Wohnzimmer und Hauptschlafzimmer liegen nach Süden, an einer Terrasse von 18,4 m² über der Promenade. 2021 renoviert."
+      },
+      "price": 690000,
+      "listedAt": "2026-09-22",
+      "usable": 92,
+      "built": 118,
+      "bedrooms": 2,
+      "bathrooms": 2,
+      "floor": {
+        "es": "3.ª planta, con ascensor",
+        "en": "3rd floor, with lift",
+        "de": "3. Etage, mit Aufzug"
+      },
+      "yearBuilt": 2004,
+      "yearRenovated": 2021,
+      "energy": {
+        "consumo": "C",
+        "kwh": 78,
+        "emisiones": "C",
+        "co2": 15
+      },
+      "community": 185,
+      "ibi": 1240,
+      "holding": {
+        "garbage": 160,
+        "insurance": 380,
+        "upkeep": 0
+      },
+      "touristLicence": true,
+      "agent": "lucia",
+      "tags": [
+        "primera-linea",
+        "vistas-mar",
+        "sin-coche"
+      ],
+      "lacks": [
+        {
+          "es": "No tiene garaje: hay un aparcamiento público a 300 m, 110 €/mes.",
+          "en": "No garage: there is a public car park 300 m away, €110 a month.",
+          "de": "Keine Garage: Ein öffentliches Parkhaus liegt 300 m entfernt, 110 €/Monat."
+        },
+        {
+          "es": "El dormitorio 2 da al norte y al este, y no ve el mar.",
+          "en": "Bedroom 2 faces north and east and has no sea view.",
+          "de": "Schlafzimmer 2 liegt nach Norden und Osten und hat keinen Meerblick."
+        },
+        {
+          "es": "En verano, el paseo se oye desde la terraza hasta medianoche.",
+          "en": "In summer you can hear the promenade from the terrace until midnight.",
+          "de": "Im Sommer hört man die Promenade von der Terrasse aus bis Mitternacht."
+        }
+      ],
+      "photos": [
+        {
+          "url": "https://portal.example/api/public/cartera/foto/00000000-0000-4000-8000-000000000000",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Salón con la terraza al fondo (foto de ejemplo)",
+            "en": "Living room with the terrace beyond (example photo)",
+            "de": "Wohnzimmer mit der Terrasse dahinter (Beispielfoto)"
+          }
+        }
+      ]
+    },
+    {
+      "ref": "C-102",
+      "status": "venta",
+      "type": "atico",
+      "zone": "costa",
+      "featured": true,
+      "slugs": {
+        "es": "atico-3-dormitorios-solarium-c-102",
+        "en": "3-bedroom-penthouse-roof-terrace-c-102",
+        "de": "penthouse-3-schlafzimmer-sonnendeck-c-102"
+      },
+      "title": {
+        "es": "Ático de 3 dormitorios con solárium",
+        "en": "3-bedroom penthouse with roof terrace",
+        "de": "Penthouse mit 3 Schlafzimmern und Sonnendeck"
+      },
+      "summary": {
+        "es": "Quinta y última planta, en segunda línea. Salón de 32 m² al sur, terraza de 37,5 m² y un solárium de 60 m² en la cubierta.",
+        "en": "Fifth and top floor, second line from the beach. A 32 m² south-facing living room, a 37.5 m² terrace and a 60 m² roof terrace.",
+        "de": "Fünfte und oberste Etage, in zweiter Meereslinie. Wohnzimmer von 32 m² nach Süden, Terrasse von 37,5 m² und ein Sonnendeck von 60 m² auf dem Dach."
+      },
+      "price": 1150000,
+      "listedAt": "2026-06-15",
+      "showHistory": true,
+      "priceHistory": [
+        {
+          "date": "2026-06-15",
+          "price": 1220000
+        },
+        {
+          "date": "2026-10-05",
+          "price": 1150000
+        }
+      ],
+      "usable": 141,
+      "built": 176,
+      "bedrooms": 3,
+      "bathrooms": 2,
+      "floor": {
+        "es": "5.ª planta (ático), con ascensor",
+        "en": "5th floor (penthouse), with lift",
+        "de": "5. Etage (Penthouse), mit Aufzug"
+      },
+      "yearBuilt": 2011,
+      "energy": {
+        "consumo": "B",
+        "kwh": 52,
+        "emisiones": "B",
+        "co2": 10
+      },
+      "community": 310,
+      "ibi": 2150,
+      "holding": {
+        "garbage": 180,
+        "insurance": 520,
+        "upkeep": 0
+      },
+      "agent": "elena",
+      "tags": [
+        "vistas-mar"
+      ],
+      "lacks": [
+        {
+          "es": "El solárium no tiene sombra: una pérgola necesita permiso de la comunidad.",
+          "en": "The roof terrace has no shade: a pergola needs permission from the owners’ association.",
+          "de": "Das Sonnendeck hat keinen Schatten: Für eine Pergola ist die Zustimmung der Eigentümergemeinschaft nötig."
+        },
+        {
+          "es": "Una plaza de garaje, no dos.",
+          "en": "One parking space, not two.",
+          "de": "Ein Garagenstellplatz, nicht zwei."
+        },
+        {
+          "es": "Segunda línea: el mar se ve desde la terraza y el solárium, no desde los dormitorios 2 y 3.",
+          "en": "Second line: you see the sea from the terrace and roof terrace, not from bedrooms 2 and 3.",
+          "de": "Zweite Meereslinie: Das Meer sieht man von der Terrasse und vom Sonnendeck, nicht aus den Schlafzimmern 2 und 3."
+        }
+      ]
+    },
+    {
+      "ref": "C-103",
+      "status": "venta",
+      "type": "adosado",
+      "zone": "golf",
+      "slugs": {
+        "es": "adosado-3-dormitorios-campo-de-golf-c-103",
+        "en": "3-bedroom-townhouse-golf-course-c-103",
+        "de": "reihenhaus-3-schlafzimmer-golfplatz-c-103"
+      },
+      "title": {
+        "es": "Adosado de 3 dormitorios junto a un campo de golf",
+        "en": "3-bedroom townhouse beside a golf course",
+        "de": "Reihenhaus mit 3 Schlafzimmern an einem Golfplatz"
+      },
+      "summary": {
+        "es": "Tres plantas, jardín privado de 45 m² y piscina comunitaria. Dos plazas de garaje en el sótano.",
+        "en": "Three floors, a 45 m² private garden and a shared pool. Two parking spaces in the basement.",
+        "de": "Drei Ebenen, privater Garten von 45 m² und Gemeinschaftspool. Zwei Garagenstellplätze im Untergeschoss."
+      },
+      "price": 845000,
+      "listedAt": "2026-10-12",
+      "usable": 158,
+      "built": 205,
+      "bedrooms": 3,
+      "bathrooms": 3,
+      "yearBuilt": 2008,
+      "energy": {
+        "consumo": "D",
+        "kwh": 110,
+        "emisiones": "D",
+        "co2": 22
+      },
+      "community": 240,
+      "ibi": 1380,
+      "holding": {
+        "garbage": 170,
+        "insurance": 450,
+        "upkeep": 0
+      },
+      "agent": "daniel",
+      "tags": [
+        "piscina"
+      ]
+    },
+    {
+      "ref": "C-104",
+      "status": "venta",
+      "type": "villa",
+      "zone": "golf",
+      "featured": true,
+      "slugs": {
+        "es": "villa-contemporanea-4-dormitorios-golf-c-104",
+        "en": "contemporary-4-bedroom-villa-golf-c-104",
+        "de": "moderne-villa-4-schlafzimmer-golf-c-104"
+      },
+      "title": {
+        "es": "Villa contemporánea de 4 dormitorios",
+        "en": "Contemporary 4-bedroom villa",
+        "de": "Moderne Villa mit 4 Schlafzimmern"
+      },
+      "summary": {
+        "es": "Una sola planta sobre una parcela de 1.140 m². Salón, comedor y cocina al sur, abiertos a un porche de 60 m² y a la piscina. Terminada en 2019.",
+        "en": "A single storey on a 1,140 m² plot. Living room, dining room and kitchen face south onto a 60 m² porch and the pool. Completed in 2019.",
+        "de": "Eine einzige Ebene auf einem Grundstück von 1.140 m². Wohnzimmer, Esszimmer und Küche nach Süden, offen zu einer überdachten Terrasse von 60 m² und zum Pool. 2019 fertiggestellt."
+      },
+      "price": 2950000,
+      "listedAt": "2026-10-28",
+      "usable": 268,
+      "built": 312,
+      "plot": 1140,
+      "bedrooms": 4,
+      "bathrooms": 4,
+      "yearBuilt": 2019,
+      "energy": {
+        "consumo": "A",
+        "kwh": 31,
+        "emisiones": "A",
+        "co2": 6
+      },
+      "community": 95,
+      "ibi": 3900,
+      "holding": {
+        "garbage": 210,
+        "insurance": 1450,
+        "upkeep": 420
+      },
+      "agent": "elena",
+      "tags": [
+        "piscina"
+      ],
+      "lacks": [
+        {
+          "es": "La parcela tiene una pendiente del 12 %: el jardín está en dos niveles.",
+          "en": "The plot has a 12% slope: the garden is on two levels.",
+          "de": "Das Grundstück hat 12 % Gefälle: Der Garten liegt auf zwei Ebenen."
+        },
+        {
+          "es": "El mar se ve lejos, en el horizonte. No es una casa de primera línea.",
+          "en": "The sea is visible far off on the horizon. This is not a seafront house.",
+          "de": "Das Meer sieht man in der Ferne, am Horizont. Es ist kein Haus in erster Meereslinie."
+        },
+        {
+          "es": "No tiene sótano ni trastero aparte del garaje.",
+          "en": "No basement or storage other than the garage.",
+          "de": "Kein Keller und kein Abstellraum außer der Garage."
+        }
+      ]
+    },
+    {
+      "ref": "C-105",
+      "status": "venta",
+      "type": "villa",
+      "zone": "costa",
+      "slugs": {
+        "es": "villa-andaluza-5-dormitorios-para-reformar-c-105",
+        "en": "5-bedroom-andalusian-villa-to-renovate-c-105",
+        "de": "andalusische-villa-5-schlafzimmer-zum-renovieren-c-105"
+      },
+      "title": {
+        "es": "Villa andaluza de 5 dormitorios, para reformar",
+        "en": "5-bedroom Andalusian villa, in need of renovation",
+        "de": "Andalusische Villa mit 5 Schlafzimmern, zum Renovieren"
+      },
+      "summary": {
+        "es": "Dos plantas de 1987 sobre una parcela de 1.650 m², a 700 m de la playa: 9 minutos andando por una calle con cuesta. Estructura y cubierta en buen estado; todo lo demás, por hacer.",
+        "en": "Two floors from 1987 on a 1,650 m² plot, 700 m from the beach: a 9-minute walk down a sloping street. Structure and roof are sound; everything else needs doing.",
+        "de": "Zwei Etagen von 1987 auf einem Grundstück von 1.650 m², 700 m vom Strand: 9 Minuten zu Fuß über eine ansteigende Straße. Tragwerk und Dach in gutem Zustand; alles andere ist zu erneuern."
+      },
+      "price": 1850000,
+      "listedAt": "2026-05-12",
+      "showHistory": true,
+      "priceHistory": [
+        {
+          "date": "2026-05-12",
+          "price": 1950000
+        },
+        {
+          "date": "2026-10-02",
+          "price": 1850000
+        }
+      ],
+      "usable": 290,
+      "built": 340,
+      "plot": 1650,
+      "bedrooms": 5,
+      "bathrooms": 3,
+      "toilets": 1,
+      "yearBuilt": 1987,
+      "energy": {
+        "consumo": "F",
+        "kwh": 240,
+        "emisiones": "F",
+        "co2": 48
+      },
+      "ibi": 3100,
+      "holding": {
+        "garbage": 210,
+        "insurance": 1300,
+        "upkeep": 380
+      },
+      "agent": "lucia",
+      "tags": [
+        "para-reformar"
+      ],
+      "lacks": [
+        {
+          "es": "La cocina es de 2009 y habrá que cambiarla.",
+          "en": "The kitchen dates from 2009 and will need replacing.",
+          "de": "Die Küche ist von 2009 und muss ersetzt werden."
+        },
+        {
+          "es": "La instalación eléctrica y la fontanería son las originales, de 1987.",
+          "en": "The wiring and plumbing are original, from 1987.",
+          "de": "Elektrik und Wasserleitungen sind die ursprünglichen von 1987."
+        },
+        {
+          "es": "Carpintería de aluminio sin rotura de puente térmico: de ahí la letra F.",
+          "en": "Aluminium windows with no thermal break: hence the F rating.",
+          "de": "Aluminiumfenster ohne thermische Trennung: daher die Energieklasse F."
+        },
+        {
+          "es": "No tiene garaje cerrado: se aparca en la parcela, con sitio para tres coches.",
+          "en": "No enclosed garage: parking is on the plot, with room for three cars.",
+          "de": "Keine geschlossene Garage: Geparkt wird auf dem Grundstück, mit Platz für drei Autos."
+        }
+      ]
+    },
+    {
+      "ref": "C-106",
+      "status": "venta",
+      "type": "casa",
+      "zone": "pueblo",
+      "featured": true,
+      "slugs": {
+        "es": "casa-de-pueblo-rehabilitada-patio-c-106",
+        "en": "restored-village-house-with-patio-c-106",
+        "de": "saniertes-dorfhaus-mit-innenhof-c-106"
+      },
+      "title": {
+        "es": "Casa de pueblo rehabilitada, con patio",
+        "en": "Restored village house with patio",
+        "de": "Saniertes Dorfhaus mit Innenhof"
+      },
+      "summary": {
+        "es": "Dos plantas de 1920, rehabilitadas en 2022, en el casco antiguo. Cocina de 28 m² abierta a un patio de 32 m². Tres dormitorios arriba.",
+        "en": "Two floors from 1920, restored in 2022, in the old town. A 28 m² kitchen opening onto a 32 m² patio. Three bedrooms upstairs.",
+        "de": "Zwei Etagen von 1920, 2022 saniert, in der Altstadt. Küche von 28 m², offen zu einem Innenhof von 32 m². Drei Schlafzimmer im Obergeschoss."
+      },
+      "price": 590000,
+      "listedAt": "2026-07-01",
+      "showHistory": true,
+      "priceHistory": [
+        {
+          "date": "2026-07-01",
+          "price": 610000
+        },
+        {
+          "date": "2026-09-20",
+          "price": 590000
+        }
+      ],
+      "usable": 148,
+      "built": 172,
+      "bedrooms": 3,
+      "bathrooms": 2,
+      "toilets": 1,
+      "yearBuilt": 1920,
+      "yearRenovated": 2022,
+      "energy": {
+        "consumo": "D",
+        "kwh": 95,
+        "emisiones": "C",
+        "co2": 18
+      },
+      "ibi": 520,
+      "holding": {
+        "garbage": 140,
+        "insurance": 420,
+        "upkeep": 0
+      },
+      "agent": "daniel",
+      "tags": [
+        "sin-coche"
+      ],
+      "lacks": [
+        {
+          "es": "No tiene garaje y en la calle no se puede aparcar: el aparcamiento municipal está a 250 m.",
+          "en": "No garage and no street parking: the municipal car park is 250 m away.",
+          "de": "Keine Garage, und auf der Straße kann man nicht parken: Der städtische Parkplatz liegt 250 m entfernt."
+        },
+        {
+          "es": "Dos plantas sin ascensor, con una escalera de 85 cm de ancho.",
+          "en": "Two floors with no lift and a staircase 85 cm wide.",
+          "de": "Zwei Etagen ohne Aufzug, mit einer 85 cm breiten Treppe."
+        },
+        {
+          "es": "En invierno, el patio se queda sin sol a partir de las 14:00.",
+          "en": "In winter the patio loses the sun from 2 pm.",
+          "de": "Im Winter liegt der Innenhof ab 14:00 Uhr im Schatten."
+        }
+      ]
+    },
+    {
+      "ref": "C-108",
+      "status": "venta",
+      "type": "cortijo",
+      "zone": "interior",
+      "slugs": {
+        "es": "cortijo-6-hectareas-olivar-alberca-c-108",
+        "en": "farmhouse-6-hectares-olive-grove-c-108",
+        "de": "finca-6-hektar-olivenhain-wasserbecken-c-108"
+      },
+      "title": {
+        "es": "Cortijo con 6 hectáreas de olivar y alberca",
+        "en": "Farmhouse with 6 hectares of olive grove and a water tank",
+        "de": "Finca mit 6 Hektar Olivenhain und Wasserbecken"
+      },
+      "summary": {
+        "es": "Casa de labor de 1890, rehabilitada en 2015, con 380 m² útiles en dos plantas. Seis hectáreas de olivar en producción y una alberca de riego de 9 × 5 m.",
+        "en": "An 1890 farmhouse, restored in 2015, with 380 m² of usable area on two floors. Six hectares of working olive grove and a 9 × 5 m irrigation tank.",
+        "de": "Landhaus von 1890, 2015 saniert, mit 380 m² Wohnfläche auf zwei Etagen. Sechs Hektar bewirtschafteter Olivenhain und ein Bewässerungsbecken von 9 × 5 m."
+      },
+      "price": 1490000,
+      "listedAt": "2026-04-08",
+      "showHistory": true,
+      "priceHistory": [
+        {
+          "date": "2026-04-08",
+          "price": 1590000
+        },
+        {
+          "date": "2026-09-01",
+          "price": 1490000
+        }
+      ],
+      "usable": 380,
+      "built": 455,
+      "plot": 60000,
+      "bedrooms": 5,
+      "bathrooms": 3,
+      "yearBuilt": 1890,
+      "yearRenovated": 2015,
+      "energy": {
+        "consumo": "E",
+        "kwh": 160,
+        "emisiones": "E",
+        "co2": 34
+      },
+      "ibi": 980,
+      "holding": {
+        "garbage": 120,
+        "insurance": 1500,
+        "upkeep": 350
+      },
+      "agent": "daniel",
+      "lacks": [
+        {
+          "es": "El acceso son 1,8 km de camino de tierra, en buen estado.",
+          "en": "Access is along 1.8 km of dirt track, in good condition.",
+          "de": "Die Zufahrt führt über 1,8 km unbefestigten Weg, in gutem Zustand."
+        },
+        {
+          "es": "Agua de pozo y depósito: no hay red municipal.",
+          "en": "Water comes from a well and a tank: there is no mains supply.",
+          "de": "Wasser aus Brunnen und Tank: kein Anschluss an das öffentliche Netz."
+        },
+        {
+          "es": "A 35 minutos en coche de la costa.",
+          "en": "A 35-minute drive from the coast.",
+          "de": "35 Autominuten von der Küste entfernt."
+        },
+        {
+          "es": "No llega la fibra: internet por satélite.",
+          "en": "No fibre: internet is by satellite.",
+          "de": "Kein Glasfaseranschluss: Internet über Satellit."
+        }
+      ]
+    },
+    {
+      "ref": "C-109",
+      "status": "venta",
+      "type": "villa",
+      "zone": "costa",
+      "slugs": {
+        "es": "villa-6-dormitorios-vistas-al-mar-c-109",
+        "en": "6-bedroom-villa-sea-views-c-109",
+        "de": "villa-6-schlafzimmer-meerblick-c-109"
+      },
+      "title": {
+        "es": "Villa de 6 dormitorios con vistas al mar",
+        "en": "6-bedroom villa with sea views",
+        "de": "Villa mit 6 Schlafzimmern und Meerblick"
+      },
+      "summary": {
+        "es": "Tres niveles sobre una parcela de 2.400 m², a 1,2 km de la playa. Salón de 48 m² al sur con el mar delante. Terminada en 2016.",
+        "en": "Three levels on a 2,400 m² plot, 1.2 km from the beach. A 48 m² south-facing living room looking out to sea. Completed in 2016.",
+        "de": "Drei Ebenen auf einem Grundstück von 2.400 m², 1,2 km vom Strand. Wohnzimmer von 48 m² nach Süden, mit Blick aufs Meer. 2016 fertiggestellt."
+      },
+      "price": 4750000,
+      "listedAt": "2026-08-18",
+      "usable": 520,
+      "built": 610,
+      "plot": 2400,
+      "bedrooms": 6,
+      "bathrooms": 4,
+      "toilets": 1,
+      "yearBuilt": 2016,
+      "energy": {
+        "consumo": "B",
+        "kwh": 58,
+        "emisiones": "B",
+        "co2": 11
+      },
+      "community": 420,
+      "ibi": 7800,
+      "holding": {
+        "garbage": 240,
+        "insurance": 3200,
+        "upkeep": 950
+      },
+      "agent": "elena",
+      "tags": [
+        "vistas-mar",
+        "piscina"
+      ],
+      "lacks": [
+        {
+          "es": "Cuatro baños y un aseo para seis dormitorios.",
+          "en": "Four bathrooms and a cloakroom for six bedrooms.",
+          "de": "Vier Bäder und ein Gäste-WC für sechs Schlafzimmer."
+        },
+        {
+          "es": "La calle de acceso tiene una cuesta del 14 %.",
+          "en": "The access road has a 14% gradient.",
+          "de": "Die Zufahrtsstraße hat 14 % Steigung."
+        },
+        {
+          "es": "La playa no está a pie de casa: son 1,2 km, 5 minutos en coche.",
+          "en": "The beach is not on the doorstep: it is 1.2 km away, 5 minutes by car.",
+          "de": "Der Strand liegt nicht vor der Tür: Es sind 1,2 km, 5 Minuten mit dem Auto."
+        }
+      ]
+    },
+    {
+      "ref": "C-110",
+      "status": "venta",
+      "type": "duplex",
+      "zone": "golf",
+      "slugs": {
+        "es": "duplex-jardin-privado-3-dormitorios-c-110",
+        "en": "duplex-private-garden-3-bedrooms-c-110",
+        "de": "maisonette-privater-garten-3-schlafzimmer-c-110"
+      },
+      "title": {
+        "es": "Dúplex con jardín privado, 3 dormitorios",
+        "en": "Duplex with private garden, 3 bedrooms",
+        "de": "Maisonette mit privatem Garten, 3 Schlafzimmer"
+      },
+      "summary": {
+        "es": "Planta baja y primera, con un jardín privado de 70 m² orientado al oeste. Una plaza de garaje y trastero.",
+        "en": "Ground and first floor, with a 70 m² private garden facing west. One parking space and a storage room.",
+        "de": "Erdgeschoss und Obergeschoss, mit einem privaten Garten von 70 m² nach Westen. Ein Garagenstellplatz und ein Abstellraum."
+      },
+      "price": 760000,
+      "listedAt": "2026-11-03",
+      "usable": 132,
+      "built": 160,
+      "bedrooms": 3,
+      "bathrooms": 2,
+      "yearBuilt": 2015,
+      "energy": {
+        "consumo": "B",
+        "kwh": 60,
+        "emisiones": "B",
+        "co2": 12
+      },
+      "community": 210,
+      "ibi": 1100,
+      "holding": {
+        "garbage": 170,
+        "insurance": 410,
+        "upkeep": 0
+      },
+      "agent": "lucia"
+    },
+    {
+      "ref": "C-111",
+      "status": "venta",
+      "type": "parcela",
+      "zone": "interior",
+      "slugs": {
+        "es": "parcela-edificable-2000-m2-proyecto-basico-c-111",
+        "en": "building-plot-2000-m2-outline-design-c-111",
+        "de": "baugrundstueck-2000-m2-vorentwurf-c-111"
+      },
+      "title": {
+        "es": "Parcela edificable de 2.000 m² con proyecto básico",
+        "en": "2,000 m² building plot with an outline design",
+        "de": "Baugrundstück von 2.000 m² mit Vorentwurf"
+      },
+      "summary": {
+        "es": "Cuarenta metros de fachada por cincuenta de fondo, orientada al sur. Incluye el proyecto básico de una vivienda de 320 m² construidos en dos plantas.",
+        "en": "Forty metres of frontage by fifty deep, facing south. Includes the outline design for a 320 m² two-storey house.",
+        "de": "Vierzig Meter Straßenfront und fünfzig Meter Tiefe, nach Süden ausgerichtet. Mit dem Vorentwurf für ein Haus von 320 m² bebauter Fläche auf zwei Etagen."
+      },
+      "price": 1200000,
+      "listedAt": "2026-10-20",
+      "usable": 0,
+      "built": 0,
+      "plot": 2000,
+      "bedrooms": 0,
+      "bathrooms": 0,
+      "ibi": 410,
+      "holding": {
+        "garbage": 0,
+        "insurance": 0,
+        "upkeep": 0
+      },
+      "agent": "daniel",
+      "lacks": [
+        {
+          "es": "Tiene una pendiente del 18 % hacia el sur: la casa necesita muros de contención.",
+          "en": "It slopes 18% to the south: the house will need retaining walls.",
+          "de": "18 % Gefälle nach Süden: Das Haus braucht Stützmauern."
+        },
+        {
+          "es": "El proyecto es básico, no de ejecución, y la licencia de obra está sin pedir.",
+          "en": "The design is at outline stage, not construction stage, and no building licence has been applied for.",
+          "de": "Es gibt einen Vorentwurf, keine Ausführungsplanung, und die Baugenehmigung ist noch nicht beantragt."
+        },
+        {
+          "es": "La luz y el agua llegan al borde de la parcela; las acometidas están por hacer.",
+          "en": "Electricity and water reach the edge of the plot; the connections are still to be made.",
+          "de": "Strom und Wasser liegen an der Grundstücksgrenze; die Hausanschlüsse fehlen noch."
+        }
+      ]
+    },
+    {
+      "ref": "P-901",
+      "private": true,
+      "status": "venta",
+      "type": "villa",
+      "zone": "costa",
+      "slugs": {
+        "es": "villa-primera-linea-p-901",
+        "en": "seafront-villa-p-901",
+        "de": "villa-erste-meereslinie-p-901"
+      },
+      "title": {
+        "es": "Villa en primera línea, con acceso directo a la playa",
+        "en": "Seafront villa with direct access to the beach",
+        "de": "Villa in erster Meereslinie, mit direktem Zugang zum Strand"
+      },
+      "summary": {
+        "es": "Dos plantas sobre una parcela de 1.900 m² que llega hasta la arena. Salón de 49,5 m² al sur. La familia la ocupa en verano y no quiere fotos en internet.",
+        "en": "Two floors on a 1,900 m² plot that runs down to the sand. A 49.5 m² south-facing living room. The family uses it in summer and wants no photos online.",
+        "de": "Zwei Etagen auf einem Grundstück von 1.900 m², das bis an den Sand reicht. Wohnzimmer von 49,5 m² nach Süden. Die Familie nutzt das Haus im Sommer und möchte keine Fotos im Internet."
+      },
+      "price": 6900000,
+      "listedAt": "2026-09-01",
+      "usable": 410,
+      "built": 480,
+      "plot": 1900,
+      "bedrooms": 4,
+      "bathrooms": 3,
+      "toilets": 1,
+      "yearBuilt": 2008,
+      "yearRenovated": 2020,
+      "energy": {
+        "consumo": "C",
+        "kwh": 82,
+        "emisiones": "C",
+        "co2": 16
+      },
+      "community": 0,
+      "ibi": 9800,
+      "holding": {
+        "garbage": 260,
+        "insurance": 4100,
+        "upkeep": 1100
+      },
+      "agent": "elena",
+      "tags": [
+        "primera-linea",
+        "vistas-mar"
+      ]
+    },
+    {
+      "ref": "P-902",
+      "private": true,
+      "status": "venta",
+      "type": "cortijo",
+      "zone": "interior",
+      "slugs": {
+        "es": "finca-casa-principal-p-902",
+        "en": "country-estate-p-902",
+        "de": "finca-haupthaus-p-902"
+      },
+      "title": {
+        "es": "Finca de 14 hectáreas con casa principal",
+        "en": "A 14-hectare country estate with its main house",
+        "de": "Finca von 14 Hektar mit Haupthaus"
+      },
+      "summary": {
+        "es": "Casa de dos plantas rehabilitada en 2018, entre encinas y olivos, a 25 minutos de la costa. El propietario vive en ella y prefiere vender sin anunciarla.",
+        "en": "A two-storey house restored in 2018, among holm oaks and olive trees, 25 minutes from the coast. The owner lives there and prefers to sell without advertising it.",
+        "de": "Zweigeschossiges Haus, 2018 saniert, zwischen Steineichen und Olivenbäumen, 25 Minuten von der Küste. Der Eigentümer wohnt dort und möchte verkaufen, ohne zu inserieren."
+      },
+      "price": 3400000,
+      "listedAt": "2026-10-10",
+      "usable": 460,
+      "built": 540,
+      "plot": 140000,
+      "bedrooms": 5,
+      "bathrooms": 4,
+      "yearBuilt": 1905,
+      "yearRenovated": 2018,
+      "energy": {
+        "consumo": "D",
+        "kwh": 118,
+        "emisiones": "D",
+        "co2": 24
+      },
+      "community": 0,
+      "ibi": 1650,
+      "holding": {
+        "garbage": 140,
+        "insurance": 2300,
+        "upkeep": 600
+      },
+      "agent": "daniel"
+    }
+  ],
+  "alquileres": [
+    {
+      "ref": "A-201",
+      "status": "disponible",
+      "term": "larga",
+      "type": "piso",
+      "zone": "costa",
+      "slugs": {
+        "es": "piso-2-dormitorios-terraza-sur-alquiler-a-201",
+        "en": "2-bedroom-flat-south-terrace-to-rent-a-201",
+        "de": "wohnung-2-schlafzimmer-suedterrasse-miete-a-201"
+      },
+      "title": {
+        "es": "Piso de 2 dormitorios con terraza al sur",
+        "en": "2-bedroom flat with a south-facing terrace",
+        "de": "Wohnung mit 2 Schlafzimmern und Südterrasse"
+      },
+      "summary": {
+        "es": "Segunda planta con ascensor, a 4 minutos andando de la playa. El salón y el dormitorio principal dan al sur, a una terraza de 12 m². La renta incluye la comunidad.",
+        "en": "Second floor with a lift, a 4-minute walk from the beach. The living room and main bedroom face south onto a 12 m² terrace. The rent includes community fees.",
+        "de": "Zweite Etage mit Aufzug, 4 Gehminuten zum Strand. Wohnzimmer und Hauptschlafzimmer liegen nach Süden, an einer Terrasse von 12 m². Die Gemeinschaftskosten sind in der Miete enthalten."
+      },
+      "rent": 1850,
+      "listedAt": "2026-10-08",
+      "availableFrom": "2026-12-01",
+      "furnished": false,
+      "pets": false,
+      "guarantee": 1,
+      "includes": [
+        "comunidad"
+      ],
+      "usable": 80,
+      "built": 96,
+      "bedrooms": 2,
+      "bathrooms": 2,
+      "floor": {
+        "es": "2.ª planta, con ascensor",
+        "en": "2nd floor, with lift",
+        "de": "2. Etage, mit Aufzug"
+      },
+      "yearBuilt": 1998,
+      "energy": {
+        "consumo": "E",
+        "kwh": 142,
+        "emisiones": "E",
+        "co2": 29
+      },
+      "agent": "lucia",
+      "lacks": [
+        {
+          "es": "El dormitorio 2 da al norte, a la calle de atrás, y no ve el mar.",
+          "en": "Bedroom 2 faces north onto the back street and has no sea view.",
+          "de": "Schlafzimmer 2 liegt nach Norden zur hinteren Straße und hat keinen Meerblick."
+        },
+        {
+          "es": "Aire acondicionado solo en el salón: los dormitorios tienen ventilador de techo.",
+          "en": "Air conditioning in the living room only: the bedrooms have ceiling fans.",
+          "de": "Klimaanlage nur im Wohnzimmer: Die Schlafzimmer haben Deckenventilatoren."
+        },
+        {
+          "es": "No tiene plaza de garaje y en verano cuesta aparcar en la calle.",
+          "en": "No parking space, and in summer street parking is hard to find.",
+          "de": "Kein Stellplatz, und im Sommer ist es schwer, auf der Straße zu parken."
+        }
+      ]
+    },
+    {
+      "ref": "A-202",
+      "status": "disponible",
+      "term": "temporada",
+      "type": "atico",
+      "zone": "costa",
+      "slugs": {
+        "es": "atico-amueblado-terraza-temporada-a-202",
+        "en": "furnished-penthouse-terrace-medium-term-let-a-202",
+        "de": "moeblierte-penthouse-wohnung-terrasse-auf-zeit-a-202"
+      },
+      "title": {
+        "es": "Ático amueblado con terraza de 42 m², por temporada",
+        "en": "Furnished penthouse with a 42 m² terrace, medium-term let",
+        "de": "Möbliertes Penthouse mit 42 m² Terrasse, auf Zeit"
+      },
+      "summary": {
+        "es": "Sexta y última planta, con una terraza de 42 m² al sur. Amueblado, con fibra de 600 Mb y mesa de trabajo en el dormitorio 2. Para estancias de trabajo o de invierno de 3 a 11 meses; la renta incluye comunidad, agua, luz, internet y limpieza semanal.",
+        "en": "Sixth and top floor, with a 42 m² south-facing terrace. Furnished, with 600 Mb fibre and a desk in bedroom 2. For work or winter stays of 3 to 11 months; the rent includes community fees, water, electricity, internet and weekly cleaning.",
+        "de": "Sechste und oberste Etage, mit einer Terrasse von 42 m² nach Süden. Möbliert, mit 600-Mb-Glasfaser und Schreibtisch in Schlafzimmer 2. Für Arbeits- oder Winteraufenthalte von 3 bis 11 Monaten; Gemeinschaftskosten, Wasser, Strom, Internet und wöchentliche Reinigung sind in der Miete enthalten."
+      },
+      "rent": 3400,
+      "listedAt": "2026-10-20",
+      "availableFrom": "2026-11-25",
+      "months": [
+        3,
+        11
+      ],
+      "furnished": true,
+      "pets": false,
+      "guarantee": 0,
+      "includes": [
+        "comunidad",
+        "agua",
+        "luz",
+        "internet",
+        "limpieza"
+      ],
+      "usable": 105,
+      "built": 124,
+      "bedrooms": 2,
+      "bathrooms": 2,
+      "floor": {
+        "es": "6.ª planta (ático), con ascensor",
+        "en": "6th floor (penthouse), with lift",
+        "de": "6. Etage (Penthouse), mit Aufzug"
+      },
+      "yearBuilt": 2009,
+      "energy": {
+        "consumo": "C",
+        "kwh": 82,
+        "emisiones": "C",
+        "co2": 16
+      },
+      "agent": "lucia",
+      "lacks": [
+        {
+          "es": "La luz incluida tiene un tope de 120 € al mes; lo que pase se cobra aparte.",
+          "en": "Electricity is included up to €120 a month; anything above that is charged separately.",
+          "de": "Strom ist bis 120 € im Monat enthalten; was darüber liegt, wird gesondert berechnet."
+        },
+        {
+          "es": "El dormitorio 2 no tiene aire acondicionado: hay splits solo en el salón y en el dormitorio principal.",
+          "en": "Bedroom 2 has no air conditioning: there are units only in the living room and the main bedroom.",
+          "de": "Schlafzimmer 2 hat keine Klimaanlage: Geräte gibt es nur im Wohnzimmer und im Hauptschlafzimmer."
+        },
+        {
+          "es": "No tiene plaza de garaje: el aparcamiento público más cercano está a 350 m, 95 €/mes.",
+          "en": "No parking space: the nearest public car park is 350 m away, €95 a month.",
+          "de": "Kein Stellplatz: Das nächste öffentliche Parkhaus liegt 350 m entfernt, 95 €/Monat."
+        }
+      ]
+    },
+    {
+      "ref": "A-203",
+      "status": "disponible",
+      "term": "larga",
+      "type": "adosado",
+      "zone": "golf",
+      "slugs": {
+        "es": "adosado-3-dormitorios-jardin-golf-alquiler-a-203",
+        "en": "3-bedroom-townhouse-garden-golf-to-rent-a-203",
+        "de": "reihenhaus-3-schlafzimmer-garten-golf-miete-a-203"
+      },
+      "title": {
+        "es": "Adosado de 3 dormitorios con jardín, junto al golf",
+        "en": "3-bedroom townhouse with garden, beside the golf course",
+        "de": "Reihenhaus mit 3 Schlafzimmern und Garten am Golfplatz"
+      },
+      "summary": {
+        "es": "Dos plantas con jardín privado de 50 m² al sur y piscina comunitaria, a 10 minutos en coche de la playa. Los tres dormitorios están arriba; el principal tiene una terraza de 7,8 m². La renta incluye comunidad, mantenimiento del jardín y piscina.",
+        "en": "Two floors with a 50 m² private south-facing garden and a shared pool, 10 minutes by car from the beach. All three bedrooms are upstairs; the main one has a 7.8 m² terrace. The rent includes community fees, garden upkeep and the pool.",
+        "de": "Zwei Etagen mit privatem Garten von 50 m² nach Süden und Gemeinschaftspool, 10 Autominuten zum Strand. Alle drei Schlafzimmer liegen oben; das Hauptschlafzimmer hat eine Terrasse von 7,8 m². Gemeinschaftskosten, Gartenpflege und Pool sind in der Miete enthalten."
+      },
+      "rent": 2650,
+      "listedAt": "2026-10-03",
+      "availableFrom": "2026-12-15",
+      "furnished": false,
+      "pets": true,
+      "guarantee": 2,
+      "includes": [
+        "comunidad",
+        "jardin",
+        "piscina"
+      ],
+      "usable": 143,
+      "built": 172,
+      "bedrooms": 3,
+      "bathrooms": 2,
+      "toilets": 1,
+      "yearBuilt": 2006,
+      "energy": {
+        "consumo": "D",
+        "kwh": 104,
+        "emisiones": "D",
+        "co2": 21
+      },
+      "agent": "elena",
+      "lacks": [
+        {
+          "es": "Los dormitorios 2 y 3 dan al norte, a la calle de acceso.",
+          "en": "Bedrooms 2 and 3 face north onto the access road.",
+          "de": "Die Schlafzimmer 2 und 3 liegen nach Norden zur Zufahrtsstraße."
+        },
+        {
+          "es": "Aire acondicionado solo en la planta baja: arriba no hay.",
+          "en": "Air conditioning on the ground floor only: there is none upstairs.",
+          "de": "Klimaanlage nur im Erdgeschoss: Oben gibt es keine."
+        },
+        {
+          "es": "La piscina comunitaria es de 24 viviendas y cierra de octubre a abril.",
+          "en": "The shared pool serves 24 homes and is closed from October to April.",
+          "de": "Den Gemeinschaftspool teilen sich 24 Wohnungen; er ist von Oktober bis April geschlossen."
+        }
+      ]
+    },
+    {
+      "ref": "A-204",
+      "status": "reservada",
+      "term": "temporada",
+      "type": "villa",
+      "zone": "golf",
+      "slugs": {
+        "es": "villa-4-dormitorios-piscina-golf-temporada-invierno-a-204",
+        "en": "4-bedroom-villa-pool-golf-winter-let-a-204",
+        "de": "villa-4-schlafzimmer-pool-golf-winter-auf-zeit-a-204"
+      },
+      "title": {
+        "es": "Villa de 4 dormitorios con piscina, para el invierno",
+        "en": "4-bedroom villa with pool, winter let",
+        "de": "Villa mit 4 Schlafzimmern und Pool, für den Winter"
+      },
+      "summary": {
+        "es": "Una sola planta en una parcela de 1.100 m², con piscina privada y vistas al campo de golf. Cuatro dormitorios con baño. Para estancias de invierno de 4 a 8 meses, de octubre a mayo; la renta incluye comunidad, jardín, piscina e internet.",
+        "en": "A single storey on a 1,100 m² plot, with a private pool and views over the golf course. Four bedrooms, each with its own bathroom. For winter stays of 4 to 8 months, October to May; the rent includes community fees, garden, pool and internet.",
+        "de": "Eine einzige Ebene auf einem Grundstück von 1.100 m², mit privatem Pool und Blick auf den Golfplatz. Vier Schlafzimmer mit eigenem Bad. Für Winteraufenthalte von 4 bis 8 Monaten, Oktober bis Mai; Gemeinschaftskosten, Garten, Pool und Internet sind in der Miete enthalten."
+      },
+      "rent": 6900,
+      "listedAt": "2026-10-15",
+      "availableFrom": "2026-12-01",
+      "months": [
+        4,
+        8
+      ],
+      "furnished": true,
+      "pets": false,
+      "guarantee": 0,
+      "includes": [
+        "comunidad",
+        "jardin",
+        "piscina",
+        "internet"
+      ],
+      "usable": 262,
+      "built": 310,
+      "plot": 1100,
+      "bedrooms": 4,
+      "bathrooms": 4,
+      "toilets": 1,
+      "yearBuilt": 2015,
+      "energy": {
+        "consumo": "B",
+        "kwh": 52,
+        "emisiones": "B",
+        "co2": 11
+      },
+      "agent": "elena",
+      "lacks": [
+        {
+          "es": "La piscina no está climatizada: de diciembre a marzo el agua ronda los 14 °C.",
+          "en": "The pool is not heated: from December to March the water is around 14 °C.",
+          "de": "Der Pool ist nicht beheizt: Von Dezember bis März hat das Wasser etwa 14 °C."
+        },
+        {
+          "es": "La calefacción es por aire, con bomba de calor; no hay suelo radiante.",
+          "en": "Heating is by air, with a heat pump; there is no underfloor heating.",
+          "de": "Geheizt wird mit Luft über eine Wärmepumpe; es gibt keine Fußbodenheizung."
+        },
+        {
+          "es": "Sin transporte público: la parada de autobús más cercana está a 2 km.",
+          "en": "No public transport: the nearest bus stop is 2 km away.",
+          "de": "Keine öffentlichen Verkehrsmittel: Die nächste Bushaltestelle liegt 2 km entfernt."
+        }
+      ]
+    },
+    {
+      "ref": "A-205",
+      "status": "disponible",
+      "term": "larga",
+      "type": "casa",
+      "zone": "pueblo",
+      "slugs": {
+        "es": "casa-de-pueblo-amueblada-2-dormitorios-alquiler-a-205",
+        "en": "furnished-2-bedroom-village-house-to-rent-a-205",
+        "de": "moebliertes-dorfhaus-2-schlafzimmer-miete-a-205"
+      },
+      "title": {
+        "es": "Casa de pueblo amueblada, 2 dormitorios",
+        "en": "Furnished 2-bedroom village house",
+        "de": "Möbliertes Dorfhaus mit 2 Schlafzimmern"
+      },
+      "summary": {
+        "es": "Dos plantas en el casco antiguo, con azotea de 20 m². Amueblada. Panadería y centro de salud a 3 minutos andando; la costa, a 20 minutos en coche.",
+        "en": "Two floors in the old town, with a 20 m² roof terrace. Furnished. Bakery and health centre a 3-minute walk away; the coast is 20 minutes by car.",
+        "de": "Zwei Etagen in der Altstadt, mit Dachterrasse von 20 m². Möbliert. Bäckerei und Gesundheitszentrum 3 Gehminuten entfernt; zur Küste 20 Autominuten."
+      },
+      "rent": 1150,
+      "listedAt": "2026-11-05",
+      "availableFrom": "2027-01-01",
+      "furnished": true,
+      "pets": true,
+      "guarantee": 0,
+      "includes": [],
+      "usable": 84,
+      "built": 102,
+      "bedrooms": 2,
+      "bathrooms": 1,
+      "yearBuilt": 1955,
+      "energy": {
+        "consumo": "E",
+        "kwh": 168,
+        "emisiones": "E",
+        "co2": 36
+      },
+      "agent": "daniel",
+      "lacks": [
+        {
+          "es": "No tiene calefacción fija: hay dos radiadores eléctricos portátiles.",
+          "en": "No fixed heating: there are two portable electric heaters.",
+          "de": "Keine fest installierte Heizung: Es gibt zwei mobile Elektroheizkörper."
+        },
+        {
+          "es": "La escalera es estrecha y empinada, de 75 cm de ancho.",
+          "en": "The staircase is narrow and steep, 75 cm wide.",
+          "de": "Die Treppe ist schmal und steil, 75 cm breit."
+        },
+        {
+          "es": "En la calle no se puede aparcar: el aparcamiento municipal, gratuito, está a 300 m.",
+          "en": "No street parking: the free municipal car park is 300 m away.",
+          "de": "Auf der Straße kann man nicht parken: Der kostenlose städtische Parkplatz liegt 300 m entfernt."
+        }
+      ]
+    },
+    {
+      "ref": "A-206",
+      "status": "alquilada",
+      "term": "larga",
+      "type": "cortijo",
+      "zone": "interior",
+      "slugs": {
+        "es": "cortijo-3-dormitorios-finca-olivos-alquiler-a-206",
+        "en": "3-bedroom-country-house-olive-grove-to-rent-a-206",
+        "de": "finca-3-schlafzimmer-olivenhain-miete-a-206"
+      },
+      "title": {
+        "es": "Cortijo de 3 dormitorios entre olivos",
+        "en": "3-bedroom country house among olive trees",
+        "de": "Finca mit 3 Schlafzimmern im Olivenhain"
+      },
+      "summary": {
+        "es": "Una planta en una finca de 9.000 m² con olivos. Tres dormitorios, chimenea y porche de 40 m². A 12 minutos en coche del pueblo y 35 de la costa; el mantenimiento del jardín va incluido.",
+        "en": "A single storey on a 9,000 m² estate with olive trees. Three bedrooms, a fireplace and a 40 m² porch. 12 minutes by car from the village and 35 from the coast; garden upkeep is included.",
+        "de": "Eine Ebene auf einem Grundstück von 9.000 m² mit Olivenbäumen. Drei Schlafzimmer, Kamin und überdachte Terrasse von 40 m². 12 Autominuten zum Dorf und 35 zur Küste; die Gartenpflege ist enthalten."
+      },
+      "rent": 1750,
+      "listedAt": "2026-10-01",
+      "availableFrom": "2026-11-20",
+      "furnished": false,
+      "pets": true,
+      "guarantee": 1,
+      "includes": [
+        "jardin"
+      ],
+      "usable": 168,
+      "built": 205,
+      "plot": 9000,
+      "bedrooms": 3,
+      "bathrooms": 2,
+      "yearBuilt": 1910,
+      "energy": {
+        "consumo": "F",
+        "kwh": 214,
+        "emisiones": "E",
+        "co2": 44
+      },
+      "agent": "daniel",
+      "lacks": [
+        {
+          "es": "El último kilómetro del camino de acceso es de tierra.",
+          "en": "The last kilometre of the access track is unpaved.",
+          "de": "Der letzte Kilometer der Zufahrt ist ein Schotterweg."
+        },
+        {
+          "es": "Agua de pozo con depósito: no hay red municipal.",
+          "en": "Well water with a storage tank: there is no mains supply.",
+          "de": "Brunnenwasser mit Tank: Es gibt keinen Anschluss an das öffentliche Netz."
+        },
+        {
+          "es": "Sin fibra: internet por antena 4G.",
+          "en": "No fibre: internet is via a 4G antenna.",
+          "de": "Keine Glasfaser: Internet über eine 4G-Antenne."
+        }
+      ]
+    }
+  ]
+}

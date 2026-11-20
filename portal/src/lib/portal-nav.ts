@@ -69,9 +69,16 @@ export const PORTAL_PROFILE_ITEM: PortalNavItem = { href: '/portal/perfil', labe
 // entrada sale justo debajo de «Web», que es con lo que se vende.
 export const PORTAL_VILLAS_ITEM: PortalNavItem = { href: '/portal/villas', label: 'Reservas de villas' };
 
+// Cartera de Signature inmobiliaria (19/11/2026) — mismo caso que villas: un
+// extra de Signature que activa el operador. También va debajo de «Web»; si un
+// cliente tuviera los dos, primero villas y después la cartera.
+export const PORTAL_CARTERA_ITEM: PortalNavItem = { href: '/portal/cartera', label: 'Cartera' };
+
 export interface PortalNavOptions {
   /** El cliente tiene la reserva de villas (activa, pausada o en el plazo de baja). */
   readonly villas?: boolean;
+  /** El cliente tiene la cartera (activa, pausada o en el plazo de baja). */
+  readonly cartera?: boolean;
 }
 
 /**
@@ -81,10 +88,13 @@ export interface PortalNavOptions {
  * enseñando lo mismo (el motivo de WP-04, arriba).
  */
 export function portalNavFor(options: PortalNavOptions = {}): readonly PortalNavItem[] {
-  if (!options.villas) return PORTAL_NAV;
+  const extra: PortalNavItem[] = [];
+  if (options.villas) extra.push(PORTAL_VILLAS_ITEM);
+  if (options.cartera) extra.push(PORTAL_CARTERA_ITEM);
+  if (extra.length === 0) return PORTAL_NAV;
   const afterWeb = PORTAL_NAV.findIndex((item) => item.href === '/portal/web') + 1;
   // Si algún día «Web» sale de la lista, findIndex da -1 y la entrada va al
   // final; mejor ahí que encima de «Resumen».
   const at = afterWeb > 0 ? afterWeb : PORTAL_NAV.length;
-  return [...PORTAL_NAV.slice(0, at), PORTAL_VILLAS_ITEM, ...PORTAL_NAV.slice(at)];
+  return [...PORTAL_NAV.slice(0, at), ...extra, ...PORTAL_NAV.slice(at)];
 }

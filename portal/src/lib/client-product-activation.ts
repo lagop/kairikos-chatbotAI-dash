@@ -10,6 +10,7 @@ import {
 import { isMultiInstanceProduct } from './client-product-access';
 import { assignSiteToNewContract } from './client-site';
 import { ensureVillaRentalForContract, VILLAS_PRODUCT_CODE } from './villas/rental';
+import { ensureCarteraSiteForContract, CARTERA_PRODUCT_CODE } from './cartera/site';
 
 // =============================================================================
 // Activar un ClientProduct sin pasar por Stripe — un operador decide que
@@ -117,6 +118,19 @@ export async function activateClientProductForOperator(
         clientId,
         tenantId: client.tenantId,
         businessName: client.companyName ?? client.name,
+        actorId: `operator:${actor.operatorId}`,
+      });
+    }
+    // Cartera de Signature inmobiliaria (19/11/2026): igual que villas. El
+    // módulo vive en su CarteraSite; sin él, la contratación quedaría activa
+    // con el panel vacío y sin token del feed. El token no se devuelve por
+    // aquí: el operador lo regenera (y lo ve una vez) desde el PATCH del sitio.
+    if (product.code === CARTERA_PRODUCT_CODE) {
+      await tx.clientProduct.update({ where: { id: clientProduct.id }, data: { onboardingState: 'live' } });
+      await ensureCarteraSiteForContract(tx, {
+        clientProductId: clientProduct.id,
+        clientId,
+        tenantId: client.tenantId,
         actorId: `operator:${actor.operatorId}`,
       });
     }

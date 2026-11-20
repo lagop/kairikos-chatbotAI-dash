@@ -10,6 +10,7 @@ import { getSession } from '@/lib/session';
 import { resolveClientFromSession } from '@/lib/portal-session';
 import { MOCK_CLIENT, DEV_MOCK_CLIENT_BY_EMAIL } from '@/lib/portal-data';
 import { findRentalForOwner } from '@/lib/villas/rental';
+import { findSiteForOwner } from '@/lib/cartera/site';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,6 +45,8 @@ export default async function PortalLayout({ children }: { children: ReactNode }
   // único sitio que pinta los tres menús.
   let villasClientId: string | null = null;
   let showVillas = false;
+  // «Cartera», con la misma regla: la entrada sigue en el plazo de baja.
+  let showCartera = false;
 
   try {
     const session = await getSession();
@@ -87,13 +90,18 @@ export default async function PortalLayout({ children }: { children: ReactNode }
     } catch (err) {
       console.error('[portal] layout villas lookup crashed:', err);
     }
+    try {
+      showCartera = (await findSiteForOwner(prisma, villasClientId)) !== null;
+    } catch (err) {
+      console.error('[portal] layout cartera lookup crashed:', err);
+    }
   }
 
   return (
     <div className="flex min-h-screen flex-col">
-      <PortalHeader email={email} businessName={businessName} showVillas={showVillas} />
+      <PortalHeader email={email} businessName={businessName} showVillas={showVillas} showCartera={showCartera} />
       <div className="mx-auto flex w-full max-w-page flex-1">
-        <PortalSidebarMount showVillas={showVillas} />
+        <PortalSidebarMount showVillas={showVillas} showCartera={showCartera} />
         <main id="contenido" className="w-full flex-1 px-4 py-6 sm:px-6 sm:py-8">
           {children}
         </main>

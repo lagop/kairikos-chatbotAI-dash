@@ -8,13 +8,16 @@ export function PortalHeader({
   email,
   businessName,
   showVillas = false,
+  showCartera = false,
 }: {
   email: string | null;
   businessName?: string;
   /** El cliente tiene la reserva de villas: su entrada sale en el menú (ver portal-nav.ts). */
   showVillas?: boolean;
+  /** El cliente tiene la cartera inmobiliaria: ídem. */
+  showCartera?: boolean;
 }) {
-  const navItems = portalNavFor({ villas: showVillas });
+  const navItems = portalNavFor({ villas: showVillas, cartera: showCartera });
   return (
     <header className="sticky top-0 z-10 border-b border-kairikos-border bg-kairikos-bg/80 backdrop-blur">
       <div className="mx-auto flex max-w-page items-center justify-between px-4 py-3 sm:px-6">
@@ -35,7 +38,7 @@ export function PortalHeader({
           ) : null}
         </div>
         <div className="flex items-center gap-1">
-          <PortalMobileNav showVillas={showVillas} />
+          <PortalMobileNav showVillas={showVillas} showCartera={showCartera} />
           <ThemeToggle />
           {email ? <UserMenu email={email} businessName={businessName} /> : null}
         </div>

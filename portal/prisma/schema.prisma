@@ -894,6 +894,8 @@ model ClientProduct {
   googleAnalyticsConnection  GoogleAnalyticsConnection?
   // Reserva propia para villas (15/11/2026) — la configuración del módulo.
   villaRental                VillaRental?
+  // Cartera de Signature inmobiliaria (19/11/2026) — el sitio de la cartera.
+  carteraSite                CarteraSite?
 
   // Real DB-level uniqueness for every code except 'web' lives in a raw-SQL
   // partial unique index (see this migration's .sql) — Prisma can't express
@@ -6538,4 +6540,207 @@ model VillaRentalAudit {
   @@index([rentalId, createdAt])
   @@index([entity, entityId])
   @@map("villa_rental_audit")
+}
+
+// =============================================================================
+// Cartera de Signature inmobiliaria (19/11/2026) — la agencia edita sus casas en
+// el portal y su web estática se reconstruye sola leyendo un feed. Especificación
+// aprobada: docs/fase1-cartera.md del repositorio kairikos-signature-inmobiliaria.
+//
+// Un CarteraSite por contratación 'cartera' (no es multi-instancia: una web por
+// cliente). La casa es un JSON (`data`) en el formato que define la plantilla
+// web (lib/cartera/schema.ts es su copia), no cuarenta columnas: la exportación
+// es ese mismo JSON y un campo nuevo en la plantilla no pide migración aquí.
+// Las columnas copiadas (ref, status, price, title) son solo para listar.
+// =============================================================================
+
+model CarteraSite {
+  id                 String    @id @default(uuid()) @db.Uuid
+  clientProductId    String    @unique @map("client_product_id") @db.Uuid
+  clientId           String    @map("client_id")
+  tenantId           String?   @map("tenant_id") @db.Uuid
+  // Token del feed (car_…). Lo lee el build de GitHub y va en sus secretos,
+  // nunca en el HTML. El feed solo publica lo que ya es público en la web,
+  // pero se regenera desde el operador y se enseña una sola vez.
+  feedToken          String    @unique @map("feed_token")
+  // SHA-256 del secreto con el que el build avisa de cómo acabó (PR 4). El
+  // secreto en claro solo se enseña al generarlo.
+  buildSecretHash    String?   @map("build_secret_hash")
+  // «lagop/cliente-x» y el workflow que se lanza con workflow_dispatch.
+  githubRepo         String?   @map("github_repo")
+  workflowFile       String    @default("publicar.yml") @map("workflow_file")
+  siteUrl            String?   @map("site_url")
+  // Prefijos de referencia: C-1xx venta, A-2xx alquiler. Cambiarlos solo
+  // afecta a las casas nuevas: una referencia asignada no cambia nunca.
+  salePrefix         String    @default("C") @map("sale_prefix")
+  rentPrefix         String    @default("A") @map("rent_prefix")
+  // [{ key, name }]: las claves de src/config/agents.ts de SU web.
+  agents             Json      @default("[]")
+  // Publicación (PR 4): hay cambios sin publicar desde pendingSince.
+  pendingSince       DateTime? @map("pending_since")
+  // El último cambio que afecta a la web (PR 4). pendingSince guarda el MÁS
+  // ANTIGUO sin publicar; este, el más reciente: una publicación correcta solo
+  // limpia pendingSince si no hubo cambios después de lanzarla.
+  lastChangeAt       DateTime? @map("last_change_at")
+  lastDispatchAt     DateTime? @map("last_dispatch_at")
+  lastPublishedCount Int?      @map("last_published_count")
+  // Baja del cliente, como VillaRental.exitNotifiedAt (lib/cartera/site.ts).
+  exitNotifiedAt     DateTime? @map("exit_notified_at")
+  // Última pasada de la purga de contactos de más de 24 meses (PR 5). El
+  // cron la corre cada 5 minutos; esto la deja en una vez al día por sitio.
+  enquiriesPurgedAt  DateTime? @map("enquiries_purged_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  clientProduct ClientProduct    @relation(fields: [clientProductId], references: [id], onDelete: Cascade)
+  homes         CarteraHome[]
+  enquiries     CarteraEnquiry[]
+  builds        CarteraBuild[]
+  audits        CarteraAudit[]
+
+  @@index([clientId])
+  @@map("cartera_site")
+}
+
+// status (texto libre, validado en lib/cartera): 'borrador' | 'proximamente' |
+// 'venta' | 'reservada' | 'vendida' (operation 'venta') y 'disponible' |
+// 'reservada' | 'alquilada' (operation 'alquiler'). Un borrador nunca sale en
+// el feed; las vendidas y alquiladas sí (la web mantiene su ficha).
+model CarteraHome {
+  id               String    @id @default(uuid()) @db.Uuid
+  siteId           String    @map("site_id") @db.Uuid
+  clientId         String    @map("client_id")
+  ref              String
+  // 'venta' | 'alquiler'
+  operation        String
+  status           String    @default("borrador")
+  // La casa en el formato propio, sin `photos` (salen de CarteraPhoto).
+  data             Json      @default("{}")
+  // Lo que no valida contra el esquema: null = publicable.
+  errors           Json?
+  // Precio o renta y título en español, copiados de `data` para listar.
+  price            Int?
+  title            String?
+  // Las direcciones de la ficha se congelan al publicarse por primera vez.
+  slugLocked       Boolean   @default(false) @map("slug_locked")
+  firstPublishedAt DateTime? @map("first_published_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  // 'client:<id>' | 'operator:<id>' | 'system'
+  updatedBy        String?   @map("updated_by")
+
+  site   CarteraSite    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  photos CarteraPhoto[]
+
+  @@unique([siteId, ref])
+  @@index([siteId, status])
+  @@index([clientId])
+  @@map("cartera_home")
+}
+
+// Decisión A: el fichero vive en el volumen cartera-fotos (CARTERA_FOTOS_DIR),
+// no en Postgres. storageKey es la ruta relativa dentro de ese directorio.
+model CarteraPhoto {
+  id         String   @id @default(uuid()) @db.Uuid
+  homeId     String   @map("home_id") @db.Uuid
+  storageKey String   @unique @map("storage_key")
+  mime       String
+  width      Int
+  height     Int
+  bytes      Int
+  sha256     String
+  // La primera (0) es la portada.
+  position   Int      @default(0)
+  // { es, en, de }, opcional.
+  alt        Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  home CarteraHome @relation(fields: [homeId], references: [id], onDelete: Cascade)
+
+  @@index([homeId, position])
+  @@map("cartera_photo")
+}
+
+// Lo que llega de los formularios de la web (decisión D, PR 5).
+//   kind: 'visita' | 'valoracion' | 'propietario' | 'privado' |
+//         'guardadas_agencia' | 'guardadas_email' | 'contacto'
+//   status: 'nuevo' | 'atendido'
+// Se borran a los 24 meses de created_at (cron cartera-tick).
+model CarteraEnquiry {
+  id        String   @id @default(uuid()) @db.Uuid
+  siteId    String   @map("site_id") @db.Uuid
+  clientId  String   @map("client_id")
+  tenantId  String?  @map("tenant_id") @db.Uuid
+  kind      String
+  refs      String[] @default([])
+  name      String?
+  contact   String
+  lang      String   @default("es")
+  consentAt DateTime @map("consent_at")
+  payload   Json     @default("{}")
+  status    String   @default("nuevo")
+  // La copia como Lead si el cliente tiene el producto de captación. Sin
+  // clave foránea: el Lead sigue las reglas de su producto.
+  leadId    String?  @map("lead_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  site CarteraSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([siteId, createdAt])
+  @@index([createdAt])
+  @@map("cartera_enquiry")
+}
+
+// Una publicación lanzada en GitHub Actions (PR 4).
+//   trigger: 'cambio' | 'manual'
+//   status:  'enviada' | 'en_curso' | 'ok' | 'fallida' | 'desconocida'
+model CarteraBuild {
+  id           String    @id @default(uuid()) @db.Uuid
+  siteId       String    @map("site_id") @db.Uuid
+  // cambio (el cron) · manual («Publicar ahora») · externa (a mano en GitHub
+  // o una subida a main: llega solo por el aviso, con buildId null).
+  trigger      String
+  homeCount    Int       @map("home_count")
+  dispatchedAt DateTime  @default(now()) @map("dispatched_at")
+  finishedAt   DateTime? @map("finished_at")
+  // enviada · en_curso · ok · fallida · desconocida (sin noticias en 45 min).
+  status       String    @default("enviada")
+  runUrl       String?   @map("run_url")
+  error        String?
+  // Lo que cuenta el aviso de publicar.yml (docs/publicacion.md de la web):
+  // dónde falló (construir · subir), la publicación de la VPS y el commit.
+  stage        String?
+  release      String?
+  commitSha    String?   @map("commit_sha")
+  // El último aviso recibido: las «sin noticias en 45 minutos» se cuentan desde aquí.
+  lastNoticeAt DateTime? @map("last_notice_at")
+
+  site CarteraSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([siteId, dispatchedAt])
+  @@index([siteId, runUrl])
+  @@map("cartera_build")
+}
+
+// Solo se añade, como VillaRentalAudit. Sin datos personales ni secretos.
+//   entity: 'site' | 'home' | 'photo' | 'enquiry' | 'build' | 'export'
+//   actor:  'client:<id>' | 'operator:<id>' | 'system' | 'buyer'
+model CarteraAudit {
+  id        String   @id @default(uuid()) @db.Uuid
+  siteId    String   @map("site_id") @db.Uuid
+  clientId  String   @map("client_id")
+  entity    String
+  entityId  String   @map("entity_id")
+  action    String
+  actor     String
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  site CarteraSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([siteId, createdAt])
+  @@index([entity, entityId])
+  @@map("cartera_audit")
 }

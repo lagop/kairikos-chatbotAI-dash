@@ -60,8 +60,16 @@ function SidebarLink({ item, pathname, nested }: { item: PortalNavItem; pathname
   );
 }
 
-export function PortalSidebar({ pathname, showVillas = false }: { pathname: string; showVillas?: boolean }) {
-  const SIDEBAR_ITEMS: readonly PortalNavItem[] = [...portalNavFor({ villas: showVillas }), PORTAL_PROFILE_ITEM];
+export function PortalSidebar({
+  pathname,
+  showVillas = false,
+  showCartera = false,
+}: {
+  pathname: string;
+  showVillas?: boolean;
+  showCartera?: boolean;
+}) {
+  const SIDEBAR_ITEMS: readonly PortalNavItem[] = [...portalNavFor({ villas: showVillas, cartera: showCartera }), PORTAL_PROFILE_ITEM];
   const topLevelItems = SIDEBAR_ITEMS.filter((item) => !item.parentHref);
 
   return (
