@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Notice, ReadOnlyBanner, call, dateTimeText, errorMessage, priceText, type NoticeMessage } from './cartera-ui';
 import { PublicationHistory, PublicationStatus, type CarteraPublicationData } from './CarteraPublication';
 import { CarteraEnquiries, type CarteraEnquiryRow } from './CarteraEnquiries';
+import { CarteraExport } from './CarteraExport';
 
 // =============================================================================
 // Cartera — el panel de la agencia. Los datos llegan preparados de
@@ -16,8 +17,10 @@ import { CarteraEnquiries, type CarteraEnquiryRow } from './CarteraEnquiries';
 //     de la tabla, el estado de la última publicación y «Publicar ahora» (PR 4).
 //   - Contactos (PR 5): lo que llega de la web (CarteraEnquiries.tsx).
 //   - Publicación (PR 4): el historial (CarteraPublication.tsx).
+//   - Exportar (PR 6): el ZIP de la cartera (CarteraExport.tsx), también en la
+//     gracia de una baja.
 //
-// Exportar llega con su PR. Los paneles están SIEMPRE
+// Los paneles están SIEMPRE
 // montados y el que no toca lleva `hidden`, como en VillasPanel: cambiar de
 // pestaña no pierde los filtros.
 // =============================================================================
@@ -46,11 +49,12 @@ export interface CarteraPanelData {
   enquiryKindLabels: Record<string, string>;
 }
 
-type TabId = 'casas' | 'contactos' | 'publicacion';
+type TabId = 'casas' | 'contactos' | 'publicacion' | 'exportar';
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'casas', label: 'Casas' },
   { id: 'contactos', label: 'Contactos' },
   { id: 'publicacion', label: 'Publicación' },
+  { id: 'exportar', label: 'Exportar' },
 ];
 
 const OPERATION_LABELS: Record<string, string> = { venta: 'Venta', alquiler: 'Alquiler' };
@@ -253,6 +257,10 @@ export function CarteraPanel({ data }: { data: CarteraPanelData }) {
           Cada publicación reconstruye tu web con las casas que no son borrador y no tienen avisos. Si una falla, la web anterior sigue en pie y se te avisa por correo.
         </p>
         <PublicationHistory builds={data.publication.builds} />
+      </div>
+
+      <div role="tabpanel" id="cartera-panel-exportar" aria-labelledby="cartera-tab-exportar" hidden={tab !== 'exportar'} className="mt-6">
+        <CarteraExport readOnly={data.readOnly} />
       </div>
     </div>
   );

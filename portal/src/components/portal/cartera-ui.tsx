@@ -31,6 +31,7 @@ export const ERROR_TEXT: Record<string, string> = {
   translation_failed: 'La traducción ha fallado. Inténtalo de nuevo.',
   ai_not_configured: 'La traducción con IA no está disponible ahora mismo.',
   unreadable: 'No se ha podido leer la foto. Prueba con un JPEG o un PNG.',
+  export_failed: 'No se ha podido preparar la exportación: es un fallo nuestro, no de tus casas. Ya nos ha llegado el aviso; si te corre prisa, escribe a soporte.',
 };
 
 export async function call(method: string, url: string, body?: unknown): Promise<{ ok: boolean; data: Record<string, unknown> }> {
@@ -99,7 +100,7 @@ export function ReadOnlyBanner({ graceEndsAt }: { graceEndsAt: string | null }) 
     <p className="card mt-6 border-kairikos-warning/50 text-sm" data-testid="cartera-read-only">
       {graceEndsAt ? (
         <>
-          El servicio está dado de baja. Tus casas siguen aquí, en solo lectura, hasta el <strong>{dateTimeText(graceEndsAt)}</strong>; después se borran.
+          El servicio está dado de baja. Tus casas siguen aquí, en solo lectura, hasta el <strong>{dateTimeText(graceEndsAt)}</strong>; después se borran. Antes de esa fecha, descárgalas desde la pestaña Exportar.
         </>
       ) : (
         <>El servicio no está activo ahora mismo: puedes ver tus casas, pero no cambiarlas. Para reactivarlo, habla con soporte.</>

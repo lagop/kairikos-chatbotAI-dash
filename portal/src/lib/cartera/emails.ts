@@ -70,6 +70,32 @@ export function renderOperatorFailedEmail(info: FailedBuildInfo): RenderedEmail 
   return { subject: `Cartera: publicación fallida en ${info.siteUrl ?? info.githubRepo ?? info.clientId}`, text: lines.join('\n'), html: toHtml(lines) };
 }
 
+export interface OwnerExitInfo {
+  agencyName: string;
+  siteUrl: string | null;
+  graceEndsAt: Date;
+  homeCount: number;
+  enquiryCount: number;
+}
+
+/** El aviso de baja a la agencia (PR 6), una sola vez: cuánto tiempo tiene,
+ *  qué deja de funcionar ya y dónde descargar. La fecha, en hora de Madrid. */
+export function renderOwnerExitEmail(info: OwnerExitInfo): RenderedEmail {
+  const deadline = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' }).format(info.graceEndsAt);
+  const web = info.siteUrl ?? 'tu web';
+  const paragraphs = [
+    `Hola, ${info.agencyName}:`,
+    'El servicio de cartera de tu web se ha dado de baja.',
+    `Tus ${info.homeCount} casas, sus fotos y los ${info.enquiryCount} contactos que llegaron desde la web siguen guardados en el portal, en solo lectura, hasta el ${deadline} (hora peninsular). Ese día se borran del todo y no se pueden recuperar.`,
+    `Antes de esa fecha, descarga el ZIP desde la pestaña Exportar: lleva las casas en el formato que entiende ${web}, para que quien mantenga la web pueda seguir sin el portal, los borradores y los contactos en un CSV.`,
+    'Desde hoy la web ya no recibe casas nuevas del portal ni los formularios de contacto llegan aquí. Lo que ya estaba publicado sigue en la web hasta que se vuelva a construir.',
+    'Si es un error o quieres volver, escríbenos antes de esa fecha y se reactiva tal cual.',
+    `Tu panel: ${portalBaseUrl()}/portal/cartera`,
+  ];
+  const day = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'long', timeZone: 'Europe/Madrid' }).format(info.graceEndsAt);
+  return { subject: `Tu cartera se borra el ${day}: descarga tus casas antes`, text: paragraphs.join('\n\n'), html: toHtml(paragraphs) };
+}
+
 export type SendResult = { ok: true; messageId: string } | { ok: true; skipped: true; reason: 'no_api_key' | 'no_recipient' } | { ok: false; error: string };
 
 /** El remitente de Kairikos con otro nombre a la vista (el de la agencia, en
