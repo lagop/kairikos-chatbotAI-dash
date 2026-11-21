@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import { withChatbot } from '@/lib/wizard-url';
 
@@ -73,6 +73,16 @@ export function WebChannelCard({
   const [originsText, setOriginsText] = useState((embed?.allowedOrigins ?? []).join('\n'));
   const [originsError, setOriginsError] = useState<string | null>(null);
   const [originsSaved, setOriginsSaved] = useState(false);
+
+  // El aviso de la portada (WidgetOriginsNotice) enlaza a #webs-permitidas. El
+  // salto al ancla que hace Next llega antes de que la página termine de
+  // pintarse y se pasaba de largo (probado en local, 21/11/2026): se repite
+  // aquí, ya montada la tarjeta.
+  useEffect(() => {
+    if (window.location.hash !== '#webs-permitidas') return;
+    const frame = requestAnimationFrame(() => document.getElementById('webs-permitidas')?.scrollIntoView());
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   const isActive = embed?.status === 'active';
   const origin = useSyncExternalStore(noopSubscribe, browserOrigin, serverOrigin);
@@ -266,7 +276,8 @@ export function WebChannelCard({
             </button>
           </div>
 
-          <div className="space-y-2 border-t border-kairikos-border pt-3">
+          {/* id: destino del aviso de la portada (WidgetOriginsNotice). */}
+          <div id="webs-permitidas" className="scroll-mt-24 space-y-2 border-t border-kairikos-border pt-3">
             <label className="block text-xs font-medium text-kairikos-muted" htmlFor="web-allowed-origins">
               Webs donde funciona el chat
             </label>
