@@ -3,7 +3,7 @@ import { getStep, getCommon } from '@/messages/wizard-es';
 import { WizardFormProvider, useWizardForm, type WizardFormState } from './WizardFormProvider';
 import { Step1Perfil } from './Step1Perfil';
 import { Step2Personalidad } from './Step2Personalidad';
-import type { PerfilIdiomas } from '@/lib/wizard-schemas';
+import type { PerfilPaso1 } from '@/lib/wizard-schemas';
 import { Step3Servicios } from './Step3Servicios';
 import { Step4Faq } from './Step4Faq';
 import { Step5Horario } from './Step5Horario';
@@ -60,9 +60,9 @@ export interface StepFormProps {
   onChange?: (payload: Record<string, unknown>) => void;
   isSubmitting?: boolean;
   step10Consentimiento?: string | null;
-  /** Idiomas del paso 1, para el trato por idioma del paso 2. Cada página
-   *  del asistente carga solo su paso, así que llegan aparte. */
-  perfilIdiomas?: PerfilIdiomas | null;
+  /** Datos guardados del paso 1 (sector, nombre comercial, idiomas). Cada
+   *  página del asistente carga solo su paso, así que llegan aparte. */
+  perfilPaso1?: PerfilPaso1 | null;
 }
 
 const BLOCK_LABELS: Record<string, string> = {
@@ -186,7 +186,7 @@ export function StepForm(props: StepFormProps) {
         <StepFields
           stepNumber={stepNumber}
           step10Consentimiento={props.step10Consentimiento ?? null}
-          perfilIdiomas={props.perfilIdiomas ?? null}
+          perfilPaso1={props.perfilPaso1 ?? null}
           onChange={props.onChange}
         />
       </WizardFormProvider>
@@ -197,17 +197,22 @@ export function StepForm(props: StepFormProps) {
 function StepFields({
   stepNumber,
   step10Consentimiento,
-  perfilIdiomas,
+  perfilPaso1,
   onChange,
 }: {
   stepNumber: number;
   step10Consentimiento: string | null;
-  perfilIdiomas: PerfilIdiomas | null;
+  perfilPaso1: PerfilPaso1 | null;
   onChange?: (payload: Record<string, unknown>) => void;
 }) {
   const form = useWizardForm();
-  const vertical = ((form.values[1] as Step1Input | null)?.vertical ?? null) as string | null;
-  const nombreComercial = ((form.values[1] as Step1Input | null)?.nombre_comercial ?? null) as string | null;
+  // `form.values[1]` solo existe en la página del paso 1; en las demás, el
+  // sector y el nombre llegan del paso 1 guardado (`perfilPaso1`). Hasta el
+  // 20/11/2026 no había respaldo y todos los pasos caían en el sector «otro».
+  const paso1 = form.values[1] as Step1Input | null;
+  const vertical = (paso1?.vertical ?? perfilPaso1?.vertical ?? null) as string | null;
+  const nombreComercial = (paso1?.nombre_comercial ?? perfilPaso1?.nombreComercial ?? null) as string | null;
+  const perfilIdiomas = perfilPaso1?.idiomas ?? null;
   const step10Value = (form.values[10] as Step10Input | null) ?? null;
   const step10Consent = step10Value?.plantilla_base ?? step10Consentimiento ?? null;
 
