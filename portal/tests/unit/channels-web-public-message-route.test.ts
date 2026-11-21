@@ -311,4 +311,19 @@ describe('POST /api/public/channels/web/message — dominios permitidos', () => 
     const res = await post(tokenBody(), { origin: 'null' });
     expect((await res.json()).data.mode).toBe('unavailable');
   });
+
+  // 21/11/2026 — el cupo de 20/min por widget se contaba antes de mirar la web,
+  // y una web fuera de la lista lo agotaba para las buenas.
+  it('una web fuera de la lista no gasta el cupo del widget', async () => {
+    mockState.embedFindUnique.mockResolvedValue(conLista);
+    const body = tokenBody();
+    for (let i = 0; i < 25; i += 1) {
+      const res = await post(body, { origin: 'https://copion.example' });
+      expect(res.status).toBe(200);
+      expect((await res.json()).data.error).toBe('context_lookup_failed');
+    }
+    const res = await post(body, { origin: 'https://www.clinica.example' });
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.mode).toBe('portal');
+  });
 });

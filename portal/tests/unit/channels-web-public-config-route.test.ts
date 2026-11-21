@@ -231,7 +231,11 @@ describe('sensitiveDataNotice', () => {
 // El freno de ráfaga. La ruta está abierta a internet y con CORS: la llama el
 // navegador de cada visitante de la web del cliente.
 describe('freno de peticiones', () => {
-  it('corta la ráfaga del mismo widget con 429, y no toca la base al cortar', async () => {
+  // Desde el 21/11/2026 el cupo se cuenta después de buscar el widget y mirar
+  // la web (ver el bloque de dominios permitidos, abajo): al cortar ya se ha
+  // hecho esa búsqueda, pero no lo caro — el contexto del chatbot.
+  it('corta la ráfaga del mismo widget con 429, sin construir el contexto al cortar', async () => {
+    mockState.embedFindUnique.mockResolvedValue({ clientId: 'c1', status: 'active', primaryColor: '#000', position: 'bottom-right' });
     const { GET } = await import('@/app/api/public/channels/web/config/route');
     const token = 'token-rafaga-' + Math.random().toString(36).slice(2);
 
@@ -247,8 +251,7 @@ describe('freno de peticiones', () => {
     // Sigue contestando CORS aunque corte: si no, el navegador enseña un
     // error de origen cruzado en vez del 429 y nadie entiende qué pasó.
     expect(ultima!.headers.get('access-control-allow-origin')).toBe('*');
-    const consultasAntesDeCortar = mockState.embedFindUnique.mock.calls.length;
-    expect(consultasAntesDeCortar).toBeLessThan(130);
+    expect(mockState.stepFindMany.mock.calls.length).toBeLessThan(130);
   });
 
   it('un widget distinto no paga la ráfaga del anterior', async () => {
@@ -304,5 +307,16 @@ describe('GET /api/public/channels/web/config — dominios permitidos', () => {
     const { GET } = await import('@/app/api/public/channels/web/config/route');
     const res = await GET(makeRequest(token(), { referer: 'https://www.clinica.example/tratamientos?x=1' }));
     expect(res.status).toBe(200);
+  });
+
+  // 21/11/2026 — el cupo de 120/min por widget se contaba antes de mirar la web.
+  it('una web fuera de la lista no gasta el cupo del widget', async () => {
+    mockState.embedFindUnique.mockResolvedValue(embed(['https://www.clinica.example']));
+    const { GET } = await import('@/app/api/public/channels/web/config/route');
+    const t = token();
+    for (let i = 0; i < 130; i += 1) {
+      expect((await GET(makeRequest(t, { origin: 'https://copion.example' }))).status).toBe(404);
+    }
+    expect((await GET(makeRequest(t, { origin: 'https://www.clinica.example' }))).status).toBe(200);
   });
 });
