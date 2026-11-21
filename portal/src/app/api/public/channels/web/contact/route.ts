@@ -75,9 +75,6 @@ export async function POST(req: NextRequest) {
   const { publicToken, sessionId, contact } = body.data;
   const visitorName = body.data.name?.trim() ? body.data.name.trim() : null;
 
-  if (!contactRateLimiter.check(`widget-contact:${publicToken}`, MAX_POR_MINUTO)) {
-    return NextResponse.json({ success: false, error: 'too_many_requests' }, { status: 429, headers: CORS_HEADERS });
-  }
   if (!isDatabaseConfigured) {
     return NextResponse.json({ success: false, error: 'service_unavailable' }, { status: 503, headers: CORS_HEADERS });
   }
@@ -89,6 +86,12 @@ export async function POST(req: NextRequest) {
     // Mismo silencio que .../web/message: un desconocido no distingue
     // token inválido de widget apagado, y no debe.
     return NextResponse.json({ success: false, error: 'not_available' }, { status: 404, headers: CORS_HEADERS });
+  }
+  // El cupo del widget se cuenta DESPUÉS de comprobar la web (21/11/2026):
+  // con 5 por minuto, una web fuera de la lista lo agotaba enseguida y dejaba
+  // sin formulario de contacto a las webs buenas. Ver .../web/config.
+  if (!contactRateLimiter.check(`widget-contact:${publicToken}`, MAX_POR_MINUTO)) {
+    return NextResponse.json({ success: false, error: 'too_many_requests' }, { status: 429, headers: CORS_HEADERS });
   }
 
   // La conversación se busca por el par (cliente, sesión), que es único.

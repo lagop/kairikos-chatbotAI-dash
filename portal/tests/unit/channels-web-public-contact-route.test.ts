@@ -221,4 +221,16 @@ describe('POST /api/public/channels/web/contact — dominios permitidos', () => 
     const res = await POST(makeRequest(validBody()));
     expect(res.status).toBe(404);
   });
+
+  // 21/11/2026 — con 5/min por widget contados antes de mirar la web, una web
+  // fuera de la lista dejaba sin formulario a las buenas en cinco peticiones.
+  it('una web fuera de la lista no gasta el cupo del widget', async () => {
+    mockState.embedFindUnique.mockResolvedValue(conLista);
+    const { POST } = await import('@/app/api/public/channels/web/contact/route');
+    const body = validBody({ publicToken: 'wgt_copion_' + Math.random().toString(36).slice(2) });
+    for (let i = 0; i < 8; i += 1) {
+      expect((await POST(makeRequest(body, { origin: 'https://copion.example' }))).status).toBe(404);
+    }
+    expect((await POST(makeRequest(body, { origin: 'https://www.clinica.example' }))).status).toBe(200);
+  });
 });

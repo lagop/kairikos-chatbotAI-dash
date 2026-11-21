@@ -74,9 +74,6 @@ export async function GET(req: NextRequest) {
   if (!token) {
     return NextResponse.json({ error: 'missing_token' }, { status: 400, headers: CORS_HEADERS });
   }
-  if (!tokenRateLimiter.check(`widget-config:${token}`, CONFIG_MAX_POR_MINUTO)) {
-    return NextResponse.json({ error: 'too_many_requests' }, { status: 429, headers: CORS_HEADERS });
-  }
   if (!isDatabaseConfigured) {
     return NextResponse.json({ error: 'service_unavailable' }, { status: 503, headers: CORS_HEADERS });
   }
@@ -86,6 +83,14 @@ export async function GET(req: NextRequest) {
   // lo mismo que un widget apagado. Ver lib/web-widget-origin.ts.
   if (!embed || embed.status !== 'active' || !isWidgetOriginAllowed(embed.allowedOrigins, req.headers)) {
     return NextResponse.json({ error: 'not_found' }, { status: 404, headers: CORS_HEADERS });
+  }
+  // El cupo del widget se cuenta DESPUÉS de comprobar la web (21/11/2026).
+  // Delante, una web fuera de la lista —el snippet copiado en otra parte—
+  // gastaba el cupo igualmente y dejaba sin chat a las webs buenas hasta el
+  // minuto siguiente. Lo que cuesta ahora una petición rechazada es una
+  // búsqueda por clave única; lo caro (buildChatbotContext) sigue detrás.
+  if (!tokenRateLimiter.check(`widget-config:${token}`, CONFIG_MAX_POR_MINUTO)) {
+    return NextResponse.json({ error: 'too_many_requests' }, { status: 429, headers: CORS_HEADERS });
   }
 
   // Fase 4 multi-instancia — lo que el widget enseña (nombre del negocio,

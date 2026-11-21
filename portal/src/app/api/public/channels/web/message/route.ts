@@ -123,16 +123,18 @@ export async function POST(req: NextRequest) {
   // nunca lo manda. Ver web-widget-context.ts y docs/widget-v2.md.
   const visitorContext = buildVisitorContextLine(parseVisitorContext(body.data.context));
 
-  const ipKey = `${publicToken}:${clientIpFromHeaders(req.headers)}`;
-  if (
-    !ipMinuteLimiter.check(ipKey, IP_MAX_POR_MINUTO) ||
-    !ipHourLimiter.check(ipKey, IP_MAX_POR_HORA) ||
-    !chatRateLimiter.check(`widget-chat:${publicToken}`, CHAT_MAX_POR_MINUTO)
-  ) {
-    return NextResponse.json(
+  const tooManyRequests = () =>
+    NextResponse.json(
       { success: false, data: { sessionId, reply: null, mode: 'unavailable', error: 'too_many_requests' } },
       { status: 429, headers: CORS_HEADERS },
     );
+
+  // Los de IP van delante de la base de datos: su clave es token+IP, así que
+  // una web ajena solo gasta el cupo de sus propios visitantes. El del widget
+  // va detrás de la comprobación de la web, más abajo.
+  const ipKey = `${publicToken}:${clientIpFromHeaders(req.headers)}`;
+  if (!ipMinuteLimiter.check(ipKey, IP_MAX_POR_MINUTO) || !ipHourLimiter.check(ipKey, IP_MAX_POR_HORA)) {
+    return tooManyRequests();
   }
 
   if (!isDatabaseConfigured) {
@@ -166,6 +168,14 @@ export async function POST(req: NextRequest) {
       },
       { headers: CORS_HEADERS },
     );
+  }
+
+  // El cupo del widget —el que acota lo que gasta la IA— se cuenta DESPUÉS de
+  // comprobar la web (21/11/2026). Delante, una web fuera de la lista (el
+  // snippet copiado en otra parte) lo agotaba igualmente y dejaba sin chat a
+  // las webs buenas hasta el minuto siguiente. Ver .../web/config.
+  if (!chatRateLimiter.check(`widget-chat:${publicToken}`, CHAT_MAX_POR_MINUTO)) {
+    return tooManyRequests();
   }
 
   const instance = await resolveChatbotForChannel(prisma, embed.clientId, embed.clientProductId);
