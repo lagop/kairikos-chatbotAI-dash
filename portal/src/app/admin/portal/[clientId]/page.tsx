@@ -49,6 +49,8 @@ import { RecallCallerLanguagesCard } from '@/components/admin/RecallCallerLangua
 import { parseCallerLanguages, type CallerLanguage } from '@/lib/recall-caller-language';
 import { resolvePortalChatbot, type PortalChatbotSelection } from '@/lib/portal-chatbot';
 import { ChatbotPicker } from '@/components/portal/ChatbotPicker';
+import { WebOriginsOperatorCard, type WebOriginsOperatorView } from '@/components/admin/WebOriginsOperatorCard';
+import { resolveClientWebEmbed } from '@/lib/chat-web-embed';
 
 export const dynamic = 'force-dynamic';
 
@@ -266,6 +268,8 @@ export default async function AdminClientDetailPage(props: PageProps) {
   let channelsMeta: MetaConnectionRow[] = [];
   let channelsAllowed: string[] = [];
   let channelsFailedDeliveries: FailedDeliveryRow[] = [];
+  // 21/11/2026 — webs desde las que funciona el widget del chat de ese chatbot.
+  let channelsWebOrigins: WebOriginsOperatorView | null = null;
   // Leads Fase 5 — populated only when productCode === 'leads', same
   // pattern as the Canales/WebQuote blocks above.
   let leads: LeadSummaryRow[] = [];
@@ -577,6 +581,21 @@ export default async function AdminClientDetailPage(props: PageProps) {
             lastError: row.lastError,
             lastAttemptAt: row.lastAttemptAt?.toISOString() ?? null,
           }));
+
+          // Sin chatbot elegido no se busca: con varios widgets sería ambiguo.
+          const embedFound = chatbotId ? await resolveClientWebEmbed(prisma, client.id, chatbotId) : null;
+          if (embedFound?.ok) {
+            const last = await prisma.chatWebEmbedAudit.findFirst({
+              where: { embedId: embedFound.embed.id, action: 'allowed_origins_updated' },
+              orderBy: { changedAt: 'desc' },
+              select: { changedAt: true, actorType: true, actorEmail: true },
+            });
+            channelsWebOrigins = {
+              status: embedFound.embed.status,
+              allowedOrigins: embedFound.embed.allowedOrigins ?? [],
+              lastChange: last ? { at: last.changedAt.toISOString(), actorType: last.actorType, actorEmail: last.actorEmail ?? '' } : null,
+            };
+          }
         }
 
         // 23/09/2026 — también con 'prospecting' seleccionado, no solo con
@@ -1110,7 +1129,7 @@ export default async function AdminClientDetailPage(props: PageProps) {
             <section className="card" aria-label="Canales del chatbot" data-testid="client-channels-section">
               <header className="mb-4">
                 <h2 className="text-lg font-semibold">Canales</h2>
-                <p className="mt-1 text-xs text-kairikos-muted">Solo lectura — el cliente conecta y desconecta desde su portal.</p>
+                <p className="mt-1 text-xs text-kairikos-muted">El cliente conecta y desconecta desde su portal. Aquí solo se editan las webs permitidas del chat web.</p>
               </header>
               <div className="mb-4">
                 <ChatbotPicker
@@ -1127,6 +1146,13 @@ export default async function AdminClientDetailPage(props: PageProps) {
                 allowedChannels={channelsAllowed}
                 failedDeliveries={channelsFailedDeliveries}
               />
+              <div className="mt-6 border-t border-kairikos-border pt-4">
+                <WebOriginsOperatorCard
+                  clientId={params.clientId}
+                  clientProductId={chatbotSelection.selected?.clientProductId ?? null}
+                  embed={channelsWebOrigins}
+                />
+              </div>
             </section>
           ) : null}
 

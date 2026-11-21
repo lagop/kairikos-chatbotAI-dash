@@ -177,8 +177,13 @@ los dos archivos cambia, lo comprueba el servidor.
 La edita el cliente en **Portal → Canales → Web** («Webs donde funciona el chat»,
 una por línea; se guarda normalizada: `www.x.com/contacto` queda
 `https://www.x.com`). Ruta: `PUT /api/portal/channels/web/origins`. Cada cambio
-deja una fila en `chat_web_embed_audit` con la lista de antes y la de después. El
-operador todavía no tiene pantalla para editarla.
+deja una fila en `chat_web_embed_audit` con la lista de antes y la de después.
+
+El operador la edita en la ficha del cliente (**Admin → cliente → pestaña Chatbot →
+Canales**, «Chat web · webs permitidas»), con el último cambio y quién lo hizo.
+Ruta: `PUT /api/admin/portal/clients/[id]/web-origins?clientProductId=…`, misma
+validación; la auditoría la firma el operador (`actorType: operator`, su id y su
+email). Desde el 21/11/2026.
 
 **Limitación aceptada:** `Origin` lo pone el navegador, pero cualquiera lo falsea
 desde curl. La lista impide reutilizar el snippet en otra web —el abuso fácil—, no
