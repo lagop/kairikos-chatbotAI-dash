@@ -32,6 +32,11 @@ import {
   type FailedDeliveryRow,
 } from '@/components/admin/ChannelsOperatorPanel';
 import { getAllowedChannelsForClient } from '@/lib/channel-access';
+import {
+  WebWidgetOriginsCard,
+  type WebWidgetOriginsEmbed,
+  type WebWidgetOriginsChange,
+} from '@/components/admin/WebWidgetOriginsCard';
 import { LeadsSummaryPanel, type LeadSummaryRow } from '@/components/admin/LeadsSummaryPanel';
 import { ClientWebsitePanel, type ClientWebsiteView } from '@/components/admin/ClientWebsitePanel';
 import { RecallOperatorPanel, type RecallPanelData } from '@/components/admin/RecallOperatorPanel';
@@ -266,6 +271,12 @@ export default async function AdminClientDetailPage(props: PageProps) {
   let channelsMeta: MetaConnectionRow[] = [];
   let channelsAllowed: string[] = [];
   let channelsFailedDeliveries: FailedDeliveryRow[] = [];
+  // 21/11/2026 — webs desde las que contesta el widget web (PR #408), editable
+  // también por el operador. clientProductId solo con varios chatbots: con
+  // uno, la ruta encuentra el único widget (los antiguos no tienen chatbot).
+  let webWidgetEmbed: WebWidgetOriginsEmbed | null = null;
+  let webWidgetHistory: WebWidgetOriginsChange[] = [];
+  let webWidgetClientProductId: string | null = null;
   // Leads Fase 5 — populated only when productCode === 'leads', same
   // pattern as the Canales/WebQuote blocks above.
   let leads: LeadSummaryRow[] = [];
@@ -577,6 +588,32 @@ export default async function AdminClientDetailPage(props: PageProps) {
             lastError: row.lastError,
             lastAttemptAt: row.lastAttemptAt?.toISOString() ?? null,
           }));
+
+          webWidgetClientProductId = severalChatbots ? chatbotId : null;
+          const webRow = await prisma.chatWebEmbed.findFirst({
+            where: severalChatbots ? { clientId: client.id, clientProductId: chatbotId } : { clientId: client.id },
+            orderBy: { createdAt: 'asc' },
+            select: { id: true, status: true, allowedOrigins: true },
+          });
+          if (webRow) {
+            webWidgetEmbed = { status: webRow.status, allowedOrigins: webRow.allowedOrigins };
+            const audits = await prisma.chatWebEmbedAudit.findMany({
+              where: { embedId: webRow.id },
+              orderBy: { changedAt: 'desc' },
+              take: 5,
+              select: { id: true, changedAt: true, actorType: true, actorEmail: true, after: true },
+            });
+            webWidgetHistory = audits.map((a) => {
+              const after = (a.after as { allowedOrigins?: unknown } | null)?.allowedOrigins;
+              return {
+                id: a.id,
+                changedAt: a.changedAt.toISOString(),
+                actorType: a.actorType,
+                actorEmail: a.actorEmail,
+                after: Array.isArray(after) ? after.filter((o): o is string => typeof o === 'string') : [],
+              };
+            });
+          }
         }
 
         // 23/09/2026 — también con 'prospecting' seleccionado, no solo con
@@ -1110,7 +1147,7 @@ export default async function AdminClientDetailPage(props: PageProps) {
             <section className="card" aria-label="Canales del chatbot" data-testid="client-channels-section">
               <header className="mb-4">
                 <h2 className="text-lg font-semibold">Canales</h2>
-                <p className="mt-1 text-xs text-kairikos-muted">Solo lectura — el cliente conecta y desconecta desde su portal.</p>
+                <p className="mt-1 text-xs text-kairikos-muted">El cliente conecta y desconecta desde su portal. Aquí solo se cambian las webs permitidas del widget web.</p>
               </header>
               <div className="mb-4">
                 <ChatbotPicker
@@ -1127,6 +1164,19 @@ export default async function AdminClientDetailPage(props: PageProps) {
                 allowedChannels={channelsAllowed}
                 failedDeliveries={channelsFailedDeliveries}
               />
+              {resolvedClientId ? (
+                <div className="mt-4">
+                  <WebWidgetOriginsCard
+                    // Al cambiar de chatbot en el selector, el textarea arranca
+                    // con la lista del nuevo, no con la del anterior.
+                    key={chatbotSelection.selected?.clientProductId ?? 'unico'}
+                    clientId={resolvedClientId}
+                    clientProductId={webWidgetClientProductId}
+                    embed={webWidgetEmbed}
+                    history={webWidgetHistory}
+                  />
+                </div>
+              ) : null}
             </section>
           ) : null}
 
