@@ -1187,10 +1187,9 @@
           "id": "reservavillas",
           "icon": "home",
           "label": "Reserva directa para villas",
-          "desc": "Calendario con precios por temporada, solicitud que confirmas tú y depósito. Según el número de villas.",
+          "desc": "Calendario con precios por temporada, solicitud que confirmas tú y depósito en tu propia cuenta. Sin comisión por reserva. De 1 a 10 villas; con más, lo vemos en la llamada.",
           "price": 1800,
-          "weeks": 2,
-          "from": true
+          "weeks": 2
         },
         {
           "id": "ventajas",
@@ -1300,6 +1299,15 @@
             ]
           },
           "text": "<b>Ojo:</b> Google Hoteles necesita un motor de reservas que publique tus precios. Añade el enlace con tu motor o los precios en vivo."
+        },
+        {
+          "when": {
+            "all": [
+              "reservavillas"
+            ],
+            "none": []
+          },
+          "text": "<b>Sin comisión:</b> Airbnb y Booking se quedan en torno a un 15 % de cada reserva. La que entra por tu web no paga comisión, y el depósito llega a tu propia cuenta."
         },
         {
           "when": {
