@@ -1794,6 +1794,15 @@ model GoogleBusinessConnection {
   // 'gbp_managed'; está gestionada mientras esa contratación esté activa, así
   // que una baja no necesita tocar esta fila. Ver lib/gbp-managed.ts.
   managedClientProductId        String?   @unique @map("managed_client_product_id") @db.Uuid
+  // 23/11/2026 — el feed de reseñas que lee la web Premium del cliente al
+  // construirse (cada noche, su publicar.yml). Solo se guarda el SHA-256 del
+  // token (rsf_…): el token en claro va en los secretos de GitHub de la web y
+  // se enseña una sola vez al operador. Null = ninguna web lee esta ficha.
+  // websiteFeedReadAt es la última vez que una build lo leyó: si se queda
+  // atrás, la publicación nocturna de la web está fallando. Ver
+  // lib/review-feed.ts.
+  websiteFeedTokenHash          String?   @unique @map("website_feed_token_hash")
+  websiteFeedReadAt             DateTime? @map("website_feed_read_at")
 
   client              ChatbotClient           @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant              Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
@@ -2067,6 +2076,11 @@ model GoogleReview {
   replyApprovedBy     String?   @map("reply_approved_by")
   replyApprovedAt     DateTime? @map("reply_approved_at")
   replyPublishedAt    DateTime? @map("reply_published_at")
+  // 23/11/2026 — la reseña ya no está en Google (la borró su autor o Google
+  // la retiró): una sincronización completa no la devolvió. La fila se
+  // guarda, pero el feed de la web no la publica. Si vuelve, se limpia.
+  // Ver google-review-sync.ts.
+  removedAt           DateTime? @map("removed_at")
 
   connection GoogleBusinessConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   client     ChatbotClient            @relation(fields: [clientId], references: [id], onDelete: Cascade)

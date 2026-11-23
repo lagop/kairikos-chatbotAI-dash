@@ -1,5 +1,5 @@
 import 'server-only';
-import type { GoogleBusinessConnection } from '@prisma/client';
+import type { GoogleBusinessConnection, PrismaClient } from '@prisma/client';
 import { prisma } from './prisma';
 import { getValidAccessToken } from './google-business';
 import { autoReplyToUnansweredReviews } from './review-reply';
@@ -97,6 +97,8 @@ export async function syncReviewsForConnection(
   const parent = `${connection.googleAccountId}/${connection.locationId}`;
   let pageToken: string | undefined;
   let reviewCount = 0;
+  // Las que devuelve Google en esta pasada, para marcar las que ya no están.
+  const seen: string[] = [];
 
   try {
     do {
@@ -133,12 +135,18 @@ export async function syncReviewsForConnection(
             replyComment: review.reviewReply?.comment ?? null,
             replyUpdatedAt: review.reviewReply?.updateTime ? new Date(review.reviewReply.updateTime) : null,
             syncedAt: new Date(),
+            // Ha vuelto (o nunca se fue): vuelve a la web.
+            removedAt: null,
           },
         });
+        seen.push(review.name);
         reviewCount += 1;
       }
       pageToken = json.nextPageToken;
     } while (pageToken);
+
+    // Solo tras recorrer TODAS las páginas: una pasada a medias lanza antes de llegar aquí.
+    await markReviewsMissingFromSync(prisma, connection.id, seen);
 
     await prisma.googleBusinessConnection.update({
       where: { id: connection.id },
@@ -199,6 +207,30 @@ export async function syncReviewsForConnection(
       .catch(() => null);
     return { synced: false, reason: 'api_error' };
   }
+}
+
+/**
+ * 23/11/2026 — Reseñas en la web Premium: las reseñas de esta ficha que una
+ * sincronización COMPLETA no devolvió ya no están en Google (las borró su
+ * autor o Google las retiró). Se marcan con removedAt para que el feed de la
+ * web no las publique (lib/review-feed.ts); la fila se queda.
+ *
+ * Una pasada sin ninguna reseña no marca nada: una ficha que pierde todas sus
+ * reseñas a la vez es mucho más probable que sea una respuesta vacía de Google
+ * que la realidad, y vaciar las reseñas de una web por eso es el peor fallo.
+ */
+export async function markReviewsMissingFromSync(
+  db: Pick<PrismaClient, 'googleReview'>,
+  connectionId: string,
+  seenGoogleReviewIds: readonly string[],
+  now: Date = new Date(),
+): Promise<number> {
+  if (seenGoogleReviewIds.length === 0) return 0;
+  const r = await db.googleReview.updateMany({
+    where: { connectionId, removedAt: null, googleReviewId: { notIn: [...seenGoogleReviewIds] } },
+    data: { removedAt: now },
+  });
+  return r.count;
 }
 
 /**

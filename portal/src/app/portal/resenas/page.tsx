@@ -16,6 +16,7 @@ import { ReviewCampaignsPanel, type CampaignSummary } from '@/components/portal/
 import { ReviewReplyControls } from '@/components/portal/ReviewReplyControls';
 import { ReputationPanel } from '@/components/portal/ReputationPanel';
 import { buildReputationSummary } from '@/lib/review-reputation';
+import { webFeedState } from '@/lib/review-feed-rules';
 
 export const dynamic = 'force-dynamic';
 
@@ -150,6 +151,26 @@ function StarRating({ value }: { value: number }) {
 
 const DATE_FORMAT = new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
 
+// 23/11/2026 — Reseñas en la web Premium: la web del cliente se reconstruye
+// cada noche con sus reseñas (lib/review-feed.ts). Solo se enseña si su ficha
+// tiene enlace de feed; si la web lleva más de 36 horas sin leerlo, Kairikos
+// lo ve en la ficha del operador, y aquí solo se dice cuándo se actualizó.
+const WEB_FEED_DATE = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'long', timeZone: 'Atlantic/Canary' });
+
+function WebFeedStatus({ readAt }: { readAt: Date | null }) {
+  const state = webFeedState({ hasToken: true, readAt }, new Date());
+  return (
+    <p className="card text-sm" data-testid="google-reviews-web-feed-status">
+      <span className="font-semibold">Tu web:</span>{' '}
+      {state === 'sin_leer'
+        ? 'tus reseñas aparecerán en tu web tras su primera actualización nocturna.'
+        : state === 'al_dia'
+          ? `se actualiza cada noche con tus reseñas de Google. Última actualización: ${WEB_FEED_DATE.format(readAt!)}.`
+          : `la última actualización con tus reseñas fue el ${WEB_FEED_DATE.format(readAt!)}. Lo estamos revisando.`}
+    </p>
+  );
+}
+
 interface PageProps {
   searchParams: Promise<{ connected?: string; connect_error?: string; local?: string; checkout?: string }>;
 }
@@ -203,7 +224,8 @@ export default async function PortalResenasPage(props: PageProps) {
   const reviews =
     connection && connection.status !== 'revoked'
       ? await prisma.googleReview.findMany({
-          where: { connectionId: connection.id },
+          // Sin las que ya no están en Google: no se pueden responder.
+          where: { connectionId: connection.id, removedAt: null },
           orderBy: { createTime: 'desc' },
           take: 50,
         })
@@ -297,6 +319,8 @@ export default async function PortalResenasPage(props: PageProps) {
         autoRequestFromLeads={connection?.autoRequestFromLeads ?? false}
         autoRequestFromLeadsChangedAt={connection?.autoRequestFromLeadsChangedAt?.toISOString() ?? null}
       />
+
+      {connection?.websiteFeedTokenHash ? <WebFeedStatus readAt={connection.websiteFeedReadAt} /> : null}
 
       {reputation ? <ReputationPanel summary={reputation} /> : null}
 
