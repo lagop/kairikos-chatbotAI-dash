@@ -51,6 +51,8 @@ import { loadRecallOwnerSettings, type RecallOwnerSettingsView } from '@/lib/rec
 import { RecallOwnerSettingsCard } from '@/components/portal/RecallOwnerSettingsCard';
 import { RecallManualMetaConnectCard } from '@/components/admin/RecallManualMetaConnectCard';
 import { RecallCallerLanguagesCard } from '@/components/admin/RecallCallerLanguagesCard';
+import { ReviewWebFeedPanel, type ReviewWebFeedRow } from '@/components/admin/ReviewWebFeedPanel';
+import { webFeedState } from '@/lib/review-feed-rules';
 import { parseCallerLanguages, type CallerLanguage } from '@/lib/recall-caller-language';
 import { resolvePortalChatbot, type PortalChatbotSelection } from '@/lib/portal-chatbot';
 import { ChatbotPicker } from '@/components/portal/ChatbotPicker';
@@ -286,6 +288,8 @@ export default async function AdminClientDetailPage(props: PageProps) {
   let recallOwnerSettings: RecallOwnerSettingsView | null = null;
   // 15/11/2026 — idiomas para quien llama (RecallCallerLanguagesCard).
   let recallCallerLanguages: CallerLanguage[] | null = null;
+  // 23/11/2026 — Reseñas en la web Premium: el feed de cada ficha, solo con productCode === 'reviews'.
+  let reviewWebFeed: ReviewWebFeedRow[] | null = null;
   // SEO con IA, Fase A — populated only when productCode === 'seo', same
   // pattern as every block above.
   let seoProfile: SeoProfilePanelData | null = null;
@@ -642,6 +646,22 @@ export default async function AdminClientDetailPage(props: PageProps) {
             ...row,
             hasWebDraft: row.webDraft !== null,
             hasReport: row.competitorSnapshot !== null,
+          }));
+        }
+
+        if (productCode === 'reviews') {
+          const connections = await prisma.googleBusinessConnection.findMany({
+            where: { clientId: client.id, status: { not: 'revoked' } },
+            orderBy: { connectedAt: 'asc' },
+            select: { id: true, locationName: true, status: true, websiteFeedTokenHash: true, websiteFeedReadAt: true },
+          });
+          const now = new Date();
+          reviewWebFeed = connections.map((c) => ({
+            connectionId: c.id,
+            locationName: c.locationName,
+            status: c.status,
+            state: webFeedState({ hasToken: c.websiteFeedTokenHash !== null, readAt: c.websiteFeedReadAt }, now),
+            readAt: c.websiteFeedReadAt?.toISOString() ?? null,
           }));
         }
 
@@ -1187,6 +1207,15 @@ export default async function AdminClientDetailPage(props: PageProps) {
                 <p className="mt-1 text-xs text-kairikos-muted">Solo lectura — el ciclo de vida de cada lead lo maneja el equipo del cliente.</p>
               </header>
               <LeadsSummaryPanel leads={leads} clientId={resolvedClientId ?? undefined} />
+            </section>
+          ) : null}
+
+          {productCode === 'reviews' && reviewWebFeed ? (
+            <section className="card" aria-label="Reseñas de Google" data-testid="client-reviews-section">
+              <header className="mb-2">
+                <h2 className="text-lg font-semibold">Reseñas de Google</h2>
+              </header>
+              <ReviewWebFeedPanel rows={reviewWebFeed} />
             </section>
           ) : null}
 

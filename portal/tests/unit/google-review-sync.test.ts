@@ -13,6 +13,7 @@ const mockState = vi.hoisted(() => ({
   fetch: vi.fn(),
   getValidAccessToken: vi.fn(),
   reviewUpsert: vi.fn(),
+  reviewUpdateMany: vi.fn(),
   connectionUpdate: vi.fn(),
   connectionFindMany: vi.fn(),
   findUniqueClient: vi.fn(),
@@ -32,7 +33,10 @@ vi.mock('@/lib/review-reply', () => ({
 
 vi.mock('@/lib/prisma', () => ({
   prisma: {
-    googleReview: { upsert: (...args: unknown[]) => mockState.reviewUpsert(...args) },
+    googleReview: {
+      upsert: (...args: unknown[]) => mockState.reviewUpsert(...args),
+      updateMany: (...args: unknown[]) => mockState.reviewUpdateMany(...args),
+    },
     googleBusinessConnection: {
       update: (...args: unknown[]) => mockState.connectionUpdate(...args),
       findMany: (...args: unknown[]) => mockState.connectionFindMany(...args),
@@ -73,6 +77,7 @@ beforeEach(() => {
   mockState.fetch.mockReset();
   mockState.getValidAccessToken.mockReset().mockResolvedValue('at_1');
   mockState.reviewUpsert.mockReset().mockResolvedValue({});
+  mockState.reviewUpdateMany.mockReset().mockResolvedValue({ count: 0 });
   mockState.connectionUpdate.mockReset().mockResolvedValue({});
   mockState.connectionFindMany.mockReset();
   mockState.findUniqueClient.mockReset().mockResolvedValue({ companyName: 'X', name: 'X' });
@@ -206,6 +211,27 @@ describe('syncReviewsForConnection — pagination', () => {
     const result = await syncReviewsForConnection(baseConnection());
     expect(result).toEqual({ synced: true, reviewCount: 2 });
     expect(mockState.fetch.mock.calls[1][0]).toContain('pageToken=page2');
+    // 23/11/2026 — las que no vinieron se marcan una vez, con las de TODAS las páginas.
+    expect(mockState.reviewUpdateMany).toHaveBeenCalledTimes(1);
+    expect(mockState.reviewUpdateMany.mock.calls[0][0].where).toEqual({
+      connectionId: baseConnection().id,
+      removedAt: null,
+      googleReviewId: { notIn: ['r1', 'r2'] },
+    });
+  });
+
+  it('una página que falla a mitad no marca nada como borrado', async () => {
+    mockState.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          reviews: [{ name: 'r1', starRating: 'FIVE', createTime: '2026-08-01T10:00:00Z', updateTime: '2026-08-01T10:00:00Z' }],
+          nextPageToken: 'page2',
+        }),
+      )
+      .mockResolvedValueOnce(new Response('boom', { status: 500 }));
+    const result = await syncReviewsForConnection(baseConnection());
+    expect(result).toEqual({ synced: false, reason: 'api_error' });
+    expect(mockState.reviewUpdateMany).not.toHaveBeenCalled();
   });
 });
 
