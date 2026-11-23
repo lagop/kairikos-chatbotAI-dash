@@ -13,6 +13,8 @@ import { CHATBOT_PRODUCT_CODE } from '@/lib/wizard-catalog';
 import { PRODUCT_CODES, PRODUCT_CATALOGS, type ProductCode } from '@/lib/catalogs';
 import { logError } from '@/lib/observability';
 import { findRentalForOwner } from '@/lib/villas/rental';
+import { findWidgetWithoutAllowedOrigins } from '@/lib/web-widget-origin';
+import { WidgetOriginsNotice } from '@/components/portal/WidgetOriginsNotice';
 import type { OnboardingStatus } from '@/types/portal';
 
 function isProductCode(value: string): value is ProductCode {
@@ -131,6 +133,27 @@ export default async function PortalHome(
     }
   }
 
+  // Aviso «elige en qué webs funciona tu chat» (21/11/2026): solo si tiene el
+  // chatbot y un widget web activo con la lista vacía (ver
+  // findWidgetWithoutAllowedOrigins). Aparte y con su propio try, como los
+  // dos de arriba: es un aviso, no puede tirar la portada.
+  let widgetOriginsHref: string | null = null;
+  if (
+    isDatabaseConfigured &&
+    resolved.source === 'database' &&
+    data.products.some((p) => p.productCode === CHATBOT_PRODUCT_CODE)
+  ) {
+    try {
+      const widget = await findWidgetWithoutAllowedOrigins(prisma, resolved.clientId);
+      if (widget) {
+        const qs = widget.clientProductId ? `?clientProductId=${encodeURIComponent(widget.clientProductId)}` : '';
+        widgetOriginsHref = `/portal/canales${qs}#webs-permitidas`;
+      }
+    } catch (err) {
+      logError('portal_home.widget_origins_notice', err, { route: '/portal', clientId: resolved.clientId });
+    }
+  }
+
   // WP-08 AC, carried over from /portal/dashboard: a visitor whose
   // Supabase env looks like dev-mock but whose DATABASE_URL is genuinely
   // configured and reachable is a real half-configured-environment class,
@@ -206,6 +229,8 @@ export default async function PortalHome(
       <span data-testid="dashboard-client-name" data-dashboard-source={data.source} hidden>
         {data.client.name}
       </span>
+
+      {widgetOriginsHref ? <WidgetOriginsNotice clientId={resolved.clientId} href={widgetOriginsHref} /> : null}
 
       {data.products.length === 0 && villas ? null : data.products.length === 0 ? (
         <div className="card text-sm text-kairikos-muted">

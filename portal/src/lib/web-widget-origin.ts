@@ -147,3 +147,24 @@ export async function updateWidgetAllowedOrigins(
   ]);
   return { changed: true, allowedOrigins: origins };
 }
+
+// -----------------------------------------------------------------------------
+// Aviso de la portada del portal (21/11/2026). La lista existe desde #408, pero
+// un cliente que no entra en Canales no sabe que puede limitar su chat. Se le
+// avisa solo si le sirve: con el widget web activo y la lista vacía. En cuanto
+// guarda alguna web, el aviso deja de salir solo.
+// -----------------------------------------------------------------------------
+
+/** El primer widget activo sin lista del cliente, o null si no hay ninguno.
+ *  `clientProductId` es el chatbot al que lleva el enlace del aviso (con
+ *  varios, Canales necesita saber cuál). */
+export async function findWidgetWithoutAllowedOrigins(
+  prisma: PrismaClient,
+  clientId: string,
+): Promise<{ clientProductId: string | null } | null> {
+  return prisma.chatWebEmbed.findFirst({
+    where: { clientId, status: 'active', allowedOrigins: { isEmpty: true } },
+    orderBy: { createdAt: 'asc' },
+    select: { clientProductId: true },
+  });
+}
