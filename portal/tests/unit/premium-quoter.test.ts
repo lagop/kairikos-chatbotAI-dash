@@ -142,7 +142,8 @@ describe('planes del sector', () => {
   it('inmobiliaria tiene los tres planes, y suman lo publicado en la demo', () => {
     expect(planes.map((p) => p.id)).toEqual(['esencial', 'captacion', 'completa']);
     const lista = planes.map((p) => compute(q, { sector: 'inmobiliaria', answers: presetAnswers('inmobiliaria', p) }).list);
-    expect(lista).toEqual([6650, 10750, 19950]);
+    // 24/11/2026 (v12): la cartera va incluida en «Fichas y cartera» (2.600 €) y desaparece la pieza del CRM
+    expect(lista).toEqual([7650, 11750, 18750]);
   });
   it('cada plan pasa la misma comprobación que las respuestas de un visitante', () => {
     for (const p of planes) expect(checkAnswers(q, 'inmobiliaria', presetAnswers('inmobiliaria', p)).ok).toBe(true);
