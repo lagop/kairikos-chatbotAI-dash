@@ -666,22 +666,13 @@
           "weeks": 1
         },
         {
-          "id": "crm",
-          "icon": "layers",
-          "label": "Sincronización con tu CRM",
-          "desc": "Tu cartera entra sola desde la exportación de tu CRM (Inmovilla, Witei y otros), sin dar de alta dos veces.",
-          "price": 2200,
-          "weeks": 1,
-          "tag": "Imprescindible"
-        },
-        {
           "id": "ficha",
           "icon": "diamond",
-          "label": "Fichas cinematográficas",
-          "desc": "Ficha de cada casa con plano interactivo a escala (hasta diez casas), estancias medidas y vídeo.",
-          "price": 1600,
+          "label": "Fichas y cartera",
+          "desc": "Ficha de cada casa con plano interactivo a escala (hasta diez casas), estancias medidas y vídeo. Incluye tu cartera: la llevas desde el panel de Kairikos o entra sola desde tu CRM (Inmovilla, Witei y otros), sin dar de alta dos veces.",
+          "price": 2600,
           "weeks": 1,
-          "tag": "Efecto wow"
+          "tag": "Imprescindible"
         },
         {
           "id": "tour",
@@ -866,10 +857,10 @@
               "informe"
             ],
             "none": [
-              "crm"
+              "ficha"
             ]
           },
-          "text": "<b>Sugerencia:</b> el informe para el propietario se alimenta de tu cartera: va mejor con la sincronización con tu CRM."
+          "text": "<b>Ojo:</b> el informe para el propietario se alimenta de tu cartera: va con las Fichas y cartera."
         },
         {
           "when": {
@@ -877,26 +868,17 @@
               "alertas"
             ],
             "none": [
-              "crm"
+              "ficha"
             ]
           },
-          "text": "<b>Sugerencia:</b> las alertas avisan de las casas nuevas de tu cartera: van mejor con la sincronización con tu CRM."
-        },
-        {
-          "when": {
-            "all": [],
-            "none": [
-              "crm"
-            ]
-          },
-          "text": "<b>Sugerencia:</b> sin sincronización con tu CRM, tu equipo duplicará cada alta. Suele amortizarse en pocas semanas."
+          "text": "<b>Ojo:</b> las alertas avisan de las casas nuevas de tu cartera: van con las Fichas y cartera."
         }
       ],
       "presets": [
         {
           "id": "esencial",
           "label": "Esencial",
-          "desc": "Boutique con hasta 25 casas: web a medida, fichas a escala y coste de compra.",
+          "desc": "Boutique con hasta 25 casas: web a medida, fichas a escala con tu cartera y coste de compra.",
           "select": {
             "tipo": "nueva",
             "paginas": "p1",
@@ -930,7 +912,7 @@
         {
           "id": "completa",
           "label": "Cartera completa",
-          "desc": "Cartera grande o internacional: CRM, alertas, fuera de mercado, tours, tercer idioma y redacción.",
+          "desc": "Cartera grande o internacional: alertas, fuera de mercado, tours, tercer idioma y redacción.",
           "select": {
             "tipo": "nueva",
             "paginas": "p1",
@@ -940,7 +922,6 @@
               "hipoteca",
               "tasacion",
               "buscador",
-              "crm",
               "alertas",
               "privado",
               "tour"
