@@ -5,6 +5,7 @@ import { resolveClientFromSession } from '@/lib/portal-session';
 import { hasLeadsInboxAccess } from '@/lib/leads';
 import { buildCsv, loadLeadsForExport, exportFilename } from '@/lib/lead-export';
 import { logError } from '@/lib/observability';
+import { recordClientDataAudit } from '@/lib/client-data-audit';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -21,6 +22,12 @@ export const runtime = 'nodejs';
  * el mismo helper que usa el buzón: quien puede ver un lead en pantalla
  * puede llevárselo, y tener dos definiciones distintas de eso es cómo
  * acaban divergiendo.
+ *
+ * RGPD (25/11/2026, PR 1 del plan del encargo): cada descarga deja una fila
+ * en ClientDataAudit (producto 'leads', con el recuento, nunca el
+ * contenido) antes de mandar el fichero. Hasta entonces esta era la única
+ * exportación de datos de terceros que no dejaba rastro. Si la auditoría
+ * falla, no hay fichero: cae en el 500 de abajo.
  */
 export async function GET(_req: NextRequest) {
   const session = await getSession();
@@ -41,6 +48,18 @@ export async function GET(_req: NextRequest) {
 
   try {
     const rows = await loadLeadsForExport(prisma, resolved.clientId);
+    const client = await prisma.chatbotClient.findUnique({
+      where: { id: resolved.clientId },
+      select: { tenantId: true },
+    });
+    await recordClientDataAudit(prisma, {
+      clientId: resolved.clientId,
+      tenantId: client?.tenantId ?? null,
+      productCode: 'leads',
+      action: 'exported',
+      actor: `client:${resolved.clientId}`,
+      metadata: { format: 'csv', count: rows.length },
+    });
 
     // El BOM delante es lo que hace que Excel en Windows abra los acentos
     // bien. Sin él, «Peluquería» sale «PeluquerÃ­a» y el cliente cree que

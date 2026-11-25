@@ -7,7 +7,8 @@ import { buildFeed, type AlquilerFeedItem, type VentaFeedItem } from './feed';
 import { alquilerFeedSchema, ventaFeedSchema } from './schema';
 import { carteraFotosDir, resolvePhotoPath } from './photos';
 import { KIND_LABELS, type EnquiryKind } from './enquiry-rules';
-import { toWebStream, zipStream, type ZipEntry } from './zip';
+import { zipStream, type ZipEntry } from './zip';
+import { toWebStream } from '../web-stream';
 
 // =============================================================================
 // Cartera — la exportación (PR 6): un ZIP con la estructura del repositorio de

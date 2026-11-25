@@ -174,21 +174,3 @@ export async function* zipStream(entries: Iterable<ZipEntry> | AsyncIterable<Zip
   yield end;
 }
 
-/** Para la respuesta de Next: un ReadableStream que tira del generador. */
-export function toWebStream(chunks: AsyncGenerator<Uint8Array>, onError?: (err: unknown) => void): ReadableStream<Uint8Array> {
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      try {
-        const { value, done } = await chunks.next();
-        if (done) controller.close();
-        else controller.enqueue(value);
-      } catch (err) {
-        onError?.(err);
-        controller.error(err);
-      }
-    },
-    async cancel() {
-      await chunks.return(undefined);
-    },
-  });
-}

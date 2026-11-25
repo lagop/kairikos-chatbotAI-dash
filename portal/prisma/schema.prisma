@@ -128,6 +128,9 @@ model ChatbotClient {
   chatbotUsages               ChatbotUsage[]
   clientSites                 ClientSite[]
   productAudits               ClientProductAudit[]
+  // 25/11/2026 — RGPD: exportaciones, retención y bajas de los datos que
+  // tratamos por cuenta del cliente. Ver ClientDataAudit.
+  dataAudits                  ClientDataAudit[]
   subscriptions               Subscription[]
   invoices                    Invoice[]
   operatorActions             OperatorAction[]
@@ -786,6 +789,52 @@ model ClientProductAudit {
   @@index([clientProductId, changedAt])
   @@index([clientId, changedAt])
   @@index([tenantId])
+}
+
+// =============================================================================
+// 25/11/2026 — RGPD, encargo del tratamiento: qué se ha hecho con los datos
+// personales que tratamos POR CUENTA del cliente (conversaciones del chat,
+// registros de llamadas, solicitudes). La cláusula 10 del contrato promete
+// que al final del servicio el cliente puede llevárselos y que después se
+// borran; esta tabla es la prueba de las dos cosas.
+//
+// Por qué una tabla nueva y no ClientProductAudit: aquella no tiene dónde
+// guardar recuentos ni formato, y su clientProductId es una FK con Restrict
+// — exactamente lo que impediría purgar la contratación de un cliente que se
+// va. Aquí `clientProductId` es una columna suelta, SIN clave foránea, a
+// propósito: la fila tiene que sobrevivir a la purga de lo que describe.
+//
+// La FK al cliente sí está, con Restrict como en ClientProductAudit: borrar
+// un cliente con rastro de lo que se hizo con sus datos tiene que ser una
+// decisión explícita, no un efecto en cascada.
+//
+// `metadata` lleva SOLO recuentos, formato, fechas y cortes. Nunca datos
+// personales: una auditoría que copia lo que se borró no ha borrado nada.
+//
+// Valores (texto libre, validación de aplicación en lib/client-data-audit.ts):
+//   productCode: 'chatbot' | 'recall' | 'leads'
+//   action:      'exported' | 'retention_dry_run' | 'retention_purged'
+//                | 'exit_notified' | 'exit_purged'
+//   actor:       'client:<id>' | 'operator:<id>' | 'system:<job>'
+// Append-only: nadie actualiza ni borra filas de aquí.
+// =============================================================================
+model ClientDataAudit {
+  id              String   @id @default(uuid()) @db.Uuid
+  clientId        String   @map("client_id")
+  /// Sin FK: tiene que sobrevivir a la purga de la contratación.
+  clientProductId String?  @map("client_product_id") @db.Uuid
+  tenantId        String?  @map("tenant_id") @db.Uuid
+  productCode     String   @map("product_code")
+  action          String
+  actor           String
+  metadata        Json     @default("{}")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Restrict)
+
+  @@index([clientId, createdAt])
+  @@index([action, createdAt])
+  @@map("client_data_audit")
 }
 
 // =============================================================================
