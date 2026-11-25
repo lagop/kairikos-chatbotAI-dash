@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { isAuthorizedCronRequest } from '@/lib/cron-auth';
 import { runRetentionPurge } from '@/lib/retention-purge';
+import { runChatRetention } from '@/lib/chat-retention';
 import { logError } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
@@ -9,7 +10,9 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 // =============================================================================
-// El borrado por plazo de conservación (ver src/lib/retention-purge.ts).
+// El borrado por plazo de conservación (ver src/lib/retention-purge.ts) y,
+// desde el 25/11/2026, el de las conversaciones del chat de los clientes
+// (src/lib/chat-retention.ts, en modo de prueba hasta el PR 4b del plan).
 //
 // Va en scripts/scheduler.sh, que lo llama cada cinco minutos: cada pasada
 // solo busca lo que aún queda por hacer, así que es idempotente. El recuento
@@ -32,8 +35,10 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const result = await runRetentionPurge(prisma, new Date());
-    return NextResponse.json({ ok: true, ...result });
+    const now = new Date();
+    const result = await runRetentionPurge(prisma, now);
+    const chat = await runChatRetention(prisma, now);
+    return NextResponse.json({ ok: true, ...result, chat });
   } catch (err) {
     logError('retention_purge.failed', err, {}, 'error');
     return NextResponse.json(
