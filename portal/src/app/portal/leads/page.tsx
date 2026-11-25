@@ -78,6 +78,13 @@ export default async function PortalLeadsPage(
       ? await hasLeadsInboxAccess(prisma, resolved.clientId)
       : false;
 
+  // RGPD (PR 5a, baja): sin el buzón contratado pero con solicitudes
+  // guardadas (una baja en su plazo), el cliente puede descargarlas igual.
+  const savedLeads =
+    !hasInboxAccess && isDatabaseConfigured && resolved.source === 'database'
+      ? await prisma.lead.count({ where: { clientId: resolved.clientId } })
+      : 0;
+
   if (!hasInboxAccess) {
     let leadsTiers: SelfServeTierOption[] = [];
     let leadsPendingProductId: string | null = null;
@@ -138,6 +145,18 @@ export default async function PortalLeadsPage(
           title="Captación con IA"
           description="Un sistema de IA que prioriza tus contactos, para que tu equipo se enfoque en los que realmente van a convertir."
         />
+        {savedLeads > 0 ? (
+          <div className="card space-y-2" data-testid="leads-saved-export">
+            <h2 className="font-semibold">Tus solicitudes guardadas</h2>
+            <p className="text-sm">
+              Tienes {savedLeads} {savedLeads === 1 ? 'solicitud guardada' : 'solicitudes guardadas'}. Puedes descargarlas en
+              CSV aunque el servicio ya no esté activo.
+            </p>
+            <a href="/api/portal/leads/export" download className="btn-primary inline-block" data-testid="leads-saved-export-link">
+              Descargar las solicitudes (CSV)
+            </a>
+          </div>
+        ) : null}
         <ProductPitch
           tagline="Menos tiempo filtrando consultas a mano, más tiempo cerrando ventas."
           features={[

@@ -28,6 +28,11 @@ export const runtime = 'nodejs';
  * contenido) antes de mandar el fichero. Hasta entonces esta era la única
  * exportación de datos de terceros que no dejaba rastro. Si la auditoría
  * falla, no hay fichero: cae en el 500 de abajo.
+ *
+ * RGPD (PR 5a, baja): quien ya no tiene el buzón contratado pero conserva
+ * solicitudes también puede llevárselas. Si no, una baja de 'leads' o
+ * 'prospecting' cerraba la descarga justo cuando el aviso de baja le dice
+ * al cliente que descargue sus datos antes de que se borren.
  */
 export async function GET(_req: NextRequest) {
   const session = await getSession();
@@ -42,7 +47,10 @@ export async function GET(_req: NextRequest) {
   if (!resolved || resolved.source !== 'database') {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!(await hasLeadsInboxAccess(prisma, resolved.clientId))) {
+  if (
+    !(await hasLeadsInboxAccess(prisma, resolved.clientId)) &&
+    (await prisma.lead.count({ where: { clientId: resolved.clientId } })) === 0
+  ) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
