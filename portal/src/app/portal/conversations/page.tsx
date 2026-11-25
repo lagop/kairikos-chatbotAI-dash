@@ -12,6 +12,7 @@ import { withChatbot } from '@/lib/wizard-url';
 import { ConversationDigestsPanel, type ConversationDigestSummary, type ConversationDigestScheduleConfig } from '@/components/portal/ConversationDigestsPanel';
 import { HandoffInbox, type HandoffInboxRow } from '@/components/portal/HandoffInbox';
 import { handoffState } from '@/lib/chatbot-handoff';
+import { ConversationsExport } from '@/components/portal/ConversationsExport';
 
 export const metadata: Metadata = {
   title: 'Conversaciones',
@@ -296,6 +297,11 @@ export default async function ConversationsPage(
           </nav>
         </section>
       )}
+
+      {/* RGPD (25/11/2026) — también sin chatbot activo: con el producto
+          cancelado, en la gracia de la baja, es cuando más hace falta. Solo
+          con base de datos real: la ruta no exporta los datos de ejemplo. */}
+      {resolved?.source === 'database' && (hasChatbot || conversations.length > 0) ? <ConversationsExport /> : null}
 
       {hasChatbot ? (
         <div className="space-y-4">
