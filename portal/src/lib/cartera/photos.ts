@@ -15,6 +15,11 @@ import { isPublishable } from './feed';
 // montado en el directorio de CARTERA_FOTOS_DIR. El fichero se llama por su
 // storageKey: `<siteId>/<homeId>/<photoId>.<ext>`, todo ids que pone el portal.
 //
+// Las fotos 360° (CarteraPano, 25/11/2026) viven en el mismo volumen, con la
+// misma forma de clave, y salen por la misma ruta pública: para la web y para
+// la copia diaria (scripts/backup-postgres.sh, que empaqueta el volumen
+// entero) son un fichero más. Lo que cambia está en «Fotos 360°», abajo.
+//
 // =============================================================================
 
 export const PHOTO_MIMES = ['image/jpeg', 'image/png', 'image/webp'] as const;
@@ -46,27 +51,31 @@ export function resolvePhotoPath(dir: string, storageKey: string): string | null
   return full;
 }
 
+const PUBLIC_PHOTO_SELECT = {
+  id: true,
+  storageKey: true,
+  mime: true,
+  sha256: true,
+  home: {
+    select: {
+      status: true,
+      errors: true,
+      site: { select: { clientProduct: { select: { status: true, product: { select: { code: true } } } } } },
+    },
+  },
+} as const;
+
 /** La foto, solo si su casa es publicable y la contratación está activa.
  *  Una foto de un borrador, de una casa con errores o de una agencia que ya
- *  no está activa no existe para internet: 404. */
+ *  no está activa no existe para internet: 404. Vale igual para una foto 360°:
+ *  la web la descarga por la misma dirección, y un uuid no se repite entre
+ *  las dos tablas. */
 export async function findPublicPhoto(db: Db, photoId: string) {
   if (!isPhotoId(photoId)) return null;
-  const photo = await db.carteraPhoto.findUnique({
-    where: { id: photoId.toLowerCase() },
-    select: {
-      id: true,
-      storageKey: true,
-      mime: true,
-      sha256: true,
-      home: {
-        select: {
-          status: true,
-          errors: true,
-          site: { select: { clientProduct: { select: { status: true, product: { select: { code: true } } } } } },
-        },
-      },
-    },
-  });
+  const id = photoId.toLowerCase();
+  const photo =
+    (await db.carteraPhoto.findUnique({ where: { id }, select: PUBLIC_PHOTO_SELECT })) ??
+    (await db.carteraPano.findUnique({ where: { id }, select: PUBLIC_PHOTO_SELECT }));
   if (!photo) return null;
   const contract = photo.home.site.clientProduct;
   if (contract.status !== 'active' || contract.product.code !== CARTERA_PRODUCT_CODE) return null;
@@ -111,9 +120,9 @@ export function checkPhoto(buf: Buffer): { ok: true; info: UploadImageType } | {
 
 /** El archivo de una petición multipart (campo «archivo»), con tope: uno
  *  enorme se rechaza por su cabecera sin cargarlo en memoria. */
-export async function readPhotoUpload(req: Request): Promise<{ ok: true; buf: Buffer } | { ok: false; status: number; error: string }> {
+export async function readPhotoUpload(req: Request, maxBytes: number = MAX_PHOTO_BYTES): Promise<{ ok: true; buf: Buffer } | { ok: false; status: number; error: string }> {
   const declared = Number(req.headers.get('content-length') ?? 0);
-  if (declared > MAX_PHOTO_BYTES + 64_000) return { ok: false, status: 413, error: 'too_large' };
+  if (declared > maxBytes + 64_000) return { ok: false, status: 413, error: 'too_large' };
   const form = await req.formData().catch(() => null);
   const file = form?.get('archivo');
   if (!file || typeof file === 'string') return { ok: false, status: 400, error: 'invalid_body' };
@@ -125,6 +134,8 @@ export const PHOTO_ERROR_STATUS: Record<string, number> = {
   not_an_image: 415,
   too_big_dimensions: 422,
   too_many_photos: 409,
+  not_equirectangular: 422,
+  too_many_panos: 409,
   storage_not_configured: 503,
 };
 
@@ -159,31 +170,102 @@ export async function storeHomePhoto(db: Db, home: { id: string; siteId: string 
   const last = await db.carteraPhoto.findFirst({ where: { homeId: home.id }, orderBy: { position: 'desc' }, select: { position: true } });
   const position = (last?.position ?? -1) + 1;
 
+  const photo = await writeToVolume(dir, home, buf, checked.info, position, (data) => db.carteraPhoto.create({ data }));
+  if (!photo) return { ok: false, error: 'storage_not_configured' };
+  return { ok: true, photo };
+}
+
+type VolumeRow = { id: string; homeId: string; storageKey: string; mime: string; width: number; height: number; bytes: number; sha256: string; position: number };
+
+/** El fichero en el volumen y su fila (la crea `createRow`). Si la fila no se
+ *  puede crear, el fichero se borra: no quedan ficheros huérfanos. Null si la
+ *  clave no sale con la forma que pone el portal (no debería pasar). */
+async function writeToVolume(
+  dir: string,
+  home: { id: string; siteId: string },
+  buf: Buffer,
+  info: UploadImageType,
+  position: number,
+  createRow: (row: VolumeRow) => Promise<unknown>,
+): Promise<{ id: string; width: number; height: number; bytes: number; position: number; mime: string } | null> {
   const id = randomUUID();
-  const storageKey = `${home.siteId}/${home.id}/${id}.${checked.info.ext}`;
+  const storageKey = `${home.siteId}/${home.id}/${id}.${info.ext}`;
   const full = resolvePhotoPath(dir, storageKey);
-  if (!full) return { ok: false, error: 'storage_not_configured' };
+  if (!full) return null;
   await mkdir(path.dirname(full), { recursive: true });
   await writeFile(full, buf, { flag: 'wx' });
   try {
-    await db.carteraPhoto.create({
-      data: {
-        id,
-        homeId: home.id,
-        storageKey,
-        mime: checked.info.contentType,
-        width: checked.info.width,
-        height: checked.info.height,
-        bytes: buf.length,
-        sha256: createHash('sha256').update(buf).digest('hex'),
-        position,
-      },
+    await createRow({
+      id,
+      homeId: home.id,
+      storageKey,
+      mime: info.contentType,
+      width: info.width,
+      height: info.height,
+      bytes: buf.length,
+      sha256: createHash('sha256').update(buf).digest('hex'),
+      position,
     });
   } catch (err) {
     await rm(full, { force: true });
     throw err;
   }
-  return { ok: true, photo: { id, width: checked.info.width, height: checked.info.height, bytes: buf.length, position, mime: checked.info.contentType } };
+  return { id, width: info.width, height: info.height, bytes: buf.length, position, mime: info.contentType };
+}
+
+// --- Fotos 360° (25/11/2026) --------------------------------------------------
+//
+// El mismo flujo que las fotos: el navegador las reduce y las vuelve a
+// codificar (sin EXIF ni GPS) y el servidor comprueba tipo, medidas y peso.
+// Tres diferencias:
+//   - Más grandes: hasta 4.096 px de ancho, que es lo que usa el visor de la
+//     web (panoSrc en su src/lib/photos.ts: una textura WebGL que admite
+//     cualquier móvil), y hasta 6 MB.
+//   - Equirrectangulares: el doble de anchas que de altas, con la misma
+//     tolerancia que el esquema del feed (panoSchema). Se comprueba al subir:
+//     una que no lo fuera dejaría la casa entera fuera del feed sin que la
+//     agencia supiera por qué.
+//   - Hasta 30 por casa (panos.max(30) del formato) y sin texto alternativo.
+
+export const MAX_PANO_BYTES = 6_000_000;
+export const MAX_PANO_SIDE = 4096;
+export const MAX_PANOS_PER_HOME = 30;
+
+/** 2:1 con la tolerancia de panoSchema (lib/cartera/schema.ts). */
+export function isEquirectangular(width: number, height: number): boolean {
+  return width > 0 && height > 0 && Math.abs(width / height - 2) < 0.02;
+}
+
+export type PanoCheckError = PhotoCheckError | 'not_equirectangular';
+
+export function checkPano(buf: Buffer): { ok: true; info: UploadImageType } | { ok: false; error: PanoCheckError } {
+  if (buf.length > MAX_PANO_BYTES) return { ok: false, error: 'too_large' };
+  const info = inspectImage(buf);
+  if (!info || !info.width || !info.height) return { ok: false, error: 'not_an_image' };
+  if (info.width > MAX_PANO_SIDE || info.height > MAX_PANO_SIDE) return { ok: false, error: 'too_big_dimensions' };
+  if (!isEquirectangular(info.width, info.height)) return { ok: false, error: 'not_equirectangular' };
+  return { ok: true, info };
+}
+
+export type StorePanoResult =
+  | { ok: true; pano: { id: string; width: number; height: number; bytes: number; position: number; mime: string } }
+  | { ok: false; error: PanoCheckError | 'too_many_panos' | 'storage_not_configured' };
+
+/** Guarda una foto 360° de una casa, al final de su orden. */
+export async function storeHomePano(db: Db, home: { id: string; siteId: string }, buf: Buffer): Promise<StorePanoResult> {
+  const checked = checkPano(buf);
+  if (!checked.ok) return checked;
+  const dir = carteraFotosDir();
+  if (!dir) return { ok: false, error: 'storage_not_configured' };
+
+  const count = await db.carteraPano.count({ where: { homeId: home.id } });
+  if (count >= MAX_PANOS_PER_HOME) return { ok: false, error: 'too_many_panos' };
+  const last = await db.carteraPano.findFirst({ where: { homeId: home.id }, orderBy: { position: 'desc' }, select: { position: true } });
+  const position = (last?.position ?? -1) + 1;
+
+  const pano = await writeToVolume(dir, home, buf, checked.info, position, (data) => db.carteraPano.create({ data }));
+  if (!pano) return { ok: false, error: 'storage_not_configured' };
+  return { ok: true, pano };
 }
 
 /** Borra los ficheros de unas fotos. Uno que ya no estaba no es un error. */

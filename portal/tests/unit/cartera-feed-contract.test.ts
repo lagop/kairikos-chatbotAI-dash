@@ -12,7 +12,7 @@
 
 import { describe, expect, it } from 'vitest';
 import example from '../fixtures/cartera/cartera-feed.json';
-import { alquilerFeedSchema, feedSchema, REF, ventaFeedSchema } from '@/lib/cartera/schema';
+import { alquilerFeedSchema, feedSchema, panoSchema, REF, ventaFeedSchema } from '@/lib/cartera/schema';
 import { nextRef, validateHome } from '@/lib/cartera/home-rules';
 import { buildFeed, etagMatches, isPublishable, type CarteraFeed, type FeedHomeRow } from '@/lib/cartera/feed';
 
@@ -25,9 +25,9 @@ const alquileres = example.alquileres as unknown as Home[];
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 
-/** Una casa del ejemplo como la guardaría el portal: `data` sin fotos, fotos en su tabla. */
+/** Una casa del ejemplo como la guardaría el portal: `data` sin fotos, fotos (y fotos 360°) en su tabla. */
 function row(operation: 'venta' | 'alquiler', home: Home, over: Partial<FeedHomeRow> = {}): FeedHomeRow {
-  const { photos: _photos, ...data } = home;
+  const { photos: _photos, panos: _panos, ...data } = home;
   return { ref: home.ref, operation, status: home.status, data, errors: null, photos: [], ...over };
 }
 
@@ -108,7 +108,11 @@ describe('el feed que genera el portal es ese formato', () => {
     expectValidFeed(feed);
     expect(feed).toMatchObject({ version: 1, generatedAt: '2026-11-19T10:00:00.000Z' });
 
-    const expected = (schema: typeof ventaFeedSchema | typeof alquilerFeedSchema, h: Home) => schema.parse({ ...h, photos: [] });
+    // Sin fotos 360° la casa sale sin el campo (feed.ts, withoutEmptyPanos).
+    const expected = (schema: typeof ventaFeedSchema | typeof alquilerFeedSchema, h: Home) => {
+      const { panos: _panos, ...parsed } = schema.parse({ ...h, photos: [], panos: [] });
+      return parsed;
+    };
     const byRef = <T extends { ref: string }>(list: T[]) => new Map(list.map((h) => [h.ref, h]));
     const vs = byRef(feed.ventas);
     const as = byRef(feed.alquileres);
@@ -155,6 +159,77 @@ describe('el feed que genera el portal es ese formato', () => {
   it('referencia y estado salen de las columnas, no del JSON', () => {
     const { feed } = buildFeed([row('venta', { ...ventas[0], status: 'venta' }, { status: 'reservada' })], { baseUrl: BASE });
     expect(feed.ventas[0].status).toBe('reservada');
+  });
+});
+
+// Fotos 360° (25/11/2026): `panos` llegó al formato sin cambiar de versión.
+describe('las fotos 360°', () => {
+  const c101 = () => ventas.find((h) => h.ref === 'C-101')!;
+
+  it('la copia del esquema admite las de la web: del portal por https y de src/content/fotos/', () => {
+    // Las dos del test de contrato de la web (scripts/contrato-cartera.mjs, 22cc1ec).
+    expect(panoSchema.safeParse({ url: 'https://portal.example/api/public/cartera/foto/x', width: 4800, height: 2400 }).success).toBe(true);
+    expect(panoSchema.safeParse({ url: 'fotos/a-201/salon-360.jpg', width: 2000, height: 1000 }).success).toBe(true);
+    expect(ventaFeedSchema.safeParse({ ...c101(), panos: [{ url: 'fotos/c-101/salon-360.jpg', width: 4096, height: 2048 }] }).success).toBe(true);
+  });
+
+  it('una que no es 2:1 no valida, con el motivo de la web', () => {
+    const r = ventaFeedSchema.safeParse({ ...c101(), panos: [{ url: 'https://portal.example/api/public/cartera/foto/x', width: 2400, height: 1600 }] });
+    expect(r.success).toBe(false);
+    expect(JSON.stringify(r.error?.issues)).toContain('la foto 360° tiene que ser equirrectangular');
+  });
+
+  it('como mucho 30 por casa', () => {
+    const pano = { url: 'fotos/c-101/salon-360.jpg', width: 4096, height: 2048 };
+    expect(ventaFeedSchema.safeParse({ ...c101(), panos: Array(30).fill(pano) }).success).toBe(true);
+    expect(ventaFeedSchema.safeParse({ ...c101(), panos: Array(31).fill(pano) }).success).toBe(false);
+  });
+
+  it('salen por orden, con la misma URL pública que las fotos y sin texto alternativo', () => {
+    const { feed, skipped } = buildFeed(
+      [
+        row('venta', c101(), {
+          panos: [
+            { id: id(12), width: 4096, height: 2048, position: 1 },
+            { id: id(11), width: 4096, height: 2048, position: 0 },
+          ],
+        }),
+      ],
+      { baseUrl: BASE },
+    );
+    expect(skipped).toEqual([]);
+    expectValidFeed(feed);
+    expect(feed.ventas[0].panos).toEqual([
+      { url: `${BASE}/api/public/cartera/foto/${id(11)}`, width: 4096, height: 2048 },
+      { url: `${BASE}/api/public/cartera/foto/${id(12)}`, width: 4096, height: 2048 },
+    ]);
+  });
+
+  it('en alquiler, igual', () => {
+    const { feed } = buildFeed([row('alquiler', alquileres[0], { panos: [{ id: id(13), width: 4096, height: 2048, position: 0 }] })], { baseUrl: BASE });
+    expectValidFeed(feed);
+    expect(feed.alquileres[0].panos?.map((p) => p.url)).toEqual([`${BASE}/api/public/cartera/foto/${id(13)}`]);
+  });
+
+  it('sin fotos 360°, la casa sale sin el campo y el feed es el de antes (mismo ETag)', () => {
+    const before = buildFeed(exampleRows(), { baseUrl: BASE, now: NOW });
+    const withEmpty = buildFeed(exampleRows().map((r) => ({ ...r, panos: [] })), { baseUrl: BASE, now: NOW });
+    for (const h of [...withEmpty.feed.ventas, ...withEmpty.feed.alquileres]) expect('panos' in h, h.ref).toBe(false);
+    expect(withEmpty.etag).toBe(before.etag);
+  });
+
+  it('nunca un `panos` metido en el JSON: solo las de su tabla', () => {
+    const { feed } = buildFeed([{ ...row('venta', c101()), data: { ...row('venta', c101()).data as object, panos: [{ url: 'https://otro.example/x.jpg', width: 4096, height: 2048 }] } }], { baseUrl: BASE });
+    expect(feed.ventas[0]).not.toHaveProperty('panos');
+  });
+
+  it('una fila que no es 2:1 (no debería existir: la subida lo impide) deja la casa fuera, no el feed entero', () => {
+    const { feed, skipped } = buildFeed(
+      [row('venta', c101(), { panos: [{ id: id(14), width: 2400, height: 1600, position: 0 }] }), row('alquiler', alquileres[0])],
+      { baseUrl: BASE },
+    );
+    expect(skipped).toEqual([{ ref: 'C-101', reason: 'invalid' }]);
+    expect(feed.alquileres).toHaveLength(1);
   });
 });
 

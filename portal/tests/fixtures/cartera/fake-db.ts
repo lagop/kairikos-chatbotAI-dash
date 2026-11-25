@@ -71,6 +71,7 @@ export interface FakeSiteInput {
 export function fakeCarteraDb(opts: { failNextHomeCreate?: boolean } = {}) {
   const homes: Row[] = [];
   const photos: Row[] = [];
+  const panos: Row[] = [];
   const builds: Row[] = [];
   const audits: Array<Record<string, unknown>> = [];
   const sites: Row[] = [];
@@ -83,7 +84,8 @@ export function fakeCarteraDb(opts: { failNextHomeCreate?: boolean } = {}) {
 
   const withPhotos = (h: Row) => {
     const own = photos.filter((p) => p.homeId === h.id);
-    return { ...clone(h), photos: sortBy(own, { position: 'asc' }).map(clone), _count: { photos: own.length } };
+    const ownPanos = panos.filter((p) => p.homeId === h.id);
+    return { ...clone(h), photos: sortBy(own, { position: 'asc' }).map(clone), panos: sortBy(ownPanos, { position: 'asc' }).map(clone), _count: { photos: own.length } };
   };
   const siteView = (s: Row) => ({ ...clone(s), clientProduct: clone(s.clientProduct) });
 
@@ -118,6 +120,7 @@ export function fakeCarteraDb(opts: { failNextHomeCreate?: boolean } = {}) {
       delete: async ({ where }: { where: { id: string } }) => {
         homes.splice(homes.findIndex((h) => h.id === where.id), 1);
         for (let i = photos.length - 1; i >= 0; i--) if (photos[i].homeId === where.id) photos.splice(i, 1);
+        for (let i = panos.length - 1; i >= 0; i--) if (panos[i].homeId === where.id) panos.splice(i, 1);
       },
     },
     carteraPhoto: {
@@ -141,6 +144,28 @@ export function fakeCarteraDb(opts: { failNextHomeCreate?: boolean } = {}) {
       },
       update: async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => Object.assign(photos.find((p) => p.id === where.id)!, clone(data)),
       delete: async ({ where }: { where: { id: string } }) => photos.splice(photos.findIndex((p) => p.id === where.id), 1),
+    },
+    carteraPano: {
+      count: async ({ where }: { where: Record<string, unknown> }) => panos.filter((p) => matches({ ...p, home: homes.find((h) => h.id === p.homeId) }, where)).length,
+      findFirst: async ({ where, orderBy }: { where: Record<string, unknown>; orderBy?: unknown }) => {
+        const list = sortBy(panos.filter((p) => matches(p, where)), orderBy);
+        return list[0] ? clone(list[0]) : null;
+      },
+      findMany: async ({ where, orderBy }: { where: Record<string, unknown>; orderBy?: unknown }) => sortBy(panos.filter((p) => matches(p, where)), orderBy ?? { position: 'asc' }).map(clone),
+      // Las fotos 360° (25/11/2026): la misma forma que carteraPhoto, en su lista.
+      findUnique: async ({ where }: { where: { id: string } }) => {
+        const p = panos.find((x) => x.id === where.id);
+        const h = p && homes.find((x) => x.id === p.homeId);
+        const s = h && sites.find((x) => x.id === h.siteId);
+        if (!p || !h || !s) return null;
+        return { ...clone(p), home: { status: h.status, errors: clone(h.errors), site: { clientProduct: clone(s.clientProduct) } } };
+      },
+      create: async ({ data }: { data: Row }) => {
+        panos.push(clone(data));
+        return clone(data);
+      },
+      update: async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => Object.assign(panos.find((p) => p.id === where.id)!, clone(data)),
+      delete: async ({ where }: { where: { id: string } }) => panos.splice(panos.findIndex((p) => p.id === where.id), 1),
     },
     carteraSite: {
       findUnique: async ({ where }: { where: { id: string } }) => {
@@ -264,7 +289,7 @@ export function fakeCarteraDb(opts: { failNextHomeCreate?: boolean } = {}) {
     return site as Row & { clientId: string; salePrefix: string; rentPrefix: string; agents: Prisma.JsonValue };
   }
 
-  return { db, homes, photos, builds, audits, sites, enquiries, leads, leadAudits, productAudits, addSite };
+  return { db, homes, photos, panos, builds, audits, sites, enquiries, leads, leadAudits, productAudits, addSite };
 }
 
 export type FakeCarteraDb = ReturnType<typeof fakeCarteraDb>;

@@ -53,6 +53,7 @@ import { GET as listGet } from '@/app/api/portal/cartera/route';
 import { POST as createPost } from '@/app/api/portal/cartera/casas/route';
 import { DELETE as homeDelete, GET as homeGet, PATCH as homePatch } from '@/app/api/portal/cartera/casas/[id]/route';
 import { DELETE as photoDelete, PATCH as photoPatch, POST as photoPost } from '@/app/api/portal/cartera/casas/[id]/fotos/route';
+import { DELETE as panoDelete, PATCH as panoPatch, POST as panoPost } from '@/app/api/portal/cartera/casas/[id]/panos/route';
 import { POST as translatePost } from '@/app/api/portal/cartera/casas/[id]/traducir/route';
 import { TRANSLATIONS_PER_HOUR } from '@/lib/cartera-translation-ai';
 
@@ -68,7 +69,7 @@ const SITE = {
   pendingSince: null,
 };
 const HOME_ID = '22222222-2222-4222-8222-222222222222';
-const HOME = { id: HOME_ID, siteId: SITE.id, ref: 'C-101', operation: 'venta', status: 'borrador', data: {}, errors: null, slugLocked: false, firstPublishedAt: null, updatedAt: new Date(), photos: [] };
+const HOME = { id: HOME_ID, siteId: SITE.id, ref: 'C-101', operation: 'venta', status: 'borrador', data: {}, errors: null, slugLocked: false, firstPublishedAt: null, updatedAt: new Date(), photos: [], panos: [] };
 
 const params = (id = HOME_ID) => ({ params: Promise.resolve({ id }) });
 const json = (url: string, method: string, body?: unknown) =>
@@ -137,6 +138,9 @@ describe('en la gracia de la baja: solo lectura', () => {
       () => photoPost(json(`/api/portal/cartera/casas/${HOME_ID}/fotos`, 'POST', {}), params()),
       () => photoPatch(json(`/api/portal/cartera/casas/${HOME_ID}/fotos`, 'PATCH', { order: [] }), params()),
       () => photoDelete(json(`/api/portal/cartera/casas/${HOME_ID}/fotos`, 'DELETE', { photoId: HOME_ID }), params()),
+      () => panoPost(json(`/api/portal/cartera/casas/${HOME_ID}/panos`, 'POST', {}), params()),
+      () => panoPatch(json(`/api/portal/cartera/casas/${HOME_ID}/panos`, 'PATCH', { order: [] }), params()),
+      () => panoDelete(json(`/api/portal/cartera/casas/${HOME_ID}/panos`, 'DELETE', { panoId: HOME_ID }), params()),
       () => translatePost(json(`/api/portal/cartera/casas/${HOME_ID}/traducir`, 'POST', { title: 'Casa' }), params()),
     ];
     for (const write of writes) {
@@ -156,12 +160,41 @@ describe('casas de otro sitio', () => {
     expect((await homePatch(json(`/api/portal/cartera/casas/${other}`, 'PATCH', { data: {} }), params(other))).status).toBe(404);
     expect((await homeDelete(json('/api/portal/cartera/casas/x', 'DELETE'), params('../../etc'))).status).toBe(404);
     expect((await photoPatch(json(`/api/portal/cartera/casas/${other}/fotos`, 'PATCH', { order: [] }), params(other))).status).toBe(404);
+    expect((await panoPatch(json(`/api/portal/cartera/casas/${other}/panos`, 'PATCH', { order: [] }), params(other))).status).toBe(404);
+    expect((await panoDelete(json(`/api/portal/cartera/casas/${other}/panos`, 'DELETE', { panoId: other }), params(other))).status).toBe(404);
     expect(state.homeUpdate).not.toHaveBeenCalled();
   });
 
   it('el cuerpo no elige el cliente ni el sitio: claves de más se rechazan', async () => {
     const res = await createPost(json('/api/portal/cartera/casas', 'POST', { operation: 'venta', siteId: 'otro', clientId: 'otro' }));
     expect(res.status).toBe(400);
+  });
+});
+
+describe('fotos 360°', () => {
+  /** Una JPEG mínima con sus medidas en el SOF0 (como en cartera-photos.test.ts). */
+  const jpeg = (width: number, height: number) =>
+    Buffer.concat([
+      Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0x00, 0x00]),
+      Buffer.from([0xff, 0xc0, 0x00, 0x11, 0x08, height >> 8, height & 0xff, width >> 8, width & 0xff, 3]),
+      Buffer.alloc(20),
+    ]);
+  const upload = (buf: Buffer) => {
+    const form = new FormData();
+    form.append('archivo', new Blob([new Uint8Array(buf)], { type: 'image/jpeg' }), 'foto-360.jpg');
+    return panoPost(new NextRequest(`http://localhost/api/portal/cartera/casas/${HOME_ID}/panos`, { method: 'POST', body: form }), params());
+  };
+
+  it('una que no es 2:1 se rechaza al subir, con su código (el panel lo explica)', async () => {
+    const res = await upload(jpeg(3000, 2000));
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual({ error: 'not_equirectangular' });
+  });
+
+  it('el orden y el borrado validan el cuerpo', async () => {
+    expect((await panoPatch(json(`/api/portal/cartera/casas/${HOME_ID}/panos`, 'PATCH', { order: ['no-es-un-id'] }), params())).status).toBe(400);
+    expect((await panoPatch(json(`/api/portal/cartera/casas/${HOME_ID}/panos`, 'PATCH', { order: [], alt: {} }), params())).status).toBe(400);
+    expect((await panoDelete(json(`/api/portal/cartera/casas/${HOME_ID}/panos`, 'DELETE', { photoId: HOME_ID }), params())).status).toBe(400);
   });
 });
 
