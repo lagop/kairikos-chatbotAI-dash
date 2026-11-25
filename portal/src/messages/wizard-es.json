@@ -442,7 +442,7 @@
         },
         "retencion_leads_dias": {
           "label": "Retención",
-          "helper": "Días que guardamos los datos (opcional)",
+          "helper": "Días que guardamos las conversaciones desde la última actividad (mínimo 30). Vacío: 12 meses.",
           "placeholder": "365"
         }
       }

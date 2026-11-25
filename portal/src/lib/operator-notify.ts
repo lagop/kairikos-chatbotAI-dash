@@ -99,7 +99,10 @@ export type NotificationKind =
   // (lib/daily-call-list.ts).
   | 'daily-call-list'
   // 09/11/2026 — alguien ha pedido un presupuesto de Web Premium.
-  | 'premium-quote';
+  | 'premium-quote'
+  // 25/11/2026 — un paso 10 del chat pide guardar las conversaciones menos
+  // de 30 días y no se aplica (lib/chat-retention.ts).
+  | 'chat-retention-short';
 
 export const ALLOWED_KINDS: ReadonlySet<NotificationKind> = new Set([
   'stuck',
@@ -114,6 +117,7 @@ export const ALLOWED_KINDS: ReadonlySet<NotificationKind> = new Set([
   'churn-risk',
   'daily-call-list',
   'premium-quote',
+  'chat-retention-short',
 ]);
 
 // Severity → NotificationKind. Used by review-overdue/fire so the route

@@ -40,6 +40,8 @@ export interface ClientDataAuditMetadata {
   count?: number;
   /** Turnos de conversación, cuando aplica. */
   turns?: number;
+  /** Resúmenes de conversaciones (ConversationDigest), en una retención. */
+  digests?: number;
   /** Corte de una retención (ISO 8601). */
   cutoff?: string;
   retentionDays?: number;
@@ -68,6 +70,20 @@ function compactMetadata(metadata: ClientDataAuditMetadata): Prisma.InputJsonObj
   return out;
 }
 
+/** Los datos de una fila, para createMany dentro de una transacción (la
+ *  retención escribe su rastro en la misma transacción que el borrado). */
+export function toClientDataAuditData(input: ClientDataAuditInput): Prisma.ClientDataAuditCreateManyInput {
+  return {
+    clientId: input.clientId,
+    clientProductId: input.clientProductId ?? null,
+    tenantId: input.tenantId ?? null,
+    productCode: input.productCode,
+    action: input.action,
+    actor: input.actor,
+    metadata: compactMetadata(input.metadata),
+  };
+}
+
 /**
  * Escribe una fila. Lanza si la base de datos falla, y es lo que se quiere:
  * una exportación sin rastro es justo lo que esta tabla existe para impedir,
@@ -75,17 +91,7 @@ function compactMetadata(metadata: ClientDataAuditMetadata): Prisma.InputJsonObj
  * falla, no hay fichero.
  */
 export async function recordClientDataAudit(prisma: AuditWriter, input: ClientDataAuditInput): Promise<void> {
-  await prisma.clientDataAudit.create({
-    data: {
-      clientId: input.clientId,
-      clientProductId: input.clientProductId ?? null,
-      tenantId: input.tenantId ?? null,
-      productCode: input.productCode,
-      action: input.action,
-      actor: input.actor,
-      metadata: compactMetadata(input.metadata),
-    },
-  });
+  await prisma.clientDataAudit.create({ data: toClientDataAuditData(input) });
 }
 
 /** `?formato=csv|json` (también `format`, por si alguien lo escribe en inglés).

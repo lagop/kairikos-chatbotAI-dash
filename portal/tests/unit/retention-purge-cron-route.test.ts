@@ -12,6 +12,7 @@ import type { NextRequest } from 'next/server';
 const mockState = vi.hoisted(() => ({
   isDatabaseConfigured: true,
   runRetentionPurge: vi.fn(),
+  runChatRetention: vi.fn(),
 }));
 
 vi.mock('@/lib/prisma', () => ({
@@ -23,6 +24,10 @@ vi.mock('@/lib/prisma', () => ({
 
 vi.mock('@/lib/retention-purge', () => ({
   runRetentionPurge: (...args: unknown[]) => mockState.runRetentionPurge(...args),
+}));
+
+vi.mock('@/lib/chat-retention', () => ({
+  runChatRetention: (...args: unknown[]) => mockState.runChatRetention(...args),
 }));
 
 vi.mock('@/lib/observability', () => ({ logError: vi.fn() }));
@@ -41,9 +46,20 @@ const COUNTS = {
   ownProspectsMinimized: 2,
 };
 
+const CHAT = {
+  mode: 'dry_run',
+  conversations: 3,
+  digests: 1,
+  chatbots: 1,
+  truncated: false,
+  shortRetentionIgnored: 0,
+  operatorNotified: false,
+};
+
 beforeEach(() => {
   mockState.isDatabaseConfigured = true;
   mockState.runRetentionPurge.mockReset().mockResolvedValue(COUNTS);
+  mockState.runChatRetention.mockReset().mockResolvedValue(CHAT);
   process.env.CRON_SECRET = 'test_cron_secret';
 });
 
@@ -57,6 +73,7 @@ describe('GET /api/cron/retention-purge', () => {
     const res = await GET(makeRequest({ authorization: 'Bearer otro' }));
     expect(res.status).toBe(401);
     expect(mockState.runRetentionPurge).not.toHaveBeenCalled();
+    expect(mockState.runChatRetention).not.toHaveBeenCalled();
   });
 
   it('503 sin base de datos', async () => {
@@ -70,7 +87,15 @@ describe('GET /api/cron/retention-purge', () => {
     const { GET } = await import('@/app/api/cron/retention-purge/route');
     const res = await GET(makeRequest({ authorization: 'Bearer test_cron_secret' }));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, ...COUNTS });
+    expect(await res.json()).toEqual({ ok: true, ...COUNTS, chat: CHAT });
+  });
+
+  it('la retención del chat también: si falla, 500', async () => {
+    mockState.runChatRetention.mockRejectedValue(new Error('chat caído'));
+    const { GET } = await import('@/app/api/cron/retention-purge/route');
+    const res = await GET(makeRequest({ authorization: 'Bearer test_cron_secret' }));
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ ok: false, error: 'chat caído' });
   });
 
   it('un fallo responde 500, no un 200 con ok:false', async () => {

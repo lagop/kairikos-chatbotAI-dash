@@ -45,11 +45,34 @@ de las dos mitades.
 | Operador | Ficha del cliente en el admin, pestaña del chatbot → «CSV · JSON» · `GET /api/admin/portal/conversations/export?clientId=…&formato=csv\|json` |
 | Acceso del cliente | Con conversaciones o con un chatbot contratado alguna vez (en cualquier estado). Sin nada de eso, 403. |
 | Auditoría | `chatbot` / `exported`, con `{ format, count }` (número de conversaciones). |
-| Conservación | Hoy, sin límite. PR 4 del plan: el campo «Retención» del paso 10 del asistente fija los días desde la última actividad; vacío o 0, 12 meses; menos de 30 no se aplica. |
+| Conservación | El campo «Retención» del paso 10 del asistente (`retencion_leads_dias`): días desde la última actividad. Vacío o 0: 12 meses. Menos de 30 no se aplica (12 meses) y el operador recibe un correo al día (`chat-retention-short`) mientras siga así. Con la conversación caen los resúmenes (`ConversationDigest`) cuya ventana acabó antes del mismo corte; las solicitudes se quedan, sin conversación. **En modo de prueba desde el 25/11/2026 (PR 4a): cuenta, no borra.** Ver «Retención del chat» abajo. |
 | Baja | Pendiente (PR 5 del plan). |
 
 «Última actividad» es la mayor entre `startedAt + duration` y las fechas de la derivación a una
-persona (`conversationLastActivity` en `lib/chatbot-export.ts`); la retención contará desde ahí.
+persona (`conversationLastActivity` en `lib/chatbot-export.ts`); la retención cuenta desde ahí.
+
+#### Retención del chat (`lib/chat-retention.ts`)
+
+- La llama el cron `/api/cron/retention-purge` (cada 5 minutos) después del borrado de los datos de
+  los que Kairikos es responsable; su recuento sale en la respuesta, bajo `chat`, y por tanto en el
+  log del scheduler (`docker logs kairikos-portal-scheduler`).
+- Plazo por chatbot: el paso 10 aprobado (`activeForBot`) de esa contratación. Las conversaciones
+  sin contratación (anteriores a la multi-instancia) usan el plazo **más largo** de los chatbots del
+  cliente: ante la duda, se conserva.
+- Modo en la constante `CHAT_RETENTION_MODE`, no en una variable de entorno: pasar a borrar es un
+  PR revisado (el 4b del plan), no un valor que se cambia en el servidor.
+  - `dry_run` (desde el 25/11/2026): no borra; una fila `retention_dry_run` por chatbot y día con
+    `{ count, digests, cutoff, retentionDays }` de lo que borraría.
+  - `purge`: borra resúmenes y conversaciones vencidos y escribe `retention_purged` con los mismos
+    campos, en la misma transacción.
+- Por tandas de 1.000 conversaciones por grupo, de la más antigua a la más reciente; `truncated`
+  en la respuesta dice que quedan más para la pasada siguiente.
+- Antes de activar el borrado: al menos 7 días de modo de prueba, revisar sus filas, y comprobar
+  que la copia del día existe. El 25/11/2026 había 4 conversaciones en producción (la más antigua,
+  del 24/10/2026); las cuatro demos tienen 90 días en el paso 10 y la cuenta de pruebas del
+  propietario, 1.095.
+- Prueba contra un Postgres real: `tests/real/chat-retention.test.ts` (cómo correrla, en su
+  cabecera).
 
 Se lee por páginas de 200 con cursor sobre `(startedAt, id)` y se manda en streaming: las
 conversaciones no tienen techo y cada una lleva su transcript entero.
