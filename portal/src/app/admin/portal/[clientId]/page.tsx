@@ -1259,6 +1259,29 @@ export default async function AdminClientDetailPage(props: PageProps) {
                 <RecallContractSignButton subscriptionId={recall.subscriptionId} />
               ) : null}
               <RecallOperatorPanel data={recall} />
+              {/* RGPD (25/11/2026) — los registros de llamadas de esta línea,
+                  sin grabaciones, para entregárselos al cliente. Auditado con
+                  el operador como autor (ClientDataAudit). */}
+              {recall ? (
+                <p className="mt-4 text-sm text-kairikos-muted" data-testid="admin-recall-export">
+                  Exportar todas las llamadas de esta línea (datos personales):{' '}
+                  <a
+                    href={`/api/admin/portal/recall/${recall.subscriptionId}/export?formato=csv`}
+                    download
+                    className="text-kairikos-accent2 hover:underline"
+                  >
+                    CSV
+                  </a>
+                  {' · '}
+                  <a
+                    href={`/api/admin/portal/recall/${recall.subscriptionId}/export?formato=json`}
+                    download
+                    className="text-kairikos-accent2 hover:underline"
+                  >
+                    JSON
+                  </a>
+                </p>
+              ) : null}
               {recall ? (
                 <RecallManualMetaConnectCard
                   subscriptionId={recall.subscriptionId}

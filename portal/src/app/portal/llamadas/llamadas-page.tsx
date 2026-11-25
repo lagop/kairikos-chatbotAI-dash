@@ -21,6 +21,7 @@ import { RecallMetaConnectCard } from '@/components/portal/RecallMetaConnectCard
 import { RecallGoogleConnectCard } from '@/components/portal/RecallGoogleConnectCard';
 import { InstallPrompt } from '@/components/portal/InstallPrompt';
 import { PushToggle } from '@/components/portal/PushToggle';
+import { RecallCallsExport } from '@/components/portal/RecallCallsExport';
 
 export const dynamic = 'force-dynamic';
 
@@ -410,6 +411,12 @@ export async function LlamadasPageBody({
           />
         ) : null}
         {ownerCard}
+        {/* RGPD (25/11/2026) — con el servicio pausado o cancelado las
+            llamadas siguen ahí, y en la gracia de una baja es cuando más
+            hace falta llevárselas. Antes de activarse no hay ninguna. */}
+        {view.status === 'paused' || view.status === 'cancelled' ? (
+          <RecallCallsExport clientProductId={clientProductId ?? null} />
+        ) : null}
       </div>
     );
   }
@@ -644,6 +651,8 @@ export async function LlamadasPageBody({
         Guardamos el texto del recado, pero la grabación de audio se borra automáticamente a los{' '}
         {view.recordingRetentionDays} días.
       </p>
+
+      <RecallCallsExport clientProductId={clientProductId ?? null} />
     </div>
   );
 }

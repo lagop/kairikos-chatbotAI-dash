@@ -67,9 +67,15 @@ conversaciones no tienen techo y cada una lleva su transcript entero.
 
 ### Llamadas — recall (`CallEvent`)
 
-Pendiente (PR 2 del plan). Hoy: la grabación se borra en Twilio a los 30 días
-(`RECORDING_RETENTION_DAYS`, `lib/recall-retention.ts`); la transcripción, el número y el resultado
-se guardan mientras el servicio esté contratado.
+| | |
+| --- | --- |
+| Qué se exporta | Todas las llamadas de una línea (`lib/recall-export.ts`): fecha y fin, número de quien llamó (u «Oculto»), número marcado, resultado en castellano, duración del recado, transcripción, estado de la grabación («disponible», «borrada el AAAA-MM-DD» o «sin grabación»), canal del aviso a quien llamó, versión y fecha del aviso legal, idioma y devolución agendada. **CSV** y **JSON** (un objeto por llamada). |
+| Lo que no sale | La grabación y su URL (es de Twilio, autenticada con nuestra cuenta: en un fichero que se reenvía no debe viajar), los identificadores de Twilio y los errores internos de envío y transcripción. |
+| Cliente | `/portal/llamadas` (y `/portal/llamadas/[clientProductId]`) → «Exportar todas las llamadas» · `GET /api/portal/recall/calls/export?formato=csv\|json[&clientProductId=…]`. La línea la resuelve `resolveClientTarget` desde la sesión; con varias líneas y sin id, 409. Con el servicio pausado o cancelado también. |
+| Operador | Ficha del cliente en el admin, sección de llamadas → «CSV · JSON» · `GET /api/admin/portal/recall/[subscriptionId]/export?formato=csv\|json` |
+| Auditoría | `recall` / `exported`, con `{ format, count }` y la contratación de la línea. |
+| Conservación | La grabación se borra en Twilio a los 30 días (`RECORDING_RETENTION_DAYS`, `lib/recall-retention.ts`). La transcripción, el número y el resultado se guardan mientras el servicio esté contratado. |
+| Baja | Pendiente (PR 5 del plan): primero borrar en Twilio las grabaciones que queden, después los registros. |
 
 ### Villas y cartera (ya existían)
 
