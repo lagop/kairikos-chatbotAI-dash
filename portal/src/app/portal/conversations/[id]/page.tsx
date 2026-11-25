@@ -22,6 +22,17 @@ const DATE_FMT = new Intl.DateTimeFormat('es-ES', {
 
 const TIME_FMT = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit' });
 
+// Con año y zona: es una prueba que se puede pedir dentro de mucho tiempo.
+const CONSENT_FMT = new Intl.DateTimeFormat('es-ES', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  timeZone: 'Europe/Madrid',
+  timeZoneName: 'short',
+});
+
 const OUTCOME_LABEL: Record<string, string> = {
   resolved: 'Resuelta',
   escalated: 'Derivada',
@@ -76,6 +87,8 @@ export default async function ConversationDetailPage(props: PageProps) {
             handoffTakenAt: true,
             handoffTakenBy: true,
             handoffClosedAt: true,
+            contactConsentAt: true,
+            contactNoticeVersion: true,
           },
         })
       : null;
@@ -95,6 +108,18 @@ export default async function ConversationDetailPage(props: PageProps) {
         title={DATE_FMT.format(new Date(conversation.startedAt))}
         description={`Canal: ${conversation.channel} · Resultado: ${OUTCOME_LABEL[conversation.outcome] ?? conversation.outcome}`}
       />
+
+      {/* Widget v2 (25/11/2026) — el visitante dejó sus datos marcando la
+          casilla de privacidad del formulario de contacto. Es la prueba del
+          consentimiento: fecha y versión del aviso que leyó (los textos de
+          cada versión están en lib/web-widget-context.ts). Sin esa fila —todo
+          lo anterior, y los envíos desde embed.js v1— no se pinta nada. */}
+      {handoffRow?.contactConsentAt ? (
+        <p className="text-sm text-kairikos-muted" data-testid="contact-consent">
+          Consentimiento: {CONSENT_FMT.format(handoffRow.contactConsentAt)}
+          {handoffRow.contactNoticeVersion ? ` (versión ${handoffRow.contactNoticeVersion})` : ''}
+        </p>
+      ) : null}
 
       {handoffRow && state !== null ? (
         <HandoffReplyPanel

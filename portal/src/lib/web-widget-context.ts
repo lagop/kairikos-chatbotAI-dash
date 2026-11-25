@@ -149,3 +149,123 @@ export const DEFAULT_WELCOME: Record<WidgetLang, string> = {
 export function welcomeMessageFor(welcome: string, lang: string | null): string {
   return welcome === DEFAULT_WELCOME.es ? DEFAULT_WELCOME[parseWidgetLang(lang)] : welcome;
 }
+
+// -----------------------------------------------------------------------------
+// Aviso de privacidad y consentimiento del formulario de contacto (25/11/2026).
+//
+// Cuando el bot deriva, embed.v2.js pide nombre y teléfono o correo. Hasta esta
+// fecha lo hacía sin decir quién trataba esos datos ni para qué, y sin casilla:
+// los formularios de villas y de cartera sí la tenían (guardan `consentAt`). El
+// contrato de encargo del tratamiento que firman los clientes Web Premium
+// (plan-portal-encargo-tratamiento.md, PR 3) promete que el formulario informa
+// y pide el consentimiento, así que ahora lo hace.
+//
+// El texto lo pinta el WIDGET, no esta ruta: embed.v2.js lleva los textos de
+// cada idioma escritos dentro (no hay un viaje más al servidor para pedirlos) y
+// manda con cada envío `noticeVersion`. Aquí queda escrito, para siempre, qué
+// texto exacto corresponde a cada versión — mismo criterio que
+// LEGAL_NOTICE_VERSION en recall-optout.ts: si dentro de un año alguien
+// pregunta, la respuesta no es «qué dice hoy el widget» sino «qué leyó ESTA
+// persona en diciembre», y eso solo se sabe con la versión guardada en la
+// conversación. Un test compara estos textos con los de embed.v2.js: si
+// cambias uno sin el otro, falla.
+//
+// Reglas:
+//  - APPEND-ONLY. Una versión publicada no se edita ni se borra. Para cambiar
+//    una palabra: versión nueva aquí, la constante del widget a esa versión, y
+//    la vieja se queda en la tabla (los envíos de pestañas que siguen abiertas
+//    con el script anterior la siguen mandando, y siguen siendo válidos).
+//  - Una versión cubre los tres idiomas a la vez: el idioma lo elige la web
+//    (data-lang), no la persona, y los tres textos se publican juntos.
+//  - Redactado en primera persona o impersonal, para que valga igual en una web
+//    que trata de tú o de usted (el widget va de tú en español y de Sie en
+//    alemán, pero la web del cliente puede ir de usted).
+//  - `{controller}` es el responsable del paso 10 (`responsable_tratamiento`),
+//    o el nombre del negocio si ese paso no está aprobado.
+//
+// REDACCIÓN PENDIENTE DE REVISIÓN JURÍDICA, como el aviso de recall: es la
+// primera capa (art. 13 RGPD por capas), y la segunda es la política de
+// privacidad de la web, enlazada desde la casilla.
+// -----------------------------------------------------------------------------
+
+export interface WidgetContactNoticeTexts {
+  /** Primera capa. `{controller}` se sustituye en el widget. */
+  notice: string;
+  /** La casilla, obligatoria. */
+  consent: string;
+  /** El texto del enlace a la política de privacidad. */
+  privacyLink: string;
+  /** El error si se envía sin marcar la casilla. */
+  consentMissing: string;
+}
+
+/** La versión que pinta HOY embed.v2.js. */
+export const WIDGET_CONTACT_NOTICE_VERSION = '2026-12-v1';
+
+/** Todas las versiones publicadas. Append-only (ver arriba). */
+export const WIDGET_CONTACT_NOTICES: Readonly<Record<string, Readonly<Record<WidgetLang, WidgetContactNoticeTexts>>>> = {
+  '2026-12-v1': {
+    es: {
+      notice: 'Responsable: {controller}. Finalidad: responder a esta consulta.',
+      consent: 'He leído la política de privacidad y acepto que se usen mis datos para responder a mi consulta.',
+      privacyLink: 'Política de privacidad',
+      consentMissing: 'Falta aceptar la política de privacidad.',
+    },
+    en: {
+      notice: 'Controller: {controller}. Purpose: to answer this enquiry.',
+      consent: 'I have read the privacy policy and agree to my details being used to answer my enquiry.',
+      privacyLink: 'Privacy policy',
+      consentMissing: 'Please accept the privacy policy.',
+    },
+    de: {
+      notice: 'Verantwortlich: {controller}. Zweck: Beantwortung dieser Anfrage.',
+      consent:
+        'Ich habe die Datenschutzerklärung gelesen und bin mit der Verwendung meiner Daten zur Beantwortung meiner Anfrage einverstanden.',
+      privacyLink: 'Datenschutzerklärung',
+      consentMissing: 'Bitte akzeptieren Sie die Datenschutzerklärung.',
+    },
+  },
+};
+
+export function isKnownWidgetContactNoticeVersion(version: unknown): version is string {
+  return typeof version === 'string' && Object.prototype.hasOwnProperty.call(WIDGET_CONTACT_NOTICES, version);
+}
+
+/** Lo que la configuración del widget devuelve como `privacy`. */
+export interface WidgetPrivacyInfo {
+  /** URL de la política de privacidad, solo http(s). */
+  url: string | null;
+  /** Responsable del tratamiento, tal como lo escribió el negocio. */
+  controller: string | null;
+}
+
+/**
+ * La política de privacidad y el responsable, sacados del paso 10 APROBADO
+ * (`cumplimiento` de buildBotConfig: sin aprobar es `{}`, el paso no tiene
+ * valor por defecto). null si no hay ninguno de los dos: el widget enseña
+ * entonces el aviso sin enlace —salvo que la web le pase `data-privacy-url`,
+ * que tiene prioridad— y el portal avisa al negocio en Canales.
+ *
+ * La URL se vuelve a comprobar aunque el esquema del paso 10 ya exija
+ * `https://`: es lo que va a acabar en un href en la web de un tercero, y un
+ * paso guardado antes de esa regla no la habría pasado.
+ */
+export function widgetPrivacyFromConfig(cumplimiento: Record<string, unknown> | null | undefined): WidgetPrivacyInfo | null {
+  const rawUrl = typeof cumplimiento?.url_politica_privacidad === 'string' ? cumplimiento.url_politica_privacidad.trim() : '';
+  const rawController =
+    typeof cumplimiento?.responsable_tratamiento === 'string' ? cumplimiento.responsable_tratamiento.trim() : '';
+  const url = safeHttpUrl(rawUrl);
+  const controller = rawController ? rawController.replace(CONTROL_CHARS, ' ').replace(/\s+/g, ' ').slice(0, 120) : null;
+  if (!url && !controller) return null;
+  return { url, controller };
+}
+
+function safeHttpUrl(raw: string): string | null {
+  if (!raw) return null;
+  try {
+    const parsed = new URL(raw);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : null;
+  } catch {
+    return null;
+  }
+}

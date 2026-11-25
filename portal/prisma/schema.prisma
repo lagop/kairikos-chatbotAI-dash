@@ -1290,6 +1290,18 @@ model ChatbotConversation {
   handoffTakenBy     String?   @map("handoff_taken_by")
   handoffClosedAt    DateTime? @map("handoff_closed_at")
 
+  // Widget v2 (25/11/2026) — consentimiento del formulario de contacto del
+  // chat web: cuándo marcó la casilla el visitante y qué versión del aviso
+  // leyó (WIDGET_CONTACT_NOTICE_VERSION / WIDGET_CONTACT_NOTICES en
+  // lib/web-widget-context.ts, append-only: con la versión se sabe el texto
+  // exacto). NULL en todo lo anterior a esta fecha, en los envíos de embed.js
+  // (v1, congelado, no tiene casilla) y en los de pestañas abiertas con el
+  // script viejo: la ruta de contacto los acepta igual y los cuenta como
+  // `widget_contact.legacy_no_consent`. Si el visitante deja sus datos dos
+  // veces, queda el último.
+  contactConsentAt     DateTime? @map("contact_consent_at")
+  contactNoticeVersion String?   @map("contact_notice_version")
+
   client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   leads  Lead[]

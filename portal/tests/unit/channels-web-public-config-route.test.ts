@@ -93,6 +93,8 @@ describe('GET /api/public/channels/web/config', () => {
       chatEndpoint: 'https://portal.kairikos.com/api/public/channels/web/message',
       // Widget v2 — sin perfil de clínica, null. v1 lo ignora.
       sensitiveDataNotice: null,
+      // Widget v2 — sin paso 10 aprobado, null (aviso sin enlace).
+      privacy: null,
     });
     expect(body.clientId).toBeUndefined();
     expect(body.publicToken).toBeUndefined();
@@ -225,6 +227,46 @@ describe('sensitiveDataNotice', () => {
   it('sin paso 1 aprobado, null — no se supone que sea una clínica', async () => {
     const body = await getConfig(null);
     expect(body.sensitiveDataNotice).toBeNull();
+  });
+});
+
+// Widget v2 (25/11/2026) — la política de privacidad y el responsable del
+// formulario de contacto salen del paso 10 APROBADO. Plan del encargo del
+// tratamiento, PR 3.
+describe('privacy', () => {
+  const CUMPLIMIENTO = {
+    responsable_tratamiento: 'Clínica Orly, S.L.',
+    url_politica_privacidad: 'https://www.clinica.example/privacidad',
+  };
+
+  beforeEach(() => {
+    mockState.embedFindUnique.mockResolvedValue({ clientId: 'c1', status: 'active', primaryColor: '#000', position: 'bottom-right' });
+  });
+
+  async function getConfig(steps: Array<{ stepKey: string; payload: unknown }>) {
+    mockState.stepFindMany.mockResolvedValue(steps);
+    const { GET } = await import('@/app/api/public/channels/web/config/route');
+    return (await GET(makeRequest('wgt_priv_' + Math.random().toString(36).slice(2)))).json();
+  }
+
+  it('con el paso 10 aprobado, la URL y el responsable', async () => {
+    const body = await getConfig([{ stepKey: '10', payload: CUMPLIMIENTO }]);
+    expect(body.privacy).toEqual({ url: 'https://www.clinica.example/privacidad', controller: 'Clínica Orly, S.L.' });
+  });
+
+  it('sin paso 10 aprobado, null', async () => {
+    const body = await getConfig([]);
+    expect(body.privacy).toBeNull();
+  });
+
+  it('un paso 10 que no cumple el esquema (URL sin https) cuenta como no guardado: null', async () => {
+    const body = await getConfig([{ stepKey: '10', payload: { ...CUMPLIMIENTO, url_politica_privacidad: 'javascript:alert(1)' } }]);
+    expect(body.privacy).toBeNull();
+  });
+
+  it('solo lee los pasos activos para el bot (aprobados)', async () => {
+    await getConfig([]);
+    expect(mockState.stepFindMany.mock.calls[0][0].where).toMatchObject({ activeForBot: true });
   });
 });
 

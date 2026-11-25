@@ -4,7 +4,7 @@ import { isWidgetOriginAllowed } from '@/lib/web-widget-origin';
 import { buildChatbotContext } from '@/lib/chatbot-config';
 import { resolveChatbotForChannel } from '@/lib/client-product-access';
 import { InMemoryRateLimiter } from '@/lib/operator-crypto';
-import { sensitiveDataNoticeFor, welcomeMessageFor } from '@/lib/web-widget-context';
+import { sensitiveDataNoticeFor, welcomeMessageFor, widgetPrivacyFromConfig } from '@/lib/web-widget-context';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -119,6 +119,12 @@ export async function GET(req: NextRequest) {
       // (paso 1, `vertical`). null para el resto; embed.js (v1) lo ignora.
       // En el idioma de `?lang=` (es, en o de; cualquier otro, español).
       sensitiveDataNotice: sensitiveDataNoticeFor(context.config.perfil, lang),
+      // Widget v2 (25/11/2026) — política de privacidad y responsable del
+      // paso 10 aprobado, para el aviso y la casilla del formulario de
+      // contacto. Un `data-privacy-url` en el <script> tiene prioridad sobre
+      // esta URL; null sin paso 10 (el widget pinta el aviso sin enlace).
+      // embed.js (v1) lo ignora. Ver widgetPrivacyFromConfig.
+      privacy: widgetPrivacyFromConfig(context.config.cumplimiento),
     },
     { headers: CORS_HEADERS },
   );

@@ -14,6 +14,9 @@ import { WebChannelCard, type WebEmbedSummary } from '@/components/portal/WebCha
 import { resolveActiveMetaCredentials } from '@/lib/meta-credentials';
 import { resolvePortalChatbot, chatbotParamFor, type PortalChatbotSelection } from '@/lib/portal-chatbot';
 import { ChatbotPicker } from '@/components/portal/ChatbotPicker';
+import { resolveChatbotForChannel } from '@/lib/client-product-access';
+import { buildChatbotContext } from '@/lib/chatbot-config';
+import { widgetPrivacyFromConfig } from '@/lib/web-widget-context';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,6 +53,7 @@ export default async function PortalCanalesPage(
   let telegramConnection: TelegramConnectionSummary | null = null;
   let metaConnections: MetaConnectionSummary[] = [];
   let webEmbed: WebEmbedSummary | null = null;
+  let privacyUrlMissing = false;
   // Packs de uso (01/10/2026): el consumo del mes de ESTE chatbot.
   let usage: { used: number; cap: number; packRemaining: number } | null = null;
   let packOffer: Awaited<ReturnType<typeof getUsagePackOffer>> = null;
@@ -108,6 +112,15 @@ export default async function PortalCanalesPage(
       label: row.label,
       status: row.status as MetaConnectionSummary['status'],
     }));
+    // 25/11/2026 — ¿tiene el formulario de contacto del chat a qué política de
+    // privacidad enlazar? Se calcula por el mismo camino que la configuración
+    // del widget (/api/public/channels/web/config), para que el aviso diga
+    // exactamente lo que ve el visitante. Solo con el widget activo.
+    if (webRow?.status === 'active' && chatbotId) {
+      const instance = await resolveChatbotForChannel(prisma, resolved.clientId, chatbotId);
+      const context = await buildChatbotContext(prisma, resolved.clientId, instance);
+      privacyUrlMissing = !widgetPrivacyFromConfig(context.config.cumplimiento)?.url;
+    }
     webEmbed = webRow
       ? {
           publicToken: webRow.publicToken,
@@ -165,6 +178,7 @@ export default async function PortalCanalesPage(
         embed={webEmbed}
         allowed={allowedChannels.includes('web')}
         clientProductId={chatbotParam}
+        privacyUrlMissing={privacyUrlMissing}
       />
       <TelegramChannelCard
         key={`telegram-${chatbotKey}`}
