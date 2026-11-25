@@ -14,9 +14,10 @@
 //
 // Cómo correrla (lo que se hizo el 25/11/2026 para el PR 4):
 //
-//   docker run -d --name ret-pg -e POSTGRES_PASSWORD=test -e POSTGRES_DB=portal \
+//   export PGPASSWORD=<una cualquiera, la base es de usar y tirar>
+//   docker run -d --name ret-pg -e POSTGRES_PASSWORD="$PGPASSWORD" -e POSTGRES_DB=portal \
 //     -p 55439:5432 postgres:16-alpine
-//   export U=postgresql://postgres:test@127.0.0.1:55439/portal
+//   export U="postgresql://postgres:${PGPASSWORD}@127.0.0.1:55439/portal"
 //   DATABASE_URL=$U DIRECT_URL=$U npx prisma db push --skip-generate
 //   CHAT_RETENTION_TEST_DATABASE_URL=$U npx vitest run --config vitest.real.config.ts tests/real/chat-retention.test.ts
 //   docker rm -f ret-pg
