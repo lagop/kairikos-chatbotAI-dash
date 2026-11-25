@@ -31,8 +31,12 @@ de las dos mitades.
 - **CSV**: con BOM (Excel en Windows), filas en CRLF, fechas ISO 8601, y cada celda por
   `escapeCsvValue` (`lib/lead-export.ts`): los textos los escriben desconocidos y una celda que
   empieza por `=` es una fórmula al abrirla en Excel.
-- **Supresión a petición del cliente**: la hace el operador con un script auditado (PR 5 del plan).
-  No hay botones de borrar en el portal.
+- **Baja**: la hace el operador con `scripts/baja-datos-cliente.sh` (PR 5a del plan), en tres
+  pasos —estado, aviso al cliente, borrado— y con los plazos de villas y cartera: 30 días desde la
+  baja, nunca menos de 7 desde el aviso, y sin aviso nunca. Procedimiento:
+  `portal/docs/runbooks/baja-datos-cliente.md`. No hay botones de borrar en el portal.
+- **Supresión a petición del cliente con el servicio activo**: todavía a mano (ver el final del
+  procedimiento).
 
 ## Por producto
 
@@ -46,7 +50,7 @@ de las dos mitades.
 | Acceso del cliente | Con conversaciones o con un chatbot contratado alguna vez (en cualquier estado). Sin nada de eso, 403. |
 | Auditoría | `chatbot` / `exported`, con `{ format, count }` (número de conversaciones). |
 | Conservación | El campo «Retención» del paso 10 del asistente (`retencion_leads_dias`): días desde la última actividad. Vacío o 0: 12 meses. Menos de 30 no se aplica (12 meses) y el operador recibe un correo al día (`chat-retention-short`) mientras siga así. Con la conversación caen los resúmenes (`ConversationDigest`) cuya ventana acabó antes del mismo corte; las solicitudes se quedan, sin conversación. **En modo de prueba desde el 25/11/2026 (PR 4a): cuenta, no borra.** Ver «Retención del chat» abajo. |
-| Baja | Pendiente (PR 5 del plan). |
+| Baja | `scripts/baja-datos-cliente.sh … --producto chatbot`: conversaciones, resúmenes y mensajes salientes del chat. Las solicitudes se quedan. |
 
 «Última actividad» es la mayor entre `startedAt + duration` y las fechas de la derivación a una
 persona (`conversationLastActivity` en `lib/chatbot-export.ts`); la retención cuenta desde ahí.
@@ -84,9 +88,10 @@ conversaciones no tienen techo y cada una lleva su transcript entero.
 | Qué se exporta | Las solicitudes del cliente en CSV (`lib/lead-export.ts`). |
 | Cliente | `/portal/leads` · `GET /api/portal/leads/export` (con `leads` o `prospecting` contratado: `hasLeadsInboxAccess`). |
 | Operador | Sin ruta propia todavía. |
+| Acceso del cliente | Con el buzón contratado (`hasLeadsInboxAccess`) **o con alguna solicitud guardada**: desde el 25/11/2026 (PR 5a), una baja ya no cierra la descarga. En `/portal/leads`, sin buzón y con solicitudes, sale una tarjeta «Tus solicitudes guardadas» con el enlace. |
 | Auditoría | `leads` / `exported`, con `{ format: 'csv', count }`. Desde el 25/11/2026; antes no dejaba rastro. |
 | Conservación | Sin cambios en este plan. `retention-purge.ts` solo toca los datos de los que Kairikos es responsable (prospección propia), no estos. |
-| Baja | Pendiente (PR 5 del plan): solo si no queda activo ningún producto que las genere. |
+| Baja | `--producto leads`: solicitudes, su auditoría y los mensajes salientes de captación y prospección. Solo con leads, prospecting, chatbot, recall y cartera dados de baja. |
 
 ### Llamadas — recall (`CallEvent`)
 
@@ -98,7 +103,7 @@ conversaciones no tienen techo y cada una lleva su transcript entero.
 | Operador | Ficha del cliente en el admin, sección de llamadas → «CSV · JSON» · `GET /api/admin/portal/recall/[subscriptionId]/export?formato=csv\|json` |
 | Auditoría | `recall` / `exported`, con `{ format, count }` y la contratación de la línea. |
 | Conservación | La grabación se borra en Twilio a los 30 días (`RECORDING_RETENTION_DAYS`, `lib/recall-retention.ts`). La transcripción, el número y el resultado se guardan mientras el servicio esté contratado. |
-| Baja | Pendiente (PR 5 del plan): primero borrar en Twilio las grabaciones que queden, después los registros. |
+| Baja | `--producto recall`: primero las grabaciones que queden en Twilio (si falla una, no se borra nada más); después la suscripción de llamadas entera y sus mensajes salientes. Bloqueada mientras el número siga asignado. |
 
 ### Villas y cartera (ya existían)
 

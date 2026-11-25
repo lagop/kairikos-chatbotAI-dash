@@ -31,7 +31,9 @@ export interface PurgeResult {
   failed: number;
 }
 
-async function deleteTwilioRecording(
+/** Exportada para la baja de un cliente (client-data-exit.ts): mismo
+ *  criterio, 204 y 404 son «ya no está». */
+export async function deleteTwilioRecording(
   recordingSid: string,
   auth: { accountSid: string; authToken: string },
 ): Promise<{ ok: true } | { ok: false; error: string }> {

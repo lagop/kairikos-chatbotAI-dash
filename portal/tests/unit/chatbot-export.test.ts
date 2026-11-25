@@ -23,6 +23,7 @@ const state = vi.hoisted(() => ({
   clientProductFindFirst: vi.fn(),
   auditCreate: vi.fn(),
   leadFindMany: vi.fn(),
+  leadCount: vi.fn(),
   logError: vi.fn(),
 }));
 
@@ -36,7 +37,10 @@ vi.mock('@/lib/prisma', () => ({
     },
     clientProduct: { findFirst: (...a: unknown[]) => state.clientProductFindFirst(...a) },
     clientDataAudit: { create: (...a: unknown[]) => state.auditCreate(...a) },
-    lead: { findMany: (...a: unknown[]) => state.leadFindMany(...a) },
+    lead: {
+      findMany: (...a: unknown[]) => state.leadFindMany(...a),
+      count: (...a: unknown[]) => state.leadCount(...a),
+    },
   },
 }));
 vi.mock('@/lib/session', () => ({ getSession: (...a: unknown[]) => state.getSession(...a) }));
@@ -130,6 +134,7 @@ beforeEach(() => {
   state.conversationFindMany.mockImplementation(pagedFindMany([conv()]));
   state.auditCreate.mockResolvedValue({});
   state.hasLeadsInboxAccess.mockResolvedValue(true);
+  state.leadCount.mockResolvedValue(0);
 });
 
 describe('exportTurns', () => {
@@ -349,6 +354,22 @@ describe('GET /api/portal/conversations/export (cliente)', () => {
     expect(res.headers.get('content-type')).toBe('text/csv; charset=utf-8');
     const bytes = new Uint8Array(await res.arrayBuffer());
     expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+  });
+
+  it('sin el buzón contratado (una baja) pero con solicitudes guardadas, también se descargan', async () => {
+    state.hasLeadsInboxAccess.mockResolvedValue(false);
+    state.leadCount.mockResolvedValue(3);
+    state.leadFindMany.mockResolvedValue([]);
+    const res = await leadsGet(new NextRequest('http://localhost/api/portal/leads/export'));
+    expect(res.status).toBe(200);
+    expect(state.leadCount).toHaveBeenCalledWith({ where: { clientId: 'client_a' } });
+  });
+
+  it('sin buzón y sin solicitudes, 403', async () => {
+    state.hasLeadsInboxAccess.mockResolvedValue(false);
+    const res = await leadsGet(new NextRequest('http://localhost/api/portal/leads/export'));
+    expect(res.status).toBe(403);
+    expect(state.auditCreate).not.toHaveBeenCalled();
   });
 
   it('si la auditoría falla, no hay fichero', async () => {
