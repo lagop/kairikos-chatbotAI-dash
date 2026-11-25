@@ -5,7 +5,8 @@
  *
  *   <script src="https://portal.kairikos.com/widget/embed.v2.js" data-space-token="wgt_..." async
  *     data-launcher="bubble|none" data-lang="es|en|de" data-theme="light|dark|auto"
- *     data-font="..." data-accent="#1f7f77" data-links="none|same-origin" data-offset="88"></script>
+ *     data-font="..." data-accent="#1f7f77" data-links="none|same-origin" data-offset="88"
+ *     data-privacy-url="/privacidad"></script>
  *
  * Por qué un archivo nuevo y no cambios en embed.js: todos los clientes cargan
  * embed.js desde la misma URL, así que cualquier cambio en él les llega a la
@@ -13,13 +14,15 @@
  * desde su propio botón, marca, inglés, contexto de página, enlaces, eventos
  * de conversión) y embed.js queda congelado — hay un test que compara su hash.
  *
- * Sin ningún atributo nuevo, v2 se ve como v1 salvo en cuatro cosas, todas a
+ * Sin ningún atributo nuevo, v2 se ve como v1 salvo en cinco cosas, todas a
  * propósito:
  *   - el aviso de IA bajo la cabecera (art. 50 del Reglamento de IA de la UE);
  *   - un botón de cerrar en la cabecera (sin él, el panel a pantalla completa
  *     del móvil no se podría cerrar, y un diálogo necesita uno);
  *   - en móvil (< 480 px) el panel ocupa la pantalla;
- *   - botones de 44 px de alto (objetivos táctiles).
+ *   - botones de 44 px de alto (objetivos táctiles);
+ *   - el formulario de contacto lleva aviso de privacidad y una casilla
+ *     obligatoria (25/11/2026; RGPD, contrato de encargo del tratamiento).
  *
  * Igual que v1: dos llamadas de red (configuración y un POST por mensaje),
  * Shadow DOM para aislar el CSS en los dos sentidos, y si la configuración
@@ -85,6 +88,14 @@
       contactShort: 'Escribe un teléfono o un correo.',
       contactFail: 'No he podido guardarlo. Inténtalo otra vez.',
       contactThanks: 'Gracias. El equipo te escribirá en cuanto pueda.',
+      // Aviso y casilla de privacidad (versión CONTACT_NOTICE_VERSION). Estas
+      // cuatro claves son copia exacta de WIDGET_CONTACT_NOTICES en
+      // src/lib/web-widget-context.ts, y un test lo comprueba: no se cambian
+      // sin versión nueva allí.
+      contactNotice: 'Responsable: {controller}. Finalidad: responder a esta consulta.',
+      contactConsent: 'He leído la política de privacidad y acepto que se usen mis datos para responder a mi consulta.',
+      contactPrivacy: 'Política de privacidad',
+      contactConsentMissing: 'Falta aceptar la política de privacidad.',
     },
     en: {
       open: 'Open chat',
@@ -104,6 +115,10 @@
       contactShort: 'Please enter a phone number or an email.',
       contactFail: "I couldn't save it. Please try again.",
       contactThanks: 'Thanks. The team will write to you as soon as they can.',
+      contactNotice: 'Controller: {controller}. Purpose: to answer this enquiry.',
+      contactConsent: 'I have read the privacy policy and agree to my details being used to answer my enquiry.',
+      contactPrivacy: 'Privacy policy',
+      contactConsentMissing: 'Please accept the privacy policy.',
     },
     de: {
       open: 'Chat öffnen',
@@ -124,6 +139,11 @@
       contactShort: 'Bitte geben Sie eine Telefonnummer oder eine E-Mail-Adresse ein.',
       contactFail: 'Das hat leider nicht geklappt. Bitte versuchen Sie es noch einmal.',
       contactThanks: 'Vielen Dank. Das Team meldet sich so bald wie möglich bei Ihnen.',
+      contactNotice: 'Verantwortlich: {controller}. Zweck: Beantwortung dieser Anfrage.',
+      contactConsent:
+        'Ich habe die Datenschutzerklärung gelesen und bin mit der Verwendung meiner Daten zur Beantwortung meiner Anfrage einverstanden.',
+      contactPrivacy: 'Datenschutzerklärung',
+      contactConsentMissing: 'Bitte akzeptieren Sie die Datenschutzerklärung.',
     },
   };
 
@@ -179,6 +199,43 @@
     })(),
   };
   var T = TEXTS[OPTIONS.lang];
+
+  // La versión del aviso de privacidad del formulario de contacto, que viaja
+  // con cada envío y se guarda en la conversación. Es la de
+  // WIDGET_CONTACT_NOTICE_VERSION (src/lib/web-widget-context.ts), donde quedan
+  // escritos para siempre los textos de cada versión.
+  var CONTACT_NOTICE_VERSION = '2026-12-v1';
+
+  /** Una URL de política de privacidad que se puede enlazar, o null. Se
+   *  resuelve contra la página (así vale «/privacidad») y solo se acepta
+   *  http(s): ni javascript:, ni data:, ni nada que no sea una web. */
+  function safePrivacyUrl(raw) {
+    if (!raw) return null;
+    try {
+      var url = new URL(String(raw).trim(), window.location.href);
+      return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /** La URL de la política, por orden: data-privacy-url de la web (como en
+   *  villas.v1.js), y si no, la del paso 10 que manda la configuración. Sin
+   *  ninguna, el aviso sale sin enlace, el servidor lo registra
+   *  (widget.privacy_url_missing) y el portal avisa al negocio. */
+  function privacyUrl() {
+    var fromAttr = safePrivacyUrl(attr('data-privacy-url'));
+    if (fromAttr) return fromAttr;
+    var privacy = STATE.config && STATE.config.privacy;
+    return privacy && typeof privacy.url === 'string' ? safePrivacyUrl(privacy.url) : null;
+  }
+
+  /** El responsable del aviso: el del paso 10 y, sin él, el negocio. */
+  function privacyController() {
+    var privacy = STATE.config && STATE.config.privacy;
+    if (privacy && typeof privacy.controller === 'string' && privacy.controller.trim()) return privacy.controller.trim();
+    return (STATE.config && STATE.config.businessName) || '';
+  }
 
   // ---------------------------------------------------------------------------
   // Estado
@@ -464,6 +521,11 @@
       'color:var(--kw-on-accent);font-size:13px;cursor:pointer;font-weight:600;font-family:inherit;}' +
       '.kw-contact-send:disabled{opacity:.5;cursor:default;}' +
       '.kw-contact-error{font-size:12px;color:var(--kw-error);}' +
+      '.kw-contact-notice{font-size:11.5px;line-height:1.4;color:var(--kw-muted);}' +
+      '.kw-contact-check{display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:1.4;color:var(--kw-fg);' +
+      'cursor:pointer;padding:4px 0;}' +
+      '.kw-contact-check input{width:18px;height:18px;margin:0;flex-shrink:0;cursor:pointer;accent-color:var(--kw-accent);}' +
+      '.kw-contact-check a{color:inherit;text-decoration:underline;text-underline-offset:2px;font-weight:600;}' +
       '.kw-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);' +
       'white-space:nowrap;border:0;}' +
       // Foco visible en todo lo que se puede pulsar.
@@ -725,12 +787,36 @@
       placeholder: T.contactValue,
       'aria-label': T.contactValue,
     });
+    // Aviso de privacidad de primera capa y casilla obligatoria (25/11/2026):
+    // quién trata los datos, para qué, y el enlace a la política. Antes el
+    // formulario pedía el contacto sin decir nada. Los textos son los de la
+    // versión CONTACT_NOTICE_VERSION; el responsable y la URL, de la
+    // configuración (paso 10) o del atributo data-privacy-url.
+    var linkUrl = privacyUrl();
+    var controller = privacyController();
+    var noticeText = T.contactNotice.replace('{controller}', controller);
+    // «Clínica Orly, S.L.» ya trae su punto: sin esto saldría «S.L..».
+    if (controller.charAt(controller.length - 1) === '.') noticeText = noticeText.replace(controller + '.', controller);
+    var notice = el('div', { class: 'kw-contact-notice', text: noticeText });
+    var consentBox = el('input', { type: 'checkbox', required: '', 'aria-required': 'true' });
+    var consentText = el('span', { text: T.contactConsent });
+    if (linkUrl) {
+      consentText.appendChild(document.createTextNode(' '));
+      consentText.appendChild(
+        el('a', { href: linkUrl, target: '_blank', rel: 'noopener noreferrer', text: T.contactPrivacy }),
+      );
+    } else {
+      console.warn('[Kairikos widget] sin URL de política de privacidad: ni data-privacy-url ni paso 10.');
+    }
+    var consentLabel = el('label', { class: 'kw-contact-check' }, [consentBox, consentText]);
     var error = el('div', { class: 'kw-contact-error', role: 'alert', hidden: '' });
     var submit = el('button', { class: 'kw-contact-send', type: 'button', text: T.contactSend });
     var form = el('div', { class: 'kw-contact', role: 'group', 'aria-label': T.contactTitle }, [
       formTitle,
       nameInput,
       contactInput,
+      notice,
+      consentLabel,
       error,
       submit,
     ]);
@@ -746,6 +832,11 @@
         showError(T.contactShort);
         return;
       }
+      if (!consentBox.checked) {
+        showError(T.contactConsentMissing);
+        consentBox.focus();
+        return;
+      }
       error.setAttribute('hidden', '');
       submit.disabled = true;
       fetch(portalOrigin + '/api/public/channels/web/contact', {
@@ -756,6 +847,9 @@
           sessionId: STATE.sessionId,
           name: (nameInput.value || '').trim(),
           contact: value,
+          consent: true,
+          noticeVersion: CONTACT_NOTICE_VERSION,
+          privacyLinkShown: !!linkUrl,
         }),
       })
         .then(function (res) {

@@ -18,6 +18,7 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { Script } from 'node:vm';
 import path from 'node:path';
+import { WIDGET_CONTACT_NOTICE_VERSION, WIDGET_CONTACT_NOTICES } from '@/lib/web-widget-context';
 
 const WIDGET_DIR = path.resolve(__dirname, '../../public/widget');
 
@@ -165,5 +166,42 @@ describe('embed.v2.js — idiomas', () => {
   it('un idioma que no tiene cae en español', () => {
     expect(configUrlFor({ 'data-lang': 'fr' })).not.toContain('lang=');
     expect(configUrlFor({ 'data-lang': 'constructor' })).not.toContain('lang=');
+  });
+});
+
+// =============================================================================
+// Aviso de privacidad del formulario de contacto (25/11/2026).
+//
+// El widget pinta los textos y manda la versión; el servidor guarda la versión.
+// Para que «versión 2026-12-v1» diga qué leyó la persona, los textos de
+// embed.v2.js tienen que ser EXACTAMENTE los registrados para esa versión en
+// src/lib/web-widget-context.ts. Si cambias un texto del widget, crea allí una
+// versión nueva (append-only) y sube CONTACT_NOTICE_VERSION.
+// =============================================================================
+
+describe('embed.v2.js — aviso de privacidad versionado', () => {
+  const source = read('embed.v2.js');
+  const texts = literal(source, 'TEXTS');
+
+  it('manda la versión vigente del aviso', () => {
+    const m = /var CONTACT_NOTICE_VERSION = '([^']+)';/.exec(source);
+    expect(m?.[1]).toBe(WIDGET_CONTACT_NOTICE_VERSION);
+  });
+
+  it('los textos de cada idioma son los registrados para esa versión', () => {
+    const published = WIDGET_CONTACT_NOTICES[WIDGET_CONTACT_NOTICE_VERSION];
+    expect(Object.keys(published).sort()).toEqual(Object.keys(texts).sort());
+    for (const [lang, t] of Object.entries(texts)) {
+      const p = published[lang as keyof typeof published];
+      expect(t.contactNotice, lang).toBe(p.notice);
+      expect(t.contactConsent, lang).toBe(p.consent);
+      expect(t.contactPrivacy, lang).toBe(p.privacyLink);
+      expect(t.contactConsentMissing, lang).toBe(p.consentMissing);
+      expect(t.contactNotice, lang).toContain('{controller}');
+    }
+  });
+
+  it('las versiones publicadas no se borran (la primera sigue ahí)', () => {
+    expect(WIDGET_CONTACT_NOTICES['2026-12-v1']).toBeDefined();
   });
 });

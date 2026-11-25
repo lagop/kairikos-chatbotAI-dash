@@ -20,6 +20,7 @@ webs Kairikos Signature (la primera, la demo dental *Alisio Dental Studio*).
   data-accent="#1f7f77"
   data-links="same-origin"
   data-offset="88"
+  data-privacy-url="/privacidad"
 ></script>
 ```
 
@@ -33,12 +34,14 @@ webs Kairikos Signature (la primera, la demo dental *Alisio Dental Studio*).
 | `data-accent` | color CSS | `primaryColor` del portal | El texto sobre el acento se elige por contraste (blanco o casi negro). Con el color del portal, blanco como en v1. |
 | `data-links` | `none` \| `same-origin` | `none` | Enlaces en las respuestas del bot (ver abajo). |
 | `data-offset` | entero 0–1000 (px) | 88 con burbuja, 20 sin ella; 0 en móvil | Distancia del panel al borde inferior, para barras fijas de la web. |
+| `data-privacy-url` | URL o ruta | la del paso 10 | La política de privacidad que enlaza la casilla del formulario de contacto. Se resuelve contra la página (`/privacidad` vale) y solo se acepta `http(s)`. Gana a la del paso 10. Ver «Formulario de contacto: aviso y consentimiento». |
 
 Los atributos se leen **una vez**, al ejecutarse el script.
 
-Sin ningún atributo nuevo, v2 se ve como v1 salvo en cuatro cosas: el aviso de IA,
-un botón de cerrar en la cabecera, el panel a pantalla completa en móvil y botones
-de 44 px de alto.
+Sin ningún atributo nuevo, v2 se ve como v1 salvo en cinco cosas: el aviso de IA,
+un botón de cerrar en la cabecera, el panel a pantalla completa en móvil, botones
+de 44 px de alto y el aviso de privacidad con casilla obligatoria en el formulario
+de contacto.
 
 ## API: `window.KairikosChat`
 
@@ -156,7 +159,54 @@ No atrapa el foco (no es modal).
 | Ruta | Cambio (compatible con v1) |
 |---|---|
 | `POST /api/public/channels/web/message` | Acepta `context` opcional. Se valida aparte (`src/lib/web-widget-context.ts`): todo o nada, uno inválido se ignora sin 400. Llega al motor como una línea («El visitante está en la página «/x» (tema: y)»), rotulada en el prompt como dato de la visita y no instrucciones. No se guarda en el transcript. |
-| `GET /api/public/channels/web/config` | Añade `sensitiveDataNotice`: texto cuando el paso 1 aprobado del chatbot tiene `vertical: 'clinica'`, `null` en otro caso. `?lang=en` o `?lang=de` lo da en ese idioma (otro valor, español). Con `?lang=`, el saludo **por defecto** (el negocio no escribió el suyo en el paso 9) sale traducido; un saludo propio del negocio no se toca. |
+| `GET /api/public/channels/web/config` | Añade `privacy: { url, controller }` desde el paso 10 **aprobado** (`url_politica_privacidad`, `responsable_tratamiento`), o `null` si no lo hay. Añade `sensitiveDataNotice`: texto cuando el paso 1 aprobado del chatbot tiene `vertical: 'clinica'`, `null` en otro caso. `?lang=en` o `?lang=de` lo da en ese idioma (otro valor, español). Con `?lang=`, el saludo **por defecto** (el negocio no escribió el suyo en el paso 9) sale traducido; un saludo propio del negocio no se toca. |
+
+| `POST /api/public/channels/web/contact` | Acepta `consent`, `noticeVersion` y `privacyLinkShown`. Ver la sección siguiente. Además actualiza `duration` de la conversación, que antes no tocaba. |
+
+## Formulario de contacto: aviso y consentimiento
+
+Desde el 25/11/2026 (contrato de encargo del tratamiento de Web Premium, PR 3 de
+`plan-portal-encargo-tratamiento.md`). Cuando el bot deriva, el formulario que pide
+nombre y teléfono o correo enseña:
+
+1. **Aviso de primera capa:** «Responsable: {responsable}. Finalidad: responder a
+   esta consulta.» El responsable es `privacy.controller` (paso 10) y, sin él, el
+   nombre del negocio.
+2. **Casilla obligatoria:** «He leído la política de privacidad y acepto que se usen
+   mis datos para responder a mi consulta.» con el enlace «Política de privacidad»
+   (nueva pestaña, `rel="noopener noreferrer"`). Sin marcarla, el widget no envía y
+   dice «Falta aceptar la política de privacidad.».
+
+Los textos van en primera persona o impersonales para que valgan igual en una web
+de tú o de usted, en `es`, `en` y `de`.
+
+**URL de la política, por orden:** `data-privacy-url` del `<script>`; si no, la del
+paso 10 (`privacy.url` de la configuración); si no hay ninguna, el aviso y la casilla
+salen **sin enlace**, el widget escribe un `console.warn`, el envío lleva
+`privacyLinkShown: false` y el servidor registra `widget.privacy_url_missing`.
+El negocio ve además un aviso en **Portal → Canales → Web** (el portal solo conoce el
+paso 10, no el atributo de la web).
+
+**Versión del aviso.** El envío lleva `consent: true` y `noticeVersion`
+(`2026-12-v1`). Los textos de cada versión, en los tres idiomas, quedan escritos en
+`WIDGET_CONTACT_NOTICES` (`src/lib/web-widget-context.ts`), **append-only**: para
+cambiar una palabra se crea versión nueva allí y se sube `CONTACT_NOTICE_VERSION` en
+el widget. Un test exige que los textos del widget sean idénticos a los de su versión.
+
+**Servidor** (`/contact`):
+
+| Envío | Respuesta | Conversación |
+|---|---|---|
+| `noticeVersion` conocida y `consent: true` | 200 | `contact_consent_at` = ahora, `contact_notice_version` = la versión |
+| `noticeVersion` conocida sin `consent: true` | 400 `consent_required` | no se toca |
+| `noticeVersion` desconocida | 400 `bad_request` | no se toca |
+| sin `noticeVersion` (embed.js v1, o una pestaña abierta con el v2 anterior) | 200 | columnas sin tocar (NULL); log `widget_contact.legacy_no_consent` |
+
+La conversación del portal (`/portal/conversations/<id>`) enseña «Consentimiento:
+fecha (versión …)» cuando lo hay.
+
+**v1 no cambia:** `embed.js` está congelado y no tiene casilla; sus envíos se
+aceptan como siempre y se cuentan con el log de arriba.
 
 ## Dominios permitidos
 
@@ -195,7 +245,7 @@ de la etiqueta sin mayúsculas: `de-AT` o `EN` valen. Un idioma que no está cae
 español, como antes.
 
 Lo que traduce el idioma: los textos del widget (botones, aviso de IA, campo,
-formulario de contacto, errores), el aviso de datos de salud y el saludo por
+formulario de contacto con su aviso de privacidad y casilla, errores), el aviso de datos de salud y el saludo por
 defecto (los da el servidor con `?lang=`) y las respuestas de reserva del servidor
 (las traduce el widget). Lo que **no**: el saludo y las sugerencias que escribió el
 negocio — la web los pone en su idioma con `configure()` — y las respuestas del
@@ -204,7 +254,9 @@ bot, que salen en el idioma del visitante si el negocio lo tiene en el paso 1.
 Para añadir otro idioma: un bloque más en `TEXTS` y en `SERVER_REPLIES` de
 `embed.v2.js` (un test exige las mismas claves que el español), y el idioma en
 `WIDGET_LANGS`, `SENSITIVE_DATA_NOTICE` y `DEFAULT_WELCOME` de
-`src/lib/web-widget-context.ts`.
+`src/lib/web-widget-context.ts`, y una **versión nueva** de `WIDGET_CONTACT_NOTICES`
+con los tres textos del aviso de privacidad en todos los idiomas (las publicadas no
+se editan).
 
 ## Limitaciones conocidas
 
@@ -215,3 +267,9 @@ Para añadir otro idioma: un bloque más en `TEXTS` y en `SERVER_REPLIES` de
 - El contexto lo puede falsear cualquiera que llame a la ruta, igual que el
   mensaje. No da más poder que el mensaje: es orientación, no autorización.
 - Sin enlaces activados no hay continuidad entre páginas (como v1).
+- El consentimiento solo cubre el formulario de contacto. Si el visitante escribe
+  su teléfono o correo directamente en el chat (el bot también los pide), eso no
+  pasa por la casilla y no queda registrado.
+- `embed.v2.js` se sirve sin versión en la URL: un cambio llega a todas las webs v2
+  al desplegar, y una pestaña ya abierta sigue con el script anterior (por eso se
+  aceptan los envíos sin `noticeVersion`).

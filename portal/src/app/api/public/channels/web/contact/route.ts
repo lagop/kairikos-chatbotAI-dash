@@ -8,6 +8,7 @@ import { InMemoryRateLimiter } from '@/lib/operator-crypto';
 import { isReservedSessionId } from '@/lib/conversation-session-id';
 import { sendWidgetContactEmail } from '@/lib/handoff-alert-email';
 import { logError } from '@/lib/observability';
+import { isKnownWidgetContactNoticeVersion } from '@/lib/web-widget-context';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -34,6 +35,30 @@ export const runtime = 'nodejs';
 // No crea un Lead: eso lo hace el barrido de clasificación cuando la
 // conversación se cierra (classify-leads-sweep.ts), y solo si el cliente
 // tiene Captación. Este endpoint no se mete en ese camino.
+//
+// Consentimiento (25/11/2026, plan del encargo del tratamiento, PR 3).
+// embed.v2.js enseña ahora un aviso de primera capa y una casilla obligatoria
+// con el enlace a la política de privacidad, y manda `consent: true` y
+// `noticeVersion`. Aquí:
+//   - versión conocida y consentimiento → se guardan fecha y versión en la
+//     conversación (contact_consent_at, contact_notice_version);
+//   - versión conocida SIN consentimiento → 400 `consent_required`: el widget
+//     no deja enviar sin la casilla, así que eso es alguien saltándosela;
+//   - versión desconocida → 400 `bad_request`, como cualquier otro campo mal;
+//   - SIN versión → se acepta como siempre, con las columnas a NULL, y se
+//     cuenta como `widget_contact.legacy_no_consent`. Son embed.js (v1,
+//     congelado: no tiene casilla) y las pestañas que se abrieron con el v2
+//     anterior a este cambio. Rechazarlos dejaría sin formulario a todas las
+//     webs v1, y el log dice cuántos quedan.
+// `privacyLinkShown: false` dice que el widget no tenía URL de la política
+// (ni `data-privacy-url` ni paso 10): se guarda igual —el aviso de primera
+// capa sí salió— y se registra `widget.privacy_url_missing` para que alguien
+// lo arregle. El negocio lo ve también en Canales.
+//
+// De paso, el turno nuevo actualiza `duration`, como hacen el motor
+// (chatbot-conversation.ts) y la bandeja de traspaso: sin eso, la última
+// actividad de la conversación (startedAt + duration) no contaba este
+// mensaje, y es la fecha que usará la retención del chat.
 // =============================================================================
 
 const CORS_HEADERS = {
@@ -55,6 +80,10 @@ const BodySchema = z.object({
   sessionId: z.string().trim().min(1).max(200).refine((id) => !isReservedSessionId(id)),
   name: z.string().trim().max(80).optional(),
   contact: z.string().trim().min(3).max(120).refine(looksLikeContact),
+  // Sin versión: envío de v1 o de una pestaña antigua (ver la cabecera).
+  noticeVersion: z.string().trim().max(40).refine(isKnownWidgetContactNoticeVersion).optional(),
+  consent: z.boolean().optional(),
+  privacyLinkShown: z.boolean().optional(),
 });
 
 // Más estricto que el del chat: dejar el contacto es algo que se hace una
@@ -72,8 +101,12 @@ export async function POST(req: NextRequest) {
   if (!body.success) {
     return NextResponse.json({ success: false, error: 'bad_request' }, { status: 400, headers: CORS_HEADERS });
   }
-  const { publicToken, sessionId, contact } = body.data;
+  const { publicToken, sessionId, contact, noticeVersion } = body.data;
   const visitorName = body.data.name?.trim() ? body.data.name.trim() : null;
+  // Antes de tocar la base de datos: es un fallo del envío, no del widget.
+  if (noticeVersion && body.data.consent !== true) {
+    return NextResponse.json({ success: false, error: 'consent_required' }, { status: 400, headers: CORS_HEADERS });
+  }
 
   if (!isDatabaseConfigured) {
     return NextResponse.json({ success: false, error: 'service_unavailable' }, { status: 503, headers: CORS_HEADERS });
@@ -99,25 +132,49 @@ export async function POST(req: NextRequest) {
   // nadie puede escribir en la conversación de otro negocio.
   const conversation = await prisma.chatbotConversation.findUnique({
     where: { clientId_externalSessionId: { clientId: embed.clientId, externalSessionId: sessionId } },
-    select: { id: true, transcript: true, clientProductId: true },
+    select: { id: true, transcript: true, clientProductId: true, startedAt: true },
   });
   if (!conversation) {
     return NextResponse.json({ success: false, error: 'not_found' }, { status: 404, headers: CORS_HEADERS });
   }
 
+  const now = new Date();
   const priorTranscript = Array.isArray(conversation.transcript) ? [...(conversation.transcript as unknown[])] : [];
   const entry = {
     role: 'user',
     content: visitorName
       ? `Mis datos de contacto: ${visitorName} — ${contact}`
       : `Mis datos de contacto: ${contact}`,
-    at: new Date().toISOString(),
+    at: now.toISOString(),
   };
 
   await prisma.chatbotConversation.update({
     where: { id: conversation.id },
-    data: { transcript: [...priorTranscript, entry] as never },
+    data: {
+      transcript: [...priorTranscript, entry] as never,
+      duration: Math.max(0, Math.round((now.getTime() - conversation.startedAt.getTime()) / 1000)),
+      // Sin versión (v1 o pestaña antigua) las columnas no se tocan: quedan a
+      // NULL, y si un envío anterior de la misma conversación sí consintió,
+      // esa prueba no se borra.
+      ...(noticeVersion ? { contactConsentAt: now, contactNoticeVersion: noticeVersion } : {}),
+    },
   });
+
+  if (!noticeVersion) {
+    logError(
+      'widget_contact.legacy_no_consent',
+      new Error('contact_without_notice_version'),
+      { conversationId: conversation.id },
+      'warn',
+    );
+  } else if (body.data.privacyLinkShown === false) {
+    logError(
+      'widget.privacy_url_missing',
+      new Error('contact_form_without_privacy_link'),
+      { conversationId: conversation.id, clientId: embed.clientId },
+      'warn',
+    );
+  }
 
   // El aviso, después de guardar y sin poder tumbar la respuesta: si el
   // email falla, el dato ya está en la conversación.

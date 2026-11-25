@@ -57,9 +57,14 @@ export function WebChannelCard({
   embed,
   allowed,
   clientProductId = null,
+  privacyUrlMissing = false,
 }: {
   embed: WebEmbedSummary | null;
   allowed: boolean;
+  /** 25/11/2026 — el paso 10 aprobado no da URL de política de privacidad,
+   *  así que el formulario de contacto del chat sale sin enlace (salvo que la
+   *  web ponga data-privacy-url en el <script> de v2, que el portal no ve). */
+  privacyUrlMissing?: boolean;
   /** Fase 4 multi-instancia — de qué chatbot es el canal. Null con uno
    *  solo: las llamadas son las de siempre. */
   clientProductId?: string | null;
@@ -226,6 +231,20 @@ export function WebChannelCard({
           {error ? (
             <p className="text-sm text-kairikos-danger" data-testid="web-error">
               {error}
+            </p>
+          ) : null}
+
+          {privacyUrlMissing ? (
+            <p
+              className="rounded-lg bg-kairikos-warning/15 p-3 text-sm text-kairikos-text"
+              data-testid="web-privacy-missing"
+            >
+              Falta la dirección de tu política de privacidad: el paso 10 (Cumplimiento) no está completo o aún
+              no está aprobado. Mientras tanto, el formulario donde los visitantes dejan su teléfono o correo
+              sale con el aviso de privacidad pero sin enlace a tu política.{' '}
+              <a href={withChatbot('/portal/wizard/chatbot/10', clientProductId)} className="font-semibold underline">
+                Completar el paso 10
+              </a>
             </p>
           ) : null}
 

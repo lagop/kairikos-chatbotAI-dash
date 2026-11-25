@@ -5,8 +5,9 @@
 // puede contestar. Ver src/app/api/public/channels/web/contact/route.ts.
 // =============================================================================
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { NextRequest } from 'next/server';
+import { WIDGET_CONTACT_NOTICE_VERSION } from '@/lib/web-widget-context';
 
 const mockState = vi.hoisted(() => ({
   isDatabaseConfigured: true,
@@ -15,6 +16,7 @@ const mockState = vi.hoisted(() => ({
   conversationUpdate: vi.fn(),
   clientFindUnique: vi.fn(),
   sendWidgetContactEmail: vi.fn(),
+  logError: vi.fn(),
 }));
 
 vi.mock('@/lib/prisma', () => ({
@@ -40,12 +42,13 @@ vi.mock('@/lib/client-product-access', () => ({
 vi.mock('@/lib/handoff-alert-email', () => ({
   sendWidgetContactEmail: (...a: unknown[]) => mockState.sendWidgetContactEmail(...a),
 }));
-vi.mock('@/lib/observability', () => ({ logError: vi.fn() }));
+vi.mock('@/lib/observability', () => ({ logError: (...a: unknown[]) => mockState.logError(...a) }));
 
 const ACTIVE_EMBED = { clientId: 'c1', clientProductId: 'cp_1', tenantId: 't1', status: 'active' };
 const CONVERSATION = {
   id: 'conv_1',
   clientProductId: 'cp_1',
+  startedAt: new Date('2026-09-22T10:00:00.000Z'),
   transcript: [
     { role: 'user', content: '¿Hacéis urgencias los domingos?', at: '2026-09-22T10:00:00.000Z' },
     { role: 'assistant', content: 'Te paso con una persona del equipo.', at: '2026-09-22T10:00:05.000Z' },
@@ -75,6 +78,7 @@ beforeEach(() => {
   mockState.conversationUpdate.mockReset().mockResolvedValue({});
   mockState.clientFindUnique.mockReset().mockResolvedValue({ email: 'duena@clinica.example' });
   mockState.sendWidgetContactEmail.mockReset().mockResolvedValue({ ok: true, messageId: 'm1' });
+  mockState.logError.mockReset();
 });
 
 describe('POST /api/public/channels/web/contact', () => {
@@ -232,5 +236,92 @@ describe('POST /api/public/channels/web/contact — dominios permitidos', () => 
       expect((await POST(makeRequest(body, { origin: 'https://copion.example' }))).status).toBe(404);
     }
     expect((await POST(makeRequest(body, { origin: 'https://www.clinica.example' }))).status).toBe(200);
+  });
+
+  // ===========================================================================
+  // Consentimiento (25/11/2026, plan del encargo del tratamiento, PR 3).
+  // ===========================================================================
+
+  describe('consentimiento', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-09-22T10:03:20.000Z'));
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('con versión y casilla, guarda la fecha y la versión en la conversación', async () => {
+      const { POST } = await import('@/app/api/public/channels/web/contact/route');
+      const res = await POST(makeRequest(validBody({ consent: true, noticeVersion: WIDGET_CONTACT_NOTICE_VERSION })));
+      expect(res.status).toBe(200);
+      const data = mockState.conversationUpdate.mock.calls[0][0].data;
+      expect(data.contactConsentAt).toEqual(new Date('2026-09-22T10:03:20.000Z'));
+      expect(data.contactNoticeVersion).toBe('2026-12-v1');
+      expect(mockState.logError).not.toHaveBeenCalled();
+    });
+
+    it('con versión y SIN casilla: 400 consent_required, sin tocar la conversación', async () => {
+      const { POST } = await import('@/app/api/public/channels/web/contact/route');
+      for (const consent of [false, undefined]) {
+        const res = await POST(makeRequest(validBody({ consent, noticeVersion: WIDGET_CONTACT_NOTICE_VERSION })));
+        expect(res.status).toBe(400);
+        expect(await res.json()).toEqual({ success: false, error: 'consent_required' });
+        expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+      }
+      expect(mockState.conversationUpdate).not.toHaveBeenCalled();
+      expect(mockState.sendWidgetContactEmail).not.toHaveBeenCalled();
+    });
+
+    it('una versión que no existe es un 400 como cualquier campo mal', async () => {
+      const { POST } = await import('@/app/api/public/channels/web/contact/route');
+      const res = await POST(makeRequest(validBody({ consent: true, noticeVersion: '2099-01-v9' })));
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ success: false, error: 'bad_request' });
+      expect(mockState.conversationUpdate).not.toHaveBeenCalled();
+    });
+
+    it('sin versión (v1 o pestaña antigua): se acepta, columnas sin tocar (NULL) y se cuenta', async () => {
+      const { POST } = await import('@/app/api/public/channels/web/contact/route');
+      const res = await POST(makeRequest(validBody()));
+      expect(res.status).toBe(200);
+      const data = mockState.conversationUpdate.mock.calls[0][0].data;
+      expect(data).not.toHaveProperty('contactConsentAt');
+      expect(data).not.toHaveProperty('contactNoticeVersion');
+      expect(mockState.logError).toHaveBeenCalledWith(
+        'widget_contact.legacy_no_consent',
+        expect.any(Error),
+        { conversationId: 'conv_1' },
+        'warn',
+      );
+    });
+
+    it('sin enlace a la política (privacyLinkShown: false): se guarda y se registra el aviso', async () => {
+      const { POST } = await import('@/app/api/public/channels/web/contact/route');
+      const res = await POST(
+        makeRequest(validBody({ consent: true, noticeVersion: WIDGET_CONTACT_NOTICE_VERSION, privacyLinkShown: false })),
+      );
+      expect(res.status).toBe(200);
+      expect(mockState.conversationUpdate.mock.calls[0][0].data.contactNoticeVersion).toBe('2026-12-v1');
+      expect(mockState.logError).toHaveBeenCalledWith(
+        'widget.privacy_url_missing',
+        expect.any(Error),
+        { conversationId: 'conv_1', clientId: 'c1' },
+        'warn',
+      );
+    });
+
+    it('actualiza la duración de la conversación hasta este turno', async () => {
+      const { POST } = await import('@/app/api/public/channels/web/contact/route');
+      await POST(makeRequest(validBody({ consent: true, noticeVersion: WIDGET_CONTACT_NOTICE_VERSION })));
+      // startedAt 10:00:00, ahora 10:03:20.
+      expect(mockState.conversationUpdate.mock.calls[0][0].data.duration).toBe(200);
+    });
+
+    it('también actualiza la duración en los envíos sin versión', async () => {
+      const { POST } = await import('@/app/api/public/channels/web/contact/route');
+      await POST(makeRequest(validBody()));
+      expect(mockState.conversationUpdate.mock.calls[0][0].data.duration).toBe(200);
+    });
   });
 });

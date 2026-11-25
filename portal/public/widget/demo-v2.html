@@ -19,7 +19,8 @@
 
   Los atributos data-* se leen al cargar el script, así que se eligen por la
   URL: ?lang=en&theme=dark&links=none&launcher=bubble&offset=88&accent=%23c2410c
-  (lang: es, en o de).
+  (lang: es, en o de). ?privacy=attr pone data-privacy-url; ?privacy=none simula
+  un cliente sin paso 10 (formulario de contacto sin enlace a la política).
   El script se carga de forma perezosa, al primer botón que usa la API, como lo
   hará la web Signature.
 -->
@@ -91,6 +92,12 @@
       <a href="?launcher=bubble&amp;offset=">Con burbuja (como v1)</a> ·
       <a href="?accent=%23f2c94c&amp;font=Georgia,serif">Acento claro + otra letra</a>
     </div>
+    <p>Privacidad del formulario de contacto (escribe «llamadme» para verlo):
+      <a href="?">política del paso 10</a> ·
+      <a href="?privacy=attr">data-privacy-url de la web</a> ·
+      <a href="?privacy=none">sin política (sin enlace)</a> ·
+      <a href="?privacy=none&amp;lang=de">sin política, en alemán</a>.
+      El envío y su <code>consent</code>/<code>noticeVersion</code> salen en el registro de eventos.</p>
   </section>
 
   <section id="tratamientos">
@@ -150,6 +157,13 @@
           position: 'bottom-right',
           chatEndpoint: location.origin + '/api/public/channels/web/message',
           sensitiveDataNotice: notices[lang] || notices.es,
+          // Paso 10 aprobado (25/11/2026). Con ?privacy=none, sin paso 10: el
+          // formulario de contacto sale sin enlace a la política. Con
+          // ?privacy=attr, la web pone data-privacy-url y gana a esta.
+          privacy:
+            params.get('privacy') === 'none'
+              ? null
+              : { url: location.origin + '/widget/demo-v2.html#privacidad-paso-10', controller: 'Alisio Dental Studio, S.L.' },
         });
       }
       if (url.indexOf('/api/public/channels/web/message') !== -1) {
@@ -178,6 +192,13 @@
         });
       }
       if (url.indexOf('/api/public/channels/web/contact') !== -1) {
+        // Igual que el servidor: con versión del aviso y sin casilla, 400.
+        var sent = JSON.parse(init.body);
+        write(
+          'contacto enviado: consent=' + sent.consent + ' noticeVersion=' + sent.noticeVersion +
+            ' privacyLinkShown=' + sent.privacyLinkShown,
+        );
+        if (sent.noticeVersion && sent.consent !== true) return json({ success: false, error: 'consent_required' }, 400);
         return json({ success: true });
       }
       return realFetch(input, init);
@@ -202,6 +223,7 @@
       else s.setAttribute('data-font', "'Albert Sans', system-ui, sans-serif");
       if (params.get('accent')) s.setAttribute('data-accent', params.get('accent'));
       else s.setAttribute('data-accent', '#1f7f77');
+      if (params.get('privacy') === 'attr') s.setAttribute('data-privacy-url', '/widget/demo-v2.html#privacidad-atributo');
       var offset = params.has('offset') ? params.get('offset') : '88';
       if (offset) s.setAttribute('data-offset', offset);
       s.onload = function () { resolve(window.KairikosChat); };
