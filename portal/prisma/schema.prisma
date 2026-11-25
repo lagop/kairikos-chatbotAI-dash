@@ -6707,6 +6707,7 @@ model CarteraHome {
 
   site   CarteraSite    @relation(fields: [siteId], references: [id], onDelete: Cascade)
   photos CarteraPhoto[]
+  panos  CarteraPano[]
 
   @@unique([siteId, ref])
   @@index([siteId, status])
@@ -6735,6 +6736,31 @@ model CarteraPhoto {
 
   @@index([homeId, position])
   @@map("cartera_photo")
+}
+
+// Fotos 360° de una casa (25/11/2026): una equirrectangular 2:1 por estancia,
+// hecha con una cámara 360° por la agencia o su fotógrafo. Como CarteraPhoto
+// (mismo volumen, misma forma de storageKey, misma ruta pública por id), pero
+// en su tabla: así ninguna consulta de la galería las mezcla con las fotos, y
+// no llevan texto alternativo (el formato no lo tiene: el visor las enseña
+// como la estancia del plano). A qué estancia va cada una lo dice la web
+// (`panoRooms` de su archivo de escala), por el id de la fila.
+model CarteraPano {
+  id         String   @id @default(uuid()) @db.Uuid
+  homeId     String   @map("home_id") @db.Uuid
+  storageKey String   @unique @map("storage_key")
+  mime       String
+  width      Int
+  height     Int
+  bytes      Int
+  sha256     String
+  position   Int      @default(0)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  home CarteraHome @relation(fields: [homeId], references: [id], onDelete: Cascade)
+
+  @@index([homeId, position])
+  @@map("cartera_pano")
 }
 
 // Lo que llega de los formularios de la web (decisión D, PR 5).

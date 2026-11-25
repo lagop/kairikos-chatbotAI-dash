@@ -17,6 +17,13 @@
 // mayúsculas) con tres cifras. Que el agente exista lo comprueban los dos lados por
 // su cuenta: el portal contra CarteraSite.agents (validateHome) y la web contra su
 // src/config/agents.ts (su lector para el build si no está).
+//
+// Fotos 360° (25/11/2026): copiado su commit 22cc1ec (`panoSchema` y `panos` en
+// venta y alquiler). La web usa Zod 4 desde 86ba162 (`z.iso.date()`,
+// `z.record(z.string(), …)`) y el portal sigue en Zod 3: aquí va lo mismo con la
+// sintaxis de Zod 3, que valida igual. De su archivo de escala NO se copian
+// `cotas` ni `panoRooms`: viven en src/content/escala/ de la web, los escribe
+// Kairikos y nunca pasan por el portal ni por el feed.
 // =============================================================================
 
 // Formato propio de la cartera, versión 1 (docs/fase1-cartera.md, «El formato propio»).
@@ -71,6 +78,16 @@ export const photoSchema = z.object({
   height: z.number().int().positive(),
   alt: t.partial().default({}),
 });
+
+// Fotos 360° (añadido el 25/11/2026, sin cambiar de versión: el campo es opcional y un feed sin él sigue valiendo).
+// Las hace la agencia o su fotógrafo con una cámara 360°: una imagen equirrectangular 2:1 por estancia, con el centro
+// mirando al norte. Llegan como las fotos (del portal por https, o de src/content/fotos/ tras una exportación) y la web
+// las descarga y las sirve desde sí misma. La agencia no sabe los ids del plano: a qué estancia va cada una lo dice
+// `panoRooms` en src/content/escala/<ref>.json, como las cotas de las fotos. Solo se ven en las fichas a escala, que son
+// las que tienen recorrido.
+export const panoSchema = photoSchema
+  .omit({ alt: true })
+  .refine((p) => Math.abs(p.width / p.height - 2) < 0.02, 'la foto 360° tiene que ser equirrectangular: el doble de ancha que de alta (2:1)');
 
 // --- Plano a escala (solo en src/content/escala/, nunca en el feed) ---
 // Cada planta es un rectángulo dividido en franjas (rows) de fachada a fachada; cada franja, en estancias de izquierda a
@@ -138,6 +155,7 @@ const venta = z.object({
   // Recorrido Matterport o vídeo real de la casa (YouTube, Vimeo): solo el identificador. Hasta tres; se cargan al pulsar
   media: z.array(mediaSchema).max(3).default([]),
   photos: z.array(photoSchema).max(40).default([]),
+  panos: z.array(panoSchema).max(30).default([]),
 });
 
 const ventaRules = (d: z.infer<typeof venta>, ctx: z.RefinementCtx) => {
@@ -186,6 +204,7 @@ const alquiler = z.object({
   lacks: z.array(t).default([]),
   media: z.array(mediaSchema).max(3).default([]),
   photos: z.array(photoSchema).max(40).default([]),
+  panos: z.array(panoSchema).max(30).default([]),
 });
 
 const alquilerRules = (d: z.infer<typeof alquiler>, ctx: z.RefinementCtx) => {

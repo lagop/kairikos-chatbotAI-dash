@@ -19,6 +19,7 @@ const state = vi.hoisted(() => ({
   siteFindFirst: vi.fn(),
   homeFindMany: vi.fn(),
   photoFindUnique: vi.fn(),
+  panoFindUnique: vi.fn(),
 }));
 
 vi.mock('@/lib/prisma', () => ({
@@ -27,6 +28,7 @@ vi.mock('@/lib/prisma', () => ({
     carteraSite: { findFirst: (...a: unknown[]) => state.siteFindFirst(...a) },
     carteraHome: { findMany: (...a: unknown[]) => state.homeFindMany(...a) },
     carteraPhoto: { findUnique: (...a: unknown[]) => state.photoFindUnique(...a) },
+    carteraPano: { findUnique: (...a: unknown[]) => state.panoFindUnique(...a) },
   },
 }));
 vi.mock('@/lib/observability', () => ({ logError: vi.fn() }));
@@ -188,6 +190,31 @@ describe('GET /api/public/cartera/foto/[photoId]', () => {
 
   it('una fila sin fichero en el volumen: 404, no un 500', async () => {
     state.photoFindUnique.mockResolvedValue({ ...photo({ status: 'venta', errors: null }), storageKey: `${SITE_ID}/${HOME_ID}/44444444-4444-4444-8444-444444444444.jpg` });
+    expect((await getPhoto()).status).toBe(404);
+  });
+
+  // Fotos 360° (25/11/2026): misma dirección, para que la web las descargue
+  // igual y case su estancia (panoRooms) por el último segmento, el id.
+  it('una foto 360° de una casa publicada sale por la misma dirección', async () => {
+    state.photoFindUnique.mockResolvedValue(null);
+    state.panoFindUnique.mockResolvedValue(photo({ status: 'venta', errors: null }));
+    const res = await getPhoto();
+    expect(res.status).toBe(200);
+    expect(Buffer.from(await res.arrayBuffer())).toEqual(JPEG);
+    expect(state.panoFindUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { id: PHOTO_ID } }));
+  });
+
+  it('una foto 360° de un borrador o de una agencia que no está activa: 404', async () => {
+    state.photoFindUnique.mockResolvedValue(null);
+    state.panoFindUnique.mockResolvedValue(photo({ status: 'borrador', errors: null }));
+    expect((await getPhoto()).status).toBe(404);
+    state.panoFindUnique.mockResolvedValue(photo({ status: 'venta', errors: null }, 'cancelled'));
+    expect((await getPhoto()).status).toBe(404);
+  });
+
+  it('un id que no está en ninguna de las dos tablas: 404', async () => {
+    state.photoFindUnique.mockResolvedValue(null);
+    state.panoFindUnique.mockResolvedValue(null);
     expect((await getPhoto()).status).toBe(404);
   });
 

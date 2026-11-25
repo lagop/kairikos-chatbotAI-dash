@@ -119,7 +119,7 @@ export async function processCarteraExits(db: PrismaClient, now: Date = new Date
       const dir = carteraFotosDir();
       if (dir) {
         await removeSitePhotos(dir, s.id);
-      } else if ((await db.carteraPhoto.count({ where: { home: { siteId: s.id } } })) > 0) {
+      } else if ((await db.carteraPhoto.count({ where: { home: { siteId: s.id } } })) + (await db.carteraPano.count({ where: { home: { siteId: s.id } } })) > 0) {
         logError('cartera.exit', new Error('storage_not_configured: hay fotos y no hay CARTERA_FOTOS_DIR; no se purga'), { siteId: s.id }, 'error');
         continue;
       }

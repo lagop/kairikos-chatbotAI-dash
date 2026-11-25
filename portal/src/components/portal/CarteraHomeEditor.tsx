@@ -38,6 +38,7 @@ type Lang = keyof Tr;
 type Alt = { es?: string; en?: string; de?: string };
 type HomeError = { path: string; message: string };
 type Photo = { id: string; width: number; height: number; bytes: number; alt: Alt };
+type Pano = { id: string; width: number; height: number; bytes: number };
 
 export interface CarteraHomeEditorData {
   id: string;
@@ -50,6 +51,7 @@ export interface CarteraHomeEditorData {
   published: boolean;
   updatedAt: string;
   photos: Photo[];
+  panos: Pano[];
   readOnly: boolean;
   graceEndsAt: string | null;
   agents: Array<{ key: string; name: string }>;
@@ -66,6 +68,15 @@ const EMPTY_TR: Tr = { es: '', en: '', de: '' };
 const MAX_UPLOAD_BYTES = 3_000_000;
 const MAX_SIDE = 2400;
 const MAX_PHOTOS = 40;
+// Fotos 360° (lib/cartera/photos.ts: MAX_PANO_*). Se repiten aquí porque ese
+// lib es server-only (CLAUDE.md, «Rutas y libs»).
+const MAX_PANO_UPLOAD_BYTES = 6_000_000;
+const MAX_PANO_SIDE = 4096;
+const MAX_PANOS = 30;
+/** 2:1 con la tolerancia de panoSchema: el doble de ancha que de alta. */
+function isEquirectangular(width: number, height: number) {
+  return width > 0 && height > 0 && Math.abs(width / height - 2) < 0.02;
+}
 
 function asTr(value: unknown): Tr {
   const v = (value && typeof value === 'object' ? value : {}) as Partial<Tr>;
@@ -92,10 +103,18 @@ function numText(value: unknown): string {
  * lado y vuelta a codificar. Al pasar por un canvas se pierden los datos de la
  * cámara, GPS incluido (decisión A de la especificación). Mismo patrón que
  * SiteContentEditor; si sale de más de 3 MB, se baja la calidad.
+ *
+ * Una foto 360° pasa por lo mismo con su tope (4.096 px y 6 MB) y antes se
+ * mira que sea 2:1 en el original: así el aviso sale sin subir nada, y la
+ * reducción conserva la proporción.
  */
-async function prepareImage(file: File): Promise<Blob> {
+async function prepareImage(file: File, opts: { maxSide: number; maxBytes: number; equirectangular?: boolean } = { maxSide: MAX_SIDE, maxBytes: MAX_UPLOAD_BYTES }): Promise<Blob> {
   const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+  if (opts.equirectangular && !isEquirectangular(bitmap.width, bitmap.height)) {
+    bitmap.close();
+    throw new Error('not_equirectangular');
+  }
+  const scale = Math.min(1, opts.maxSide / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement('canvas');
   canvas.width = Math.max(1, Math.round(bitmap.width * scale));
   canvas.height = Math.max(1, Math.round(bitmap.height * scale));
@@ -111,7 +130,7 @@ async function prepareImage(file: File): Promise<Blob> {
     const webp = await encode('image/webp', quality);
     const blob = webp && webp.type === 'image/webp' ? webp : await encode('image/jpeg', quality);
     if (!blob) throw new Error('no_blob');
-    if (blob.size <= MAX_UPLOAD_BYTES) return blob;
+    if (blob.size <= opts.maxBytes) return blob;
   }
   throw new Error('too_large');
 }
@@ -626,6 +645,8 @@ export function CarteraHomeEditor({ home }: { home: CarteraHomeEditorData }) {
         setAltDrafts={setAltDrafts}
       />
 
+      <PanosSection homeId={home.id} readOnly={readOnly} initial={home.panos} />
+
       <fieldset disabled={readOnly} className="min-w-0">
         {op === 'venta' ? (
           <Section
@@ -940,3 +961,158 @@ function PhotosSection({
   );
 }
 
+
+// --- Fotos 360° (25/11/2026) --------------------------------------------------
+//
+// Como las fotos, con su propia ruta (/panos) y sin texto alternativo: el
+// visor de la web las enseña como la estancia del plano a la que van, y esa
+// estancia la pone Kairikos en el archivo de escala de la web (`panoRooms`),
+// no la agencia. Se suben, ordenan y quitan al momento, sin «Guardar».
+
+function PanosSection({ homeId, readOnly, initial }: { homeId: string; readOnly: boolean; initial: Pano[] }) {
+  const [panos, setPanos] = useState<Pano[]>(initial);
+  const [uploading, setUploading] = useState<string | null>(null);
+  const [message, setMessage] = useState<NoticeMessage>(null);
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const base = `/api/portal/cartera/casas/${homeId}/panos`;
+  const free = MAX_PANOS - panos.length;
+  const totalMb = useMemo(() => panos.reduce((s, p) => s + p.bytes, 0) / 1_000_000, [panos]);
+
+  async function upload(files: FileList | null) {
+    if (!files?.length) return;
+    setMessage(null);
+    const chosen = Array.from(files).slice(0, Math.max(0, free));
+    let failed = 0;
+    let lastError = '';
+    for (const [i, file] of chosen.entries()) {
+      setUploading(`Subiendo ${i + 1} de ${chosen.length}…`);
+      let blob: Blob;
+      try {
+        blob = await prepareImage(file, { maxSide: MAX_PANO_SIDE, maxBytes: MAX_PANO_UPLOAD_BYTES, equirectangular: true });
+      } catch (err) {
+        failed++;
+        const code = err instanceof Error ? err.message : '';
+        lastError = code === 'not_equirectangular' ? ERROR_TEXT.not_equirectangular : code === 'too_large' ? ERROR_TEXT.too_large_pano : ERROR_TEXT.unreadable;
+        continue;
+      }
+      const form = new FormData();
+      form.append('archivo', blob, `foto-360.${blob.type.split('/')[1] ?? 'jpg'}`);
+      const res = await fetch(base, { method: 'POST', body: form }).catch(() => null);
+      const body = ((await res?.json().catch(() => ({}))) ?? {}) as Record<string, unknown>;
+      if (!res?.ok || body.ok !== true) {
+        failed++;
+        lastError = errorMessage(body);
+        if (body.error === 'too_many_panos' || body.error === 'read_only') break;
+        continue;
+      }
+      const p = body.pano as Pano;
+      setPanos((all) => [...all, { id: p.id, width: p.width, height: p.height, bytes: p.bytes }]);
+    }
+    setUploading(null);
+    if (inputRef.current) inputRef.current.value = '';
+    const skipped = files.length - chosen.length;
+    if (failed > 0) setMessage({ tone: 'error', text: `${failed === 1 ? 'Una foto 360° no se ha subido' : `${failed} fotos 360° no se han subido`}: ${lastError}` });
+    else if (skipped > 0) setMessage({ tone: 'error', text: `Se han subido ${chosen.length}; las otras ${skipped} no caben (como mucho ${MAX_PANOS} por casa).` });
+    else setMessage({ tone: 'ok', text: chosen.length === 1 ? 'Foto 360° subida.' : `${chosen.length} fotos 360° subidas.` });
+  }
+
+  async function reorder(from: number, to: number) {
+    if (from === to || to < 0 || to >= panos.length) return;
+    const before = panos;
+    const next = [...panos];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setPanos(next);
+    setMessage(null);
+    const { ok, data } = await call('PATCH', base, { order: next.map((p) => p.id) }).catch(() => ({ ok: false, data: {} as Record<string, unknown> }));
+    if (!ok) {
+      setPanos(before);
+      setMessage({ tone: 'error', text: errorMessage(data) });
+    }
+  }
+
+  async function remove(pano: Pano) {
+    if (!window.confirm('¿Quitar esta foto 360°? No se puede deshacer.')) return;
+    setMessage(null);
+    const { ok, data } = await call('DELETE', base, { panoId: pano.id }).catch(() => ({ ok: false, data: {} as Record<string, unknown> }));
+    if (!ok) {
+      setMessage({ tone: 'error', text: errorMessage(data) });
+      return;
+    }
+    setPanos((all) => all.filter((p) => p.id !== pano.id));
+    setMessage({ tone: 'ok', text: 'Foto 360° quitada.' });
+  }
+
+  return (
+    <Section
+      title="Fotos 360°"
+      description={`Para el recorrido virtual de la ficha. Una por estancia, hecha con una cámara 360° y con el centro de la foto mirando al norte; Kairikos asigna cada una a su estancia del plano. Tienen que ser equirrectangulares (el doble de anchas que de altas), que es como las guarda una cámara 360°. Se reducen en tu navegador a ${MAX_PANO_SIDE} px de ancho y se les quitan los datos de la cámara (GPS incluido) antes de subirlas. Hasta ${MAX_PANOS}.`}
+    >
+      {!readOnly ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            className="hidden"
+            onChange={(e) => upload(e.target.files)}
+            data-testid="cartera-pano-input"
+          />
+          <button type="button" className="btn-ghost" disabled={uploading !== null || free <= 0} onClick={() => inputRef.current?.click()}>
+            Subir fotos 360°
+          </button>
+          <span className="text-sm text-kairikos-muted">
+            {uploading ?? `${panos.length} de ${MAX_PANOS} · ${totalMb.toFixed(1).replace('.', ',')} MB`}
+          </span>
+        </div>
+      ) : null}
+      <Notice message={message} />
+      {panos.length === 0 ? (
+        <p className="text-sm text-kairikos-muted">Todavía no hay fotos 360°.</p>
+      ) : (
+        <ol className="grid gap-4 sm:grid-cols-2" data-testid="cartera-panos">
+          {panos.map((p, i) => (
+            <li
+              key={p.id}
+              className={`card space-y-2 p-3 ${dragFrom === i ? 'opacity-50' : ''}`}
+              draggable={!readOnly}
+              onDragStart={() => setDragFrom(i)}
+              onDragEnd={() => setDragFrom(null)}
+              onDragOver={(e) => {
+                if (dragFrom !== null) e.preventDefault();
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (dragFrom !== null) void reorder(dragFrom, i);
+                setDragFrom(null);
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element -- la sirve el portal con sesión; next/image no aporta aquí */}
+              <img src={`${base}/${p.id}`} alt={`Foto 360° ${i + 1}`} width={p.width} height={p.height} loading="lazy" className="aspect-[2/1] w-full rounded object-cover" />
+              <p className="flex items-center justify-between text-xs text-kairikos-muted">
+                <span>
+                  {i + 1} · {p.width}×{p.height}
+                </span>
+                {!readOnly ? (
+                  <span className="flex gap-1">
+                    <button type="button" className="btn-ghost px-2 py-0.5" aria-label="Mover antes" disabled={i === 0} onClick={() => reorder(i, i - 1)}>
+                      ←
+                    </button>
+                    <button type="button" className="btn-ghost px-2 py-0.5" aria-label="Mover después" disabled={i === panos.length - 1} onClick={() => reorder(i, i + 1)}>
+                      →
+                    </button>
+                    <button type="button" className="btn-ghost px-2 py-0.5 text-kairikos-danger" onClick={() => remove(p)}>
+                      Quitar
+                    </button>
+                  </span>
+                ) : null}
+              </p>
+            </li>
+          ))}
+        </ol>
+      )}
+    </Section>
+  );
+}

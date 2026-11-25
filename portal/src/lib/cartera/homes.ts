@@ -256,6 +256,11 @@ export async function deleteHome(
     where: { homeId: home.id },
     select: { storageKey: true },
   });
+  // Las fotos 360° están en el mismo volumen y se van con la casa (cascada).
+  const panos = await db.carteraPano.findMany({
+    where: { homeId: home.id },
+    select: { storageKey: true },
+  });
   await db.carteraHome.delete({ where: { id: home.id } });
   await auditCartera(db, {
     siteId: site.id,
@@ -264,9 +269,9 @@ export async function deleteHome(
     entityId: home.id,
     action: "deleted",
     actor,
-    metadata: { ref: home.ref, photos: photos.length },
+    metadata: { ref: home.ref, photos: photos.length, panos: panos.length },
   });
-  return { ok: true, storageKeys: photos.map((p) => p.storageKey) };
+  return { ok: true, storageKeys: [...photos, ...panos].map((p) => p.storageKey) };
 }
 
 export async function deleteHomeFiles(
@@ -302,7 +307,10 @@ export async function listHomesForPanel(db: Db, siteId: string) {
 export async function loadHomeForPanel(db: Db, siteId: string, homeId: string) {
   const home = await db.carteraHome.findFirst({
     where: { id: homeId, siteId },
-    include: { photos: { orderBy: { position: 'asc' }, select: { id: true, width: true, height: true, bytes: true, position: true, alt: true } } },
+    include: {
+      photos: { orderBy: { position: 'asc' }, select: { id: true, width: true, height: true, bytes: true, position: true, alt: true } },
+      panos: { orderBy: { position: 'asc' }, select: { id: true, width: true, height: true, bytes: true, position: true } },
+    },
   });
   if (!home) return null;
   return {
@@ -316,6 +324,7 @@ export async function loadHomeForPanel(db: Db, siteId: string, homeId: string) {
     published: home.firstPublishedAt !== null,
     updatedAt: home.updatedAt.toISOString(),
     photos: home.photos.map((p) => ({ id: p.id, width: p.width, height: p.height, bytes: p.bytes, alt: (p.alt ?? {}) as { es?: string; en?: string; de?: string } })),
+    panos: home.panos.map((p) => ({ id: p.id, width: p.width, height: p.height, bytes: p.bytes })),
   };
 }
 export type PanelHome = NonNullable<Awaited<ReturnType<typeof loadHomeForPanel>>>;

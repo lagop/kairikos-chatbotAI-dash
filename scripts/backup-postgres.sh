@@ -52,6 +52,10 @@
 #     la copia de hoy. Así, una cartera purgada (baja + 30 días) desaparece
 #     de las copias locales RETENTION_DAYS días después, como un volcado.
 #   - Cada archivo nuevo pasa por la misma copia externa cifrada.
+#   - Las fotos 360° (25/11/2026, tabla cartera_pano) van en el mismo
+#     volumen y con la misma forma de ruta que las fotos, así que entran en
+#     el mismo tar sin tocar nada aquí. Si algún día se guardan en otro
+#     sitio, esta copia NO las incluiría: hay que añadirlo a mano.
 #
 # Restaurar: `tar -xf kairikos-portal-cartera-fotos-AAAAMMDD.tar -C <dir>`
 # deja las carpetas <siteId>/<homeId>/<foto> tal como las espera el portal

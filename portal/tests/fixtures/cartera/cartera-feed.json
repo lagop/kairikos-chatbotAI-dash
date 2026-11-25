@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-19T18:41:26Z",
+  "generatedAt": "2026-11-25T14:47:40Z",
   "ventas": [
     {
       "ref": "C-101",
@@ -73,6 +73,56 @@
         }
       ],
       "photos": [
+        {
+          "url": "fotos/c-101/c101-terraza.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Terraza",
+            "en": "Terrace",
+            "de": "Terrasse"
+          }
+        },
+        {
+          "url": "fotos/c-101/c101-salon.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Salón-comedor",
+            "en": "Living and dining room",
+            "de": "Wohn- und Essbereich"
+          }
+        },
+        {
+          "url": "fotos/c-101/c101-cocina.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Cocina",
+            "en": "Kitchen",
+            "de": "Küche"
+          }
+        },
+        {
+          "url": "fotos/c-101/c101-dormitorio.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Dormitorio principal",
+            "en": "Main bedroom",
+            "de": "Hauptschlafzimmer"
+          }
+        },
+        {
+          "url": "fotos/c-101/c101-bano.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Baño principal",
+            "en": "Main bathroom",
+            "de": "Hauptbad"
+          }
+        },
         {
           "url": "https://portal.example/api/public/cartera/foto/00000000-0000-4000-8000-000000000000",
           "width": 2400,
@@ -162,6 +212,58 @@
           "en": "Second line: you see the sea from the terrace and roof terrace, not from bedrooms 2 and 3.",
           "de": "Zweite Meereslinie: Das Meer sieht man von der Terrasse und vom Sonnendeck, nicht aus den Schlafzimmern 2 und 3."
         }
+      ],
+      "photos": [
+        {
+          "url": "fotos/c-102/c102-terraza.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Terraza",
+            "en": "Terrace",
+            "de": "Terrasse"
+          }
+        },
+        {
+          "url": "fotos/c-102/c102-salon.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Salón-comedor",
+            "en": "Living and dining room",
+            "de": "Wohn- und Essbereich"
+          }
+        },
+        {
+          "url": "fotos/c-102/c102-cocina.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Cocina",
+            "en": "Kitchen",
+            "de": "Küche"
+          }
+        },
+        {
+          "url": "fotos/c-102/c102-dormitorio.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Dormitorio principal",
+            "en": "Main bedroom",
+            "de": "Hauptschlafzimmer"
+          }
+        },
+        {
+          "url": "fotos/c-102/c102-solarium.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Solárium en la cubierta",
+            "en": "Rooftop solarium",
+            "de": "Dachsolarium"
+          }
+        }
       ]
     },
     {
@@ -207,6 +309,48 @@
       "agent": "daniel",
       "tags": [
         "piscina"
+      ],
+      "photos": [
+        {
+          "url": "fotos/c-103/c103-fachada.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Fachada y jardín",
+            "en": "Façade and garden",
+            "de": "Fassade und Garten"
+          }
+        },
+        {
+          "url": "fotos/c-103/c103-salon.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Salón",
+            "en": "Living room",
+            "de": "Wohnzimmer"
+          }
+        },
+        {
+          "url": "fotos/c-103/c103-cocina.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Cocina",
+            "en": "Kitchen",
+            "de": "Küche"
+          }
+        },
+        {
+          "url": "fotos/c-103/c103-dormitorio.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Dormitorio principal",
+            "en": "Main bedroom",
+            "de": "Hauptschlafzimmer"
+          }
+        }
       ]
     },
     {
@@ -270,6 +414,58 @@
           "es": "No tiene sótano ni trastero aparte del garaje.",
           "en": "No basement or storage other than the garage.",
           "de": "Kein Keller und kein Abstellraum außer der Garage."
+        }
+      ],
+      "photos": [
+        {
+          "url": "fotos/c-104/c104-fachada.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Fachada sur y porche",
+            "en": "South façade and porch",
+            "de": "Südfassade und überdachte Terrasse"
+          }
+        },
+        {
+          "url": "fotos/c-104/c104-salon.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Salón",
+            "en": "Living room",
+            "de": "Wohnzimmer"
+          }
+        },
+        {
+          "url": "fotos/c-104/c104-cocina.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Cocina",
+            "en": "Kitchen",
+            "de": "Küche"
+          }
+        },
+        {
+          "url": "fotos/c-104/c104-dormitorio.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Dormitorio principal",
+            "en": "Main bedroom",
+            "de": "Hauptschlafzimmer"
+          }
+        },
+        {
+          "url": "fotos/c-104/c104-bano.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Baño principal",
+            "en": "Main bathroom",
+            "de": "Hauptbad"
+          }
         }
       ]
     },
@@ -350,6 +546,58 @@
           "en": "No enclosed garage: parking is on the plot, with room for three cars.",
           "de": "Keine geschlossene Garage: Geparkt wird auf dem Grundstück, mit Platz für drei Autos."
         }
+      ],
+      "photos": [
+        {
+          "url": "fotos/c-105/c105-fachada.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Fachada sur y porche",
+            "en": "South façade and porch",
+            "de": "Südfassade und überdachte Terrasse"
+          }
+        },
+        {
+          "url": "fotos/c-105/c105-salon.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Salón",
+            "en": "Living room",
+            "de": "Wohnzimmer"
+          }
+        },
+        {
+          "url": "fotos/c-105/c105-cocina.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Cocina",
+            "en": "Kitchen",
+            "de": "Küche"
+          }
+        },
+        {
+          "url": "fotos/c-105/c105-dormitorio.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Dormitorio principal",
+            "en": "Main bedroom",
+            "de": "Hauptschlafzimmer"
+          }
+        },
+        {
+          "url": "fotos/c-105/c105-bano.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Baño principal",
+            "en": "Main bathroom",
+            "de": "Hauptbad"
+          }
+        }
       ]
     },
     {
@@ -424,6 +672,58 @@
           "es": "En invierno, el patio se queda sin sol a partir de las 14:00.",
           "en": "In winter the patio loses the sun from 2 pm.",
           "de": "Im Winter liegt der Innenhof ab 14:00 Uhr im Schatten."
+        }
+      ],
+      "photos": [
+        {
+          "url": "fotos/c-106/c106-fachada.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Fachada a la calle",
+            "en": "Street façade",
+            "de": "Straßenfassade"
+          }
+        },
+        {
+          "url": "fotos/c-106/c106-patio.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Patio",
+            "en": "Courtyard",
+            "de": "Innenhof"
+          }
+        },
+        {
+          "url": "fotos/c-106/c106-salon.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Salón",
+            "en": "Living room",
+            "de": "Wohnzimmer"
+          }
+        },
+        {
+          "url": "fotos/c-106/c106-cocina.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Cocina",
+            "en": "Kitchen",
+            "de": "Küche"
+          }
+        },
+        {
+          "url": "fotos/c-106/c106-dormitorio.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Dormitorio principal",
+            "en": "Main bedroom",
+            "de": "Hauptschlafzimmer"
+          }
         }
       ]
     },
@@ -501,6 +801,58 @@
           "en": "No fibre: internet is by satellite.",
           "de": "Kein Glasfaseranschluss: Internet über Satellit."
         }
+      ],
+      "photos": [
+        {
+          "url": "fotos/c-108/c108-fachada.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Fachada sur y porche",
+            "en": "South façade and porch",
+            "de": "Südfassade und überdachte Terrasse"
+          }
+        },
+        {
+          "url": "fotos/c-108/c108-salon.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Salón",
+            "en": "Living room",
+            "de": "Wohnzimmer"
+          }
+        },
+        {
+          "url": "fotos/c-108/c108-cocina.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Cocina",
+            "en": "Kitchen",
+            "de": "Küche"
+          }
+        },
+        {
+          "url": "fotos/c-108/c108-dormitorio.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Dormitorio principal",
+            "en": "Main bedroom",
+            "de": "Hauptschlafzimmer"
+          }
+        },
+        {
+          "url": "fotos/c-108/c108-alberca.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Alberca entre los olivos",
+            "en": "Irrigation pool among the olive trees",
+            "de": "Wasserbecken zwischen den Olivenbäumen"
+          }
+        }
       ]
     },
     {
@@ -566,6 +918,58 @@
           "en": "The beach is not on the doorstep: it is 1.2 km away, 5 minutes by car.",
           "de": "Der Strand liegt nicht vor der Tür: Es sind 1,2 km, 5 Minuten mit dem Auto."
         }
+      ],
+      "photos": [
+        {
+          "url": "fotos/c-109/c109-fachada.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Fachada sur y porche",
+            "en": "South façade and porch",
+            "de": "Südfassade und überdachte Terrasse"
+          }
+        },
+        {
+          "url": "fotos/c-109/c109-salon.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Salón",
+            "en": "Living room",
+            "de": "Wohnzimmer"
+          }
+        },
+        {
+          "url": "fotos/c-109/c109-cocina.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Cocina",
+            "en": "Kitchen",
+            "de": "Küche"
+          }
+        },
+        {
+          "url": "fotos/c-109/c109-dormitorio.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Dormitorio principal",
+            "en": "Main bedroom",
+            "de": "Hauptschlafzimmer"
+          }
+        },
+        {
+          "url": "fotos/c-109/c109-bano.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Baño principal",
+            "en": "Main bathroom",
+            "de": "Hauptbad"
+          }
+        }
       ]
     },
     {
@@ -608,7 +1012,49 @@
         "insurance": 410,
         "upkeep": 0
       },
-      "agent": "lucia"
+      "agent": "lucia",
+      "photos": [
+        {
+          "url": "fotos/c-110/c110-jardin.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Jardín privado",
+            "en": "Private garden",
+            "de": "Privatgarten"
+          }
+        },
+        {
+          "url": "fotos/c-110/c110-salon.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Salón",
+            "en": "Living room",
+            "de": "Wohnzimmer"
+          }
+        },
+        {
+          "url": "fotos/c-110/c110-cocina.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Cocina",
+            "en": "Kitchen",
+            "de": "Küche"
+          }
+        },
+        {
+          "url": "fotos/c-110/c110-dormitorio.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "Dormitorio principal",
+            "en": "Main bedroom",
+            "de": "Hauptschlafzimmer"
+          }
+        }
+      ]
     },
     {
       "ref": "C-111",
@@ -659,6 +1105,28 @@
           "es": "La luz y el agua llegan al borde de la parcela; las acometidas están por hacer.",
           "en": "Electricity and water reach the edge of the plot; the connections are still to be made.",
           "de": "Strom und Wasser liegen an der Grundstücksgrenze; die Hausanschlüsse fehlen noch."
+        }
+      ],
+      "photos": [
+        {
+          "url": "fotos/c-111/c111-parcela.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "La parcela desde la calle",
+            "en": "The plot seen from the street",
+            "de": "Das Grundstück von der Straße aus"
+          }
+        },
+        {
+          "url": "fotos/c-111/c111-vista.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt": {
+            "es": "La vista hacia el sur desde la parcela",
+            "en": "The view south from the plot",
+            "de": "Der Blick nach Süden vom Grundstück"
+          }
         }
       ]
     },

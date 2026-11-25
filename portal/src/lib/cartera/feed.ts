@@ -1,13 +1,15 @@
 import { createHash } from 'node:crypto';
 import type { z } from 'zod';
-import { alquilerFeedSchema, photoSchema, ventaFeedSchema, type Feed } from './schema';
+import { alquilerFeedSchema, panoSchema, photoSchema, ventaFeedSchema, type Feed } from './schema';
 
 // Los tipos se sacan aquí y no en schema.ts: aquel archivo es una copia literal
 // del de la plantilla web y no se edita.
 export const FEED_VERSION = 1;
 export type FeedPhoto = z.infer<typeof photoSchema>;
-export type VentaFeedItem = z.infer<typeof ventaFeedSchema>;
-export type AlquilerFeedItem = z.infer<typeof alquilerFeedSchema>;
+export type FeedPano = z.infer<typeof panoSchema>;
+// `panos` es opcional en lo que sale: sin fotos 360° la casa va sin el campo (withoutEmptyPanos).
+export type VentaFeedItem = Omit<z.infer<typeof ventaFeedSchema>, 'panos'> & { panos?: FeedPano[] };
+export type AlquilerFeedItem = Omit<z.infer<typeof alquilerFeedSchema>, 'panos'> & { panos?: FeedPano[] };
 /** El feed tal como sale del portal: el envoltorio de feedSchema con cada casa ya validada. */
 export type CarteraFeed = Omit<Feed, 'ventas' | 'alquileres'> & { ventas: VentaFeedItem[]; alquileres: AlquilerFeedItem[] };
 
@@ -37,6 +39,14 @@ export interface FeedPhotoRow {
   alt: unknown;
 }
 
+/** Una foto 360° (CarteraPano): como una foto, sin texto alternativo. */
+export interface FeedPanoRow {
+  id: string;
+  width: number;
+  height: number;
+  position: number;
+}
+
 export interface FeedHomeRow {
   ref: string;
   operation: string;
@@ -44,6 +54,7 @@ export interface FeedHomeRow {
   data: unknown;
   errors: unknown;
   photos: readonly FeedPhotoRow[];
+  panos?: readonly FeedPanoRow[];
 }
 
 /** Publicable: no es un borrador y no tiene errores pendientes. */
@@ -78,6 +89,27 @@ export function feedPhotos(baseUrl: string, photos: readonly FeedPhotoRow[]): Fe
     .map((p) => ({ url: photoUrl(baseUrl, p.id), width: p.width, height: p.height, alt: toAlt(p.alt) }));
 }
 
+/** Las fotos 360°, por orden y con la misma URL pública que las fotos: la web
+ *  casa cada una con su estancia (`panoRooms`) por el último segmento, el id. */
+export function feedPanos(baseUrl: string, panos: readonly FeedPanoRow[]): FeedPano[] {
+  return [...panos].sort((a, b) => a.position - b.position).map((p) => ({ url: photoUrl(baseUrl, p.id), width: p.width, height: p.height }));
+}
+
+/**
+ * Sin fotos 360°, la casa sale sin el campo. El esquema lo rellena con `[]`
+ * (default), pero `panos` llegó al formato el 25/11/2026 sin cambiar de
+ * versión: una web construida con el esquema anterior (estricto) pararía el
+ * build con un `panos: []` que no conoce. Así, el feed de una cartera sin
+ * fotos 360° sigue siendo el de antes byte a byte (y su ETag, el mismo).
+ */
+function withoutEmptyPanos<T extends { panos?: unknown[] }>(home: T): T {
+  if (Array.isArray(home.panos) && home.panos.length === 0) {
+    const { panos: _panos, ...rest } = home;
+    return rest as T;
+  }
+  return home;
+}
+
 export interface SkippedHome {
   ref: string;
   reason: 'invalid';
@@ -102,15 +134,16 @@ export function buildFeed(homes: readonly FeedHomeRow[], opts: { baseUrl: string
     const data = home.data && typeof home.data === 'object' && !Array.isArray(home.data) ? (home.data as Record<string, unknown>) : {};
     // La referencia y el estado son los de las columnas: son los que el panel
     // enseña y los que se auditan; el JSON no puede contradecirlos.
-    // Las fotos son siempre las de CarteraPhoto, nunca un `photos` que se colara en el JSON.
-    const candidate = { ...data, ref: home.ref, status: home.status, photos: feedPhotos(opts.baseUrl, home.photos) };
+    // Las fotos son siempre las de CarteraPhoto, nunca un `photos` que se colara
+    // en el JSON; las fotos 360°, las de CarteraPano.
+    const candidate = { ...data, ref: home.ref, status: home.status, photos: feedPhotos(opts.baseUrl, home.photos), panos: feedPanos(opts.baseUrl, home.panos ?? []) };
     if (home.operation === 'venta') {
       const parsed = ventaFeedSchema.safeParse(candidate);
-      if (parsed.success) ventas.push(parsed.data);
+      if (parsed.success) ventas.push(withoutEmptyPanos(parsed.data));
       else skipped.push({ ref: home.ref, reason: 'invalid' });
     } else if (home.operation === 'alquiler') {
       const parsed = alquilerFeedSchema.safeParse(candidate);
-      if (parsed.success) alquileres.push(parsed.data);
+      if (parsed.success) alquileres.push(withoutEmptyPanos(parsed.data));
       else skipped.push({ ref: home.ref, reason: 'invalid' });
     }
   }

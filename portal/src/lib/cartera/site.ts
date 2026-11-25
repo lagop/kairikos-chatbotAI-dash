@@ -217,6 +217,7 @@ export async function loadFeedRows(db: Db, siteId: string) {
       data: true,
       errors: true,
       photos: { select: { id: true, width: true, height: true, position: true, alt: true }, orderBy: { position: 'asc' } },
+      panos: { select: { id: true, width: true, height: true, position: true }, orderBy: { position: 'asc' } },
     },
     orderBy: { ref: 'asc' },
   });

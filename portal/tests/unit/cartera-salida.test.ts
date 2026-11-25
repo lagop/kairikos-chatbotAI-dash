@@ -144,9 +144,20 @@ async function addPhoto(siteId: string, homeId: string, position: number, mime: 
   return { id, storageKey, bytes };
 }
 
+/** Una foto 360° (equirrectangular, 2:1) en la base de datos y en el volumen. */
+async function addPano(siteId: string, homeId: string, position: number, bytes: Buffer = Buffer.from(`pano-${position}-${randomUUID()}`)) {
+  const id = randomUUID();
+  const storageKey = `${siteId}/${homeId}/${id}.jpg`;
+  await mkdir(path.join(dir, siteId, homeId), { recursive: true });
+  await writeFile(path.join(dir, storageKey), bytes);
+  f.panos.push({ id, homeId, position, width: 4096, height: 2048, storageKey, mime: 'image/jpeg', bytes: bytes.length, sha256: 'x' });
+  return { id, storageKey, bytes };
+}
+
 /**
- * Una agencia con: C-101 en venta (dos fotos, JPEG y PNG), A-201 en alquiler
- * (una WebP), C-102 borrador (una foto) y dos contactos.
+ * Una agencia con: C-101 en venta (dos fotos, JPEG y PNG, y una foto 360°),
+ * A-201 en alquiler (una WebP), C-102 borrador (una foto y una foto 360°) y
+ * dos contactos.
  */
 async function agency(over: Parameters<FakeCarteraDb['addSite']>[0] = {}) {
   const site = f.addSite(over);
@@ -162,6 +173,10 @@ async function agency(over: Parameters<FakeCarteraDb['addSite']>[0] = {}) {
     venta2: await addPhoto(site.id, venta.id, 1, 'image/png'),
     alquiler1: await addPhoto(site.id, alquiler.id, 0, 'image/webp'),
     draft1: await addPhoto(site.id, draft.id, 0, 'image/jpeg'),
+  };
+  const panos = {
+    venta1: await addPano(site.id, venta.id, 0),
+    draft1: await addPano(site.id, draft.id, 0),
   };
   f.enquiries.push(
     {
@@ -193,7 +208,7 @@ async function agency(over: Parameters<FakeCarteraDb['addSite']>[0] = {}) {
       leadId: null,
     },
   );
-  return { site, ventaId: venta.id, alquilerId: alquiler.id, draftId: draft.id, photos };
+  return { site, ventaId: venta.id, alquilerId: alquiler.id, draftId: draft.id, photos, panos };
 }
 
 const adminReq = (siteId: string) => new NextRequest(`http://localhost/api/admin/portal/cartera/${siteId}/exportar`);
@@ -211,15 +226,20 @@ describe('el ZIP del contrato', () => {
     expect(res.headers.get('content-disposition')).toMatch(/^attachment; filename="cartera-alfeizar-inmobiliaria-\d{4}-\d{2}-\d{2}\.zip"$/);
 
     const files = readZip(Buffer.from(await res.arrayBuffer()));
+    // Cada foto (y cada foto 360°) con el id que tiene en el portal: el nombre
+    // por el que la web casa sus cotas y panoRooms (ver la cabecera de export.ts).
+    const { photos: ph, panos: pa } = a;
     expect(files.map((x) => x.name)).toEqual([
       'LEEME.txt',
       'src/content/inmuebles/c-101.json',
       'src/content/alquileres/a-201.json',
-      'src/content/fotos/c-101/01.jpg',
-      'src/content/fotos/c-101/02.png',
-      'src/content/fotos/a-201/01.webp',
+      `src/content/fotos/c-101/${ph.venta1.id}.jpg`,
+      `src/content/fotos/c-101/${ph.venta2.id}.png`,
+      `src/content/fotos/c-101/${pa.venta1.id}.jpg`,
+      `src/content/fotos/a-201/${ph.alquiler1.id}.webp`,
       'borradores/c-102.json',
-      'borradores/fotos/c-102/01.jpg',
+      `borradores/fotos/c-102/${ph.draft1.id}.jpg`,
+      `borradores/fotos/c-102/${pa.draft1.id}.jpg`,
       'contactos.csv',
     ]);
     // Todo en minúsculas salvo LEEME.txt (que lo fija el contrato), sin
@@ -232,14 +252,16 @@ describe('el ZIP del contrato', () => {
     }
     // Las fotos son los bytes del volumen, tal cual.
     const byName = new Map(files.map((x) => [x.name, x.data]));
-    expect(byName.get('src/content/fotos/c-101/01.jpg')!.equals(a.photos.venta1.bytes)).toBe(true);
-    expect(byName.get('src/content/fotos/c-101/02.png')!.equals(a.photos.venta2.bytes)).toBe(true);
-    expect(byName.get('src/content/fotos/a-201/01.webp')!.equals(a.photos.alquiler1.bytes)).toBe(true);
-    expect(byName.get('borradores/fotos/c-102/01.jpg')!.equals(a.photos.draft1.bytes)).toBe(true);
+    expect(byName.get(`src/content/fotos/c-101/${ph.venta1.id}.jpg`)!.equals(ph.venta1.bytes)).toBe(true);
+    expect(byName.get(`src/content/fotos/c-101/${ph.venta2.id}.png`)!.equals(ph.venta2.bytes)).toBe(true);
+    expect(byName.get(`src/content/fotos/c-101/${pa.venta1.id}.jpg`)!.equals(pa.venta1.bytes)).toBe(true);
+    expect(byName.get(`src/content/fotos/a-201/${ph.alquiler1.id}.webp`)!.equals(ph.alquiler1.bytes)).toBe(true);
+    expect(byName.get(`borradores/fotos/c-102/${ph.draft1.id}.jpg`)!.equals(ph.draft1.bytes)).toBe(true);
+    expect(byName.get(`borradores/fotos/c-102/${pa.draft1.id}.jpg`)!.equals(pa.draft1.bytes)).toBe(true);
   });
 
   it('cada JSON de src/content/ valida con el esquema de la web y su url apunta al archivo del ZIP', async () => {
-    await agency();
+    const { photos: ph, panos: pa } = await agency();
     const files = readZip(Buffer.from(await (await exportGet(portalReq())).arrayBuffer()));
     const names = new Set(files.map((x) => x.name));
     const venta = JSON.parse(files.find((x) => x.name === 'src/content/inmuebles/c-101.json')!.data.toString('utf8'));
@@ -247,10 +269,13 @@ describe('el ZIP del contrato', () => {
     expect(ventaFeedSchema.safeParse(venta).success).toBe(true);
     expect(alquilerFeedSchema.safeParse(alquiler).success).toBe(true);
     expect(venta.ref).toBe('C-101');
-    expect(venta.photos.map((p: { url: string }) => p.url)).toEqual(['fotos/c-101/01.jpg', 'fotos/c-101/02.png']);
-    expect(venta.photos[0]).toEqual({ url: 'fotos/c-101/01.jpg', width: 1600, height: 1067, alt: { es: 'Foto 0' } });
-    expect(alquiler.photos.map((p: { url: string }) => p.url)).toEqual(['fotos/a-201/01.webp']);
-    for (const p of [...venta.photos, ...alquiler.photos]) {
+    expect(venta.photos.map((p: { url: string }) => p.url)).toEqual([`fotos/c-101/${ph.venta1.id}.jpg`, `fotos/c-101/${ph.venta2.id}.png`]);
+    expect(venta.photos[0]).toEqual({ url: `fotos/c-101/${ph.venta1.id}.jpg`, width: 1600, height: 1067, alt: { es: 'Foto 0' } });
+    expect(venta.panos).toEqual([{ url: `fotos/c-101/${pa.venta1.id}.jpg`, width: 4096, height: 2048 }]);
+    expect(alquiler.photos.map((p: { url: string }) => p.url)).toEqual([`fotos/a-201/${ph.alquiler1.id}.webp`]);
+    // Sin fotos 360°, sin el campo: como en el feed.
+    expect('panos' in alquiler).toBe(false);
+    for (const p of [...venta.photos, ...venta.panos, ...alquiler.photos]) {
       expect(p.url).toMatch(LOCAL_PHOTO);
       expect(names.has(`src/content/${p.url}`)).toBe(true);
     }
@@ -259,13 +284,14 @@ describe('el ZIP del contrato', () => {
   });
 
   it('los borradores van fuera de src/, con sus errores y la url de sus fotos ya relativa', async () => {
-    await agency();
+    const { photos: ph, panos: pa } = await agency();
     const files = readZip(Buffer.from(await (await exportGet(portalReq())).arrayBuffer()));
     expect(files.filter((x) => x.name.startsWith('src/') && x.name.includes('c-102'))).toEqual([]);
     const draft = JSON.parse(files.find((x) => x.name === 'borradores/c-102.json')!.data.toString('utf8'));
     expect(draft).toMatchObject({ ref: 'C-102', status: 'borrador', title: { es: 'Ático a medias' } });
     expect(Array.isArray(draft.errors)).toBe(true);
-    expect(draft.photos).toEqual([{ url: 'fotos/c-102/01.jpg', width: 1600, height: 1067, alt: { es: 'Foto 0' } }]);
+    expect(draft.photos).toEqual([{ url: `fotos/c-102/${ph.draft1.id}.jpg`, width: 1600, height: 1067, alt: { es: 'Foto 0' } }]);
+    expect(draft.panos).toEqual([{ url: `fotos/c-102/${pa.draft1.id}.jpg`, width: 4096, height: 2048 }]);
   });
 
   it('una casa publicable que el esquema rechaza va a borradores con un aviso, no a src/', async () => {
@@ -321,7 +347,7 @@ describe('el ZIP del contrato', () => {
     const files = readZip(Buffer.from(await (await exportGet(portalReq())).arrayBuffer()));
     const readme = files[0].data.toString('utf8');
     expect(readme).toContain('Alféizar Inmobiliaria');
-    expect(readme).toContain('2 casas publicables, 1 sin publicar, 4 fotos y 2 contactos.');
+    expect(readme).toContain('2 casas publicables, 1 sin publicar, 4 fotos, 2 fotos 360° y 2 contactos.');
     expect(readme).toContain('PORTFOLIO_FEED_URL');
     expect(readme).toContain('DATOS PERSONALES');
     expect(readme).toContain('\r\n');
@@ -374,7 +400,7 @@ describe('la validación previa: si algo falla, no hay ZIP', () => {
     await agency();
     const res = await exportGet(portalReq('?comprobar=1'));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, counts: { homes: 2, drafts: 1, photos: 4, enquiries: 2 } });
+    expect(await res.json()).toEqual({ ok: true, counts: { homes: 2, drafts: 1, photos: 4, panos: 2, enquiries: 2 } });
     expect(f.audits.filter((x) => x.action === 'exported')).toEqual([]);
   });
 });
@@ -387,7 +413,7 @@ describe('la auditoría de cada descarga', () => {
     const exported = f.audits.filter((x) => x.action === 'exported');
     expect(exported.map((x) => x.actor)).toEqual(['client:client-1', 'operator:op-1']);
     for (const row of exported) {
-      expect(row).toMatchObject({ entity: 'export', entityId: a.site.id, siteId: a.site.id, metadata: { homes: 2, drafts: 1, photos: 4, enquiries: 2 } });
+      expect(row).toMatchObject({ entity: 'export', entityId: a.site.id, siteId: a.site.id, metadata: { homes: 2, drafts: 1, photos: 4, panos: 2, enquiries: 2 } });
       const text = JSON.stringify(row);
       for (const pii of ['Ana', 'hans@', 'HYPERLINK', 'Alféizar']) expect(text).not.toContain(pii);
     }
@@ -411,7 +437,7 @@ describe('la gracia de la baja', () => {
     const a = await agency({ contractStatus: 'cancelled', cancelledAt, exitNotifiedAt: new Date(Date.now() - 2 * DAY) });
     const res = await exportGet(portalReq());
     expect(res.status).toBe(200);
-    expect(readZip(Buffer.from(await res.arrayBuffer())).length).toBe(9);
+    expect(readZip(Buffer.from(await res.arrayBuffer())).length).toBe(11);
     const id = f.enquiries[0].id;
     const write = await enquiriesPatch(
       new NextRequest('http://localhost/api/portal/cartera/contactos', { method: 'PATCH', body: JSON.stringify({ id, status: 'atendido' }), headers: { 'content-type': 'application/json' } }),
@@ -598,6 +624,10 @@ describe.skipIf(!process.env.CARTERA_ZIP_OUT)('prueba de cierre: el ZIP para con
     await addPhoto(site.id, ids[1], 0, 'image/webp', await image('webp', 30));
     await addPhoto(site.id, ids[2], 0, 'image/jpeg', await image('jpeg', 150));
     await addPhoto(site.id, draft.id, 0, 'image/jpeg', await image('jpeg', 10));
+    // Una foto 360° en la C-101: la web la enseña si su archivo de escala la
+    // nombra en panoRooms por su id (el nombre del archivo en el ZIP).
+    const pano = await addPano(site.id, ids[0], 0, await sharp({ create: { width: 4096, height: 2048, channels: 3, background: { r: 90, g: 140, b: 150 } } }).jpeg().toBuffer());
+    console.log(`foto 360° de la C-101: ${pano.id}`);
     const res = await exportGet(portalReq());
     expect(res.status).toBe(200);
     const buf = Buffer.from(await res.arrayBuffer());

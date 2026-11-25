@@ -9,7 +9,20 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { MAX_PHOTOS_PER_HOME, checkPhoto, cleanAlt, isSamePhotoSet, readPhotoUpload, storeHomePhoto } from '@/lib/cartera/photos';
+import {
+  MAX_PANOS_PER_HOME,
+  MAX_PANO_BYTES,
+  MAX_PHOTOS_PER_HOME,
+  checkPano,
+  checkPhoto,
+  cleanAlt,
+  isEquirectangular,
+  isSamePhotoSet,
+  readPhotoUpload,
+  storeHomePano,
+  storeHomePhoto,
+} from '@/lib/cartera/photos';
+import { panoSchema } from '@/lib/cartera/schema';
 
 const SITE_ID = '11111111-1111-4111-8111-111111111111';
 const HOME_ID = '22222222-2222-4222-8222-222222222222';
@@ -139,6 +152,100 @@ describe('storeHomePhoto: volumen y fila', () => {
     } finally {
       process.env.CARTERA_FOTOS_DIR = saved;
     }
+  });
+});
+
+// Fotos 360° (25/11/2026): el mismo flujo, más grandes y siempre 2:1.
+describe('checkPano: equirrectangular, hasta 4.096 px y 6 MB', () => {
+  it('acepta 2:1 en JPEG, PNG y WebP', () => {
+    expect(checkPano(jpeg(4096, 2048))).toMatchObject({ ok: true, info: { width: 4096, height: 2048 } });
+    expect(checkPano(png(2000, 1000))).toMatchObject({ ok: true, info: { contentType: 'image/png' } });
+    expect(checkPano(webp(4096, 2048))).toMatchObject({ ok: true, info: { contentType: 'image/webp' } });
+  });
+
+  it('una que no es 2:1 se rechaza con su propio código', () => {
+    for (const [w, h] of [[3000, 2000], [2048, 2048], [2048, 4096], [4000, 1800]]) expect(checkPano(jpeg(w, h)), `${w}×${h}`).toEqual({ ok: false, error: 'not_equirectangular' });
+  });
+
+  it('la misma tolerancia que el esquema del feed: lo que pasa aquí, valida allí', () => {
+    for (const [w, h] of [[4096, 2048], [4095, 2048], [4000, 1999], [4096, 2020], [4096, 2090], [4096, 1800]]) {
+      const feed = panoSchema.safeParse({ url: 'fotos/c-101/x.jpg', width: w, height: h }).success;
+      expect(isEquirectangular(w, h), `${w}×${h}`).toBe(feed);
+    }
+  });
+
+  it('más de 4.096 px o de 6 MB, no', () => {
+    expect(checkPano(jpeg(8192, 4096))).toEqual({ ok: false, error: 'too_big_dimensions' });
+    expect(checkPano(png(4096, 2048, MAX_PANO_BYTES + 1))).toEqual({ ok: false, error: 'too_large' });
+    expect(checkPano(Buffer.from('<svg></svg>'.padEnd(64)))).toEqual({ ok: false, error: 'not_an_image' });
+  });
+
+  it('una foto de 4.096 px que vale como 360° no vale como foto (2.400 px)', () => {
+    expect(checkPhoto(jpeg(4096, 2048))).toEqual({ ok: false, error: 'too_big_dimensions' });
+  });
+});
+
+describe('storeHomePano: mismo volumen, su tabla', () => {
+  let dir: string;
+  beforeAll(() => {
+    dir = mkdtempSync(path.join(tmpdir(), 'cartera-panos-'));
+    process.env.CARTERA_FOTOS_DIR = dir;
+  });
+  afterAll(() => {
+    rmSync(dir, { recursive: true, force: true });
+    delete process.env.CARTERA_FOTOS_DIR;
+  });
+
+  function db(count: number, opts: { failCreate?: boolean } = {}) {
+    const created: Array<Record<string, unknown>> = [];
+    const untouched = () => {
+      throw new Error('una foto 360° no toca la tabla de fotos');
+    };
+    return {
+      created,
+      carteraPhoto: { count: untouched, findFirst: untouched, create: untouched },
+      carteraPano: {
+        count: async () => count,
+        findFirst: async () => (count ? { position: count - 1 } : null),
+        create: async ({ data }: { data: Record<string, unknown> }) => {
+          if (opts.failCreate) throw new Error('db down');
+          created.push(data);
+          return data;
+        },
+      },
+    };
+  }
+
+  it('escribe el fichero bajo <sitio>/<casa>/ (lo que empaqueta la copia diaria) y crea la fila al final', async () => {
+    const fake = db(1);
+    const r = await storeHomePano(fake as never, { id: HOME_ID, siteId: SITE_ID }, jpeg(4096, 2048));
+    expect(r).toMatchObject({ ok: true, pano: { width: 4096, height: 2048, position: 1, mime: 'image/jpeg' } });
+    expect(fake.created[0]).toMatchObject({ homeId: HOME_ID, position: 1 });
+    expect(fake.created[0]).not.toHaveProperty('alt');
+    expect(String(fake.created[0].storageKey)).toMatch(new RegExp(`^${SITE_ID}/${HOME_ID}/[0-9a-f-]{36}\\.jpg$`));
+    expect(readdirSync(path.join(dir, SITE_ID, HOME_ID))).toHaveLength(1);
+  });
+
+  it(`no pasa de ${MAX_PANOS_PER_HOME} por casa`, async () => {
+    expect(await storeHomePano(db(MAX_PANOS_PER_HOME) as never, { id: HOME_ID, siteId: SITE_ID }, jpeg(4096, 2048))).toEqual({ ok: false, error: 'too_many_panos' });
+  });
+
+  it('una que no es 2:1 ni toca el volumen', async () => {
+    const before = readdirSync(path.join(dir, SITE_ID, HOME_ID)).length;
+    expect(await storeHomePano(db(0) as never, { id: HOME_ID, siteId: SITE_ID }, jpeg(2400, 1600))).toEqual({ ok: false, error: 'not_equirectangular' });
+    expect(readdirSync(path.join(dir, SITE_ID, HOME_ID))).toHaveLength(before);
+  });
+
+  it('si la fila falla, el fichero se borra', async () => {
+    const before = readdirSync(path.join(dir, SITE_ID, HOME_ID)).length;
+    await expect(storeHomePano(db(0, { failCreate: true }) as never, { id: HOME_ID, siteId: SITE_ID }, jpeg(4096, 2048))).rejects.toThrow('db down');
+    expect(readdirSync(path.join(dir, SITE_ID, HOME_ID))).toHaveLength(before);
+  });
+
+  it('readPhotoUpload con el tope de las fotos 360°', async () => {
+    const req = (len: number) => new Request('http://x', { method: 'POST', headers: { 'content-length': String(len) } });
+    expect(await readPhotoUpload(req(5_000_000))).toEqual({ ok: false, status: 413, error: 'too_large' });
+    expect(await readPhotoUpload(req(5_000_000), MAX_PANO_BYTES)).not.toEqual({ ok: false, status: 413, error: 'too_large' });
   });
 });
 
