@@ -11,9 +11,10 @@ import { sendCarteraEmail, type SendResult } from './cartera/emails';
 // datos que Kairikos trata por cuenta del cliente en el chat, las llamadas y
 // las solicitudes. Procedimiento: docs/runbooks/baja-datos-cliente.md.
 //
-// No es automático (eso es el PR 5b, como villas y cartera): lo lanza el
-// operador, por cliente y producto, con scripts/baja-datos-cliente.sh. Tres
-// pasos, en este orden:
+// Desde el PR 5b (26/11/2026) lo hace solo el cron, como villas y cartera
+// (lib/client-data-exit-auto.ts). El operador puede hacer lo mismo a mano,
+// por cliente y producto, con scripts/baja-datos-cliente.sh. Tres pasos, en
+// este orden:
 //
 //   estado  — qué hay, en qué punto está la baja y qué la bloquea. No escribe.
 //   avisar  — correo al cliente con el plazo y dónde exportar; deja la fila
@@ -116,7 +117,12 @@ export interface ExitStatus {
   contracts: { id: string; code: string; status: string; cancelledAt: string | null }[];
   /** 'none' sin contrataciones; si no, el de exit-rules. */
   state: ServiceState | 'none';
+  /** El aviso de esta baja: solo cuenta uno posterior a la última baja (si el
+   *  cliente reactivó y volvió a darse de baja, se avisa otra vez). */
   notifiedAt: string | null;
+  /** Si los datos de esta baja ya se borraron (`exit_purged` posterior a la
+   *  última baja). El cron no vuelve a tocarla. */
+  purgedAt: string | null;
   graceEndsAt: string | null;
   counts: ExitCounts;
   /** Lo que impide avisar (si aún no se avisó) o borrar (si ya se avisó). */
@@ -169,13 +175,14 @@ export async function loadExit(db: Db, clientId: string, product: ExitProduct, n
     contracts: [],
     state: 'none',
     notifiedAt: null,
+    purgedAt: null,
     graceEndsAt: null,
     counts: { outboundMessages: 0 },
     blockers: ['client_not_found'],
   };
   if (!client) return { client: null, contract: null, status: empty, subscriptionIds: [] };
 
-  const [contracts, notice, subscriptions] = await Promise.all([
+  const [contracts, notice, purge, subscriptions] = await Promise.all([
     db.clientProduct.findMany({
       where: { clientId, product: { code: { in: [...EXIT_CONTRACT_CODES[product]] } } },
       select: { id: true, status: true, cancelledAt: true, changedAt: true, product: { select: { code: true } } },
@@ -183,6 +190,11 @@ export async function loadExit(db: Db, clientId: string, product: ExitProduct, n
     }),
     db.clientDataAudit.findFirst({
       where: { clientId, productCode: product, action: 'exit_notified' },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    }),
+    db.clientDataAudit.findFirst({
+      where: { clientId, productCode: product, action: 'exit_purged' },
       orderBy: { createdAt: 'desc' },
       select: { createdAt: true },
     }),
@@ -195,7 +207,8 @@ export async function loadExit(db: Db, clientId: string, product: ExitProduct, n
   let state: ExitStatus['state'] = 'none';
   let contract: ContractForExit | null = null;
   let graceEnds: Date | null = null;
-  const notifiedAt = notice?.createdAt ?? null;
+  let notifiedAt: Date | null = null;
+  let purgedAt: Date | null = null;
 
   if (contracts.length === 0) {
     blockers.push('no_contract');
@@ -208,6 +221,11 @@ export async function loadExit(db: Db, clientId: string, product: ExitProduct, n
     const since = (c: (typeof contracts)[number]) => (c.cancelledAt ?? c.changedAt).getTime();
     const latest = contracts.reduce((a, b) => (since(b) > since(a) ? b : a));
     contract = { status: latest.status, cancelledAt: latest.cancelledAt, changedAt: latest.changedAt };
+    // Un aviso o un borrado de una baja anterior (el cliente volvió y se ha
+    // vuelto a ir) no valen para esta.
+    const cycle = since(latest);
+    if (notice && notice.createdAt.getTime() >= cycle) notifiedAt = notice.createdAt;
+    if (purge && purge.createdAt.getTime() >= cycle) purgedAt = purge.createdAt;
     const s = serviceState(contract, notifiedAt, now);
     state = s.state;
     graceEnds = notifiedAt ? s.graceEndsAt : announcedGraceEnd(contract, now);
@@ -226,6 +244,7 @@ export async function loadExit(db: Db, clientId: string, product: ExitProduct, n
       contracts: contracts.map((c) => ({ id: c.id, code: c.product.code, status: c.status, cancelledAt: isoOrNull(c.cancelledAt) })),
       state,
       notifiedAt: isoOrNull(notifiedAt),
+      purgedAt: isoOrNull(purgedAt),
       graceEndsAt: isoOrNull(graceEnds),
       counts,
       blockers,
@@ -261,13 +280,17 @@ export type ExitActionResult =
   | { ok: true; status: ExitStatus; done: 'notified' | 'purged' | 'dry_run'; recordingsDeleted?: number }
   | { ok: false; status: ExitStatus; error: ExitBlocker | 'already_notified' | 'email_failed' | 'twilio_failed'; detail?: string };
 
+/** Quién hace la baja en la auditoría: `operator:<email>` (el script) o
+ *  `system:client-data-exit` (el cron). */
+export type ExitActor = `operator:${string}` | `system:${string}`;
+
 /** El aviso al cliente. Se manda primero y se apunta después: sin correo
  *  entregado a Resend no hay aviso, y el plazo no empieza a contar. */
 export async function notifyExit(
   db: Db,
   clientId: string,
   product: ExitProduct,
-  operator: string,
+  actor: ExitActor,
   now: Date = new Date(),
   opts: { send?: (to: string, email: { subject: string; text: string; html: string }) => Promise<SendResult> } = {},
 ): Promise<ExitActionResult> {
@@ -294,7 +317,7 @@ export async function notifyExit(
     tenantId: client.tenantId,
     productCode: product,
     action: 'exit_notified',
-    actor: `operator:${operator}`,
+    actor,
     metadata: { noticeAt: now.toISOString(), cutoff: graceEnds.toISOString(), count: mainCount(product, status.counts) },
   });
   return { ok: true, done: 'notified', status: { ...status, notifiedAt: now.toISOString(), graceEndsAt: graceEnds.toISOString(), blockers: [] } };
@@ -326,7 +349,7 @@ export async function purgeExit(
   db: Db,
   clientId: string,
   product: ExitProduct,
-  operator: string,
+  actor: ExitActor,
   confirm: boolean,
   now: Date = new Date(),
   opts: { twilioAuth?: () => Promise<{ accountSid: string; authToken: string } | null> } = {},
@@ -365,7 +388,7 @@ export async function purgeExit(
       tenantId: client.tenantId,
       productCode: product,
       action: 'exit_purged',
-      actor: `operator:${operator}`,
+      actor,
       metadata: {
         count: mainCount(product, status.counts),
         ...(product === 'chatbot' ? { digests: status.counts.digests } : {}),

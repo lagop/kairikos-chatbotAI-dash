@@ -1,19 +1,35 @@
 # Baja de los datos de un cliente: chat, llamadas y solicitudes
 
-Creado el 25/11/2026 (PR 5a del plan del encargo del tratamiento). Qué hacer cuando un cliente se da
+Creado el 25/11/2026 (PR 5a del plan del encargo del tratamiento). Qué pasa cuando un cliente se da
 de baja de un producto con datos de terceros que Kairikos trata por su cuenta: las conversaciones
-del chat, el registro de llamadas o las solicitudes. Villas y cartera tienen su propia baja
-automática; esto todavía es manual (la automática es el PR 5b).
+del chat, el registro de llamadas o las solicitudes.
 
-Reglas de fondo en `docs/datos-de-clientes-rgpd.md`. Código: `src/lib/client-data-exit.ts`, ruta
-`POST /api/internal/client-data-exit` y `scripts/baja-datos-cliente.sh` (en la raíz del repo).
+**Desde el 26/11/2026 (PR 5b) es automático**, como villas y cartera: el cron `retention-purge`
+(cada 5 minutos) avisa al cliente cuando todas las contrataciones que deciden están dadas de baja y
+hay datos, y borra pasado el plazo. Deja las mismas filas `exit_notified` y `exit_purged`, con el
+actor `system:client-data-exit`. Lo que tienes que hacer tú:
+
+- **Dar de baja la contratación** en el admin, como siempre, y en llamadas **liberar el número**
+  (paso 1 de abajo).
+- **Atender el correo «Baja de datos de …: hace falta que mires algo»**, que llega cuando el cron
+  se para: el correo al cliente no sale, el número sigue asignado o Twilio falla. Llega uno por
+  cliente y día, y ese cliente no se reintenta hasta el día siguiente.
+
+Los pasos de abajo siguen valiendo para mirar el estado o para adelantarse al cron (por ejemplo,
+avisar en cuanto se corrige un email); el cron ve lo que hiciste y sigue desde ahí.
+
+Reglas de fondo en `docs/datos-de-clientes-rgpd.md`. Código: `src/lib/client-data-exit.ts` (reglas y
+borrados), `src/lib/client-data-exit-auto.ts` (el cron), ruta `POST /api/internal/client-data-exit`
+y `scripts/baja-datos-cliente.sh` (en la raíz del repo).
 
 ## El plazo
 
 - **30 días desde la baja**, y **nunca menos de 7 desde el aviso**. Son las reglas de villas y
   cartera (`lib/villas/exit-rules.ts`).
 - **Sin aviso no se borra nunca.** El aviso es el correo al cliente y la fila `exit_notified` que
-  deja en `ClientDataAudit`.
+  deja en `ClientDataAudit`. Solo cuenta un aviso posterior a la última baja: si el cliente volvió
+  y se ha vuelto a ir, se le avisa otra vez.
+- **Sin datos no se avisa:** si no hay nada guardado, no hay nada que devolver ni que borrar.
 - Durante el plazo el cliente entra al portal y descarga sus datos aunque el servicio esté dado de
   baja (chat y llamadas en CSV o JSON; solicitudes en CSV).
 
@@ -52,7 +68,7 @@ export SSH_KEY=~/.ssh/kairikos_vps
    ```
 
 3. **Avisar al cliente**. Le llega un correo con la fecha de borrado y el enlace a la página del
-   portal donde descargar sus datos. Solo se puede avisar una vez por producto. Si el correo no
+   portal donde descargar sus datos. Solo se avisa una vez por producto y baja. Si el correo no
    sale (sin clave de Resend, cliente sin email o Resend caído), no se apunta el aviso y el plazo no
    empieza: arréglalo y repite.
 
