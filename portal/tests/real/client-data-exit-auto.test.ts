@@ -14,6 +14,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { runClientDataExits } from '@/lib/client-data-exit-auto';
+import { listNumbersOfCancelledClients } from '@/lib/recall-numbers';
 
 const URL = process.env.CLIENT_DATA_EXIT_TEST_DATABASE_URL;
 const isLocal = !!URL && /@(127\.0\.0\.1|localhost)(:\d+)?\//.test(URL);
@@ -127,9 +128,12 @@ describe.skipIf(!isLocal)('baja automática contra Postgres', () => {
   });
 
   it('al día siguiente, con el número liberado: borra las llamadas, y después ya no toca a nadie', async () => {
+    // La cola de llamadas del admin lo enseña para liberarlo mientras siga asignado.
+    expect((await listNumbersOfCancelledClients(db)).map((n) => n.id)).toContain(numberId);
     await db.virtualNumber.update({ where: { id: numberId }, data: { status: 'released', subscriptionId: null } });
     const r = await runClientDataExits(db, after(9), opts);
     expect(r).toMatchObject({ purged: 1, problems: 0 });
+    expect((await listNumbersOfCancelledClients(db)).map((n) => n.id)).not.toContain(numberId);
     expect(await db.callEvent.count({ where: { clientId: D } })).toBe(0);
     expect(await db.recallSubscription.count({ where: { clientId: D } })).toBe(0);
 

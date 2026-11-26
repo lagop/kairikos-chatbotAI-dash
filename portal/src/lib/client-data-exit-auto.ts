@@ -88,7 +88,7 @@ function explain(p: ClientDataExitProblem, clientId: string): string {
     case 'email_failed':
       return `${name}: no salió el correo de aviso al cliente${detail}. El plazo no empieza a contar hasta que salga: revisa su email en el admin.`;
     case 'number_still_assigned':
-      return `${name}: pasó el plazo, pero el número sigue asignado. Libéralo (POST /api/admin/portal/recall/numbers/<id>/release, con el admin abierto); hasta entonces no se borra nada.`;
+      return `${name}: pasó el plazo, pero el número sigue asignado. Libéralo en el admin, /admin/portal/recall, sección «Números de clientes dados de baja»; hasta entonces no se borra nada.`;
     case 'twilio_not_configured':
       return `${name}: quedan grabaciones en Twilio y el portal no tiene credenciales de Twilio. No se ha borrado nada.`;
     case 'twilio_failed':
