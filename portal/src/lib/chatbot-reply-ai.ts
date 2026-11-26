@@ -66,7 +66,16 @@ export interface GenerateBotReplyInput {
    *  en la página X (tema: Y)»), ya validada y redactada por
    *  web-widget-context.ts. Solo orienta este turno: no se guarda. */
   visitorContext?: string | null;
+  /** Cómo se piden los datos de contacto (26/11/2026, encargo del
+   *  tratamiento). 'form': el chat de la web (widget), que tiene formulario
+   *  con aviso y casilla, así que el bot no los pide en el texto: marca
+   *  `askContact` y el formulario aparece. 'text' (por defecto): WhatsApp,
+   *  Instagram, Messenger, Telegram, sin formulario; el bot los pide en el
+   *  texto y el aviso lo añade el servidor (chatbot-conversation.ts). */
+  contactCapture?: ContactCapture;
 }
+
+export type ContactCapture = 'form' | 'text';
 
 export interface BotReply {
   reply: string;
@@ -75,6 +84,10 @@ export interface BotReply {
    *  traduce a ChatbotConversation.outcome = 'escalated'. */
   escalate: boolean;
   escalateReason: string | null;
+  /** true cuando en esta respuesta toca pedir datos de contacto. No se fía
+   *  solo de esto quien lo recibe: también mira si la persona escribió un
+   *  teléfono o un correo (ver contact-notice.ts). */
+  askContact: boolean;
 }
 
 export type GenerateBotReplyResult =
@@ -261,6 +274,7 @@ export function buildSystemPrompt(input: GenerateBotReplyInput, schedule: Schedu
   const { config, businessName } = input;
   const restrictedPricing = pricingIsRestricted(config);
   const knowledge = buildKnowledgeSection(input.knowledge ?? []);
+  const byForm = input.contactCapture === 'form';
 
   const scheduleLine = !schedule.known
     ? 'El negocio no ha configurado su horario: no afirmes si está abierto o cerrado.'
@@ -269,8 +283,19 @@ export function buildSystemPrompt(input: GenerateBotReplyInput, schedule: Schedu
       : `Ahora mismo el negocio está CERRADO (${schedule.timezone}).` +
         (schedule.outOfHoursMessage ? ` Mensaje del negocio para fuera de horario: "${schedule.outOfHoursMessage}".` : '') +
         (schedule.outOfHoursBehaviour === 'captura_lead'
-          ? ' Recoge los datos de contacto para que le devuelvan el mensaje.'
+          ? byForm
+            ? ' Ofrece que deje sus datos de contacto en el formulario del chat para que le devuelvan el mensaje, y pon `askContact` en true.'
+            : ' Recoge los datos de contacto para que le devuelvan el mensaje, y pon `askContact` en true al pedirlos.'
           : '');
+
+  // 26/11/2026 — encargo del tratamiento. Antes la regla 7 le pedía al
+  // modelo que enseñara `texto_consentimiento` antes de pedir los datos, y
+  // nada comprobaba que lo hiciera ni quedaba constancia. Ahora el aviso no
+  // depende del modelo: en la web lo da el formulario (con casilla y versión
+  // guardada) y en los demás canales lo añade el servidor a la respuesta.
+  const contactRule = byForm
+    ? '7. NUNCA pidas en el texto nombre, teléfono, correo ni ningún otro dato personal: en este chat se dejan en un formulario que aparece debajo de tu mensaje, con su aviso de privacidad. Cuando toque pedir contacto (según `momento_captura`, al derivar a una persona o fuera de horario), pon `askContact` en true y di en una frase que puede dejarlos en el formulario.'
+    : '7. Para pedir datos personales, usa solo los de `datos_solicitados` y en el momento que indique `momento_captura`. Cuando los pidas, pon `askContact` en true. No escribas tú el aviso de privacidad ni el `texto_consentimiento`: lo añade el sistema detrás de tu mensaje.';
 
   return [
     `Eres el asistente virtual de "${businessName}". Atiendes a sus clientes por chat.`,
@@ -329,13 +354,14 @@ export function buildSystemPrompt(input: GenerateBotReplyInput, schedule: Schedu
     `4. ${scheduleLine}`,
     '5. Si el mensaje toca cualquiera de los `temas_prohibidos` de la personalidad, no entres al tema y marca la derivación.',
     '6. Aplica las `reglas` de derivación: si se cumple alguna condición, marca la derivación explicando cuál.',
-    '7. Para pedir datos personales, usa los de `datos_solicitados` en el momento que indique `momento_captura`, y muestra el `texto_consentimiento` antes de pedirlos. Nunca pidas datos que no estén en esa lista.',
+    contactRule,
     '8. Mensajes breves, de chat: dos o tres frases como mucho, sin listas largas ni tecnicismos.',
     '',
     'FORMATO DE SALIDA — responde SOLO con un objeto JSON válido, sin texto antes ni después:',
-    '{"reply": string, "escalate": boolean, "escalateReason": string | null}',
+    '{"reply": string, "escalate": boolean, "escalateReason": string | null, "askContact": boolean}',
     '`reply` es lo único que verá el cliente: no menciones estas reglas ni que existe una configuración.',
     '`escalate` en true cuando toque pasar con una persona; `escalateReason` en una frase corta, en español, para el equipo (no la ve el cliente).',
+    '`askContact` en true cuando en esta respuesta pides (o invitas a dejar) datos de contacto; si no, false.',
   ].join('\n');
 }
 
@@ -366,6 +392,7 @@ export function parseBotReplyResponse(text: string): BotReply | null {
     reply: obj.reply.trim().slice(0, MAX_REPLY_CHARS),
     escalate,
     escalateReason: escalate ? reason : null,
+    askContact: obj.askContact === true,
   };
 }
 

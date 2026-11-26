@@ -174,6 +174,11 @@ export async function retryChannelWebhookDelivery(deliveryId: string): Promise<C
   if (!delivery) {
     return { ok: false, deliveryId, status: 'failed', error: 'delivery_not_found' };
   }
+  // A los 30 días el payload se vacía (processor-retention.ts): no queda nada
+  // que mandar, y reintentar enviaría un evento vacío.
+  if (delivery.status === 'expired') {
+    return { ok: false, deliveryId: delivery.id, status: 'failed', error: 'payload_expired' };
+  }
   // Un reintento a mano sin puente configurado no puede salir bien: se
   // responde sin tocar la fila, en vez de dejarla 'failed' y sumar un
   // intento contra el techo de MAX_ATTEMPTS.

@@ -1,7 +1,8 @@
 import 'server-only';
 import type { PrismaClient, Prisma } from '@prisma/client';
 import { buildChatbotContext, type BotInstanceRef } from './chatbot-config';
-import { generateBotReply, type ConversationTurn } from './chatbot-reply-ai';
+import { generateBotReply, type ContactCapture, type ConversationTurn } from './chatbot-reply-ai';
+import { containsContactData, contactNoticeText, withContactNotice } from './contact-notice';
 import { retrieveKnowledge } from './chatbot-knowledge';
 import { botShouldReply } from './chatbot-handoff';
 import { sendHandoffAlertEmail } from './handoff-alert-email';
@@ -79,11 +80,25 @@ export interface ReplyToIncomingMessageInput {
    *  ESTE turno y a ningún sitio más: no entra en el transcript ni cambia el
    *  mensaje guardado, porque no es algo que haya dicho la persona. */
   visitorContext?: string | null;
+  /** Ver GenerateBotReplyInput.contactCapture. Solo la ruta pública del
+   *  widget manda 'form'; el resto de canales, 'text' por defecto. */
+  contactCapture?: ContactCapture;
   now?: Date;
 }
 
 export type ReplyToIncomingMessageResult =
-  | { ok: true; conversationId: string; reply: string; escalate: boolean; escalateReason: string | null }
+  | {
+      ok: true;
+      conversationId: string;
+      reply: string;
+      escalate: boolean;
+      escalateReason: string | null;
+      /** Con contactCapture 'form': hay que enseñar el formulario de contacto
+       *  (el bot lo pide, deriva, o la persona ha escrito su teléfono o su
+       *  correo en el texto). Con 'text', siempre false: el aviso ya va en
+       *  `reply`. */
+      askContact: boolean;
+    }
   | { ok: true; skipped: true; reason: 'no_api_key'; conversationId: string }
   /** Fase 3 — una persona tiene esta conversación. El turno del cliente
    *  queda guardado, pero no hay respuesta que entregar: contesta el
@@ -106,6 +121,7 @@ interface ExistingConversation {
   handoffTakenAt: Date | null;
   handoffClosedAt: Date | null;
   channel: string | null;
+  contactNoticeShownAt: Date | null;
 }
 
 /** Turnos legibles a partir del transcript guardado, que es un Json libre
@@ -172,6 +188,7 @@ async function findOpenConversation(
     handoffTakenAt: true,
     handoffClosedAt: true,
     channel: true,
+    contactNoticeShownAt: true,
   };
 
   if (key.kind === 'exact') {
@@ -312,7 +329,26 @@ export async function replyToIncomingMessage(
     now,
     knowledge,
     ...(input.visitorContext ? { visitorContext: input.visitorContext } : {}),
+    ...(input.contactCapture ? { contactCapture: input.contactCapture } : {}),
   });
+
+  // El aviso de privacidad de los datos de contacto (contact-notice.ts). Se
+  // dispara si el bot los pide o si la persona los escribe por su cuenta: lo
+  // segundo no depende del modelo, así que el aviso llega como muy tarde en
+  // la respuesta al mensaje que trae los datos.
+  const contactRequested =
+    generated.ok && !('skipped' in generated) && (generated.askContact || containsContactData(input.message));
+  let askContact = false;
+  let contactNoticeShownAt: Date | null = null;
+  let reply = generated.ok && !('skipped' in generated) ? generated.reply : '';
+  if (generated.ok && !('skipped' in generated)) {
+    if (input.contactCapture === 'form') {
+      askContact = contactRequested || generated.escalate;
+    } else if (contactRequested && !existing?.contactNoticeShownAt) {
+      reply = withContactNotice(reply, contactNoticeText(context.config, context.businessName));
+      contactNoticeShownAt = now;
+    }
+  }
 
   const entries: unknown[] = [...priorTranscript, userEntry];
   let outcome: string | null = existing?.outcome ?? null;
@@ -324,7 +360,7 @@ export async function replyToIncomingMessage(
   let escalateReason: string | null = null;
 
   if (generated.ok && !('skipped' in generated)) {
-    entries.push({ role: 'assistant', content: generated.reply, at: now.toISOString() } satisfies TranscriptEntry);
+    entries.push({ role: 'assistant', content: reply, at: now.toISOString() } satisfies TranscriptEntry);
     if (generated.escalate) {
       outcome = 'escalated';
       handoffRequestedAt ??= now;
@@ -333,7 +369,7 @@ export async function replyToIncomingMessage(
   }
 
   const firstHandoff = handoffRequestedAt !== null && existing?.handoffRequestedAt == null;
-  const conversationId = await persist(prisma, input, existing, entries, outcome, handoffRequestedAt, now);
+  const conversationId = await persist(prisma, input, existing, entries, outcome, handoffRequestedAt, now, contactNoticeShownAt);
 
   // El aviso va DESPUÉS de guardar y nunca rompe el turno: si el email
   // falla, la conversación ya está en la bandeja y el negocio la verá al
@@ -352,9 +388,10 @@ export async function replyToIncomingMessage(
   return {
     ok: true,
     conversationId,
-    reply: generated.reply,
+    reply,
     escalate: generated.escalate,
     escalateReason: generated.escalateReason,
+    askContact,
   };
 }
 
@@ -398,7 +435,10 @@ async function persist(
   outcome: string | null,
   handoffRequestedAt: Date | null,
   now: Date,
+  /** Solo cuando ESTE turno añadió el aviso de contacto; si no, no se toca. */
+  contactNoticeShownAt: Date | null = null,
 ): Promise<string> {
+  const notice = contactNoticeShownAt ? { contactNoticeShownAt } : {};
   if (existing) {
     const updated = await prisma.chatbotConversation.update({
       where: { id: existing.id },
@@ -406,6 +446,7 @@ async function persist(
         duration: Math.max(0, Math.round((now.getTime() - existing.startedAt.getTime()) / 1000)),
         outcome,
         handoffRequestedAt,
+        ...notice,
         // Fase 1.5 — también al actualizar, para que una conversación
         // abierta antes de que existiera el campo se rellene sola.
         channel: input.channel,
@@ -432,6 +473,7 @@ async function persist(
       duration: 0,
       outcome,
       handoffRequestedAt,
+      ...notice,
       transcript: entries as Prisma.InputJsonValue,
     },
     select: { id: true },

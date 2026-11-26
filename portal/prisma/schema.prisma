@@ -1350,6 +1350,12 @@ model ChatbotConversation {
   // veces, queda el último.
   contactConsentAt     DateTime? @map("contact_consent_at")
   contactNoticeVersion String?   @map("contact_notice_version")
+  // 26/11/2026 — en los canales sin formulario (WhatsApp, Instagram,
+  // Messenger, Telegram), cuándo añadió el servidor el aviso de privacidad a
+  // la respuesta del bot porque pedía datos de contacto o la persona los
+  // escribió (lib/contact-notice.ts). El texto exacto está en el transcript,
+  // en ese turno. Una vez por conversación.
+  contactNoticeShownAt DateTime? @map("contact_notice_shown_at")
 
   client ChatbotClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
@@ -3137,7 +3143,9 @@ model ChannelWebhookDelivery {
   connectionId   String    @map("connection_id") @db.Uuid
   clientId       String    @map("client_id")
   payload        Json
-  // 'pending' | 'delivered' | 'failed' | 'skipped'
+  // 'pending' | 'delivered' | 'failed' | 'skipped' | 'expired'
+  // 'expired' (26/11/2026) = a los 30 días sin entregarse se vacía el
+  // payload (lib/processor-retention.ts) y ya no se puede reintentar.
   // 'skipped' = no hay puente configurado (N8N_CHANNEL_WEBHOOK_URL /
   // _SECRET sin valor), así que no se intentó nada y no hay nada que
   // reintentar: el rastro queda, pero no cuenta como fallo. Ver
@@ -3153,6 +3161,8 @@ model ChannelWebhookDelivery {
   @@index([clientId])
   @@index([status])
   @@index([connectionType, connectionId])
+  // La caducidad del payload a los 30 días (lib/processor-retention.ts).
+  @@index([createdAt])
 }
 
 // =============================================================================
@@ -5652,7 +5662,10 @@ model OutboundMessage {
   /// tiene que sobrevivir a que la fila del contacto se borre por
   /// retención, igual que CallEvent.toNumber sobrevive a que el número
   /// virtual se libere.
-  toE164 String @map("to_e164")
+  ///
+  /// NULL a los 12 meses del envío (26/11/2026, lib/processor-retention.ts):
+  /// el coste, el canal y la fecha se quedan; el número de la persona, no.
+  toE164 String? @map("to_e164")
 
   /// El id del proveedor, que es la clave para casar esta fila con su
   /// línea en la factura. Sin él la conciliación es imposible.
@@ -5700,6 +5713,8 @@ model OutboundMessage {
   /// "Qué queda por conciliar": las filas que salieron y aún no tienen
   /// precio. Lidera costSyncedAt porque es la parte selectiva.
   @@index([costSyncedAt, sentAt])
+  // El borrado del número a los 12 meses (lib/processor-retention.ts).
+  @@index([sentAt])
   @@index([tenantId])
   @@index([callEventId])
 }

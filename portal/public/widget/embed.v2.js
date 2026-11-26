@@ -152,23 +152,25 @@
   // se sustituyen aquí por su traducción, según `mode`. Las respuestas
   // normales del bot (`mode: 'portal'`) no se tocan: el motor ya contesta en
   // el idioma del visitante si el negocio lo tiene en los idiomas del paso 1.
+  // Desde el 26/11/2026 ninguna pide los datos en el texto: invitan al
+  // formulario (con aviso y casilla), que la ruta abre con askContact.
   var SERVER_REPLIES = {
     en: {
       human: 'Someone from the team is with you now. Write your message here and they will see it shortly.',
-      cap: "I can't reply here right now. Leave your question with an email or phone number and the team will get back to you shortly.",
+      cap: "I can't reply here right now. Leave your details in the form and the team will get back to you shortly.",
       fallbackContact:
-        'Thanks for writing. To help you better, tell me your name and an email or phone number, and the team will reply shortly.',
+        'Thanks for writing. Leave your name and a phone number or email in the form and the team will reply shortly.',
       fallback:
-        "Thanks for your message. I can't give you a detailed answer right now, but the team will review it. If you like, leave me your contact details.",
+        "Thanks for your message. I can't give you a detailed answer right now, but the team will review it. If you'd like a reply, leave your details in the form.",
       unavailable: 'This chat is not available right now.',
     },
     de: {
       human: 'Jemand aus dem Team ist jetzt für Sie da. Schreiben Sie Ihre Nachricht hier, sie wird in Kürze gelesen.',
-      cap: 'Ich kann hier gerade nicht antworten. Hinterlassen Sie Ihre Frage mit E-Mail-Adresse oder Telefonnummer, und das Team meldet sich in Kürze bei Ihnen.',
+      cap: 'Ich kann hier gerade nicht antworten. Hinterlassen Sie Ihre Daten im Formular, und das Team meldet sich in Kürze bei Ihnen.',
       fallbackContact:
-        'Danke für Ihre Nachricht. Damit wir Ihnen besser helfen können, nennen Sie mir bitte Ihren Namen und eine E-Mail-Adresse oder Telefonnummer. Das Team antwortet in Kürze.',
+        'Danke für Ihre Nachricht. Hinterlassen Sie Ihren Namen und eine Telefonnummer oder E-Mail-Adresse im Formular. Das Team antwortet in Kürze.',
       fallback:
-        'Danke für Ihre Nachricht. Im Moment kann ich Ihnen keine ausführliche Antwort geben, aber das Team sieht sie sich an. Wenn Sie möchten, hinterlassen Sie mir Ihre Kontaktdaten.',
+        'Danke für Ihre Nachricht. Im Moment kann ich Ihnen keine ausführliche Antwort geben, aber das Team sieht sie sich an. Wenn Sie eine Antwort möchten, hinterlassen Sie Ihre Daten im Formular.',
       unavailable: 'Dieser Chat ist im Moment nicht verfügbar.',
     },
   };

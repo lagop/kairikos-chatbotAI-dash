@@ -705,3 +705,98 @@ describe('replyToIncomingMessage — contexto de la visita (widget v2)', () => {
     expect(mockState.generateBotReply.mock.calls[0][0]).not.toHaveProperty('visitorContext');
   });
 });
+
+// 26/11/2026 — encargo del tratamiento: el aviso de privacidad cuando se
+// piden o llegan datos de contacto ya no depende del modelo (contact-notice.ts).
+describe('replyToIncomingMessage — aviso de los datos de contacto', () => {
+  const CONFIG = {
+    configVersion: 'v1',
+    tier: 'pro',
+    captacion: { texto_consentimiento: 'He leído y acepto la política de privacidad de la clínica.' },
+  };
+  beforeEach(() => {
+    mockState.buildChatbotContext.mockResolvedValue({
+      businessName: 'Clínica Orly',
+      welcomeMessage: 'Hola',
+      farewellMessage: null,
+      suggestedPrompts: [],
+      config: CONFIG,
+    });
+  });
+
+  const OPEN = {
+    id: 'conv_existing',
+    startedAt: new Date('2026-09-07T09:30:00Z'),
+    duration: 60,
+    outcome: null,
+    transcript: [{ role: 'user', content: 'hola', at: 'x' }],
+  };
+
+  const askingReply = {
+    ok: true, reply: '¿Me dejas un teléfono para que te llamen?', escalate: false, escalateReason: null, askContact: true,
+  };
+
+  it('WhatsApp: si el bot pide los datos, el servidor añade el aviso y guarda cuándo', async () => {
+    mockState.generateBotReply.mockResolvedValue(askingReply);
+    const result = await replyToIncomingMessage(prismaMock, BASE);
+
+    expect(result).toMatchObject({ ok: true, askContact: false });
+    const reply = (result as { reply: string }).reply;
+    expect(reply.startsWith('¿Me dejas un teléfono para que te llamen?\n\n')).toBe(true);
+    expect(reply).toContain('Clínica Orly');
+    expect(reply).toContain('«He leído y acepto la política de privacidad de la clínica.»');
+
+    const data = mockState.create.mock.calls[0][0].data;
+    expect(data.contactNoticeShownAt).toEqual(NOW);
+    // El texto exacto que leyó la persona queda en el transcript, en ese turno.
+    expect(transcriptOf(mockState.create.mock.calls[0][0])[1].content).toBe(reply);
+  });
+
+  it('WhatsApp: si la persona escribe su teléfono sin que el bot lo pida, también', async () => {
+    const result = await replyToIncomingMessage(prismaMock, { ...BASE, message: 'llamadme al 600 12 34 56' });
+    expect((result as { reply: string }).reply).toContain('Sobre tus datos');
+    expect(mockState.create.mock.calls[0][0].data.contactNoticeShownAt).toEqual(NOW);
+  });
+
+  it('una sola vez por conversación', async () => {
+    mockState.findFirst.mockResolvedValue({ ...OPEN, contactNoticeShownAt: new Date('2026-09-07T09:00:00Z') });
+    mockState.generateBotReply.mockResolvedValue(askingReply);
+    const result = await replyToIncomingMessage(prismaMock, BASE);
+    expect((result as { reply: string }).reply).toBe('¿Me dejas un teléfono para que te llamen?');
+    expect(mockState.update.mock.calls[0][0].data).not.toHaveProperty('contactNoticeShownAt');
+  });
+
+  it('sin petición ni datos, nada', async () => {
+    const result = await replyToIncomingMessage(prismaMock, BASE);
+    expect((result as { reply: string }).reply).toBe('Claro, ¿qué día te viene bien?');
+    expect(mockState.create.mock.calls[0][0].data).not.toHaveProperty('contactNoticeShownAt');
+  });
+
+  it('sin texto de consentimiento aprobado, un aviso genérico, no nada', async () => {
+    mockState.buildChatbotContext.mockResolvedValue({
+      businessName: 'Clínica Orly', welcomeMessage: 'Hola', farewellMessage: null, suggestedPrompts: [],
+      config: { configVersion: 'v1', tier: 'pro' },
+    });
+    mockState.generateBotReply.mockResolvedValue(askingReply);
+    const result = await replyToIncomingMessage(prismaMock, BASE);
+    expect((result as { reply: string }).reply).toContain('solo para gestionar tu consulta');
+  });
+
+  it('web (formulario): el texto no se toca y se pide el formulario', async () => {
+    mockState.generateBotReply.mockResolvedValue({ ...askingReply, reply: 'Déjanos tus datos en el formulario.' });
+    const result = await replyToIncomingMessage(prismaMock, { ...BASE, channel: 'web', contactCapture: 'form' });
+    expect(result).toMatchObject({ ok: true, reply: 'Déjanos tus datos en el formulario.', askContact: true });
+    expect(mockState.create.mock.calls[0][0].data).not.toHaveProperty('contactNoticeShownAt');
+    expect(mockState.generateBotReply).toHaveBeenCalledWith(expect.objectContaining({ contactCapture: 'form' }));
+  });
+
+  it('web: si deriva, o si la persona escribe su correo en el texto, también sale el formulario', async () => {
+    mockState.generateBotReply.mockResolvedValue({ ok: true, reply: 'Te paso con el equipo.', escalate: true, escalateReason: 'x', askContact: false });
+    const derived = await replyToIncomingMessage(prismaMock, { ...BASE, channel: 'web', contactCapture: 'form' });
+    expect(derived).toMatchObject({ askContact: true });
+
+    mockState.generateBotReply.mockResolvedValue({ ok: true, reply: 'Gracias.', escalate: false, escalateReason: null, askContact: false });
+    const typed = await replyToIncomingMessage(prismaMock, { ...BASE, channel: 'web', contactCapture: 'form', message: 'soy ana@correo.example' });
+    expect(typed).toMatchObject({ askContact: true, reply: 'Gracias.' });
+  });
+});

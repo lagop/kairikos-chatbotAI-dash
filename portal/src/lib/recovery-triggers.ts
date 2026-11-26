@@ -390,7 +390,7 @@ export async function findRecoveryCandidates(
   const lastContact = new Map<string, Date>();
   for (const row of recentlyContacted) {
     // Ordenado desc, así que el primero de cada número es el más reciente.
-    if (!lastContact.has(row.toE164)) lastContact.set(row.toE164, row.sentAt);
+    if (row.toE164 && !lastContact.has(row.toE164)) lastContact.set(row.toE164, row.sentAt);
   }
 
   const candidates: RecoveryCandidate[] = [];

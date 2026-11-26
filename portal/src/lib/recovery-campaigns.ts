@@ -252,7 +252,9 @@ export async function sendApprovedCampaign(
   ]);
   const suppressedSet = new Set(suppressed.map((s) => s.e164));
   const lastContact = new Map<string, Date>();
-  for (const row of recent) if (!lastContact.has(row.toE164)) lastContact.set(row.toE164, row.sentAt);
+  // toE164 es NULL a los 12 meses (processor-retention.ts): con `in` no sale,
+  // pero el tipo lo admite.
+  for (const row of recent) if (row.toE164 && !lastContact.has(row.toE164)) lastContact.set(row.toE164, row.sentAt);
 
   const result: CampaignSendResult = { sent: 0, failed: 0, excludedLate: 0 };
 

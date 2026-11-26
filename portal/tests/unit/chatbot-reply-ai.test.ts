@@ -246,16 +246,46 @@ describe('buildSystemPrompt — las reglas que protegen al negocio', () => {
     expect(prompt).toContain('ES = español, EN = inglés, DE = alemán');
   });
 
-  it('exige consentimiento antes de pedir datos personales', () => {
+  // 26/11/2026 — el aviso ya no lo escribe el modelo (contact-notice.ts).
+  it('mensajería: pide solo los datos de la lista, los marca con askContact y no escribe el aviso', () => {
     const prompt = promptFor(makeConfig());
-    expect(prompt).toContain('texto_consentimiento');
+    expect(prompt).toContain('usa solo los de `datos_solicitados`');
+    expect(prompt).toContain('pon `askContact` en true');
+    expect(prompt).toContain('No escribas tú el aviso de privacidad');
+    expect(prompt).toContain('"askContact": boolean');
+  });
+
+  it('web: nunca pide los datos en el texto, abre el formulario', () => {
+    const config = makeConfig();
+    const now = new Date('2026-09-07T10:00:00Z');
+    const prompt = buildSystemPrompt(
+      { businessName: 'Clínica Orly', config, history: [], message: 'hola', now, contactCapture: 'form' },
+      resolveScheduleState(config, now),
+    );
+    expect(prompt).toContain('NUNCA pidas en el texto nombre, teléfono, correo');
+    expect(prompt).toContain('formulario');
+    expect(prompt).not.toContain('No escribas tú el aviso');
+  });
+
+  it('fuera de horario con captura: en la web, al formulario; en mensajería, en el texto', () => {
+    const config = makeConfig({ horario: HORARIO_LABORAL });
+    const sunday = new Date('2026-09-06T10:00:00Z');
+    const state = resolveScheduleState(config, sunday);
+    const base = { businessName: 'Clínica Orly', config, history: [], message: 'hola', now: sunday };
+    expect(buildSystemPrompt({ ...base, contactCapture: 'form' }, state)).toContain('en el formulario del chat');
+    expect(buildSystemPrompt(base, state)).toContain('Recoge los datos de contacto');
   });
 });
 
 describe('parseBotReplyResponse', () => {
   it('parsea una respuesta normal', () => {
     expect(parseBotReplyResponse('{"reply":"Claro, ¿qué día te viene bien?","escalate":false,"escalateReason":null}'))
-      .toEqual({ reply: 'Claro, ¿qué día te viene bien?', escalate: false, escalateReason: null });
+      .toEqual({ reply: 'Claro, ¿qué día te viene bien?', escalate: false, escalateReason: null, askContact: false });
+  });
+
+  it('lee askContact solo si viene en true', () => {
+    expect(parseBotReplyResponse('{"reply":"¿Tu teléfono?","escalate":false,"askContact":true}')?.askContact).toBe(true);
+    expect(parseBotReplyResponse('{"reply":"Hola","askContact":"sí"}')?.askContact).toBe(false);
   });
 
   it('acepta la respuesta envuelta en una valla markdown', () => {

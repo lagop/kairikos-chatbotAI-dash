@@ -89,6 +89,7 @@ export default async function ConversationDetailPage(props: PageProps) {
             handoffClosedAt: true,
             contactConsentAt: true,
             contactNoticeVersion: true,
+            contactNoticeShownAt: true,
           },
         })
       : null;
@@ -118,6 +119,16 @@ export default async function ConversationDetailPage(props: PageProps) {
         <p className="text-sm text-kairikos-muted" data-testid="contact-consent">
           Consentimiento: {CONSENT_FMT.format(handoffRow.contactConsentAt)}
           {handoffRow.contactNoticeVersion ? ` (versión ${handoffRow.contactNoticeVersion})` : ''}
+        </p>
+      ) : null}
+
+      {/* 26/11/2026 — en WhatsApp, Instagram, Messenger y Telegram no hay
+          formulario: el servidor añade el aviso de privacidad a la respuesta
+          del bot cuando se piden o llegan datos de contacto
+          (lib/contact-notice.ts). El texto está en la conversación, abajo. */}
+      {handoffRow?.contactNoticeShownAt ? (
+        <p className="text-sm text-kairikos-muted" data-testid="contact-notice-shown">
+          Aviso de privacidad mostrado: {CONSENT_FMT.format(handoffRow.contactNoticeShownAt)}
         </p>
       ) : null}
 

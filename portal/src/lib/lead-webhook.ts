@@ -207,6 +207,10 @@ export async function retryLeadCrmDelivery(
   if (!delivery || delivery.connectionType !== 'lead_crm') {
     return { ok: false, error: 'delivery_not_found' };
   }
+  // Payload vaciado a los 30 días (processor-retention.ts): nada que mandar.
+  if (delivery.status === 'expired') {
+    return { ok: false, error: 'payload_expired' };
+  }
 
   const hook = await prisma.leadWebhook.findUnique({ where: { id: delivery.connectionId } });
   if (!hook || !hook.enabled) {
