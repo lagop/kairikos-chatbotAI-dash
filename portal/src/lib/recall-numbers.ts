@@ -321,3 +321,57 @@ export async function getPoolSummary(prisma: PrismaClient): Promise<PoolSummary>
   }
   return counts;
 }
+
+// =============================================================================
+// 26/11/2026 — los números que siguen asignados a un cliente que ya se dio de
+// baja de llamadas. Twilio los sigue cobrando y la baja de sus datos
+// (lib/client-data-exit.ts) no borra nada mientras sigan asignados, así que
+// la cola de llamadas del admin los enseña con un botón para liberarlos.
+// =============================================================================
+
+export interface CancelledClientNumber {
+  id: string;
+  e164: string;
+  assignedAt: Date | null;
+  /** El último fallo de Twilio al liberarlo, si lo hubo. */
+  lastError: string | null;
+  clientId: string;
+  clientName: string;
+  clientEmail: string;
+  cancelledAt: Date | null;
+}
+
+export async function listNumbersOfCancelledClients(prisma: PrismaClient): Promise<CancelledClientNumber[]> {
+  const rows = await prisma.virtualNumber.findMany({
+    where: { status: 'assigned', subscription: { clientProduct: { status: 'cancelled' } } },
+    orderBy: { assignedAt: 'asc' },
+    select: {
+      id: true,
+      e164: true,
+      assignedAt: true,
+      lastError: true,
+      subscription: {
+        select: {
+          client: { select: { id: true, name: true, companyName: true, email: true } },
+          clientProduct: { select: { cancelledAt: true, changedAt: true } },
+        },
+      },
+    },
+  });
+  return rows.flatMap((r) =>
+    r.subscription
+      ? [
+          {
+            id: r.id,
+            e164: r.e164,
+            assignedAt: r.assignedAt,
+            lastError: r.lastError,
+            clientId: r.subscription.client.id,
+            clientName: r.subscription.client.companyName?.trim() || r.subscription.client.name,
+            clientEmail: r.subscription.client.email,
+            cancelledAt: r.subscription.clientProduct.cancelledAt ?? r.subscription.clientProduct.changedAt,
+          },
+        ]
+      : [],
+  );
+}

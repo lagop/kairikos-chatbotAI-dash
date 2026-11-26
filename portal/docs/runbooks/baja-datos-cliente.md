@@ -56,11 +56,10 @@ export SSH_KEY=~/.ssh/kairikos_vps
 
 1. **Dar de baja la contratación** en el admin del portal, como siempre. Para llamadas, **liberar
    también el número**: con el número asignado, el borrado se bloquea (`number_still_assigned`),
-   porque Twilio seguiría cobrándolo sin nada que lo enlace. **Hoy no hay botón para eso** en el
-   admin: está la ruta `POST /api/admin/portal/recall/numbers/<id del número>/release`, que pide
-   sesión de operador (por ejemplo, un `fetch` desde la consola del navegador con el admin abierto).
-   El id del número sale de la tabla `VirtualNumber` (`subscription_id` = la suscripción del
-   cliente).
+   porque Twilio seguiría cobrándolo sin nada que lo enlace. Se libera en la cola de llamadas del
+   admin, `/admin/portal/recall`, sección «Números de clientes dados de baja» (desde el 26/11/2026):
+   sale ahí cada número asignado a un cliente con la contratación de llamadas dada de baja, con su
+   botón «Liberar número» (pide confirmación; devolverlo a Twilio no tiene vuelta atrás).
 2. **Ver el estado**. Solo lee: qué hay (recuentos), en qué punto está la baja y qué la bloquea.
 
    ```sh

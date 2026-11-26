@@ -7,6 +7,8 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { listRecallQueue, isStuck, stuckThresholdDays, type RecallQueueRow } from '@/lib/recall';
 import { templateApprovalByConnection, type TemplateApprovalSummary } from '@/lib/recall-templates';
+import { listNumbersOfCancelledClients, type CancelledClientNumber } from '@/lib/recall-numbers';
+import { RecallReleaseNumberButton } from '@/components/admin/RecallReleaseNumberButton';
 
 const TEMPLATE_STATUS_LABEL: Record<string, string> = {
   REJECTED: 'rechazada',
@@ -148,6 +150,50 @@ function RecallQueueCard({ row, templates }: { row: RecallQueueRow; templates: T
   );
 }
 
+const DAY_FORMAT = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
+
+/** 26/11/2026 — números de clientes dados de baja: Twilio los sigue cobrando y
+ *  la baja de sus datos espera a que se liberen (lib/client-data-exit.ts). */
+function CancelledNumbers({ rows }: { rows: CancelledClientNumber[] }) {
+  return (
+    <section className="space-y-3" aria-labelledby="recall-cancelled-numbers-title" data-testid="recall-cancelled-numbers">
+      <div>
+        <h2 id="recall-cancelled-numbers-title" className="text-lg font-semibold">
+          Números de clientes dados de baja
+        </h2>
+        <p className="mt-1 text-sm text-kairikos-muted">
+          Siguen asignados, Twilio los sigue cobrando y las llamadas de estos clientes no se borran hasta que se liberen.
+        </p>
+      </div>
+      <ul className="space-y-3">
+        {rows.map((n) => (
+          <li key={n.id} className="card space-y-2" data-testid="recall-cancelled-number">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <p className="text-xs uppercase tracking-wider text-kairikos-muted">{n.clientEmail}</p>
+                <h3 className="mt-1 text-base font-semibold">{n.clientName}</h3>
+                <p className="mt-1 text-sm">
+                  <span className="font-mono">{n.e164}</span>
+                  <span className="text-kairikos-muted">
+                    {n.cancelledAt ? ` · de baja desde el ${DAY_FORMAT.format(n.cancelledAt)}` : ''}
+                  </span>
+                </p>
+              </div>
+              <Link href={`/admin/portal/${n.clientId}`} className="text-xs underline hover:text-kairikos-text">
+                Ver cliente →
+              </Link>
+            </div>
+            {n.lastError ? (
+              <p className="text-xs text-kairikos-danger">Último fallo de Twilio al liberarlo: {n.lastError}</p>
+            ) : null}
+            <RecallReleaseNumberButton numberId={n.id} e164={n.e164} />
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export default async function AdminRecallQueuePage() {
   const session = await getSession();
   if (!session.isOperator) {
@@ -156,8 +202,10 @@ export default async function AdminRecallQueuePage() {
 
   let rows: RecallQueueRow[] = [];
   let templates = new Map<string, TemplateApprovalSummary>();
+  let cancelledNumbers: CancelledClientNumber[] = [];
   if (isDatabaseConfigured) {
     rows = await listRecallQueue(prisma);
+    cancelledNumbers = await listNumbersOfCancelledClients(prisma);
     templates = await templateApprovalByConnection(
       prisma,
       rows.map((r) => r.metaConnectionId).filter((id): id is string => id !== null),
@@ -218,6 +266,8 @@ export default async function AdminRecallQueuePage() {
           ))}
         </ul>
       )}
+
+      {cancelledNumbers.length > 0 ? <CancelledNumbers rows={cancelledNumbers} /> : null}
     </div>
   );
 }
