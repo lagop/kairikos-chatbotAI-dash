@@ -121,8 +121,43 @@ conversaciones no tienen techo y cada una lleva su transcript entero.
   villas (`lib/cartera/exit.ts`).
 - Las rutas de operador de estos dos todavía no tienen botón en el admin.
 
-## Fuera de este documento (anotado en el plan)
+### Datos de contacto que se piden en el chat (desde el 26/11/2026)
 
-- El bot también pide datos de contacto dentro de la conversación, sin registrar consentimiento.
-- Sin regla de conservación propia: `OutboundMessage.toE164`, `ChannelWebhookDelivery.payload`,
-  `Contact`.
+Antes, la regla 7 del prompt le pedía al modelo que enseñara el `texto_consentimiento` del paso 6
+antes de pedir los datos. Nada lo comprobaba y no quedaba constancia. Ahora el aviso no depende del
+modelo:
+
+- **Chat de la web (widget, `contactCapture: 'form'`)**: el bot no pide datos en el texto. Cuando
+  toca (según `momento_captura`, al derivar, fuera de horario o porque la persona escribe un
+  teléfono o un correo), la ruta devuelve `askContact: true` y el widget abre el formulario, que
+  tiene aviso, casilla obligatoria y guarda `contactConsentAt` y `contactNoticeVersion`. Las
+  respuestas de reserva de la ruta (tope, fallo de la IA) también invitan al formulario y lo abren,
+  en los tres idiomas de `embed.v2.js`.
+- **WhatsApp, Instagram, Messenger y Telegram (`'text'`)**: no hay formulario. Si el bot pide los
+  datos (`askContact` en su JSON) o la persona los escribe por su cuenta (`containsContactData`), el
+  servidor añade el aviso detrás de la respuesta (`lib/contact-notice.ts`): el nombre del negocio y
+  el `texto_consentimiento` aprobado, o uno genérico si no hay. Una vez por conversación. Queda
+  `ChatbotConversation.contactNoticeShownAt`, y el texto exacto en el transcript, en ese turno.
+- Límites conocidos: el aviso va en el idioma de la configuración (español), aunque la persona
+  escriba en otro. El widget v1 (`embed.js`, congelado) abre su formulario de siempre, sin casilla:
+  la ruta de contacto lo cuenta como `widget_contact.legacy_no_consent`.
+- Redacción del marco del aviso pendiente de revisión jurídica. La base del tratamiento es atender
+  la consulta; el aviso cumple el deber de información (art. 13 RGPD, primera capa).
+
+### Envíos al CRM y mensajes enviados (`lib/processor-retention.ts`, desde el 26/11/2026)
+
+Corre con el cron `retention-purge`, después del chat; su recuento sale bajo `processor`.
+
+| Dato | Plazo | Qué queda |
+| --- | --- | --- |
+| `ChannelWebhookDelivery.payload` (lo que se manda al CRM del cliente o a n8n: nombre, teléfono, mensaje) | 30 días desde el envío | La fila, con el payload vacío (`{}`): tipo, estado, intentos y error. Si a los 30 días seguía sin entregarse (`pending` o `failed`), pasa a `expired` y ya no se puede reintentar, ni a mano. |
+| `OutboundMessage.toE164` (número al que se mandó cada WhatsApp o SMS) | 12 meses desde el envío | La fila, con el número a `NULL`: coste, canal, plantilla, fecha. Pasado un año, una campaña de recuperación ya no sabe que se escribió a ese número. |
+
+Prueba contra un Postgres real: `tests/real/processor-retention.test.ts`.
+
+### Contactos (`Contact`)
+
+Sin plazo propio, a propósito: es la agenda del cliente (mucha la importa él mismo) y se rige como
+sus solicitudes: se conserva mientras el servicio esté contratado o hasta que el cliente pida la
+supresión (por operador). En la baja automática se borran los contactos que se quedan sin nada
+enlazado (`lib/client-data-exit.ts`).

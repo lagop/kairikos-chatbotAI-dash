@@ -14,6 +14,7 @@ const mockState = vi.hoisted(() => ({
   runRetentionPurge: vi.fn(),
   runChatRetention: vi.fn(),
   runClientDataExits: vi.fn(),
+  runProcessorDataRetention: vi.fn(),
 }));
 
 vi.mock('@/lib/prisma', () => ({
@@ -33,6 +34,10 @@ vi.mock('@/lib/chat-retention', () => ({
 
 vi.mock('@/lib/client-data-exit-auto', () => ({
   runClientDataExits: (...args: unknown[]) => mockState.runClientDataExits(...args),
+}));
+
+vi.mock('@/lib/processor-retention', () => ({
+  runProcessorDataRetention: (...args: unknown[]) => mockState.runProcessorDataRetention(...args),
 }));
 
 vi.mock('@/lib/observability', () => ({ logError: vi.fn() }));
@@ -61,6 +66,8 @@ const CHAT = {
   operatorNotified: false,
 };
 
+const PROCESSOR = { webhookPayloadsCleared: 2, webhookDeliveriesExpired: 1, outboundNumbersCleared: 3 };
+
 const EXITS = { clients: 1, notified: 1, purged: 0, problems: 0, operatorAlerts: 0, truncated: false };
 
 beforeEach(() => {
@@ -68,6 +75,7 @@ beforeEach(() => {
   mockState.runRetentionPurge.mockReset().mockResolvedValue(COUNTS);
   mockState.runChatRetention.mockReset().mockResolvedValue(CHAT);
   mockState.runClientDataExits.mockReset().mockResolvedValue(EXITS);
+  mockState.runProcessorDataRetention.mockReset().mockResolvedValue(PROCESSOR);
   process.env.CRON_SECRET = 'test_cron_secret';
 });
 
@@ -83,6 +91,7 @@ describe('GET /api/cron/retention-purge', () => {
     expect(mockState.runRetentionPurge).not.toHaveBeenCalled();
     expect(mockState.runChatRetention).not.toHaveBeenCalled();
     expect(mockState.runClientDataExits).not.toHaveBeenCalled();
+    expect(mockState.runProcessorDataRetention).not.toHaveBeenCalled();
   });
 
   it('503 sin base de datos', async () => {
@@ -96,7 +105,7 @@ describe('GET /api/cron/retention-purge', () => {
     const { GET } = await import('@/app/api/cron/retention-purge/route');
     const res = await GET(makeRequest({ authorization: 'Bearer test_cron_secret' }));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, ...COUNTS, chat: CHAT, exits: EXITS });
+    expect(await res.json()).toEqual({ ok: true, ...COUNTS, chat: CHAT, processor: PROCESSOR, exits: EXITS });
   });
 
   it('la retención del chat también: si falla, 500', async () => {
@@ -113,6 +122,14 @@ describe('GET /api/cron/retention-purge', () => {
     const res = await GET(makeRequest({ authorization: 'Bearer test_cron_secret' }));
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ ok: false, error: 'bajas caídas' });
+  });
+
+  it('los plazos de los envíos al CRM y de los números también: si fallan, 500', async () => {
+    mockState.runProcessorDataRetention.mockRejectedValue(new Error('plazos caídos'));
+    const { GET } = await import('@/app/api/cron/retention-purge/route');
+    const res = await GET(makeRequest({ authorization: 'Bearer test_cron_secret' }));
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ ok: false, error: 'plazos caídos' });
   });
 
   it('un fallo responde 500, no un 200 con ok:false', async () => {

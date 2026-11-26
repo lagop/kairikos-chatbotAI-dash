@@ -59,7 +59,7 @@ beforeEach(() => {
   mockState.isDatabaseConfigured = true;
   mockState.embedFindUnique.mockReset().mockResolvedValue(activeEmbed);
   mockState.replyToIncomingMessage.mockReset().mockResolvedValue({
-    ok: true, conversationId: 'conv_1', reply: 'Claro, ¿en qué te ayudo?', escalate: false, escalateReason: null,
+    ok: true, conversationId: 'conv_1', reply: 'Claro, ¿en qué te ayudo?', escalate: false, escalateReason: null, askContact: false,
   });
 });
 
@@ -140,16 +140,27 @@ describe('POST /api/public/channels/web/message', () => {
   // askContact — por este canal no se puede contestar al visitante, así
   // que al derivar hay que pedirle un teléfono o un correo o la promesa
   // del bot queda en nada. Ver .../web/contact.
-  it('cuando el bot deriva, le dice al widget que pida el contacto', async () => {
+  // Desde el 26/11/2026 lo decide el motor (derivar, pedir contacto o que la
+  // persona escriba su teléfono): la ruta lo pasa tal cual.
+  it('cuando el motor pide el contacto, le dice al widget que enseñe el formulario', async () => {
     mockState.replyToIncomingMessage.mockResolvedValue({
       ok: true,
       conversationId: 'conv_1',
       reply: 'Te paso con una persona del equipo.',
       escalate: true,
       escalateReason: 'no sé el horario',
+      askContact: true,
     });
     const body = await (await post(VALID_BODY)).json();
     expect(body.data.askContact).toBe(true);
+  });
+
+  it('le dice al motor que en este chat los datos se piden en el formulario', async () => {
+    await post(VALID_BODY);
+    expect(mockState.replyToIncomingMessage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ contactCapture: 'form' }),
+    );
   });
 
   it('traspaso a humano: mode "human", reply nunca null — el widget no sabe pintar null', async () => {
@@ -163,6 +174,8 @@ describe('POST /api/public/channels/web/message', () => {
     mockState.replyToIncomingMessage.mockResolvedValue({ ok: true, skipped: true, reason: 'monthly_cap_reached', conversationId: 'conv_1' });
     const body = await (await post(VALID_BODY)).json();
     expect(body.data.mode).toBe('cap');
+    expect(body.data.askContact).toBe(true);
+    expect(body.data.reply).toMatch(/formulario/);
   });
 
   it('sin clave de IA: mode "fallback", detecta intención de contacto para variar el texto', async () => {
@@ -170,7 +183,9 @@ describe('POST /api/public/channels/web/message', () => {
     const body = await (await post({ ...VALID_BODY, message: 'quiero pedir presupuesto' })).json();
     expect(body.data.mode).toBe('fallback');
     expect(body.data.contactIntent).toBe(true);
-    expect(body.data.reply).toMatch(/nombre y un email o teléfono/);
+    // Los datos no se piden en el texto: el formulario, con su aviso y su casilla.
+    expect(body.data.reply).toMatch(/en el formulario/);
+    expect(body.data.askContact).toBe(true);
   });
 
   it('el motor falla: mode "fallback" igualmente, nunca un 5xx que rompa el widget', async () => {

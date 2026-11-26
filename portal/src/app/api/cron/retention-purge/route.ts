@@ -4,6 +4,7 @@ import { isAuthorizedCronRequest } from '@/lib/cron-auth';
 import { runRetentionPurge } from '@/lib/retention-purge';
 import { runChatRetention } from '@/lib/chat-retention';
 import { runClientDataExits } from '@/lib/client-data-exit-auto';
+import { runProcessorDataRetention } from '@/lib/processor-retention';
 import { logError } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
@@ -15,7 +16,9 @@ export const maxDuration = 60;
 // desde el 25/11/2026, el de las conversaciones del chat de los clientes
 // (src/lib/chat-retention.ts, en modo de prueba hasta el PR 4b del plan).
 // Desde el 26/11/2026, también la baja de los datos del chat, las llamadas y
-// las solicitudes de los clientes que se dan de baja (src/lib/client-data-exit-auto.ts).
+// las solicitudes de los clientes que se dan de baja (src/lib/client-data-exit-auto.ts),
+// y los plazos de los envíos al CRM y de los números de los mensajes enviados
+// (src/lib/processor-retention.ts).
 //
 // Va en scripts/scheduler.sh, que lo llama cada cinco minutos: cada pasada
 // solo busca lo que aún queda por hacer, así que es idempotente. El recuento
@@ -41,8 +44,9 @@ export async function GET(req: NextRequest) {
     const now = new Date();
     const result = await runRetentionPurge(prisma, now);
     const chat = await runChatRetention(prisma, now);
+    const processor = await runProcessorDataRetention(prisma, now);
     const exits = await runClientDataExits(prisma, now);
-    return NextResponse.json({ ok: true, ...result, chat, exits });
+    return NextResponse.json({ ok: true, ...result, chat, processor, exits });
   } catch (err) {
     logError('retention_purge.failed', err, {}, 'error');
     return NextResponse.json(

@@ -82,6 +82,17 @@ const CONTACT_INTENT_RE =
 // de que "te paso con alguien del equipo" sea verdad es que el visitante
 // deje un teléfono o un correo. El widget enseña el formulario cuando
 // esto viene en true; lo recibe .../web/contact.
+//
+// 26/11/2026 — encargo del tratamiento: en este chat los datos de contacto
+// SOLO se piden en ese formulario, que tiene aviso de privacidad y casilla y
+// guarda fecha y versión. El bot ya no los pide en el texto (contactCapture
+// 'form'), y las respuestas de reserva de abajo tampoco: invitan al formulario
+// y lo abren.
+const FALLBACK_CONTACT_REPLY =
+  'Gracias por escribir. Déjanos tu nombre y un teléfono o correo en el formulario y el equipo te responderá en breve.';
+const FALLBACK_REPLY =
+  'Gracias por tu mensaje. Ahora mismo no puedo darte una respuesta detallada, pero el equipo lo revisará. Si quieres que te contesten, déjanos tus datos en el formulario.';
+
 function widgetPayload(data: {
   sessionId: string | null;
   reply: string;
@@ -187,6 +198,7 @@ export async function POST(req: NextRequest) {
     key: { kind: 'exact', externalSessionId: sessionId },
     message,
     ...(visitorContext ? { visitorContext } : {}),
+    contactCapture: 'form',
   });
 
   if ('skipped' in result) {
@@ -205,9 +217,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         widgetPayload({
           sessionId,
-          reply: 'Ahora mismo no puedo responderte por aquí. Déjanos tu consulta con un email o teléfono y el equipo te contesta en breve.',
+          reply: 'Ahora mismo no puedo responderte por aquí. Déjanos tus datos en el formulario y el equipo te contesta en breve.',
           mode: 'cap',
           contactIntent,
+          askContact: true,
         }),
         { headers: CORS_HEADERS },
       );
@@ -219,10 +232,11 @@ export async function POST(req: NextRequest) {
       widgetPayload({
         sessionId,
         reply: contactIntent
-          ? 'Gracias por escribir. Para ayudarte mejor, cuéntame tu nombre y un email o teléfono de contacto y el equipo te responderá en breve.'
-          : 'Gracias por tu mensaje. Ahora mismo no puedo darte una respuesta detallada, pero el equipo lo revisará. Si quieres, déjame tus datos de contacto.',
+          ? FALLBACK_CONTACT_REPLY
+          : FALLBACK_REPLY,
         mode: 'fallback',
         contactIntent,
+        askContact: true,
         error: 'ai_not_configured',
       }),
       { headers: CORS_HEADERS },
@@ -234,10 +248,11 @@ export async function POST(req: NextRequest) {
       widgetPayload({
         sessionId,
         reply: contactIntent
-          ? 'Gracias por escribir. Para ayudarte mejor, cuéntame tu nombre y un email o teléfono de contacto y el equipo te responderá en breve.'
-          : 'Gracias por tu mensaje. Ahora mismo no puedo darte una respuesta detallada, pero el equipo lo revisará. Si quieres, déjame tus datos de contacto.',
+          ? FALLBACK_CONTACT_REPLY
+          : FALLBACK_REPLY,
         mode: 'fallback',
         contactIntent,
+        askContact: true,
         error: result.error,
       }),
       { headers: CORS_HEADERS },
@@ -245,7 +260,7 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json(
-    widgetPayload({ sessionId, reply: result.reply, mode: 'portal', contactIntent, askContact: result.escalate }),
+    widgetPayload({ sessionId, reply: result.reply, mode: 'portal', contactIntent, askContact: result.askContact }),
     { headers: CORS_HEADERS },
   );
 }
