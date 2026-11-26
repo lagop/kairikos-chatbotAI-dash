@@ -107,10 +107,10 @@ describe.skipIf(!isLocal)('baja de datos contra Postgres', () => {
   });
 
   it('avisar: manda el correo, deja exit_notified y no avisa dos veces', async () => {
-    const r = await notifyExit(db, A, 'chatbot', 'ops@example.test', NOW, { send });
+    const r = await notifyExit(db, A, 'chatbot', 'operator:ops@example.test', NOW, { send });
     expect(r.ok).toBe(true);
     expect(sent).toEqual([`${A}@example.test`]);
-    const again = await notifyExit(db, A, 'chatbot', 'ops@example.test', NOW, { send });
+    const again = await notifyExit(db, A, 'chatbot', 'operator:ops@example.test', NOW, { send });
     expect(again).toMatchObject({ ok: false, error: 'already_notified' });
     const rows = await db.clientDataAudit.findMany({ where: { clientId: A, action: 'exit_notified' } });
     expect(rows).toHaveLength(1);
@@ -118,18 +118,18 @@ describe.skipIf(!isLocal)('baja de datos contra Postgres', () => {
   });
 
   it('borrar antes de 7 días desde el aviso: bloqueado, aunque la baja fue hace 40', async () => {
-    const r = await purgeExit(db, A, 'chatbot', 'ops@example.test', true, NOW);
+    const r = await purgeExit(db, A, 'chatbot', 'operator:ops@example.test', true, NOW);
     expect(r).toMatchObject({ ok: false, error: 'grace_not_over' });
     expect(await db.chatbotConversation.count({ where: { clientId: A } })).toBe(1);
   });
 
   it('pasado el plazo: modo de prueba sin tocar nada, y con confirmar borra solo lo del chat de A', async () => {
     const later = new Date(NOW.getTime() + 8 * DAY);
-    const dry = await purgeExit(db, A, 'chatbot', 'ops@example.test', false, later);
+    const dry = await purgeExit(db, A, 'chatbot', 'operator:ops@example.test', false, later);
     expect(dry).toMatchObject({ ok: true, done: 'dry_run' });
     expect(await db.chatbotConversation.count({ where: { clientId: A } })).toBe(1);
 
-    const r = await purgeExit(db, A, 'chatbot', 'ops@example.test', true, later);
+    const r = await purgeExit(db, A, 'chatbot', 'operator:ops@example.test', true, later);
     expect(r).toMatchObject({ ok: true, done: 'purged' });
     expect(await db.chatbotConversation.count({ where: { clientId: A } })).toBe(0);
     expect(await db.conversationDigest.count({ where: { clientId: A } })).toBe(0);
@@ -145,12 +145,12 @@ describe.skipIf(!isLocal)('baja de datos contra Postgres', () => {
 
   it('llamadas: con el número asignado no se borra; liberado, cae la suscripción entera y el contacto huérfano', async () => {
     const later = new Date(NOW.getTime() + 8 * DAY);
-    await notifyExit(db, A, 'recall', 'ops@example.test', NOW, { send });
-    const blocked = await purgeExit(db, A, 'recall', 'ops@example.test', true, later);
+    await notifyExit(db, A, 'recall', 'operator:ops@example.test', NOW, { send });
+    const blocked = await purgeExit(db, A, 'recall', 'operator:ops@example.test', true, later);
     expect(blocked).toMatchObject({ ok: false, error: 'number_still_assigned' });
 
     await db.virtualNumber.update({ where: { id: numberId }, data: { status: 'released', subscriptionId: null } });
-    const r = await purgeExit(db, A, 'recall', 'ops@example.test', true, later);
+    const r = await purgeExit(db, A, 'recall', 'operator:ops@example.test', true, later);
     expect(r).toMatchObject({ ok: true, done: 'purged', recordingsDeleted: 0 });
     expect(await db.recallSubscription.count({ where: { clientId: A } })).toBe(0);
     expect(await db.callEvent.count({ where: { clientId: A } })).toBe(0);
@@ -162,8 +162,8 @@ describe.skipIf(!isLocal)('baja de datos contra Postgres', () => {
   it('solicitudes: al dar de baja la captación, se borran con su auditoría y su contacto', async () => {
     await db.clientProduct.updateMany({ where: { clientId: A, productId: products.leads }, data: { status: 'cancelled', cancelledAt: ago(40), changedAt: ago(40) } });
     const later = new Date(NOW.getTime() + 8 * DAY);
-    await notifyExit(db, A, 'leads', 'ops@example.test', NOW, { send });
-    const r = await purgeExit(db, A, 'leads', 'ops@example.test', true, later);
+    await notifyExit(db, A, 'leads', 'operator:ops@example.test', NOW, { send });
+    const r = await purgeExit(db, A, 'leads', 'operator:ops@example.test', true, later);
     expect(r).toMatchObject({ ok: true, done: 'purged' });
     expect(await db.lead.count({ where: { clientId: A } })).toBe(0);
     expect(await db.leadAudit.count({ where: { clientId: A } })).toBe(0);

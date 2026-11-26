@@ -75,7 +75,7 @@ describe('purgeExit — llamadas', () => {
 
   it('si Twilio falla en una grabación, para ahí y no borra nada en la base de datos', async () => {
     mocks.deleteTwilioRecording.mockResolvedValueOnce({ ok: true }).mockResolvedValueOnce({ ok: false, error: 'twilio_500' });
-    const r = await purgeExit(prisma, 'cli', 'recall', 'ops@example.test', true, NOW, { twilioAuth: auth });
+    const r = await purgeExit(prisma, 'cli', 'recall', 'operator:ops@example.test', true, NOW, { twilioAuth: auth });
     expect(r).toMatchObject({ ok: false, error: 'twilio_failed', detail: 'RE2: twilio_500' });
     // La primera sí se marcó como borrada (ya no está en Twilio); la segunda no.
     expect(db.callEvent.update).toHaveBeenCalledTimes(1);
@@ -83,14 +83,14 @@ describe('purgeExit — llamadas', () => {
   });
 
   it('sin credenciales de Twilio y con grabaciones pendientes, no empieza', async () => {
-    const r = await purgeExit(prisma, 'cli', 'recall', 'ops@example.test', true, NOW, { twilioAuth: async () => null });
+    const r = await purgeExit(prisma, 'cli', 'recall', 'operator:ops@example.test', true, NOW, { twilioAuth: async () => null });
     expect(r).toMatchObject({ ok: false, error: 'twilio_not_configured' });
     expect(mocks.deleteTwilioRecording).not.toHaveBeenCalled();
     expect(db.$transaction).not.toHaveBeenCalled();
   });
 
   it('sin confirmar es el modo de prueba: no llama a Twilio ni escribe', async () => {
-    const r = await purgeExit(prisma, 'cli', 'recall', 'ops@example.test', false, NOW, { twilioAuth: auth });
+    const r = await purgeExit(prisma, 'cli', 'recall', 'operator:ops@example.test', false, NOW, { twilioAuth: auth });
     expect(r).toMatchObject({ ok: true, done: 'dry_run' });
     expect(r.status.counts).toMatchObject({ calls: 5, recordings: 2 });
     expect(mocks.deleteTwilioRecording).not.toHaveBeenCalled();

@@ -59,6 +59,7 @@ export async function POST(req: NextRequest) {
   }
 
   const now = new Date();
+  const actor = `operator:${operator as string}` as const;
   try {
     if (action === 'estado') {
       const { client, status } = await loadExit(prisma, clientId, product, now);
@@ -66,8 +67,8 @@ export async function POST(req: NextRequest) {
     }
     const result =
       action === 'avisar'
-        ? await notifyExit(prisma, clientId, product, operator as string, now)
-        : await purgeExit(prisma, clientId, product, operator as string, body?.confirm === true, now, {
+        ? await notifyExit(prisma, clientId, product, actor, now)
+        : await purgeExit(prisma, clientId, product, actor, body?.confirm === true, now, {
             twilioAuth: resolveActiveTwilioCredentials,
           });
     return NextResponse.json(result, { status: statusFor(result) });

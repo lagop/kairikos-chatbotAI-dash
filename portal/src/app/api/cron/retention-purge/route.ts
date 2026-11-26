@@ -3,6 +3,7 @@ import { prisma, isDatabaseConfigured } from '@/lib/prisma';
 import { isAuthorizedCronRequest } from '@/lib/cron-auth';
 import { runRetentionPurge } from '@/lib/retention-purge';
 import { runChatRetention } from '@/lib/chat-retention';
+import { runClientDataExits } from '@/lib/client-data-exit-auto';
 import { logError } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
@@ -13,6 +14,8 @@ export const maxDuration = 60;
 // El borrado por plazo de conservación (ver src/lib/retention-purge.ts) y,
 // desde el 25/11/2026, el de las conversaciones del chat de los clientes
 // (src/lib/chat-retention.ts, en modo de prueba hasta el PR 4b del plan).
+// Desde el 26/11/2026, también la baja de los datos del chat, las llamadas y
+// las solicitudes de los clientes que se dan de baja (src/lib/client-data-exit-auto.ts).
 //
 // Va en scripts/scheduler.sh, que lo llama cada cinco minutos: cada pasada
 // solo busca lo que aún queda por hacer, así que es idempotente. El recuento
@@ -38,7 +41,8 @@ export async function GET(req: NextRequest) {
     const now = new Date();
     const result = await runRetentionPurge(prisma, now);
     const chat = await runChatRetention(prisma, now);
-    return NextResponse.json({ ok: true, ...result, chat });
+    const exits = await runClientDataExits(prisma, now);
+    return NextResponse.json({ ok: true, ...result, chat, exits });
   } catch (err) {
     logError('retention_purge.failed', err, {}, 'error');
     return NextResponse.json(

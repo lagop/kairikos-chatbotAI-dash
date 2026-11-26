@@ -102,7 +102,10 @@ export type NotificationKind =
   | 'premium-quote'
   // 25/11/2026 — un paso 10 del chat pide guardar las conversaciones menos
   // de 30 días y no se aplica (lib/chat-retention.ts).
-  | 'chat-retention-short';
+  | 'chat-retention-short'
+  // 26/11/2026 — la baja automática de los datos de un cliente se ha parado
+  // en algo que el cron no resuelve solo (lib/client-data-exit-auto.ts).
+  | 'client-data-exit';
 
 export const ALLOWED_KINDS: ReadonlySet<NotificationKind> = new Set([
   'stuck',
@@ -118,6 +121,7 @@ export const ALLOWED_KINDS: ReadonlySet<NotificationKind> = new Set([
   'daily-call-list',
   'premium-quote',
   'chat-retention-short',
+  'client-data-exit',
 ]);
 
 // Severity → NotificationKind. Used by review-overdue/fire so the route
