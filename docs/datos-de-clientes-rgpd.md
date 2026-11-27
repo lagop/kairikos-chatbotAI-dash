@@ -140,7 +140,9 @@ modelo:
   `ChatbotConversation.contactNoticeShownAt`, y el texto exacto en el transcript, en ese turno.
 - Límites conocidos: el aviso va en el idioma de la configuración (español), aunque la persona
   escriba en otro. El widget v1 (`embed.js`, congelado) abre su formulario de siempre, sin casilla:
-  la ruta de contacto lo cuenta como `widget_contact.legacy_no_consent`.
+  la ruta de contacto lo cuenta como `widget_contact.legacy_no_consent`. Desde el 27/11/2026 el
+  snippet de `/portal/canales` es el de v2 (`lib/web-widget-snippet.ts`); antes daba el v1, así
+  que solo lo tiene quien lo pegó antes de esa fecha.
 - Redacción del marco del aviso pendiente de revisión jurídica. La base del tratamiento es atender
   la consulta; el aviso cumple el deber de información (art. 13 RGPD, primera capa).
 
