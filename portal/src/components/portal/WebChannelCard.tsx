@@ -3,6 +3,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import { withChatbot } from '@/lib/wizard-url';
+import { buildWidgetSnippet } from '@/lib/web-widget-snippet';
 
 // =============================================================================
 // Canales Fase 4 — tarjeta "Web" en /portal/canales. A diferencia de
@@ -10,8 +11,8 @@ import { withChatbot } from '@/lib/wizard-url';
 // es activar el propio widget de Kairikos: generar un publicToken y
 // mostrar el snippet a pegar en el sitio del cliente. Snippet apunta al
 // origin actual (window.location.origin) — el widget se sirve desde el
-// propio portal (public/widget/embed.js), no hay dominio aparte que
-// configurar.
+// propio portal (public/widget/embed.v2.js desde el 27/11/2026; antes
+// embed.js), no hay dominio aparte que configurar.
 // =============================================================================
 
 // 05/10/2026 — el origin se lee con useSyncExternalStore y no con
@@ -91,9 +92,9 @@ export function WebChannelCard({
 
   const isActive = embed?.status === 'active';
   const origin = useSyncExternalStore(noopSubscribe, browserOrigin, serverOrigin);
-  const snippet = embed
-    ? `<script src="${origin}/widget/embed.js" data-space-token="${embed.publicToken}"></script>`
-    : '';
+  // v2 desde el 27/11/2026: el v1 no tiene casilla de consentimiento en su
+  // formulario de contacto. Ver lib/web-widget-snippet.ts.
+  const snippet = embed ? buildWidgetSnippet(origin, embed.publicToken) : '';
 
   async function enable() {
     setError(null);

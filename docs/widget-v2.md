@@ -208,6 +208,13 @@ fecha (versión …)» cuando lo hay.
 **v1 no cambia:** `embed.js` está congelado y no tiene casilla; sus envíos se
 aceptan como siempre y se cuentan con el log de arriba.
 
+**El snippet del portal es el de v2 desde el 27/11/2026.** La tarjeta «Web» de
+`/portal/canales` daba `embed.js`, así que un cliente nuevo pegaba el widget sin
+casilla. Ahora da `<script src="{portal}/widget/embed.v2.js" data-space-token="wgt_…"
+async></script>` (`lib/web-widget-snippet.ts`). Los clientes que ya pegaron el de
+v1 siguen con él hasta que cambien el suyo; si un cliente real lo tiene, hay que
+pedirle que lo cambie (el log `widget_contact.legacy_no_consent` dice quién).
+
 ## Dominios permitidos
 
 Desde el 16/11/2026 cada widget puede tener una lista de webs desde las que
