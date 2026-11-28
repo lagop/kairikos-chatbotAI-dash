@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { WebCareCard } from '@/components/portal/WebCareCard';
+import { WebResultsCard } from '@/components/portal/WebResultsCard';
 import { getWebCareState } from '@/lib/web-care';
+import { loadWebResultsPanel } from '@/lib/web-results-report';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { prisma, isDatabaseConfigured } from '@/lib/prisma';
@@ -67,6 +69,14 @@ export default async function PortalWebProjectPage(
     webClientProduct.status === 'active'
       ? await getWebCareState(prisma, resolved.clientId, webClientProduct.clientSiteId)
       : null;
+
+  // Informe mensual de resultados (28/11/2026): lo que produjo la web, con
+  // el mismo cálculo que el correo del día 1. Solo con la web ya activa.
+  const results =
+    webClientProduct.status === 'active'
+      ? await loadWebResultsPanel(prisma, { clientId: resolved.clientId, clientSiteId: webClientProduct.clientSiteId })
+      : null;
+  const resultsCard = results ? <WebResultsCard {...results} /> : null;
 
   // WebQuote Fase 4 — while the 'web' ClientProduct is still in
   // 'quote_pending' (pre-payment), show the quote status above the
@@ -194,6 +204,7 @@ export default async function PortalWebProjectPage(
             deliveryAcceptedAt={delivery.deliveryAcceptedAt}
           />
         ) : null}
+        {resultsCard}
         {editor}
         {care ? (
           <WebCareCard
@@ -275,6 +286,7 @@ export default async function PortalWebProjectPage(
         }
       />
       {isQuotePending ? <WebQuoteCard clientProductId={webClientProduct.id} webQuote={webQuote} invoice={webQuoteInvoice} /> : null}
+      {resultsCard}
       {editor}
       {editor ? <h2 className="pt-4 text-lg font-semibold">Para orientar el diseño (opcional)</h2> : null}
       <WebBriefForm clientProductId={webClientProduct.id} initial={initial} />
