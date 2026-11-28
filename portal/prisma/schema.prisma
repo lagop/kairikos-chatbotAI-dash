@@ -1002,13 +1002,56 @@ model ClientSite {
   createdAt  DateTime  @default(now()) @map("created_at")
   updatedAt  DateTime  @updatedAt @map("updated_at")
 
-  client   ChatbotClient   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant   Tenant?         @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  products ClientProduct[]
+  // Informe mensual de resultados (28/11/2026, docs/informe-mensual-web.md).
+  // El token con el que la web Premium manda sus eventos (wev_…). Es PÚBLICO:
+  // va en el HTML de la web, así que no se guarda como hash. Null = medición
+  // sin activar. Lo emite el operador desde la ficha del cliente.
+  eventsToken         String?   @unique @map("events_token")
+  // Cursor del informe mensual: se compara por MES, no por instante, como
+  // RecallSubscription.lastReportAt (lib/web-results-report.ts).
+  lastResultsReportAt DateTime? @map("last_results_report_at")
+
+  client       ChatbotClient   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant       Tenant?         @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  products     ClientProduct[]
+  webEventDays WebEventDay[]
 
   @@index([clientId])
   @@index([tenantId])
   @@map("client_site")
+}
+
+// =============================================================================
+// Informe mensual de resultados (28/11/2026) — contadores diarios de lo que
+// pasa en la web Premium del cliente: llegadas, clics en llamar o WhatsApp,
+// formularios, reservas, chats.
+//
+// Solo contadores agregados por día: ni IP, ni navegador, ni identificador de
+// visitante. Una fila por (sitio, día, tipo, origen) y la ruta pública suma 1
+// con un único INSERT … ON CONFLICT (lib/web-events.ts).
+//
+// `day` es el día LOCAL de Canarias (Atlantic/Canary), no el de UTC: el
+// informe habla del «noviembre» del cliente.
+// `kind`: 'landing' | 'call_click' | 'whatsapp_click' | 'email_click' |
+//   'form_submit' | 'booking_submit' | 'chat_start' (lib/web-events-rules.ts).
+// `source`: solo en 'landing' — 'ai' | 'search' | 'social' | 'other' |
+//   'direct'. Cadena vacía en el resto, no NULL: dos NULL no chocan en el
+//   índice único y cada evento abriría una fila nueva.
+// =============================================================================
+model WebEventDay {
+  id           String   @id @default(uuid()) @db.Uuid
+  clientSiteId String   @map("client_site_id") @db.Uuid
+  day          DateTime @db.Date
+  kind         String
+  source       String   @default("")
+  count        Int      @default(0)
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  clientSite ClientSite @relation(fields: [clientSiteId], references: [id], onDelete: Cascade)
+
+  @@unique([clientSiteId, day, kind, source])
+  @@index([clientSiteId, day])
+  @@map("web_event_day")
 }
 
 // =============================================================================

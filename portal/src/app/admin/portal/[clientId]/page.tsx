@@ -25,6 +25,8 @@ import { CARTERA_PRODUCT_CODE } from '@/lib/cartera/site';
 import { WebQuoteEditor, type WebQuoteData, type WebQuoteInvoiceData } from '@/components/admin/WebQuoteEditor';
 import { CustomCarePanel, type CustomCarePanelData } from '@/components/admin/CustomCarePanel';
 import { getWebCareState } from '@/lib/web-care';
+import { WebResultsTrackingPanel, type WebResultsTrackingData } from '@/components/admin/WebResultsTrackingPanel';
+import { loadResultsTracking } from '@/lib/web-events';
 import {
   ChannelsOperatorPanel,
   type TelegramConnectionRow,
@@ -75,6 +77,8 @@ interface WebProjectEntry {
   invoice: WebQuoteInvoiceData | null;
   /** 11/11/2026 — su mantenimiento (contratado, oferta a medida pendiente). */
   care: CustomCarePanelData;
+  /** 28/11/2026 — la medición del informe mensual de resultados. */
+  resultsTracking: WebResultsTrackingData;
 }
 
 function isProductCode(value: string): value is ProductCode {
@@ -541,6 +545,11 @@ export default async function AdminClientDetailPage(props: PageProps) {
                   : null,
                 invoice,
                 care,
+                resultsTracking: await loadResultsTracking(prisma, {
+                  clientId: client.id,
+                  clientSiteId: webCp.clientSiteId,
+                  webActive: webCp.status === 'active',
+                }),
               };
             }),
           );
@@ -1340,6 +1349,7 @@ export default async function AdminClientDetailPage(props: PageProps) {
                     invoice={project.invoice}
                   />
                   <CustomCarePanel webClientProductId={project.clientProductId} data={project.care} />
+                  <WebResultsTrackingPanel webClientProductId={project.clientProductId} data={project.resultsTracking} />
                   <div className="card mt-3" data-testid="client-website-section">
                     <header className="mb-3">
                       <h3 className="text-base font-semibold">Su web</h3>
