@@ -1082,7 +1082,6 @@
     },
     "hotel": {
       "name": "Hotel boutique y villas",
-      "tipoFactor": 0.71,
       "icon": "bed",
       "blurb": "Hoteles boutique, villas, alquiler vacacional de lujo.",
       "ticket": "Reserva media: 600–20.000 €",
@@ -1329,7 +1328,6 @@
     },
     "arquitectura": {
       "name": "Arquitectura, interiorismo y reformas",
-      "tipoFactor": 0.93,
       "icon": "ruler",
       "blurb": "Estudios, interioristas, reformas integrales premium.",
       "ticket": "Proyecto medio: 20.000–300.000 €",
