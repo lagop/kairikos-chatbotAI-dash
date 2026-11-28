@@ -10,6 +10,7 @@ import {
 import { getOperatorAlertRecipients } from './operator-alert-settings';
 import { logError } from './observability';
 import { RECALL_WITH_EXTRAS_WHERE } from './recall';
+import { localMonthFor, monthLabel, previousLocalMonth, shiftLocalMonth } from './local-month';
 
 // =============================================================================
 // WP-XX (Fase 11) — the monthly report, and what it is measured from.
@@ -41,32 +42,10 @@ export const USAGE_ALERT_MULTIPLIER = 3;
 
 export const REPORT_TEMPLATE = { name: 'recall_monthly_report', languageCode: 'es' } as const;
 
-/** 'YYYY-MM' in the subscription's own timezone. */
-export function localMonthFor(at: Date, timezone: string): string {
-  return localDateFor(at, timezone).slice(0, 7);
-}
-
-/** The month before the one `at` falls in, in the same timezone. */
-/**
- * Move a 'YYYY-MM' key by whole months.
- *
- * String arithmetic rather than Date arithmetic on purpose: a month key
- * is a calendar label, and building a Date from it just to add a month
- * would drag a timezone into a question that has none.
- */
-export function shiftLocalMonth(localMonth: string, delta: number): string {
-  const [year, month] = localMonth.split('-').map(Number);
-  // Months as a zero-based running count, so the year rolls over on its
-  // own in both directions.
-  const total = year * 12 + (month - 1) + delta;
-  const y = Math.floor(total / 12);
-  const m = total - y * 12 + 1;
-  return `${y}-${String(m).padStart(2, '0')}`;
-}
-
-export function previousLocalMonth(at: Date, timezone: string): string {
-  return shiftLocalMonth(localMonthFor(at, timezone), -1);
-}
+// Los meses de calendario viven en local-month.ts desde el 28/11/2026 (los
+// comparte el informe de la web); se reexportan para no tocar a quien los
+// importa de aquí.
+export { localMonthFor, shiftLocalMonth, previousLocalMonth, monthLabel };
 
 /**
  * Is last month's report due?
@@ -406,26 +385,4 @@ export async function sendMonthlyReports(
   }
 
   return result;
-}
-
-const MONTH_NAMES = [
-  'enero',
-  'febrero',
-  'marzo',
-  'abril',
-  'mayo',
-  'junio',
-  'julio',
-  'agosto',
-  'septiembre',
-  'octubre',
-  'noviembre',
-  'diciembre',
-];
-
-/** 'julio' rather than '2026-07'. The report is read on a phone by
- *  someone who is not looking at a dashboard. */
-export function monthLabel(localMonth: string): string {
-  const [, month] = localMonth.split('-').map(Number);
-  return MONTH_NAMES[month - 1] ?? localMonth;
 }
